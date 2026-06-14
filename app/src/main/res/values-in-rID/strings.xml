@@ -974,4 +974,17 @@
     <string name="sort_descending">Urutkan menurun</string>
     <string name="sort_ascending">Urutkan menaik</string>
     <string name="your_collection">Koleksi Anda</string>
+    <string name="all_artists_filter">Semua Artis</string>
+    <string name="artist_subtitle">Artis</string>
+    <string name="recently_played_artists">Artis yang Baru-baru Ini Diputar</string>
+    <string name="newest_year">Tahun terbaru</string>
+    <string name="oldest_year">Tahun tertua</string>
+    <string name="longest_duration">Durasi terlama</string>
+    <string name="shortest_duration">‐Durasi tersingkat</string>
+    <string name="year_sort">Tahun</string>
+    <string name="duration_sort">Durasi</string>
+    <string name="featured_album_badge">ALBUM UNGGULAN</string>
+    <string name="lyrics_synced_badge">Tersinkronisasi</string>
+    <string name="font_preference_desc">Pilih sumber font aplikasi</string>
+    <string name="font_preference_system">Sistem</string>
 </resources>
