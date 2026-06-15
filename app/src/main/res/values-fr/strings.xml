@@ -37,8 +37,8 @@
     <string name="most_played_albums">Albums les plus écoutés</string>
     <!-- Search -->
     <string name="search">Rechercher</string>
-    <string name="search_yt_music">Rechercher sur YouTube Music…</string>
-    <string name="search_library">Rechercher dans la bibliothèque…</string>
+    <string name="search_yt_music">Rechercher sur YouTube Music</string>
+    <string name="search_library">Rechercher dans la bibliothèque</string>
     <string name="filter_library">Bibliothèque</string>
     <string name="filter_liked">Aimé</string>
     <string name="filter_downloaded">Téléchargé</string>
@@ -494,7 +494,7 @@
     <string name="select_dialog">Sélectionner</string>
     <string name="support_github">Évaluez ArchiveTune !</string>
     <!-- Update dialog -->
-    <string name="new_update_available">Nouvelle mise à jour disponible !</string>
+    <string name="new_update_available">Nouvelle mise à jour disponible</string>
     <string name="release_notes_unavailable">Les notes de version ne sont pas disponibles</string>
     <string name="update_text">Mise à jour</string>
     <!-- Translate UI strings -->
@@ -553,7 +553,7 @@
     <string name="media_id_label">ID média</string>
     <string name="about">À propos</string>
     <string name="app_version">Version de l\'application</string>
-    <string name="new_version_available">Nouvelle version disponible !</string>
+    <string name="new_version_available">Nouvelle version disponible</string>
     <string name="translation_models">Modèles de traduction</string>
     <string name="clear_translation_models">Effacer les modèles de traduction</string>
     <string name="queue_continue_playing">Continuer la lecture</string>
@@ -635,7 +635,7 @@
     <string name="filter_discord_only">Discord</string>
     <string name="filter_all_logs">Tout</string>
     <string name="clear">Effacer</string>
-    <string name="logs_empty_message">Les journaux apparaîtront ici lorsqu\'ils seront disponibles.</string>
+    <string name="logs_empty_message">Les journaux apparaîtront ici lorsqu\'ils seront disponibles</string>
     <string name="real_time_playback_stats">Statistiques de lecture en temps réel</string>
     <string name="copied_to_clipboard">Journal copié dans le presse-papiers</string>
     <string name="playback_state_idle">INACTIF</string>
