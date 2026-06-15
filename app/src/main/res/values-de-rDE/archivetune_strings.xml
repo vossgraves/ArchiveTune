@@ -43,7 +43,7 @@
     <string name="remove_from_cache">Aus Cache entfernen</string>
     <string name="copy_link">Link kopieren</string>
     <string name="select">Alles auswählen</string>
-    <string name="like_all">Wie alle</string>
+    <string name="like_all">Gefallen mir alle</string>
     <string name="dislike_all">Mag alles nicht</string>
     <string name="sort_by_last_updated">Datum aktualisiert</string>
     <string name="link_copied">Link in die Zwischenablage kopiert</string>
