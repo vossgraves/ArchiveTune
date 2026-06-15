@@ -8,7 +8,7 @@
     <string name="playlists">Wiedergabelisten</string>
     <!-- Top bar -->
     <plurals name="n_selected">
-        <item quantity="one"/>
+        <item quantity="one"></item>
         <item quantity="other">%d ausgewählt</item>
     </plurals>
     <!-- Home -->
@@ -193,7 +193,7 @@
     <string name="error_unknown">Unbekannter Fehler</string>
     <!-- Player action -->
     <string name="action_like">Wie</string>
-    <string name="action_like_all">Wie alle</string>
+    <string name="action_like_all">Gefallen mir alle</string>
     <string name="action_remove_like">Like entfernen</string>
     <string name="action_remove_like_all">Alle Likes entfernen</string>
     <string name="action_shuffle_on">Mischen Sie weiter</string>
