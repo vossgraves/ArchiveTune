@@ -36,10 +36,13 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialogDefaults
 import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
@@ -75,6 +78,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -1206,6 +1210,8 @@ private fun SearchLyricsInputDialog(
 ) {
     val configuration = LocalConfiguration.current
     val useStackedActions = configuration.screenWidthDp < 600
+    val contentArrangement = remember { Arrangement.spacedBy(20.dp) }
+    val fieldArrangement = remember { Arrangement.spacedBy(16.dp) }
 
     BasicAlertDialog(
         onDismissRequest = onDismiss,
@@ -1218,44 +1224,38 @@ private fun SearchLyricsInputDialog(
             shape = MaterialTheme.shapes.extraLarge,
             color = MaterialTheme.colorScheme.surfaceContainerHigh,
             tonalElevation = 6.dp,
-            modifier = Modifier.widthIn(max = 560.dp),
+            modifier = Modifier.widthIn(max = 520.dp),
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(24.dp),
-                verticalArrangement = Arrangement.spacedBy(20.dp),
+                verticalArrangement = contentArrangement,
             ) {
                 LyricsSearchInputHeader(onDismiss = onDismiss)
 
-                Surface(
-                    shape = MaterialTheme.shapes.large,
-                    color = MaterialTheme.colorScheme.surfaceContainer,
-                    tonalElevation = 1.dp,
+                Column(
+                    verticalArrangement = fieldArrangement,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        LyricsSearchTextField(
-                            value = titleField,
-                            onValueChange = onTitleFieldChange,
-                            label = stringResource(R.string.song_title),
-                            iconResId = R.drawable.music_note,
-                        )
-                        LyricsSearchTextField(
-                            value = artistField,
-                            onValueChange = onArtistFieldChange,
-                            label = stringResource(R.string.song_artists),
-                            iconResId = R.drawable.artist,
-                        )
-                    }
+                    LyricsSearchTextField(
+                        value = titleField,
+                        onValueChange = onTitleFieldChange,
+                        label = stringResource(R.string.song_title),
+                        iconResId = R.drawable.music_note,
+                        onSearch = onSearch,
+                    )
+                    LyricsSearchTextField(
+                        value = artistField,
+                        onValueChange = onArtistFieldChange,
+                        label = stringResource(R.string.song_artists),
+                        iconResId = R.drawable.artist,
+                        onSearch = onSearch,
+                    )
                 }
 
                 LyricsSearchInputActions(
                     useStackedActions = useStackedActions,
-                    onDismiss = onDismiss,
                     onSearchOnline = onSearchOnline,
                     onSearch = onSearch,
                 )
@@ -1268,31 +1268,31 @@ private fun SearchLyricsInputDialog(
 private fun LyricsSearchInputHeader(
     onDismiss: () -> Unit,
 ) {
+    val titleArrangement = remember { Arrangement.spacedBy(16.dp) }
+
     Row(
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = titleArrangement,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Surface(
             shape = MaterialTheme.shapes.large,
-            color = MaterialTheme.colorScheme.primaryContainer,
-            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-            tonalElevation = 2.dp,
-            modifier = Modifier.size(56.dp),
+            color = MaterialTheme.colorScheme.secondaryContainer,
+            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+            modifier = Modifier.size(48.dp),
         ) {
             Box(contentAlignment = Alignment.Center) {
                 Icon(
                     painter = painterResource(R.drawable.search),
                     contentDescription = null,
-                    modifier = Modifier.size(28.dp),
+                    modifier = Modifier.size(24.dp),
                 )
             }
         }
 
-        Spacer(Modifier.width(16.dp))
-
         Text(
             text = stringResource(R.string.search_lyrics),
-            style = MaterialTheme.typography.headlineSmall,
+            style = MaterialTheme.typography.titleLarge,
             color = MaterialTheme.colorScheme.onSurface,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
@@ -1302,7 +1302,7 @@ private fun LyricsSearchInputHeader(
         IconButton(onClick = onDismiss) {
             Icon(
                 painter = painterResource(R.drawable.close),
-                contentDescription = stringResource(android.R.string.cancel),
+                contentDescription = stringResource(R.string.close),
             )
         }
     }
@@ -1314,6 +1314,7 @@ private fun LyricsSearchTextField(
     onValueChange: (TextFieldValue) -> Unit,
     label: String,
     iconResId: Int,
+    onSearch: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     OutlinedTextField(
@@ -1328,11 +1329,29 @@ private fun LyricsSearchTextField(
                 modifier = Modifier.size(20.dp),
             )
         },
+        trailingIcon = if (value.text.isNotEmpty()) {
+            {
+                IconButton(onClick = { onValueChange(TextFieldValue()) }) {
+                    Icon(
+                        painter = painterResource(R.drawable.close),
+                        contentDescription = stringResource(R.string.clear),
+                    )
+                }
+            }
+        } else {
+            null
+        },
         modifier = modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.large,
         colors = OutlinedTextFieldDefaults.colors(
             focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
             unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
+        ),
+        keyboardOptions = KeyboardOptions(
+            imeAction = ImeAction.Search,
+        ),
+        keyboardActions = KeyboardActions(
+            onSearch = { onSearch() },
         ),
     )
 }
@@ -1340,14 +1359,18 @@ private fun LyricsSearchTextField(
 @Composable
 private fun LyricsSearchInputActions(
     useStackedActions: Boolean,
-    onDismiss: () -> Unit,
     onSearchOnline: () -> Unit,
     onSearch: () -> Unit,
 ) {
+    val compactActionArrangement = remember { Arrangement.spacedBy(8.dp) }
+    val expandedActionArrangement = remember {
+        Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween, Alignment.End)
+    }
+
     if (useStackedActions) {
         Column(
             modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = compactActionArrangement,
         ) {
             Button(
                 onClick = onSearch,
@@ -1379,28 +1402,13 @@ private fun LyricsSearchInputActions(
                 Spacer(Modifier.width(8.dp))
                 Text(stringResource(R.string.search_online))
             }
-
-            TextButton(
-                onClick = onDismiss,
-                shapes = ButtonDefaults.shapes(),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(stringResource(android.R.string.cancel))
-            }
         }
     } else {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+            horizontalArrangement = expandedActionArrangement,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            TextButton(
-                onClick = onDismiss,
-                shapes = ButtonDefaults.shapes(),
-            ) {
-                Text(stringResource(android.R.string.cancel))
-            }
-
             Spacer(modifier = Modifier.weight(1f))
 
             FilledTonalButton(
@@ -1408,7 +1416,7 @@ private fun LyricsSearchInputActions(
                 colors = ButtonDefaults.filledTonalButtonColors(
                     containerColor = MaterialTheme.colorScheme.secondaryContainer,
                 ),
-                shapes = ButtonDefaults.shapes(),
+                shapes = ButtonGroupDefaults.connectedLeadingButtonShapes(),
             ) {
                 Icon(
                     painter = painterResource(R.drawable.language),
@@ -1421,7 +1429,7 @@ private fun LyricsSearchInputActions(
 
             Button(
                 onClick = onSearch,
-                shapes = ButtonDefaults.shapes(),
+                shapes = ButtonGroupDefaults.connectedTrailingButtonShapes(),
             ) {
                 Icon(
                     painter = painterResource(R.drawable.search),
