@@ -54,10 +54,10 @@
     <string name="filter_bookmarked">En favoris</string>
     <string name="no_results_found">Aucun résultat trouvé</string>
     <!-- Library -->
-    <string name="library_song_empty">Les titres de la bibliothèque apparaîtront ici.</string>
-    <string name="library_artist_empty">Les artistes de la bibliothèque apparaîtront ici.</string>
-    <string name="library_album_empty">Les albums de la bibliothèque apparaîtront ici.</string>
-    <string name="library_playlist_empty">Vos playlists apparaîtront ici.</string>
+    <string name="library_song_empty">Les titres de la bibliothèque s\'afficheront ici</string>
+    <string name="library_artist_empty">Les artistes de la bibliothèque s\'afficheront ici</string>
+    <string name="library_album_empty">Les albums de la bibliothèque s\'afficheront ici</string>
+    <string name="library_playlist_empty">Vos playlists s\'afficheront ici</string>
     <!-- Artist screen -->
     <string name="from_your_library">De votre bibliothèque</string>
     <!-- Album screen -->
@@ -65,7 +65,7 @@
     <!-- Playlist -->
     <string name="liked_songs">Titres favoris</string>
     <string name="downloaded_songs">Titres téléchargés</string>
-    <string name="playlist_is_empty">La playlist est vide.</string>
+    <string name="playlist_is_empty">La playlist est vide</string>
     <string name="remove_download_playlist_confirm">Voulez-vous vraiment supprimer tous les titres de la playlist « %s » du stockage des titres téléchargés ?</string>
     <string name="delete_playlist_confirm">Voulez-vous vraiment supprimer la playlist « %s » ?</string>
     <!-- Button -->
@@ -393,9 +393,9 @@
     <string name="audio_quality_high">Haute</string>
     <string name="audio_quality_low">Basse</string>
     <string name="persistent_queue">File d\'attente persistante</string>
-    <string name="persistent_queue_desc">Restaurez votre dernière file d\'attente au démarrage de l\'application.</string>
+    <string name="persistent_queue_desc">Restaurer votre dernière file d\'attente au démarrage de l\'application</string>
     <string name="auto_load_more">Charger automatiquement plus de titres</string>
-    <string name="auto_load_more_desc">Ajout automatique de titres supplémentaires lorsque la fin de la file d\'attente est atteinte. Désactivé lorsque le mode répétition est activé.</string>
+    <string name="auto_load_more_desc">Ajouter automatiquement d\'autres titres lorsque la file d\'attente est terminée. Cette option est désactivée lorsque le mode de lecture en boucle est activé.</string>
     <string name="skip_silence">Passer le silence</string>
     <string name="audio_normalization">Normalisation audio</string>
     <string name="auto_skip_next_on_error">Passage automatique au titre suivant en cas d\'erreur</string>
@@ -495,7 +495,7 @@
     <string name="support_github">Évaluez ArchiveTune !</string>
     <!-- Update dialog -->
     <string name="new_update_available">Nouvelle mise à jour disponible !</string>
-    <string name="release_notes_unavailable">Les notes de version ne sont pas disponibles.</string>
+    <string name="release_notes_unavailable">Les notes de version ne sont pas disponibles</string>
     <string name="update_text">Mise à jour</string>
     <!-- Translate UI strings -->
     <string name="translate">Traduire</string>
@@ -512,7 +512,7 @@
     <string name="discord_show_when_paused_desc">Si cette option est activée, Rich Presence restera visible pendant la pause, avec une icône de pause. Si elle est désactivée, RPC disparaîtra pendant la pause.</string>
     <string name="discord_paused">En pause</string>
     <string name="show_small_image">Afficher une petite image</string>
-    <string name="description_show_small_image">Lorsqu\'elle est activée, une petite image circulaire s\'affiche dans l\'aperçu Rich Presence et est envoyée à Discord si disponible.</string>
+    <string name="description_show_small_image">Lorsque cette option est activée, une petite image circulaire s\'affiche dans l\'aperçu Rich Presence et est envoyée à Discord si elle est disponible</string>
     <string name="logout_confirm_title">Confirmer la déconnexion</string>
     <string name="logout_confirm_message">Êtes-vous sûr de vouloir vous déconnecter de Discord ?</string>
     <string name="logout_confirm_yes">Déconnexion</string>
@@ -795,13 +795,13 @@
     <string name="playback_login_refresh_required">Actualiser la connexion à YouTube Music</string>
     <string name="playback_requires_youtube_music_login_refresh">Actualisez votre connexion YouTube Music, puis retournez sur ArchiveTune.</string>
     <string name="wakelock">Maintenir le processeur actif pendant la lecture</string>
-    <string name="wakelock_desc">Empêche le système d\'interrompre la musique en maintenant un verrou de réveil du processeur.</string>
+    <string name="wakelock_desc">Empêche le système d\'interrompre la lecture musicale en maintenant un verrou de réveil du processeur</string>
     <string name="external_downloader">Téléchargeur Externe</string>
     <string name="external_downloader_desc">Télécharger des chansons via une application externe par nom de package</string>
     <string name="external_downloader_package">Pack d\'applications de téléchargement</string>
     <string name="external_downloader_package_desc">Nom du pack de l\'application de téléchargement externe (par exemple : com.deniscerri.ytdl)</string>
     <string name="open_with_downloader">Ouvrir avec Downloader</string>
-    <string name="external_downloader_not_installed">L\'application de téléchargement externe n\'est pas installée.</string>
+    <string name="external_downloader_not_installed">L\'application de téléchargement externe n\'est pas installée</string>
     <string name="external_downloader_not_configured">Aucun téléchargeur externe n\'est configuré. Configurez-en un dans Paramètres → Lecteur.</string>
     <string name="open_youtube_music">Ouvrir YouTube Music</string>
     <string name="archivetune_canvas_v7_desc">Non disponible avec le style de lecteur immersif</string>
