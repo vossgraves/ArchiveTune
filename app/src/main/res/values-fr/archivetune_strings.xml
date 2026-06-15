@@ -89,7 +89,7 @@
     <string name="secondary_color_style">Secondaire</string>
     <string name="enable_squiggly_slider">Activer le curseur ondulé</string>
     <string name="enable_swipe_thumbnail">Activer le glissement pour changer de titre</string>
-    <string name="swipe_song_to_add">Faites glisser le titre vers la gauche pour l\'ajouter à la file d\'attente ou vers la droite pour le lire ensuite.</string>
+    <string name="swipe_song_to_add">Faites glisser le titre vers la gauche pour l\'ajouter à la file d\'attente ou vers la droite pour le lire ensuite</string>
     <string name="lyrics_click_change">Changer les paroles avec un clic</string>
     <string name="lyrics_auto_scroll">Défilement automatique des paroles</string>
     <string name="lyrics_text_size">Taille du texte des paroles</string>
@@ -126,7 +126,7 @@
     <string name="enable_similar_content">Activer le contenu similaire</string>
     <string name="similar_content_desc">Ajoutez automatiquement d\'autres titres similaires lorsque la fin de la file d\'attente est atteinte</string>
     <string name="min_playback_duration_title">Durée minimum de lecture</string>
-    <string name="min_playback_duration_description">La durée minimale d\'un titre qui doit être lu avant qu\'il soit considéré comme « lu ».</string>
+    <string name="min_playback_duration_description">La durée minimale qu\'un titre doit être diffusé pour être considéré comme « diffusé »</string>
     <string name="percentage_format">%d%%</string>
     <string name="minimum_playback_duration">Durée minimum de lecture</string>
     <string name="import_online">Importer une playlist « m3u »</string>
@@ -163,9 +163,9 @@
     <string name="subscribe">S\'abonner</string>
     <string name="subscribed">Abonné</string>
     <string name="playlist_not_found">Playlist introuvable</string>
-    <string name="playlist_not_found_desc">La playlist demandée n\'a pas pu être chargée.</string>
+    <string name="playlist_not_found_desc">La playlist demandée n\'a pas pu être chargée</string>
     <string name="empty_playlist">Playlist vide</string>
-    <string name="empty_playlist_desc">Cette playlist ne contient aucun titre.</string>
+    <string name="empty_playlist_desc">Cette playlist ne contient aucun titre</string>
     <plurals name="seconds">
         <item quantity="one">1 seconde</item>
         <item quantity="many">%d secondes</item>
@@ -253,7 +253,7 @@
     <string name="canvas_cache_usage">%1$s / %2$s</string>
     <string name="clear_canvas_cache">Vider le cache du canevas</string>
     <string name="clear_canvas_cache_dialog">Êtes-vous sûr de vouloir effacer tout le contenu mis en cache ?</string>
-    <string name="playlist_private_title">Cette playlist était privée.</string>
+    <string name="playlist_private_title">Cette playlist était privée</string>
     <string name="playlist_private_desc">Vous n\'avez pas accès à cette playlist.</string>
     <string name="audio_crossfade_title">Fondu enchaîné</string>
     <string name="audio_crossfade_description">Assurez une transition fluide entre les titres en atténuant progressivement la fin de chaque titre.</string>
