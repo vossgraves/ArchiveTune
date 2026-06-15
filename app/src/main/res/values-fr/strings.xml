@@ -63,7 +63,7 @@
     <!-- Album screen -->
     <string name="other_versions">Autres versions</string>
     <!-- Playlist -->
-    <string name="liked_songs">Titres aimés</string>
+    <string name="liked_songs">Titres favoris</string>
     <string name="downloaded_songs">Titres téléchargés</string>
     <string name="playlist_is_empty">La playlist est vide.</string>
     <string name="remove_download_playlist_confirm">Voulez-vous vraiment supprimer tous les titres de la playlist « %s » du stockage des titres téléchargés ?</string>
@@ -546,7 +546,7 @@
     <string name="content_length_label">Longueur du contenu</string>
     <string name="unknown_content_length">Longueur du contenu inconnue</string>
     <string name="format_label">Format</string>
-    <string name="loading_format">Chargement du format…</string>
+    <string name="loading_format">Chargement du format</string>
     <string name="buffer_health_label">Santé tampon</string>
     <string name="playback_speed_label">Vitesse de lecture</string>
     <string name="state_label">État</string>
@@ -719,7 +719,7 @@
     <string name="join">Rejoindre</string>
     <string name="joined">A rejoint</string>
     <string name="loading">Chargement</string>
-    <string name="connecting">Connexion en cours…</string>
+    <string name="connecting">Connexion en cours</string>
     <string name="copy_link">Copier le lien</string>
     <string name="together_host_section">Hôte</string>
     <string name="together_join_section">Rejoindre</string>
@@ -774,13 +774,13 @@
     <string name="regenerate_desc">Actualiser tous les jetons</string>
     <string name="source_url">URL source</string>
     <string name="source_url_placeholder">https://youtube.com/account</string>
-    <string name="generating_tokens">Génération de jetons…</string>
+    <string name="generating_tokens">Génération de jetons</string>
     <string name="tokens_generated">Les jetons ont été générés avec succès</string>
     <string name="token_generation_failed">Échec de la génération de jetons</string>
     <string name="open_account_before_extract">Ouvrez la page youtube.com/account et connectez-vous avant de procéder à l\'extraction</string>
     <string name="token_copied">Le jeton a été copié dans le presse-papiers</string>
     <string name="no_visitor_data">Aucune donnée relative aux visiteurs n\'est disponible. Il est impossible de générer des jetons.</string>
-    <string name="extracting_from_url">Extraction des éléments de l\'URL…</string>
+    <string name="extracting_from_url">Extraction des éléments de l\'URL</string>
     <string name="speed_dial">Accès Rapide</string>
     <string name="speed_dial_random">Lire un titre au hasard</string>
     <string name="music_recognition">Reconnaissance Musicale</string>
@@ -900,7 +900,7 @@
     <string name="library_artists_subtitle">Tous vos artistes, réunis au même endroit</string>
     <string name="library_albums_subtitle">Tous vos albums, parfaitement classés</string>
     <string name="most_played_badge">LES PLUS JOUÉS</string>
-    <string name="favorite_songs_title">Titres préférés</string>
+    <string name="favorite_songs_title">Titres Préférés</string>
     <string name="play_all">Tout lire</string>
     <string name="offline_shortcut">Hors ligne</string>
     <string name="cached">En cache</string>
@@ -1045,4 +1045,15 @@
     <string name="discord_activity_type_listening_label">Écouter</string>
     <string name="discord_activity_type_watching_label">Regarder</string>
     <string name="discord_activity_type_competing_label">En compétition</string>
+    <string name="discord_image_album_artwork">Pochette d\'album</string>
+    <string name="discord_image_artist_artwork">Photo d\'artiste</string>
+    <string name="updates_subtitle_daily_nightly">Mises à jour quotidiennes et journaux des modifications</string>
+    <string name="channel_daily_nightly">Quotidienne</string>
+    <string name="updates_nightly_hosting_description">Les versions de développement générées automatiquement sont disponibles à l\'issue d\'exécutions réussies de GitHub Actions.</string>
+    <string name="check_for_update">Rechercher les mises à jour</string>
+    <string name="saved_accounts">Comptes enregistrés</string>
+    <string name="save_current_account">Enregistrer le compte courant</string>
+    <string name="no_saved_accounts">Aucun compte enregistré pour l\'instant</string>
+    <string name="remove_account">Supprimer le compte</string>
+    <string name="youtube_channels">Chaînes YouTube</string>
 </resources>
