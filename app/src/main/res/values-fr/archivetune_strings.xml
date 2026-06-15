@@ -530,4 +530,18 @@
     <string name="settings_developer_options_subtitle">Fonctionnalités expérimentales et débogage</string>
     <string name="settings_lyrics_subtitle">Fournisseurs de paroles, préchargement et traduction</string>
     <string name="settings_content_subtitle">Langue, pays et paramètres de recommandation par défaut</string>
+    <string name="settings_internet_subtitle">Comportement de la lecture en réseau, du proxy et du DNS</string>
+    <string name="settings_po_token_subtitle">Vérification de la lecture et données relatives aux visiteurs</string>
+    <string name="settings_storage_subtitle">Cache, téléchargements et stockage hors ligne</string>
+    <string name="settings_updates_subtitle">Version, notes de version et canal de mise à jour</string>
+    <string name="settings_about_subtitle">Informations sur l\'application, licences et contributeurs</string>
+    <string name="settings_account_subtitle">Se connecter et gérer la synchronisation du compte</string>
+    <string name="settings_stats_title">Statistiques d\'écoute</string>
+    <string name="year_in_music_recap">Récapitulatif Musical</string>
+    <string name="year_in_music_recap_word">RÉSUMÉ</string>
+    <string name="year_in_music_intro_title">Revivez votre année</string>
+    <string name="year_in_music_intro_subtitle">Un tour d\'horizon des titres, des artistes et des albums qui ont marqué %d.</string>
+    <string name="year_in_music_intro_hero">Le voici enfin ! Votre bilan musical de l\'année.</string>
+    <string name="year_in_music_swipe_begin">Faites glisser pour commencer</string>
+    <string name="year_in_music_totals_title">Vous avez fait vivre la musique</string>
 </resources>
