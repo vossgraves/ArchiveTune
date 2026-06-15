@@ -122,6 +122,8 @@ data class AboutContributorUiCollection private constructor(
     val size: Int get() = values.size
     val isEmpty: Boolean get() = values.isEmpty()
 
+    operator fun get(index: Int): AboutContributorUiModel = values[index]
+
     fun forEach(action: (AboutContributorUiModel) -> Unit) {
         values.forEach(action)
     }
