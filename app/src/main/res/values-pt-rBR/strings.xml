@@ -979,9 +979,9 @@
     <string name="font_preference_custom">Personalizada</string>
     <string name="custom_font">Fonte personalizada</string>
     <string name="custom_font_desc">Escolha uma fonte .ttf</string>
-    <string name="custom_font_invalid">Escolha um arquivo de fonte .ttf</string>
+    <string name="custom_font_invalid">Selecione um arquivo de fonte .ttf</string>
     <string name="player_background_style_v8_v9_desc">Não disponível nos estilos de player V8 e V9</string>
-    <string name="proxy_connection_invalid_configuration">Host ou porta de proxy inválida</string>
+    <string name="proxy_connection_invalid_configuration">Host ou servidor proxy inválidos</string>
     <string name="device_mute_recovery_volume">Aumentar o volume a partir de 0</string>
     <string name="device_mute_recovery_volume_disabled">Desabilitado</string>
     <string name="device_volume_zero_playback_paused">A reprodução foi pausada porque o volume do dispositivo está em 0. Aumente o volume para retomar.</string>
