@@ -300,6 +300,7 @@ private fun AboutSuccessContent(
             AboutContentContainer {
                 ContributorsSection(
                     state = model.contributorsState,
+                    readMoreUrl = model.contributorsReadMoreUrl,
                     onOpenProfile = onOpenUri,
                     onRetry = onRetryContributors,
                     modifier = Modifier.fillMaxWidth(),
@@ -659,6 +660,7 @@ private fun MemberLinkActions(
 @Composable
 private fun ContributorsSection(
     state: AboutContributorsUiState,
+    readMoreUrl: String,
     onOpenProfile: (String) -> Unit,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
@@ -705,6 +707,7 @@ private fun ContributorsSection(
                 is AboutContributorsUiState.Success -> {
                     ContributorList(
                         contributors = state.contributors,
+                        readMoreUrl = readMoreUrl,
                         onOpenProfile = onOpenProfile,
                     )
                 }
@@ -746,6 +749,7 @@ private fun ContributorStatusContent(
 @Composable
 private fun ContributorList(
     contributors: AboutContributorUiCollection,
+    readMoreUrl: String,
     onOpenProfile: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -768,6 +772,17 @@ private fun ContributorList(
                 )
             }
         }
+
+        HorizontalDivider(
+            modifier = Modifier.padding(start = 72.dp),
+            thickness = SettingsDimensions.DividerThickness,
+            color = MaterialTheme.colorScheme.outlineVariant,
+        )
+
+        ContributorReadMoreListItem(
+            readMoreUrl = readMoreUrl,
+            onOpenProfile = onOpenProfile,
+        )
     }
 }
 
@@ -808,6 +823,45 @@ private fun ContributorListItem(
         headlineContent = {
             Text(
                 text = login,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        },
+    )
+}
+
+@Composable
+private fun ContributorReadMoreListItem(
+    readMoreUrl: String,
+    onOpenProfile: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val onClick = remember(readMoreUrl, onOpenProfile) {
+        { onOpenProfile(readMoreUrl) }
+    }
+
+    ListItem(
+        modifier = modifier
+            .fillMaxWidth()
+            .heightIn(min = 72.dp)
+            .clickable(onClick = onClick),
+        colors = ListItemDefaults.colors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        ),
+        leadingContent = {
+            Icon(
+                painter = painterResource(R.drawable.add_circle),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(44.dp),
+            )
+        },
+        headlineContent = {
+            Text(
+                text = stringResource(R.string.more),
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Medium,
                 color = MaterialTheme.colorScheme.onSurface,

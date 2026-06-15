@@ -89,7 +89,7 @@ constructor(
             val cachedJson = preferences[GitHubContributorsJsonKey]
             val cachedContributors = cachedJson
                 ?.takeIf { json -> json.isNotBlank() }
-                ?.let { json -> parseContributorsJsonSafely(json) }
+                ?.let { json -> parseContributorsJsonSafely(json, maxContributors = ContributorsLimit) }
                 ?.takeIf { contributors -> !contributors.isEmpty }
 
             if (cachedContributors != null) {
@@ -108,7 +108,10 @@ constructor(
 
             when {
                 networkResult.status.value in 200..299 && networkResult.body.isNotBlank() -> {
-                    val contributors = parseContributorsJsonSafely(networkResult.body)
+                    val contributors = parseContributorsJsonSafely(
+                        json = networkResult.body,
+                        maxContributors = ContributorsLimit,
+                    )
                     when {
                         !contributors.isEmpty -> {
                             context.dataStore.edit { preferences ->
@@ -128,7 +131,7 @@ constructor(
     private suspend fun fetchRepoContributorsNetwork(
         owner: String,
         repo: String,
-        perPage: Int = 100,
+        perPage: Int = ContributorsLimit,
     ): ContributorsNetworkResult {
         val response: HttpResponse =
             client.get("https://api.github.com/repos/$owner/$repo/contributors?per_page=$perPage") {
@@ -143,11 +146,15 @@ constructor(
         )
     }
 
-    private fun parseContributorsJsonSafely(json: String): AboutContributorCollection =
+    private fun parseContributorsJsonSafely(
+        json: String,
+        maxContributors: Int,
+    ): AboutContributorCollection =
         try {
             val jsonArray = JSONArray(json)
-            val contributors = ArrayList<AboutContributor>(jsonArray.length())
+            val contributors = ArrayList<AboutContributor>(minOf(jsonArray.length(), maxContributors))
             for (index in 0 until jsonArray.length()) {
+                if (contributors.size >= maxContributors) break
                 val item = jsonArray.getJSONObject(index)
                 val login = item.optString("login", "")
                 val type = item.optString("type", "")
@@ -182,6 +189,7 @@ constructor(
     )
 
     private companion object {
+        const val ContributorsLimit = 20
         const val GitHubOwner = "ArchiveTuneApp"
         const val GitHubRepo = "ArchiveTune"
     }

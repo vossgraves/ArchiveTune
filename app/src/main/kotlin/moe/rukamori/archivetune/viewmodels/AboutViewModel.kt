@@ -48,6 +48,7 @@ data class AboutUiModel(
     val collaborators: TeamMemberCollection,
     val respecters: TeamMemberCollection,
     val contributorsState: AboutContributorsUiState,
+    val contributorsReadMoreUrl: String,
 )
 
 @Immutable
@@ -339,6 +340,7 @@ constructor(
                 ),
             ),
             contributorsState = contributorsState,
+            contributorsReadMoreUrl = ContributorsReadMoreUrl,
         )
 
     private fun AboutContributorCollection.toUiCollection(): AboutContributorUiCollection {
@@ -359,5 +361,6 @@ constructor(
     private companion object {
         const val MaxDisplayedContributors = 20
         const val DebugBuildBadge = "DEBUG"
+        const val ContributorsReadMoreUrl = "https://github.com/ArchiveTuneApp/ArchiveTune/graphs/contributors"
     }
 }
