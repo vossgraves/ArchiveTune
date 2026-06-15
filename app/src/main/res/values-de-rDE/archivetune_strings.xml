@@ -252,4 +252,22 @@
     <string name="lyrics_line_blur">Textzeilen verwischen</string>
     <string name="lyrics_share_background_dim">Hintergrund abgedunkelt</string>
     <string name="quick_picks_display_mode">Anzeigemodus „Schnellauswahl“</string>
+    <string name="music_recognition_history">Erkennungszeichen Verlauf</string>
+    <string name="music_recognition_history_search">Durchsuchen erkannte Lieder</string>
+    <string name="music_recognition_history_empty_title">Keine Lieder bisher erkannt</string>
+    <string name="music_recognition_history_no_results_title">Keine Verlaufstreffer</string>
+    <string name="music_recognition_history_no_results_body">Versuche einen anderen Song, Künstler, Album oder Code.</string>
+    <string name="music_recognition_history_recognized_at">Erkannt %1$s</string>
+    <string name="history_remote_error_title">Remote Verlauf konnte nicht geladen werden</string>
+    <string name="history_remote_error_desc">Versuche es später erneut.</string>
+    <string name="history_no_results_title">Keine Treffenden Songs</string>
+    <string name="history_no_results_desc">Versuche einen anderen Song oder Künstlername</string>
+    <string name="clear_selection">Selektion aufheben</string>
+    <string name="scan_device">Gerät durchsuchen</string>
+    <string name="scanning_device">Durchsuche Gerät…</string>
+    <string name="local_songs_empty_title">Keine Lokalen Lieder gefunden</string>
+    <string name="local_songs_scan_summary">Letzter Scan: %1$d lieder gefunden, %2$d entfernt</string>
+    <string name="local_songs_scan_title">Scanne lokale Lieder</string>
+    <string name="local_songs_latest_scan">Letzter Scan</string>
+    <string name="local_songs_scan_filters_title">Scan Filter</string>
 </resources>
