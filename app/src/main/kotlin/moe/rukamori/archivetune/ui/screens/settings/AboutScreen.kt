@@ -528,7 +528,8 @@ private fun LinkChipRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        links.forEach { link ->
+        repeat(links.size) { index ->
+            val link = links[index]
             OutlinedIconChip(
                 iconRes = link.iconResId,
                 contentDescription = stringResource(link.labelResId),
@@ -621,7 +622,8 @@ private fun LeadDeveloperCard(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    member.links.forEach { link ->
+                    repeat(member.links.size) { index ->
+                        val link = member.links[index]
                         OutlinedIconChipMembers(
                             iconRes = link.iconResId,
                             contentDescription = stringResource(link.labelResId),
@@ -698,7 +700,8 @@ private fun TeamMemberCard(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                member.links.forEach { link ->
+                repeat(member.links.size) { index ->
+                    val link = member.links[index]
                     OutlinedIconChipMembers(
                         iconRes = link.iconResId,
                         contentDescription = stringResource(link.labelResId),
@@ -815,7 +818,8 @@ private fun ContributorGrid(
             verticalArrangement = Arrangement.spacedBy(spacing),
             modifier = Modifier.fillMaxWidth(),
         ) {
-            contributors.forEach { contributor ->
+            repeat(contributors.size) { index ->
+                val contributor = contributors[index]
                 ContributorTile(
                     login = contributor.login,
                     avatarUrl = contributor.avatarUrl,
