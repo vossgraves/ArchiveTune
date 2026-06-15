@@ -32,6 +32,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Badge
 import androidx.compose.material3.Card
@@ -49,6 +50,7 @@ import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -63,6 +65,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
@@ -550,7 +553,8 @@ private fun TranslationContributorList(
 ) {
     LazyColumn(
         modifier = modifier,
-        contentPadding = PaddingValues(vertical = 8.dp),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         items(
             count = contributors.size,
@@ -558,15 +562,13 @@ private fun TranslationContributorList(
             contentType = { "translation_contributor" },
         ) { index ->
             val contributor = contributors[index]
-            TranslationContributorListItem(
-                language = contributor.language,
-                contributors = contributor.contributors,
-            )
-            if (index < contributors.size - 1) {
-                HorizontalDivider(
-                    modifier = Modifier.padding(start = 72.dp),
-                    thickness = SettingsDimensions.DividerThickness,
-                    color = MaterialTheme.colorScheme.outlineVariant,
+            SegmentedListItemSurface(
+                index = index,
+                itemCount = contributors.size,
+            ) {
+                TranslationContributorListItem(
+                    language = contributor.language,
+                    contributors = contributor.contributors,
                 )
             }
         }
@@ -581,7 +583,7 @@ private fun TranslationContributorListItem(
 ) {
     ListItem(
         modifier = modifier.heightIn(min = 72.dp),
-        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
+        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
         leadingContent = {
             Icon(
                 painter = painterResource(R.drawable.language),
@@ -619,7 +621,8 @@ private fun DependencyLicenseList(
 ) {
     LazyColumn(
         modifier = modifier,
-        contentPadding = PaddingValues(vertical = 8.dp),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         items(
             count = licenses.size,
@@ -627,16 +630,14 @@ private fun DependencyLicenseList(
             contentType = { "dependency_license" },
         ) { index ->
             val dependency = licenses[index]
-            DependencyLicenseListItem(
-                name = dependency.name,
-                version = dependency.version,
-                licenses = dependency.licenses,
-            )
-            if (index < licenses.size - 1) {
-                HorizontalDivider(
-                    modifier = Modifier.padding(start = 72.dp),
-                    thickness = SettingsDimensions.DividerThickness,
-                    color = MaterialTheme.colorScheme.outlineVariant,
+            SegmentedListItemSurface(
+                index = index,
+                itemCount = licenses.size,
+            ) {
+                DependencyLicenseListItem(
+                    name = dependency.name,
+                    version = dependency.version,
+                    licenses = dependency.licenses,
                 )
             }
         }
@@ -652,7 +653,7 @@ private fun DependencyLicenseListItem(
 ) {
     ListItem(
         modifier = modifier.heightIn(min = 72.dp),
-        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
+        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
         leadingContent = {
             Icon(
                 painter = painterResource(R.drawable.info),
@@ -692,6 +693,48 @@ private fun DependencyLicenseListItem(
             }
         },
     )
+}
+
+@Composable
+private fun SegmentedListItemSurface(
+    index: Int,
+    itemCount: Int,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = segmentedListItemShape(
+            index = index,
+            itemCount = itemCount,
+        ),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        content = content,
+    )
+}
+
+private fun segmentedListItemShape(
+    index: Int,
+    itemCount: Int,
+): Shape {
+    val outerCorner = 24.dp
+    val innerCorner = 4.dp
+    return when {
+        itemCount <= 1 -> RoundedCornerShape(outerCorner)
+        index == 0 -> RoundedCornerShape(
+            topStart = outerCorner,
+            topEnd = outerCorner,
+            bottomEnd = innerCorner,
+            bottomStart = innerCorner,
+        )
+        index == itemCount - 1 -> RoundedCornerShape(
+            topStart = innerCorner,
+            topEnd = innerCorner,
+            bottomEnd = outerCorner,
+            bottomStart = outerCorner,
+        )
+        else -> RoundedCornerShape(innerCorner)
+    }
 }
 
 @Composable
