@@ -1416,7 +1416,10 @@ private fun LyricsSearchInputActions(
                 colors = ButtonDefaults.filledTonalButtonColors(
                     containerColor = MaterialTheme.colorScheme.secondaryContainer,
                 ),
-                shapes = ButtonGroupDefaults.connectedLeadingButtonShapes(),
+                shapes = ButtonDefaults.shapes(
+                    shape = ButtonGroupDefaults.connectedLeadingButtonShape,
+                    pressedShape = ButtonGroupDefaults.connectedLeadingButtonPressShape,
+                ),
             ) {
                 Icon(
                     painter = painterResource(R.drawable.language),
@@ -1429,7 +1432,10 @@ private fun LyricsSearchInputActions(
 
             Button(
                 onClick = onSearch,
-                shapes = ButtonGroupDefaults.connectedTrailingButtonShapes(),
+                shapes = ButtonDefaults.shapes(
+                    shape = ButtonGroupDefaults.connectedTrailingButtonShape,
+                    pressedShape = ButtonGroupDefaults.connectedTrailingButtonPressShape,
+                ),
             ) {
                 Icon(
                     painter = painterResource(R.drawable.search),
