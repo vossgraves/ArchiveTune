@@ -375,7 +375,6 @@ constructor(
                 preferences.remove(GitHubContributorsLastCheckedAtKey)
             }
         }.isSuccess
-    }
 
     private fun clearCacheDirectory(kind: StorageFolderKind): Boolean {
         val directory = cacheDirectory(context, kind)
