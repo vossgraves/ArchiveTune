@@ -194,7 +194,6 @@ constructor(
             val language = languages.getJSONObject(index)
             val code = language.optString("code")
             val contributors = contributorsByLanguage[code].orEmpty()
-            if (contributors.isEmpty()) continue
             values.add(
                 AboutTranslationContributor(
                     language = language.optString("name", code).ifBlank { code },
@@ -216,7 +215,7 @@ constructor(
             val contributor = item.optString("author")
                 .takeIf(String::isNotBlank)
                 ?.translationContributorName()
-                ?.takeIf { name -> name != WeblateCommitUser }
+                ?.takeUnless(::isIgnoredTranslationContributor)
                 ?: continue
             contributorsByLanguage
                 .getOrPut(languageCode) { LinkedHashSet() }
@@ -226,6 +225,11 @@ constructor(
             contributors.take(MaxContributorsPerLanguage)
         }
     }
+
+    private fun isIgnoredTranslationContributor(name: String): Boolean =
+        IgnoredTranslationContributors.any { ignoredName ->
+            name.equals(ignoredName, ignoreCase = true)
+        }
 
     private fun String.translationLanguageCode(): String? {
         val segments = trimEnd('/').split('/')
@@ -243,6 +247,8 @@ constructor(
         const val TranslationLanguagesUrl = "https://translate.codeberg.org/api/projects/archivetune/languages/"
         const val TranslationChangesUrl = "https://translate.codeberg.org/api/projects/archivetune/changes/?page_size=1000"
         const val WeblateCommitUser = "weblate:commit"
+        const val AnonymousUser = "anonymous"
         const val MaxContributorsPerLanguage = 6
+        val IgnoredTranslationContributors = setOf(WeblateCommitUser, AnonymousUser)
     }
 }

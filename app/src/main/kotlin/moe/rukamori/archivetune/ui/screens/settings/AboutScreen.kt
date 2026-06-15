@@ -578,11 +578,11 @@ private fun TranslationContributorList(
 @Composable
 private fun TranslationContributorListItem(
     language: String,
-    contributors: String,
+    contributors: String?,
     modifier: Modifier = Modifier,
 ) {
     ListItem(
-        modifier = modifier.heightIn(min = 72.dp),
+        modifier = modifier.heightIn(min = if (contributors == null) 56.dp else 72.dp),
         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
         leadingContent = {
             Icon(
@@ -602,14 +602,16 @@ private fun TranslationContributorListItem(
                 overflow = TextOverflow.Ellipsis,
             )
         },
-        supportingContent = {
-            Text(
-                text = contributors,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
+        supportingContent = contributors?.let { contributorNames ->
+            {
+                Text(
+                    text = contributorNames,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         },
     )
 }

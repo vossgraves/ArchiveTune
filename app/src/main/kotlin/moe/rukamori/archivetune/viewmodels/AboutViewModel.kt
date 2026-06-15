@@ -135,7 +135,7 @@ sealed interface AboutTranslationContributorsUiState {
 @Immutable
 data class AboutTranslationContributorUiModel(
     val language: String,
-    val contributors: String,
+    val contributors: String?,
 )
 
 @Immutable
@@ -558,7 +558,7 @@ constructor(
     private fun AboutTranslationContributor.toUiModel(): AboutTranslationContributorUiModel =
         AboutTranslationContributorUiModel(
             language = language,
-            contributors = contributors.joinToString(),
+            contributors = contributors.joinToString().takeIf(String::isNotBlank),
         )
 
     private fun AboutDependencyLicenseCollection.toUiCollection(): AboutDependencyLicenseUiCollection {
