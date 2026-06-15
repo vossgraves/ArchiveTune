@@ -691,6 +691,10 @@ interface DatabaseDao {
     @Query("SELECT * FROM lyrics WHERE id = :id LIMIT 1")
     suspend fun getLyricsById(id: String): LyricsEntity?
 
+    @Transaction
+    @Query("SELECT * FROM lyrics WHERE id IN (:ids)")
+    suspend fun getLyricsByIds(ids: List<String>): List<LyricsEntity>
+
     @Query("DELETE FROM lyrics")
     fun clearAllLyrics()
 
