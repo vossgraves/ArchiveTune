@@ -987,4 +987,6 @@
     <string name="lyrics_synced_badge">Tersinkronisasi</string>
     <string name="font_preference_desc">Pilih sumber font aplikasi</string>
     <string name="font_preference_system">Sistem</string>
+    <string name="local_files">File Lokal</string>
+    <string name="downloaded_desc">Diunduh</string>
 </resources>
