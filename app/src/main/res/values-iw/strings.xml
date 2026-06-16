@@ -585,4 +585,13 @@
     <string name="external_downloader_package">חבילת אפליקציית הורדה</string>
     <string name="external_downloader_package_desc">שם החבילה של אפליקציית ההורדה החיצונית (לדוגמה com.deniscerri.ytdl)</string>
     <string name="open_with_downloader">פתח עם מוריד</string>
+    <string name="proxy_username">שם משתמש</string>
+    <string name="external_downloader_not_installed">אפליקציית הורדה חיצונית לא מותקנת</string>
+    <string name="external_downloader_not_configured">אין מוריד חיצוני מוגדר. הגדר אחד בהגדרות נגן.</string>
+    <string name="add_symbol">הוסף סמל</string>
+    <string name="enter_symbol">הכנסת סמל</string>
+    <string name="equalizer">אקולייזר</string>
+    <string name="tap_to_activate_equalizer">הקש כדי להפעיל את האקולייזר</string>
+    <string name="eq_waiting_for_audio_session">ממתין לסשן שמע</string>
+    <string name="eq_open_system_equalizer">פתיחת אקולייזר מערכת</string>
 </resources>
