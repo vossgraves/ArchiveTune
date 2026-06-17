@@ -12,7 +12,7 @@
         <item quantity="other">%d seçildi</item>
     </plurals>
     <!-- Home -->
-    <string name="history">Tarih</string>
+    <string name="history">Geçmiş</string>
     <string name="stats">İstatistikler</string>
     <string name="mood_and_genres">Ruh Hali &amp; Türler</string>
     <string name="account">Hesap</string>
@@ -39,9 +39,9 @@
     <string name="search_yt_music">YouTube Müzik\'te ara</string>
     <string name="search_library">Kütüphanede ara</string>
     <string name="filter_library">Kütüphane</string>
-    <string name="filter_liked">Beğendim</string>
-    <string name="filter_downloaded">İndirildi</string>
-    <string name="filter_downloaded_full">İndirildi (Tam)</string>
+    <string name="filter_liked">Beğenilenler</string>
+    <string name="filter_downloaded">İndirilenler</string>
+    <string name="filter_downloaded_full">İndirililenler (Tam)</string>
     <string name="filter_all">Hepsi</string>
     <string name="filter_songs">Şarkılar</string>
     <string name="filter_videos">Videolar</string>
@@ -50,7 +50,7 @@
     <string name="filter_playlists">Çalma listeleri</string>
     <string name="filter_community_playlists">Topluluk oynatma listeleri</string>
     <string name="filter_featured_playlists">Öne çıkan oynatma listeleri</string>
-    <string name="filter_bookmarked">Favorilere eklendi</string>
+    <string name="filter_bookmarked">Favorilere eklenenler</string>
     <string name="no_results_found">Sonuç bulunamadı</string>
     <!-- Library -->
     <string name="library_song_empty">Kütüphane şarkıları burada görünecek</string>
@@ -76,8 +76,8 @@
     <string name="details">Ayrıntılar</string>
     <string name="edit">Düzenle</string>
     <string name="start_radio">Radyoyu başlat</string>
-    <string name="play">Oyna</string>
-    <string name="play_next">Sıradakini oyna</string>
+    <string name="play">Oynat</string>
+    <string name="play_next">Sıradakini oynat</string>
     <string name="add_to_queue">Kuyruğa ekle</string>
     <string name="add_to_library">Kitaplığa ekle</string>
     <string name="add_all_to_library">Tümünü kitaplığa ekle</string>
@@ -102,7 +102,7 @@
     <string name="remove_from_queue">Sıradan kaldır</string>
     <string name="search_online">Çevrimiçi ara</string>
     <string name="action_sync">Senkronizasyon</string>
-    <string name="advanced">Gelişmiş</string>
+    <string name="advanced">İleri Seviye</string>
     <string name="tempo_and_pitch">Tempo ve Perde</string>
     <!-- Sort menu -->
     <string name="sort_by_create_date">Eklenme tarihi</string>
@@ -111,8 +111,8 @@
     <string name="sort_by_year">Yıl</string>
     <string name="sort_by_song_count">Şarkı sayısı</string>
     <string name="sort_by_length">Uzunluk</string>
-    <string name="sort_by_play_time">Oyun zamanı</string>
-    <string name="sort_by_custom">Özel sipariş</string>
+    <string name="sort_by_play_time">Oynatma süresi</string>
+    <string name="sort_by_custom">Özel sıralama</string>
     <!-- Dialog -->
     <string name="media_id">Medya kimliği</string>
     <string name="mime_type">MIME türü</string>
@@ -633,13 +633,13 @@
     <string name="build_your_mix_manual_placeholder">Bir sanatçı ya da şarkı ismi yazın, Alan Walker gibi</string>
     <string name="build_your_mix_song_count">Toplam kaç tane müzik istiyorsun?</string>
     <string name="build_your_mix_listening_history">Dinleme Geçmişi</string>
-    <string name="top_results">Üst Sıralar</string>
+    <string name="top_results">En İyi Sonuçlar</string>
     <string name="build_your_mix_title">Mix\'ini Oluştur</string>
     <string name="build_your_mix_description">Senin için bu mix\'i neye dayanarak yapıyoruz?</string>
     <string name="build_your_mix_average_listened">Ortalama Dinlenen</string>
     <string name="build_your_mix_input_manually">Elle Gir</string>
     <string name="build_your_mix_create">Mix oluştur</string>
-    <string name="build_your_mix_manual_basis">Elle dayanak</string>
+    <string name="build_your_mix_manual_basis">Manuel dayanak</string>
     <string name="build_your_mix_loading_quote">Mix\'in Oluşturuluyor, Bu Zaman Alacak...</string>
     <string name="build_your_mix_empty_library">Mix oluşturmak için kütüphane şarkıları mevcut değil.</string>
     <string name="build_your_mix_manual_required">Önce bir sanatçı ya da şarkı adı girin.</string>
@@ -743,7 +743,7 @@
     <string name="pitch">Perde</string>
     <string name="pitch_mode_semitones_short">yt</string>
     <string name="pitch_mode_multiplier_short">x</string>
-    <string name="sort_by_most_played">En çok oynatılan</string>
+    <string name="sort_by_most_played">Sık oynatılanlar</string>
     <string name="sort_order_ascending">Artan</string>
     <string name="sort_order_descending">Azalan</string>
     <string name="no_matching_playlists">Eşleşen çalma listesi yok</string>
@@ -778,4 +778,56 @@
     <string name="lyrics_mode_enhanced">Gelişmiş</string>
     <string name="lyrics_animation_style_v2_only">Sadece V2 şarkı sözleri modunda mevcut</string>
     <string name="playback_confirmation_required">Oynatma doğrulaması gerekiyor</string>
+    <string name="playback_requires_youtube_music_confirmation">YouTube Music\'te oynatmayı doğrula, sonrasında ArchiveTune\'a dön</string>
+    <string name="playback_login_refresh_required">YouTube Music oturumunu yenile</string>
+    <string name="playback_requires_youtube_music_login_refresh">YouTube Music oturumunu yenile, sonrasında ArchiveTune\'a dön.</string>
+    <string name="could_not_open_youtube_music">YouTube Music açılamadı</string>
+    <string name="internet">İnternet</string>
+    <string name="internet_warning_title">Güvenlik &amp; Kullanım Uyarısı</string>
+    <string name="internet_warning_doh">HTTPS üzerinden DNS sadece ülkeniz YouTube\'u engelliyorsa çalışır. Eğer YouTube aktif olarak bölgenizi engelliyorsa, Proxy ya da VPN kullanmayı gözden geçirin.</string>
+    <string name="internet_warning_proxy">Lütfen sadece güvenli olduğuna emin olduğunuz Proxy\'leri kullanın. Ücretsiz Proxy\'ler elverişli fakat her zaman güvenli değiller, bu yüzden dikkatli olun. Uyarıldınız ve sizin güvenliğinizden biz sorumlu değiliz.</string>
+    <string name="dns_over_https">HTTPS üzerinden DNS</string>
+    <string name="dns_over_https_desc">Sağlayıcı adlarını çözmek için HTTPS üzerinden DNS (DoH) kullan</string>
+    <string name="dns_provider">DNS Sağlayıcısı</string>
+    <string name="dns_custom_url">Özel DNS DoH URL\'si</string>
+    <string name="proxy_host">Proxy sağlayıcısı (IP)</string>
+    <string name="proxy_port">Proxy port\'u</string>
+    <string name="proxy_auth">Proxy Doğrulaması (opsiyonel)</string>
+    <string name="proxy_username">Kullanıcı adı</string>
+    <string name="proxy_password">Parola</string>
+    <string name="test_proxy_connection">Proxy bağlantısını test et</string>
+    <string name="testing_proxy_connection">Proxy bağlantısı test ediliyor</string>
+    <string name="proxy_connection_success">Proxy bağlantısı başarılı!</string>
+    <string name="proxy_connection_failed">Proxy bağlantısı başarısız: %s</string>
+    <string name="proxy_connection_invalid_configuration">Geçersiz proxy sağlayıcısı ya da port\'u</string>
+    <string name="ip_rotation">IP Döngüsü</string>
+    <string name="ip_rotation_desc">Oynatma ya da içerik hataları olduğunda mevcut IP\'yi değiştir.</string>
+    <string name="ip_rotation_active_proxies">%d aktif proxy\'ler</string>
+    <string name="ip_rotation_loading">Proxy listesi yükleniyor</string>
+    <string name="ip_rotation_refreshing">IP yenileniyor</string>
+    <string name="ip_rotation_refresh">IP\'yi yenile</string>
+    <string name="stream_bypass_proxy">Yayınlar için proxy\'i devre dışı bırak</string>
+    <string name="stream_bypass_proxy_desc">IP uyumsuzluğunu engellemek için yayın oynatımında direkt IP kullan</string>
+    <string name="enable_unison_lyrics">Unison şarkı sözlerini etkinleştir</string>
+    <string name="enable_paxsenix_lyrics">Paxsenix şarkı sözlerini etkinleştir</string>
+    <string name="low_data_mode_title">Düşük Veri Modu</string>
+    <string name="low_data_mode_description">Sınırlı internette düşük kalite yayın kullanarak ve oynatma ön belleğini, kanvas ve arkaplanda şarkı sözü ön yüklemesini devre dışı bırakarak mobil veri kullanımını azaltır</string>
+    <string name="audio_offload">Ses işlemeyi aktarma</string>
+    <string name="audio_offload_desc">Desteklenen cihazların düşük-güç donanım ayıklaması kullanarak ses oynatmasına izin ver. Bazı ses işleme özellikleri devre dışı bırakılır.</string>
+    <string name="pause_on_device_mute_desc">Sıfır ses seviyesinde duraklat, oynatma denelemelerini açıkla ve ses seviyesi arttığında oynatmaya devam et</string>
+    <string name="device_mute_recovery_volume">Ses seviyesini 0\'dan arttır</string>
+    <string name="device_mute_recovery_volume_disabled">Devre dışı</string>
+    <string name="device_volume_zero_playback_paused">Cihaz ses seviyesi 0 olduğundan oynatma duraklatıldı. Devam etmek için ses seviyesini arttır.</string>
+    <string name="wakelock">Oynatma sırasında CPU\'yu uyanık tut</string>
+    <string name="wakelock_desc">CPU uyanıklılığını kilitleyerek sistemin şarkıyı bölmesini engeller</string>
+    <string name="auto_start_on_bluetooth">Bluetooth bağlantısınında oto-başlat</string>
+    <string name="auto_start_on_bluetooth_desc">Bir Bluetooth ses cihazı bağlandığında otomatik olarak oynatmayı sürdür</string>
+    <string name="external_downloader">Harici İndirici</string>
+    <string name="external_downloader_desc">Paket ismiyle harici bir uygulamadan şarķıları indir</string>
+    <string name="external_downloader_package">İndirici Uygulama Paketi</string>
+    <string name="external_downloader_package_desc">Harici indirici uygulamanın paket ismi (örn. com.deniscerri.ytdl)</string>
+    <string name="open_with_downloader">İndiriciyle aç</string>
+    <string name="external_downloader_not_installed">Harici indirme uygulaması yüklenmedi</string>
+    <string name="external_downloader_not_configured">Harici indirici kurulmamış. Ayarlar â†’ Oynatıcı \'da bir tane kurun.</string>
+    <string name="tap_to_activate_equalizer">Ekolayzer\'ı aktif etmek için basın</string>
 </resources>
