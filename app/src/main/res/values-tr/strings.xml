@@ -357,7 +357,7 @@
     <string name="right">Sağ</string>
     <string name="player_slider_style">Oyuncu kaydırıcı stili</string>
     <string name="default_">Varsayılan</string>
-    <string name="squiggly">Dalgalı</string>
+    <string name="squiggly">Kıvrımlı</string>
     <string name="misc">Çeşitli</string>
     <string name="default_open_tab">Varsayılan açık sekme</string>
     <string name="grid_cell_size">Izgara hücresi boyutu</string>
@@ -643,7 +643,7 @@
     <string name="build_your_mix_loading_quote">Mix\'in Oluşturuluyor, Bu Zaman Alacak...</string>
     <string name="build_your_mix_empty_library">Mix oluşturmak için kütüphane şarkıları mevcut değil.</string>
     <string name="build_your_mix_manual_required">Önce bir sanatçı ya da şarkı adı girin.</string>
-    <string name="build_your_mix_no_manual_match">Bu sanatçı ya da şarkı ismiyle uyuşan bir kütüphane şarkısı yok.</string>
+    <string name="build_your_mix_no_manual_match">Bu sanatçı ya da şarkı ismiyle eşleşen bir kütüphane şarkısı yok.</string>
     <string name="build_your_mix_failed">Mix\'in oluşturulamadı</string>
     <string name="library_title">Kütüphanen</string>
     <string name="library_subtitle">Müziklerin, senin için organize edildi</string>
