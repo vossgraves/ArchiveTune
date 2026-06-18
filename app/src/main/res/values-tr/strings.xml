@@ -487,7 +487,7 @@
     <string name="scrobble_delay_minutes">Scrobble Gecikmesi (Saniye)</string>
     <string name="username">Kullanıcı adı</string>
     <string name="password">Şifre</string>
-    <string name="logging_in">Giriş yapılıyor…</string>
+    <string name="logging_in">Giriş yapılıyor</string>
     <!-- ListenBrainz -->
     <string name="listenbrainz_scrobbling">ListenBrainz skrobling yapıyor</string>
     <string name="listenbrainz_scrobbling_description">Şu anda çalınan ve biten dinlemelerin ListenBrainz\'e gönderilmesini etkinleştirin</string>
@@ -576,7 +576,7 @@
     <string name="content_length_label">İçerik Uzunluğu</string>
     <string name="unknown_content_length">Bilinmeyen içerik uzunluğu</string>
     <string name="format_label">Biçim</string>
-    <string name="loading_format">Biçim yükleniyor…</string>
+    <string name="loading_format">Biçim yükleniyor</string>
     <string name="buffer_health_label">Tampon Sağlığı</string>
     <string name="playback_speed_label">Oynatma Hızı</string>
     <string name="state_label">Eyalet</string>
@@ -778,7 +778,7 @@
     <string name="lyrics_mode_enhanced">Gelişmiş</string>
     <string name="lyrics_animation_style_v2_only">Sadece V2 şarkı sözleri modunda mevcut</string>
     <string name="playback_confirmation_required">Oynatma doğrulaması gerekiyor</string>
-    <string name="playback_requires_youtube_music_confirmation">YouTube Music\'te oynatmayı doğrula, sonrasında ArchiveTune\'a dön</string>
+    <string name="playback_requires_youtube_music_confirmation">YouTube Music\'te oynatmayı doğrula, sonrasında ArchiveTune\'a dön.</string>
     <string name="playback_login_refresh_required">YouTube Music oturumunu yenile</string>
     <string name="playback_requires_youtube_music_login_refresh">YouTube Music oturumunu yenile, sonrasında ArchiveTune\'a dön.</string>
     <string name="could_not_open_youtube_music">YouTube Music açılamadı</string>
