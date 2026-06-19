@@ -85,6 +85,7 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -900,22 +901,18 @@ fun UpdateScreen(
     if (updateSheetLoading) {
         AlertDialog(
             onDismissRequest = {},
-            confirmButton = {},
+            icon = {
+                LoadingIndicator(
+                    modifier = Modifier.size(24.dp),
+                )
+            },
             title = {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Spacer(Modifier.height(16.dp))
-                    LoadingIndicator(modifier = Modifier.size(32.dp))
-                    Spacer(Modifier.height(16.dp))
-                    Text(
-                        text = stringResource(R.string.updates_status_checking),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
+                Text(
+                    text = stringResource(R.string.updates_status_checking),
+                    style = MaterialTheme.typography.headlineSmall,
+                )
+            },
+            confirmButton = {},
         )
     }
 
@@ -923,18 +920,27 @@ fun UpdateScreen(
         AlertDialog(
             onDismissRequest = { showUpdateUpToDateDialog = false },
             icon = {
-                Icon(
-                    painter = painterResource(R.drawable.done),
-                    contentDescription = null,
+                Surface(
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.primaryContainer,
                     modifier = Modifier.size(48.dp),
-                    tint = MaterialTheme.colorScheme.primary
-                )
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            painter = painterResource(R.drawable.check),
+                            contentDescription = null,
+                            modifier = Modifier.size(24.dp),
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                        )
+                    }
+                }
             },
             title = {
                 Text(
                     text = stringResource(R.string.updates_status_current),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.headlineSmall,
+                    modifier = Modifier.fillMaxWidth(),
+                    textAlign = TextAlign.Center,
                 )
             },
             text = {
@@ -942,11 +948,18 @@ fun UpdateScreen(
                     text = updateSheetVersion ?: BuildConfig.VERSION_NAME,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.fillMaxWidth(),
+                    textAlign = TextAlign.Center,
                 )
             },
             confirmButton = {
-                TextButton(onClick = { showUpdateUpToDateDialog = false }) {
-                    Text(stringResource(android.R.string.ok))
+                Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    OutlinedButton(
+                        onClick = { showUpdateUpToDateDialog = false },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(stringResource(android.R.string.ok))
+                    }
                 }
             }
         )
@@ -955,18 +968,25 @@ fun UpdateScreen(
     if (showUpdateErrorDialog) {
         AlertDialog(
             onDismissRequest = { showUpdateErrorDialog = false },
+            icon = {
+                Icon(
+                    painter = painterResource(R.drawable.error),
+                    contentDescription = null,
+                    modifier = Modifier.size(24.dp),
+                    tint = MaterialTheme.colorScheme.error,
+                )
+            },
             title = {
                 Text(
                     text = stringResource(R.string.error_loading_changelog),
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.headlineSmall,
                 )
             },
             text = {
                 Text(
                     text = updateSheetError ?: "",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             },
             confirmButton = {
