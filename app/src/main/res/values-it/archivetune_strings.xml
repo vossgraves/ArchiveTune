@@ -339,4 +339,5 @@
     <string name="restore_step_restarting">Riavviando app</string>
     <string name="lyrics_share_background_dim_value">%1$d%%</string>
     <string name="canvas_cache_usage">%1$s / %2$s</string>
+    <string name="top_songs"></string>
 </resources>
