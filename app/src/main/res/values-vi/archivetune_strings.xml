@@ -74,7 +74,6 @@
         <item quantity="other">%d phần tử</item>
     </plurals>
     <plurals name="n_time">
-        <item quantity="one">%d lần</item>
         <item quantity="other">%d lần</item>
     </plurals>
     <string name="seek_backward">Lùi 5 giây</string>
@@ -180,7 +179,6 @@
     <string name="empty_playlist">Danh sách phát trống</string>
     <string name="empty_playlist_desc">Danh sách phát này không chứa bài hát nào</string>
     <plurals name="seconds">
-        <item quantity="one">1 giây</item>
         <item quantity="other">%d giây</item>
     </plurals>
     <string name="disable_load_more_when_repeat_all">Tắt tải thêm khi lặp tất cả</string>
