@@ -131,7 +131,6 @@ import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.ui.utils.headerDownloadState
 import moe.rukamori.archivetune.ui.utils.hasActiveDownloads
 import moe.rukamori.archivetune.ui.utils.sendAddMissingDownloads
-import moe.rukamori.archivetune.ui.utils.sendCancelIncompleteDownloads
 import moe.rukamori.archivetune.ui.utils.sendPauseDownloads
 import moe.rukamori.archivetune.ui.utils.sendRemoveDownloads
 import moe.rukamori.archivetune.ui.utils.sendResumeDownloads
@@ -247,7 +246,6 @@ fun AlbumScreen(
     LaunchedEffect(downloadState) {
         if (downloadState !is HeaderDownloadState.Partial) {
             downloadsPaused = false
-            downloadProgressToolbarDismissed = false
         }
     }
 
@@ -1070,11 +1068,6 @@ fun AlbumScreen(
                     downloadsPaused = !downloadsPaused
                 },
                 onDismiss = {
-                    sendCancelIncompleteDownloads(
-                        context = context,
-                        songIds = songIds,
-                        downloads = downloads,
-                    )
                     downloadsPaused = false
                     downloadProgressToolbarDismissed = true
                 },
