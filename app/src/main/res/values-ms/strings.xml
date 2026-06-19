@@ -950,4 +950,13 @@
     <string name="source_url"></string>
     <string name="duration_sort"></string>
     <string name="wakelock"></string>
+    <string name="playlists"></string>
+    <string name="artists"></string>
+    <string name="albums"></string>
+    <string name="stats"></string>
+    <string name="home"></string>
+    <string name="history"></string>
+    <string name="songs"></string>
+    <plurals name="n_selected">
+    </plurals>
 </resources>
