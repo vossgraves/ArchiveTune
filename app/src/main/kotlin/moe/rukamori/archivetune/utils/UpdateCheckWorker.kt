@@ -13,6 +13,7 @@ import androidx.work.WorkerParameters
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import moe.rukamori.archivetune.BuildConfig
+import moe.rukamori.archivetune.defaultUpdateChannel
 import moe.rukamori.archivetune.constants.EnableUpdateNotificationKey
 import moe.rukamori.archivetune.constants.UpdateChannel
 import moe.rukamori.archivetune.constants.UpdateChannelKey
@@ -35,8 +36,8 @@ class UpdateCheckWorker(
 
             val updateChannel = dataStore.data.map {
                 it[UpdateChannelKey]?.let { value ->
-                    try { UpdateChannel.valueOf(value) } catch (e: Exception) { UpdateChannel.STABLE }
-                } ?: UpdateChannel.STABLE
+                    try { UpdateChannel.valueOf(value) } catch (_: IllegalArgumentException) { defaultUpdateChannel }
+                } ?: defaultUpdateChannel
             }.first()
 
             when (updateChannel) {

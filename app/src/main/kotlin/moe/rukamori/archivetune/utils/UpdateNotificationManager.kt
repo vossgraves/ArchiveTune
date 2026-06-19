@@ -31,6 +31,7 @@ import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.BuildConfig
 import moe.rukamori.archivetune.MainActivity
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.defaultUpdateChannel
 import moe.rukamori.archivetune.constants.EnableUpdateNotificationKey
 import moe.rukamori.archivetune.constants.LastNotifiedVersionKey
 import moe.rukamori.archivetune.constants.LastUpdateCheckKey
@@ -111,8 +112,8 @@ object UpdateNotificationManager {
 
                 val updateChannel = dataStore.data.map { 
                     it[UpdateChannelKey]?.let { value -> 
-                        try { UpdateChannel.valueOf(value) } catch (e: Exception) { UpdateChannel.STABLE }
-                    } ?: UpdateChannel.STABLE
+                        try { UpdateChannel.valueOf(value) } catch (_: IllegalArgumentException) { defaultUpdateChannel }
+                    } ?: defaultUpdateChannel
                 }.first()
 
                 if (updateChannel == UpdateChannel.NIGHTLY) return@launch
