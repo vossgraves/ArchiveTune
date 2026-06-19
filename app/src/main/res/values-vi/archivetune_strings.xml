@@ -381,7 +381,6 @@
     <string name="news_tooltip_body">Bạn có thông báo chưa đọc từ nhà phát triển.</string>
     <string name="news_author_on_date">%1$s · %2$s</string>
     <plurals name="news_article_count">
-        <item quantity="one">%d bài viết</item>
         <item quantity="other">%d bài viết</item>
     </plurals>
     <!-- AOD customization -->
