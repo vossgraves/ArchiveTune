@@ -243,7 +243,7 @@
     <string name="music_recognition_lyrics_preview">Şarkı sözü ön izlemesi</string>
     <string name="music_recognition_permission_title">Mikrofon izni</string>
     <string name="music_recognition_permission_desc">Yakındaki müzikleri bulmak için mikrofona izin ver.</string>
-    <string name="music_recognition_permission_action">İzin</string>
+    <string name="music_recognition_permission_action">İzin ver</string>
     <string name="music_recognition_error">Bir şeyler ters gitti</string>
     <string name="history_local_summary">Bu cihazda oynatıldı</string>
     <string name="history_remote_summary">YouTube Music\'ten senkronize edildi</string>
