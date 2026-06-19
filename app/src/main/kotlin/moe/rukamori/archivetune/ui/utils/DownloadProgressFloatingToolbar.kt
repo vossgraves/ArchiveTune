@@ -53,7 +53,7 @@ data class DownloadProgressToolbarState(
 fun DownloadProgressFloatingToolbar(
     state: DownloadProgressToolbarState,
     onPauseResume: () -> Unit,
-    onStop: () -> Unit,
+    onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val progress = remember(state.progress) {
@@ -69,13 +69,13 @@ fun DownloadProgressFloatingToolbar(
         modifier = modifier.widthIn(max = 320.dp),
         floatingActionButton = {
             FloatingToolbarDefaults.VibrantFloatingActionButton(
-                onClick = onStop,
+                onClick = onDismiss,
                 containerColor = colorScheme.errorContainer,
                 contentColor = colorScheme.onErrorContainer,
             ) {
                 Icon(
                     painter = painterResource(R.drawable.close),
-                    contentDescription = "Stop download",
+                    contentDescription = stringResource(R.string.dismiss_download_progress),
                     modifier = Modifier.size(22.dp),
                 )
             }
@@ -112,7 +112,13 @@ fun DownloadProgressFloatingToolbar(
 
             DownloadToolbarAction(
                 icon = if (state.paused) R.drawable.play else R.drawable.pause,
-                label = if (state.paused) "Resume" else "Pause",
+                label = stringResource(
+                    if (state.paused) {
+                        R.string.resume_download
+                    } else {
+                        R.string.widget_pause
+                    },
+                ),
                 enabled = state.canPause,
                 onClick = onPauseResume,
             )
