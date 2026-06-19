@@ -16,19 +16,15 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.request.get
 import io.ktor.client.request.headers
+import io.ktor.client.request.parameter
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import moe.rukamori.archivetune.BuildConfig
 import org.json.JSONArray
 import org.json.JSONObject
-import timber.log.Timber
-import java.net.URLDecoder
-import java.net.URLEncoder
-import java.nio.charset.StandardCharsets
-import java.time.Instant
+import java.util.Locale
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -128,9 +124,8 @@ constructor(
     suspend fun translationContributors(): Result<AboutTranslationContributorCollection> =
         withContext(Dispatchers.IO) {
             try {
-                val languageResponse = getJson(TranslationLanguagesUrl)
-                val languages = parseTranslationLanguages(languageResponse)
-                val contributorsByLanguage = getTranslationContributors(languages)
+                val languages = getTranslationLanguages()
+                val contributorsByLanguage = getTranslationCommitContributors(languages)
                 val contributors = buildTranslationContributorCollection(
                     languages = languages,
                     contributorsByLanguage = contributorsByLanguage,
@@ -178,96 +173,100 @@ constructor(
             }
         }
 
-    private suspend fun getJson(url: String): String {
-        val response: HttpResponse = client.get(url) {
+    private suspend fun getGitHubCommitsJson(
+        path: String,
+        page: Int,
+    ): String {
+        val response: HttpResponse = client.get(GitHubCommitsUrl) {
             headers {
-                append("Accept", "application/json")
+                append("Accept", "application/vnd.github+json")
                 append("User-Agent", "ArchiveTune")
-                BuildConfig.WEBLATE_API_TOKEN.trim().takeIf(String::isNotBlank)?.let { token ->
-                    append("Authorization", "Token $token")
-                }
             }
+            parameter("path", path)
+            parameter("per_page", GitHubCommitsPageSize)
+            parameter("page", page)
         }
         if (response.status.value !in SuccessStatusCodes) {
-            throw IllegalStateException("Weblate request failed with HTTP ${response.status.value}")
+            throw IllegalStateException("GitHub commits request failed with HTTP ${response.status.value}")
         }
         return response.bodyAsText()
     }
 
-    private suspend fun getTranslationContributors(
-        languages: List<TranslationLanguage>,
-    ): Map<String, List<String>> {
-        val contributorsByLanguage = LinkedHashMap<String, LinkedHashSet<String>>()
-
-        if (BuildConfig.WEBLATE_API_TOKEN.trim().isNotBlank()) {
-            mergeContributorMaps(
-                target = contributorsByLanguage,
-                source = getTranslationCredits(languages),
-            )
-        }
-
-        mergeContributorMaps(
-            target = contributorsByLanguage,
-            source = getTranslationChangeContributors(),
-        )
-
-        return contributorsByLanguage.toLimitedContributorMap()
-    }
-
-    private suspend fun getTranslationCredits(
-        languages: List<TranslationLanguage>,
-    ): Map<String, List<String>> {
-        val end = Instant.now().toString()
-        val contributorsByLanguage = LinkedHashMap<String, LinkedHashSet<String>>()
-        for (language in languages) {
-            val contributors = try {
-                parseTranslationCredits(getJson(translationCreditsUrl(language.code, end)))
-            } catch (throwable: Throwable) {
-                if (throwable is CancellationException) throw throwable
-                Timber.w(throwable, "Failed to load Weblate translation credits for ${language.code}")
-                emptyList()
+    private suspend fun getGitHubTranslationResourceJson(): String {
+        val response: HttpResponse = client.get(GitHubTranslationResourceUrl) {
+            headers {
+                append("Accept", "application/vnd.github+json")
+                append("User-Agent", "ArchiveTune")
             }
-            mergeContributorMaps(
-                target = contributorsByLanguage,
-                source = mapOf(language.code to contributors),
-            )
         }
-        return contributorsByLanguage.toLimitedContributorMap()
+        if (response.status.value !in SuccessStatusCodes) {
+            throw IllegalStateException("GitHub resource request failed with HTTP ${response.status.value}")
+        }
+        return response.bodyAsText()
     }
 
-    private suspend fun getTranslationChangeContributors(): Map<String, List<String>> {
-        val contributorsByLanguage = LinkedHashMap<String, LinkedHashSet<String>>()
-        var url: String? = TranslationChangesUrl
-        var pageCount = 0
-
-        while (!url.isNullOrBlank() && pageCount < MaxChangePages) {
-            val json = JSONObject(getJson(url))
-            val results = json.optJSONArray("results") ?: JSONArray()
-            collectTranslationContributors(
-                result = results,
-                contributorsByLanguage = contributorsByLanguage,
-            )
-            url = json.optString("next").takeIf(String::isNotBlank)
-            pageCount++
-        }
-
-        return contributorsByLanguage.toLimitedContributorMap()
-    }
-
-    private fun parseTranslationLanguages(json: String): List<TranslationLanguage> {
-        val languages = JSONArray(json)
-        val values = ArrayList<TranslationLanguage>(languages.length())
-        for (index in 0 until languages.length()) {
-            val language = languages.getJSONObject(index)
-            val code = language.optString("code").takeIf(String::isNotBlank) ?: continue
-            values.add(
+    private suspend fun getTranslationLanguages(): List<TranslationLanguage> {
+        val resources = JSONArray(getGitHubTranslationResourceJson())
+        val languages = ArrayList<TranslationLanguage>(resources.length())
+        for (index in 0 until resources.length()) {
+            val resource = resources.getJSONObject(index)
+            val name = resource.optString("name")
+            if (resource.optString("type") != GitHubDirectoryType || !name.startsWith(TranslationResourcePrefix)) {
+                continue
+            }
+            val resourceQualifier = name.removePrefix(TranslationResourcePrefix)
+            if (resourceQualifier.isBlank()) continue
+            val resourcePath = resource
+                .optString("path")
+                .ifBlank { "$TranslationResourceRoot/$name" }
+            languages.add(
                 TranslationLanguage(
-                    code = code,
-                    name = language.optString("name", code).ifBlank { code },
+                    resourceQualifier = resourceQualifier,
+                    name = resourceQualifier.toLanguageDisplayName(),
+                    resourcePath = resourcePath,
                 ),
             )
         }
-        return values
+        return languages.sortedBy { language -> language.name.lowercase() }
+    }
+
+    private suspend fun getTranslationCommitContributors(
+        languages: List<TranslationLanguage>,
+    ): Map<String, List<String>> {
+        val contributorsByLanguage = LinkedHashMap<String, LinkedHashSet<String>>()
+        for (language in languages) {
+            mergeContributorMaps(
+                target = contributorsByLanguage,
+                source = mapOf(language.resourceQualifier to getTranslationCommitContributors(language)),
+            )
+        }
+        return contributorsByLanguage.toLimitedContributorMap()
+    }
+
+    private suspend fun getTranslationCommitContributors(language: TranslationLanguage): List<String> {
+        val contributors = LinkedHashSet<String>()
+        var page = 1
+        while (contributors.size < MaxContributorsPerLanguage && page <= MaxCommitPagesPerLanguage) {
+            val commits = JSONArray(
+                getGitHubCommitsJson(
+                    path = language.resourcePath,
+                    page = page,
+                ),
+            )
+            if (commits.length() == 0) break
+
+            for (index in 0 until commits.length()) {
+                if (contributors.size == MaxContributorsPerLanguage) break
+                val commit = commits.getJSONObject(index)
+                if (!commit.isTranslationCommit()) continue
+                val contributor = commit.translationCommitAuthorName()
+                    ?.takeUnless(::isIgnoredTranslationContributor)
+                    ?: continue
+                contributors.add(contributor)
+            }
+            page++
+        }
+        return contributors.toList()
     }
 
     private fun buildTranslationContributorCollection(
@@ -276,7 +275,7 @@ constructor(
     ): AboutTranslationContributorCollection {
         val values = ArrayList<AboutTranslationContributor>(languages.size)
         for (language in languages) {
-            val contributors = contributorsByLanguage[language.code].orEmpty()
+            val contributors = contributorsByLanguage[language.resourceQualifier].orEmpty()
             if (contributors.isEmpty()) continue
             values.add(
                 AboutTranslationContributor(
@@ -288,55 +287,6 @@ constructor(
         return AboutTranslationContributorCollection.from(
             values.sortedBy { contributor -> contributor.language.lowercase() },
         )
-    }
-
-    private fun parseTranslationContributors(json: String): Map<String, List<String>> {
-        val result = JSONObject(json).optJSONArray("results") ?: return emptyMap()
-        val contributorsByLanguage = LinkedHashMap<String, LinkedHashSet<String>>()
-        collectTranslationContributors(
-            result = result,
-            contributorsByLanguage = contributorsByLanguage,
-        )
-        return contributorsByLanguage.toLimitedContributorMap()
-    }
-
-    private fun collectTranslationContributors(
-        result: JSONArray,
-        contributorsByLanguage: LinkedHashMap<String, LinkedHashSet<String>>,
-    ) {
-        for (index in 0 until result.length()) {
-            val item = result.getJSONObject(index)
-            val languageCode = item.optString("translation").translationLanguageCode() ?: continue
-            val contributor = item.optString("author")
-                .takeIf(String::isNotBlank)
-                ?.translationContributorName()
-                ?.takeUnless(::isIgnoredTranslationContributor)
-                ?: continue
-            contributorsByLanguage
-                .getOrPut(languageCode) { LinkedHashSet() }
-                .add(contributor)
-        }
-    }
-
-    private fun parseTranslationCredits(json: String): List<String> {
-        val credits = when (val trimmedJson = json.trim()) {
-            "" -> JSONArray()
-            else -> if (trimmedJson.startsWith("[")) {
-                JSONArray(trimmedJson)
-            } else {
-                JSONObject(trimmedJson).optJSONArray("results") ?: JSONArray()
-            }
-        }
-        val contributors = LinkedHashSet<String>()
-        for (index in 0 until credits.length()) {
-            val contributor = credits.getJSONObject(index)
-                .translationCreditContributorName()
-                ?.takeUnless(::isIgnoredTranslationContributor)
-                ?: continue
-            contributors.add(contributor)
-            if (contributors.size == MaxContributorsPerLanguage) break
-        }
-        return contributors.toList()
     }
 
     private fun mergeContributorMaps(
@@ -369,50 +319,95 @@ constructor(
             name.equals(ignoredName, ignoreCase = true)
         }
 
-    private fun translationCreditsUrl(
-        languageCode: String,
-        end: String,
-    ): String =
-        "$TranslationCreditsUrl?start=${TranslationCreditsStart.urlEncoded()}&end=${end.urlEncoded()}&lang=${languageCode.urlEncoded()}"
+    private fun JSONObject.isTranslationCommit(): Boolean =
+        optJSONObject("commit")
+            ?.optString("message")
+            ?.startsWith(TranslationCommitMessagePrefix, ignoreCase = true)
+            == true
 
-    private fun JSONObject.translationCreditContributorName(): String? =
-        optString("full_name")
-            .ifBlank { optString("username") }
-            .ifBlank { optString("name") }
+    private fun JSONObject.translationCommitAuthorName(): String? {
+        val authorLogin = optJSONObject("author")
+            ?.optString("login")
+            ?.takeIf(String::isNotBlank)
+        val commitAuthorName = optJSONObject("commit")
+            ?.optJSONObject("author")
+            ?.optString("name")
+            ?.takeIf(String::isNotBlank)
+        return (authorLogin ?: commitAuthorName)
+            ?.trim()
+            ?.takeIf(String::isNotBlank)
+    }
+
+    private fun String.toLanguageDisplayName(): String {
+        val languageTag = toLanguageTag()
+        val displayName = Locale
+            .forLanguageTag(languageTag)
+            .getDisplayName(Locale.ENGLISH)
             .trim()
-            .takeIf(String::isNotBlank)
-
-    private fun String.translationLanguageCode(): String? {
-        val segments = trimEnd('/').split('/')
-        val translationsIndex = segments.indexOf("translations")
-        if (translationsIndex < 0 || segments.size <= translationsIndex + 3) return null
-        return segments[translationsIndex + 3].takeIf(String::isNotBlank)
+        return displayName
+            .takeIf { name -> name.isNotBlank() && !name.equals(languageTag, ignoreCase = true) }
+            ?: this
     }
 
-    private fun String.translationContributorName(): String? {
-        val encodedName = trimEnd('/').substringAfterLast('/').takeIf(String::isNotBlank) ?: return null
-        return URLDecoder.decode(encodedName, StandardCharsets.UTF_8.name())
+    private fun String.toLanguageTag(): String {
+        if (startsWith(Bcp47ResourceQualifierPrefix)) {
+            return removePrefix(Bcp47ResourceQualifierPrefix).replace('+', '-')
+        }
+        val segments = split('-').filter(String::isNotBlank)
+        if (segments.isEmpty()) return this
+        val tagSegments = ArrayList<String>(segments.size)
+        tagSegments.add(segments.first().toModernLanguageCode())
+        for (segment in segments.drop(1)) {
+            tagSegments.add(
+                if (segment.startsWith(RegionQualifierPrefix) && segment.length > 1) {
+                    segment.drop(1)
+                } else {
+                    segment
+                },
+            )
+        }
+        return tagSegments.joinToString(separator = "-")
     }
 
-    private fun String.urlEncoded(): String =
-        URLEncoder.encode(this, StandardCharsets.UTF_8.name())
+    private fun String.toModernLanguageCode(): String =
+        when (this) {
+            LegacyIndonesianLanguageCode -> IndonesianLanguageCode
+            LegacyHebrewLanguageCode -> HebrewLanguageCode
+            LegacyYiddishLanguageCode -> YiddishLanguageCode
+            else -> this
+        }
 
     private data class TranslationLanguage(
-        val code: String,
+        val resourceQualifier: String,
         val name: String,
+        val resourcePath: String,
     )
 
     private companion object {
-        const val TranslationLanguagesUrl = "https://translate.codeberg.org/api/projects/archivetune/languages/"
-        const val TranslationChangesUrl = "https://translate.codeberg.org/api/projects/archivetune/changes/?page_size=1000"
-        const val TranslationCreditsUrl = "https://translate.codeberg.org/api/projects/archivetune/credits/"
-        const val TranslationCreditsStart = "1970-01-01T00:00:00Z"
-        const val MaxChangePages = 10
+        const val GitHubCommitsUrl = "https://api.github.com/repos/ArchiveTuneApp/ArchiveTune/commits"
+        const val GitHubTranslationResourceUrl =
+            "https://api.github.com/repos/ArchiveTuneApp/ArchiveTune/contents/app/src/main/res"
+        const val TranslationResourceRoot = "app/src/main/res"
+        const val TranslationResourcePrefix = "values-"
+        const val TranslationCommitMessagePrefix = "Translated using Weblate"
+        const val GitHubDirectoryType = "dir"
+        const val Bcp47ResourceQualifierPrefix = "b+"
+        const val RegionQualifierPrefix = "r"
+        const val LegacyIndonesianLanguageCode = "in"
+        const val IndonesianLanguageCode = "id"
+        const val LegacyHebrewLanguageCode = "iw"
+        const val HebrewLanguageCode = "he"
+        const val LegacyYiddishLanguageCode = "ji"
+        const val YiddishLanguageCode = "yi"
+        const val GitHubCommitsPageSize = 100
+        const val MaxCommitPagesPerLanguage = 2
         const val WeblateCommitUser = "weblate:commit"
+        const val CodebergTranslateUser = "Codeberg Translate"
         const val AnonymousUser = "anonymous"
         const val MisspelledAnonymousUser = "anynymous"
         const val MaxContributorsPerLanguage = 6
         val SuccessStatusCodes = 200..299
-        val IgnoredTranslationContributors = setOf(WeblateCommitUser, AnonymousUser, MisspelledAnonymousUser)
+        val IgnoredTranslationContributors =
+            setOf(WeblateCommitUser, CodebergTranslateUser, AnonymousUser, MisspelledAnonymousUser)
     }
 }
