@@ -193,7 +193,7 @@
     <string name="settings_section_storage">Lưu trữ &amp; Dữ liệu</string>
     <string name="settings_section_system">Hệ thống &amp; Giới thiệu</string>
     <string name="similar_content">Nội dung tương tự</string>
-    <string name="year_in_music">Year in Music</string>
+    <string name="year_in_music">Năm âm nhạc</string>
     <string name="total_listening_time">Tổng Thời gian Nghe</string>
     <string name="top_artists">Nghệ sĩ Hàng đầu</string>
     <string name="share_summary">Chia sẻ Tóm tắt</string>
@@ -228,7 +228,7 @@
     <string name="copy">Sao chép</string>
     <string name="player_design_v5">Little</string>
     <string name="player_stream_client">Client phát nhạc</string>
-    <string name="player_stream_client_desc">Kiểm soát client YouTube nào được sử dụng để lấy luồng phát</string>
+    <string name="player_stream_client_desc">Tùy chọn điều khiển nguồn phát lại được sử dụng để tải luồng dữ liệu</string>
     <string name="player_stream_client_android_vr">Android VR</string>
     <string name="player_stream_client_android_vr_desc">Phát trực tiếp mà không cần giải mã chữ ký, cung cấp tốc độ tối đa. Thích hợp cho đại đa số người dùng.</string>
     <string name="player_stream_client_web_remix">Web Remix</string>
@@ -626,14 +626,13 @@
     <string name="lyrics_share_style_clear_glass">Kính trong</string>
     <string name="lyrics_share_style_deep_blur">Mờ sâu</string>
     <string name="lyrics_share_style_vivid_glow">Phát sáng rực rỡ</string>
-
     <!-- About Screen -->
     <string name="about_lead_developer">Nhà phát triển chính</string>
     <string name="about_archive_tune_team">Nhóm ArchiveTune</string>
     <string name="about_respecter">Tôn kính</string>
     <string name="about_contributors">Người đóng góp</string>
     <string name="about_position_lead_dev">Hả?</string>
-    <string name="about_position_wttexe">Lời bài hát đồng bộ, Gradient và Cải thiện Giao diện</string>
+    <string name="about_position_wttexe">Lời bài hát đồng bộ, Gradient và Cải thiện Giao diện!</string>
     <string name="about_position_miko">Nhóm đóng góp</string>
     <string name="about_position_sang765">Nhóm đóng góp</string>
     <string name="about_position_mo_agamy">Khung cơ bản | Metrolist</string>
@@ -643,4 +642,6 @@
     <string name="about_content_desc_discord">Discord</string>
     <string name="about_content_desc_telegram">Telegram</string>
     <string name="about_content_desc_donate">Quyên góp</string>
+    <string name="storage_cache_cleared">Cache đã được dọn.</string>
+    <string name="storage_cache_clear_failed">Không thể xóa cache. Kiểm tra quyền truy cập thẻ SD.</string>
 </resources>
