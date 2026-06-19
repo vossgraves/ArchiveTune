@@ -71,7 +71,6 @@
     <string name="show_tags_in_library_desc">Hiển thị chip lọc thẻ trong thư viện</string>
     <string name="already_in_playlist">Đã có trong danh sách phát:</string>
     <plurals name="n_element">
-        <item quantity="one">%d phần tử</item>
         <item quantity="other">%d phần tử</item>
     </plurals>
     <plurals name="n_time">
@@ -151,9 +150,9 @@
     <string name="swipe_sensitivity">Độ nhạy vuốt trình phát mini</string>
     <string name="swipe_sensitivity_desc">Điều chỉnh độ nhạy của cử chỉ vuốt để thay đổi bài hát</string>
     <string name="sensitivity_percentage">%1$d%%</string>
-    <string name="clear_song_cache_dialog">  Bạn có chắc chắn muốn xóa tất cả các bài hát đã cache không?</string>
-    <string name="clear_image_cache_dialog">  Bạn có chắc chắn muốn xóa tất cả các hình ảnh đã cache không?</string>
-    <string name="clear_downloads_dialog">  Bạn có chắc chắn muốn xóa tất cả các tải xuống không?</string>
+    <string name="clear_song_cache_dialog">Bạn có chắc chắn muốn xóa tất cả các bài hát đã cache không?</string>
+    <string name="clear_image_cache_dialog">Bạn có chắc chắn muốn xóa tất cả các hình ảnh đã cache không?</string>
+    <string name="clear_downloads_dialog">Bạn có chắc chắn muốn xóa tất cả các tải xuống không?</string>
     <string name="disable">Tắt</string>
     <string name="pause_remote_listen_history">Tạm dừng chia sẻ lịch sử nghe với YouTube Music</string>
     <string name="not_logged_in_youtube">Chưa đăng nhập YouTube</string>
@@ -626,7 +625,6 @@
     <string name="lyrics_share_style_clear_glass">Kính trong</string>
     <string name="lyrics_share_style_deep_blur">Mờ sâu</string>
     <string name="lyrics_share_style_vivid_glow">Phát sáng rực rỡ</string>
-
     <!-- About Screen -->
     <string name="about_lead_developer">Nhà phát triển chính</string>
     <string name="about_archive_tune_team">Nhóm ArchiveTune</string>
