@@ -53,7 +53,6 @@ import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -130,8 +129,11 @@ fun LyricsScreen(
     mediaMetadata: MediaMetadata,
     onBackClick: () -> Unit,
     navController: NavController,
+    lyricsSyncOffset: Int,
+    onLyricsSyncOffsetChange: (Int) -> Unit,
     onQueueClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
+    backHandlerEnabled: Boolean = true,
 ) {
     val playerConnection = LocalPlayerConnection.current ?: return
     val player = playerConnection.player
@@ -142,7 +144,12 @@ fun LyricsScreen(
 
     val playbackState by playerConnection.playbackState.collectAsStateWithLifecycle()
     val isPlaying by playerConnection.isPlaying.collectAsStateWithLifecycle()
-    val playerVolume by playerConnection.service.playerVolume.collectAsStateWithLifecycle()
+    val deviceMusicVolumeController = rememberDeviceMusicVolumeController()
+    val onVolumeChange = remember(deviceMusicVolumeController) {
+        { volume: Float ->
+            deviceMusicVolumeController.setVolumeFraction(volume)
+        }
+    }
     val currentLyrics by playerConnection.currentLyrics.collectAsStateWithLifecycle(initialValue = null)
 
     val (enableHapticFeedback) = rememberPreference(EnableHapticFeedbackKey, true)
@@ -193,7 +200,6 @@ fun LyricsScreen(
     val positionState = remember(mediaMetadata.id) { mutableLongStateOf(0L) }
     val durationState = remember(mediaMetadata.id) { mutableLongStateOf(C.TIME_UNSET) }
     var sliderPosition by remember(mediaMetadata.id) { mutableStateOf<Long?>(null) }
-    var lyricsSyncOffset by remember(mediaMetadata.id) { mutableIntStateOf(0) }
     var gradientColors by remember(mediaMetadata.thumbnailUrl) { mutableStateOf(AppleMusicFallbackGradient) }
 
     val gradientColorsCache = remember {
@@ -267,7 +273,7 @@ fun LyricsScreen(
                 lyricsProvider = { currentLyrics },
                 mediaMetadataProvider = { mediaMetadata },
                 lyricsSyncOffset = lyricsSyncOffset,
-                onLyricsSyncOffsetChange = { lyricsSyncOffset = it },
+                onLyricsSyncOffsetChange = onLyricsSyncOffsetChange,
                 onDismiss = menuState::dismiss,
             )
         }
@@ -276,7 +282,7 @@ fun LyricsScreen(
     val isLoading = playbackState == STATE_BUFFERING || sliderPosition != null
     val orientation = LocalConfiguration.current.orientation
 
-    BackHandler(onBack = onBackClick)
+    BackHandler(enabled = backHandlerEnabled, onBack = onBackClick)
 
     Box(modifier = modifier.fillMaxSize()) {
         AppleMusicBackground(
@@ -329,7 +335,7 @@ fun LyricsScreen(
                             sliderPosition = sliderPosition,
                             isPlaying = isPlaying,
                             isLoading = isLoading,
-                            volume = playerVolume,
+                            volume = deviceMusicVolumeController.volumeFraction,
                             onPositionChange = { sliderPosition = it },
                             onPositionChangeFinished = {
                                 sliderPosition?.let {
@@ -338,9 +344,7 @@ fun LyricsScreen(
                                 }
                                 sliderPosition = null
                             },
-                            onVolumeChange = {
-                                playerConnection.service.playerVolume.value = it.coerceIn(0f, 1f)
-                            },
+                            onVolumeChange = onVolumeChange,
                             onPreviousClick = {
                                 hapticClick()
                                 playerConnection.seekToPrevious()
@@ -373,7 +377,7 @@ fun LyricsScreen(
                     sliderPosition = sliderPosition,
                     isPlaying = isPlaying,
                     isLoading = isLoading,
-                    volume = playerVolume,
+                    volume = deviceMusicVolumeController.volumeFraction,
                     onPositionChange = { sliderPosition = it },
                     onPositionChangeFinished = {
                         sliderPosition?.let {
@@ -382,9 +386,7 @@ fun LyricsScreen(
                         }
                         sliderPosition = null
                     },
-                    onVolumeChange = {
-                        playerConnection.service.playerVolume.value = it.coerceIn(0f, 1f)
-                    },
+                    onVolumeChange = onVolumeChange,
                     onPreviousClick = {
                         hapticClick()
                         playerConnection.seekToPrevious()

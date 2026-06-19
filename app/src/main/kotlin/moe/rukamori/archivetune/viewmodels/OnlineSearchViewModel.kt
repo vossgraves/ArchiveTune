@@ -22,6 +22,8 @@ import moe.rukamori.archivetune.innertube.YouTube.SearchFilter.Companion.FILTER_
 import moe.rukamori.archivetune.innertube.YouTube.SearchFilter.Companion.FILTER_FEATURED_PLAYLIST
 import moe.rukamori.archivetune.innertube.YouTube.SearchFilter.Companion.FILTER_SONG
 import moe.rukamori.archivetune.innertube.YouTube.SearchFilter.Companion.FILTER_VIDEO
+import moe.rukamori.archivetune.innertube.models.SongItem
+import moe.rukamori.archivetune.innertube.models.YTItem
 import moe.rukamori.archivetune.innertube.models.filterExplicit
 import moe.rukamori.archivetune.innertube.models.filterVideo
 import moe.rukamori.archivetune.innertube.pages.SearchSummaryPage
@@ -39,6 +41,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+enum class OnlineSearchSort {
+    DEFAULT,
+    VIEWS,
+}
+
 @HiltViewModel
 class OnlineSearchViewModel
 @Inject
@@ -51,6 +58,7 @@ constructor(
             savedStateHandle.get<String>(OnlineSearchResultArgument).orEmpty()
         )
     val filter = MutableStateFlow<YouTube.SearchFilter?>(null)
+    val sort = MutableStateFlow(OnlineSearchSort.DEFAULT)
     var summaryPage by mutableStateOf<SearchSummaryPage?>(null)
     val viewStateMap = mutableStateMapOf<String, ItemsPage?>()
 
@@ -148,4 +156,21 @@ constructor(
             }
         }
     }
+
+    fun updateSort(sort: OnlineSearchSort) {
+        this.sort.value = sort
+    }
+
+    fun sortedItems(items: List<YTItem>, sort: OnlineSearchSort = this.sort.value): List<YTItem> =
+        when (sort) {
+            OnlineSearchSort.DEFAULT -> items
+            OnlineSearchSort.VIEWS ->
+                items
+                    .withIndex()
+                    .sortedWith(
+                        compareByDescending<IndexedValue<YTItem>> {
+                            (it.value as? SongItem)?.viewCount ?: Long.MIN_VALUE
+                        }.thenBy { it.index }
+                    ).map { it.value }
+        }
 }

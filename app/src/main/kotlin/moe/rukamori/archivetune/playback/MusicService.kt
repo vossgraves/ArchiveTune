@@ -45,6 +45,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.ParserException
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.Player.EVENT_POSITION_DISCONTINUITY
@@ -196,7 +197,6 @@ import moe.rukamori.archivetune.utils.getAsync
 import moe.rukamori.archivetune.utils.isInternetAvailable
 import moe.rukamori.archivetune.utils.isLowDataModeActive
 import moe.rukamori.archivetune.utils.isLocalMediaId
-import moe.rukamori.archivetune.utils.getPresenceIntervalMillis
 import moe.rukamori.archivetune.utils.retryWithoutPlaybackLoginContext
 import moe.rukamori.archivetune.utils.reportException
 import moe.rukamori.archivetune.utils.NetworkConnectivityObserver
@@ -212,6 +212,7 @@ import moe.rukamori.archivetune.constants.ScrobbleDelayPercentKey
 import moe.rukamori.archivetune.constants.ScrobbleMinSongDurationKey
 import moe.rukamori.archivetune.constants.ScrobbleDelaySecondsKey
 import moe.rukamori.archivetune.constants.TogetherClientIdKey
+import moe.rukamori.archivetune.scrobbling.LastFmServiceConfig
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -237,7 +238,9 @@ import kotlinx.coroutines.plus
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
+import java.io.EOFException
 import java.io.FileOutputStream
+import java.io.IOException
 import java.io.ObjectInputStream
 import java.io.ObjectOutputStream
 import java.io.Serializable
@@ -250,6 +253,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
 import kotlin.math.PI
+import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.cos
 import kotlin.math.pow
@@ -379,8 +383,6 @@ class MusicService :
     private var suppressAutoPlayback = false
     private var lastPresenceToken: String? = null
     @Volatile
-    private var lastPresenceUpdateTime = 0L
-    @Volatile
     private var lastLoginRecoveryPrompt: Pair<String, Long>? = null
     private val playbackStreamRecoveryTracker = PlaybackStreamRecoveryTracker()
     private var nextHistorySessionToken = 0L
@@ -412,8 +414,11 @@ class MusicService :
         }.flowOn(Dispatchers.IO)
 
     private val normalizeFactor = MutableStateFlow(1f)
+    private val audioNormalizationFactorCache = ConcurrentHashMap<String, Float>()
+    private var audioNormalizationEnabled = true
     var playerVolume = MutableStateFlow(1f)
     private val audioFocusVolumeFactor = MutableStateFlow(1f)
+    private var effectiveVolumeRampJob: Job? = null
     private var crossfadeEnabled = false
     private var crossfadeDurationMs = 0L
     private var crossfadeGapless = false
@@ -424,6 +429,7 @@ class MusicService :
     private var isCrossfading = false
     private var crossfadeHandoffInProgress = false
     private var crossfadeBaseVolume = 1f
+    private var crossfadeIncomingBaseVolume = 1f
     private var crossfadeProgress = 0f
     private var crossfadePlaybackRequested = false
     private var lyricsPreloadManager: LyricsPreloadManager? = null
@@ -553,7 +559,7 @@ class MusicService :
 
     private var consecutivePlaybackErr = 0
 
-    val maxSafeGainFactor = 1.414f // +3 dB
+    val maxSafeGainFactor = MAX_AUDIO_NORMALIZATION_FACTOR
     @Volatile
     private var hasCalledStartForeground = false
 
@@ -856,7 +862,7 @@ class MusicService :
         combine(playerVolume, normalizeFactor, audioFocusVolumeFactor) { playerVolume, normalizeFactor, audioFocusVolumeFactor ->
             calculateEffectivePlayerVolume(playerVolume, normalizeFactor, audioFocusVolumeFactor)
         }.collectLatest(scope) { finalVolume ->
-            applyEffectiveVolume(finalVolume)
+            updateEffectiveVolume(finalVolume)
         }
 
         playerVolume.debounce(1000).collect(ioScope) { volume ->
@@ -1001,15 +1007,21 @@ class MusicService :
             }
 
         combine(
+            currentMediaMetadata
+                .map { it?.id }
+                .distinctUntilChanged(),
             currentFormat,
             dataStore.data
                 .map { it[AudioNormalizationKey] ?: true }
                 .distinctUntilChanged(),
-        ) { format, normalizeAudio ->
-            format to normalizeAudio
-        }.collectLatest(scope) { (format, normalizeAudio) ->
-            normalizeFactor.value = calculateAudioNormalizationFactor(format, normalizeAudio)
+        ) { mediaId, format, normalizeAudio ->
+            normalizeAudio to resolveAudioNormalizationFactor(mediaId, format, normalizeAudio)
         }
+            .distinctUntilChanged()
+            .collectLatest(scope) { (normalizeAudio, factor) ->
+                audioNormalizationEnabled = normalizeAudio
+                normalizeFactor.value = factor
+            }
 
         dataStore.data
             .map { it[DiscordTokenKey] to (it[EnableDiscordRPCKey] ?: true) }
@@ -1043,17 +1055,24 @@ class MusicService :
                 trimPlayerCacheToBytes(limitBytes)
             }
 
-        // Last.fm ScrobbleManager setup
         dataStore.data
-            .map { it[EnableLastFMScrobblingKey] ?: false }
+            .map { preferences ->
+                val serviceConfig = LastFmServiceConfig.fromPreferences(preferences)
+                Triple(
+                    preferences[EnableLastFMScrobblingKey] ?: false,
+                    !preferences[LastFMSessionKey].isNullOrBlank(),
+                    serviceConfig.initialized,
+                )
+            }
             .debounce(300)
             .distinctUntilChanged()
-            .collect(scope) { enabled ->
-                if (enabled && scrobbleManager == null) {
+            .collect(scope) { (enabled, hasSession, serviceConfigured) ->
+                val shouldEnable = enabled && hasSession && serviceConfigured
+                if (shouldEnable && scrobbleManager == null) {
                     val delayPercent = dataStore.get(ScrobbleDelayPercentKey, LastFM.DEFAULT_SCROBBLE_DELAY_PERCENT)
                     val minSongDuration = dataStore.get(ScrobbleMinSongDurationKey, LastFM.DEFAULT_SCROBBLE_MIN_SONG_DURATION)
                     val delaySeconds = dataStore.get(ScrobbleDelaySecondsKey, LastFM.DEFAULT_SCROBBLE_DELAY_SECONDS)
-                    
+
                     scrobbleManager = moe.rukamori.archivetune.utils.ScrobbleManager(
                         ioScope,
                         minSongDuration = minSongDuration,
@@ -1061,7 +1080,7 @@ class MusicService :
                         scrobbleDelaySeconds = delaySeconds
                     )
                     scrobbleManager?.useNowPlaying = dataStore.get(LastFMUseNowPlaying, false)
-                } else if (!enabled && scrobbleManager != null) {
+                } else if (!shouldEnable && scrobbleManager != null) {
                     scrobbleManager?.destroy()
                     scrobbleManager = null
                 }
@@ -1302,26 +1321,15 @@ class MusicService :
                 DiscordPresenceManager.start(
                     context = this@MusicService,
                     token = key,
-                    songProvider = { player.currentMetadata?.let { createTransientSongFromMedia(it) } ?: currentSong.value },
+                    songProvider = { currentPresenceSong() },
                     positionProvider = { player.currentPosition },
                     isPausedProvider = { !player.isPlaying },
-                    intervalProvider = { getPresenceIntervalMillis(this@MusicService) }
                 )
                 Timber.tag("MusicService").d("Presence manager started with token=$key")
                 lastPresenceToken = key
             } catch (ex: Exception) {
                 Timber.tag("MusicService").e(ex, "Failed to start presence manager")
             }
-        }
-    }
-
-    private fun canUpdatePresence(): Boolean {
-        val now = System.currentTimeMillis()
-        synchronized(this) {
-            return if (now - lastPresenceUpdateTime > MIN_PRESENCE_UPDATE_INTERVAL) {
-                lastPresenceUpdateTime = now
-                true
-            } else false
         }
     }
 
@@ -1441,7 +1449,7 @@ class MusicService :
     ): Float {
         val safePlayerVolume = playerVolume.takeIf { it.isFinite() }?.coerceIn(0f, 1f) ?: 1f
         val safeNormalizeFactor =
-            normalizeFactor.takeIf { it.isFinite() }?.coerceIn(MIN_AUDIO_NORMALIZATION_FACTOR, maxSafeGainFactor) ?: 1f
+            normalizeFactor.takeIf { it.isFinite() }?.coerceIn(MIN_AUDIO_NORMALIZATION_FACTOR, MAX_AUDIO_NORMALIZATION_FACTOR) ?: 1f
         val safeAudioFocusVolumeFactor =
             audioFocusVolumeFactor.takeIf { it.isFinite() }?.coerceIn(MIN_AUDIO_FOCUS_VOLUME_FACTOR, 1f) ?: 1f
         return (safePlayerVolume * safeNormalizeFactor * safeAudioFocusVolumeFactor).coerceIn(0f, maxSafeGainFactor)
@@ -1450,11 +1458,76 @@ class MusicService :
     private fun currentEffectivePlayerVolume(): Float =
         calculateEffectivePlayerVolume(playerVolume.value, normalizeFactor.value, audioFocusVolumeFactor.value)
 
+    private fun currentEffectivePlayerVolumeForMediaId(mediaId: String): Float {
+        val targetNormalizeFactor =
+            if (audioNormalizationEnabled) {
+                audioNormalizationFactorCache[mediaId] ?: 1f
+            } else {
+                1f
+            }
+        return calculateEffectivePlayerVolume(playerVolume.value, targetNormalizeFactor, audioFocusVolumeFactor.value)
+    }
+
+    private fun updateEffectiveVolume(finalVolume: Float) {
+        if (!::player.isInitialized || !shouldRampEffectiveVolume(finalVolume)) {
+            applyEffectiveVolumeImmediately(finalVolume)
+            return
+        }
+
+        val startVolume = player.volume.takeIf { it.isFinite() }?.coerceIn(0f, maxSafeGainFactor) ?: finalVolume
+        val targetVolume = finalVolume.coerceIn(0f, maxSafeGainFactor)
+        if (abs(targetVolume - startVolume) <= EFFECTIVE_VOLUME_RAMP_MIN_DELTA) {
+            applyEffectiveVolumeImmediately(targetVolume)
+            return
+        }
+
+        effectiveVolumeRampJob?.cancel()
+        effectiveVolumeRampJob =
+            scope.launch {
+                val durationMs =
+                    if (targetVolume > startVolume) {
+                        EFFECTIVE_VOLUME_RAMP_UP_MS
+                    } else {
+                        EFFECTIVE_VOLUME_RAMP_DOWN_MS
+                    }
+                val startedAtMs = android.os.SystemClock.elapsedRealtime()
+                while (isActive) {
+                    val elapsedMs = android.os.SystemClock.elapsedRealtime() - startedAtMs
+                    val progress = (elapsedMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
+                    val easedProgress = progress * progress * (3f - (2f * progress))
+                    val interpolatedVolume = startVolume + ((targetVolume - startVolume) * easedProgress)
+                    applyEffectiveVolume(interpolatedVolume)
+                    if (progress >= 1f) break
+                    delay(EFFECTIVE_VOLUME_RAMP_FRAME_MS)
+                }
+                applyEffectiveVolume(targetVolume)
+                effectiveVolumeRampJob = null
+            }
+    }
+
+    private fun shouldRampEffectiveVolume(finalVolume: Float): Boolean {
+        if (isCrossfading || crossfadeHandoffInProgress) return false
+        if (!shouldKeepPlaybackAudible()) return false
+        if (!finalVolume.isFinite()) return false
+        if (player.volume <= STUCK_MUTED_VOLUME_EPSILON) return false
+        return true
+    }
+
+    private fun applyEffectiveVolumeImmediately(finalVolume: Float = currentEffectivePlayerVolume()) {
+        effectiveVolumeRampJob?.cancel()
+        effectiveVolumeRampJob = null
+        applyEffectiveVolume(finalVolume)
+    }
+
     private fun applyEffectiveVolume(finalVolume: Float = currentEffectivePlayerVolume()) {
         crossfadeBaseVolume = finalVolume
         val incomingPlayer = secondaryCrossfadePlayer
         if (isCrossfading && incomingPlayer != null) {
-            applyCrossfadeVolumes(crossfadeProgress, finalVolume, player, incomingPlayer)
+            val incomingBaseVolume =
+                secondaryCrossfadeTarget?.let { currentEffectivePlayerVolumeForMediaId(it.mediaId) }
+                    ?: finalVolume
+            crossfadeIncomingBaseVolume = incomingBaseVolume
+            applyCrossfadeVolumes(crossfadeProgress, finalVolume, incomingBaseVolume, player, incomingPlayer)
             return
         }
         if (::player.isInitialized) {
@@ -1479,7 +1552,7 @@ class MusicService :
             expectedVolume,
             player.volume,
         )
-        applyEffectiveVolume(expectedVolume)
+        applyEffectiveVolumeImmediately(expectedVolume)
     }
 
     private fun updateAudiblePlaybackRecovery() {
@@ -1502,14 +1575,15 @@ class MusicService :
 
     private fun applyCrossfadeVolumes(
         progress: Float,
-        baseVolume: Float,
+        outgoingBaseVolume: Float,
+        incomingBaseVolume: Float,
         outgoingPlayer: ExoPlayer,
         incomingPlayer: ExoPlayer,
     ) {
         val clampedProgress = progress.coerceIn(0f, 1f)
         val radians = clampedProgress.toDouble() * (PI / 2.0)
-        outgoingPlayer.volume = (baseVolume * cos(radians).toFloat()).coerceIn(0f, maxSafeGainFactor)
-        incomingPlayer.volume = (baseVolume * sin(radians).toFloat()).coerceIn(0f, maxSafeGainFactor)
+        outgoingPlayer.volume = (outgoingBaseVolume * cos(radians).toFloat()).coerceIn(0f, maxSafeGainFactor)
+        incomingPlayer.volume = (incomingBaseVolume * sin(radians).toFloat()).coerceIn(0f, maxSafeGainFactor)
     }
 
     private fun scheduleCrossfade() {
@@ -1685,6 +1759,7 @@ class MusicService :
                 isCrossfading = true
                 crossfadeProgress = 0f
                 crossfadeBaseVolume = currentEffectivePlayerVolume()
+                crossfadeIncomingBaseVolume = currentEffectivePlayerVolumeForMediaId(target.mediaId)
                 crossfadePlaybackRequested = player.playWhenReady
                 player.pauseAtEndOfMediaItems = true
 
@@ -1715,7 +1790,13 @@ class MusicService :
                             incomingPlayer.playWhenReady = true
                             elapsedMs = (elapsedMs + (nowMs - lastTickMs)).coerceAtMost(durationMs)
                             crossfadeProgress = (elapsedMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
-                            applyCrossfadeVolumes(crossfadeProgress, crossfadeBaseVolume, player, incomingPlayer)
+                            applyCrossfadeVolumes(
+                                crossfadeProgress,
+                                crossfadeBaseVolume,
+                                crossfadeIncomingBaseVolume,
+                                player,
+                                incomingPlayer,
+                            )
                         } else {
                             incomingPlayer.pause()
                         }
@@ -1790,16 +1871,17 @@ class MusicService :
                 crossfadeProgress = 0f
                 crossfadePlaybackRequested = false
                 releaseSecondaryCrossfadePlayer()
-                applyEffectiveVolume()
+                applyEffectiveVolumeImmediately()
             }
         }
 
         isCrossfading = false
         crossfadeHandoffInProgress = false
         crossfadeProgress = 0f
+        crossfadeIncomingBaseVolume = 1f
         crossfadePlaybackRequested = false
         releaseSecondaryCrossfadePlayer()
-        applyEffectiveVolume()
+        applyEffectiveVolumeImmediately()
         updateAudiblePlaybackRecovery()
         scheduleCrossfade()
     }
@@ -1887,13 +1969,14 @@ class MusicService :
         isCrossfading = false
         crossfadeHandoffInProgress = false
         crossfadeProgress = 0f
+        crossfadeIncomingBaseVolume = 1f
         crossfadePlaybackRequested = false
         if (::player.isInitialized && resetPauseAtEnd) {
             player.pauseAtEndOfMediaItems = false
         }
         releaseSecondaryCrossfadePlayer()
         if (resetVolume && ::player.isInitialized) {
-            applyEffectiveVolume()
+            applyEffectiveVolumeImmediately()
         }
     }
 
@@ -1919,7 +2002,7 @@ class MusicService :
             return 1f
         }
 
-        val loudnessDb = (format?.loudnessDb ?: format?.perceptualLoudnessDb)?.toFloat()
+        val loudnessDb = format?.normalizationLoudnessDb()
         if (loudnessDb == null || !loudnessDb.isFinite()) {
             Timber.tag("AudioNormalization").w("Normalization enabled but no valid loudness data available - no normalization applied")
             return 1f
@@ -1928,7 +2011,7 @@ class MusicService :
         val rawFactor = 10f.pow(-loudnessDb / 20)
         val factor =
             if (rawFactor.isFinite()) {
-                rawFactor.coerceIn(MIN_AUDIO_NORMALIZATION_FACTOR, maxSafeGainFactor)
+                rawFactor.coerceIn(MIN_AUDIO_NORMALIZATION_FACTOR, MAX_AUDIO_NORMALIZATION_FACTOR)
             } else {
                 1f
             }
@@ -1939,6 +2022,30 @@ class MusicService :
         Timber.tag("AudioNormalization").i("Applying normalization factor: $factor")
         return factor
     }
+
+    private fun resolveAudioNormalizationFactor(
+        mediaId: String?,
+        format: FormatEntity?,
+        normalizeAudio: Boolean,
+    ): Float {
+        val currentMediaId = mediaId?.takeIf { it.isNotBlank() } ?: return 1f
+        if (!normalizeAudio) {
+            return 1f
+        }
+
+        if (format?.id == currentMediaId) {
+            val factor = calculateAudioNormalizationFactor(format, normalizeAudio = true)
+            audioNormalizationFactorCache[currentMediaId] = factor
+            return factor
+        }
+
+        return audioNormalizationFactorCache[currentMediaId] ?: 1f
+    }
+
+    private fun FormatEntity.normalizationLoudnessDb(): Float? =
+        sequenceOf(perceptualLoudnessDb, loudnessDb)
+            .mapNotNull { it?.toFloat() }
+            .firstOrNull { it.isFinite() }
 
     private fun shouldKeepPlaybackAudible(): Boolean {
         if (!::player.isInitialized) return false
@@ -2290,6 +2397,46 @@ class MusicService :
         while (throwable != null) {
             if (throwable.message?.contains("Skipping atom with length", ignoreCase = true) == true) {
                 return true
+            }
+            throwable = throwable.cause
+        }
+        return false
+    }
+
+    private fun isCacheCorruptionError(
+        error: PlaybackException,
+        isContentCached: Boolean,
+    ): Boolean {
+        val isIoError =
+            error.errorCode == PlaybackException.ERROR_CODE_IO_UNSPECIFIED ||
+                error.errorCode == PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE
+        val isContainerParseError =
+            error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED
+        
+        if (!isIoError && !isContainerParseError) {
+            return false
+        }
+
+        var throwable: Throwable? = error.cause
+        while (throwable != null) {
+            when {
+                throwable is EOFException -> return true
+                throwable is IOException &&
+                    throwable.message?.contains("unexpected end of stream", ignoreCase = true) == true ->
+                    return true
+                throwable is IllegalStateException || throwable is IllegalArgumentException ->
+                    if (throwable.stackTrace.any { it.className.startsWith("androidx.media3.extractor") }) {
+                        return true
+                    }
+                isContainerParseError && isContentCached && throwable is ParserException ->
+                    return true
+                isContainerParseError && isContentCached &&
+                    throwable.message?.let {
+                        it.contains("Invalid integer size", ignoreCase = true) ||
+                            it.contains("Skipping atom with length", ignoreCase = true) ||
+                            it.contains("contentIsMalformed=true", ignoreCase = true)
+                    } == true ->
+                    return true
             }
             throwable = throwable.cause
         }
@@ -4749,10 +4896,10 @@ private fun onMediaItemTransitionInternal() {
                 // Obtain the freshest Song from DB using current media item id to avoid stale currentSong.value
                 val mediaId = player.currentMediaItem?.mediaId
                 val song = if (mediaId != null) withContext(Dispatchers.IO) { database.song(mediaId).first() } else null
-                val finalSong = song ?: player.currentMetadata?.let { createTransientSongFromMedia(it) }
+                val finalSong = (song ?: player.currentMetadata?.let { createTransientSongFromMedia(it) })
+                    .withResolvedPresenceDuration(player.duration)
 
-                if (canUpdatePresence()) {
-                    val success = withContext(Dispatchers.IO) {
+                val success = withContext(Dispatchers.IO) {
                         DiscordPresenceManager.updateNow(
                             context = this@MusicService,
                             token = token,
@@ -4787,7 +4934,6 @@ private fun onMediaItemTransitionInternal() {
                             }
                         }
                     } catch (_: Exception) {}
-                }
             }
         } catch (e: Exception) {
             Timber.tag("MusicService").v(e, "immediate presence update failed")
@@ -4932,10 +5078,10 @@ private fun onMediaItemTransitionInternal() {
                     if (token.isNotBlank() && DiscordPresenceManager.isRunning()) {
                         val mediaId = player.currentMediaItem?.mediaId
                         val song = if (mediaId != null) withContext(Dispatchers.IO) { database.song(mediaId).first() } else null
-                        val finalSong = song ?: player.currentMetadata?.let { createTransientSongFromMedia(it) }
+                        val finalSong = (song ?: player.currentMetadata?.let { createTransientSongFromMedia(it) })
+                            .withResolvedPresenceDuration(player.duration)
 
-                        if (canUpdatePresence()) {
-                            val success = DiscordPresenceManager.updateNow(
+                        val success = DiscordPresenceManager.updateNow(
                                 context = this@MusicService,
                                 token = token,
                                 song = finalSong,
@@ -4944,7 +5090,7 @@ private fun onMediaItemTransitionInternal() {
                             )
                             if (!success) {
                                 Timber.tag("MusicService").w("transition immediate presence update failed — attempting restart")
-                                try { DiscordPresenceManager.stop(); DiscordPresenceManager.start(this@MusicService, dataStore.get(DiscordTokenKey, ""), { song }, { player.currentPosition }, { !player.isPlaying }, { getPresenceIntervalMillis(this@MusicService) }) } catch (_: Exception) {}
+                                try { DiscordPresenceManager.restart() } catch (_: Exception) {}
                             }
                             try {
                                 val lbEnabled = dataStore.get(ListenBrainzEnabledKey, false)
@@ -4961,7 +5107,6 @@ private fun onMediaItemTransitionInternal() {
                                 
                                 // Last.fm now playing - handled by ScrobbleManager
                             } catch (_: Exception) {}
-                        }
                     }
                 } catch (e: Exception) {
                     Timber.tag("MusicService").v(e, "immediate presence update failed on transition")
@@ -4988,12 +5133,10 @@ private fun onMediaItemTransitionInternal() {
                     val token = withContext(Dispatchers.IO) { dataStore.get(DiscordTokenKey, "") }
                     if (token.isNotBlank() && DiscordPresenceManager.isRunning()) {
                         val song = if (currentMediaId != null) withContext(Dispatchers.IO) { database.song(currentMediaId).first() } else null
-                        val finalSong = song ?: currentMetadata?.let { createTransientSongFromMedia(it) }
+                        val finalSong = (song ?: currentMetadata?.let { createTransientSongFromMedia(it) })
+                            .withResolvedPresenceDuration(player.duration)
 
-                        if (canUpdatePresence()) {
-                            // Run update on IO if possible, assuming updateNow is thread-safe or handles its own threading correctly
-                            // If updateNow touches Views, this might break. Assuming it's network/logic.
-                            val success = withContext(Dispatchers.IO) {
+                        val success = withContext(Dispatchers.IO) {
                                 DiscordPresenceManager.updateNow(
                                     context = this@MusicService,
                                     token = token,
@@ -5005,7 +5148,7 @@ private fun onMediaItemTransitionInternal() {
                             if (!success) {
                                 Timber.tag("MusicService").w("isPlaying/mediaTransition immediate presence update failed — restarting manager")
                                 if (DiscordPresenceManager.isRunning()) {
-                                    try { DiscordPresenceManager.stop(); DiscordPresenceManager.restart() } catch (_: Exception) {}
+                                    try { DiscordPresenceManager.restart() } catch (_: Exception) {}
                                 }
                             }
                             try {
@@ -5023,7 +5166,6 @@ private fun onMediaItemTransitionInternal() {
                                 
                                 // Last.fm now playing - handled by ScrobbleManager
                             } catch (_: Exception) {}
-                        }
                     }
                 } catch (e: Exception) {
                     Timber.tag("MusicService").v(e, "immediate presence update failed for isPlaying/mediaTransition")
@@ -5150,6 +5292,11 @@ private fun onMediaItemTransitionInternal() {
             cachedInDownload || cachedInPlayer
         }.getOrDefault(false)
 
+        val hasAnyCachedData = isFullyCachedMedia || runCatching {
+            downloadCache.getCachedSpans(currentMediaId).isNotEmpty() ||
+                playerCache.getCachedSpans(currentMediaId).isNotEmpty()
+        }.getOrDefault(false)
+
         val isConnectionError = (error.cause?.cause is PlaybackException) &&
                 (error.cause?.cause as PlaybackException).errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED
 
@@ -5170,6 +5317,49 @@ private fun onMediaItemTransitionInternal() {
             if (retryPlaybackAfterStreamFailure(currentMediaId, isFullyCachedMedia, retryableStreamFailure)) {
                 return
             }
+        }
+
+        if (!isLocalMedia && isCacheCorruptionError(error, hasAnyCachedData)) {
+            // Snapshot on the Main thread before dispatching; these can change.
+            val mediaItemIndex = player.currentMediaItemIndex
+            val resumePosition = player.currentPosition.coerceAtLeast(0L)
+
+            Timber.tag("MusicService").w(
+                "Cache corruption / truncated stream for %s (fullyCached=%b); purging caches then retrying",
+                currentMediaId,
+                isFullyCachedMedia,
+            )
+
+            playbackUrlCache.remove(currentMediaId)
+            YTPlayerUtils.invalidateCachedStreamUrls(currentMediaId)
+
+            scope.launch(Dispatchers.IO) {
+                // Always purge the streaming/player cache.
+                runCatching { playerCache.removeResource(currentMediaId) }
+                // Keep a complete offline download in place; deleting a user's saved download
+                // to recover from a read error is surprising. Only purge partial entries.
+                if (!isFullyCachedMedia) {
+                    runCatching { downloadCache.removeResource(currentMediaId) }
+                } else {
+                    Timber.tag("MusicService").w(
+                        "Keeping offline download for %s; corruption may require manual re-download",
+                        currentMediaId,
+                    )
+                }
+
+                // Re-prepare ONLY after the purge completes, back on the Main thread, so the
+                // fresh prepare cannot re-read the spans we just deleted.
+                withContext(Dispatchers.Main) {
+                    if (playbackStreamRecoveryTracker.registerRetryAttempt(currentMediaId)) {
+                        player.seekTo(mediaItemIndex, resumePosition)
+                        player.prepare()
+                    } else {
+                        // Retry budget for this item is spent; fall back to configured behavior.
+                        if (dataStore.get(AutoSkipNextOnErrorKey, false)) skipOnError() else stopOnError()
+                    }
+                }
+            }
+            return
         }
 
         if (!isLocalMedia && !isFullyCachedMedia && YTPlayerUtils.isBotDetectionException(error)) {
@@ -5309,6 +5499,9 @@ private fun onMediaItemTransitionInternal() {
         val mediaId = dataSpec.key ?: return dataSpec
         val storedFormat = runBlocking(Dispatchers.IO) {
             database.format(mediaId).first()
+        }
+        storedFormat?.let { format ->
+            audioNormalizationFactorCache[mediaId] = calculateAudioNormalizationFactor(format, normalizeAudio = true)
         }
         val knownContentLength =
             contentLengthCache[mediaId] ?: storedFormat?.contentLength?.takeIf { it > 0L } ?: runCatching {
@@ -5518,20 +5711,32 @@ private fun onMediaItemTransitionInternal() {
             Timber.tag("AudioNormalization").w("No loudness data available from YouTube for video: $mediaId")
         }
 
+        val formatEntity =
+            FormatEntity(
+                id = mediaId,
+                itag = format.itag,
+                mimeType = format.mimeType.split(";")[0],
+                codecs = resolvedCodecs,
+                bitrate = format.bitrate,
+                sampleRate = format.audioSampleRate,
+                contentLength = resolvedContentLength,
+                loudnessDb = loudnessDb,
+                perceptualLoudnessDb = perceptualLoudnessDb,
+                playbackUrl = nonNullPlayback.playbackTracking?.videostatsPlaybackUrl?.baseUrl
+            )
+        val resolvedNormalizationFactor = calculateAudioNormalizationFactor(formatEntity, normalizeAudio = true)
+        audioNormalizationFactorCache[mediaId] = resolvedNormalizationFactor
+        scope.launch {
+            if (currentMediaMetadata.value?.id == mediaId &&
+                dataStore.get(AudioNormalizationKey, true)
+            ) {
+                normalizeFactor.value = resolvedNormalizationFactor
+            }
+        }
+
         database.query {
             upsert(
-                FormatEntity(
-                    id = mediaId,
-                    itag = format.itag,
-                    mimeType = format.mimeType.split(";")[0],
-                    codecs = resolvedCodecs,
-                    bitrate = format.bitrate,
-                    sampleRate = format.audioSampleRate,
-                    contentLength = resolvedContentLength,
-                    loudnessDb = loudnessDb,
-                    perceptualLoudnessDb = perceptualLoudnessDb,
-                    playbackUrl = nonNullPlayback.playbackTracking?.videostatsPlaybackUrl?.baseUrl
-                )
+                formatEntity
             )
         }
         scope.launch(Dispatchers.IO) { recoverSong(mediaId, nonNullPlayback) }
@@ -5898,6 +6103,21 @@ private fun onMediaItemTransitionInternal() {
         }
     }
 
+    private fun currentPresenceSong(): Song? {
+        val metadataSong = player.currentMetadata?.let { createTransientSongFromMedia(it) }
+        return (metadataSong ?: currentSong.value).withResolvedPresenceDuration(player.duration)
+    }
+
+    private fun Song?.withResolvedPresenceDuration(durationMs: Long): Song? {
+        val song = this ?: return null
+        if (song.song.duration > 0 || durationMs <= 0) return song
+        val durationSeconds = (durationMs / 1000L)
+            .coerceAtLeast(1L)
+            .coerceAtMost(Int.MAX_VALUE.toLong())
+            .toInt()
+        return song.copy(song = song.song.copy(duration = durationSeconds))
+    }
+
     // Create a transient Song object from current Player MediaMetadata when the DB doesn't have it.
     private fun createTransientSongFromMedia(media: moe.rukamori.archivetune.models.MediaMetadata): Song {
         val songEntity = SongEntity(
@@ -6102,6 +6322,8 @@ private fun onMediaItemTransitionInternal() {
 
     override fun onDestroy() {
         super.onDestroy()
+        effectiveVolumeRampJob?.cancel()
+        effectiveVolumeRampJob = null
         cancelCrossfade(resetVolume = false, resetPauseAtEnd = true)
         audioRouteRecoveryJob?.cancel()
         if (audioDeviceCallbackRegistered) {
@@ -6289,7 +6511,6 @@ private fun onMediaItemTransitionInternal() {
         const val PERSISTENT_AUTOMIX_FILE = "persistent_automix.data"
         const val PERSISTENT_PLAYER_STATE_FILE = "persistent_player_state.data"
         const val MAX_CONSECUTIVE_ERR = 5
-        const val MIN_PRESENCE_UPDATE_INTERVAL = 20_000L
         const val AUDIO_ROUTE_CHANGE_DEBOUNCE_MS = 350L
         const val AUDIO_EFFECT_ROUTE_REBIND_DELAY_MS = 200L
         const val AUDIO_ROUTE_RECOVERY_MIN_INTERVAL_MS = 1_500L
@@ -6297,6 +6518,11 @@ private fun onMediaItemTransitionInternal() {
         const val DEVICE_MUTE_PLAYBACK_NOTICE_INTERVAL_MS = 1_200L
         const val MIN_AUDIO_FOCUS_VOLUME_FACTOR = 0.2f
         const val MIN_AUDIO_NORMALIZATION_FACTOR = 0.25f
+        const val MAX_AUDIO_NORMALIZATION_FACTOR = 1.414f
+        const val EFFECTIVE_VOLUME_RAMP_FRAME_MS = 16L
+        const val EFFECTIVE_VOLUME_RAMP_UP_MS = 350L
+        const val EFFECTIVE_VOLUME_RAMP_DOWN_MS = 180L
+        const val EFFECTIVE_VOLUME_RAMP_MIN_DELTA = 0.015f
         const val MIN_CROSSFADE_DURATION_MS = 500L
         const val CROSSFADE_END_GUARD_MS = 150L
         const val CROSSFADE_PREPARE_AHEAD_MS = 30_000L

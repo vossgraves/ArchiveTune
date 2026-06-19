@@ -82,12 +82,6 @@
     <string name="on_device">端末内</string>
     <string name="recently_played">最近再生した曲</string>
     <string name="top_mixes">おすすめミックス</string>
-    <string name="daily_mix_1">デイリーミックス 1</string>
-    <string name="daily_mix_1_desc">リラックス、集中 &amp; バックグラウンドビート</string>
-    <string name="chill_mix">チルミックス</string>
-    <string name="chill_mix_desc">リラックスできる心地よいメロディー</string>
-    <string name="focus_mix">フォーカスミックス</string>
-    <string name="focus_mix_desc">集中のためのLo-fiビート</string>
     <string name="your_playlists">あなたのプレイリスト</string>
     <string name="see_all">すべて見る</string>
     <string name="your_artists">あなたのアーティスト</string>
@@ -95,8 +89,8 @@
     <string name="all_songs">すべての曲</string>
     <string name="newest_first">新しい順</string>
     <string name="oldest_first">古い順</string>
-    <string name="sort_a_to_z">A \u2192 Z</string>
-    <string name="sort_z_to_a">Z \u2192 A</string>
+    <string name="sort_a_to_z">A → Z</string>
+    <string name="sort_z_to_a">Z → A</string>
     <string name="sort_artist">アーティスト</string>
     <string name="most_played_sort">最も再生</string>
     <string name="recently_added">最近追加</string>
@@ -190,7 +184,7 @@
     <string name="together_ban">禁止</string>
     <string name="together_kick_confirm">%1$s?をキックする</string>
     <string name="together_ban_confirm">禁止 %1$s?</string>
-    <string name="together_requesting_song_change">ホストに曲の変更をリクエストしています\u2026</string>
+    <string name="together_requesting_song_change">ホストに曲の変更をリクエストしています…</string>
     <string name="together_song_change_failed">ソングチェンジは適用されません。もう一度試してください。</string>
     <string name="remove_from_history">履歴から削除</string>
     <string name="remove_from_playlist">プレイリストから削除</string>
@@ -254,31 +248,24 @@
     <string name="duplicates_description_multiple">%d 曲はすでにプレイリストにあります</string>
     <!-- Noun -->
     <plurals name="n_song">
-        <item quantity="one">%d曲</item>
         <item quantity="other">%d曲</item>
     </plurals>
     <plurals name="n_artist">
-        <item quantity="one">%d アーティスト</item>
         <item quantity="other">%d 人のアーティスト</item>
     </plurals>
     <plurals name="n_album">
-        <item quantity="one">%d アルバム</item>
         <item quantity="other">%d 枚のアルバム</item>
     </plurals>
     <plurals name="n_playlist">
-        <item quantity="one">%d プレイリスト</item>
         <item quantity="other">%d 個のプレイリスト</item>
     </plurals>
     <plurals name="n_week">
-        <item quantity="one">%d週間</item>
         <item quantity="other">%d週間</item>
     </plurals>
     <plurals name="n_month">
-        <item quantity="one">%d か月</item>
         <item quantity="other">%dか月</item>
     </plurals>
     <plurals name="n_year">
-        <item quantity="one">%d年</item>
         <item quantity="other">%d年</item>
     </plurals>
     <!-- Snackbar -->
@@ -296,7 +283,6 @@
     <string name="sleep_timer">スリープタイマー</string>
     <string name="end_of_song">曲の終わり</string>
     <plurals name="minute">
-        <item quantity="one">1 minute</item>
         <item quantity="other">%d分</item>
     </plurals>
     <string name="error_no_stream">利用可能なストリームがありません</string>
@@ -965,20 +951,6 @@
     <string name="remove_account">アカウントを削除する</string>
     <string name="album_name">アルバム名</string>
     <string name="app_icon">アプリアイコン</string>
-    <string name="build_your_mix_average_listened">平均再生回数</string>
-    <string name="build_your_mix_create">ミックスを作成</string>
-    <string name="build_your_mix_description">どのような基準でミックスを作成しますか？</string>
-    <string name="build_your_mix_empty_library">ミックスを作成するためのライブラリ曲がありません。</string>
-    <string name="build_your_mix_failed">ミックスの作成に失敗しました</string>
-    <string name="build_your_mix_input_manually">手動入力</string>
-    <string name="build_your_mix_listening_history">再生履歴</string>
-    <string name="build_your_mix_loading_quote">ミックスを作成中です。時間がかかる場合があります...</string>
-    <string name="build_your_mix_manual_basis">手動基準</string>
-    <string name="build_your_mix_manual_placeholder">アーティスト名または曲名を入力（例：Alan Walker）</string>
-    <string name="build_your_mix_manual_required">最初にアーティスト名または曲名を入力してください。</string>
-    <string name="build_your_mix_no_manual_match">そのアーティストまたはタイトルに一致するライブラリ曲がありません。</string>
-    <string name="build_your_mix_song_count">合計で何曲取得しますか？</string>
-    <string name="build_your_mix_title">ミックスを作成</string>
     <string name="could_not_open_youtube_music">YouTube Music を開けませんでした</string>
     <string name="discord_account_ready">ArchiveTune はあなたのリスニングセッションの Rich Presence を公開する準備ができています。</string>
     <string name="discord_activity_content">アクティビティコンテンツ</string>

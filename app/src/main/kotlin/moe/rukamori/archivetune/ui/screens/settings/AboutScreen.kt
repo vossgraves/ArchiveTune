@@ -11,807 +11,1204 @@ package moe.rukamori.archivetune.ui.screens.settings
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.Badge
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.*
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.LargeFlexibleTopAppBar
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
+import androidx.compose.material3.LoadingIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.BlendMode
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
-import moe.rukamori.archivetune.BuildConfig
+import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.utils.backToMain
-import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.layout.only
-import androidx.compose.foundation.layout.WindowInsetsSides
-import androidx.datastore.preferences.core.edit
-import io.ktor.client.HttpClient
-import io.ktor.client.request.get
-import io.ktor.client.request.headers
-import io.ktor.client.statement.HttpResponse
-import io.ktor.client.statement.bodyAsText
-import io.ktor.http.HttpStatusCode
-import moe.rukamori.archivetune.currentBuildHash
-import moe.rukamori.archivetune.constants.GitHubContributorsEtagKey
-import moe.rukamori.archivetune.constants.GitHubContributorsJsonKey
-import moe.rukamori.archivetune.constants.GitHubContributorsLastCheckedAtKey
-import moe.rukamori.archivetune.utils.dataStore
-import moe.rukamori.archivetune.utils.getAsync
-import org.json.JSONArray
-
-data class TeamMember(
-    val avatarUrl: String,
-    val name: String,
-    val position: String,
-    val profileUrl: String? = null,
-    val github: String? = null,
-    val website: String? = null,
-    val discord: String? = null
-
-)
-
-private data class GitHubContributor(
-    val login: String,
-    val avatarUrl: String,
-    val profileUrl: String,
-)
-
-private sealed interface ContributorsState {
-    data object Loading : ContributorsState
-    data class Loaded(val contributors: List<GitHubContributor>) : ContributorsState
-    data object Error : ContributorsState
-}
-
-private const val ContributorsCacheCheckIntervalMs: Long = 24 * 60 * 60 * 1000L
-
-private fun parseContributorsJson(
-    json: String,
-): List<GitHubContributor> {
-    val jsonArray = JSONArray(json)
-    val contributors = ArrayList<GitHubContributor>(jsonArray.length())
-    for (i in 0 until jsonArray.length()) {
-        val item = jsonArray.getJSONObject(i)
-        val login = item.optString("login", "")
-        val type = item.optString("type", "")
-        val avatarUrl = item.optString("avatar_url", "")
-        val profileUrl = item.optString("html_url", "")
-        val isBot =
-            type.equals("Bot", ignoreCase = true) ||
-                login.lowercase().endsWith("[bot]")
-
-        if (!isBot && login.isNotBlank() && avatarUrl.isNotBlank()) {
-            contributors.add(
-                GitHubContributor(
-                    login = login,
-                    avatarUrl = avatarUrl,
-                    profileUrl = profileUrl,
-                )
-            )
-        }
-    }
-    return contributors
-}
-
-private data class ContributorsNetworkResult(
-    val status: HttpStatusCode,
-    val body: String?,
-    val etag: String?,
-)
-
-private suspend fun fetchRepoContributorsNetwork(
-    client: HttpClient,
-    owner: String,
-    repo: String,
-    perPage: Int = 100,
-    cachedEtag: String?,
-): ContributorsNetworkResult {
-    val response: HttpResponse =
-        client.get("https://api.github.com/repos/$owner/$repo/contributors?per_page=$perPage") {
-            headers {
-                append("Accept", "application/vnd.github+json")
-                append("User-Agent", "ArchiveTune")
-                if (!cachedEtag.isNullOrBlank()) {
-                    append("If-None-Match", cachedEtag)
-                }
-            }
-        }
-    val etag = response.headers["ETag"]
-    return when (response.status) {
-        HttpStatusCode.NotModified ->
-            ContributorsNetworkResult(
-                status = response.status,
-                body = null,
-                etag = cachedEtag ?: etag,
-            )
-
-        else ->
-            ContributorsNetworkResult(
-                status = response.status,
-                body = response.bodyAsText(),
-                etag = etag,
-            )
-    }
-}
-
-@Composable
-fun OutlinedIconChip(
-    iconRes: Int,
-    contentDescription: String,
-    onClick: () -> Unit,
-    text: String? = null,
-) {
-    OutlinedButton(
-        onClick = onClick,
-        contentPadding = PaddingValues(
-            horizontal = if (text.isNullOrBlank()) 8.dp else 12.dp,
-            vertical = 6.dp,
-        ),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-        colors = ButtonDefaults.outlinedButtonColors(
-            containerColor = Color.Transparent,
-            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-        ),
-        modifier = if (text.isNullOrBlank()) Modifier.size(32.dp) else Modifier,
-        shapes = ButtonDefaults.shapes(),
-    ) {
-        Icon(
-            painter = painterResource(id = iconRes),
-            contentDescription = contentDescription,
-            modifier = Modifier.size(18.dp),
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        if (!text.isNullOrBlank()) {
-            Spacer(Modifier.width(6.dp))
-            Text(text = text, style = MaterialTheme.typography.labelLarge)
-        }
-    }
-}
-
-@Composable
-fun OutlinedIconChipMembers(
-    iconRes: Int,
-    contentDescription: String?,
-    onClick: () -> Unit
-) {
-    OutlinedButton(
-        onClick = onClick,
-        contentPadding = PaddingValues(6.dp),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-        colors = ButtonDefaults.outlinedButtonColors(
-            containerColor = Color.Transparent,
-            contentColor = MaterialTheme.colorScheme.onSurfaceVariant
-        ),
-        modifier = Modifier.size(32.dp),
-        shapes = ButtonDefaults.shapes(),
-    ) {
-        Icon(
-            painter = painterResource(id = iconRes),
-            contentDescription = contentDescription,
-            modifier = Modifier.size(18.dp),
-            tint = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-    }
-}
-
-@Composable
-private fun AboutBadge(text: String) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.labelSmall,
-        color = MaterialTheme.colorScheme.secondary,
-        modifier = Modifier
-            .border(
-                width = 1.dp,
-                color = MaterialTheme.colorScheme.secondary,
-                shape = CircleShape,
-            )
-            .padding(
-                horizontal = 6.dp,
-                vertical = 2.dp,
-            ),
-    )
-}
-
+import moe.rukamori.archivetune.viewmodels.AboutContributorUiCollection
+import moe.rukamori.archivetune.viewmodels.AboutContributorsUiState
+import moe.rukamori.archivetune.viewmodels.AboutDependencyLicenseUiCollection
+import moe.rukamori.archivetune.viewmodels.AboutDependencyLicensesUiState
+import moe.rukamori.archivetune.viewmodels.AboutDialog
+import moe.rukamori.archivetune.viewmodels.AboutLinkCollection
+import moe.rukamori.archivetune.viewmodels.AboutScreenEffect
+import moe.rukamori.archivetune.viewmodels.AboutScreenState
+import moe.rukamori.archivetune.viewmodels.AboutTranslationContributorUiCollection
+import moe.rukamori.archivetune.viewmodels.AboutTranslationContributorsUiState
+import moe.rukamori.archivetune.viewmodels.AboutUiModel
+import moe.rukamori.archivetune.viewmodels.AboutViewModel
+import moe.rukamori.archivetune.viewmodels.TeamMember
+import moe.rukamori.archivetune.viewmodels.TeamMemberCollection
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AboutScreen(
     navController: NavController,
     scrollBehavior: TopAppBarScrollBehavior,
+    viewModel: AboutViewModel = hiltViewModel(),
 ) {
-    val context = LocalContext.current
+    val state by viewModel.state.collectAsStateWithLifecycle()
     val uriHandler = LocalUriHandler.current
-    val httpClient = remember { HttpClient() }
-    DisposableEffect(Unit) {
-        onDispose { httpClient.close() }
-    }
-    val nightlyBuildHash = currentBuildHash
-    var contributorsState by remember { mutableStateOf<ContributorsState>(ContributorsState.Loading) }
-    LaunchedEffect(Unit) {
-        val cachedJson = context.dataStore.getAsync(GitHubContributorsJsonKey)
-        val cachedEtag = context.dataStore.getAsync(GitHubContributorsEtagKey)
-        val lastCheckedAt = context.dataStore.getAsync(GitHubContributorsLastCheckedAtKey, 0L)
-        val now = System.currentTimeMillis()
 
-        val cachedContributors =
-            cachedJson
-                ?.takeIf { it.isNotBlank() }
-                ?.let { runCatching { parseContributorsJson(it) }.getOrNull() }
-
-        if (!cachedContributors.isNullOrEmpty()) {
-            contributorsState = ContributorsState.Loaded(cachedContributors)
-        }
-
-        val shouldCheckNetwork =
-            cachedJson.isNullOrBlank() || (now - lastCheckedAt) >= ContributorsCacheCheckIntervalMs
-
-        if (!shouldCheckNetwork) {
-            if (cachedContributors.isNullOrEmpty()) contributorsState = ContributorsState.Error
-            return@LaunchedEffect
-        }
-
-        val networkResult =
-            runCatching {
-                fetchRepoContributorsNetwork(
-                    client = httpClient,
-                    owner = "ArchiveTuneApp",
-                    repo = "ArchiveTune",
-                    cachedEtag = cachedEtag,
-                )
-            }.getOrNull()
-
-        if (networkResult == null) {
-            if (cachedContributors.isNullOrEmpty()) contributorsState = ContributorsState.Error
-            return@LaunchedEffect
-        }
-
-        moe.rukamori.archivetune.utils.PreferenceStore.launchEdit(context.dataStore) {
-            this[GitHubContributorsLastCheckedAtKey] = now
-            networkResult.etag?.let { this[GitHubContributorsEtagKey] = it }
-            networkResult.body?.let { this[GitHubContributorsJsonKey] = it }
-        }
-
-        when {
-            networkResult.status == HttpStatusCode.NotModified -> {
-                if (cachedContributors.isNullOrEmpty()) {
-                    contributorsState = ContributorsState.Error
-                }
-            }
-
-            (networkResult.status.value in 200..299) && !networkResult.body.isNullOrBlank() -> {
-                val contributors = runCatching { parseContributorsJson(networkResult.body) }.getOrNull()
-                if (!contributors.isNullOrEmpty()) {
-                    contributorsState = ContributorsState.Loaded(contributors)
-                } else if (cachedContributors.isNullOrEmpty()) {
-                    contributorsState = ContributorsState.Error
-                }
-            }
-
-            else -> {
-                if (cachedContributors.isNullOrEmpty()) contributorsState = ContributorsState.Error
+    LaunchedEffect(viewModel, uriHandler) {
+        viewModel.effects.collect { effect ->
+            when (effect) {
+                is AboutScreenEffect.OpenUri -> uriHandler.openUri(effect.uri)
             }
         }
     }
 
-    val leadDeveloper = TeamMember(
-        avatarUrl = "https://avatars.githubusercontent.com/u/107134739?v=4",
-        name = "rukamori「るかもり」",
-        position = stringResource(R.string.about_position_lead_dev),
-        profileUrl = "https://github.com/rukamori",
-        github = "https://github.com/rukamori",
-        website = "https://koiiverse.cloud",
-        discord = "https://discord.com/users/886971572668219392"
+    AboutScreenContent(
+        state = state,
+        scrollBehavior = scrollBehavior,
+        onNavigateUp = navController::navigateUp,
+        onNavigateHome = navController::backToMain,
+        onOpenUri = viewModel::openUri,
+        onRetryContributors = viewModel::retryContributors,
+        onShowOverflowMenu = viewModel::showOverflowMenu,
+        onDismissOverflowMenu = viewModel::dismissOverflowMenu,
+        onOpenTranslationContributors = viewModel::openTranslationContributors,
+        onOpenDependencyLicenses = viewModel::openDependencyLicenses,
+        onDismissDialog = viewModel::dismissDialog,
+        onRetryTranslationContributors = viewModel::retryTranslationContributors,
+        onRetryDependencyLicenses = viewModel::retryDependencyLicenses,
     )
+}
 
-    val collaborators = listOf(
-        TeamMember(
-            avatarUrl = "https://avatars.githubusercontent.com/u/93458424?v=4",
-            name = "WTTexe",
-            position = stringResource(R.string.about_position_wttexe),
-            profileUrl = "https://github.com/Windowstechtips",
-            github = "https://github.com/Windowstechtips",
-            website = null,
-            discord = "https://discord.com/users/840839409640800258"
-        ),
-        TeamMember(
-            avatarUrl = "https://avatars.githubusercontent.com/u/89002922?v=4",
-            name = "Miko",
-            position = stringResource(R.string.about_position_miko),
-            profileUrl = "https://github.com/mikooochi",
-            github = "https://github.com/mikooochi"
-        ),
-        TeamMember(
-            avatarUrl = "https://avatars.githubusercontent.com/u/80249864?v=4",
-            name = "sang765",
-            position = stringResource(R.string.about_position_sang765),
-            profileUrl = "https://github.com/sang765",
-            github = "https://github.com/sang765"
-        ),
-    )
-
-    val respecters = listOf(
-        TeamMember(
-            avatarUrl = "https://avatars.githubusercontent.com/u/80542861?v=4",
-            name = "MO AGAMY",
-            position = stringResource(R.string.about_position_mo_agamy),
-            profileUrl = "https://github.com/mostafaalagamy",
-            github = "https://github.com/mostafaalagamy",
-            website = null,
-            discord = null
-        ),
-        TeamMember(
-            avatarUrl = "https://avatars.githubusercontent.com/u/110614797?v=4",
-            name = "Zion Huang",
-            position = stringResource(R.string.about_position_zion_huang),
-            profileUrl = "https://github.com/z-huang",
-            github = "https://github.com/z-huang",
-            website = null,
-            discord = null
-        ),
-    )
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AboutScreenContent(
+    state: AboutScreenState,
+    scrollBehavior: TopAppBarScrollBehavior,
+    onNavigateUp: () -> Unit,
+    onNavigateHome: () -> Unit,
+    onOpenUri: (String) -> Unit,
+    onRetryContributors: () -> Unit,
+    onShowOverflowMenu: () -> Unit,
+    onDismissOverflowMenu: () -> Unit,
+    onOpenTranslationContributors: () -> Unit,
+    onOpenDependencyLicenses: () -> Unit,
+    onDismissDialog: () -> Unit,
+    onRetryTranslationContributors: () -> Unit,
+    onRetryDependencyLicenses: () -> Unit,
+) {
+    val listState = rememberLazyListState()
 
     Scaffold(
+        modifier = Modifier
+            .fillMaxSize()
+            .nestedScroll(scrollBehavior.nestedScrollConnection),
+        containerColor = MaterialTheme.colorScheme.surface,
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.about)) },
+            LargeFlexibleTopAppBar(
+                title = {
+                    Text(
+                        text = stringResource(R.string.about),
+                        fontWeight = FontWeight.Bold,
+                    )
+                },
                 navigationIcon = {
                     IconButton(
-                        onClick = navController::navigateUp,
-                        onLongClick = navController::backToMain,
+                        onClick = onNavigateUp,
+                        onLongClick = onNavigateHome,
                     ) {
                         Icon(
-                            painterResource(R.drawable.arrow_back),
-                            contentDescription = null,
+                            painter = painterResource(R.drawable.arrow_back),
+                            contentDescription = stringResource(R.string.back_button_desc),
                         )
                     }
                 },
-                scrollBehavior = scrollBehavior
-            )
-        }
-    ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .nestedScroll(scrollBehavior.nestedScrollConnection)
-                .verticalScroll(rememberScrollState())
-                .fillMaxWidth()
-                .padding(innerPadding)
-                .windowInsetsPadding(
-                    LocalPlayerAwareWindowInsets.current.only(
-                        WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom
-                    )
+                colors = TopAppBarDefaults.largeTopAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer,
                 ),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-
-            Spacer(
-                Modifier
-                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top))
-                    .heightIn(max = 16.dp)
+                actions = {
+                    if (state is AboutScreenState.Success) {
+                        AboutOverflowMenu(
+                            expanded = state.model.isOverflowMenuExpanded,
+                            onShowMenu = onShowOverflowMenu,
+                            onDismissMenu = onDismissOverflowMenu,
+                            onOpenTranslationContributors = onOpenTranslationContributors,
+                            onOpenDependencyLicenses = onOpenDependencyLicenses,
+                        )
+                    }
+                },
+                scrollBehavior = scrollBehavior,
+            )
+        },
+    ) { innerPadding ->
+        val stateModifier = Modifier
+            .fillMaxSize()
+            .padding(innerPadding)
+            .windowInsetsPadding(
+                LocalPlayerAwareWindowInsets.current.only(
+                    WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
+                ),
             )
 
-            Image(
-                painter = painterResource(R.drawable.about_splash),
-                contentDescription = null,
-                colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onBackground),
-                modifier = Modifier
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.surfaceContainer)
-                    .clickable { },
-            )
+        when (state) {
+            AboutScreenState.Loading -> {
+                AboutLoadingContent(modifier = stateModifier)
+            }
 
-            Row(
-                verticalAlignment = Alignment.Top,
-            ) {
-                Text(
-                    text = "ArchiveTune",
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
+            AboutScreenState.Empty -> {
+                AboutMessageContent(
+                    message = stringResource(R.string.no_results_found),
+                    modifier = stateModifier,
                 )
             }
 
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                AboutBadge(text = BuildConfig.VERSION_NAME)
-
-                nightlyBuildHash?.let {
-                    Spacer(Modifier.width(4.dp))
-                    AboutBadge(text = it)
-                }
-
-                Spacer(Modifier.width(4.dp))
-
-                if (BuildConfig.DEBUG) {
-                    AboutBadge(text = "DEBUG")
-                } else {
-                    AboutBadge(text = BuildConfig.ARCHITECTURE.uppercase())
-                }
+            is AboutScreenState.Error -> {
+                AboutMessageContent(
+                    message = stringResource(state.messageResId),
+                    modifier = stateModifier,
+                )
             }
 
-            Spacer(Modifier.height(8.dp))
-
-            Row {
-                IconButton(
-                    onClick = { uriHandler.openUri("https://github.com/ArchiveTuneApp/ArchiveTune") },
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.github),
-                        contentDescription = stringResource(R.string.about_content_desc_github)
-                    )
-                }
-
-                Spacer(Modifier.width(8.dp))
-
-                IconButton(
-                    onClick = { uriHandler.openUri("https://archivetune.koiiverse.cloud") },
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.website),
-                        contentDescription = stringResource(R.string.about_content_desc_website)
-                    )
-                }
-
-                Spacer(Modifier.width(8.dp))
-
-                IconButton(
-                    onClick = { uriHandler.openUri("https://t.me/ArchiveTuneGC") },
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.telegram),
-                        contentDescription = stringResource(R.string.about_content_desc_telegram)
-                    )
-                }
-
-                Spacer(Modifier.width(8.dp))
-
-                IconButton(
-                    onClick = { uriHandler.openUri("https://sociabuzz.com/chrtrxwstia") },
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.coffee),
-                        contentDescription = stringResource(R.string.about_content_desc_donate)
-                    )
-                }
-            }
-
-            Spacer(Modifier.height(16.dp))
-
-            SectionHeader(
-                title = stringResource(R.string.about_lead_developer),
-                modifier = Modifier.padding(horizontal = 16.dp)
-            )
-
-            Spacer(Modifier.height(8.dp))
-
-            LeadDeveloperCard(
-                member = leadDeveloper,
-                onOpenUri = uriHandler::openUri,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-            )
-
-            Spacer(Modifier.height(24.dp))
-
-            SectionHeader(
-                title = stringResource(R.string.about_archive_tune_team),
-                modifier = Modifier.padding(horizontal = 16.dp)
-            )
-
-            Spacer(Modifier.height(8.dp))
-
-            Column(
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-            ) {
-                collaborators.forEach { member ->
-                    CollaboratorCard(
-                        member = member,
-                        onOpenUri = uriHandler::openUri,
-                    )
-                }
-            }
-
-            Spacer(Modifier.height(24.dp))
-
-            SectionHeader(
-                title = stringResource(R.string.about_respecter),
-                modifier = Modifier.padding(horizontal = 16.dp)
-            )
-
-            Spacer(Modifier.height(8.dp))
-
-            Column(
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-            ) {
-                respecters.forEach { member ->
-                    CollaboratorCard(
-                        member = member,
-                        onOpenUri = uriHandler::openUri,
-                    )
-                }
-            }
-
-            Spacer(Modifier.height(24.dp))
-
-            SectionHeader(
-                title = stringResource(R.string.about_contributors),
-                modifier = Modifier.padding(horizontal = 16.dp)
-            )
-
-            Spacer(Modifier.height(8.dp))
-
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainer
-                ),
-                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-                shape = RoundedCornerShape(20.dp)
-            ) {
-                Column(
+            is AboutScreenState.Success -> {
+                AboutSuccessContent(
+                    model = state.model,
+                    onOpenUri = onOpenUri,
+                    onRetryContributors = onRetryContributors,
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(14.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    ContributorGrid(
-                        state = contributorsState,
-                        onOpenProfile = uriHandler::openUri,
-                        modifier = Modifier.fillMaxWidth(),
+                        .fillMaxSize()
+                        .windowInsetsPadding(
+                            LocalPlayerAwareWindowInsets.current.only(
+                                WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
+                            ),
+                        ),
+                    contentPadding = PaddingValues(
+                        top = innerPadding.calculateTopPadding() + 8.dp,
+                        bottom = 32.dp,
+                    ),
+                    listState = listState,
+                )
+            }
+        }
+    }
+
+    if (state is AboutScreenState.Success) {
+        AboutFullScreenDialogs(
+            model = state.model,
+            onDismiss = onDismissDialog,
+            onRetryTranslationContributors = onRetryTranslationContributors,
+            onRetryDependencyLicenses = onRetryDependencyLicenses,
+        )
+    }
+}
+
+@Composable
+private fun AboutOverflowMenu(
+    expanded: Boolean,
+    onShowMenu: () -> Unit,
+    onDismissMenu: () -> Unit,
+    onOpenTranslationContributors: () -> Unit,
+    onOpenDependencyLicenses: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(modifier = modifier) {
+        IconButton(
+            onClick = onShowMenu,
+            onLongClick = {},
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.more_vert),
+                contentDescription = stringResource(R.string.more_options),
+            )
+        }
+
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = onDismissMenu,
+        ) {
+            DropdownMenuItem(
+                text = { Text(text = stringResource(R.string.about_contributor_translation)) },
+                onClick = onOpenTranslationContributors,
+                leadingIcon = {
+                    Icon(
+                        painter = painterResource(R.drawable.translate),
+                        contentDescription = null,
+                    )
+                },
+            )
+            DropdownMenuItem(
+                text = { Text(text = stringResource(R.string.about_license)) },
+                onClick = onOpenDependencyLicenses,
+                leadingIcon = {
+                    Icon(
+                        painter = painterResource(R.drawable.info),
+                        contentDescription = null,
+                    )
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun AboutLoadingContent(
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier,
+        contentAlignment = Alignment.Center,
+    ) {
+        LoadingIndicator(modifier = Modifier.size(40.dp))
+    }
+}
+
+@Composable
+private fun AboutMessageContent(
+    message: String,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier.padding(24.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = message,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun AboutFullScreenDialogs(
+    model: AboutUiModel,
+    onDismiss: () -> Unit,
+    onRetryTranslationContributors: () -> Unit,
+    onRetryDependencyLicenses: () -> Unit,
+) {
+    when (model.activeDialog) {
+        AboutDialog.NONE -> Unit
+
+        AboutDialog.TRANSLATION_CONTRIBUTORS -> {
+            AboutFullScreenDialog(
+                title = stringResource(R.string.about_contributor_translation),
+                onDismiss = onDismiss,
+            ) { modifier ->
+                TranslationContributorsDialogContent(
+                    state = model.translationContributorsState,
+                    onRetry = onRetryTranslationContributors,
+                    modifier = modifier,
+                )
+            }
+        }
+
+        AboutDialog.DEPENDENCY_LICENSES -> {
+            AboutFullScreenDialog(
+                title = stringResource(R.string.about_license),
+                onDismiss = onDismiss,
+            ) { modifier ->
+                DependencyLicensesDialogContent(
+                    state = model.dependencyLicensesState,
+                    onRetry = onRetryDependencyLicenses,
+                    modifier = modifier,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AboutFullScreenDialog(
+    title: String,
+    onDismiss: () -> Unit,
+    content: @Composable (Modifier) -> Unit,
+) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false,
+        ),
+    ) {
+        Scaffold(
+            modifier = Modifier.fillMaxSize(),
+            containerColor = MaterialTheme.colorScheme.surface,
+            contentWindowInsets = WindowInsets(0, 0, 0, 0),
+            topBar = {
+                TopAppBar(
+                    title = {
+                        Text(
+                            text = title,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    },
+                    navigationIcon = {
+                        androidx.compose.material3.IconButton(onClick = onDismiss) {
+                            Icon(
+                                painter = painterResource(R.drawable.close),
+                                contentDescription = stringResource(R.string.close_dialog),
+                            )
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer,
+                    ),
+                )
+            },
+        ) { innerPadding ->
+            content(
+                Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .windowInsetsPadding(
+                        LocalPlayerAwareWindowInsets.current.only(
+                            WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
+                        ),
+                    ),
+            )
+        }
+    }
+}
+
+@Composable
+private fun TranslationContributorsDialogContent(
+    state: AboutTranslationContributorsUiState,
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    when (state) {
+        AboutTranslationContributorsUiState.Loading -> {
+            DialogStatusContent(
+                message = stringResource(R.string.loading),
+                showRetry = false,
+                onRetry = onRetry,
+                modifier = modifier,
+            )
+        }
+
+        AboutTranslationContributorsUiState.Empty -> {
+            DialogStatusContent(
+                message = stringResource(R.string.no_results_found),
+                showRetry = true,
+                onRetry = onRetry,
+                modifier = modifier,
+            )
+        }
+
+        is AboutTranslationContributorsUiState.Error -> {
+            DialogStatusContent(
+                message = stringResource(state.messageResId),
+                showRetry = true,
+                onRetry = onRetry,
+                modifier = modifier,
+            )
+        }
+
+        is AboutTranslationContributorsUiState.Success -> {
+            TranslationContributorList(
+                contributors = state.contributors,
+                modifier = modifier,
+            )
+        }
+    }
+}
+
+@Composable
+private fun DependencyLicensesDialogContent(
+    state: AboutDependencyLicensesUiState,
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    when (state) {
+        AboutDependencyLicensesUiState.Loading -> {
+            DialogStatusContent(
+                message = stringResource(R.string.loading),
+                showRetry = false,
+                onRetry = onRetry,
+                modifier = modifier,
+            )
+        }
+
+        AboutDependencyLicensesUiState.Empty -> {
+            DialogStatusContent(
+                message = stringResource(R.string.no_results_found),
+                showRetry = true,
+                onRetry = onRetry,
+                modifier = modifier,
+            )
+        }
+
+        is AboutDependencyLicensesUiState.Error -> {
+            DialogStatusContent(
+                message = stringResource(state.messageResId),
+                showRetry = true,
+                onRetry = onRetry,
+                modifier = modifier,
+            )
+        }
+
+        is AboutDependencyLicensesUiState.Success -> {
+            DependencyLicenseList(
+                licenses = state.licenses,
+                modifier = modifier,
+            )
+        }
+    }
+}
+
+@Composable
+private fun DialogStatusContent(
+    message: String,
+    showRetry: Boolean,
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier.padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        if (!showRetry) {
+            LoadingIndicator(modifier = Modifier.size(40.dp))
+        }
+        Text(
+            text = message,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 12.dp),
+        )
+        if (showRetry) {
+            TextButton(
+                onClick = onRetry,
+                modifier = Modifier.padding(top = 12.dp),
+            ) {
+                Text(text = stringResource(R.string.retry))
+            }
+        }
+    }
+}
+
+@Composable
+private fun TranslationContributorList(
+    contributors: AboutTranslationContributorUiCollection,
+    modifier: Modifier = Modifier,
+) {
+    LazyColumn(
+        modifier = modifier,
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        items(
+            count = contributors.size,
+            key = { index -> contributors[index].language },
+            contentType = { "translation_contributor" },
+        ) { index ->
+            val contributor = contributors[index]
+            SegmentedListItemSurface(
+                index = index,
+                itemCount = contributors.size,
+            ) {
+                TranslationContributorListItem(
+                    language = contributor.language,
+                    contributors = contributor.contributors,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun TranslationContributorListItem(
+    language: String,
+    contributors: String?,
+    modifier: Modifier = Modifier,
+) {
+    ListItem(
+        modifier = modifier.heightIn(min = if (contributors == null) 56.dp else 72.dp),
+        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+        leadingContent = {
+            Icon(
+                painter = painterResource(R.drawable.language),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(32.dp),
+            )
+        },
+        headlineContent = {
+            Text(
+                text = language,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        },
+        supportingContent = contributors?.let { contributorNames ->
+            {
+                Text(
+                    text = contributorNames,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        },
+    )
+}
+
+@Composable
+private fun DependencyLicenseList(
+    licenses: AboutDependencyLicenseUiCollection,
+    modifier: Modifier = Modifier,
+) {
+    LazyColumn(
+        modifier = modifier,
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        items(
+            count = licenses.size,
+            key = { index -> "${licenses[index].name}:${licenses[index].version.orEmpty()}:$index" },
+            contentType = { "dependency_license" },
+        ) { index ->
+            val dependency = licenses[index]
+            SegmentedListItemSurface(
+                index = index,
+                itemCount = licenses.size,
+            ) {
+                DependencyLicenseListItem(
+                    name = dependency.name,
+                    version = dependency.version,
+                    licenses = dependency.licenses,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun DependencyLicenseListItem(
+    name: String,
+    version: String?,
+    licenses: String?,
+    modifier: Modifier = Modifier,
+) {
+    ListItem(
+        modifier = modifier.heightIn(min = 72.dp),
+        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+        leadingContent = {
+            Icon(
+                painter = painterResource(R.drawable.info),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(32.dp),
+            )
+        },
+        headlineContent = {
+            Text(
+                text = name,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        },
+        supportingContent = {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                version?.let { versionName ->
+                    Text(
+                        text = versionName,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
+                Text(
+                    text = licenses ?: stringResource(R.string.about_license_unknown),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
+        },
+    )
+}
 
-            Spacer(Modifier.height(24.dp))
+@Composable
+private fun SegmentedListItemSurface(
+    index: Int,
+    itemCount: Int,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = segmentedListItemShape(
+            index = index,
+            itemCount = itemCount,
+        ),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        content = content,
+    )
+}
+
+private fun segmentedListItemShape(
+    index: Int,
+    itemCount: Int,
+): Shape {
+    val outerCorner = 24.dp
+    val innerCorner = 4.dp
+    return when {
+        itemCount <= 1 -> RoundedCornerShape(outerCorner)
+        index == 0 -> RoundedCornerShape(
+            topStart = outerCorner,
+            topEnd = outerCorner,
+            bottomEnd = innerCorner,
+            bottomStart = innerCorner,
+        )
+        index == itemCount - 1 -> RoundedCornerShape(
+            topStart = innerCorner,
+            topEnd = innerCorner,
+            bottomEnd = outerCorner,
+            bottomStart = outerCorner,
+        )
+        else -> RoundedCornerShape(innerCorner)
+    }
+}
+
+@Composable
+private fun AboutSuccessContent(
+    model: AboutUiModel,
+    onOpenUri: (String) -> Unit,
+    onRetryContributors: () -> Unit,
+    modifier: Modifier = Modifier,
+    contentPadding: PaddingValues,
+    listState: LazyListState,
+) {
+    LazyColumn(
+        state = listState,
+        modifier = modifier,
+        contentPadding = contentPadding,
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        item(key = "identity", contentType = "about_identity") {
+            AboutContentContainer {
+                AboutIdentityCard(
+                    model = model,
+                    onOpenUri = onOpenUri,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        }
+
+        item(key = "lead_developer", contentType = "about_lead_developer") {
+            AboutContentContainer {
+                LeadDeveloperSection(
+                    member = model.leadDeveloper,
+                    onOpenUri = onOpenUri,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        }
+
+        item(key = "team", contentType = "about_team_section") {
+            AboutContentContainer {
+                TeamMemberSection(
+                    title = stringResource(R.string.about_archive_tune_team),
+                    members = model.collaborators,
+                    onOpenUri = onOpenUri,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        }
+
+        item(key = "respecters", contentType = "about_team_section") {
+            AboutContentContainer {
+                TeamMemberSection(
+                    title = stringResource(R.string.about_respecter),
+                    members = model.respecters,
+                    onOpenUri = onOpenUri,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        }
+
+        item(key = "contributors", contentType = "about_contributors") {
+            AboutContentContainer {
+                ContributorsSection(
+                    state = model.contributorsState,
+                    readMoreUrl = model.contributorsReadMoreUrl,
+                    onOpenProfile = onOpenUri,
+                    onRetry = onRetryContributors,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AboutContentContainer(
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = SettingsDimensions.ScreenHorizontalPadding),
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .widthIn(max = 840.dp),
+        ) {
+            content()
         }
     }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ContributorGrid(
-    state: ContributorsState,
-    onOpenProfile: (String) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val contributors = when (state) {
-        ContributorsState.Loading -> null
-        ContributorsState.Error -> emptyList()
-        is ContributorsState.Loaded -> state.contributors.take(20)
-    }
-
-    val columns = 4
-    val spacing = 10.dp
-    BoxWithConstraints(modifier = modifier) {
-        val itemWidth = (maxWidth - spacing * (columns - 1)) / columns
-        val tileShape = RoundedCornerShape(22.dp)
-        val tileColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
-
-        FlowRow(
-            maxItemsInEachRow = columns,
-            horizontalArrangement = Arrangement.spacedBy(spacing, Alignment.CenterHorizontally),
-            verticalArrangement = Arrangement.spacedBy(spacing),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            if (contributors == null) {
-                repeat(6) {
-                    Surface(
-                        shape = tileShape,
-                        color = tileColor,
-                        modifier = Modifier.width(itemWidth)
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 14.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(48.dp)
-                                    .clip(CircleShape)
-                                    .background(MaterialTheme.colorScheme.surfaceContainerHighest)
-                            )
-                            Spacer(Modifier.height(10.dp))
-                            Box(
-                                modifier = Modifier
-                                    .height(14.dp)
-                                    .fillMaxWidth(0.7f)
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(MaterialTheme.colorScheme.surfaceContainerHighest)
-                            )
-                        }
-                    }
-                }
-            } else {
-                contributors.forEach { contributor ->
-                    Surface(
-                        shape = tileShape,
-                        color = tileColor,
-                        modifier = Modifier
-                            .width(itemWidth)
-                            .clickable(enabled = contributor.profileUrl.isNotBlank()) {
-                                if (contributor.profileUrl.isNotBlank()) {
-                                    onOpenProfile(contributor.profileUrl)
-                                }
-                            }
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 14.dp, horizontal = 10.dp)
-                        ) {
-                            AsyncImage(
-                                model = contributor.avatarUrl,
-                                contentDescription = contributor.login,
-                                modifier = Modifier
-                                    .size(48.dp)
-                                    .clip(CircleShape)
-                                    .background(MaterialTheme.colorScheme.surfaceContainerHighest)
-                            )
-                            Spacer(Modifier.height(10.dp))
-                            Text(
-                                text = contributor.login,
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun SectionHeader(
-    title: String,
-    modifier: Modifier = Modifier,
-) {
-    Row(
-        modifier = modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.primary,
-        )
-        Spacer(Modifier.width(12.dp))
-        HorizontalDivider(
-            modifier = Modifier.weight(1f),
-            color = MaterialTheme.colorScheme.outlineVariant,
-        )
-    }
-}
-
-@Composable
-private fun LeadDeveloperCard(
-    member: TeamMember,
+private fun AboutIdentityCard(
+    model: AboutUiModel,
     onOpenUri: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Card(
         modifier = modifier,
+        shape = MaterialTheme.shapes.extraLarge,
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-        shape = RoundedCornerShape(24.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(20.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
+            SurfaceAppIcon()
+
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    text = stringResource(model.appNameResId),
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    AboutMetadataBadge(text = model.versionName)
+                    model.buildHash?.let { buildHash ->
+                        AboutMetadataBadge(text = buildHash)
+                    }
+                    AboutMetadataBadge(text = model.buildVariant)
+                }
+            }
+
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
+            LinkChipRow(
+                links = model.primaryLinks,
+                onOpenUri = onOpenUri,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SurfaceAppIcon(
+    modifier: Modifier = Modifier,
+) {
+    androidx.compose.material3.Surface(
+        modifier = modifier,
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.primaryContainer,
+        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+    ) {
+        val iconTint = MaterialTheme.colorScheme.onPrimaryContainer
+        val iconColorFilter = remember(iconTint) { ColorFilter.tint(iconTint) }
+        Image(
+            painter = painterResource(R.drawable.about_splash),
+            contentDescription = null,
+            colorFilter = iconColorFilter,
+            modifier = Modifier
+                .padding(16.dp)
+                .size(64.dp),
+        )
+    }
+}
+
+@Composable
+private fun AboutMetadataBadge(
+    text: String,
+    modifier: Modifier = Modifier,
+) {
+    Badge(
+        modifier = modifier.heightIn(min = 32.dp),
+        containerColor = MaterialTheme.colorScheme.secondaryContainer,
+        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelMedium,
+            maxLines = 1,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+        )
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun LinkChipRow(
+    links: AboutLinkCollection,
+    onOpenUri: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    FlowRow(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        repeat(links.size) { index ->
+            val link = links[index]
+            val label = stringResource(link.labelResId)
+            val onClick = remember(link.url, onOpenUri) {
+                { onOpenUri(link.url) }
+            }
+
+            AssistChip(
+                onClick = onClick,
+                leadingIcon = {
+                    Icon(
+                        painter = painterResource(link.iconResId),
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                },
+                label = {
+                    Text(
+                        text = label,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun LeadDeveloperSection(
+    member: TeamMember,
+    onOpenUri: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        AboutSectionHeader(title = stringResource(R.string.about_lead_developer))
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = MaterialTheme.shapes.extraLarge,
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainer,
+            ),
+            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        ) {
+            TeamMemberListItem(
+                member = member,
+                onOpenUri = onOpenUri,
+                containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                avatarSize = 72.dp,
+                minHeight = 104.dp,
+            )
+        }
+    }
+}
+
+@Composable
+private fun TeamMemberSection(
+    title: String,
+    members: TeamMemberCollection,
+    onOpenUri: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        AboutSectionHeader(title = title)
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = MaterialTheme.shapes.large,
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+            ),
+            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        ) {
+            Column {
+                repeat(members.size) { index ->
+                    TeamMemberListItem(
+                        member = members[index],
+                        onOpenUri = onOpenUri,
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                    )
+
+                    if (index < members.size - 1) {
+                        HorizontalDivider(
+                            modifier = Modifier.padding(start = 88.dp),
+                            thickness = SettingsDimensions.DividerThickness,
+                            color = MaterialTheme.colorScheme.outlineVariant,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AboutSectionHeader(
+    title: String,
+    modifier: Modifier = Modifier,
+) {
+    Text(
+        text = title.uppercase(),
+        style = MaterialTheme.typography.labelSmall,
+        fontWeight = FontWeight.SemiBold,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        letterSpacing = MaterialTheme.typography.labelSmall.letterSpacing,
+        modifier = modifier.padding(
+            horizontal = SettingsDimensions.SectionHeaderHorizontalPadding,
+            vertical = SettingsDimensions.SectionHeaderBottomPadding,
+        ),
+    )
+}
+
+@Composable
+private fun TeamMemberListItem(
+    member: TeamMember,
+    onOpenUri: (String) -> Unit,
+    containerColor: Color,
+    modifier: Modifier = Modifier,
+    avatarSize: Dp = 56.dp,
+    minHeight: Dp = 88.dp,
+) {
+    val profileUrl = member.profileUrl
+    val itemClickModifier = remember(profileUrl, onOpenUri) {
+        if (profileUrl.isNullOrBlank()) {
+            Modifier
+        } else {
+            Modifier.clickable { onOpenUri(profileUrl) }
+        }
+    }
+
+    ListItem(
+        modifier = modifier
+            .fillMaxWidth()
+            .heightIn(min = minHeight)
+            .then(itemClickModifier),
+        colors = ListItemDefaults.colors(containerColor = containerColor),
+        leadingContent = {
             AsyncImage(
                 model = member.avatarUrl,
                 contentDescription = member.name,
                 modifier = Modifier
-                    .size(80.dp)
+                    .size(avatarSize)
                     .clip(CircleShape)
-                    .border(
-                        width = 1.dp,
-                        color = MaterialTheme.colorScheme.primary,
-                        shape = CircleShape
-                    )
-                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                    .background(MaterialTheme.colorScheme.surfaceContainerHighest),
             )
-
-            Spacer(Modifier.height(12.dp))
-
+        },
+        headlineContent = {
             Text(
                 text = member.name,
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
-
-            Spacer(Modifier.height(4.dp))
-
+        },
+        supportingContent = {
             Text(
-                text = member.position,
+                text = stringResource(member.positionResId),
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.secondary,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
             )
+        },
+        trailingContent = {
+            MemberLinkActions(
+                links = member.links,
+                onOpenUri = onOpenUri,
+            )
+        },
+    )
+}
 
-            Spacer(Modifier.height(12.dp))
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun MemberLinkActions(
+    links: AboutLinkCollection,
+    onOpenUri: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    FlowRow(
+        modifier = modifier.widthIn(max = 160.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        repeat(links.size) { index ->
+            val link = links[index]
+            val onClick = remember(link.url, onOpenUri) {
+                { onOpenUri(link.url) }
+            }
 
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
+            FilledTonalIconButton(
+                onClick = onClick,
+                modifier = Modifier.size(48.dp),
             ) {
-                member.github?.let { url ->
-                    OutlinedIconChip(
-                        iconRes = R.drawable.github,
-                        contentDescription = stringResource(R.string.about_content_desc_github),
-                        onClick = { onOpenUri(url) },
+                Icon(
+                    painter = painterResource(link.iconResId),
+                    contentDescription = stringResource(link.labelResId),
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ContributorsSection(
+    state: AboutContributorsUiState,
+    readMoreUrl: String,
+    onOpenProfile: (String) -> Unit,
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        AboutSectionHeader(title = stringResource(R.string.about_contributors))
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = MaterialTheme.shapes.large,
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+            ),
+            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        ) {
+            when (state) {
+                AboutContributorsUiState.Loading -> {
+                    ContributorStatusContent(
+                        message = stringResource(R.string.loading),
+                        showRetry = false,
+                        onRetry = onRetry,
                     )
                 }
 
-                member.website?.takeIf { it.isNotBlank() }?.let { url ->
-                    OutlinedIconChip(
-                        iconRes = R.drawable.website,
-                        contentDescription = stringResource(R.string.about_content_desc_website),
-                        onClick = { onOpenUri(url) },
+                AboutContributorsUiState.Empty -> {
+                    ContributorStatusContent(
+                        message = stringResource(R.string.no_results_found),
+                        showRetry = true,
+                        onRetry = onRetry,
                     )
                 }
 
-                member.discord?.let { url ->
-                    OutlinedIconChip(
-                        iconRes = R.drawable.alternate_email,
-                        contentDescription = stringResource(R.string.about_content_desc_discord),
-                        onClick = { onOpenUri(url) },
+                is AboutContributorsUiState.Error -> {
+                    ContributorStatusContent(
+                        message = stringResource(state.messageResId),
+                        showRetry = true,
+                        onRetry = onRetry,
+                    )
+                }
+
+                is AboutContributorsUiState.Success -> {
+                    ContributorList(
+                        contributors = state.contributors,
+                        readMoreUrl = readMoreUrl,
+                        onOpenProfile = onOpenProfile,
                     )
                 }
             }
@@ -820,91 +1217,157 @@ private fun LeadDeveloperCard(
 }
 
 @Composable
-private fun CollaboratorCard(
-    member: TeamMember,
-    onOpenUri: (String) -> Unit,
+private fun ContributorStatusContent(
+    message: String,
+    showRetry: Boolean,
+    onRetry: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Card(
+    Column(
         modifier = modifier
             .fillMaxWidth()
-            .clickable(enabled = member.profileUrl != null) {
-                member.profileUrl?.let { onOpenUri(it) }
-            },
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainer,
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        shape = RoundedCornerShape(20.dp),
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            AsyncImage(
-                model = member.avatarUrl,
-                contentDescription = member.name,
-                modifier = Modifier
-                    .size(48.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.surfaceVariant),
-            )
-
-            Spacer(Modifier.width(12.dp))
-
-            Column(
-                modifier = Modifier.weight(1f),
-            ) {
-                Text(
-                    text = member.name,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-
-                Spacer(Modifier.height(2.dp))
-
-                Text(
-                    text = member.position,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.secondary,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-
-            Spacer(Modifier.width(8.dp))
-
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                member.github?.let { url ->
-                    OutlinedIconChipMembers(
-                        iconRes = R.drawable.github,
-                        contentDescription = stringResource(R.string.about_content_desc_github),
-                        onClick = { onOpenUri(url) },
-                    )
-                }
-
-                member.website?.takeIf { it.isNotBlank() }?.let { url ->
-                    OutlinedIconChipMembers(
-                        iconRes = R.drawable.website,
-                        contentDescription = stringResource(R.string.about_content_desc_website),
-                        onClick = { onOpenUri(url) },
-                    )
-                }
-
-                member.discord?.let { url ->
-                    OutlinedIconChipMembers(
-                        iconRes = R.drawable.alternate_email,
-                        contentDescription = stringResource(R.string.about_content_desc_discord),
-                        onClick = { onOpenUri(url) },
-                    )
-                }
+        if (!showRetry) {
+            LoadingIndicator(modifier = Modifier.size(32.dp))
+        }
+        Text(
+            text = message,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (showRetry) {
+            TextButton(onClick = onRetry) {
+                Text(text = stringResource(R.string.retry))
             }
         }
     }
+}
+
+@Composable
+private fun ContributorList(
+    contributors: AboutContributorUiCollection,
+    readMoreUrl: String,
+    onOpenProfile: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier.fillMaxWidth()) {
+        repeat(contributors.size) { index ->
+            val contributor = contributors[index]
+
+            ContributorListItem(
+                login = contributor.login,
+                avatarUrl = contributor.avatarUrl,
+                profileUrl = contributor.profileUrl,
+                onOpenProfile = onOpenProfile,
+            )
+
+            if (index < contributors.size - 1) {
+                HorizontalDivider(
+                    modifier = Modifier.padding(start = 72.dp),
+                    thickness = SettingsDimensions.DividerThickness,
+                    color = MaterialTheme.colorScheme.outlineVariant,
+                )
+            }
+        }
+
+        HorizontalDivider(
+            modifier = Modifier.padding(start = 72.dp),
+            thickness = SettingsDimensions.DividerThickness,
+            color = MaterialTheme.colorScheme.outlineVariant,
+        )
+
+        ContributorReadMoreListItem(
+            readMoreUrl = readMoreUrl,
+            onOpenProfile = onOpenProfile,
+        )
+    }
+}
+
+@Composable
+private fun ContributorListItem(
+    login: String,
+    avatarUrl: String,
+    profileUrl: String,
+    onOpenProfile: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val itemClickModifier = remember(profileUrl, onOpenProfile) {
+        if (profileUrl.isBlank()) {
+            Modifier
+        } else {
+            Modifier.clickable { onOpenProfile(profileUrl) }
+        }
+    }
+
+    ListItem(
+        modifier = modifier
+            .fillMaxWidth()
+            .heightIn(min = 72.dp)
+            .then(itemClickModifier),
+        colors = ListItemDefaults.colors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        ),
+        leadingContent = {
+            AsyncImage(
+                model = avatarUrl,
+                contentDescription = login,
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+            )
+        },
+        headlineContent = {
+            Text(
+                text = login,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        },
+    )
+}
+
+@Composable
+private fun ContributorReadMoreListItem(
+    readMoreUrl: String,
+    onOpenProfile: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val onClick = remember(readMoreUrl, onOpenProfile) {
+        { onOpenProfile(readMoreUrl) }
+    }
+
+    ListItem(
+        modifier = modifier
+            .fillMaxWidth()
+            .heightIn(min = 72.dp)
+            .clickable(onClick = onClick),
+        colors = ListItemDefaults.colors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        ),
+        leadingContent = {
+            Icon(
+                painter = painterResource(R.drawable.add_circle),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(44.dp),
+            )
+        },
+        headlineContent = {
+            Text(
+                text = stringResource(R.string.more),
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        },
+    )
 }

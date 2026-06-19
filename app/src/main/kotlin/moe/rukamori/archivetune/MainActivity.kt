@@ -74,6 +74,8 @@ import androidx.compose.material3.AlertDialogDefaults
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.PlainTooltip
 import androidx.compose.material3.RichTooltip
 import androidx.compose.material3.TooltipBox
@@ -284,6 +286,8 @@ import moe.rukamori.archivetune.utils.Updater
 import moe.rukamori.archivetune.utils.dataStore
 import moe.rukamori.archivetune.utils.get
 import moe.rukamori.archivetune.utils.getAsync
+import moe.rukamori.archivetune.viewmodels.OnlineSearchSort
+import moe.rukamori.archivetune.viewmodels.OnlineSearchViewModel
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.utils.reportException
@@ -314,6 +318,7 @@ class MainActivity : ComponentActivity() {
     private var pendingVoiceSearchQuery: String? = null
     private var pendingTogetherJoinLink: String? = null
     private var latestVersionName by mutableStateOf(BuildConfig.VERSION_NAME)
+    private var latestUpdateChannel by mutableStateOf(UpdateChannel.STABLE)
 
     private var playerConnection by mutableStateOf<PlayerConnection?>(null)
     private var isMusicServiceBound = false
@@ -542,7 +547,8 @@ class MainActivity : ComponentActivity() {
                             else -> Updater.getLatestVersionName()
                         }
                         versionResult.onSuccess {
-                            if (!Updater.isSameVersion(it, BuildConfig.VERSION_NAME)) {
+                            if (Updater.isUpdateAvailable(it, BuildConfig.VERSION_NAME)) {
+                                latestUpdateChannel = actualChannel
                                 latestVersionName = it
                             }
                         }
@@ -608,7 +614,7 @@ class MainActivity : ComponentActivity() {
                         androidx.compose.material3.Button(
                             onClick = {
                                 try {
-                                    val downloadUrl = when (updateChannel) {
+                                    val downloadUrl = when (latestUpdateChannel) {
                                         UpdateChannel.DAILY_NIGHTLY -> Updater.getLatestDailyNightlyDownloadUrl()
                                         UpdateChannel.NIGHTLY -> Updater.getLatestNightlyDownloadUrl()
                                         UpdateChannel.STABLE -> Updater.getLatestDownloadUrl()
@@ -624,12 +630,13 @@ class MainActivity : ComponentActivity() {
                     }
 
                     // fetch release notes and show sheet when a new version is detected
-                    LaunchedEffect(latestVersionName) {
+                    LaunchedEffect(latestVersionName, latestUpdateChannel, updateChannel) {
                         if (
                             BuildConfig.UPDATER_AVAILABLE &&
-                            !Updater.isSameVersion(latestVersionName, BuildConfig.VERSION_NAME)
+                            latestUpdateChannel == updateChannel &&
+                            Updater.isUpdateAvailable(latestVersionName, BuildConfig.VERSION_NAME)
                         ) {
-                            val releaseNotesResult = when (updateChannel) {
+                            val releaseNotesResult = when (latestUpdateChannel) {
                                 UpdateChannel.DAILY_NIGHTLY -> Updater.getLatestDailyNightlyReleaseNotes()
                                 else -> Updater.getLatestReleaseNotes()
                             }
@@ -783,6 +790,18 @@ class MainActivity : ComponentActivity() {
                     val navBackStackEntry by navController.currentBackStackEntryAsState()
                     val (previousTab) = rememberSaveable { mutableStateOf("home") }
                     val currentRoute = navBackStackEntry?.destination?.route
+                    val onlineSearchViewModel: OnlineSearchViewModel? =
+                        if (currentRoute?.startsWith(OnlineSearchResultRoutePrefix) == true && navBackStackEntry != null) {
+                            hiltViewModel(navBackStackEntry!!)
+                        } else {
+                            null
+                        }
+                    val onlineSearchSort =
+                        if (onlineSearchViewModel != null) {
+                            onlineSearchViewModel.sort.collectAsStateWithLifecycle().value
+                        } else {
+                            OnlineSearchSort.DEFAULT
+                        }
                     val isYearInMusicScreen = currentRoute?.startsWith("year_in_music") == true
 
                     val navigationItems = remember(isTvDevice) {
@@ -1561,7 +1580,8 @@ class MainActivity : ComponentActivity() {
                                                         BadgedBox(badge = {
                                                             if (
                                                                 BuildConfig.UPDATER_AVAILABLE &&
-                                                                !Updater.isSameVersion(latestVersionName, BuildConfig.VERSION_NAME)
+                                                                latestUpdateChannel == updateChannel &&
+                                                                Updater.isUpdateAvailable(latestVersionName, BuildConfig.VERSION_NAME)
                                                             ) {
                                                                 Badge()
                                                             }
@@ -1677,6 +1697,11 @@ class MainActivity : ComponentActivity() {
                                                                 contentDescription = null,
                                                             )
                                                         }
+                                                    } else if (onlineSearchViewModel != null) {
+                                                        OnlineSearchSortMenu(
+                                                            selectedSort = onlineSearchSort,
+                                                            onSortSelected = onlineSearchViewModel::updateSort,
+                                                        )
                                                     }
                                                 }
                                             },
@@ -2305,6 +2330,65 @@ val LocalPlayerAwareWindowInsets =
     compositionLocalOf<WindowInsets> { error("No WindowInsets provided") }
 val LocalDownloadUtil = staticCompositionLocalOf<DownloadUtil> { error("No DownloadUtil provided") }
 val LocalSyncUtils = staticCompositionLocalOf<SyncUtils> { error("No SyncUtils provided") }
+
+@Composable
+private fun OnlineSearchSortMenu(
+    selectedSort: OnlineSearchSort,
+    onSortSelected: (OnlineSearchSort) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val options =
+        remember {
+            listOf(
+                OnlineSearchSort.DEFAULT,
+                OnlineSearchSort.VIEWS,
+            )
+        }
+
+    Box {
+        IconButton(onClick = { expanded = true }) {
+            Icon(
+                painter = painterResource(R.drawable.filter_alt),
+                contentDescription = null,
+            )
+        }
+
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+        ) {
+            options.forEach { sort ->
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            text =
+                                stringResource(
+                                    when (sort) {
+                                        OnlineSearchSort.DEFAULT -> R.string.default_style
+                                        OnlineSearchSort.VIEWS -> R.string.views
+                                    }
+                                )
+                        )
+                    },
+                    onClick = {
+                        expanded = false
+                        onSortSelected(sort)
+                    },
+                    leadingIcon = {
+                        if (sort == selectedSort) {
+                            Icon(
+                                painter = painterResource(R.drawable.done),
+                                contentDescription = null,
+                            )
+                        } else {
+                            Spacer(Modifier.size(24.dp))
+                        }
+                    },
+                )
+            }
+        }
+    }
+}
 
 private fun Context.isTvDevice(): Boolean {
     val isTelevisionUiMode =

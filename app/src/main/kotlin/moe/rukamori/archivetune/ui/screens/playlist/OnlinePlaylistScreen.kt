@@ -184,6 +184,7 @@ fun OnlinePlaylistScreen(
     var downloads by remember { mutableStateOf<Map<String, Download>>(emptyMap()) }
     var downloadState by remember { mutableStateOf<HeaderDownloadState>(HeaderDownloadState.None) }
     var downloadsPaused by remember { mutableStateOf(false) }
+    var downloadProgressToolbarDismissed by remember { mutableStateOf(false) }
 
     var selection by remember { mutableStateOf(false) }
     val hideExplicit by rememberPreference(key = HideExplicitKey, defaultValue = false)
@@ -250,6 +251,7 @@ fun OnlinePlaylistScreen(
     LaunchedEffect(downloadState) {
         if (downloadState !is HeaderDownloadState.Partial) {
             downloadsPaused = false
+            downloadProgressToolbarDismissed = false
         }
     }
 
@@ -876,16 +878,19 @@ fun OnlinePlaylistScreen(
                                                     context = context,
                                                     songIds = songs.map { it.id },
                                                 )
-                                                else -> sendAddMissingDownloads(
-                                                    context = context,
-                                                    songs = songs.map { song ->
-                                                        HeaderDownloadItem(
-                                                            id = song.id,
-                                                            title = song.title,
-                                                        )
-                                                    },
-                                                    downloads = downloads,
-                                                )
+                                                else -> {
+                                                    downloadProgressToolbarDismissed = false
+                                                    sendAddMissingDownloads(
+                                                        context = context,
+                                                        songs = songs.map { song ->
+                                                            HeaderDownloadItem(
+                                                                id = song.id,
+                                                                title = song.title,
+                                                            )
+                                                        },
+                                                        downloads = downloads,
+                                                    )
+                                                }
                                             }
                                         },
                                         modifier = Modifier.size(56.dp),
@@ -1299,7 +1304,11 @@ fun OnlinePlaylistScreen(
         )
 
         val currentDownloadState = downloadState
-        if (currentDownloadState is HeaderDownloadState.Partial && songs.isNotEmpty()) {
+        if (
+            currentDownloadState is HeaderDownloadState.Partial &&
+            songs.isNotEmpty() &&
+            !downloadProgressToolbarDismissed
+        ) {
             val songIds = remember(songs) { songs.map { it.id } }
             DownloadProgressFloatingToolbar(
                 state = DownloadProgressToolbarState(
@@ -1315,13 +1324,14 @@ fun OnlinePlaylistScreen(
                     }
                     downloadsPaused = !downloadsPaused
                 },
-                onStop = {
+                onDismiss = {
                     sendCancelIncompleteDownloads(
                         context = context,
                         songIds = songIds,
                         downloads = downloads,
                     )
                     downloadsPaused = false
+                    downloadProgressToolbarDismissed = true
                 },
                 modifier =
                     Modifier

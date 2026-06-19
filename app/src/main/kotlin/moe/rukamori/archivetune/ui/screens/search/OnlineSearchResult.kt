@@ -41,7 +41,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -57,6 +56,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import moe.rukamori.archivetune.innertube.YouTube.SearchFilter.Companion.FILTER_ALBUM
 import moe.rukamori.archivetune.innertube.YouTube.SearchFilter.Companion.FILTER_ARTIST
@@ -100,13 +100,14 @@ fun OnlineSearchResult(
     val menuState = LocalMenuState.current
     val playerConnection = LocalPlayerConnection.current ?: return
     val haptic = LocalHapticFeedback.current
-    val isPlaying by playerConnection.isPlaying.collectAsState()
-    val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
+    val isPlaying by playerConnection.isPlaying.collectAsStateWithLifecycle()
+    val mediaMetadata by playerConnection.mediaMetadata.collectAsStateWithLifecycle()
 
     val coroutineScope = rememberCoroutineScope()
     val lazyListState = rememberLazyListState()
 
-    val searchFilter by viewModel.filter.collectAsState()
+    val searchFilter by viewModel.filter.collectAsStateWithLifecycle()
+    val searchSort by viewModel.sort.collectAsStateWithLifecycle()
     val searchSummary = viewModel.summaryPage
     val itemsPage by remember(searchFilter) {
         derivedStateOf {
@@ -131,7 +132,7 @@ fun OnlineSearchResult(
                     ?.items
                     ?.takeIf { it.isNotEmpty() }
                     ?.let { items ->
-                        add(SearchSummary(title = sectionTitle, items = items))
+                        add(SearchSummary(title = sectionTitle, items = viewModel.sortedItems(items, searchSort)))
                     }
             }
         }
@@ -191,6 +192,7 @@ fun OnlineSearchResult(
         }
         YouTubeListItem(
             item = item,
+            viewCountText = (item as? SongItem)?.viewCountText,
             isActive =
             when (item) {
                 is SongItem -> mediaMetadata?.id == item.id
@@ -329,7 +331,7 @@ fun OnlineSearchResult(
                     }
 
                     itemsIndexed(
-                        items = summary.items,
+                        items = viewModel.sortedItems(summary.items, searchSort),
                         key = { itemIndex, item -> "${summary.title}/${item.id}/$itemIndex" },
                         contentType = { _, _ -> "search_result" },
                     ) { _, item ->
@@ -354,7 +356,7 @@ fun OnlineSearchResult(
                 }
             } else {
                 items(
-                    items = itemsPage?.items.orEmpty().distinctBy { it.id },
+                    items = viewModel.sortedItems(itemsPage?.items.orEmpty().distinctBy { it.id }, searchSort),
                     key = { "filtered_${it.id}" },
                     contentType = { "search_result" },
                     itemContent = ytItemContent,

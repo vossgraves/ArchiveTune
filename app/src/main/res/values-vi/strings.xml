@@ -74,12 +74,6 @@
     <string name="on_device">Trên thiết bị</string>
     <string name="recently_played">Đã phát gần đây</string>
     <string name="top_mixes">Tổng hợp hàng đầu cho bạn</string>
-    <string name="daily_mix_1">Mix ngày 1</string>
-    <string name="daily_mix_1_desc">Thư giãn, tập trung &amp; nhạc nền</string>
-    <string name="chill_mix">Mix thư giãn</string>
-    <string name="chill_mix_desc">Giai điệu nhẹ nhàng để thư giãn</string>
-    <string name="focus_mix">Mix tập trung</string>
-    <string name="focus_mix_desc">Nhạc Lo-fi giúp tập trung</string>
     <string name="your_playlists">Danh sách phát của bạn</string>
     <string name="see_all">Xem tất cả</string>
     <string name="your_artists">Nghệ sĩ của bạn</string>
@@ -87,8 +81,8 @@
     <string name="all_songs">Tất cả bài hát</string>
     <string name="newest_first">Mới nhất trước</string>
     <string name="oldest_first">Cũ nhất trước</string>
-    <string name="sort_a_to_z">A \u2192 Z</string>
-    <string name="sort_z_to_a">Z \u2192 A</string>
+    <string name="sort_a_to_z">A → Z</string>
+    <string name="sort_z_to_a">Z → A</string>
     <string name="sort_artist">Nghệ sĩ</string>
     <string name="most_played_sort">Phát nhiều nhất</string>
     <string name="recently_added">Mới thêm gần đây</string>
@@ -231,31 +225,24 @@
     <string name="duplicates_description_multiple">%d bài hát đã có trong danh sách phát của bạn</string>
     <!-- Noun -->
     <plurals name="n_song">
-        <item quantity="one">%d bài hát</item>
         <item quantity="other">%d bài hát</item>
     </plurals>
     <plurals name="n_artist">
-        <item quantity="one">%d nghệ sĩ</item>
         <item quantity="other">%d nghệ sĩ</item>
     </plurals>
     <plurals name="n_album">
-        <item quantity="one">%d album</item>
         <item quantity="other">%d album</item>
     </plurals>
     <plurals name="n_playlist">
-        <item quantity="one">%d danh sách phát</item>
         <item quantity="other">%d danh sách phát</item>
     </plurals>
     <plurals name="n_week">
-        <item quantity="one">%d tuần</item>
         <item quantity="other">%d tuần</item>
     </plurals>
     <plurals name="n_month">
-        <item quantity="one">%d tháng</item>
         <item quantity="other">%d tháng</item>
     </plurals>
     <plurals name="n_year">
-        <item quantity="one">%d năm</item>
         <item quantity="other">%d năm</item>
     </plurals>
     <!-- Snackbar -->
@@ -272,7 +259,6 @@
     <string name="sleep_timer">Hẹn giờ ngủ</string>
     <string name="end_of_song">Cuối bài hát</string>
     <plurals name="minute">
-        <item quantity="one">1 phút</item>
         <item quantity="other">%d phút</item>
     </plurals>
     <string name="error_no_stream">Không có luồng phát nào khả dụng</string>
@@ -938,20 +924,6 @@
     <string name="later">Để sau</string>
     <string name="album_name">Tên album</string>
     <string name="app_icon">Biểu tượng ứng dụng</string>
-    <string name="build_your_mix_average_listened">Lượt nghe trung bình</string>
-    <string name="build_your_mix_create">Xây dựng mix</string>
-    <string name="build_your_mix_description">Chúng tôi sẽ tạo mix này dựa trên cơ sở nào?</string>
-    <string name="build_your_mix_empty_library">Không có bài hát nào trong thư viện để xây dựng mix.</string>
-    <string name="build_your_mix_failed">Không thể xây dựng mix của bạn</string>
-    <string name="build_your_mix_input_manually">Nhập thủ công</string>
-    <string name="build_your_mix_listening_history">Lịch sử nghe</string>
-    <string name="build_your_mix_loading_quote">Đang xây dựng Mix của bạn, sẽ mất thời gian...</string>
-    <string name="build_your_mix_manual_basis">Cơ sở thủ công</string>
-    <string name="build_your_mix_manual_placeholder">Nhập tên nghệ sĩ hoặc bài hát, như Alan Walker</string>
-    <string name="build_your_mix_manual_required">Vui lòng nhập tên nghệ sĩ hoặc bài hát trước.</string>
-    <string name="build_your_mix_no_manual_match">Không tìm thấy bài hát nào trong thư viện khớp với nghệ sĩ hoặc tiêu đề đó.</string>
-    <string name="build_your_mix_song_count">Bạn muốn lấy tổng cộng bao nhiêu bài hát?</string>
-    <string name="build_your_mix_title">Xây dựng Mix của bạn</string>
     <string name="could_not_open_youtube_music">Không thể mở YouTube Music</string>
     <string name="discord_account_ready">ArchiveTune đã sẵn sàng để xuất bản Rich Presence cho phiên nghe nhạc của bạn.</string>
     <string name="discord_activity_content">Nội dung Hoạt động</string>
@@ -1016,6 +988,12 @@
     <string name="player_background_style_v8_v9_desc">Không khả dụng với kiểu trình phát V8 và V9</string>
     <string name="recent_requests">Yêu cầu gần đây</string>
     <string name="remove_account">Xóa tài khoản</string>
+    <string name="add_another_account">Thêm tài khoản khác</string>
+    <string name="unsaved_account_dialog_title">Tài khoản chưa được lưu</string>
+    <string name="unsaved_account_dialog_text">Tài khoản hiện tại của bạn chưa được lưu. Bạn có muốn lưu trước khi thêm tài khoản khác không?</string>
+    <string name="unsaved_account_dialog_cancel">Hủy đăng nhập</string>
+    <string name="unsaved_account_dialog_no_thanks">Không cần đâu, cảm ơn</string>
+    <string name="unsaved_account_dialog_save_yes">Có, hãy lưu tài khoản hiện tại</string>
     <string name="romanization">Latinh hóa</string>
     <string name="save_current_account">Lưu tài khoản hiện tại</string>
     <string name="saved_accounts">Tài khoản đã lưu</string>

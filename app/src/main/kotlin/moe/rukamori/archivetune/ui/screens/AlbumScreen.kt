@@ -229,6 +229,7 @@ fun AlbumScreen(
     var downloads by remember { mutableStateOf<Map<String, Download>>(emptyMap()) }
     var downloadState by remember { mutableStateOf<HeaderDownloadState>(HeaderDownloadState.None) }
     var downloadsPaused by remember { mutableStateOf(false) }
+    var downloadProgressToolbarDismissed by remember { mutableStateOf(false) }
 
     LaunchedEffect(albumWithSongs) {
         val songIds = albumWithSongs?.songs?.map { it.id }.orEmpty()
@@ -246,6 +247,7 @@ fun AlbumScreen(
     LaunchedEffect(downloadState) {
         if (downloadState !is HeaderDownloadState.Partial) {
             downloadsPaused = false
+            downloadProgressToolbarDismissed = false
         }
     }
 
@@ -598,6 +600,7 @@ fun AlbumScreen(
                                             songIds = albumWithSongs.songs.map { it.id },
                                         )
                                         else -> {
+                                            downloadProgressToolbarDismissed = false
                                             sendAddMissingDownloads(
                                                 context = context,
                                                 songs = albumWithSongs.songs.map {
@@ -1044,7 +1047,11 @@ fun AlbumScreen(
 
         val currentAlbumWithSongs = albumWithSongs
         val currentDownloadState = downloadState
-        if (currentAlbumWithSongs != null && currentDownloadState is HeaderDownloadState.Partial) {
+        if (
+            currentAlbumWithSongs != null &&
+            currentDownloadState is HeaderDownloadState.Partial &&
+            !downloadProgressToolbarDismissed
+        ) {
             val songIds = remember(currentAlbumWithSongs) {
                 currentAlbumWithSongs.songs.map { it.id }
             }
@@ -1062,13 +1069,14 @@ fun AlbumScreen(
                     }
                     downloadsPaused = !downloadsPaused
                 },
-                onStop = {
+                onDismiss = {
                     sendCancelIncompleteDownloads(
                         context = context,
                         songIds = songIds,
                         downloads = downloads,
                     )
                     downloadsPaused = false
+                    downloadProgressToolbarDismissed = true
                 },
                 modifier = Modifier
                     .align(Alignment.BottomCenter)

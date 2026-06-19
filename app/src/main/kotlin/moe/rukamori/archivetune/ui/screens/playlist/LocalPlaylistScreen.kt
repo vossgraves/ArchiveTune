@@ -221,7 +221,6 @@ fun LocalPlaylistScreen(
 
     if (showAssignTagsDialog && playlist != null) {
         AssignTagsDialog(
-            database = database,
             playlistId = playlist!!.id,
             onDismiss = { showAssignTagsDialog = false }
         )
@@ -277,6 +276,7 @@ fun LocalPlaylistScreen(
     var downloads by remember { mutableStateOf<Map<String, Download>>(emptyMap()) }
     var downloadState by remember { mutableStateOf<HeaderDownloadState>(HeaderDownloadState.None) }
     var downloadsPaused by remember { mutableStateOf(false) }
+    var downloadProgressToolbarDismissed by remember { mutableStateOf(false) }
 
     val editable: Boolean = playlist?.playlist?.isEditable == true
 
@@ -300,6 +300,7 @@ fun LocalPlaylistScreen(
     LaunchedEffect(downloadState) {
         if (downloadState !is HeaderDownloadState.Partial) {
             downloadsPaused = false
+            downloadProgressToolbarDismissed = false
         }
     }
 
@@ -977,6 +978,7 @@ fun LocalPlaylistScreen(
                                                     showRemoveDownloadDialog = true
                                                 }
                                                 else -> {
+                                                    downloadProgressToolbarDismissed = false
                                                     sendAddMissingDownloads(
                                                         context = context,
                                                         songs = songs.map {
@@ -1591,7 +1593,11 @@ fun LocalPlaylistScreen(
         )
 
         val currentDownloadState = downloadState
-        if (currentDownloadState is HeaderDownloadState.Partial && songs.isNotEmpty()) {
+        if (
+            currentDownloadState is HeaderDownloadState.Partial &&
+            songs.isNotEmpty() &&
+            !downloadProgressToolbarDismissed
+        ) {
             val songIds = remember(songs) { songs.map { it.song.id } }
             DownloadProgressFloatingToolbar(
                 state = DownloadProgressToolbarState(
@@ -1607,13 +1613,14 @@ fun LocalPlaylistScreen(
                     }
                     downloadsPaused = !downloadsPaused
                 },
-                onStop = {
+                onDismiss = {
                     sendCancelIncompleteDownloads(
                         context = context,
                         songIds = songIds,
                         downloads = downloads,
                     )
                     downloadsPaused = false
+                    downloadProgressToolbarDismissed = true
                 },
                 modifier = Modifier
                     .align(Alignment.BottomCenter)

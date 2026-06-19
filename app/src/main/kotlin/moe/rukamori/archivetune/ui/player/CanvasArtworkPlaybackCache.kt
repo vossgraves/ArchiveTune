@@ -30,20 +30,25 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import timber.log.Timber
 import java.io.File
+import java.io.FileOutputStream
 import java.io.IOException
+import java.net.Proxy
 import java.security.MessageDigest
 import java.util.LinkedHashMap
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 object CanvasArtworkPlaybackCache {
-    private const val defaultMaxSize = 256
+    private const val DEFAULT_MAX_SIZE_MEGABYTES = 256
     private const val PERSIST_FILE = "canvas_artwork_cache.json"
     private const val PERSIST_DEBOUNCE_MS = 2_000L
     private const val DOWNLOAD_BUFFER_SIZE_BYTES = 64 * 1024
+    private const val DOWNLOAD_MAX_ATTEMPTS = 4
+    private const val DOWNLOAD_RETRY_DELAY_MS = 750L
+    private const val CACHE_SIZE_BYTES_PER_MEGABYTE = 1024L * 1024L
 
-    private val map = LinkedHashMap<String, CanvasCacheEntry>(defaultMaxSize, 0.75f, true)
-    @Volatile private var maxSize = defaultMaxSize
+    private val map = LinkedHashMap<String, CanvasCacheEntry>(DEFAULT_MAX_SIZE_MEGABYTES, 0.75f, true)
+    @Volatile private var maxSizeBytes = DEFAULT_MAX_SIZE_MEGABYTES.toLong() * CACHE_SIZE_BYTES_PER_MEGABYTE
     @Volatile private var cacheDirectory: File? = null
     @Volatile private var cacheFile: File? = null
 
@@ -56,10 +61,20 @@ object CanvasArtworkPlaybackCache {
         explicitNulls = false
     }
 
-    private val client: OkHttpClient by lazy {
-        OkHttpClient
+    private val directClient: OkHttpClient by lazy {
+        canvasClient(proxy = null)
+    }
+
+    private val streamClient: OkHttpClient by lazy {
+        canvasClient(proxy = YouTube.streamOkHttpProxy)
+    }
+
+    private fun canvasClient(proxy: Proxy?): OkHttpClient {
+        return OkHttpClient
             .Builder()
-            .proxy(YouTube.streamOkHttpProxy)
+            .apply {
+                if (proxy != null) this.proxy(proxy)
+            }
             .connectTimeout(12, TimeUnit.SECONDS)
             .readTimeout(45, TimeUnit.SECONDS)
             .callTimeout(3, TimeUnit.MINUTES)
@@ -92,7 +107,7 @@ object CanvasArtworkPlaybackCache {
 
     @Synchronized
     fun get(mediaId: String): CanvasArtwork? {
-        if (maxSize <= 0 || mediaId.isBlank()) return null
+        if (maxSizeBytes == 0L || mediaId.isBlank()) return null
         val entry = map[mediaId] ?: return null
         val playable = entry.toPlayableArtwork(cacheDirectory ?: return null)
         if (playable == null) {
@@ -107,7 +122,7 @@ object CanvasArtworkPlaybackCache {
 
     suspend fun put(mediaId: String, artwork: CanvasArtwork): CanvasArtwork =
         withContext(Dispatchers.IO) {
-            if (maxSize <= 0 || mediaId.isBlank()) return@withContext artwork
+            if (maxSizeBytes == 0L || mediaId.isBlank()) return@withContext artwork
             val directory = cacheDirectory ?: return@withContext artwork
             directory.mkdirs()
 
@@ -154,11 +169,6 @@ object CanvasArtworkPlaybackCache {
         }
 
     @Synchronized
-    fun size(): Int = map.count { (_, entry) ->
-        entry.hasPlayableFile(cacheDirectory)
-    }
-
-    @Synchronized
     fun byteSize(): Long {
         val directory = cacheDirectory ?: return 0L
         return map.values.sumOf { entry -> entry.byteSize(directory) }
@@ -182,9 +192,9 @@ object CanvasArtworkPlaybackCache {
 
     @Synchronized
     fun setMaxSize(value: Int) {
-        maxSize = value.coerceAtLeast(0)
+        maxSizeBytes = value.toCanvasCacheLimitBytes()
         val directory = cacheDirectory
-        if (maxSize == 0) {
+        if (maxSizeBytes == 0L) {
             clearFilesLocked()
             map.clear()
             schedulePersist()
@@ -192,8 +202,6 @@ object CanvasArtworkPlaybackCache {
         }
         if (directory != null) {
             trimLocked(directory)
-        } else {
-            trimMetadataLocked()
         }
         schedulePersist()
     }
@@ -210,7 +218,7 @@ object CanvasArtworkPlaybackCache {
             restored
                 .filter { entry -> entry.mediaId.isNotBlank() }
                 .forEach { entry -> map[entry.mediaId] = entry }
-            cacheDirectory?.let(::trimLocked) ?: trimMetadataLocked()
+            cacheDirectory?.let(::trimLocked)
             Timber.d("Canvas cache restored: ${map.size} entries from disk")
         } catch (error: Exception) {
             Timber.e(error, "Failed to restore canvas cache from disk")
@@ -310,9 +318,50 @@ object CanvasArtworkPlaybackCache {
 
     private suspend fun downloadToFile(url: String, target: File) {
         kotlinx.coroutines.currentCoroutineContext().ensureActive()
-        val request = Request.Builder().url(url).build()
-        client.newCall(request).execute().use { response ->
+        target.parentFile?.mkdirs()
+        var attempt = 0
+        var lastError: Throwable? = null
+        while (attempt < DOWNLOAD_MAX_ATTEMPTS) {
+            kotlinx.coroutines.currentCoroutineContext().ensureActive()
+            try {
+                downloadToPartialFile(
+                    url = url,
+                    target = target,
+                    existingBytes = target.takeIf { file -> file.isFile }?.length()?.coerceAtLeast(0L) ?: 0L,
+                )
+                return
+            } catch (error: Throwable) {
+                if (error is CancellationException) throw error
+                lastError = error
+                attempt += 1
+                if (attempt >= DOWNLOAD_MAX_ATTEMPTS) break
+                Timber.w(error, "Canvas download interrupted, retrying")
+                delay(DOWNLOAD_RETRY_DELAY_MS * attempt)
+            }
+        }
+        throw IOException("Canvas download failed after $DOWNLOAD_MAX_ATTEMPTS attempts", lastError)
+    }
+
+    private suspend fun downloadToPartialFile(
+        url: String,
+        target: File,
+        existingBytes: Long,
+    ) {
+        val requestBuilder = Request.Builder()
+            .url(url)
+            .header("Accept", "video/mp4,video/*;q=0.9,*/*;q=0.8")
+        if (existingBytes > 0L) {
+            requestBuilder.header("Range", "bytes=$existingBytes-")
+        }
+        val request = requestBuilder.build()
+        val callClient = if (request.url.isYouTubeMediaHost()) streamClient else directClient
+        callClient.newCall(request).execute().use { response ->
+            if (existingBytes > 0L && response.code == 416) return
             if (!response.isSuccessful) throw IOException("Canvas request failed: HTTP ${response.code}")
+            val append = existingBytes > 0L && response.code == 206
+            if (existingBytes > 0L && !append) {
+                if (target.exists() && !target.delete()) throw IOException("Failed to restart canvas video download")
+            }
             val body = response.body ?: throw IOException("Canvas response body is empty")
             val contentType = body.contentType()?.toString()?.lowercase(Locale.ROOT).orEmpty()
             if (
@@ -324,9 +373,8 @@ object CanvasArtworkPlaybackCache {
             ) {
                 throw IOException("Canvas response is not a downloadable video: $contentType")
             }
-            target.parentFile?.mkdirs()
             body.byteStream().use { input ->
-                target.outputStream().use { output ->
+                FileOutputStream(target, append).use { output ->
                     val buffer = ByteArray(DOWNLOAD_BUFFER_SIZE_BYTES)
                     while (true) {
                         kotlinx.coroutines.currentCoroutineContext().ensureActive()
@@ -340,25 +388,27 @@ object CanvasArtworkPlaybackCache {
     }
 
     private fun trimLocked(directory: File) {
-        trimMetadataLocked()
         val activeFiles = map.values.flatMap { entry ->
             listOfNotNull(entry.regularFileName, entry.verticalFileName)
         }.toSet()
         directory.listFiles()
             ?.filter { file -> file.isFile && file.name.endsWith(".mp4") && file.name !in activeFiles }
             ?.forEach { file -> runCatching { file.delete() } }
+        trimToByteLimitLocked(directory)
     }
 
-    private fun trimMetadataLocked() {
-        while (map.size > maxSize) {
-            val iterator = map.entries.iterator()
-            if (!iterator.hasNext()) break
+    private fun trimToByteLimitLocked(directory: File) {
+        val limitBytes = maxSizeBytes
+        if (limitBytes == Long.MAX_VALUE) return
+        var totalBytes = map.values.sumOf { entry -> entry.byteSize(directory) }
+        val iterator = map.entries.iterator()
+        while (totalBytes > limitBytes && iterator.hasNext()) {
             val entry = iterator.next().value
+            val entryBytes = entry.byteSize(directory)
             iterator.remove()
-            cacheDirectory?.let { directory ->
-                runCatching { entry.regularFileName?.let { directory.resolve(it).delete() } }
-                runCatching { entry.verticalFileName?.let { directory.resolve(it).delete() } }
-            }
+            runCatching { entry.regularFileName?.let { directory.resolve(it).delete() } }
+            runCatching { entry.verticalFileName?.let { directory.resolve(it).delete() } }
+            totalBytes -= entryBytes
         }
     }
 
@@ -410,12 +460,6 @@ object CanvasArtworkPlaybackCache {
         val createdAtMs: Long,
         val lastAccessedAtMs: Long,
     ) {
-        fun hasPlayableFile(directory: File?): Boolean {
-            directory ?: return false
-            return regularFileName?.let { directory.resolve(it).isUsableFile() } == true ||
-                verticalFileName?.let { directory.resolve(it).isUsableFile() } == true
-        }
-
         fun byteSize(directory: File): Long =
             listOfNotNull(regularFileName, verticalFileName)
                 .sumOf { fileName ->
@@ -462,6 +506,15 @@ private fun okhttp3.HttpUrl.isYouTubeMediaHost(): Boolean {
 }
 
 private fun File.isUsableFile(): Boolean = isFile && length() > 0L
+
+private fun Int.toCanvasCacheLimitBytes(): Long =
+    when {
+        this < 0 -> Long.MAX_VALUE
+        this == 0 -> 0L
+        else -> toLong()
+            .coerceAtMost(Long.MAX_VALUE / 1_024L / 1_024L)
+            .coerceAtLeast(0L) * 1_024L * 1_024L
+    }
 
 private const val CanvasDownloadUserAgent =
     "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Mobile Safari/537.36"
