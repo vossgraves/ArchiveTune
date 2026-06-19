@@ -619,4 +619,10 @@
     <string name="storage_migration_downloads_progress">다운로드한 파일 이동 중… %1$d%%</string>
     <string name="aod_customize_content_position">콘텐츠 위치</string>
     <string name="about_position_wttexe">실시간 싱크 가사, 그라데이션 및 디자인 개선!</string>
+    <string name="about_contributors_read_more"></string>
+    <string name="about_license_unknown"></string>
+    <string name="history_duration_seconds"></string>
+    <string name="history_duration_desc"></string>
+    <string name="about_license"></string>
+    <string name="about_contributor_translation"></string>
 </resources>
