@@ -1049,7 +1049,11 @@ fun OnlinePlaylistScreen(
                     }
 
                     // Songs List
-                    items(items = wrappedSongs, key = { it.item.second.id }) { song ->
+                    items(
+                        items = wrappedSongs,
+                        key = { it.item.second.setVideoId ?: "${it.item.second.id}-${it.item.first}" },
+                        contentType = { "online_playlist_song" },
+                    ) { song ->
                         YouTubeListItem(
                             item = song.item.second,
                             viewCountText =

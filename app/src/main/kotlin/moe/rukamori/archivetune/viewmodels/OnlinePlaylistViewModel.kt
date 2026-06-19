@@ -94,7 +94,7 @@ class OnlinePlaylistViewModel
                         .onSuccess { playlistContinuationPage ->
                             val currentSongs = _playlistSongs.value.toMutableList()
                             currentSongs.addAll(playlistContinuationPage.songs)
-                            _playlistSongs.value = currentSongs.distinctBy { it.id }
+                            _playlistSongs.value = currentSongs
                             continuation = playlistContinuationPage.continuation
                             prefetchViewCounts(playlistContinuationPage.songs.map { song -> song.id })
                             _isLoadingMore.value = false
@@ -127,7 +127,7 @@ class OnlinePlaylistViewModel
                     .completed()
                     .onSuccess { playlistPage ->
                         _playlist.value = playlistPage.playlist
-                        _playlistSongs.value = playlistPage.songs.distinctBy { it.id }
+                        _playlistSongs.value = playlistPage.songs
                         continuation = null
                         prefetchViewCounts(playlistPage.songs.map { song -> song.id })
                     }.onFailure { throwable ->
