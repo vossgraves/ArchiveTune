@@ -184,31 +184,24 @@
     <string name="duplicates_description_multiple">%d곡이 이미 재생목록에 있습니다.</string>
     <!-- Noun -->
     <plurals name="n_song">
-        <item quantity="one">%d 노래</item>
         <item quantity="other">%d곡</item>
     </plurals>
     <plurals name="n_artist">
-        <item quantity="one">%d 아티스트</item>
         <item quantity="other">아티스트 %d명</item>
     </plurals>
     <plurals name="n_album">
-        <item quantity="one">%d 앨범</item>
         <item quantity="other">%d 앨범</item>
     </plurals>
     <plurals name="n_playlist">
-        <item quantity="one">%d 재생목록</item>
         <item quantity="other">%d 재생목록</item>
     </plurals>
     <plurals name="n_week">
-        <item quantity="one">%d주</item>
         <item quantity="other">%d주</item>
     </plurals>
     <plurals name="n_month">
-        <item quantity="one">%d개월</item>
         <item quantity="other">%d개월</item>
     </plurals>
     <plurals name="n_year">
-        <item quantity="one">%d년</item>
         <item quantity="other">%d년</item>
     </plurals>
     <!-- Snackbar -->
@@ -226,7 +219,6 @@
     <string name="sleep_timer">취침 타이머</string>
     <string name="end_of_song">곡이 끝날 때</string>
     <plurals name="minute">
-        <item quantity="one">1 minute</item>
         <item quantity="other">%d분</item>
     </plurals>
     <string name="error_no_stream">사용 가능한 오디오 스트림이 없습니다.</string>
