@@ -107,9 +107,20 @@ fun DiscordSettings(
         mutableStateOf(DiscordAuthorizationUiMode.Idle.name)
     }
     var authorizationMessage by rememberSaveable { mutableStateOf<String?>(null) }
+    var currentTimeMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
 
     val authorizationUiMode = remember(authorizationUiModeName) {
         DiscordAuthorizationUiMode.valueOf(authorizationUiModeName)
+    }
+
+    val discordTokenExpiresAt by rememberPreference(DiscordTokenExpiresAtKey, 0L)
+
+    LaunchedEffect(discordTokenExpiresAt) {
+        currentTimeMillis = System.currentTimeMillis()
+        if (discordTokenExpiresAt > currentTimeMillis) {
+            delay((discordTokenExpiresAt - currentTimeMillis).coerceAtLeast(1_000L))
+            currentTimeMillis = System.currentTimeMillis()
+        }
     }
 
     LaunchedEffect(discordToken) {
@@ -158,6 +169,9 @@ fun DiscordSettings(
     val activeDiscordName = authorizedName.ifBlank { discordName }
     val activeDiscordAvatarUrl = authorizedAvatarUrl.ifBlank { discordAvatarUrl }
     val isLoggedIn = remember(activeDiscordToken) { activeDiscordToken.isNotBlank() }
+    val isAccessTokenExpired = remember(isLoggedIn, discordTokenExpiresAt, currentTimeMillis) {
+        isLoggedIn && discordTokenExpiresAt > 0L && currentTimeMillis >= discordTokenExpiresAt
+    }
     val accountDisplayName = remember(isLoggedIn, activeDiscordName, activeDiscordUsername, context) {
         when {
             activeDiscordName.isNotBlank() -> activeDiscordName
@@ -422,8 +436,10 @@ fun DiscordSettings(
                             isLoggedIn = isLoggedIn,
                             authorizationUiMode = authorizationUiMode,
                             authorizationMessage = authorizationMessage,
+                            isAccessTokenExpired = isAccessTokenExpired,
                             discordRpcEnabled = discordRPC,
                             onDiscordRpcEnabledChange = onDiscordRPCChange,
+                            onReauthorize = launchAuthorization,
                             onPrimaryAction = {
                                 if (isLoggedIn) {
                                     showLogoutConfirm = true
@@ -704,8 +720,10 @@ private fun DiscordAccountGroupCard(
     isLoggedIn: Boolean,
     authorizationUiMode: DiscordAuthorizationUiMode,
     authorizationMessage: String?,
+    isAccessTokenExpired: Boolean,
     discordRpcEnabled: Boolean,
     onDiscordRpcEnabledChange: (Boolean) -> Unit,
+    onReauthorize: () -> Unit,
     onPrimaryAction: () -> Unit,
     primaryActionEnabled: Boolean,
 ) {
@@ -850,7 +868,8 @@ private fun DiscordAccountGroupCard(
             }
 
             AnimatedVisibility(
-                visible = authorizationUiMode != DiscordAuthorizationUiMode.Idle || isLoggedIn,
+                visible = authorizationUiMode != DiscordAuthorizationUiMode.Idle ||
+                    (isLoggedIn && !isAccessTokenExpired),
             ) {
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
@@ -962,7 +981,66 @@ private fun DiscordAccountGroupCard(
                     Text(stringResource(R.string.discord_open_authorization))
                 }
             }
+
+            AnimatedVisibility(
+                visible = isAccessTokenExpired && authorizationUiMode == DiscordAuthorizationUiMode.Idle,
+            ) {
+                DiscordReauthorizeWarningRow(
+                    onReauthorize = onReauthorize,
+                    enabled = primaryActionEnabled,
+                )
+            }
         }
+    }
+}
+
+@Composable
+private fun DiscordReauthorizeWarningRow(
+    onReauthorize: () -> Unit,
+    enabled: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.errorContainer,
+    ) {
+        ListItem(
+            headlineContent = {
+                Text(
+                    text = stringResource(R.string.discord_reauthorize_required_title),
+                    fontWeight = FontWeight.SemiBold,
+                )
+            },
+            supportingContent = {
+                Text(stringResource(R.string.discord_reauthorize_required_description))
+            },
+            leadingContent = {
+                Icon(
+                    painter = painterResource(R.drawable.error),
+                    contentDescription = null,
+                )
+            },
+            trailingContent = {
+                TextButton(
+                    onClick = onReauthorize,
+                    enabled = enabled,
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                    ),
+                    shapes = ButtonDefaults.shapes(),
+                ) {
+                    Text(stringResource(R.string.discord_reauthorize_action))
+                }
+            },
+            colors = ListItemDefaults.colors(
+                containerColor = Color.Transparent,
+                headlineColor = MaterialTheme.colorScheme.onErrorContainer,
+                supportingColor = MaterialTheme.colorScheme.onErrorContainer,
+                leadingIconColor = MaterialTheme.colorScheme.onErrorContainer,
+                trailingIconColor = MaterialTheme.colorScheme.onErrorContainer,
+            ),
+        )
     }
 }
 
