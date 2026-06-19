@@ -12,7 +12,7 @@
         <item quantity="other">%d seçildi</item>
     </plurals>
     <!-- Home -->
-    <string name="history">Tarih</string>
+    <string name="history">Geçmiş</string>
     <string name="stats">İstatistikler</string>
     <string name="mood_and_genres">Ruh Hali &amp; Türler</string>
     <string name="account">Hesap</string>
@@ -39,9 +39,9 @@
     <string name="search_yt_music">YouTube Müzik\'te ara</string>
     <string name="search_library">Kütüphanede ara</string>
     <string name="filter_library">Kütüphane</string>
-    <string name="filter_liked">Beğendim</string>
-    <string name="filter_downloaded">İndirildi</string>
-    <string name="filter_downloaded_full">İndirildi (Tam)</string>
+    <string name="filter_liked">Beğenilenler</string>
+    <string name="filter_downloaded">İndirilenler</string>
+    <string name="filter_downloaded_full">İndirililenler (Tam)</string>
     <string name="filter_all">Hepsi</string>
     <string name="filter_songs">Şarkılar</string>
     <string name="filter_videos">Videolar</string>
@@ -50,7 +50,7 @@
     <string name="filter_playlists">Çalma listeleri</string>
     <string name="filter_community_playlists">Topluluk oynatma listeleri</string>
     <string name="filter_featured_playlists">Öne çıkan oynatma listeleri</string>
-    <string name="filter_bookmarked">Favorilere eklendi</string>
+    <string name="filter_bookmarked">Favorilere eklenenler</string>
     <string name="no_results_found">Sonuç bulunamadı</string>
     <!-- Library -->
     <string name="library_song_empty">Kütüphane şarkıları burada görünecek</string>
@@ -76,8 +76,8 @@
     <string name="details">Ayrıntılar</string>
     <string name="edit">Düzenle</string>
     <string name="start_radio">Radyoyu başlat</string>
-    <string name="play">Oyna</string>
-    <string name="play_next">Sıradakini oyna</string>
+    <string name="play">Oynat</string>
+    <string name="play_next">Sıradakini oynat</string>
     <string name="add_to_queue">Kuyruğa ekle</string>
     <string name="add_to_library">Kitaplığa ekle</string>
     <string name="add_all_to_library">Tümünü kitaplığa ekle</string>
@@ -102,7 +102,7 @@
     <string name="remove_from_queue">Sıradan kaldır</string>
     <string name="search_online">Çevrimiçi ara</string>
     <string name="action_sync">Senkronizasyon</string>
-    <string name="advanced">Gelişmiş</string>
+    <string name="advanced">İleri Seviye</string>
     <string name="tempo_and_pitch">Tempo ve Perde</string>
     <!-- Sort menu -->
     <string name="sort_by_create_date">Eklenme tarihi</string>
@@ -111,8 +111,8 @@
     <string name="sort_by_year">Yıl</string>
     <string name="sort_by_song_count">Şarkı sayısı</string>
     <string name="sort_by_length">Uzunluk</string>
-    <string name="sort_by_play_time">Oyun zamanı</string>
-    <string name="sort_by_custom">Özel sipariş</string>
+    <string name="sort_by_play_time">Oynatma süresi</string>
+    <string name="sort_by_custom">Özel sıralama</string>
     <!-- Dialog -->
     <string name="media_id">Medya kimliği</string>
     <string name="mime_type">MIME türü</string>
@@ -357,7 +357,7 @@
     <string name="right">Sağ</string>
     <string name="player_slider_style">Oyuncu kaydırıcı stili</string>
     <string name="default_">Varsayılan</string>
-    <string name="squiggly">Dalgalı</string>
+    <string name="squiggly">Kıvrımlı</string>
     <string name="misc">Çeşitli</string>
     <string name="default_open_tab">Varsayılan açık sekme</string>
     <string name="grid_cell_size">Izgara hücresi boyutu</string>
@@ -409,7 +409,7 @@
     <string name="add_symbol">Sembol ekle</string>
     <string name="enter_symbol">Sembol girin</string>
     <string name="equalizer">Ekolayzer</string>
-    <string name="eq_waiting_for_audio_session">Sesli oturum bekleniyor…</string>
+    <string name="eq_waiting_for_audio_session">Sesli oturum bekleniyor</string>
     <string name="eq_open_system_equalizer">Açık sistem ekolayzır</string>
     <string name="eq_presets">Ön ayarlar</string>
     <string name="eq_system">Sistem</string>
@@ -423,7 +423,7 @@
     <string name="eq_save_profile">Profili kaydet</string>
     <string name="eq_profile_name">Profil adı</string>
     <string name="eq_custom_profile">Özel profil</string>
-    <string name="eq_import">İthalat</string>
+    <string name="eq_import">İçe aktar</string>
     <string name="eq_import_profiles">Profilleri içe aktar</string>
     <string name="eq_import_profiles_placeholder">JSON ekolayzır profillerini yapıştırın</string>
     <string name="eq_import_failed">Geçersiz profil verileri</string>
@@ -487,7 +487,7 @@
     <string name="scrobble_delay_minutes">Scrobble Gecikmesi (Saniye)</string>
     <string name="username">Kullanıcı adı</string>
     <string name="password">Şifre</string>
-    <string name="logging_in">Giriş yapılıyor…</string>
+    <string name="logging_in">Giriş yapılıyor</string>
     <!-- ListenBrainz -->
     <string name="listenbrainz_scrobbling">ListenBrainz skrobling yapıyor</string>
     <string name="listenbrainz_scrobbling_description">Şu anda çalınan ve biten dinlemelerin ListenBrainz\'e gönderilmesini etkinleştirin</string>
@@ -576,7 +576,7 @@
     <string name="content_length_label">İçerik Uzunluğu</string>
     <string name="unknown_content_length">Bilinmeyen içerik uzunluğu</string>
     <string name="format_label">Biçim</string>
-    <string name="loading_format">Biçim yükleniyor…</string>
+    <string name="loading_format">Biçim yükleniyor</string>
     <string name="buffer_health_label">Tampon Sağlığı</string>
     <string name="playback_speed_label">Oynatma Hızı</string>
     <string name="state_label">Eyalet</string>

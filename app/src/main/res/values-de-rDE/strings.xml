@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Upstream InnerTune strings --><!-- Do not add new features here --><!-- Try to re-use strings here, but be careful on its usage e.g. verb vs noun --><!-- "InnerTune" is replaced with "ArchiveTune" --><!-- Translators: Do not modify this file for translations, use InnerTune's Weblate instead. --><resources>
     <!-- Bottom navigation -->
-    <string name="home">Startseite</string>
+    <string name="home">Home</string>
     <string name="songs">Lieder</string>
     <string name="artists">Künstler</string>
     <string name="albums">Alben</string>
     <string name="playlists">Wiedergabelisten</string>
     <!-- Top bar -->
     <plurals name="n_selected">
-        <item quantity="one"/>
+        <item quantity="one"></item>
         <item quantity="other">%d ausgewählt</item>
     </plurals>
     <!-- Home -->
@@ -36,8 +36,8 @@
     <string name="most_played_albums">Die meisten gespielten Alben</string>
     <!-- Search -->
     <string name="search">Suchen</string>
-    <string name="search_yt_music">Durchsuchen Sie YouTube Music…</string>
-    <string name="search_library">Bibliothek durchsuchen…</string>
+    <string name="search_yt_music">Durchsuche YouTube Music</string>
+    <string name="search_library">Bibliothek durchsuchen</string>
     <string name="filter_library">Bibliothek</string>
     <string name="filter_liked">Gefallen</string>
     <string name="filter_downloaded">Heruntergeladen</string>
@@ -193,7 +193,7 @@
     <string name="error_unknown">Unbekannter Fehler</string>
     <!-- Player action -->
     <string name="action_like">Wie</string>
-    <string name="action_like_all">Wie alle</string>
+    <string name="action_like_all">Gefallen mir alle</string>
     <string name="action_remove_like">Like entfernen</string>
     <string name="action_remove_like_all">Alle Likes entfernen</string>
     <string name="action_shuffle_on">Mischen Sie weiter</string>
@@ -447,7 +447,7 @@
     <string name="scrobble_delay_minutes">Scrobble-Verzögerung (Sekunden)</string>
     <string name="username">Benutzername</string>
     <string name="password">Passwort</string>
-    <string name="logging_in">Anmeldung…</string>
+    <string name="logging_in">Anmelden</string>
     <!-- ListenBrainz -->
     <string name="listenbrainz_scrobbling">ListenBrainz-Scrobbling</string>
     <string name="listenbrainz_scrobbling_description">Übermitteln von „Jetzt läuft“ und abgeschlossenen Wiedergaben an ListenBrainz aktivieren</string>
@@ -590,4 +590,5 @@
     <string name="album_backdrop_desc">Kunstwerk als unscharfen Hintergrund auf dem Player anzeigen</string>
     <string name="backdrop_blur_amount">Stärke der Hintergrundunschärfe</string>
     <string name="backdrop_blur_amount_value">%1$d%%</string>
+    <string name="search_try_different">Versuche einen anderen Suchbegriff</string>
 </resources>
