@@ -1000,24 +1000,4 @@
     <string name="album_backdrop_desc">プレーヤーにアートワークをぼかした背景として表示</string>
     <string name="backdrop_blur_amount">背景ブラーの量</string>
     <string name="backdrop_blur_amount_value">%1$d%%</string>
-    <string name="device_volume_zero_playback_paused"></string>
-    <string name="check_for_update"></string>
-    <string name="font_preference_default"></string>
-    <string name="font_preference_desc"></string>
-    <string name="lyrics_synced_badge"></string>
-    <string name="font_preference_custom"></string>
-    <string name="custom_font_invalid"></string>
-    <string name="download_progress_percent"></string>
-    <string name="proxy_connection_invalid_configuration"></string>
-    <string name="updates_subtitle_daily_nightly"></string>
-    <string name="youtube_channels"></string>
-    <string name="channel_daily_nightly"></string>
-    <string name="account_integrations_summary"></string>
-    <string name="custom_font"></string>
-    <string name="device_mute_recovery_volume"></string>
-    <string name="font_preference"></string>
-    <string name="device_mute_recovery_volume_disabled"></string>
-    <string name="custom_font_desc"></string>
-    <string name="font_preference_system"></string>
-    <string name="updates_nightly_hosting_description"></string>
 </resources>
