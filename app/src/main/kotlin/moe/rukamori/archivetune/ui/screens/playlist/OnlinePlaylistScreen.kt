@@ -10,6 +10,7 @@
 package moe.rukamori.archivetune.ui.screens.playlist
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -40,7 +41,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ButtonGroupDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
@@ -143,6 +143,7 @@ import moe.rukamori.archivetune.ui.theme.PlayerColorExtractor
 import moe.rukamori.archivetune.ui.utils.DownloadProgressFloatingToolbar
 import moe.rukamori.archivetune.ui.utils.DownloadProgressToolbarState
 import moe.rukamori.archivetune.ui.utils.HeaderDownloadItem
+import moe.rukamori.archivetune.ui.utils.HeaderDownloadProgressIndicator
 import moe.rukamori.archivetune.ui.utils.HeaderDownloadState
 import moe.rukamori.archivetune.ui.utils.ItemWrapper
 import moe.rukamori.archivetune.ui.utils.backToMain
@@ -183,7 +184,7 @@ fun OnlinePlaylistScreen(
     var downloads by remember { mutableStateOf<Map<String, Download>>(emptyMap()) }
     var downloadState by remember { mutableStateOf<HeaderDownloadState>(HeaderDownloadState.None) }
     var downloadsPaused by remember { mutableStateOf(false) }
-    var downloadProgressToolbarDismissed by remember { mutableStateOf(false) }
+    var downloadProgressToolbarDismissed by remember { mutableStateOf(true) }
 
     var selection by remember { mutableStateOf(false) }
     val hideExplicit by rememberPreference(key = HideExplicitKey, defaultValue = false)
@@ -944,13 +945,7 @@ fun OnlinePlaylistScreen(
                                             }
 
                                             is HeaderDownloadState.Partial -> {
-                                                CircularProgressIndicator(
-                                                    progress = { state.progress },
-                                                    modifier = Modifier.size(36.dp),
-                                                    color = MaterialTheme.colorScheme.onSurface,
-                                                    trackColor = MaterialTheme.colorScheme.outlineVariant,
-                                                    strokeWidth = 3.dp,
-                                                )
+                                                HeaderDownloadProgressIndicator(progress = state.progress)
                                             }
 
                                             HeaderDownloadState.None -> {
@@ -1349,37 +1344,41 @@ fun OnlinePlaylistScreen(
         )
 
         val currentDownloadState = downloadState
-        if (
+        val showDownloadProgressToolbar =
             currentDownloadState is HeaderDownloadState.Partial &&
-            songs.isNotEmpty() &&
-            !downloadProgressToolbarDismissed
+                songs.isNotEmpty() &&
+                !downloadProgressToolbarDismissed
+        AnimatedVisibility(
+            visible = showDownloadProgressToolbar,
+            modifier =
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(LocalPlayerAwareWindowInsets.current.asPaddingValues())
+                    .padding(bottom = 16.dp),
         ) {
-            val songIds = remember(songs) { songs.map { it.id } }
-            DownloadProgressFloatingToolbar(
-                state =
-                    DownloadProgressToolbarState(
-                        progress = currentDownloadState.progress,
-                        paused = downloadsPaused,
-                        canPause = hasActiveDownloads(songIds, downloads),
-                    ),
-                onPauseResume = {
-                    if (downloadsPaused) {
-                        sendResumeDownloads(context, songIds)
-                    } else {
-                        sendPauseDownloads(context, songIds)
-                    }
-                    downloadsPaused = !downloadsPaused
-                },
-                onDismiss = {
-                    downloadsPaused = false
-                    downloadProgressToolbarDismissed = true
-                },
-                modifier =
-                    Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(LocalPlayerAwareWindowInsets.current.asPaddingValues())
-                        .padding(bottom = 16.dp),
-            )
+            if (currentDownloadState is HeaderDownloadState.Partial && songs.isNotEmpty()) {
+                val songIds = remember(songs) { songs.map { it.id } }
+                DownloadProgressFloatingToolbar(
+                    state =
+                        DownloadProgressToolbarState(
+                            progress = currentDownloadState.progress,
+                            paused = downloadsPaused,
+                            canPause = hasActiveDownloads(songIds, downloads),
+                        ),
+                    onPauseResume = {
+                        if (downloadsPaused) {
+                            sendResumeDownloads(context, songIds)
+                        } else {
+                            sendPauseDownloads(context, songIds)
+                        }
+                        downloadsPaused = !downloadsPaused
+                    },
+                    onDismiss = {
+                        downloadsPaused = false
+                        downloadProgressToolbarDismissed = true
+                    },
+                )
+            }
         }
 
         SnackbarHost(
