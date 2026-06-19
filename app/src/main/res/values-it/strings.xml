@@ -1022,4 +1022,7 @@
     <string name="source_url"></string>
     <string name="duration_sort"></string>
     <string name="wakelock"></string>
+    <string name="widget_pause"></string>
+    <string name="widget_previous"></string>
+    <string name="widget_tap_to_open"></string>
 </resources>
