@@ -8,7 +8,6 @@
     <string name="playlists">Wiedergabelisten</string>
     <!-- Top bar -->
     <plurals name="n_selected">
-        <item quantity="one"></item>
         <item quantity="other">%d ausgewählt</item>
     </plurals>
     <!-- Home -->

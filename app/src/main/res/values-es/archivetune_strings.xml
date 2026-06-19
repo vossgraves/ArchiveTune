@@ -528,10 +528,10 @@
     <string name="storage_location_sheet_title">Ubicación del almacenamiento</string>
     <string name="storage_location_internal">Almacenamiento interno</string>
     <string name="storage_location_removable">Tarjeta Sd</string>
-    <string name="storage_location_removable_named">Tarjeta SD %s</string>
+    <string name="storage_location_removable_named">Tarjeta SD %s</string>
     <string name="storage_location_free">%s libre</string>
     <string name="storage_location_apply">Utilice este almacenamiento</string>
-    <string name="storage_migration_cache_progress">Moviendo caché... %1$d %%</string>
+    <string name="storage_migration_cache_progress">Moviendo caché... %1$d %%</string>
     <string name="storage_migration_downloads_progress">Moviendo las descargas…%1$d %%</string>
     <string name="storage_migration_warning">Advertencia: No cierre la aplicación ni apague el dispositivo durante este proceso. Si lo hace, podría perder datos.</string>
     <string name="storage_folder_selected_restart">Carpeta de almacenamiento guardada. La aplicación se reiniciará en 3 segundos.</string>
@@ -552,7 +552,7 @@
     <string name="year_in_music_recap">Resumen musical</string>
     <string name="year_in_music_recap_word">RESUMEN</string>
     <string name="year_in_music_intro_title">Revive tu año</string>
-    <string name="year_in_music_intro_subtitle">Un repaso de las canciones, artistas y álbumes que dieron forma a  %d</string>
+    <string name="year_in_music_intro_subtitle">Un repaso de las canciones, artistas y álbumes que dieron forma a %d</string>
     <string name="year_in_music_intro_hero">¡Ya está aquí! Tu año en la música.</string>
     <string name="year_in_music_intro_details">Descubre cuáles son tus canciones, artistas, álbumes favoritos y el tiempo que dedicas a escucharlos.</string>
     <string name="year_in_music_swipe_begin">Desliza para comenzar</string>

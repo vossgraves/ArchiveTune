@@ -81,7 +81,6 @@ jobs:
           LASTFM_SECRET: ${{ secrets.LASTFM_SECRET }}
           TOGETHER_BEARER_TOKEN: ${{ secrets.TOGETHER_BEARER_TOKEN }}
           CANVAS_BEARER_TOKEN: ${{ secrets.CANVAS_BEARER_TOKEN }}
-          WEBLATE_API_TOKEN: ${{ secrets.WEBLATE_API_TOKEN }}
         run: |
           set -euo pipefail
           DEVICE="mobile"
@@ -303,7 +302,6 @@ jobs:
           LASTFM_SECRET: ${{ secrets.LASTFM_SECRET }}
           TOGETHER_BEARER_TOKEN: ${{ secrets.TOGETHER_BEARER_TOKEN }}
           CANVAS_BEARER_TOKEN: ${{ secrets.CANVAS_BEARER_TOKEN }}
-          WEBLATE_API_TOKEN: ${{ secrets.WEBLATE_API_TOKEN }}
 
       - name: Resolve release output directory
         id: release_dir
@@ -404,16 +402,16 @@ jobs:
 
   create-release:
     needs: [check-version, build]
-    # Removed '|| workflow_dispatch' so it respects the version check
     if: needs.check-version.outputs.version_changed == 'true'
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      
+          persist-credentials: false
+
       - name: Download all APKs
         uses: actions/download-artifact@v8
         with:
@@ -462,20 +460,20 @@ jobs:
             }
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          
+
       - name: Create Release
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
         run: |
           MOBILE_UNIVERSAL_APK=$(find downloaded_artifacts/app-mobile-universal-release -name "*.apk" | head -n 1)
           OTHER_APKS=$(find downloaded_artifacts -path "*/app-*-release/*.apk" ! -path "*/app-mobile-universal-release/*")
 
-          # Cleaned up heredoc for safety
           cat > release_notes.md <<EOF
           ${{ steps.build_changelog.outputs.changelog }}
           EOF
-          
+
           gh release create "v${{ needs.check-version.outputs.new_version }}" \
+            --target "${{ github.sha }}" \
             --title "${{ needs.check-version.outputs.new_version }}" \
             --notes-file release_notes.md \
             "$MOBILE_UNIVERSAL_APK" \

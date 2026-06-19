@@ -123,7 +123,7 @@
     <string name="together_ban">Ban</string>
     <string name="together_kick_confirm">Tendang %1$s?</string>
     <string name="together_ban_confirm">Ban %1$s?</string>
-    <string name="together_requesting_song_change">Meminta host untuk mengganti lagu\u2026</string>
+    <string name="together_requesting_song_change">Meminta host untuk mengganti lagu…</string>
     <string name="together_song_change_failed">Perubahan lagu tidak diterapkan. Silakan coba lagi.</string>
     <string name="remove_from_history">Hapus dari riwayat</string>
     <string name="remove_from_playlist">Hapus dari playlist</string>
