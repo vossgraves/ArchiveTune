@@ -18,10 +18,13 @@ import moe.rukamori.archivetune.playback.ExoDownloadService
 @Immutable
 sealed interface HeaderDownloadState {
     data object None : HeaderDownloadState
+
     data object Completed : HeaderDownloadState
 
     @Immutable
-    data class Partial(val progress: Float) : HeaderDownloadState
+    data class Partial(
+        val progress: Float,
+    ) : HeaderDownloadState
 }
 
 @Immutable
@@ -53,21 +56,24 @@ fun headerDownloadState(
 
             Download.STATE_QUEUED,
             Download.STATE_DOWNLOADING,
-            Download.STATE_RESTARTING -> {
-                val progress = download.percentDownloaded
-                    .takeIf { it >= 0f }
-                    ?.div(100f)
-                    ?: 0f
+            Download.STATE_RESTARTING,
+            -> {
+                val progress =
+                    download.percentDownloaded
+                        .takeIf { it >= 0f }
+                        ?.div(100f)
+                        ?: 0f
                 progressTotal += progress.coerceIn(0f, 1f)
                 hasAnyDownload = true
             }
 
             Download.STATE_STOPPED -> {
                 if (download.stopReason != DOWNLOAD_STOP_REASON_NONE) {
-                    val progress = download.percentDownloaded
-                        .takeIf { it >= 0f }
-                        ?.div(100f)
-                        ?: 0f
+                    val progress =
+                        download.percentDownloaded
+                            .takeIf { it >= 0f }
+                            ?.div(100f)
+                            ?: 0f
                     progressTotal += progress.coerceIn(0f, 1f)
                     hasAnyDownload = true
                 }
@@ -77,11 +83,19 @@ fun headerDownloadState(
 
     val distinctCount = distinctSongIds.size
     return when {
-        completedCount == distinctCount -> HeaderDownloadState.Completed
-        hasAnyDownload -> HeaderDownloadState.Partial(
-            progress = (progressTotal / distinctCount).coerceIn(0f, 1f),
-        )
-        else -> HeaderDownloadState.None
+        completedCount == distinctCount -> {
+            HeaderDownloadState.Completed
+        }
+
+        hasAnyDownload -> {
+            HeaderDownloadState.Partial(
+                progress = (progressTotal / distinctCount).coerceIn(0f, 1f),
+            )
+        }
+
+        else -> {
+            HeaderDownloadState.None
+        }
     }
 }
 
@@ -94,11 +108,12 @@ fun sendAddMissingDownloads(
         .distinctBy { it.id }
         .filter { item -> downloads[item.id]?.state.shouldRequestDownload() }
         .forEach { item ->
-            val downloadRequest = DownloadRequest
-                .Builder(item.id, item.id.toUri())
-                .setCustomCacheKey(item.id)
-                .setData(item.title.toByteArray())
-                .build()
+            val downloadRequest =
+                DownloadRequest
+                    .Builder(item.id, item.id.toUri())
+                    .setCustomCacheKey(item.id)
+                    .setData(item.title.toByteArray())
+                    .build()
             DownloadService.sendAddDownload(
                 context,
                 ExoDownloadService::class.java,
@@ -160,8 +175,11 @@ fun hasActiveDownloads(
         when (downloads[songId]?.state) {
             Download.STATE_QUEUED,
             Download.STATE_DOWNLOADING,
-            Download.STATE_RESTARTING -> true
+            Download.STATE_RESTARTING,
+            -> true
+
             Download.STATE_STOPPED -> downloads[songId]?.stopReason != DOWNLOAD_STOP_REASON_NONE
+
             else -> false
         }
     }
@@ -171,7 +189,9 @@ private fun Int?.shouldRequestDownload(): Boolean =
         Download.STATE_COMPLETED,
         Download.STATE_QUEUED,
         Download.STATE_DOWNLOADING,
-        Download.STATE_RESTARTING -> false
+        Download.STATE_RESTARTING,
+        -> false
+
         else -> true
     }
 

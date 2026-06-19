@@ -45,9 +45,7 @@ import moe.rukamori.archivetune.utils.setAppLocale
 import java.util.Locale
 
 @Composable
-fun ContentSettings(
-    navController: NavController,
-) {
+fun ContentSettings(navController: NavController) {
     val context = LocalContext.current
 
     // Used only before Android 13
@@ -84,15 +82,17 @@ fun ContentSettings(
                         val locale = Locale.getDefault()
                         val languageTag = locale.toLanguageTag().replace("-Hant", "")
 
-                        YouTube.locale = YouTube.locale.copy(
-                            hl = newValue.takeIf { it != SYSTEM_DEFAULT }
-                                ?: locale.language.takeIf { it in LanguageCodeToName }
-                                ?: languageTag.takeIf { it in LanguageCodeToName }
-                                ?: "en"
-                        )
+                        YouTube.locale =
+                            YouTube.locale.copy(
+                                hl =
+                                    newValue.takeIf { it != SYSTEM_DEFAULT }
+                                        ?: locale.language.takeIf { it in LanguageCodeToName }
+                                        ?: languageTag.takeIf { it in LanguageCodeToName }
+                                        ?: "en",
+                            )
 
                         onContentLanguageChange(newValue)
-                    }
+                    },
                 )
             }
 
@@ -108,14 +108,16 @@ fun ContentSettings(
                     onValueSelected = { newValue ->
                         val locale = Locale.getDefault()
 
-                        YouTube.locale = YouTube.locale.copy(
-                            gl = newValue.takeIf { it != SYSTEM_DEFAULT }
-                                ?: locale.country.takeIf { it in CountryCodeToName }
-                                ?: "US"
-                        )
+                        YouTube.locale =
+                            YouTube.locale.copy(
+                                gl =
+                                    newValue.takeIf { it != SYSTEM_DEFAULT }
+                                        ?: locale.country.takeIf { it in CountryCodeToName }
+                                        ?: "US",
+                            )
 
                         onContentCountryChange(newValue)
-                    }
+                    },
                 )
             }
 
@@ -124,11 +126,12 @@ fun ContentSettings(
                     title = { Text(stringResource(R.string.you_might_like_source)) },
                     icon = { Icon(painterResource(R.drawable.playlist_play), null) },
                     selectedValue = playlistSuggestionSource,
-                    values = listOf(
-                        PlaylistSuggestionSource.PLAYLIST_TITLE,
-                        PlaylistSuggestionSource.PLAYLIST_CONTENT,
-                        PlaylistSuggestionSource.BOTH,
-                    ),
+                    values =
+                        listOf(
+                            PlaylistSuggestionSource.PLAYLIST_TITLE,
+                            PlaylistSuggestionSource.PLAYLIST_CONTENT,
+                            PlaylistSuggestionSource.BOTH,
+                        ),
                     valueText = {
                         when (it) {
                             PlaylistSuggestionSource.PLAYLIST_TITLE -> stringResource(R.string.playlist_suggestion_source_title)
@@ -169,10 +172,10 @@ fun ContentSettings(
                             context.startActivity(
                                 Intent(
                                     Settings.ACTION_APP_LOCALE_SETTINGS,
-                                    "package:${context.packageName}".toUri()
-                                )
+                                    "package:${context.packageName}".toUri(),
+                                ),
                             )
-                        }
+                        },
                     )
                 } else {
                     ListPreference(
@@ -184,14 +187,15 @@ fun ContentSettings(
                             LanguageCodeToName.getOrElse(it) { stringResource(R.string.system_default) }
                         },
                         onValueSelected = { langTag ->
-                            val newLocale = langTag
-                                .takeUnless { it == SYSTEM_DEFAULT }
-                                ?.let { Locale.forLanguageTag(it) }
-                                ?: Locale.getDefault()
+                            val newLocale =
+                                langTag
+                                    .takeUnless { it == SYSTEM_DEFAULT }
+                                    ?.let { Locale.forLanguageTag(it) }
+                                    ?: Locale.getDefault()
 
                             onAppLanguageChange(langTag)
                             setAppLocale(context, newLocale)
-                        }
+                        },
                     )
                 }
             }
@@ -239,6 +243,6 @@ fun ContentSettings(
                     contentDescription = null,
                 )
             }
-        }
+        },
     )
 }

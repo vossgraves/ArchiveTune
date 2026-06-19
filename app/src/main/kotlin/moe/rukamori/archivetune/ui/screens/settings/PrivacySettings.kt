@@ -57,18 +57,21 @@ fun PrivacySettings(
     scrollBehavior: TopAppBarScrollBehavior,
 ) {
     val database = LocalDatabase.current
-    val (pauseListenHistory, onPauseListenHistoryChange) = rememberPreference(
-        key = PauseListenHistoryKey,
-        defaultValue = false
-    )
-    val (pauseSearchHistory, onPauseSearchHistoryChange) = rememberPreference(
-        key = PauseSearchHistoryKey,
-        defaultValue = false
-    )
-    val (disableScreenshot, onDisableScreenshotChange) = rememberPreference(
-        key = DisableScreenshotKey,
-        defaultValue = false
-    )
+    val (pauseListenHistory, onPauseListenHistoryChange) =
+        rememberPreference(
+            key = PauseListenHistoryKey,
+            defaultValue = false,
+        )
+    val (pauseSearchHistory, onPauseSearchHistoryChange) =
+        rememberPreference(
+            key = PauseSearchHistoryKey,
+            defaultValue = false,
+        )
+    val (disableScreenshot, onDisableScreenshotChange) =
+        rememberPreference(
+            key = DisableScreenshotKey,
+            defaultValue = false,
+        )
 
     var showClearListenHistoryDialog by remember {
         mutableStateOf(false)
@@ -147,14 +150,14 @@ fun PrivacySettings(
     Column(
         Modifier
             .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom))
-            .verticalScroll(rememberScrollState())
+            .verticalScroll(rememberScrollState()),
     ) {
         Spacer(
             Modifier.windowInsetsPadding(
                 LocalPlayerAwareWindowInsets.current.only(
-                    WindowInsetsSides.Top
-                )
-            )
+                    WindowInsetsSides.Top,
+                ),
+            ),
         )
 
         PreferenceGroup(title = stringResource(R.string.listen_history)) {
@@ -220,6 +223,6 @@ fun PrivacySettings(
                     contentDescription = null,
                 )
             }
-        }
+        },
     )
 }
