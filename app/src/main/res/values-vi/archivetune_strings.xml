@@ -640,10 +640,4 @@
     <string name="about_content_desc_donate">Quyên góp</string>
     <string name="storage_cache_cleared">Cache đã được dọn.</string>
     <string name="storage_cache_clear_failed">Không thể xóa cache. Kiểm tra quyền truy cập thẻ SD.</string>
-    <string name="about_contributors_read_more"></string>
-    <string name="about_license_unknown"></string>
-    <string name="history_duration_seconds"></string>
-    <string name="history_duration_desc"></string>
-    <string name="about_license"></string>
-    <string name="about_contributor_translation"></string>
 </resources>
