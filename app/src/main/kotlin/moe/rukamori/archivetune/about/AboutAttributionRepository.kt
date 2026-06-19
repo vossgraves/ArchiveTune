@@ -319,11 +319,12 @@ constructor(
             name.equals(ignoredName, ignoreCase = true)
         }
 
-    private fun JSONObject.isTranslationCommit(): Boolean =
-        optJSONObject("commit")
+    private fun JSONObject.isTranslationCommit(): Boolean {
+        return optJSONObject("commit")
             ?.optString("message")
             ?.startsWith(TranslationCommitMessagePrefix, ignoreCase = true)
-            == true
+            ?: false
+    }
 
     private fun JSONObject.translationCommitAuthorName(): String? {
         val authorLogin = optJSONObject("author")
