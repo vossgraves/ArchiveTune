@@ -93,6 +93,8 @@ import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.ui.utils.formatFileSize
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.StorageFolderUiModel
+import moe.rukamori.archivetune.viewmodels.StorageCacheClearUiKind
+import moe.rukamori.archivetune.viewmodels.StorageCacheClearUiModel
 import moe.rukamori.archivetune.viewmodels.StorageLocationUiModel
 import moe.rukamori.archivetune.viewmodels.StorageLocationUiOptions
 import moe.rukamori.archivetune.viewmodels.StorageMigrationUiModel
@@ -559,6 +561,9 @@ fun StorageSettings(
     successState?.model?.migration?.let { migration ->
         StorageMigrationProgressDialog(migration = migration)
     }
+    successState?.model?.cacheClear?.let { cacheClear ->
+        StorageCacheClearProgressDialog(cacheClear = cacheClear)
+    }
 }
 
 @Composable
@@ -686,6 +691,56 @@ private fun StorageMigrationProgressDialog(migration: StorageMigrationUiModel) {
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = stringResource(R.string.storage_migration_warning),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    textAlign = TextAlign.Center,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun StorageCacheClearProgressDialog(cacheClear: StorageCacheClearUiModel) {
+    val progress = cacheClear.percent / 100f
+    val progressText =
+        when (cacheClear.kind) {
+            StorageCacheClearUiKind.SONGS -> stringResource(R.string.storage_clear_song_cache_progress, cacheClear.percent)
+            StorageCacheClearUiKind.DOWNLOADS -> stringResource(R.string.storage_clear_downloads_progress, cacheClear.percent)
+            StorageCacheClearUiKind.IMAGES -> stringResource(R.string.storage_clear_image_cache_progress, cacheClear.percent)
+            StorageCacheClearUiKind.CANVAS -> stringResource(R.string.storage_clear_canvas_cache_progress, cacheClear.percent)
+        }
+
+    BasicAlertDialog(
+        onDismissRequest = {},
+        modifier = Modifier.padding(24.dp),
+    ) {
+        Surface(
+            shape = MaterialTheme.shapes.extraLarge,
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            tonalElevation = 6.dp,
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
+                modifier =
+                    Modifier
+                        .size(280.dp)
+                        .padding(24.dp),
+            ) {
+                CircularWavyProgressIndicator(
+                    progress = { progress },
+                    modifier = Modifier.size(64.dp),
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                Text(
+                    text = progressText,
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = TextAlign.Center,
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = stringResource(R.string.storage_cache_clear_warning),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error,
                     textAlign = TextAlign.Center,

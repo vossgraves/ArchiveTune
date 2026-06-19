@@ -31,6 +31,7 @@ import moe.rukamori.archivetune.storage.ClearStorageCacheUseCase
 import moe.rukamori.archivetune.storage.ObserveStorageFoldersUseCase
 import moe.rukamori.archivetune.storage.SetStorageFolderUseCase
 import moe.rukamori.archivetune.storage.StorageCacheClearResult
+import moe.rukamori.archivetune.storage.StorageCacheClearProgress
 import moe.rukamori.archivetune.storage.StorageCacheKind
 import moe.rukamori.archivetune.storage.StorageFolderSelection
 import moe.rukamori.archivetune.storage.StorageFolderUpdateResult
@@ -61,6 +62,7 @@ data class StorageSettingsUiModel(
     val storageOptions: StorageLocationUiOptions,
     val picker: StorageLocationPickerUiModel,
     val migration: StorageMigrationUiModel?,
+    val cacheClear: StorageCacheClearUiModel?,
 )
 
 @Immutable
@@ -113,6 +115,19 @@ enum class StorageMigrationUiPhase {
 }
 
 @Immutable
+data class StorageCacheClearUiModel(
+    val kind: StorageCacheClearUiKind,
+    val percent: Int,
+)
+
+enum class StorageCacheClearUiKind {
+    SONGS,
+    DOWNLOADS,
+    IMAGES,
+    CANVAS,
+}
+
+@Immutable
 data class StorageSettingsEffect(
     val messageResId: Int,
     val restartApp: Boolean,
@@ -130,6 +145,7 @@ class StorageSettingsViewModel
         val effects = _effects.asSharedFlow()
         private val pickerState = MutableStateFlow(StorageLocationPickerUiModel())
         private val migrationState = MutableStateFlow<StorageMigrationUiModel?>(null)
+        private val cacheClearState = MutableStateFlow<StorageCacheClearUiModel?>(null)
         private val activeCacheClearKinds = mutableSetOf<StorageCacheKind>()
 
         val state: StateFlow<StorageSettingsScreenState> =
@@ -137,7 +153,8 @@ class StorageSettingsViewModel
                 observeStorageFolders(),
                 pickerState,
                 migrationState,
-            ) { selection, picker, migration ->
+                cacheClearState,
+            ) { selection, picker, migration, cacheClear ->
                 val selectedOptionId =
                     picker.selectedOptionId
                         ?.takeIf { optionId ->
@@ -149,6 +166,7 @@ class StorageSettingsViewModel
                     selection = selection,
                     picker = normalizedPicker,
                     migration = migration,
+                    cacheClear = cacheClear,
                 )
             }.map<StorageSettingsStatePayload, StorageSettingsScreenState> { payload ->
                 StorageSettingsScreenState.Success(
@@ -157,6 +175,7 @@ class StorageSettingsViewModel
                         storageOptions = payload.selection.options.toUiOptions(),
                         picker = payload.picker,
                         migration = payload.migration,
+                        cacheClear = payload.cacheClear,
                     ),
                 )
             }.catch { throwable ->
@@ -258,7 +277,19 @@ class StorageSettingsViewModel
             }
             viewModelScope.launch(Dispatchers.IO) {
                 try {
-                    val result = clearStorageCache(kind)
+                    if (showFeedback) {
+                        cacheClearState.value =
+                            StorageCacheClearUiModel(
+                                kind = kind.toUiKind(),
+                                percent = 0,
+                            )
+                    }
+                    val result =
+                        clearStorageCache(kind) { progress ->
+                            if (showFeedback) {
+                                cacheClearState.value = progress.toUiModel()
+                            }
+                        }
                     if (showFeedback) {
                         val messageResId =
                             when (result) {
@@ -275,6 +306,9 @@ class StorageSettingsViewModel
                 } finally {
                     synchronized(activeCacheClearKinds) {
                         activeCacheClearKinds.remove(kind)
+                    }
+                    if (showFeedback) {
+                        cacheClearState.value = null
                     }
                 }
             }
@@ -314,10 +348,25 @@ class StorageSettingsViewModel
                     },
                 percent = percent.coerceIn(0, 100),
             )
+
+        private fun StorageCacheClearProgress.toUiModel(): StorageCacheClearUiModel =
+            StorageCacheClearUiModel(
+                kind = kind.toUiKind(),
+                percent = percent.coerceIn(0, 100),
+            )
+
+        private fun StorageCacheKind.toUiKind(): StorageCacheClearUiKind =
+            when (this) {
+                StorageCacheKind.SONGS -> StorageCacheClearUiKind.SONGS
+                StorageCacheKind.DOWNLOADS -> StorageCacheClearUiKind.DOWNLOADS
+                StorageCacheKind.IMAGES -> StorageCacheClearUiKind.IMAGES
+                StorageCacheKind.CANVAS -> StorageCacheClearUiKind.CANVAS
+            }
     }
 
 private data class StorageSettingsStatePayload(
     val selection: StorageFolderSelection,
     val picker: StorageLocationPickerUiModel,
     val migration: StorageMigrationUiModel?,
+    val cacheClear: StorageCacheClearUiModel?,
 )

@@ -100,6 +100,12 @@ data class StorageMigrationProgress(
     val percent: Int,
 )
 
+@Immutable
+data class StorageCacheClearProgress(
+    val kind: StorageCacheKind,
+    val percent: Int,
+)
+
 enum class StorageMigrationPhase {
     CACHE,
     DOWNLOADS,
@@ -167,7 +173,10 @@ class ClearStorageCacheUseCase
     constructor(
         private val repository: StorageLocationRepository,
     ) {
-        suspend operator fun invoke(kind: StorageCacheKind): StorageCacheClearResult = repository.clearCache(kind)
+        suspend operator fun invoke(
+            kind: StorageCacheKind,
+            onProgress: suspend (StorageCacheClearProgress) -> Unit,
+        ): StorageCacheClearResult = repository.clearCache(kind, onProgress)
     }
 
 class StorageLocationRepository
@@ -183,16 +192,23 @@ class StorageLocationRepository
                 preferences.selectionFor(context.storageLocationOptions(preferences))
             }
 
-        suspend fun clearCache(kind: StorageCacheKind): StorageCacheClearResult =
+        suspend fun clearCache(
+            kind: StorageCacheKind,
+            onProgress: suspend (StorageCacheClearProgress) -> Unit,
+        ): StorageCacheClearResult =
             withContext(Dispatchers.IO) {
                 try {
+                    onProgress(StorageCacheClearProgress(kind = kind, percent = 0))
                     val cleared =
                         when (kind) {
-                            StorageCacheKind.SONGS -> clearReleasedMediaCache(playerCache, StorageFolderKind.SONG_CACHE)
-                            StorageCacheKind.DOWNLOADS -> clearDownloads()
-                            StorageCacheKind.IMAGES -> clearImageCache()
-                            StorageCacheKind.CANVAS -> clearCanvasCache()
+                            StorageCacheKind.SONGS -> clearReleasedMediaCache(playerCache, StorageFolderKind.SONG_CACHE, onProgress)
+                            StorageCacheKind.DOWNLOADS -> clearDownloads(onProgress)
+                            StorageCacheKind.IMAGES -> clearImageCache(onProgress)
+                            StorageCacheKind.CANVAS -> clearCanvasCache(onProgress)
                         }
+                    if (cleared) {
+                        onProgress(StorageCacheClearProgress(kind = kind, percent = 100))
+                    }
                     if (cleared) StorageCacheClearResult.Success else StorageCacheClearResult.Failed
                 } catch (throwable: Throwable) {
                     if (throwable is CancellationException) throw throwable
@@ -348,40 +364,57 @@ class StorageLocationRepository
             runCatching { downloadCache.release() }
         }
 
-        private fun clearReleasedMediaCache(
+        private suspend fun clearReleasedMediaCache(
             cache: Cache,
             folderKind: StorageFolderKind,
+            onProgress: suspend (StorageCacheClearProgress) -> Unit,
         ): Boolean {
             runCatching {
                 cache.keys.toList().forEach(cache::removeResource)
             }
             val released = runCatching { cache.release() }.isSuccess
-            return released && clearCacheDirectory(folderKind)
+            return released && clearCacheDirectory(folderKind, onProgress)
         }
 
-        private fun clearDownloads(): Boolean =
+        private suspend fun clearDownloads(onProgress: suspend (StorageCacheClearProgress) -> Unit): Boolean =
             runCatching {
                 downloadUtil.downloadManager.removeAllDownloads()
+                onProgress(StorageCacheClearProgress(kind = StorageCacheKind.DOWNLOADS, percent = 100))
             }.isSuccess
 
-        private fun clearCanvasCache(): Boolean {
+        private suspend fun clearCanvasCache(onProgress: suspend (StorageCacheClearProgress) -> Unit): Boolean {
             val memoryAndIndexCleared = CanvasArtworkPlaybackCache.clearAndPersist()
-            return memoryAndIndexCleared && clearCacheDirectory(StorageFolderKind.CANVAS_CACHE)
+            return memoryAndIndexCleared && clearCacheDirectory(StorageFolderKind.CANVAS_CACHE, onProgress)
         }
 
-        private suspend fun clearImageCache(): Boolean {
+        private suspend fun clearImageCache(onProgress: suspend (StorageCacheClearProgress) -> Unit): Boolean {
             val imageLoader = context.imageLoader
+            val diskCache = imageLoader.diskCache
             val diskCacheCleared =
-                runCatching {
-                    val diskCache =
-                        imageLoader.diskCache
-                            ?: return@runCatching clearCacheDirectory(StorageFolderKind.IMAGE_CACHE)
-                    imageLoader.memoryCache?.clear()
-                    diskCache.clear()
-                    diskCache.size == 0L
-                }.getOrDefault(false)
-            val artworkCacheCleared = clearCacheDirectory(StorageFolderKind.ARTWORK_CACHE)
+                if (diskCache == null) {
+                    clearCacheDirectory(
+                        kind = StorageFolderKind.IMAGE_CACHE,
+                        onProgress = onProgress,
+                        minPercent = 0,
+                        maxPercent = 70,
+                    )
+                } else {
+                    runCatching {
+                        imageLoader.memoryCache?.clear()
+                        diskCache.clear()
+                        diskCache.size == 0L
+                    }.getOrDefault(false)
+                }
+            onProgress(StorageCacheClearProgress(kind = StorageCacheKind.IMAGES, percent = 70))
+            val artworkCacheCleared =
+                clearCacheDirectory(
+                    kind = StorageFolderKind.ARTWORK_CACHE,
+                    onProgress = onProgress,
+                    minPercent = 70,
+                    maxPercent = 90,
+                )
             val artworkCleared = ArtworkStorage.clear(context)
+            onProgress(StorageCacheClearProgress(kind = StorageCacheKind.IMAGES, percent = 95))
             val cacheCleared = diskCacheCleared && artworkCacheCleared && artworkCleared
             val contributorCacheCleared = if (cacheCleared) clearGitHubContributorCache() else false
             return cacheCleared && contributorCacheCleared
@@ -398,7 +431,12 @@ class StorageLocationRepository
                 }
             }.isSuccess
 
-        private fun clearCacheDirectory(kind: StorageFolderKind): Boolean {
+        private suspend fun clearCacheDirectory(
+            kind: StorageFolderKind,
+            onProgress: suspend (StorageCacheClearProgress) -> Unit,
+            minPercent: Int = 0,
+            maxPercent: Int = 100,
+        ): Boolean {
             val directory = cacheDirectory(context, kind)
             val parent = directory.parentFile ?: return false
             val trashDirectory = parent.resolve("${directory.name}.delete-${System.currentTimeMillis()}")
@@ -406,9 +444,29 @@ class StorageLocationRepository
                 runCatching {
                     if (!directory.exists()) return@runCatching true
                     if (directory.renameTo(trashDirectory)) {
-                        trashDirectory.deleteTreeSafely(deleteRoot = true)
+                        trashDirectory.deleteTreeSafely(
+                            deleteRoot = true,
+                            progressReporter =
+                                StorageCacheClearReporter(
+                                    kind = kind.toCacheKind(),
+                                    totalWorkUnits = trashDirectory.deletionWorkUnits(),
+                                    minPercent = minPercent,
+                                    maxPercent = maxPercent,
+                                    onProgress = onProgress,
+                                ),
+                        )
                     } else {
-                        directory.deleteTreeSafely(deleteRoot = false)
+                        directory.deleteTreeSafely(
+                            deleteRoot = false,
+                            progressReporter =
+                                StorageCacheClearReporter(
+                                    kind = kind.toCacheKind(),
+                                    totalWorkUnits = directory.deletionWorkUnits(),
+                                    minPercent = minPercent,
+                                    maxPercent = maxPercent,
+                                    onProgress = onProgress,
+                                ),
+                        )
                     }
                 }.getOrDefault(false)
             return cleared && directory.ensureWritableDirectory() && directory.isDirectoryEmpty()
@@ -683,7 +741,10 @@ private fun File.migrationByteCount(target: File): Long {
         .sumOf { file -> file.length() }
 }
 
-private fun File.deleteTreeSafely(deleteRoot: Boolean): Boolean =
+private suspend fun File.deleteTreeSafely(
+    deleteRoot: Boolean,
+    progressReporter: StorageCacheClearReporter,
+): Boolean =
     runCatching {
         if (!exists()) return@runCatching true
         val directories = ArrayList<File>()
@@ -691,25 +752,48 @@ private fun File.deleteTreeSafely(deleteRoot: Boolean): Boolean =
         var deleted = true
         stack.add(this)
         while (stack.isNotEmpty()) {
+            currentCoroutineContext().ensureActive()
             val file = stack.removeLast()
             if (file.isDirectory) {
                 directories += file
                 file.listFiles()?.forEach { child -> stack.add(child) }
             } else {
+                val workUnits = file.deleteWorkUnits()
                 if (!runCatching { file.delete() || !file.exists() }.getOrDefault(false)) {
                     deleted = false
                 }
+                progressReporter.emit(workUnits)
             }
         }
         directories.asReversed().forEach { directory ->
+            currentCoroutineContext().ensureActive()
             if (deleteRoot || directory != this) {
                 if (!runCatching { directory.delete() || !directory.exists() }.getOrDefault(false)) {
                     deleted = false
                 }
             }
         }
+        progressReporter.emitRemaining()
         deleted
     }.getOrDefault(false)
+
+private fun File.deletionWorkUnits(): Long {
+    if (!exists()) return 0L
+    val stack = ArrayDeque<File>()
+    stack.add(this)
+    var totalWorkUnits = 0L
+    while (stack.isNotEmpty()) {
+        val file = stack.removeLast()
+        if (file.isDirectory) {
+            file.listFiles()?.forEach { child -> stack.add(child) }
+        } else {
+            totalWorkUnits += file.deleteWorkUnits()
+        }
+    }
+    return totalWorkUnits
+}
+
+private fun File.deleteWorkUnits(): Long = length().coerceAtLeast(1L)
 
 private fun File.isDirectoryEmpty(): Boolean =
     runCatching {
@@ -738,6 +822,40 @@ private class StorageProgressReporter(
     }
 }
 
+private class StorageCacheClearReporter(
+    private val kind: StorageCacheKind,
+    private val totalWorkUnits: Long,
+    private val minPercent: Int,
+    private val maxPercent: Int,
+    private val onProgress: suspend (StorageCacheClearProgress) -> Unit,
+) {
+    private var completedWorkUnits = 0L
+    private var lastPercent = -1
+
+    suspend fun emit(workUnits: Long) {
+        currentCoroutineContext().ensureActive()
+        completedWorkUnits = (completedWorkUnits + workUnits).coerceAtMost(totalWorkUnits)
+        emitPercent(completedWorkUnits)
+    }
+
+    suspend fun emitRemaining() {
+        currentCoroutineContext().ensureActive()
+        emitPercent(totalWorkUnits)
+    }
+
+    private suspend fun emitPercent(workUnits: Long) {
+        val percent =
+            if (totalWorkUnits <= 0L) {
+                maxPercent
+            } else {
+                minPercent + (((workUnits.coerceIn(0L, totalWorkUnits) * (maxPercent - minPercent)) / totalWorkUnits).toInt())
+            }.coerceIn(minPercent, maxPercent)
+        if (percent == lastPercent) return
+        lastPercent = percent
+        onProgress(StorageCacheClearProgress(kind = kind, percent = percent))
+    }
+}
+
 private data class StorageMigrationPlan(
     val cacheDirectories: List<StorageDirectoryMove>,
     val downloadDirectories: List<StorageDirectoryMove>,
@@ -753,6 +871,17 @@ private data class StorageFileMove(
     val source: File,
     val target: File,
 )
+
+private fun StorageFolderKind.toCacheKind(): StorageCacheKind =
+    when (this) {
+        StorageFolderKind.SONG_CACHE -> StorageCacheKind.SONGS
+        StorageFolderKind.DOWNLOADS -> StorageCacheKind.DOWNLOADS
+        StorageFolderKind.IMAGE_CACHE,
+        StorageFolderKind.ARTWORK_CACHE,
+        -> StorageCacheKind.IMAGES
+
+        StorageFolderKind.CANVAS_CACHE -> StorageCacheKind.CANVAS
+    }
 
 private fun File.toStorageLocationOption(
     id: String,
