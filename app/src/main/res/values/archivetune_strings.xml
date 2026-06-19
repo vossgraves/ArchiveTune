@@ -444,7 +444,7 @@
     <string name="settings_playback_subtitle">Audio behavior, crossfade, and background playback</string>
     <string name="settings_behavior_title">Behavior</string>
     <string name="settings_behavior_subtitle">History, defaults, and privacy behavior</string>
-    <string name="settings_integration_subtitle">Discord, Last.fm, and ListenBrainz</string>
+    <string name="settings_integration_subtitle">Discord, Last.fm, Libre.fm, and ListenBrainz</string>
     <string name="settings_backup_restore_subtitle">Export and recover your personal app data</string>
     <string name="settings_developer_options_title">Developer Options</string>
     <string name="settings_developer_options_subtitle">Experimental features and debugging</string>
@@ -559,7 +559,7 @@
     <string name="backup_category_settings">App Settings</string>
     <string name="backup_category_settings_desc">Appearance, playback &amp; preferences</string>
     <string name="backup_category_account">Account Details</string>
-    <string name="backup_category_account_desc">YouTube, Spotify, Last.fm, Discord &amp; proxy credentials</string>
+    <string name="backup_category_account_desc">YouTube, Spotify, Last.fm, Libre.fm, Discord &amp; proxy credentials</string>
     <string name="internal_service">Internal Service</string>
     <string name="external_service">External Service</string>
     <string name="backup_data_safety">Data safety</string>

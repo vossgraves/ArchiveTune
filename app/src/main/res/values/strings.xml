@@ -707,7 +707,7 @@
     <string name="restore_success">Backup restored successfully</string>
     <string name="restore_failed">Failed to restore backup</string>
     <string name="discord_integration">Discord Integration</string>
-    <string name="account_integrations_summary">Discord, Last.fm, ListenBrainz</string>
+    <string name="account_integrations_summary">Discord, Last.fm, Libre.fm, ListenBrainz</string>
     <string name="discord_login_description">Connect your Discord account with OAuth so ArchiveTune can publish Rich Presence.</string>
     <string name="discord_open_authorization">Open Discord authorization</string>
     <string name="discord_waiting_for_authorization">Waiting for Discord authorization...</string>
@@ -725,7 +725,7 @@
     <string name="enable_discord_rpc">Enable Rich Presence</string>
     <!-- Last.fm -->
     <string name="scrobbling">Scrobbling</string>
-    <string name="lastfm_integration">Last.fm Integration</string>
+    <string name="lastfm_integration">Last.fm / Libre.fm Integration</string>
     <string name="enable_scrobbling">Enable Scrobbling</string>
     <string name="lastfm_now_playing">Update Now Playing</string>
     <string name="scrobbling_configuration">Scrobbling Configuration</string>
@@ -735,6 +735,29 @@
     <string name="username">Username</string>
     <string name="password">Password</string>
     <string name="logging_in">Logging in</string>
+    <string name="lastfm_service">Scrobbling service</string>
+    <string name="lastfm_service_provider">Service provider</string>
+    <string name="lastfm_provider_lastfm">Last.fm</string>
+    <string name="lastfm_provider_librefm">Libre.fm</string>
+    <string name="lastfm_provider_custom">Custom</string>
+    <string name="lastfm_custom_endpoint">Custom endpoint</string>
+    <string name="lastfm_api_credentials">API credentials</string>
+    <string name="lastfm_api_credentials_default">Using default credentials</string>
+    <string name="lastfm_api_credentials_custom">Using custom credentials</string>
+    <string name="lastfm_api_credentials_hint">Leave credentials blank for compatible services that accept arbitrary API keys and shared secrets.</string>
+    <string name="lastfm_api_key_override">API key</string>
+    <string name="lastfm_secret_override">Shared secret</string>
+    <string name="lastfm_endpoint_invalid">Enter a valid HTTP or HTTPS endpoint.</string>
+    <string name="lastfm_service_not_configured">Configure the scrobbling service before logging in.</string>
+    <string name="lastfm_login_missing_credentials">Enter username and password.</string>
+    <string name="lastfm_login_invalid_credentials">Invalid username or password.</string>
+    <string name="lastfm_login_invalid_api_key">Invalid API key.</string>
+    <string name="lastfm_login_authentication_error">Authentication failed. Try again.</string>
+    <string name="lastfm_login_api_key_suspended">API key suspended.</string>
+    <string name="lastfm_login_network_error">Network error. Check your connection.</string>
+    <string name="lastfm_login_failed">Login failed. Try again.</string>
+    <string name="duration_seconds_short">%1$ds</string>
+    <string name="percent_format">%1$d%%</string>
     <!-- ListenBrainz -->
     <string name="listenbrainz_scrobbling">ListenBrainz scrobbling</string>
     <string name="listenbrainz_scrobbling_description">Enable submitting now-playing and finished listens to ListenBrainz</string>

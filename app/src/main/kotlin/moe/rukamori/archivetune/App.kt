@@ -39,6 +39,7 @@ import moe.rukamori.archivetune.kugou.KuGou
 import moe.rukamori.archivetune.lastfm.LastFM
 import moe.rukamori.archivetune.canvas.ArchiveTuneCanvas
 import moe.rukamori.archivetune.paxsenix.PaxsenixLyrics
+import moe.rukamori.archivetune.scrobbling.LastFmServiceConfig
 import moe.rukamori.archivetune.storage.StorageFolderKind
 import moe.rukamori.archivetune.storage.StorageLocationRepository
 import moe.rukamori.archivetune.ui.player.CanvasArtworkPlaybackCache
@@ -141,7 +142,7 @@ class App : Application(), SingletonImageLoader.Factory {
                     YouTube.locale = YouTube.locale.copy(hl = lang)
                 }
                 
-                LastFM.sessionKey = prefs[LastFMSessionKey]
+                LastFmServiceConfig.fromPreferences(prefs).apply(prefs[LastFMSessionKey])
 
                 ProxyUtils.applyYouTubeProxy(
                     enabled = prefs[ProxyEnabledKey] == true,
@@ -286,10 +287,12 @@ class App : Application(), SingletonImageLoader.Factory {
         }
         applicationScope.launch(Dispatchers.IO) {
             dataStore.data
-                .map { it[LastFMSessionKey] }
+                .map { prefs ->
+                    LastFmServiceConfig.fromPreferences(prefs) to prefs[LastFMSessionKey]
+                }
                 .distinctUntilChanged()
-                .collect { sessionKey ->
-                    LastFM.sessionKey = sessionKey
+                .collect { (serviceConfig, sessionKey) ->
+                    serviceConfig.apply(sessionKey)
                 }
         }
     }

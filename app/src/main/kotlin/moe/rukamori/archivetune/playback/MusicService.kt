@@ -212,6 +212,7 @@ import moe.rukamori.archivetune.constants.ScrobbleDelayPercentKey
 import moe.rukamori.archivetune.constants.ScrobbleMinSongDurationKey
 import moe.rukamori.archivetune.constants.ScrobbleDelaySecondsKey
 import moe.rukamori.archivetune.constants.TogetherClientIdKey
+import moe.rukamori.archivetune.scrobbling.LastFmServiceConfig
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -1054,17 +1055,24 @@ class MusicService :
                 trimPlayerCacheToBytes(limitBytes)
             }
 
-        // Last.fm ScrobbleManager setup
         dataStore.data
-            .map { it[EnableLastFMScrobblingKey] ?: false }
+            .map { preferences ->
+                val serviceConfig = LastFmServiceConfig.fromPreferences(preferences)
+                Triple(
+                    preferences[EnableLastFMScrobblingKey] ?: false,
+                    !preferences[LastFMSessionKey].isNullOrBlank(),
+                    serviceConfig.initialized,
+                )
+            }
             .debounce(300)
             .distinctUntilChanged()
-            .collect(scope) { enabled ->
-                if (enabled && scrobbleManager == null) {
+            .collect(scope) { (enabled, hasSession, serviceConfigured) ->
+                val shouldEnable = enabled && hasSession && serviceConfigured
+                if (shouldEnable && scrobbleManager == null) {
                     val delayPercent = dataStore.get(ScrobbleDelayPercentKey, LastFM.DEFAULT_SCROBBLE_DELAY_PERCENT)
                     val minSongDuration = dataStore.get(ScrobbleMinSongDurationKey, LastFM.DEFAULT_SCROBBLE_MIN_SONG_DURATION)
                     val delaySeconds = dataStore.get(ScrobbleDelaySecondsKey, LastFM.DEFAULT_SCROBBLE_DELAY_SECONDS)
-                    
+
                     scrobbleManager = moe.rukamori.archivetune.utils.ScrobbleManager(
                         ioScope,
                         minSongDuration = minSongDuration,
@@ -1072,7 +1080,7 @@ class MusicService :
                         scrobbleDelaySeconds = delaySeconds
                     )
                     scrobbleManager?.useNowPlaying = dataStore.get(LastFMUseNowPlaying, false)
-                } else if (!enabled && scrobbleManager != null) {
+                } else if (!shouldEnable && scrobbleManager != null) {
                     scrobbleManager?.destroy()
                     scrobbleManager = null
                 }
