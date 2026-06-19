@@ -36,7 +36,7 @@
 <!-- Be explicit so reviewers can focus on the correct runtime paths. -->
 
 - [ ] `:app`
-- [ ] `:innertube`
+- [ ] `:core`
 - [ ] `:betterlyrics`
 - [ ] `:kugou`
 - [ ] `:lrclib`
@@ -47,9 +47,6 @@
 - [ ] `:canvas`
 - [ ] `:shazamkit`
 - [ ] `:spotifycore`
-- [ ] `server`
-- [ ] `fastlane`
-- [ ] `.github`
 - [ ] Other:
 
 ## Screenshots / Recordings
