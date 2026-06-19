@@ -248,31 +248,24 @@
     <string name="duplicates_description_multiple">%d 曲はすでにプレイリストにあります</string>
     <!-- Noun -->
     <plurals name="n_song">
-        <item quantity="one">%d曲</item>
         <item quantity="other">%d曲</item>
     </plurals>
     <plurals name="n_artist">
-        <item quantity="one">%d アーティスト</item>
         <item quantity="other">%d 人のアーティスト</item>
     </plurals>
     <plurals name="n_album">
-        <item quantity="one">%d アルバム</item>
         <item quantity="other">%d 枚のアルバム</item>
     </plurals>
     <plurals name="n_playlist">
-        <item quantity="one">%d プレイリスト</item>
         <item quantity="other">%d 個のプレイリスト</item>
     </plurals>
     <plurals name="n_week">
-        <item quantity="one">%d週間</item>
         <item quantity="other">%d週間</item>
     </plurals>
     <plurals name="n_month">
-        <item quantity="one">%d か月</item>
         <item quantity="other">%dか月</item>
     </plurals>
     <plurals name="n_year">
-        <item quantity="one">%d年</item>
         <item quantity="other">%d年</item>
     </plurals>
     <!-- Snackbar -->
