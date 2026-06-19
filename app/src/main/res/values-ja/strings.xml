@@ -89,8 +89,8 @@
     <string name="all_songs">すべての曲</string>
     <string name="newest_first">新しい順</string>
     <string name="oldest_first">古い順</string>
-    <string name="sort_a_to_z">A \u2192 Z</string>
-    <string name="sort_z_to_a">Z \u2192 A</string>
+    <string name="sort_a_to_z">A → Z</string>
+    <string name="sort_z_to_a">Z → A</string>
     <string name="sort_artist">アーティスト</string>
     <string name="most_played_sort">最も再生</string>
     <string name="recently_added">最近追加</string>
@@ -184,7 +184,7 @@
     <string name="together_ban">禁止</string>
     <string name="together_kick_confirm">%1$s?をキックする</string>
     <string name="together_ban_confirm">禁止 %1$s?</string>
-    <string name="together_requesting_song_change">ホストに曲の変更をリクエストしています\u2026</string>
+    <string name="together_requesting_song_change">ホストに曲の変更をリクエストしています…</string>
     <string name="together_song_change_failed">ソングチェンジは適用されません。もう一度試してください。</string>
     <string name="remove_from_history">履歴から削除</string>
     <string name="remove_from_playlist">プレイリストから削除</string>
@@ -290,7 +290,6 @@
     <string name="sleep_timer">スリープタイマー</string>
     <string name="end_of_song">曲の終わり</string>
     <plurals name="minute">
-        <item quantity="one">1 minute</item>
         <item quantity="other">%d分</item>
     </plurals>
     <string name="error_no_stream">利用可能なストリームがありません</string>
@@ -1008,4 +1007,24 @@
     <string name="album_backdrop_desc">プレーヤーにアートワークをぼかした背景として表示</string>
     <string name="backdrop_blur_amount">背景ブラーの量</string>
     <string name="backdrop_blur_amount_value">%1$d%%</string>
+    <string name="device_volume_zero_playback_paused"></string>
+    <string name="check_for_update"></string>
+    <string name="font_preference_default"></string>
+    <string name="font_preference_desc"></string>
+    <string name="lyrics_synced_badge"></string>
+    <string name="font_preference_custom"></string>
+    <string name="custom_font_invalid"></string>
+    <string name="download_progress_percent"></string>
+    <string name="proxy_connection_invalid_configuration"></string>
+    <string name="updates_subtitle_daily_nightly"></string>
+    <string name="youtube_channels"></string>
+    <string name="channel_daily_nightly"></string>
+    <string name="account_integrations_summary"></string>
+    <string name="custom_font"></string>
+    <string name="device_mute_recovery_volume"></string>
+    <string name="font_preference"></string>
+    <string name="device_mute_recovery_volume_disabled"></string>
+    <string name="custom_font_desc"></string>
+    <string name="font_preference_system"></string>
+    <string name="updates_nightly_hosting_description"></string>
 </resources>
