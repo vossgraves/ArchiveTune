@@ -228,6 +228,25 @@ class HomeViewModel
             }
         }
 
+        private suspend fun refreshQuickPicks() {
+            val picks =
+                when (quickPicksMode.first()) {
+                    QuickPicks.QUICK_PICKS -> {
+                        quickPicksWithFallback(database.quickPicks().first())
+                    }
+
+                    QuickPicks.LAST_LISTEN -> {
+                        lastListenQuickPicksFlow().first()
+                    }
+
+                    QuickPicks.DONT_SHOW -> {
+                        null
+                    }
+                }
+            quickPicks.value = picks
+            updateAllLocalItems()
+        }
+
         private suspend fun loadSpeedDialItems() {
             val pins = parseSpeedDialPins(context.dataStore.get(SpeedDialSongIdsKey, ""))
             if (pins.isEmpty()) {
@@ -591,8 +610,18 @@ class HomeViewModel
             if (isRefreshing.value) return
             viewModelScope.launch(Dispatchers.IO) {
                 isRefreshing.value = true
-                load()
-                isRefreshing.value = false
+                try {
+                    supervisorScope {
+                        launch { load() }
+                        launch { refreshQuickPicks() }
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    reportException(e)
+                } finally {
+                    isRefreshing.value = false
+                }
             }
         }
 
