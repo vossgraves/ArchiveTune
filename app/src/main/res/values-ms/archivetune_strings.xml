@@ -613,4 +613,11 @@
     <string name="storage_migration_downloads_progress"></string>
     <string name="aod_customize_content_position"></string>
     <string name="about_position_wttexe"></string>
+    <string name="music_recognition_tap_to_listen"></string>
+    <string name="music_recognition_signature_failed"></string>
+    <string name="music_recognition_no_match"></string>
+    <string name="music_recognition_recognition_failed"></string>
+    <string name="music_recognition_listening"></string>
+    <string name="music_recognition_processing"></string>
+    <string name="music_recognition_listen_again"></string>
 </resources>
