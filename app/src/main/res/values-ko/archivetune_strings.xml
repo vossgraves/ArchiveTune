@@ -156,7 +156,6 @@
         <item quantity="other">%d개 항목</item>
     </plurals>
     <plurals name="n_time">
-        <item quantity="one">%d 시간</item>
         <item quantity="other">%d회</item>
     </plurals>
     <string name="seek_backward">5초 뒤로 이동</string>
@@ -247,8 +246,8 @@
     <string name="swipe_sensitivity">미니 플레이어 스와이프 민감도</string>
     <string name="swipe_sensitivity_desc">곡을 전환할 때 스와이프 제스처의 민감도를 조정합니다.</string>
     <string name="sensitivity_percentage">%1$d%%</string>
-    <string name="clear_song_cache_dialog">  캐시된 노래를 모두 삭제하시겠습니까?</string>
-    <string name="clear_image_cache_dialog">  캐시된 이미지를 모두 삭제하시겠습니까?</string>
+    <string name="clear_song_cache_dialog">캐시된 노래를 모두 삭제하시겠습니까?</string>
+    <string name="clear_image_cache_dialog">캐시된 이미지를 모두 삭제하시겠습니까?</string>
     <string name="clear_downloads_dialog">다운로드된 모든 노래를 삭제하시겠습니까?</string>
     <string name="canvas_cache">캔버스 캐시</string>
     <string name="canvas_cache_items">%d개 항목</string>
@@ -294,7 +293,6 @@
     <string name="empty_album">빈 앨범</string>
     <string name="empty_album_desc">이 앨범에는 노래가 없습니다.</string>
     <plurals name="seconds">
-        <item quantity="one">1 second</item>
         <item quantity="other">%d초</item>
     </plurals>
     <string name="audio_crossfade_title">크로스페이드</string>
