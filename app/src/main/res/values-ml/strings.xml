@@ -949,4 +949,14 @@
     <string name="source_url"></string>
     <string name="duration_sort"></string>
     <string name="wakelock"></string>
+    <string name="mood_and_genres"></string>
+    <string name="playlists"></string>
+    <string name="quick_picks"></string>
+    <string name="artists"></string>
+    <string name="account"></string>
+    <string name="albums"></string>
+    <string name="stats"></string>
+    <string name="home"></string>
+    <string name="history"></string>
+    <string name="songs"></string>
 </resources>
