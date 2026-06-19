@@ -600,4 +600,17 @@
     <string name="aod_customize_content_position"></string>
     <string name="about_position_wttexe"></string>
     <string name="unknown_artist"></string>
+    <string name="music_recognition_tap_to_listen"></string>
+    <string name="music_recognition_signature_failed"></string>
+    <string name="music_recognition_no_match"></string>
+    <string name="music_recognition_permission_desc"></string>
+    <string name="music_recognition_lyrics_preview"></string>
+    <string name="explore"></string>
+    <string name="music_recognition_recognition_failed"></string>
+    <string name="music_recognition_permission_action"></string>
+    <string name="music_recognition_listening"></string>
+    <string name="music_recognition_open_shazam"></string>
+    <string name="music_recognition_permission_title"></string>
+    <string name="music_recognition_processing"></string>
+    <string name="music_recognition_listen_again"></string>
 </resources>
