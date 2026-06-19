@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Upstream InnerTune strings --><!-- Do not add new features here --><!-- Try to re-use strings here, but be careful on its usage e.g. verb vs noun --><!-- "InnerTune" is replaced with "ArchiveTune" --><!-- Translators: Do not modify this file for translations, use InnerTune's Weblate instead. --><resources>
     <!-- Bottom navigation -->
-    <string name="home">Startseite</string>
+    <string name="home">Home</string>
     <string name="songs">Lieder</string>
     <string name="artists">Künstler</string>
     <string name="albums">Alben</string>
@@ -1024,4 +1024,5 @@
     <string name="use_visitor_data_desc"></string>
     <string name="source_url"></string>
     <string name="duration_sort"></string>
+    <string name="search_try_different">Versuche einen anderen Suchbegriff</string>
 </resources>
