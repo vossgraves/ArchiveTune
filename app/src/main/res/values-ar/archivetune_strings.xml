@@ -250,4 +250,5 @@
     <string name="music_recognition_processing">جاري التحليل…</string>
     <string name="music_recognition_no_match">لا توجد نتائج مطابقة</string>
     <string name="music_recognition_recognition_failed">فشل التعرف</string>
+    <string name="top_songs"></string>
 </resources>
