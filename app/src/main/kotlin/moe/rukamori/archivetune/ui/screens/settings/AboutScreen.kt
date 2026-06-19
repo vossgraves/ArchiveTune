@@ -419,7 +419,7 @@ private fun AboutFullScreenDialog(
                     .fillMaxSize()
                     .padding(innerPadding)
                     .windowInsetsPadding(
-                        LocalPlayerAwareWindowInsets.current.only(
+                        WindowInsets.safeDrawing.only(
                             WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
                         ),
                     ),
