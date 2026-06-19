@@ -318,7 +318,7 @@ class MainActivity : ComponentActivity() {
     private var pendingVoiceSearchQuery: String? = null
     private var pendingTogetherJoinLink: String? = null
     private var latestVersionName by mutableStateOf(BuildConfig.VERSION_NAME)
-    private var latestUpdateChannel by mutableStateOf(UpdateChannel.STABLE)
+    private var latestUpdateChannel by mutableStateOf(defaultUpdateChannel)
 
     private var playerConnection by mutableStateOf<PlayerConnection?>(null)
     private var isMusicServiceBound = false
@@ -515,7 +515,7 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-            val updateChannel by rememberEnumPreference(UpdateChannelKey, defaultValue = UpdateChannel.STABLE)
+            val updateChannel by rememberEnumPreference(UpdateChannelKey, defaultValue = defaultUpdateChannel)
 
             LaunchedEffect(Unit) {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
@@ -539,7 +539,7 @@ class MainActivity : ComponentActivity() {
                     val channelString = withContext(Dispatchers.IO) { dataStore.data.first()[UpdateChannelKey] }
                     val actualChannel = channelString?.let {
                         try { UpdateChannel.valueOf(it) } catch (_: IllegalArgumentException) { null }
-                    } ?: UpdateChannel.STABLE
+                    } ?: defaultUpdateChannel
 
                     if (actualChannel != UpdateChannel.NIGHTLY) {
                         val versionResult = when (actualChannel) {

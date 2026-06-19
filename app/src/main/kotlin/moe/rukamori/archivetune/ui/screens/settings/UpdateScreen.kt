@@ -97,6 +97,7 @@ import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.EnableUpdateNotificationKey
 import moe.rukamori.archivetune.constants.UpdateChannel
+import moe.rukamori.archivetune.defaultUpdateChannel
 import moe.rukamori.archivetune.constants.UpdateChannelKey
 import moe.rukamori.archivetune.ui.component.BottomSheetPage
 import moe.rukamori.archivetune.ui.component.BottomSheetPageState
@@ -131,7 +132,7 @@ fun UpdateScreen(
     )
     val (updateChannel, onUpdateChannelChange) = rememberEnumPreference(
         UpdateChannelKey,
-        defaultValue = UpdateChannel.STABLE
+        defaultValue = defaultUpdateChannel
     )
 
     var commits by remember { mutableStateOf<List<GitCommit>>(emptyList()) }
