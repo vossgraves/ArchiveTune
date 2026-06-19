@@ -988,4 +988,10 @@
     <string name="no_saved_accounts">Aún no hay cuentas guardadas</string>
     <string name="remove_account">Eliminar cuenta</string>
     <string name="youtube_channels">Canales de YouTube</string>
+    <string name="library_top_mixes_loading">Preparando tus mezclas con IA…</string>
+    <string name="library_top_mixes_refresh">Actualizar las mezclas</string>
+    <string name="library_top_mixes_configure_ai">Configurar la IA</string>
+    <string name="library_top_mixes_ai_not_configured_title">Configurar la IA para crear mezclas</string>
+    <string name="library_top_mixes_ai_not_configured_desc">Es necesario integrar la IA para que ArchiveTune pueda crear listas de reproducción personalizadas.</string>
+    <string name="library_top_mixes_no_recent_history_title">Todavía sin ninguna lista de reproducción</string>
 </resources>
