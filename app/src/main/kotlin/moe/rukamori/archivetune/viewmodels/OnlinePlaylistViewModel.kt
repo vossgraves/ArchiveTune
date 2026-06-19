@@ -29,7 +29,6 @@ import moe.rukamori.archivetune.db.MusicDatabase
 import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.innertube.models.PlaylistItem
 import moe.rukamori.archivetune.innertube.models.SongItem
-import moe.rukamori.archivetune.innertube.utils.completed
 import moe.rukamori.archivetune.utils.reportException
 import javax.inject.Inject
 
@@ -124,11 +123,10 @@ class OnlinePlaylistViewModel
 
                 YouTube
                     .playlist(playlistId)
-                    .completed()
                     .onSuccess { playlistPage ->
                         _playlist.value = playlistPage.playlist
                         _playlistSongs.value = playlistPage.songs
-                        continuation = null
+                        continuation = playlistPage.songsContinuation ?: playlistPage.continuation
                         prefetchViewCounts(playlistPage.songs.map { song -> song.id })
                     }.onFailure { throwable ->
                         _error.value = throwable.message ?: "Failed to load playlist"
