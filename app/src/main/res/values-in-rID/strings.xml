@@ -1061,4 +1061,5 @@
     <string name="lastfm_api_key_override"></string>
     <string name="updates_nightly_hosting_description"></string>
     <string name="lastfm_login_invalid_api_key"></string>
+    <string name="player_background_style_v8_v9_desc"></string>
 </resources>
