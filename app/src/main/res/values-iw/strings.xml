@@ -614,4 +614,8 @@
     </plurals>
     <string name="duration_sort">משך זמן</string>
     <string name="wakelock">השאר את המעבד ער במהלך השמעה</string>
+    <string name="library_top_mixes_loading">מכין את מיקסי ה-AI שלך…</string>
+    <string name="library_top_mixes_refresh">רענון מיקסים</string>
+    <string name="library_top_mixes_configure_ai">הגדרת בינה מלאכותית</string>
+    <string name="library_top_mixes_ai_not_configured_title">הגדרת בינה מלאכותית ליצירת מיקסים</string>
 </resources>
