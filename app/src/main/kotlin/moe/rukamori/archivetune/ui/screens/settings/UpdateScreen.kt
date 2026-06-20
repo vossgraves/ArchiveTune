@@ -245,6 +245,8 @@ fun UpdateScreen(
         ) {
             Text(text = stringResource(R.string.update_text))
         }
+
+        Spacer(Modifier.height(12.dp))
     }
 
     val onCheckForUpdate: () -> Unit = {
@@ -927,12 +929,18 @@ fun UpdateScreen(
             }
 
             item {
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(SettingsDimensions.ScreenBottomPadding))
             }
         }
     }
 
-    BottomSheetPage(state = updateSheetState)
+    Box(modifier = Modifier.fillMaxSize()) {
+        BottomSheetPage(
+            state = updateSheetState,
+            modifier = Modifier.align(Alignment.BottomCenter),
+            contentWindowInsets = LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Bottom),
+        )
+    }
 
     if (updateSheetLoading) {
         AlertDialog(
