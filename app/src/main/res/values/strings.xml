@@ -468,6 +468,10 @@
     <string name="playback_login_refresh_required">Refresh YouTube Music login</string>
     <string name="playback_requires_youtube_music_login_refresh">Refresh your YouTube Music login, then return to ArchiveTune.</string>
     <string name="could_not_open_youtube_music">Could not open YouTube Music</string>
+    <string name="playback_error_code">Code</string>
+    <string name="playback_error_http">HTTP</string>
+    <string name="playback_error_message">Message</string>
+    <string name="playback_error_cause">Cause</string>
     <string name="content_language">Default content language</string>
     <string name="content_country">Default content country</string>
     <string name="system_default">System default</string>
