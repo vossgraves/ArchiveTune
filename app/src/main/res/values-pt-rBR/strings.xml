@@ -179,7 +179,7 @@
     <string name="sleep_timer">Temporizador</string>
     <string name="end_of_song">Fim da música</string>
     <plurals name="minute">
-        <item quantity="one">1 minuto</item>
+        <item quantity="one">%d minuto</item>
         <item quantity="many">%d minutos</item>
         <item quantity="other">%d minutos</item>
     </plurals>
@@ -972,9 +972,9 @@
     <string name="check_for_update">Verifique se há atualização</string>
     <string name="youtube_channels">Canais do YouTube</string>
     <string name="library_title">Sua Biblioteca</string>
-    <string name="library_subtitle">Sua música, organizada para você</string>
-    <string name="library_playlists_subtitle">Todas as suas playlists, organizadas para você</string>
-    <string name="library_songs_subtitle">Todas as suas músicas, organizadas para você</string>
+    <string name="library_subtitle">Sua música, organizada por você</string>
+    <string name="library_playlists_subtitle">Todas as suas playlists, organizadas por você</string>
+    <string name="library_songs_subtitle">Todas as suas músicas, organizadas por você</string>
     <string name="library_artists_subtitle">Todos os seus artistas, em um só lugar</string>
     <string name="library_albums_subtitle">Todos os seus álbuns, lindamente organizados</string>
     <string name="most_played_badge">MAIS TOCADA</string>
