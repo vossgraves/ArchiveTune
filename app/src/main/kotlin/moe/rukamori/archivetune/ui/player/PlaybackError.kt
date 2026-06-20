@@ -151,7 +151,7 @@ fun PlaybackError(
             PlaybackRecoveryAction.OpenYouTubeMusic -> openYouTubeMusicText
             null -> null
         }
-    val onRecoveryClick =
+    val onRecoveryClick: (() -> Unit)? =
         remember(recoveryUrl, recoveryAction, context, couldNotOpenYouTubeMusicText) {
             if (recoveryUrl == null || recoveryAction == null) {
                 null
@@ -175,6 +175,7 @@ fun PlaybackError(
                             }
                         }
                     }
+                    Unit
                 }
             }
         }
