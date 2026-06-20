@@ -9,7 +9,6 @@ package moe.rukamori.archivetune.ui.player
 
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.awaitPointerEventScope
 import androidx.compose.ui.input.pointer.pointerInput
 
 internal fun Modifier.consumeUnhandledPointerInput(): Modifier =
