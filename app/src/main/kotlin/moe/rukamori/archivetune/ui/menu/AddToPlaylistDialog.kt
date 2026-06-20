@@ -51,6 +51,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -502,6 +503,7 @@ fun AddToPlaylistDialog(
                                             .fillMaxWidth()
                                             .clickable { showCreatePlaylistDialog = true }
                                             .padding(horizontal = 8.dp),
+                                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                                 )
                             }
 
