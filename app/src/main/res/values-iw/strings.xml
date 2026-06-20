@@ -990,4 +990,7 @@
     <string name="together_welcome_join_title">הצטרפות ממכשיר אחר</string>
     <string name="together_welcome_join_body">פתחו את הקישור המשותף, או הזינו את הקוד והקישו על הצטרף. התור וההשמעה שלכם יעקבו אחר המארח.</string>
     <string name="together_welcome_permissions_title">הרשאות ובטיחות</string>
+    <string name="together_welcome_permissions_body">מארחים יכולים להחליט אם אורחים יכולים להוסיף שירים, לשלוט בהפעלה או לדרוש אישור להצטרפות.</string>
+    <string name="po_token_generation">יצירת טוקן PO</string>
+    <string name="po_token_generation_subtitle">יצירה וניהול של טוקני PO של לקוח אינטרנט</string>
 </resources>
