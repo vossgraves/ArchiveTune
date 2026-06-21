@@ -454,7 +454,7 @@ private fun FloatingNavigationToolbarItem(
     modifier: Modifier = Modifier,
 ) {
     val shape = RoundedCornerShape(24.dp)
-    val showLabel = selected && showSelectedLabel && screen.route != Screens.Search.route
+    val showLabel = selected && showSelectedLabel
     val transition = updateTransition(targetState = selected, label = "navItem_${screen.route}")
 
     val contentColor by transition.animateColor(
@@ -487,7 +487,7 @@ private fun FloatingNavigationToolbarItem(
         },
         label = "horizontalPadding",
     ) { isSelected ->
-        if (isSelected && showSelectedLabel && screen.route != Screens.Search.route) 16.dp else 12.dp
+        if (isSelected && showSelectedLabel) 16.dp else 12.dp
     }
 
     val interactionSource = remember { MutableInteractionSource() }

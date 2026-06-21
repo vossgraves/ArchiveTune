@@ -1163,9 +1163,7 @@ class MainActivity : ComponentActivity() {
                         )
 
                     val handlePrimaryNavigationClick: (Screens, Boolean) -> Unit = { screen, isSelected ->
-                        if (screen.route == Screens.Search.route) {
-                            openSearch()
-                        } else if (isSelected) {
+                        if (isSelected) {
                             navController.currentBackStackEntry?.savedStateHandle?.set("scrollToTop", true)
                             coroutineScope.launch {
                                 searchBarScrollBehavior.state.resetHeightOffset()
@@ -1504,12 +1502,8 @@ class MainActivity : ComponentActivity() {
                                                 playerBottomSheetState.collapse(if (disableAnimations) snap() else spring())
                                             }
                                             val isSelected =
-                                                if (screen.route == Screens.Search.route) {
-                                                    active
-                                                } else {
-                                                    navBackStackEntry?.destination?.hierarchy?.any { it.route == screen.route } == true
-                                                }
-                                            if (wasPlayerActive && isSelected && screen.route != Screens.Search.route) {
+                                                navBackStackEntry?.destination?.hierarchy?.any { it.route == screen.route } == true
+                                            if (wasPlayerActive && isSelected) {
                                                 return@TvNavigationRail
                                             }
                                             handlePrimaryNavigationClick(screen, isSelected)
@@ -1565,7 +1559,7 @@ class MainActivity : ComponentActivity() {
                                         val shouldUseFloatingTopBar =
                                             remember(navBackStackEntry) {
                                                 navBackStackEntry?.destination?.route == Screens.Home.route ||
-                                                    navBackStackEntry?.destination?.route == Screens.MoodAndGenres.route ||
+                                                    navBackStackEntry?.destination?.route == Screens.Search.route ||
                                                     navBackStackEntry?.destination?.route == Screens.Library.route
                                             }
                                         val shouldShowBlurBackground =
@@ -2316,6 +2310,19 @@ class MainActivity : ComponentActivity() {
                             } catch (_: Exception) {
                             }
                             openSearchImmediately = false
+                        }
+                    }
+
+                    val openSearchFromRoute =
+                        navBackStackEntry
+                            ?.savedStateHandle
+                            ?.getStateFlow("openSearch", false)
+                            ?.collectAsStateWithLifecycle()
+
+                    LaunchedEffect(openSearchFromRoute?.value) {
+                        if (openSearchFromRoute?.value == true) {
+                            navBackStackEntry?.savedStateHandle?.set("openSearch", false)
+                            openSearch()
                         }
                     }
                 }
