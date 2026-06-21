@@ -2107,6 +2107,12 @@ class MainActivity : ComponentActivity() {
                                                     } else {
                                                         ""
                                                     },
+                                                onMusicTogetherClick =
+                                                    if (shouldShowHomeShuffleButton) {
+                                                        { navController.navigate("settings/music_together") }
+                                                    } else {
+                                                        null
+                                                    },
                                                 isSelected = { screen ->
                                                     navBackStackEntry?.destination?.hierarchy?.any { it.route == screen.route } ==
                                                         true
