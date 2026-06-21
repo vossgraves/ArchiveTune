@@ -461,6 +461,8 @@
     <string name="day_thu">Thu</string>
     <string name="day_fri">Fri</string>
     <string name="day_sat">Sat</string>
+    <string name="theme_creator_title">Theme Creator</string>
+    <string name="theme_creator_subtitle">Tune colors, preview the result, then export or import.</string>
     <string name="custom_theme">Custom Theme</string>
     <string name="import_theme">Import Theme</string>
     <string name="export_theme">Export Theme</string>
@@ -470,6 +472,10 @@
     <string name="theme_apply_button">Apply Theme</string>
     <string name="theme_import_success">Theme imported</string>
     <string name="theme_import_failed">Import failed</string>
+    <string name="theme_import_failed_title">Can\'t import theme</string>
+    <string name="theme_applied">Theme applied</string>
+    <string name="theme_export_success">Theme exported</string>
+    <string name="theme_export_failed">Export failed</string>
     <string name="theme_seed_colors">Seed Colors</string>
     <string name="theme_seed_primary">Primary</string>
     <string name="theme_seed_secondary">Secondary</string>
