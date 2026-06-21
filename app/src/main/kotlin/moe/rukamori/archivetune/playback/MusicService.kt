@@ -210,6 +210,7 @@ import moe.rukamori.archivetune.lastfm.LastFM
 import moe.rukamori.archivetune.lyrics.LyricsHelper
 import moe.rukamori.archivetune.lyrics.LyricsPreloadManager
 import moe.rukamori.archivetune.lyrics.LyricsUtils.displayLyricsText
+import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.models.PersistPlayerState
 import moe.rukamori.archivetune.models.PersistQueue
 import moe.rukamori.archivetune.models.QueueData
@@ -5131,10 +5132,13 @@ class MusicService :
                 if (token.isNotBlank() && DiscordPresenceManager.isRunning()) {
                     // Obtain the freshest Song from DB using current media item id to avoid stale currentSong.value
                     val mediaId = player.currentMediaItem?.mediaId
-                    val song = if (mediaId != null) withContext(Dispatchers.IO) { database.song(mediaId).first() } else null
+                    val dbSong = if (mediaId != null) withContext(Dispatchers.IO) { database.song(mediaId).first() } else null
                     val finalSong =
-                        (song ?: player.currentMetadata?.let { createTransientSongFromMedia(it) })
-                            .withResolvedPresenceDuration(player.duration)
+                        resolvePresenceSong(
+                            dbSong = dbSong,
+                            mediaMetadata = player.currentMetadata,
+                            durationMs = player.duration,
+                        )
 
                     val success =
                         withContext(Dispatchers.IO) {
@@ -5322,10 +5326,13 @@ class MusicService :
                     val token = dataStore.get(DiscordTokenKey, "")
                     if (token.isNotBlank() && DiscordPresenceManager.isRunning()) {
                         val mediaId = player.currentMediaItem?.mediaId
-                        val song = if (mediaId != null) withContext(Dispatchers.IO) { database.song(mediaId).first() } else null
+                        val dbSong = if (mediaId != null) withContext(Dispatchers.IO) { database.song(mediaId).first() } else null
                         val finalSong =
-                            (song ?: player.currentMetadata?.let { createTransientSongFromMedia(it) })
-                                .withResolvedPresenceDuration(player.duration)
+                            resolvePresenceSong(
+                                dbSong = dbSong,
+                                mediaMetadata = player.currentMetadata,
+                                durationMs = player.duration,
+                            )
 
                         val success =
                             DiscordPresenceManager.updateNow(
@@ -5382,13 +5389,14 @@ class MusicService :
             val currentMediaId = player.currentMediaItem?.mediaId
             val currentMetadata = player.currentMetadata
             val currentPosition = player.currentPosition
+            val currentDuration = player.duration
             val isPlaying = player.isPlaying
 
             scope.launch {
                 try {
                     val token = withContext(Dispatchers.IO) { dataStore.get(DiscordTokenKey, "") }
                     if (token.isNotBlank() && DiscordPresenceManager.isRunning()) {
-                        val song =
+                        val dbSong =
                             if (currentMediaId !=
                                 null
                             ) {
@@ -5397,8 +5405,11 @@ class MusicService :
                                 null
                             }
                         val finalSong =
-                            (song ?: currentMetadata?.let { createTransientSongFromMedia(it) })
-                                .withResolvedPresenceDuration(player.duration)
+                            resolvePresenceSong(
+                                dbSong = dbSong,
+                                mediaMetadata = currentMetadata,
+                                durationMs = currentDuration,
+                            )
 
                         val success =
                             withContext(Dispatchers.IO) {
@@ -6450,8 +6461,49 @@ class MusicService :
     }
 
     private fun currentPresenceSong(): Song? {
-        val metadataSong = player.currentMetadata?.let { createTransientSongFromMedia(it) }
-        return (metadataSong ?: currentSong.value).withResolvedPresenceDuration(player.duration)
+        return resolvePresenceSong(
+            dbSong = currentSong.value,
+            mediaMetadata = player.currentMetadata,
+            durationMs = player.duration,
+        )
+    }
+
+    private fun resolvePresenceSong(
+        dbSong: Song?,
+        mediaMetadata: MediaMetadata?,
+        durationMs: Long,
+    ): Song? {
+        val metadataSong = mediaMetadata?.let { createTransientSongFromMedia(it) }
+        val song =
+            when {
+                dbSong == null -> metadataSong
+                metadataSong == null -> dbSong
+                else -> dbSong.withPresenceMetadata(metadataSong)
+            }
+
+        return song.withResolvedPresenceDuration(durationMs)
+    }
+
+    private fun Song.withPresenceMetadata(metadataSong: Song): Song {
+        val resolvedArtists =
+            if (artists.any { it.hasRemotePresenceId() }) {
+                artists
+            } else {
+                metadataSong.artists.takeIf { metadataArtists ->
+                    metadataArtists.any { it.hasRemotePresenceId() }
+                } ?: artists
+            }
+
+        return copy(
+            song =
+                song.copy(
+                    thumbnailUrl = song.thumbnailUrl ?: metadataSong.song.thumbnailUrl,
+                    albumId = song.albumId ?: metadataSong.song.albumId,
+                    albumName = song.albumName ?: metadataSong.song.albumName,
+                ),
+            artists = resolvedArtists,
+            album = album ?: metadataSong.album,
+        )
     }
 
     private fun Song?.withResolvedPresenceDuration(durationMs: Long): Song? {
@@ -6465,8 +6517,19 @@ class MusicService :
         return song.copy(song = song.song.copy(duration = durationSeconds))
     }
 
+    private fun ArtistEntity.hasRemotePresenceId(): Boolean =
+        channelId.isRemotePresenceId() || id.isRemotePresenceId()
+
+    private fun String?.isRemotePresenceId(): Boolean {
+        val id = this?.trim()?.takeIf { it.isNotBlank() } ?: return false
+        return !id.isLocalMediaId() &&
+            !id.startsWith("LOCAL_ARTIST_") &&
+            !id.startsWith("LA") &&
+            !id.contains("privately_owned_artist", ignoreCase = true)
+    }
+
     // Create a transient Song object from current Player MediaMetadata when the DB doesn't have it.
-    private fun createTransientSongFromMedia(media: moe.rukamori.archivetune.models.MediaMetadata): Song {
+    private fun createTransientSongFromMedia(media: MediaMetadata): Song {
         val songEntity =
             SongEntity(
                 id = media.id,
@@ -6476,6 +6539,7 @@ class MusicService :
                 albumId = media.album?.id,
                 albumName = media.album?.title,
                 explicit = media.explicit,
+                isLocal = media.id.isLocalMediaId(),
             )
 
         val artists =
@@ -6484,6 +6548,7 @@ class MusicService :
                     id = artist.id ?: "LA_unknown_${artist.name}",
                     name = artist.name,
                     thumbnailUrl = if (!artist.thumbnailUrl.isNullOrBlank()) artist.thumbnailUrl else media.thumbnailUrl,
+                    isLocal = artist.id == null || artist.id.isLocalMediaId(),
                 )
             }
 
@@ -6498,6 +6563,7 @@ class MusicService :
                     themeColor = null,
                     songCount = 1,
                     duration = media.duration,
+                    isLocal = media.id.isLocalMediaId(),
                 )
             }
 
