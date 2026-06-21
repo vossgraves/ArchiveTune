@@ -21,7 +21,6 @@
     <string name="cached_playlist">Кешовані</string>
     <string name="sync_playlist">Синхронізувати плейліст</string>
     <string name="sync_disabled">Синхронізація вимкнена</string>
-    <string name="elements_selected">%1$d елементів вибрано</string>
     <string name="allows_for_sync_witch_youtube">Примітка: Це дозволяє синхронізацію з YouTube Music. Це налаштування НЕ можна змінити пізніше.</string>
     <string name="generating_image">Створення зображення</string>
     <string name="please_wait">Будь ласка, зачекайте</string>

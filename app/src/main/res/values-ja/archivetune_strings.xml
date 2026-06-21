@@ -86,7 +86,6 @@
     <string name="cached_playlist">キャッシュされた</string>
     <string name="sync_playlist">プレイリストを同期する</string>
     <string name="sync_disabled">同期は無効です</string>
-    <string name="elements_selected">%1$d 個の要素が選択されました</string>
     <string name="allows_for_sync_witch_youtube">注: これにより、YouTube Music との同期が可能になります。これは後から変更することはできません。</string>
     <string name="generating_image">画像の生成</string>
     <string name="please_wait">お待ちください</string>

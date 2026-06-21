@@ -21,7 +21,6 @@
     <string name="cached_playlist">Simpanan sementara</string>
     <string name="sync_playlist">Kemasa kinikan senarai main</string>
     <string name="sync_disabled">Kemasa kinikan ditutup</string>
-    <string name="elements_selected">%1$d elemen dipilih</string>
     <string name="allows_for_sync_witch_youtube">Peringatan: Ini membenarkan pengemaskinian dengan YouTube Music. Ia TIDAK BOLEH ditukar kelak.</string>
     <string name="generating_image">Menjana gambar</string>
     <string name="please_wait">Sila tunggu</string>

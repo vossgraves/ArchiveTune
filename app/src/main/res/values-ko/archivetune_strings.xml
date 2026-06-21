@@ -86,7 +86,6 @@
     <string name="cached_playlist">캐시됨</string>
     <string name="sync_playlist">재생목록 동기화</string>
     <string name="sync_disabled">동기화 비활성화됨</string>
-    <string name="elements_selected">%1$d개 항목 선택됨</string>
     <string name="allows_for_sync_witch_youtube">참고: 이 설정을 활성화하면 YouTube Music과 재생목록이 동기화됩니다. 이 설정은 나중에 변경할 수 없습니다.</string>
     <string name="generating_image">이미지 생성 중…</string>
     <string name="please_wait">잠시만 기다려 주세요</string>

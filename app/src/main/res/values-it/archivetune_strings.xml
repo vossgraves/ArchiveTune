@@ -21,7 +21,6 @@
     <string name="cached_playlist">Memorizzato in cache</string>
     <string name="sync_playlist">Sincronizza playlist</string>
     <string name="sync_disabled">Sincronizzazione disabilitata</string>
-    <string name="elements_selected">%1$d elementi selezionati</string>
     <string name="allows_for_sync_witch_youtube">Nota: questo consente la sincronizzazione con YouTube Music. NON è modificabile in seguito.</string>
     <string name="generating_image">Generando immagine</string>
     <string name="please_wait">Attendere prego</string>

@@ -21,7 +21,6 @@
     <string name="cached_playlist">已缓存</string>
     <string name="sync_playlist">同步播放列表</string>
     <string name="sync_disabled">同步被禁用</string>
-    <string name="elements_selected">%1$d已选定元素</string>
     <string name="allows_for_sync_witch_youtube">注意：这允许与YouTube Music同步。这在之后是无法更改的。</string>
     <string name="generating_image">生成图像</string>
     <string name="please_wait">请稍候</string>

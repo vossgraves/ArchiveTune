@@ -157,7 +157,6 @@
     <string name="cached_playlist">Tersimpan di Cache</string>
     <string name="sync_playlist">Sinkronkan playlist</string>
     <string name="sync_disabled">Sinkronisasi dinonaktifkan</string>
-    <string name="elements_selected">%1$d elemen dipilih</string>
     <string name="allows_for_sync_witch_youtube">Catatan: Ini memungkinkan sinkronisasi dengan YouTube Music. Ini TIDAK dapat diubah nanti.</string>
     <string name="generating_image">Menghasilkan gambar</string>
     <string name="please_wait">Harap tunggu</string>

@@ -20,7 +20,6 @@
     <string name="cached_playlist">Puhverdatud</string>
     <string name="sync_playlist">Sünkrooni esitusloend</string>
     <string name="sync_disabled">Sünkroonimine pole kasutusel</string>
-    <string name="elements_selected">Valitud on %1$d elementi</string>
     <string name="allows_for_sync_witch_youtube">Märkus: see võimaldab sünkroonimist YouTube Musicuga. Sa EI SAA seda seadistust hiljem muuta.</string>
     <string name="generating_image">Loon pilti</string>
     <string name="please_wait">Palun oota</string>
