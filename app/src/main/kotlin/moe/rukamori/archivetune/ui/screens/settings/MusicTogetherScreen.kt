@@ -227,11 +227,20 @@ fun MusicTogetherScreen(
     var showJoinDialog by rememberSaveable { mutableStateOf(false) }
 
     val hostingOnline = sessionState as? TogetherSessionState.HostingOnline
-    val onlineParticipants = hostingOnline?.roomState?.participants.orEmpty()
+    val hostRoomState =
+        when (val state = sessionState) {
+            is TogetherSessionState.Hosting -> state.roomState
+            is TogetherSessionState.HostingOnline -> state.roomState
+            is TogetherSessionState.Joined -> if (state.role is TogetherRole.Host) state.roomState else null
+            else -> null
+        }
+    val hostParticipants = hostRoomState?.participants.orEmpty()
     var confirmKickParticipantId by rememberSaveable { mutableStateOf<String?>(null) }
     var confirmBanParticipantId by rememberSaveable { mutableStateOf<String?>(null) }
-    val confirmKickName = onlineParticipants.firstOrNull { it.id == confirmKickParticipantId }?.name
-    val confirmBanName = onlineParticipants.firstOrNull { it.id == confirmBanParticipantId }?.name
+    var confirmTransferHostParticipantId by rememberSaveable { mutableStateOf<String?>(null) }
+    val confirmKickName = hostParticipants.firstOrNull { it.id == confirmKickParticipantId }?.name
+    val confirmBanName = hostParticipants.firstOrNull { it.id == confirmBanParticipantId }?.name
+    val confirmTransferHostName = hostParticipants.firstOrNull { it.id == confirmTransferHostParticipantId }?.name
 
     LaunchedEffect(disableJoinUi, isJoining, isHosting) {
         if (disableJoinUi || isJoining || isHosting) showJoinDialog = false
@@ -401,6 +410,46 @@ fun MusicTogetherScreen(
         )
     }
 
+    if (confirmTransferHostParticipantId != null) {
+        AlertDialog(
+            onDismissRequest = { confirmTransferHostParticipantId = null },
+            shape = RoundedCornerShape(28.dp),
+            containerColor = MaterialTheme.colorScheme.surface,
+            title = { Text(text = stringResource(R.string.together_transfer_host)) },
+            text = {
+                Text(
+                    text =
+                        stringResource(
+                            R.string.together_transfer_host_confirm,
+                            confirmTransferHostName ?: stringResource(R.string.unknown),
+                        ),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val pid = confirmTransferHostParticipantId ?: return@Button
+                        confirmTransferHostParticipantId = null
+                        playerConnection?.service?.transferTogetherHostOwnership(pid)
+                    },
+                    shapes = ButtonDefaults.shapes(),
+                ) {
+                    Text(text = stringResource(R.string.together_transfer_host), fontWeight = FontWeight.SemiBold)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { confirmTransferHostParticipantId = null },
+                    shapes = ButtonDefaults.shapes(),
+                ) {
+                    Text(text = stringResource(R.string.dismiss))
+                }
+            },
+        )
+    }
+
     Column(
         modifier =
             Modifier
@@ -452,12 +501,16 @@ fun MusicTogetherScreen(
                         .padding(top = 4.dp, bottom = 12.dp),
             )
 
-            if (hostingOnline?.roomState != null && isHostRole) {
+            if (hostRoomState != null && isHostRole) {
                 OnlineParticipantsCard(
-                    participants = hostingOnline.roomState.participants,
-                    hostApprovalEnabled = hostingOnline.settings.requireHostApprovalToJoin,
+                    participants = hostRoomState.participants,
+                    hostApprovalEnabled = hostRoomState.settings.requireHostApprovalToJoin,
+                    showModerationActions = hostingOnline != null,
                     onApprove = { participantId, approved ->
                         playerConnection?.service?.approveTogetherParticipant(participantId, approved)
+                    },
+                    onTransferHost = { participantId ->
+                        confirmTransferHostParticipantId = participantId
                     },
                     onKick = { participantId ->
                         confirmKickParticipantId = participantId
@@ -547,7 +600,9 @@ fun MusicTogetherScreen(
 private fun OnlineParticipantsCard(
     participants: List<moe.rukamori.archivetune.together.TogetherParticipant>,
     hostApprovalEnabled: Boolean,
+    showModerationActions: Boolean,
     onApprove: (participantId: String, approved: Boolean) -> Unit,
+    onTransferHost: (participantId: String) -> Unit,
     onKick: (participantId: String) -> Unit,
     onBan: (participantId: String) -> Unit,
     modifier: Modifier = Modifier,
@@ -669,7 +724,7 @@ private fun OnlineParticipantsCard(
 
                         if (!participant.isHost) {
                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                                if (participant.isPending && hostApprovalEnabled) {
+                                if (showModerationActions && participant.isPending && hostApprovalEnabled) {
                                     AtIconButton(
                                         onClick = { onApprove(participant.id, true) },
                                         onLongClick = {},
@@ -684,17 +739,28 @@ private fun OnlineParticipantsCard(
                                     }
                                 }
 
-                                AtIconButton(
-                                    onClick = { onKick(participant.id) },
-                                    onLongClick = {},
-                                ) {
-                                    Icon(painterResource(R.drawable.kick), null)
+                                if (!participant.isPending) {
+                                    AtIconButton(
+                                        onClick = { onTransferHost(participant.id) },
+                                        onLongClick = {},
+                                    ) {
+                                        Icon(painterResource(R.drawable.sync), null)
+                                    }
                                 }
-                                AtIconButton(
-                                    onClick = { onBan(participant.id) },
-                                    onLongClick = {},
-                                ) {
-                                    Icon(painterResource(R.drawable.block), null)
+
+                                if (showModerationActions) {
+                                    AtIconButton(
+                                        onClick = { onKick(participant.id) },
+                                        onLongClick = {},
+                                    ) {
+                                        Icon(painterResource(R.drawable.kick), null)
+                                    }
+                                    AtIconButton(
+                                        onClick = { onBan(participant.id) },
+                                        onLongClick = {},
+                                    ) {
+                                        Icon(painterResource(R.drawable.block), null)
+                                    }
                                 }
                             }
                         }
