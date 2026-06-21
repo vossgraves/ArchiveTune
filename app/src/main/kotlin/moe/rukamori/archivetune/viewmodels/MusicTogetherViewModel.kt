@@ -291,16 +291,18 @@ class MusicTogetherViewModel
                 )
             }.let { inputs ->
                 combine(inputs, welcomeDontShowAgain, activityLog) { stateInputs, dontShowAgain, log ->
-                    MusicTogetherScreenState.Success(
-                        stateInputs.snapshot.toUiModel(
-                            hostOnline = stateInputs.hostOnline,
-                            joinOnline = stateInputs.joinOnline,
-                            dialogState = stateInputs.dialogState,
-                            welcomeDismissed = stateInputs.welcomeDismissed,
-                            dontShowAgain = dontShowAgain,
-                            log = log,
-                        ),
-                    )
+                    val screenState: MusicTogetherScreenState =
+                        MusicTogetherScreenState.Success(
+                            stateInputs.snapshot.toUiModel(
+                                hostOnline = stateInputs.hostOnline,
+                                joinOnline = stateInputs.joinOnline,
+                                dialogState = stateInputs.dialogState,
+                                welcomeDismissed = stateInputs.welcomeDismissed,
+                                dontShowAgain = dontShowAgain,
+                                log = log,
+                            ),
+                        )
+                    screenState
                 }
             }.catch { throwable ->
                 if (throwable is CancellationException) throw throwable
