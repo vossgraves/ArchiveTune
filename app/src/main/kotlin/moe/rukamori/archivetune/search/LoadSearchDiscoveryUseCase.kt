@@ -26,13 +26,22 @@ class LoadSearchDiscoveryUseCase
 
                 SearchDiscoveryUiModel(
                     moodAndGenres = data.moodAndGenres,
-                    trendingSongs = chartItems.filterIsInstance<SongItem>().distinctBy { item -> item.id }.take(MaxTrendingItems),
+                    trendingSongs =
+                        (
+                            chartItems.filterIsInstance<SongItem>() +
+                                data.searchedSongs
+                        ).distinctBy { item -> item.id }.take(MaxTrendingItems),
                     trendingAlbums =
                         (
                             chartItems.filterIsInstance<AlbumItem>() +
-                                data.newReleaseAlbums
+                                data.newReleaseAlbums +
+                                data.searchedAlbums
                         ).distinctBy { item -> item.id }.take(MaxTrendingItems),
-                    trendingArtists = chartItems.filterIsInstance<ArtistItem>().distinctBy { item -> item.id }.take(MaxTrendingItems),
+                    trendingArtists =
+                        (
+                            chartItems.filterIsInstance<ArtistItem>() +
+                                data.searchedArtists
+                        ).distinctBy { item -> item.id }.take(MaxTrendingItems),
                 )
             }
 

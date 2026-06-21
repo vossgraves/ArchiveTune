@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
@@ -29,14 +30,15 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.PrimaryTabRow
+import androidx.compose.material3.SearchBar
+import androidx.compose.material3.SearchBarDefaults
 import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -81,7 +83,7 @@ import moe.rukamori.archivetune.viewmodels.SearchDiscoveryScreenState
 import moe.rukamori.archivetune.viewmodels.SearchDiscoveryTab
 import moe.rukamori.archivetune.viewmodels.SearchDiscoveryViewModel
 
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun SearchScreen(
     navController: NavController,
@@ -241,49 +243,53 @@ fun SearchScreen(
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SearchEntryField(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Box(modifier = modifier) {
-        OutlinedTextField(
-            value = "",
-            onValueChange = {},
-            readOnly = true,
-            singleLine = true,
-            leadingIcon = {
-                Icon(
-                    painter = painterResource(R.drawable.search),
-                    contentDescription = null,
-                )
-            },
-            trailingIcon = {
-                Icon(
-                    painter = painterResource(R.drawable.language),
-                    contentDescription = null,
-                )
-            },
-            placeholder = {
-                Text(
-                    text = stringResource(R.string.search_yt_music),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            },
-            shape = RoundedCornerShape(28.dp),
-            modifier = Modifier.fillMaxWidth(),
-        )
-        Box(
-            modifier =
-                Modifier
-                    .matchParentSize()
-                    .combinedClickable(onClick = onClick),
-        )
-    }
+    SearchBar(
+        inputField = {
+            SearchBarDefaults.InputField(
+                query = "",
+                onQueryChange = { onClick() },
+                onSearch = { onClick() },
+                expanded = false,
+                onExpandedChange = { expanded ->
+                    if (expanded) onClick()
+                },
+                placeholder = {
+                    Text(
+                        text = stringResource(R.string.search_yt_music),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                },
+                leadingIcon = {
+                    Icon(
+                        painter = painterResource(R.drawable.search),
+                        contentDescription = null,
+                    )
+                },
+                trailingIcon = {
+                    Icon(
+                        painter = painterResource(R.drawable.language),
+                        contentDescription = null,
+                    )
+                },
+            )
+        },
+        expanded = false,
+        onExpandedChange = { expanded ->
+            if (expanded) onClick()
+        },
+        windowInsets = WindowInsets(0.dp, 0.dp, 0.dp, 0.dp),
+        modifier = modifier.fillMaxWidth(),
+    ) {}
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SearchDiscoveryTabs(
     selectedTab: SearchDiscoveryTab,
@@ -291,7 +297,7 @@ private fun SearchDiscoveryTabs(
     modifier: Modifier = Modifier,
 ) {
     val tabs = remember { SearchDiscoveryTab.entries }
-    TabRow(
+    PrimaryTabRow(
         selectedTabIndex = tabs.indexOf(selectedTab),
         modifier = modifier,
     ) {

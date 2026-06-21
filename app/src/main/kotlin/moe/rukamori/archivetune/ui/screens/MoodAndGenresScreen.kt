@@ -340,7 +340,7 @@ fun MoodAndGenresButton(
                         ),
                 ),
             color = Color.White,
-            maxLines = 2,
+            maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier =
                 Modifier
