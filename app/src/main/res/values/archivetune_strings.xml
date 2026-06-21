@@ -462,7 +462,6 @@
     <string name="day_fri">Fri</string>
     <string name="day_sat">Sat</string>
     <string name="theme_creator_title">Theme Creator</string>
-    <string name="theme_creator_subtitle">Tune colors, preview the result, then export or import.</string>
     <string name="custom_theme">Custom Theme</string>
     <string name="import_theme">Import Theme</string>
     <string name="export_theme">Export Theme</string>
