@@ -225,6 +225,7 @@ import moe.rukamori.archivetune.playback.queues.filterVideo
 import moe.rukamori.archivetune.scrobbling.LastFmServiceConfig
 import moe.rukamori.archivetune.storage.StorageFolderKind
 import moe.rukamori.archivetune.storage.StorageLocationRepository
+import moe.rukamori.archivetune.together.TogetherPlaybackSync
 import moe.rukamori.archivetune.ui.screens.settings.DiscordPresenceManager
 import moe.rukamori.archivetune.ui.screens.settings.ListenBrainzManager
 import moe.rukamori.archivetune.utils.AuthScopedCacheValue
@@ -3193,7 +3194,7 @@ class MusicService :
                                     )
                             }
                         }
-                        kotlinx.coroutines.delay(750)
+                        kotlinx.coroutines.delay(TogetherPlaybackSync.BroadcastIntervalMs)
                     }
                 }
         }
@@ -3361,7 +3362,7 @@ class MusicService :
                                     )
                             }
                         }
-                        kotlinx.coroutines.delay(750)
+                        kotlinx.coroutines.delay(TogetherPlaybackSync.BroadcastIntervalMs)
                     }
                 }
         }
@@ -3481,7 +3482,7 @@ class MusicService :
                                         if (joined?.role is moe.rukamori.archivetune.together.TogetherRole.Guest) {
                                             togetherPendingGuestControl = null
                                             togetherLastSentControlAction = null
-                                            scope.launch(SilentHandler) { applyRemoteRoomState(joined.roomState) }
+                                            scope.launch(SilentHandler) { applyRemoteRoomState(joined.roomState, force = true) }
                                         }
                                     }
 
@@ -3714,7 +3715,7 @@ class MusicService :
                                         if (joined?.role is moe.rukamori.archivetune.together.TogetherRole.Guest) {
                                             togetherPendingGuestControl = null
                                             togetherLastSentControlAction = null
-                                            scope.launch(SilentHandler) { applyRemoteRoomState(joined.roomState) }
+                                            scope.launch(SilentHandler) { applyRemoteRoomState(joined.roomState, force = true) }
                                         }
                                     }
 
@@ -4090,12 +4091,17 @@ class MusicService :
             )
         }
 
-    private suspend fun applyRemoteRoomState(state: moe.rukamori.archivetune.together.TogetherRoomState) {
+    private suspend fun applyRemoteRoomState(
+        state: moe.rukamori.archivetune.together.TogetherRoomState,
+        force: Boolean = false,
+    ) {
         val pid = togetherSelfParticipantId ?: return
         val now = android.os.SystemClock.elapsedRealtime()
 
         val pending = togetherPendingGuestControl
-        if (pending != null) {
+        if (force) {
+            togetherPendingGuestControl = null
+        } else if (pending != null) {
             val currentTrackId = state.queue.getOrNull(state.currentIndex.coerceAtLeast(0))?.id
             val mismatch =
                 (pending.desiredIsPlaying != null && state.isPlaying != pending.desiredIsPlaying) ||
@@ -4115,20 +4121,30 @@ class MusicService :
             }
         }
 
-        val lastSentAt = togetherLastAppliedRoomStateSentAtElapsedMs
         val sentAt = state.sentAtElapsedRealtimeMs
-        if (sentAt > 0L && lastSentAt > 0L && sentAt <= lastSentAt) return
+        if (TogetherPlaybackSync.isStaleRoomState(
+                sentAtElapsedRealtimeMs = sentAt,
+                lastAppliedSentAtElapsedRealtimeMs = togetherLastAppliedRoomStateSentAtElapsedMs,
+                force = force,
+            )
+        ) {
+            return
+        }
 
-        val offset = if (togetherIsOnlineSession) 0L else (togetherClock?.snapshot()?.estimatedOffsetMs ?: 0L)
-        val correctedSentAt = sentAt + offset
-        val estimatedOnlineLatency = if (togetherIsOnlineSession) 1200L else 0L
-        val delta = if (togetherIsOnlineSession) estimatedOnlineLatency else (now - correctedSentAt).coerceAtLeast(0L)
         val targetPos =
-            if (state.isPlaying) (state.positionMs + delta).coerceAtLeast(0L) else state.positionMs.coerceAtLeast(0L)
+            TogetherPlaybackSync.targetPositionMs(
+                state = state,
+                isOnlineSession = togetherIsOnlineSession,
+                clockSnapshot = if (togetherIsOnlineSession) null else togetherClock?.snapshot(),
+                nowElapsedRealtimeMs = now,
+            )
 
         withContext(Dispatchers.Main) {
             togetherApplyingRemote = true
-            togetherSuppressEchoUntilElapsedMs = android.os.SystemClock.elapsedRealtime() + 450L
+            togetherSuppressEchoUntilElapsedMs =
+                TogetherPlaybackSync.echoSuppressionUntil(
+                    android.os.SystemClock.elapsedRealtime(),
+                )
             try {
                 val desiredItems = state.queue.map { it.toMediaMetadata().toMediaItem() }
                 val desiredIds = state.queue.map { it.id }
@@ -4142,11 +4158,12 @@ class MusicService :
                             .md5(localIds.joinToString(separator = "|"))
                     }
                 val needsRebuild =
-                    desiredItems.isNotEmpty() &&
-                        (
-                            (desiredHash.isNotBlank() && desiredHash != localHash) ||
-                                (desiredHash.isBlank() && desiredIds != localIds)
-                        )
+                    TogetherPlaybackSync.needsQueueRebuild(
+                        desiredHash = desiredHash,
+                        desiredIds = desiredIds,
+                        localHash = localHash,
+                        localIds = localIds,
+                    )
 
                 if (desiredItems.isNotEmpty() && needsRebuild) {
                     togetherLastAppliedQueueHash = desiredHash.ifBlank { localHash }
@@ -4167,34 +4184,33 @@ class MusicService :
                     player.playWhenReady = state.isPlaying
                     togetherLastRemoteAppliedIndex = startIndex
                 } else {
-                    val index = state.currentIndex.coerceAtLeast(0)
+                    val index =
+                        if (player.mediaItemCount > 0) {
+                            state.currentIndex.coerceIn(0, player.mediaItemCount - 1)
+                        } else {
+                            0
+                        }
                     val indexChanged = player.mediaItemCount > 0 && index != player.currentMediaItemIndex
-                    val stateChanged =
-                        player.repeatMode != state.repeatMode ||
-                            player.shuffleModeEnabled != state.shuffleEnabled ||
-                            player.playWhenReady != state.isPlaying
 
                     if (indexChanged) {
-                        player.seekTo(index.coerceAtMost(player.mediaItemCount - 1), targetPos)
-                        player.prepare()
-                        player.playWhenReady = state.isPlaying
-                    } else if (stateChanged) {
                         if (player.repeatMode != state.repeatMode) player.repeatMode = state.repeatMode
                         if (player.shuffleModeEnabled != state.shuffleEnabled) player.shuffleModeEnabled = state.shuffleEnabled
-                        if (player.playWhenReady != state.isPlaying) {
-                            player.playWhenReady = state.isPlaying
-                            val drift = kotlin.math.abs(player.currentPosition - targetPos)
-                            if (drift > 100) {
-                                player.seekTo(targetPos)
-                                player.prepare()
-                            }
-                        }
+                        player.seekTo(index, targetPos)
+                        player.prepare()
+                        player.playWhenReady = state.isPlaying
                     } else {
-                        val drift = kotlin.math.abs(player.currentPosition - targetPos)
-                        val seekThreshold = if (togetherIsOnlineSession) 4000L else 2000L
-                        val threshold = if (state.isPlaying) seekThreshold else 200L
-
-                        if (drift > threshold) {
+                        val playbackStateChanged = player.playWhenReady != state.isPlaying
+                        if (player.repeatMode != state.repeatMode) player.repeatMode = state.repeatMode
+                        if (player.shuffleModeEnabled != state.shuffleEnabled) player.shuffleModeEnabled = state.shuffleEnabled
+                        if (playbackStateChanged) player.playWhenReady = state.isPlaying
+                        val shouldSeekForDrift =
+                            TogetherPlaybackSync.shouldSeekForDrift(
+                                currentPositionMs = player.currentPosition,
+                                targetPositionMs = targetPos,
+                                isPlaying = state.isPlaying,
+                                isOnlineSession = togetherIsOnlineSession,
+                            )
+                        if (shouldSeekForDrift || (playbackStateChanged && !state.isPlaying)) {
                             player.seekTo(targetPos)
                             player.prepare()
                         }
@@ -4911,7 +4927,7 @@ class MusicService :
             reason == Player.MEDIA_ITEM_TRANSITION_REASON_SEEK
         ) {
             if (!joined.roomState.settings.allowGuestsToControlPlayback) {
-                scope.launch(SilentHandler) { applyRemoteRoomState(joined.roomState) }
+                scope.launch(SilentHandler) { applyRemoteRoomState(joined.roomState, force = true) }
                 return
             }
             val now = android.os.SystemClock.elapsedRealtime()
@@ -5228,7 +5244,7 @@ class MusicService :
             events.contains(Player.EVENT_PLAY_WHEN_READY_CHANGED)
         ) {
             if (!joined.roomState.settings.allowGuestsToControlPlayback) {
-                scope.launch(SilentHandler) { applyRemoteRoomState(joined.roomState) }
+                scope.launch(SilentHandler) { applyRemoteRoomState(joined.roomState, force = true) }
             } else {
                 val now = android.os.SystemClock.elapsedRealtime()
                 val playWhenReady = this.player.playWhenReady
@@ -5503,7 +5519,7 @@ class MusicService :
         if (joined?.role is moe.rukamori.archivetune.together.TogetherRole.Guest) {
             if (!isTogetherApplyingRemote()) {
                 if (!joined.roomState.settings.allowGuestsToControlPlayback) {
-                    scope.launch(SilentHandler) { applyRemoteRoomState(joined.roomState) }
+                    scope.launch(SilentHandler) { applyRemoteRoomState(joined.roomState, force = true) }
                     return
                 }
                 requestTogetherControl(
@@ -5535,7 +5551,7 @@ class MusicService :
         if (joined?.role is moe.rukamori.archivetune.together.TogetherRole.Guest) {
             if (!isTogetherApplyingRemote()) {
                 if (!joined.roomState.settings.allowGuestsToControlPlayback) {
-                    scope.launch(SilentHandler) { applyRemoteRoomState(joined.roomState) }
+                    scope.launch(SilentHandler) { applyRemoteRoomState(joined.roomState, force = true) }
                     return
                 }
                 requestTogetherControl(
