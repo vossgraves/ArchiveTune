@@ -306,4 +306,7 @@
     <string name="card_and_list">כרטיס ורשימה</string>
     <string name="quick_picks_display_mode">מצב תצוגה של בחירות מהירות</string>
     <string name="quick_picks_display_mode_card">כרטיס</string>
+    <string name="quick_picks_display_mode_list">רשימה</string>
+    <string name="google">גוגל</string>
+    <string name="discord">דיסקורד</string>
 </resources>
