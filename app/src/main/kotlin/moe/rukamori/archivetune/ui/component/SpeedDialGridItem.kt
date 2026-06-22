@@ -163,7 +163,7 @@ fun SpeedDialGridItem(
                 Icon(
                     painter = painterResource(R.drawable.bookmark_filled),
                     contentDescription = null,
-                    tint = pinnedIconColor,
+                    tint = foregroundColor,
                     modifier =
                         Modifier
                             .align(Alignment.TopEnd)
