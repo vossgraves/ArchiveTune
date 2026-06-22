@@ -29,9 +29,13 @@ data class LyricsRomanizationPreferences(
 
 @Suppress("RegExpRedundantEscape")
 object LyricsUtils {
-    val LINE_REGEX = "((\\[\\d\\d:\\d\\d\\.\\d{2,3}\\] ?)+)(.+)".toRegex()
-    val TIME_REGEX = "\\[(\\d\\d):(\\d\\d)\\.(\\d{2,3})\\]".toRegex()
+    val LINE_REGEX = Regex("""((\[\d{1,3}:\d{2}(?:[.:]\d{2,3})?\]\s*)+)(.*)""")
+    val TIME_REGEX = Regex("""\[(\d{1,3}):(\d{2})(?:[.:](\d{2,3}))?\]""")
     private val WHITESPACE_REGEX = "\\s+".toRegex()
+    private val ENHANCED_LRC_WORD_TIME_REGEX = Regex("""<\d{1,3}:\d{2}(?:[.:]\d{2,3})?>""")
+    private val INLINE_MILLISECONDS_TIME_REGEX = Regex("""<\d{1,8}(?:,\d{1,8})?>""")
+    private val YRC_LINE_REGEX = Regex("""\[(\d{1,8}),\d{1,8}\](.*)""")
+    private val YRC_WORD_TIME_REGEX = Regex("""\(\d{1,8},\d{1,8}(?:,\d{1,8})?\)""")
     private val INVISIBLE_CHARS_REGEX = Regex("""[\u200B\u200C\u200D\u2060\u00AD]""")
     private const val NBSP = '\u00A0'
     private const val GENERIC_ROMANIZATION_TRANSFORM = "Any-Latin; Latin-ASCII"
@@ -379,7 +383,11 @@ object LyricsUtils {
             trimmed.contains("http://www.w3.org/ns/ttml", ignoreCase = true)
     }
 
-    fun isLineSyncedLrc(lyrics: String): Boolean = lyrics.lineSequence().any { line -> LINE_REGEX.matches(line.trim()) }
+    fun isLineSyncedLrc(lyrics: String): Boolean =
+        lyrics.lineSequence().any { line ->
+            val trimmedLine = line.trim()
+            LINE_REGEX.matches(trimmedLine) || YRC_LINE_REGEX.matches(trimmedLine)
+        }
 
     fun parseTtml(
         lyrics: String,
@@ -420,7 +428,7 @@ object LyricsUtils {
         val result = mutableListOf<LyricsEntry>()
 
         for (line in lines) {
-            val entries = parseLine(line)
+            val entries = parseLineSyncedLrcLine(line) ?: parseMillisecondsSyncedLine(line)
             if (entries != null) {
                 result.addAll(entries)
             }
@@ -460,7 +468,7 @@ object LyricsUtils {
                 isTtml(raw) -> runCatching { parseTtml(raw).map { it.text } }.getOrElse { emptyList() }
                 isLineSyncedLrc(raw) -> runCatching { parseLyrics(raw).map { it.text } }.getOrElse { emptyList() }
                 raw.startsWith("<") -> emptyList()
-                else -> raw.lines()
+                else -> raw.lines().map(::cleanInlineWordTimingText)
             }
 
         return visibleLines
@@ -560,13 +568,13 @@ object LyricsUtils {
         )
     }
 
-    private fun parseLine(line: String): List<LyricsEntry>? {
+    private fun parseLineSyncedLrcLine(line: String): List<LyricsEntry>? {
         if (line.isEmpty()) {
             return null
         }
         val matchResult = LINE_REGEX.matchEntire(line.trim()) ?: return null
         val times = matchResult.groupValues[1]
-        val text = matchResult.groupValues[3]
+        val text = cleanInlineWordTimingText(matchResult.groupValues[3])
         val timeMatchResults = TIME_REGEX.findAll(times)
 
         return timeMatchResults
@@ -574,14 +582,33 @@ object LyricsUtils {
                 val min = timeMatchResult.groupValues[1].toLong()
                 val sec = timeMatchResult.groupValues[2].toLong()
                 val milString = timeMatchResult.groupValues[3]
-                var mil = milString.toLong()
-                if (milString.length == 2) {
-                    mil *= 10
+                var mil = milString.toLongOrNull() ?: 0L
+                when (milString.length) {
+                    1 -> mil *= 100
+                    2 -> mil *= 10
                 }
                 val time = min * DateUtils.MINUTE_IN_MILLIS + sec * DateUtils.SECOND_IN_MILLIS + mil
                 LyricsEntry(time, text)
             }.toList()
     }
+
+    private fun parseMillisecondsSyncedLine(line: String): List<LyricsEntry>? {
+        if (line.isEmpty()) {
+            return null
+        }
+        val matchResult = YRC_LINE_REGEX.matchEntire(line.trim()) ?: return null
+        val time = matchResult.groupValues[1].toLongOrNull() ?: return null
+        val text = cleanInlineWordTimingText(matchResult.groupValues[2])
+        return listOf(LyricsEntry(time, text))
+    }
+
+    private fun cleanInlineWordTimingText(text: String): String =
+        text
+            .replace(ENHANCED_LRC_WORD_TIME_REGEX, "")
+            .replace(INLINE_MILLISECONDS_TIME_REGEX, "")
+            .replace(YRC_WORD_TIME_REGEX, "")
+            .replace(WHITESPACE_REGEX, " ")
+            .trim { it.isWhitespace() || it == NBSP }
 
     fun findCurrentLineIndex(
         lines: List<LyricsEntry>,
