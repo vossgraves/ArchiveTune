@@ -731,7 +731,7 @@ private fun SpeedDialRandomTile(
             ) {
                 repeat(3) {
                     Surface(
-                        color = MaterialTheme.colorScheme.primaryContainer,
+                        color = MaterialTheme.colorScheme.primary,
                         shape = CircleShape,
                         modifier = Modifier.size(18.dp),
                     ) {}
