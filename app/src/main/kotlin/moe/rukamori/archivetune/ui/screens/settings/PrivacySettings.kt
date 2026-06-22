@@ -40,6 +40,7 @@ import moe.rukamori.archivetune.LocalDatabase
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.DisableScreenshotKey
+import moe.rukamori.archivetune.constants.EnableHapticFeedbackKey
 import moe.rukamori.archivetune.constants.PauseListenHistoryKey
 import moe.rukamori.archivetune.constants.PauseSearchHistoryKey
 import moe.rukamori.archivetune.ui.component.DefaultDialog
@@ -57,18 +58,26 @@ fun PrivacySettings(
     scrollBehavior: TopAppBarScrollBehavior,
 ) {
     val database = LocalDatabase.current
-    val (pauseListenHistory, onPauseListenHistoryChange) = rememberPreference(
-        key = PauseListenHistoryKey,
-        defaultValue = false
-    )
-    val (pauseSearchHistory, onPauseSearchHistoryChange) = rememberPreference(
-        key = PauseSearchHistoryKey,
-        defaultValue = false
-    )
-    val (disableScreenshot, onDisableScreenshotChange) = rememberPreference(
-        key = DisableScreenshotKey,
-        defaultValue = false
-    )
+    val (pauseListenHistory, onPauseListenHistoryChange) =
+        rememberPreference(
+            key = PauseListenHistoryKey,
+            defaultValue = false,
+        )
+    val (pauseSearchHistory, onPauseSearchHistoryChange) =
+        rememberPreference(
+            key = PauseSearchHistoryKey,
+            defaultValue = false,
+        )
+    val (disableScreenshot, onDisableScreenshotChange) =
+        rememberPreference(
+            key = DisableScreenshotKey,
+            defaultValue = false,
+        )
+    val (enableHapticFeedback, onEnableHapticFeedbackChange) =
+        rememberPreference(
+            key = EnableHapticFeedbackKey,
+            defaultValue = true,
+        )
 
     var showClearListenHistoryDialog by remember {
         mutableStateOf(false)
@@ -148,13 +157,14 @@ fun PrivacySettings(
         Modifier
             .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom))
             .verticalScroll(rememberScrollState())
+            .padding(bottom = SettingsDimensions.ScreenBottomPadding),
     ) {
         Spacer(
             Modifier.windowInsetsPadding(
                 LocalPlayerAwareWindowInsets.current.only(
-                    WindowInsetsSides.Top
-                )
-            )
+                    WindowInsetsSides.Top,
+                ),
+            ),
         )
 
         PreferenceGroup(title = stringResource(R.string.listen_history)) {
@@ -198,6 +208,16 @@ fun PrivacySettings(
         PreferenceGroup(title = stringResource(R.string.misc)) {
             item {
                 SwitchPreference(
+                    title = { Text(stringResource(R.string.haptics)) },
+                    description = stringResource(R.string.haptics_desc),
+                    icon = { Icon(painterResource(R.drawable.vibration), null) },
+                    checked = enableHapticFeedback,
+                    onCheckedChange = onEnableHapticFeedbackChange,
+                )
+            }
+
+            item {
+                SwitchPreference(
                     title = { Text(stringResource(R.string.disable_screenshot)) },
                     description = stringResource(R.string.disable_screenshot_desc),
                     icon = { Icon(painterResource(R.drawable.screenshot), null) },
@@ -220,6 +240,6 @@ fun PrivacySettings(
                     contentDescription = null,
                 )
             }
-        }
+        },
     )
 }

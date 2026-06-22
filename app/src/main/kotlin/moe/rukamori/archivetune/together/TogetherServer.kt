@@ -20,12 +20,12 @@ import io.ktor.websocket.WebSocketSession
 import io.ktor.websocket.close
 import io.ktor.websocket.readText
 import io.ktor.websocket.send
-import java.util.UUID
-import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.ClosedReceiveChannelException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 
 sealed interface TogetherServerEvent {
     data class JoinRequested(
@@ -49,6 +49,14 @@ sealed interface TogetherServerEvent {
         val request: AddTrackRequest,
     ) : TogetherServerEvent
 
+    data class RoomStateReceived(
+        val state: TogetherRoomState,
+    ) : TogetherServerEvent
+
+    data class HostTransferred(
+        val participantId: String,
+    ) : TogetherServerEvent
+
     data class Error(
         val message: String,
         val throwable: Throwable? = null,
@@ -61,10 +69,13 @@ class TogetherServer(
     private val sessionKey: String,
     private val hostDisplayName: String,
     initialSettings: TogetherRoomSettings,
+    private val hostParticipantId: String = "host",
 ) {
     private val mutex = Mutex()
     private var settings: TogetherRoomSettings = initialSettings
     private var engine: EmbeddedServer<*, *>? = null
+    private var authorityParticipantId: String? = null
+
     @Volatile
     private var lastParticipants: List<TogetherParticipant> = emptyList()
 
@@ -121,7 +132,20 @@ class TogetherServer(
         }
     }
 
-    suspend fun approveParticipant(participantId: String, approved: Boolean) {
+    suspend fun transferHostOwnership(participantId: String) {
+        val target = clients[participantId] ?: return
+        if (target.pending) return
+        mutex.withLock {
+            authorityParticipantId = participantId
+        }
+        broadcastHostTransferred(participantId)
+        onEvent?.invoke(TogetherServerEvent.HostTransferred(participantId))
+    }
+
+    suspend fun approveParticipant(
+        participantId: String,
+        approved: Boolean,
+    ) {
         val client = clients[participantId] ?: return
         if (!client.pending) return
 
@@ -163,12 +187,17 @@ class TogetherServer(
     }
 
     suspend fun broadcastRoomState(state: TogetherRoomState) {
-        val snapshotSettings = mutex.withLock { settings }
+        val snapshot =
+            mutex.withLock {
+                settings to authorityParticipantId
+            }
+        val snapshotSettings = snapshot.first
+        val activeHostId = snapshot.second ?: hostParticipantId
         val host =
             TogetherParticipant(
-                id = state.hostId,
+                id = hostParticipantId,
                 name = hostDisplayName,
-                isHost = true,
+                isHost = activeHostId == hostParticipantId,
                 isPending = false,
                 isConnected = true,
             )
@@ -183,7 +212,7 @@ class TogetherServer(
                             TogetherParticipant(
                                 id = it.participantId,
                                 name = it.name,
-                                isHost = false,
+                                isHost = it.participantId == activeHostId,
                                 isPending = it.pending,
                                 isConnected = true,
                             )
@@ -194,6 +223,7 @@ class TogetherServer(
 
         val baseState =
             state.copy(
+                hostId = activeHostId,
                 participants = participantList,
                 settings = snapshotSettings,
             )
@@ -221,6 +251,34 @@ class TogetherServer(
                 )
             }
         }
+    }
+
+    private suspend fun broadcastHostTransferred(participantId: String) {
+        val message =
+            TogetherJson.json.encodeToString(
+                TogetherMessage.serializer(),
+                HostTransferred(sessionId = sessionId, participantId = participantId),
+            )
+        clients.values.forEach { client ->
+            runCatching { client.session.send(message) }
+        }
+    }
+
+    private suspend fun sendToAuthority(message: TogetherMessage): Boolean {
+        val authorityId = mutex.withLock { authorityParticipantId } ?: return false
+        val authority = clients[authorityId] ?: return false
+        if (authority.pending) return false
+        runCatching {
+            authority.session.send(
+                TogetherJson.json.encodeToString(
+                    TogetherMessage.serializer(),
+                    message,
+                ),
+            )
+        }.getOrElse {
+            return false
+        }
+        return true
     }
 
     private suspend fun WebSocketSession.handleClient() {
@@ -315,6 +373,15 @@ class TogetherServer(
                         }
 
                 when (message) {
+                    is RoomStateMessage -> {
+                        val isAuthority = mutex.withLock { authorityParticipantId == participantId }
+                        if (isAuthority && message.state.sessionId == sessionId) {
+                            val roomState = message.state.copy(hostId = participantId)
+                            broadcastRoomState(roomState)
+                            onEvent?.invoke(TogetherServerEvent.RoomStateReceived(roomState))
+                        }
+                    }
+
                     is HeartbeatPing -> {
                         send(
                             TogetherJson.json.encodeToString(
@@ -330,11 +397,19 @@ class TogetherServer(
                     }
 
                     is ControlRequest -> {
-                        if (!client.pending) onEvent?.invoke(TogetherServerEvent.ControlRequested(message))
+                        if (!client.pending) {
+                            if (!sendToAuthority(message)) {
+                                onEvent?.invoke(TogetherServerEvent.ControlRequested(message))
+                            }
+                        }
                     }
 
                     is AddTrackRequest -> {
-                        if (!client.pending) onEvent?.invoke(TogetherServerEvent.AddTrackRequested(message))
+                        if (!client.pending) {
+                            if (!sendToAuthority(message)) {
+                                onEvent?.invoke(TogetherServerEvent.AddTrackRequested(message))
+                            }
+                        }
                     }
 
                     is ClientLeave -> {
@@ -344,7 +419,16 @@ class TogetherServer(
                         }
                     }
 
-                    else -> Unit
+                    is HostTransfer -> {
+                        val canTransfer = mutex.withLock { authorityParticipantId == participantId }
+                        if (canTransfer && message.sessionId == sessionId) {
+                            transferHostOwnership(message.participantId)
+                        }
+                    }
+
+                    else -> {
+                        Unit
+                    }
                 }
             }
         } catch (t: Throwable) {

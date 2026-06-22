@@ -75,6 +75,7 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
@@ -101,9 +102,10 @@ fun TopSearch(
     leadingIcon: @Composable (() -> Unit)? = null,
     trailingIcon: @Composable (() -> Unit)? = null,
     shape: Shape = SearchBarDefaults.inputFieldShape,
-    colors: SearchBarColors = SearchBarDefaults.colors(
-        containerColor = MaterialTheme.colorScheme.surfaceContainerLow
-    ),
+    colors: SearchBarColors =
+        SearchBarDefaults.colors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        ),
     tonalElevation: Dp = SearchBarDefaults.TonalElevation,
     windowInsets: WindowInsets = WindowInsets.systemBars,
     interactionSource: MutableInteractionSource = remember { MutableInteractionSource() },
@@ -126,8 +128,14 @@ fun TopSearch(
                     val animatedRadius = SearchBarCornerRadius * (1 - animationProgress)
                     RoundedCornerShape(CornerSize(animatedRadius))
                 }
-                animationProgress == 1f -> defaultFullScreenShape
-                else -> shape
+
+                animationProgress == 1f -> {
+                    defaultFullScreenShape
+                }
+
+                else -> {
+                    shape
+                }
             }
         }
     }
@@ -159,31 +167,35 @@ fun TopSearch(
         val endPadding: Dp
         with(LocalDensity.current) {
             val startWidth = constraints.maxWidth.toFloat()
-            val startHeight = max(constraints.minHeight, InputFieldHeight.roundToPx())
-                .coerceAtMost(constraints.maxHeight)
-                .toFloat()
+            val startHeight =
+                max(constraints.minHeight, InputFieldHeight.roundToPx())
+                    .coerceAtMost(constraints.maxHeight)
+                    .toFloat()
             val endWidth = constraints.maxWidth.toFloat()
             val endHeight = constraints.maxHeight.toFloat()
 
             height = lerp(startHeight, endHeight, animationProgress).toDp()
             width = lerp(startWidth, endWidth, animationProgress).toDp()
-            startPadding = lerp(
-                (SearchBarHorizontalPadding + startInset).roundToPx().toFloat(),
-                0f,
-                animationProgress
-            ).toDp()
-            endPadding = lerp(
-                (SearchBarHorizontalPadding + endInset).roundToPx().toFloat(),
-                0f,
-                animationProgress
-            ).toDp()
+            startPadding =
+                lerp(
+                    (SearchBarHorizontalPadding + startInset).roundToPx().toFloat(),
+                    0f,
+                    animationProgress,
+                ).toDp()
+            endPadding =
+                lerp(
+                    (SearchBarHorizontalPadding + endInset).roundToPx().toFloat(),
+                    0f,
+                    animationProgress,
+                ).toDp()
         }
 
         Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(topInset + AppBarHeight)
-                .background(color = MaterialTheme.colorScheme.surface)
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(topInset + AppBarHeight)
+                    .background(color = MaterialTheme.colorScheme.surface),
         )
 
         Surface(
@@ -191,13 +203,13 @@ fun TopSearch(
             color = colors.containerColor,
             contentColor = contentColorFor(colors.containerColor),
             tonalElevation = tonalElevation,
-            modifier = Modifier
-                .padding(
-                    top = animatedSurfaceTopPadding,
-                    start = startPadding,
-                    end = endPadding,
-                )
-                .size(width = width, height = height),
+            modifier =
+                Modifier
+                    .padding(
+                        top = animatedSurfaceTopPadding,
+                        start = startPadding,
+                        end = endPadding,
+                    ).size(width = width, height = height),
         ) {
             Column {
                 SearchBarInputField(
@@ -211,16 +223,17 @@ fun TopSearch(
                     placeholder = placeholder,
                     leadingIcon = leadingIcon,
                     trailingIcon = trailingIcon,
-                    colors = TextFieldDefaults.colors(
-                        focusedTextColor = MaterialTheme.colorScheme.onSurface,
-                        unfocusedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                        focusedContainerColor = Color.Transparent,
-                        unfocusedContainerColor = Color.Transparent,
-                        disabledContainerColor = Color.Transparent,
-                        cursorColor = MaterialTheme.colorScheme.primary,
-                        focusedIndicatorColor = Color.Transparent,
-                        unfocusedIndicatorColor = Color.Transparent
-                    ),
+                    colors =
+                        TextFieldDefaults.colors(
+                            focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                            unfocusedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            focusedContainerColor = Color.Transparent,
+                            unfocusedContainerColor = Color.Transparent,
+                            disabledContainerColor = Color.Transparent,
+                            cursorColor = MaterialTheme.colorScheme.primary,
+                            focusedIndicatorColor = Color.Transparent,
+                            unfocusedIndicatorColor = Color.Transparent,
+                        ),
                     interactionSource = interactionSource,
                     focusRequester = focusRequester,
                     leftFocusRequester = leftFocusRequester,
@@ -259,16 +272,19 @@ private fun SearchBarInputField(
     focusRequester: FocusRequester = remember { FocusRequester() },
     leftFocusRequester: FocusRequester? = null,
 ) {
+    val coercedQuery = remember(query) { query.coerceTextRanges() }
     val focused = interactionSource.collectIsFocusedAsState().value
-    val textColor = LocalTextStyle.current.color.takeOrElse {
-        if (focused) colors.focusedTextColor else colors.unfocusedTextColor
-    }
+    val textColor =
+        LocalTextStyle.current.color.takeOrElse {
+            if (focused) colors.focusedTextColor else colors.unfocusedTextColor
+        }
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = modifier
-            .fillMaxWidth()
-            .height(InputFieldHeight),
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .height(InputFieldHeight),
     ) {
         if (leadingIcon != null) {
             Spacer(Modifier.width(SearchBarIconOffsetX))
@@ -276,52 +292,50 @@ private fun SearchBarInputField(
         }
 
         BasicTextField(
-            value = query,
-            onValueChange = onQueryChange,
-            modifier = Modifier
-                .weight(1f)
-                .focusRequester(focusRequester)
-                .then(
-                    if (leftFocusRequester != null) {
-                        Modifier.focusProperties {
-                            left = leftFocusRequester
+            value = coercedQuery,
+            onValueChange = { onQueryChange(it.coerceTextRanges()) },
+            modifier =
+                Modifier
+                    .weight(1f)
+                    .focusRequester(focusRequester)
+                    .then(
+                        if (leftFocusRequester != null) {
+                            Modifier.focusProperties {
+                                left = leftFocusRequester
+                            }
+                        } else {
+                            Modifier
+                        },
+                    ).pointerInput(Unit) {
+                        awaitEachGesture {
+                            awaitFirstDown(pass = PointerEventPass.Initial)
+                            val upEvent = waitForUpOrCancellation(pass = PointerEventPass.Initial)
+                            if (upEvent != null) {
+                                onActiveChange(true)
+                            }
                         }
-                    } else {
-                        Modifier
-                    }
-                )
-                .pointerInput(Unit) {
-                    awaitEachGesture {
-                        awaitFirstDown(pass = PointerEventPass.Initial)
-                        val upEvent = waitForUpOrCancellation(pass = PointerEventPass.Initial)
-                        if (upEvent != null) {
-                            onActiveChange(true)
+                    }.semantics {
+                        contentDescription = "Search"
+                        if (active) {
+                            stateDescription = "Suggestions available"
                         }
-                    }
-                }
-                .semantics {
-                    contentDescription = "Search"
-                    if (active) {
-                        stateDescription = "Suggestions available"
-                    }
-                }
-                .onKeyEvent {
-                    if (it.key == Key.Enter) {
-                        onSearch(query.text)
-                        return@onKeyEvent true
-                    }
-                    false
-                },
+                    }.onKeyEvent {
+                        if (it.key == Key.Enter) {
+                            onSearch(coercedQuery.text)
+                            return@onKeyEvent true
+                        }
+                        false
+                    },
             enabled = enabled,
             singleLine = true,
             textStyle = LocalTextStyle.current.merge(TextStyle(color = textColor)),
             cursorBrush = SolidColor(colors.cursorColor),
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-            keyboardActions = KeyboardActions(onSearch = { onSearch(query.text) }),
+            keyboardActions = KeyboardActions(onSearch = { onSearch(coercedQuery.text) }),
             interactionSource = interactionSource,
             decorationBox = @Composable { innerTextField ->
                 TextFieldDefaults.DecorationBox(
-                    value = query.text,
+                    value = coercedQuery.text,
                     innerTextField = innerTextField,
                     enabled = enabled,
                     singleLine = true,
@@ -342,6 +356,23 @@ private fun SearchBarInputField(
         }
     }
 }
+
+private fun TextFieldValue.coerceTextRanges(): TextFieldValue {
+    val textLength = text.length
+    val coercedSelection = selection.coerceInText(textLength)
+    val coercedComposition = composition?.coerceInText(textLength)
+    return if (coercedSelection == selection && coercedComposition == composition) {
+        this
+    } else {
+        copy(selection = coercedSelection, composition = coercedComposition)
+    }
+}
+
+private fun TextRange.coerceInText(textLength: Int): TextRange =
+    TextRange(
+        start = minOf(start, end).coerceIn(0, textLength),
+        end = maxOf(start, end).coerceIn(0, textLength),
+    )
 
 // Measurement specs
 val InputFieldHeight = 48.dp

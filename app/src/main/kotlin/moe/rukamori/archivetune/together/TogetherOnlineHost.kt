@@ -19,21 +19,23 @@ import io.ktor.websocket.WebSocketSession
 import io.ktor.websocket.close
 import io.ktor.websocket.readText
 import io.ktor.websocket.send
-import java.util.UUID
-import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.ClosedReceiveChannelException
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.launch
+import java.util.UUID
+import java.util.concurrent.TimeUnit
 
 @Immutable
 sealed class TogetherOnlineHostState {
     data object Idle : TogetherOnlineHostState()
+
     data object Connecting : TogetherOnlineHostState()
+
     data class Connected(
         val wsUrl: String,
         val sessionId: String,
@@ -74,6 +76,7 @@ class TogetherOnlineHost(
     private var session: WebSocketSession? = null
     private var loopJob: Job? = null
     private var hostParticipantId: String? = null
+    private var authorityParticipantId: String? = null
 
     private val clientId = clientId.trim().ifBlank { UUID.randomUUID().toString() }.take(64)
     private val normalizedBearerToken: String? = bearerToken?.trim()?.takeIf { it.isNotBlank() }
@@ -95,6 +98,7 @@ class TogetherOnlineHost(
     suspend fun connect(wsUrl: String) {
         disconnect()
         hostParticipantId = null
+        authorityParticipantId = null
         guests.clear()
         lastParticipants = emptyList()
 
@@ -151,13 +155,35 @@ class TogetherOnlineHost(
         val raw = root?.message?.trim().orEmpty()
         val reason =
             when (root) {
-                is java.net.UnknownHostException -> "Server not found"
-                is java.net.ConnectException -> "Connection refused"
-                is java.net.SocketTimeoutException -> "Connection timed out"
-                is javax.net.ssl.SSLHandshakeException -> "Secure connection failed"
-                is IllegalArgumentException ->
-                    if (raw.contains("ws", ignoreCase = true) && raw.contains("scheme", ignoreCase = true)) "Invalid server websocket URL" else null
-                else -> null
+                is java.net.UnknownHostException -> {
+                    "Server not found"
+                }
+
+                is java.net.ConnectException -> {
+                    "Connection refused"
+                }
+
+                is java.net.SocketTimeoutException -> {
+                    "Connection timed out"
+                }
+
+                is javax.net.ssl.SSLHandshakeException -> {
+                    "Secure connection failed"
+                }
+
+                is IllegalArgumentException -> {
+                    if (raw.contains("ws", ignoreCase = true) &&
+                        raw.contains("scheme", ignoreCase = true)
+                    ) {
+                        "Invalid server websocket URL"
+                    } else {
+                        null
+                    }
+                }
+
+                else -> {
+                    null
+                }
             }
 
         val detail = reason ?: raw.takeIf { it.isNotBlank() }
@@ -171,6 +197,7 @@ class TogetherOnlineHost(
         runCatching { session?.close(CloseReason(CloseReason.Codes.NORMAL, "Disconnect")) }
         session = null
         hostParticipantId = null
+        authorityParticipantId = null
         guests.clear()
         lastParticipants = emptyList()
     }
@@ -185,7 +212,10 @@ class TogetherOnlineHost(
         }
     }
 
-    suspend fun approveParticipant(participantId: String, approved: Boolean) {
+    suspend fun approveParticipant(
+        participantId: String,
+        approved: Boolean,
+    ) {
         val guest = guests[participantId] ?: return
         if (!guest.pending) return
 
@@ -225,7 +255,10 @@ class TogetherOnlineHost(
         rebuildParticipantsSnapshot()
     }
 
-    suspend fun kickParticipant(participantId: String, reason: String?) {
+    suspend fun kickParticipant(
+        participantId: String,
+        reason: String?,
+    ) {
         if (!guests.containsKey(participantId)) return
         runCatching {
             session?.send(
@@ -237,7 +270,10 @@ class TogetherOnlineHost(
         }
     }
 
-    suspend fun banParticipant(participantId: String, reason: String?) {
+    suspend fun banParticipant(
+        participantId: String,
+        reason: String?,
+    ) {
         if (!guests.containsKey(participantId)) return
         runCatching {
             session?.send(
@@ -249,12 +285,26 @@ class TogetherOnlineHost(
         }
     }
 
+    suspend fun transferHostOwnership(participantId: String) {
+        val guest = guests[participantId] ?: return
+        if (guest.pending) return
+        runCatching {
+            session?.send(
+                TogetherJson.json.encodeToString(
+                    TogetherMessage.serializer(),
+                    HostTransfer(sessionId = sessionId, participantId = participantId),
+                ),
+            )
+        }
+    }
+
     suspend fun broadcastRoomState(state: TogetherRoomState) {
         val snapshotSettings = mutex.withLock { settings }
+        val activeHostId = authorityParticipantId ?: hostId
         rebuildParticipantsSnapshot()
         val roomState =
             state.copy(
-                hostId = hostId,
+                hostId = activeHostId,
                 settings = snapshotSettings,
                 participants = lastParticipants,
             )
@@ -270,11 +320,12 @@ class TogetherOnlineHost(
     }
 
     private fun rebuildParticipantsSnapshot() {
+        val activeHostId = authorityParticipantId ?: hostId
         val host =
             TogetherParticipant(
                 id = hostId,
                 name = hostDisplayName,
-                isHost = true,
+                isHost = activeHostId == hostId,
                 isPending = false,
                 isConnected = true,
             )
@@ -286,19 +337,23 @@ class TogetherOnlineHost(
                     TogetherParticipant(
                         id = it.participantId,
                         name = it.name,
-                        isHost = false,
+                        isHost = it.participantId == activeHostId,
                         isPending = it.pending,
                         isConnected = true,
                     )
                 }
 
-        lastParticipants = buildList {
-            add(host)
-            addAll(guestList)
-        }
+        lastParticipants =
+            buildList {
+                add(host)
+                addAll(guestList)
+            }
     }
 
-    private suspend fun runLoop(session: WebSocketSession, wsUrl: String) {
+    private suspend fun runLoop(
+        session: WebSocketSession,
+        wsUrl: String,
+    ) {
         loopJob =
             scope.launch {
                 try {
@@ -323,6 +378,7 @@ class TogetherOnlineHost(
                                 if (message.sessionId == sessionId) {
                                     hostParticipantId = message.participantId
                                     mutex.withLock { settings = message.settings }
+                                    authorityParticipantId = hostId
                                 }
                             }
 
@@ -359,8 +415,25 @@ class TogetherOnlineHost(
                             is ParticipantLeft -> {
                                 if (message.sessionId == sessionId) {
                                     guests.remove(message.participantId)
+                                    if (authorityParticipantId == message.participantId) {
+                                        authorityParticipantId = hostId
+                                    }
                                     rebuildParticipantsSnapshot()
                                     onEvent?.invoke(TogetherServerEvent.ParticipantLeft(message.participantId, message.reason))
+                                }
+                            }
+
+                            is RoomStateMessage -> {
+                                if (message.state.sessionId == sessionId) {
+                                    onEvent?.invoke(TogetherServerEvent.RoomStateReceived(message.state))
+                                }
+                            }
+
+                            is HostTransferred -> {
+                                if (message.sessionId == sessionId) {
+                                    authorityParticipantId = message.participantId
+                                    rebuildParticipantsSnapshot()
+                                    onEvent?.invoke(TogetherServerEvent.HostTransferred(message.participantId))
                                 }
                             }
 
@@ -376,13 +449,16 @@ class TogetherOnlineHost(
                                 onEvent?.invoke(TogetherServerEvent.Error(message.message, null))
                             }
 
-                            else -> Unit
+                            else -> {
+                                Unit
+                            }
                         }
                     }
                 } catch (t: Throwable) {
                     onEvent?.invoke(TogetherServerEvent.Error("Connection loop failed", t))
                 } finally {
                     hostParticipantId = null
+                    authorityParticipantId = null
                     guests.clear()
                     lastParticipants = emptyList()
                     runCatching { session.close(CloseReason(CloseReason.Codes.NORMAL, "Disconnected")) }

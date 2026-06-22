@@ -24,6 +24,17 @@ val discordApplicationId =
         ).trim()
 val discordApplicationIdLong = discordApplicationId.toLongOrNull() ?: 1165706613961789445L
 val discordRedirectScheme = "discord-$discordApplicationId"
+val releaseKeystoreFile = file("keystore/release.keystore")
+val releaseStorePassword =
+    System.getenv("STORE_PASSWORD")?.takeIf { it.isNotBlank() }
+        ?: System.getenv("KEYSTORE_PASSWORD")?.takeIf { it.isNotBlank() }
+val releaseKeyAlias = System.getenv("KEY_ALIAS")?.takeIf { it.isNotBlank() }
+val releaseKeyPassword = System.getenv("KEY_PASSWORD")?.takeIf { it.isNotBlank() }
+val hasReleaseSigningConfig =
+    releaseKeystoreFile.isFile &&
+        releaseStorePassword != null &&
+        releaseKeyAlias != null &&
+        releaseKeyPassword != null
 
 android {
     namespace = "moe.rukamori.archivetune"
@@ -33,8 +44,8 @@ android {
     applicationId = "moe.rukamori.archivetune"
         minSdk = 26
         targetSdk = 37
-        versionCode = 135
-        versionName = "13.4.0"
+        versionCode = 136
+        versionName = "13.5.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
@@ -61,12 +72,6 @@ android {
                 ?: System.getenv("CANVAS_BEARER_TOKEN")
                 ?: ""
         buildConfigField("String", "CANVAS_BEARER_TOKEN", "\"$canvasBearerToken\"")
-
-        val weblateApiToken =
-            localProperties.getProperty("WEBLATE_API_TOKEN")
-                ?: System.getenv("WEBLATE_API_TOKEN")
-                ?: ""
-        buildConfigField("String", "WEBLATE_API_TOKEN", "\"$weblateApiToken\"")
 
         val nightlyBuildHash =
             (
@@ -95,11 +100,10 @@ android {
             dimension = "distribution"
             buildConfigField("String", "DISTRIBUTION", "\"foss\"")
             buildConfigField("boolean", "UPDATER_AVAILABLE", "true")
-        }
-        create("izzy") {
-            dimension = "distribution"
-            buildConfigField("String", "DISTRIBUTION", "\"izzy\"")
-            buildConfigField("boolean", "UPDATER_AVAILABLE", "false")
+            buildConfigField("String", "DISCORD_APPLICATION_ID", "\"$discordApplicationId\"")
+            buildConfigField("long", "DISCORD_APPLICATION_ID_LONG", "${discordApplicationIdLong}L")
+            buildConfigField("String", "DISCORD_REDIRECT_SCHEME", "\"$discordRedirectScheme\"")
+            manifestPlaceholders["discordRedirectScheme"] = discordRedirectScheme
         }
         create("mobile") {
             dimension = "device"
@@ -140,15 +144,20 @@ android {
 
     signingConfigs {
         create("release") {
-            storeFile = file("keystore/release.keystore")
-            storePassword = System.getenv("STORE_PASSWORD")
-            keyAlias = System.getenv("KEY_ALIAS")
-            keyPassword = System.getenv("KEY_PASSWORD")
+            if (hasReleaseSigningConfig) {
+                storeFile = releaseKeystoreFile
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
         }
     }
 
     buildTypes {
         release {
+            if (hasReleaseSigningConfig) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
@@ -289,13 +298,13 @@ dependencies {
     ksp(libs.kotlin.metadata.jvm)
 
     implementation(project(":core"))
-    implementation(project(":kugou"))
-    implementation(project(":lrclib"))
+    implementation(project(":lyrics:kugou"))
+    implementation(project(":lyrics:lrclib"))
+    implementation(project(":lyrics:simpmusic"))
+    implementation(project(":lyrics:paxsenix"))
+    implementation(project(":lyrics:betterlyrics"))
+    implementation(project(":lyrics:unison"))
     implementation(project(":lastfm"))
-    implementation(project(":betterlyrics"))
-    implementation(project(":unison"))
-    implementation(project(":simpmusic"))
-    implementation(project(":paxsenix"))
     implementation(project(":canvas"))
     implementation(project(":shazamkit"))
     implementation(project(":spotifycore"))

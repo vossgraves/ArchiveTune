@@ -18,6 +18,7 @@ import androidx.annotation.DrawableRes
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,13 +31,14 @@ import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
@@ -51,6 +53,7 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LargeFlexibleTopAppBar
+import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.LoadingIndicator
@@ -59,6 +62,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SegmentedListItem
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -66,10 +70,12 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.TopAppBarScrollBehavior
+import androidx.compose.material3.WavyProgressIndicatorDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -77,19 +83,23 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.navigation.NavController
+import coil3.compose.AsyncImage
 import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.BuildConfig
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
@@ -97,12 +107,13 @@ import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.EnableUpdateNotificationKey
 import moe.rukamori.archivetune.constants.UpdateChannel
 import moe.rukamori.archivetune.constants.UpdateChannelKey
+import moe.rukamori.archivetune.defaultUpdateChannel
 import moe.rukamori.archivetune.ui.component.BottomSheetPage
 import moe.rukamori.archivetune.ui.component.BottomSheetPageState
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.MarkdownText
-import moe.rukamori.archivetune.ui.component.PreferenceGroupTitle
 import moe.rukamori.archivetune.ui.utils.backToMain
+import moe.rukamori.archivetune.utils.AppUpdateInstaller
 import moe.rukamori.archivetune.utils.GitCommit
 import moe.rukamori.archivetune.utils.UpdateNotificationManager
 import moe.rukamori.archivetune.utils.Updater
@@ -111,6 +122,7 @@ import moe.rukamori.archivetune.utils.rememberPreference
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.TimeZone
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -124,14 +136,16 @@ fun UpdateScreen(
     val coroutineScope = rememberCoroutineScope()
     val nightlyInstallUrl = remember { Updater.getLatestNightlyDownloadUrl() }
 
-    val (enableUpdateNotification, onEnableUpdateNotificationChange) = rememberPreference(
-        EnableUpdateNotificationKey,
-        defaultValue = false
-    )
-    val (updateChannel, onUpdateChannelChange) = rememberEnumPreference(
-        UpdateChannelKey,
-        defaultValue = UpdateChannel.STABLE
-    )
+    val (enableUpdateNotification, onEnableUpdateNotificationChange) =
+        rememberPreference(
+            EnableUpdateNotificationKey,
+            defaultValue = false,
+        )
+    val (updateChannel, onUpdateChannelChange) =
+        rememberEnumPreference(
+            UpdateChannelKey,
+            defaultValue = defaultUpdateChannel,
+        )
 
     var commits by remember { mutableStateOf<List<GitCommit>>(emptyList()) }
     var isLoadingCommits by remember { mutableStateOf(true) }
@@ -145,11 +159,11 @@ fun UpdateScreen(
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 ContextCompat.checkSelfPermission(
                     context,
-                    Manifest.permission.POST_NOTIFICATIONS
+                    Manifest.permission.POST_NOTIFICATIONS,
                 ) == PackageManager.PERMISSION_GRANTED
             } else {
                 true
-            }
+            },
         )
     }
     val isNightlyChannel = updateChannel == UpdateChannel.NIGHTLY
@@ -171,12 +185,47 @@ fun UpdateScreen(
     var updateSheetIsSameVersion by remember { mutableStateOf(false) }
     var showUpdateUpToDateDialog by remember { mutableStateOf(false) }
     var showUpdateErrorDialog by remember { mutableStateOf(false) }
+    var updateDownloadProgress by remember { mutableStateOf<Float?>(null) }
+    var updateDownloadJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    var showUpdateDownloadDialog by remember { mutableStateOf(false) }
+    val useInAppUpdateInstaller = BuildConfig.DISTRIBUTION == "gms"
+
+    val openUpdateUrl: (String) -> Unit = { url ->
+        try {
+            uriHandler.openUri(url)
+        } catch (_: Exception) {
+        }
+    }
+
+    val installUpdate: (String) -> Unit = { url ->
+        if (!useInAppUpdateInstaller) {
+            openUpdateUrl(url)
+        } else if (updateDownloadJob?.isActive != true) {
+            updateDownloadProgress = null
+            updateSheetError = null
+            showUpdateErrorDialog = false
+            showUpdateDownloadDialog = true
+            updateDownloadJob =
+                coroutineScope.launch {
+                    AppUpdateInstaller
+                        .downloadAndInstall(context, url) { progress ->
+                            updateDownloadProgress = progress.fraction
+                        }.onSuccess {
+                            showUpdateDownloadDialog = false
+                        }.onFailure { error ->
+                            showUpdateDownloadDialog = false
+                            updateSheetError = error.message ?: context.getString(R.string.error_unknown)
+                            showUpdateErrorDialog = true
+                        }
+                }
+        }
+    }
 
     val updateSheetContent: @Composable ColumnScope.() -> Unit = {
         Text(
             text = stringResource(R.string.new_update_available),
             style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
-            modifier = Modifier.padding(top = 16.dp)
+            modifier = Modifier.padding(top = 16.dp),
         )
 
         Spacer(Modifier.height(8.dp))
@@ -188,27 +237,29 @@ fun UpdateScreen(
         ) {
             Text(
                 text = updateSheetVersion ?: "",
-                style = MaterialTheme.typography.labelLarge
+                style = MaterialTheme.typography.labelLarge,
             )
         }
 
         Spacer(Modifier.height(12.dp))
 
         Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f, fill = false)
-                .verticalScroll(rememberScrollState())
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .weight(1f, fill = false)
+                    .verticalScroll(rememberScrollState()),
         ) {
             val notes = updateSheetNotes
             if (notes != null && notes.isNotBlank()) {
                 MarkdownText(
                     markdown = notes,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(end = 8.dp),
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(end = 8.dp),
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface
+                    color = MaterialTheme.colorScheme.onSurface,
                 )
             } else {
                 Text(
@@ -220,23 +271,22 @@ fun UpdateScreen(
 
         Spacer(Modifier.height(12.dp))
 
-        val downloadUrl = when (updateChannel) {
-            UpdateChannel.DAILY_NIGHTLY -> Updater.getLatestDailyNightlyDownloadUrl()
-            UpdateChannel.NIGHTLY -> Updater.getLatestNightlyDownloadUrl()
-            else -> Updater.getLatestDownloadUrl()
-        }
+        val downloadUrl =
+            when (updateChannel) {
+                UpdateChannel.DAILY_NIGHTLY -> Updater.getLatestDailyNightlyDownloadUrl()
+                UpdateChannel.NIGHTLY -> Updater.getLatestNightlyDownloadUrl()
+                else -> Updater.getLatestDownloadUrl()
+            }
 
         Button(
-            onClick = {
-                try {
-                    uriHandler.openUri(downloadUrl)
-                } catch (_: Exception) {}
-            },
+            onClick = { installUpdate(downloadUrl) },
             modifier = Modifier.fillMaxWidth(),
             shapes = ButtonDefaults.shapes(),
         ) {
             Text(text = stringResource(R.string.update_text))
         }
+
+        Spacer(Modifier.height(12.dp))
     }
 
     val onCheckForUpdate: () -> Unit = {
@@ -249,49 +299,53 @@ fun UpdateScreen(
         showUpdateErrorDialog = false
 
         coroutineScope.launch {
-            val versionResult = when (updateChannel) {
-                UpdateChannel.DAILY_NIGHTLY -> {
-                    Updater.getLatestDailyNightlyReleaseNotes().onSuccess { notes ->
-                        updateSheetNotes = notes
+            val versionResult =
+                when (updateChannel) {
+                    UpdateChannel.DAILY_NIGHTLY -> {
+                        Updater.getLatestDailyNightlyReleaseNotes().onSuccess { notes ->
+                            updateSheetNotes = notes
+                        }
+                        Updater.getLatestDailyNightlyVersionName()
                     }
-                    Updater.getLatestDailyNightlyVersionName()
-                }
-                else -> {
-                    Updater.getLatestReleaseNotes().onSuccess { notes ->
-                        updateSheetNotes = notes
+
+                    else -> {
+                        Updater.getLatestReleaseNotes().onSuccess { notes ->
+                            updateSheetNotes = notes
+                        }
+                        Updater.getLatestVersionName()
                     }
-                    Updater.getLatestVersionName()
                 }
-            }
 
             updateSheetLoading = false
 
-            versionResult.onSuccess { version ->
-                updateSheetIsSameVersion = !Updater.isUpdateAvailable(version, BuildConfig.VERSION_NAME)
-                updateSheetVersion = version
+            versionResult
+                .onSuccess { version ->
+                    updateSheetIsSameVersion = !Updater.isUpdateAvailable(version, BuildConfig.VERSION_NAME)
+                    updateSheetVersion = version
 
-                if (updateSheetIsSameVersion) {
-                    showUpdateUpToDateDialog = true
-                    onUpToDate()
-                } else {
-                    updateSheetState.show(updateSheetContent)
+                    if (updateSheetIsSameVersion) {
+                        showUpdateUpToDateDialog = true
+                        onUpToDate()
+                    } else {
+                        updateSheetState.show(updateSheetContent)
+                    }
+                }.onFailure { e ->
+                    updateSheetError = e.message ?: context.getString(R.string.error_unknown)
+                    showUpdateErrorDialog = true
                 }
-            }.onFailure { e ->
-                updateSheetError = e.message ?: "Failed to check for updates"
-                showUpdateErrorDialog = true
+        }
+    }
+
+    val permissionLauncher =
+        rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.RequestPermission(),
+        ) { isGranted ->
+            hasNotificationPermission = isGranted
+            if (isGranted) {
+                onEnableUpdateNotificationChange(true)
+                UpdateNotificationManager.schedulePeriodicUpdateCheck(context)
             }
         }
-    }
-
-    val permissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        hasNotificationPermission = isGranted
-        if (isGranted) {
-            onEnableUpdateNotificationChange(true)
-            UpdateNotificationManager.schedulePeriodicUpdateCheck(context)
-        }
-    }
 
     if (showEnableUpdateNotificationConfirmDialog) {
         AlertDialog(
@@ -300,52 +354,52 @@ fun UpdateScreen(
             text = {
                 Column(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text(
-                        text = "ArchiveTune provides two download channels for builds:",
-                        style = MaterialTheme.typography.bodyMedium
+                        text = stringResource(R.string.updates_channel_warning_intro),
+                        style = MaterialTheme.typography.bodyMedium,
                     )
 
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text(
-                            text = "• Stable builds",
+                            text = stringResource(R.string.updates_channel_warning_stable_title),
                             style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold
+                            fontWeight = FontWeight.SemiBold,
                         )
                         Text(
-                            text = "Distributed via official GitHub Releases.",
-                            style = MaterialTheme.typography.bodySmall
+                            text = stringResource(R.string.updates_channel_warning_stable_source),
+                            style = MaterialTheme.typography.bodySmall,
                         )
                         Text(
-                            text = "These versions are tested and recommended for most users.",
-                            style = MaterialTheme.typography.bodySmall
+                            text = stringResource(R.string.updates_channel_warning_stable_desc),
+                            style = MaterialTheme.typography.bodySmall,
                         )
                     }
 
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text(
-                            text = "• Nightly builds",
+                            text = stringResource(R.string.updates_channel_warning_nightly_title),
                             style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold
+                            fontWeight = FontWeight.SemiBold,
                         )
                         Text(
                             text = stringResource(R.string.updates_nightly_hosting_description),
-                            style = MaterialTheme.typography.bodySmall
+                            style = MaterialTheme.typography.bodySmall,
                         )
                         Text(
-                            text = "Nightly builds may include experimental features, unfinished changes, or temporary regressions.",
-                            style = MaterialTheme.typography.bodySmall
+                            text = stringResource(R.string.updates_channel_warning_nightly_risk),
+                            style = MaterialTheme.typography.bodySmall,
                         )
                     }
 
                     Text(
-                        text = "Nightly builds are provided for testing and early access only.\nStability, compatibility, and functionality are not guaranteed.",
-                        style = MaterialTheme.typography.bodySmall
+                        text = stringResource(R.string.updates_channel_warning_nightly_unstable),
+                        style = MaterialTheme.typography.bodySmall,
                     )
                     Text(
-                        text = "By continuing, you acknowledge that nightly builds may be unstable and use them at your own risk.",
-                        style = MaterialTheme.typography.bodySmall
+                        text = stringResource(R.string.updates_channel_warning_acknowledgement),
+                        style = MaterialTheme.typography.bodySmall,
                     )
                 }
             },
@@ -359,7 +413,7 @@ fun UpdateScreen(
                             onEnableUpdateNotificationChange(true)
                             UpdateNotificationManager.schedulePeriodicUpdateCheck(context)
                         }
-                    }
+                    },
                 ) {
                     Text(stringResource(android.R.string.ok))
                 }
@@ -368,7 +422,7 @@ fun UpdateScreen(
                 TextButton(onClick = { showEnableUpdateNotificationConfirmDialog = false }) {
                     Text(stringResource(android.R.string.cancel))
                 }
-            }
+            },
         )
     }
 
@@ -379,52 +433,52 @@ fun UpdateScreen(
             text = {
                 Column(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text(
-                        text = "ArchiveTune provides two download channels for builds:",
-                        style = MaterialTheme.typography.bodyMedium
+                        text = stringResource(R.string.updates_channel_warning_intro),
+                        style = MaterialTheme.typography.bodyMedium,
                     )
 
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text(
-                            text = "• Stable builds",
+                            text = stringResource(R.string.updates_channel_warning_stable_title),
                             style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold
+                            fontWeight = FontWeight.SemiBold,
                         )
                         Text(
-                            text = "Distributed via official GitHub Releases.",
-                            style = MaterialTheme.typography.bodySmall
+                            text = stringResource(R.string.updates_channel_warning_stable_source),
+                            style = MaterialTheme.typography.bodySmall,
                         )
                         Text(
-                            text = "These versions are tested and recommended for most users.",
-                            style = MaterialTheme.typography.bodySmall
+                            text = stringResource(R.string.updates_channel_warning_stable_desc),
+                            style = MaterialTheme.typography.bodySmall,
                         )
                     }
 
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text(
-                            text = "• Nightly builds",
+                            text = stringResource(R.string.updates_channel_warning_nightly_title),
                             style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold
+                            fontWeight = FontWeight.SemiBold,
                         )
                         Text(
                             text = stringResource(R.string.updates_nightly_hosting_description),
-                            style = MaterialTheme.typography.bodySmall
+                            style = MaterialTheme.typography.bodySmall,
                         )
                         Text(
-                            text = "Nightly builds may include experimental features, unfinished changes, or temporary regressions.",
-                            style = MaterialTheme.typography.bodySmall
+                            text = stringResource(R.string.updates_channel_warning_nightly_risk),
+                            style = MaterialTheme.typography.bodySmall,
                         )
                     }
 
                     Text(
-                        text = "Nightly builds are provided for testing and early access only.\nStability, compatibility, and functionality are not guaranteed.",
-                        style = MaterialTheme.typography.bodySmall
+                        text = stringResource(R.string.updates_channel_warning_nightly_unstable),
+                        style = MaterialTheme.typography.bodySmall,
                     )
                     Text(
-                        text = "By continuing, you acknowledge that nightly builds may be unstable and use them at your own risk.",
-                        style = MaterialTheme.typography.bodySmall
+                        text = stringResource(R.string.updates_channel_warning_acknowledgement),
+                        style = MaterialTheme.typography.bodySmall,
                     )
                 }
             },
@@ -433,7 +487,7 @@ fun UpdateScreen(
                     onClick = {
                         showNightlyChannelConfirmDialog = false
                         onUpdateChannelChange(UpdateChannel.NIGHTLY)
-                    }
+                    },
                 ) {
                     Text(stringResource(android.R.string.ok))
                 }
@@ -442,7 +496,7 @@ fun UpdateScreen(
                 TextButton(onClick = { showNightlyChannelConfirmDialog = false }) {
                     Text(stringResource(android.R.string.cancel))
                 }
-            }
+            },
         )
     }
 
@@ -452,8 +506,8 @@ fun UpdateScreen(
             title = { Text(stringResource(R.string.channel_daily_nightly)) },
             text = {
                 Text(
-                    text = "Switch to the Daily channel to receive updates from the daily-nightly repository.\n\nDaily builds are published automatically every day from the latest development branch.",
-                    style = MaterialTheme.typography.bodyMedium
+                    text = stringResource(R.string.updates_daily_channel_confirmation),
+                    style = MaterialTheme.typography.bodyMedium,
                 )
             },
             confirmButton = {
@@ -461,7 +515,7 @@ fun UpdateScreen(
                     onClick = {
                         showDailyNightlyChannelConfirmDialog = false
                         onUpdateChannelChange(UpdateChannel.DAILY_NIGHTLY)
-                    }
+                    },
                 ) {
                     Text(stringResource(android.R.string.ok))
                 }
@@ -470,7 +524,7 @@ fun UpdateScreen(
                 TextButton(onClick = { showDailyNightlyChannelConfirmDialog = false }) {
                     Text(stringResource(android.R.string.cancel))
                 }
-            }
+            },
         )
     }
 
@@ -480,10 +534,11 @@ fun UpdateScreen(
             return@LaunchedEffect
         }
 
-        val versionResult = when (updateChannel) {
-            UpdateChannel.DAILY_NIGHTLY -> Updater.getLatestDailyNightlyVersionName()
-            else -> Updater.getLatestVersionName()
-        }
+        val versionResult =
+            when (updateChannel) {
+                UpdateChannel.DAILY_NIGHTLY -> Updater.getLatestDailyNightlyVersionName()
+                else -> Updater.getLatestVersionName()
+            }
         versionResult.onSuccess {
             latestVersion = it
             if (!Updater.isUpdateAvailable(it, BuildConfig.VERSION_NAME)) {
@@ -491,27 +546,31 @@ fun UpdateScreen(
             }
         }
 
-        Updater.getCommitHistory(30).onSuccess {
-            commits = it
-        }.onFailure {
-            commits = emptyList()
-        }
+        Updater
+            .getCommitHistory(30)
+            .onSuccess {
+                commits = it
+            }.onFailure {
+                commits = emptyList()
+            }
         isLoadingCommits = false
     }
 
     val rotationAngle by animateFloatAsState(
         targetValue = if (isExpanded) 180f else 0f,
-        label = "rotation"
+        label = "rotation",
     )
-    val topBarSubtitle = when (updateChannel) {
-        UpdateChannel.NIGHTLY -> stringResource(R.string.updates_subtitle_nightly)
-        else -> stringResource(R.string.updates_subtitle_stable)
-    }
+    val topBarSubtitle =
+        when (updateChannel) {
+            UpdateChannel.NIGHTLY -> stringResource(R.string.updates_subtitle_nightly)
+            else -> stringResource(R.string.updates_subtitle_stable)
+        }
 
     Scaffold(
-        modifier = Modifier
-            .fillMaxSize()
-            .nestedScroll(scrollBehavior.nestedScrollConnection),
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .nestedScroll(scrollBehavior.nestedScrollConnection),
         containerColor = MaterialTheme.colorScheme.surface,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
@@ -532,42 +591,49 @@ fun UpdateScreen(
                 navigationIcon = {
                     IconButton(
                         onClick = navController::navigateUp,
-                        onLongClick = navController::backToMain
+                        onLongClick = navController::backToMain,
                     ) {
                         Icon(
                             painterResource(R.drawable.arrow_back),
-                            contentDescription = null
+                            contentDescription = null,
                         )
                     }
                 },
                 actions = {},
                 scrollBehavior = scrollBehavior,
-                colors = TopAppBarDefaults.largeTopAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer,
-                ),
+                colors =
+                    TopAppBarDefaults.largeTopAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer,
+                    ),
             )
-        }
+        },
     ) { paddingValues ->
         LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-                .windowInsetsPadding(
-                    LocalPlayerAwareWindowInsets.current.only(
-                        WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom
-                    )
-                )
-                .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues)
+                    .windowInsetsPadding(
+                        LocalPlayerAwareWindowInsets.current.only(
+                            WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
+                        ),
+                    ).padding(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             item {
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(4.dp))
                 UpdateSummaryCard(
                     currentVersion = BuildConfig.VERSION_NAME,
                     latestVersion = latestVersion,
                     updateChannel = updateChannel,
                     isUpdateAvailable = isUpdateAvailable,
+                )
+            }
+
+            item {
+                UpdateActionPanel(
                     onOpenChangelog = {
                         navController.navigate("settings/changelog?channel=$updateChannel")
                     },
@@ -576,346 +642,130 @@ fun UpdateScreen(
             }
 
             item {
-                PreferenceGroupTitle(title = stringResource(R.string.notification_settings))
-            }
-
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = MaterialTheme.shapes.extraLarge,
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerLow
-                    )
-                ) {
-                    ListItem(
-                        headlineContent = {
-                            Text(text = stringResource(R.string.enable_update_notification))
-                        },
-                        supportingContent = {
-                            Text(text = stringResource(R.string.enable_update_notification_desc))
-                        },
-                        leadingContent = {
-                            FeatureIcon(
-                                iconRes = R.drawable.new_release,
-                                containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                                contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                            )
-                        },
-                        trailingContent = {
-                            Switch(
-                                checked = enableUpdateNotification,
-                                onCheckedChange = { enabled ->
-                                    if (enabled) {
-                                        showEnableUpdateNotificationConfirmDialog = true
-                                    } else {
-                                        onEnableUpdateNotificationChange(false)
-                                        UpdateNotificationManager.cancelPeriodicUpdateCheck(context)
-                                    }
-                                }
-                            )
-                        },
-                        colors = ListItemDefaults.colors(containerColor = Color.Transparent)
-                    )
-                }
-            }
-
-            item {
-                PreferenceGroupTitle(title = stringResource(R.string.commit_history))
-            }
-
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = MaterialTheme.shapes.extraLarge,
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerLow
-                    )
-                ) {
-                    Column {
-                        ListItem(
-                            headlineContent = {
-                                Text(text = stringResource(R.string.update_channel))
-                            },
-                            supportingContent = {
-                                Text(text = stringResource(R.string.update_channel_desc))
-                            },
-                            leadingContent = {
-                                FeatureIcon(
-                                    iconRes = R.drawable.tune,
-                                    containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                                    contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
-                                )
-                            },
-                            trailingContent = {
-                                Text(
-                                    text = when (updateChannel) {
-                                        UpdateChannel.STABLE -> stringResource(R.string.channel_stable)
-                                        UpdateChannel.NIGHTLY -> stringResource(R.string.channel_nightly)
-                                        UpdateChannel.DAILY_NIGHTLY -> stringResource(R.string.channel_daily_nightly)
-                                    },
-                                    style = MaterialTheme.typography.labelLarge,
-                                    color = MaterialTheme.colorScheme.primary,
-                                )
-                            },
-                            colors = ListItemDefaults.colors(containerColor = Color.Transparent)
-                        )
-
-                        HorizontalDivider(
-                            modifier = Modifier.padding(horizontal = 16.dp),
-                            color = MaterialTheme.colorScheme.outlineVariant,
-                        )
-
-                        SingleChoiceSegmentedButtonRow(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 16.dp)
-                        ) {
-                            SegmentedButton(
-                                selected = updateChannel == UpdateChannel.STABLE,
-                                onClick = { onUpdateChannelChange(UpdateChannel.STABLE) },
-                                shape = SegmentedButtonDefaults.itemShape(index = 0, count = 3),
-                                icon = {},
-                            ) {
-                                Text(text = stringResource(R.string.channel_stable))
-                            }
-                            SegmentedButton(
-                                selected = updateChannel == UpdateChannel.NIGHTLY,
-                                onClick = {
-                                    if (updateChannel != UpdateChannel.NIGHTLY) {
-                                        showNightlyChannelConfirmDialog = true
-                                    }
-                                },
-                                shape = SegmentedButtonDefaults.itemShape(index = 1, count = 3),
-                                icon = {},
-                            ) {
-                                Text(text = stringResource(R.string.channel_nightly))
-                            }
-                            SegmentedButton(
-                                selected = updateChannel == UpdateChannel.DAILY_NIGHTLY,
-                                onClick = {
-                                    if (updateChannel != UpdateChannel.DAILY_NIGHTLY) {
-                                        showDailyNightlyChannelConfirmDialog = true
-                                    }
-                                },
-                                shape = SegmentedButtonDefaults.itemShape(index = 2, count = 3),
-                                icon = {},
-                            ) {
-                                Text(text = stringResource(R.string.channel_daily_nightly))
-                            }
+                UpdateControlsPanel(
+                    enableUpdateNotification = enableUpdateNotification,
+                    onUpdateNotificationChange = { enabled ->
+                        if (enabled) {
+                            showEnableUpdateNotificationConfirmDialog = true
+                        } else {
+                            onEnableUpdateNotificationChange(false)
+                            UpdateNotificationManager.cancelPeriodicUpdateCheck(context)
                         }
-                    }
-                }
+                    },
+                    updateChannel = updateChannel,
+                    onStableSelected = { onUpdateChannelChange(UpdateChannel.STABLE) },
+                    onNightlySelected = {
+                        if (updateChannel != UpdateChannel.NIGHTLY) {
+                            showNightlyChannelConfirmDialog = true
+                        }
+                    },
+                    onDailyNightlySelected = {
+                        if (updateChannel != UpdateChannel.DAILY_NIGHTLY) {
+                            showDailyNightlyChannelConfirmDialog = true
+                        }
+                    },
+                )
             }
 
             item {
                 AnimatedVisibility(visible = isNightlyChannel) {
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = MaterialTheme.shapes.extraLarge,
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-                        )
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(20.dp),
-                            verticalArrangement = Arrangement.spacedBy(16.dp),
-                        ) {
-                            ListItem(
-                                overlineContent = {
-                                    Text(text = stringResource(R.string.channel_nightly))
-                                },
-                                headlineContent = {
-                                    Text(
-                                        text = stringResource(R.string.updates_nightly_title),
-                                        fontWeight = FontWeight.SemiBold,
-                                    )
-                                },
-                                supportingContent = {
-                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                        Text(text = stringResource(R.string.updates_nightly_description))
-                                        Text(
-                                            text = stringResource(
-                                                R.string.updates_latest_commit,
-                                                latestCommit?.sha ?: "-"
-                                            ),
-                                            style = MaterialTheme.typography.labelMedium,
-                                            fontFamily = FontFamily.Monospace,
-                                            color = MaterialTheme.colorScheme.primary,
-                                        )
-                                    }
-                                },
-                                leadingContent = {
-                                    FeatureIcon(
-                                        iconRes = R.drawable.download,
-                                        containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                                        contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
-                                    )
-                                },
-                                colors = ListItemDefaults.colors(containerColor = Color.Transparent)
-                            )
-
-                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-
-                            OutlinedButton(
-                                onClick = { uriHandler.openUri(nightlyInstallUrl) },
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                Icon(
-                                    painter = painterResource(R.drawable.download),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp),
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(text = stringResource(R.string.download))
-                            }
-                        }
-                    }
-                }
-            }
-
-            item {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .animateContentSize(),
-                    shape = MaterialTheme.shapes.extraLarge,
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerLow
-                    ),
-                    onClick = { isExpanded = !isExpanded }
-                ) {
-                    Column {
-                        ListItem(
-                            headlineContent = {
-                                Text(
-                                    text = stringResource(R.string.recent_commits),
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.SemiBold,
-                                )
-                            },
-                            supportingContent = {
-                                Text(
-                                    text = when {
-                                        isLoadingCommits -> stringResource(R.string.updates_loading_commits)
-                                        commits.isEmpty() -> stringResource(R.string.updates_no_commits)
-                                        else -> stringResource(
-                                            R.string.updates_recent_commits_count,
-                                            commits.size,
-                                        )
-                                    }
-                                )
-                            },
-                            leadingContent = {
-                                FeatureIcon(
-                                    iconRes = R.drawable.history,
-                                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                                )
-                            },
-                            trailingContent = {
-                                Icon(
-                                    painter = painterResource(R.drawable.expand_more),
-                                    contentDescription = null,
-                                    modifier = Modifier.rotate(rotationAngle),
-                                )
-                            },
-                            colors = ListItemDefaults.colors(containerColor = Color.Transparent)
-                        )
-
-                        AnimatedVisibility(visible = isExpanded) {
-                            Column {
-                                HorizontalDivider(
-                                    modifier = Modifier.padding(horizontal = 16.dp),
-                                    color = MaterialTheme.colorScheme.outlineVariant,
-                                )
-
-                                when {
-                                    isLoadingCommits -> {
-                                        Box(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(vertical = 24.dp),
-                                            contentAlignment = Alignment.Center,
-                                        ) {
-                                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                                LoadingIndicator(modifier = Modifier.size(32.dp))
-                                                Spacer(modifier = Modifier.height(12.dp))
-                                                Text(
-                                                    text = stringResource(R.string.updates_loading_commits),
-                                                    style = MaterialTheme.typography.bodyMedium,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                )
-                                            }
-                                        }
-                                    }
-
-                                    commits.isEmpty() -> {
-                                        Text(
-                                            text = stringResource(R.string.updates_no_commits),
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            modifier = Modifier.padding(16.dp),
-                                        )
-                                    }
-
-                                    else -> {
-                                        Text(
-                                            text = stringResource(
-                                                R.string.updates_recent_commits_count,
-                                                commits.size,
-                                            ),
-                                            style = MaterialTheme.typography.labelLarge,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            modifier = Modifier.padding(16.dp),
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            if (isExpanded && !isLoadingCommits) {
-                items(
-                    items = commits,
-                    key = { it.sha },
-                    contentType = { "commit" },
-                ) { commit ->
-                    CommitItem(
-                        commit = commit,
-                        onClick = { uriHandler.openUri(commit.url) }
+                    NightlyInstallPanel(
+                        latestCommit = latestCommit,
+                        onInstallNightly = { installUpdate(nightlyInstallUrl) },
                     )
                 }
             }
 
             item {
-                Spacer(modifier = Modifier.height(16.dp))
+                CommitHistorySection(
+                    commits = commits,
+                    isLoading = isLoadingCommits,
+                    isExpanded = isExpanded,
+                    rotationAngle = rotationAngle,
+                    onToggleExpanded = { isExpanded = !isExpanded },
+                    onCommitClick = { commit -> uriHandler.openUri(commit.url) },
+                )
+            }
+
+            item {
+                Spacer(modifier = Modifier.height(SettingsDimensions.ScreenBottomPadding))
             }
         }
     }
 
-    BottomSheetPage(state = updateSheetState)
+    Box(modifier = Modifier.fillMaxSize()) {
+        BottomSheetPage(
+            state = updateSheetState,
+            modifier = Modifier.align(Alignment.BottomCenter),
+            contentWindowInsets = LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Bottom),
+        )
+    }
 
     if (updateSheetLoading) {
         AlertDialog(
             onDismissRequest = {},
-            confirmButton = {},
+            icon = {
+                LoadingIndicator(
+                    modifier = Modifier.size(24.dp),
+                )
+            },
             title = {
+                Text(
+                    text = stringResource(R.string.updates_status_checking),
+                    style = MaterialTheme.typography.headlineSmall,
+                )
+            },
+            confirmButton = {},
+        )
+    }
+
+    if (showUpdateDownloadDialog) {
+        val progress = updateDownloadProgress
+        val animatedProgress by animateFloatAsState(
+            targetValue = progress ?: 0f,
+            animationSpec = WavyProgressIndicatorDefaults.ProgressAnimationSpec,
+            label = "updateDownloadProgress",
+        )
+
+        AlertDialog(
+            onDismissRequest = {},
+            icon = {
+                LoadingIndicator(
+                    modifier = Modifier.size(24.dp),
+                )
+            },
+            title = {
+                Text(
+                    text = stringResource(R.string.downloading),
+                    style = MaterialTheme.typography.headlineSmall,
+                )
+            },
+            text = {
                 Column(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    Spacer(Modifier.height(16.dp))
-                    LoadingIndicator(modifier = Modifier.size(32.dp))
-                    Spacer(Modifier.height(16.dp))
-                    Text(
-                        text = stringResource(R.string.updates_status_checking),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    if (progress != null) {
+                        LinearWavyProgressIndicator(
+                            progress = { animatedProgress },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Text(
+                            text =
+                                stringResource(
+                                    R.string.download_progress_percent,
+                                    (animatedProgress * 100f).roundToInt().coerceIn(0, 100),
+                                ),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    } else {
+                        LinearWavyProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    }
                 }
-            }
+            },
+            confirmButton = {},
         )
     }
 
@@ -923,18 +773,27 @@ fun UpdateScreen(
         AlertDialog(
             onDismissRequest = { showUpdateUpToDateDialog = false },
             icon = {
-                Icon(
-                    painter = painterResource(R.drawable.done),
-                    contentDescription = null,
+                Surface(
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.primaryContainer,
                     modifier = Modifier.size(48.dp),
-                    tint = MaterialTheme.colorScheme.primary
-                )
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            painter = painterResource(R.drawable.check),
+                            contentDescription = null,
+                            modifier = Modifier.size(24.dp),
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                        )
+                    }
+                }
             },
             title = {
                 Text(
                     text = stringResource(R.string.updates_status_current),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.headlineSmall,
+                    modifier = Modifier.fillMaxWidth(),
+                    textAlign = TextAlign.Center,
                 )
             },
             text = {
@@ -942,38 +801,52 @@ fun UpdateScreen(
                     text = updateSheetVersion ?: BuildConfig.VERSION_NAME,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.fillMaxWidth(),
+                    textAlign = TextAlign.Center,
                 )
             },
             confirmButton = {
-                TextButton(onClick = { showUpdateUpToDateDialog = false }) {
-                    Text(stringResource(android.R.string.ok))
+                Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    OutlinedButton(
+                        onClick = { showUpdateUpToDateDialog = false },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(stringResource(android.R.string.ok))
+                    }
                 }
-            }
+            },
         )
     }
 
     if (showUpdateErrorDialog) {
         AlertDialog(
             onDismissRequest = { showUpdateErrorDialog = false },
+            icon = {
+                Icon(
+                    painter = painterResource(R.drawable.error),
+                    contentDescription = null,
+                    modifier = Modifier.size(24.dp),
+                    tint = MaterialTheme.colorScheme.error,
+                )
+            },
             title = {
                 Text(
                     text = stringResource(R.string.error_loading_changelog),
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.headlineSmall,
                 )
             },
             text = {
                 Text(
                     text = updateSheetError ?: "",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             },
             confirmButton = {
                 TextButton(onClick = { showUpdateErrorDialog = false }) {
                     Text(stringResource(android.R.string.ok))
                 }
-            }
+            },
         )
     }
 }
@@ -984,83 +857,143 @@ private fun UpdateSummaryCard(
     latestVersion: String?,
     updateChannel: UpdateChannel,
     isUpdateAvailable: Boolean,
-    onOpenChangelog: () -> Unit,
-    onCheckForUpdate: () -> Unit,
 ) {
-    val channelLabel = when (updateChannel) {
-        UpdateChannel.STABLE -> stringResource(R.string.channel_stable)
-        UpdateChannel.NIGHTLY -> stringResource(R.string.channel_nightly)
-        UpdateChannel.DAILY_NIGHTLY -> stringResource(R.string.channel_daily_nightly)
-    }
-    val supportingText = when {
-        latestVersion == null -> stringResource(R.string.updates_status_checking)
-        isUpdateAvailable -> stringResource(R.string.latest_version_format, latestVersion)
-        else -> stringResource(R.string.updates_status_current)
-    }
-    val channelContainerColor = if (updateChannel == UpdateChannel.NIGHTLY) {
-        MaterialTheme.colorScheme.tertiaryContainer
-    } else {
-        MaterialTheme.colorScheme.secondaryContainer
-    }
-    val channelContentColor = if (updateChannel == UpdateChannel.NIGHTLY) {
-        MaterialTheme.colorScheme.onTertiaryContainer
-    } else {
-        MaterialTheme.colorScheme.onSecondaryContainer
-    }
+    val channelLabel =
+        when (updateChannel) {
+            UpdateChannel.STABLE -> stringResource(R.string.channel_stable)
+            UpdateChannel.NIGHTLY -> stringResource(R.string.channel_nightly)
+            UpdateChannel.DAILY_NIGHTLY -> stringResource(R.string.channel_daily_nightly)
+        }
+    val supportingText =
+        when {
+            latestVersion == null -> stringResource(R.string.updates_status_checking)
+            isUpdateAvailable -> stringResource(R.string.latest_version_format, latestVersion)
+            else -> stringResource(R.string.updates_status_current)
+        }
+    val statusContainerColor =
+        if (isUpdateAvailable) {
+            MaterialTheme.colorScheme.primaryContainer
+        } else {
+            MaterialTheme.colorScheme.secondaryContainer
+        }
+    val statusContentColor =
+        if (isUpdateAvailable) {
+            MaterialTheme.colorScheme.onPrimaryContainer
+        } else {
+            MaterialTheme.colorScheme.onSecondaryContainer
+        }
+    val channelContainerColor =
+        if (updateChannel == UpdateChannel.NIGHTLY) {
+            MaterialTheme.colorScheme.tertiaryContainer
+        } else {
+            MaterialTheme.colorScheme.secondaryContainer
+        }
+    val channelContentColor =
+        if (updateChannel == UpdateChannel.NIGHTLY) {
+            MaterialTheme.colorScheme.onTertiaryContainer
+        } else {
+            MaterialTheme.colorScheme.onSecondaryContainer
+        }
 
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .widthIn(max = 840.dp),
         shape = MaterialTheme.shapes.extraLarge,
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-        )
+        colors =
+            CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            ),
     ) {
         Column(
             modifier = Modifier.padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
-            ListItem(
-                overlineContent = {
-                    Text(text = stringResource(R.string.current_version))
-                },
-                headlineContent = {
-                    Text(
-                        text = currentVersion,
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Bold,
-                    )
-                },
-                supportingContent = {
-                    Text(text = supportingText)
-                },
-                leadingContent = {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.Top,
+            ) {
+                Box(modifier = Modifier.padding(top = 2.dp)) {
                     FeatureIcon(
                         iconRes = R.drawable.update,
-                        containerColor = MaterialTheme.colorScheme.primaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                        containerColor = statusContainerColor,
+                        contentColor = statusContentColor,
                     )
-                },
-                trailingContent = {
-                    Surface(
-                        shape = MaterialTheme.shapes.large,
-                        color = channelContainerColor,
+                }
+
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
-                            text = channelLabel,
+                            text = stringResource(R.string.current_version),
                             style = MaterialTheme.typography.labelLarge,
-                            color = channelContentColor,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                        Surface(
+                            shape = MaterialTheme.shapes.large,
+                            color = channelContainerColor,
+                        ) {
+                            Text(
+                                text = channelLabel,
+                                style = MaterialTheme.typography.labelLarge,
+                                color = channelContentColor,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                            )
+                        }
                     }
-                },
-                colors = ListItemDefaults.colors(containerColor = Color.Transparent)
-            )
 
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    Text(
+                        text = currentVersion,
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        text = supportingText,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+    }
+}
 
+@Composable
+private fun UpdateActionPanel(
+    onOpenChangelog: () -> Unit,
+    onCheckForUpdate: () -> Unit,
+) {
+    Card(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .widthIn(max = 840.dp),
+        shape = MaterialTheme.shapes.extraLarge,
+        colors =
+            CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+            ),
+    ) {
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
             FilledTonalButton(
                 onClick = onOpenChangelog,
-                modifier = Modifier.fillMaxWidth(),
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp),
             ) {
                 Icon(
                     painter = painterResource(R.drawable.update),
@@ -1073,7 +1006,10 @@ private fun UpdateSummaryCard(
 
             OutlinedButton(
                 onClick = onCheckForUpdate,
-                modifier = Modifier.fillMaxWidth(),
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp),
             ) {
                 Icon(
                     painter = painterResource(R.drawable.sync),
@@ -1082,6 +1018,330 @@ private fun UpdateSummaryCard(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(text = stringResource(R.string.check_for_update))
+            }
+        }
+    }
+}
+
+@Composable
+private fun UpdateControlsPanel(
+    enableUpdateNotification: Boolean,
+    onUpdateNotificationChange: (Boolean) -> Unit,
+    updateChannel: UpdateChannel,
+    onStableSelected: () -> Unit,
+    onNightlySelected: () -> Unit,
+    onDailyNightlySelected: () -> Unit,
+) {
+    Card(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .widthIn(max = 840.dp),
+        shape = MaterialTheme.shapes.extraLarge,
+        colors =
+            CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+            ),
+    ) {
+        Column {
+            ListItem(
+                headlineContent = {
+                    Text(text = stringResource(R.string.enable_update_notification))
+                },
+                supportingContent = {
+                    Text(text = stringResource(R.string.enable_update_notification_desc))
+                },
+                leadingContent = {
+                    FeatureIcon(
+                        iconRes = R.drawable.new_release,
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                    )
+                },
+                trailingContent = {
+                    Switch(
+                        checked = enableUpdateNotification,
+                        onCheckedChange = onUpdateNotificationChange,
+                    )
+                },
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+            )
+
+            HorizontalDivider(
+                modifier = Modifier.padding(horizontal = 16.dp),
+                color = MaterialTheme.colorScheme.outlineVariant,
+            )
+
+            ListItem(
+                headlineContent = {
+                    Text(text = stringResource(R.string.update_channel))
+                },
+                supportingContent = {
+                    Text(text = stringResource(R.string.update_channel_desc))
+                },
+                leadingContent = {
+                    FeatureIcon(
+                        iconRes = R.drawable.tune,
+                        containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                    )
+                },
+                trailingContent = {
+                    Text(
+                        text =
+                            when (updateChannel) {
+                                UpdateChannel.STABLE -> stringResource(R.string.channel_stable)
+                                UpdateChannel.NIGHTLY -> stringResource(R.string.channel_nightly)
+                                UpdateChannel.DAILY_NIGHTLY -> stringResource(R.string.channel_daily_nightly)
+                            },
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                },
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+            )
+
+            SingleChoiceSegmentedButtonRow(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(start = 16.dp, top = 2.dp, end = 16.dp, bottom = 16.dp),
+            ) {
+                SegmentedButton(
+                    selected = updateChannel == UpdateChannel.STABLE,
+                    onClick = onStableSelected,
+                    shape = SegmentedButtonDefaults.itemShape(index = 0, count = 3),
+                    icon = {},
+                ) {
+                    Text(text = stringResource(R.string.channel_stable))
+                }
+                SegmentedButton(
+                    selected = updateChannel == UpdateChannel.NIGHTLY,
+                    onClick = onNightlySelected,
+                    shape = SegmentedButtonDefaults.itemShape(index = 1, count = 3),
+                    icon = {},
+                ) {
+                    Text(text = stringResource(R.string.channel_nightly))
+                }
+                SegmentedButton(
+                    selected = updateChannel == UpdateChannel.DAILY_NIGHTLY,
+                    onClick = onDailyNightlySelected,
+                    shape = SegmentedButtonDefaults.itemShape(index = 2, count = 3),
+                    icon = {},
+                ) {
+                    Text(text = stringResource(R.string.channel_daily_nightly))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun NightlyInstallPanel(
+    latestCommit: GitCommit?,
+    onInstallNightly: () -> Unit,
+) {
+    Card(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .widthIn(max = 840.dp),
+        shape = MaterialTheme.shapes.extraLarge,
+        colors =
+            CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            ),
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            ListItem(
+                overlineContent = {
+                    Text(text = stringResource(R.string.channel_nightly))
+                },
+                headlineContent = {
+                    Text(
+                        text = stringResource(R.string.updates_nightly_title),
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                },
+                supportingContent = {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(text = stringResource(R.string.updates_nightly_description))
+                        Text(
+                            text =
+                                stringResource(
+                                    R.string.updates_latest_commit,
+                                    latestCommit?.sha ?: "-",
+                                ),
+                            style = MaterialTheme.typography.labelMedium,
+                            fontFamily = FontFamily.Monospace,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                },
+                leadingContent = {
+                    FeatureIcon(
+                        iconRes = R.drawable.download,
+                        containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                    )
+                },
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+            )
+
+            OutlinedButton(
+                onClick = onInstallNightly,
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp),
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.download),
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(text = stringResource(R.string.download))
+            }
+        }
+    }
+}
+
+@Composable
+private fun CommitHistorySection(
+    commits: List<GitCommit>,
+    isLoading: Boolean,
+    isExpanded: Boolean,
+    rotationAngle: Float,
+    onToggleExpanded: () -> Unit,
+    onCommitClick: (GitCommit) -> Unit,
+) {
+    Column(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .widthIn(max = 840.dp)
+                .animateContentSize(),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = MaterialTheme.shapes.extraLarge,
+            colors =
+                CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                ),
+            onClick = onToggleExpanded,
+        ) {
+            ListItem(
+                headlineContent = {
+                    Text(
+                        text = stringResource(R.string.recent_commits),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                },
+                supportingContent = {
+                    Text(
+                        text =
+                            when {
+                                isLoading -> stringResource(R.string.updates_loading_commits)
+                                commits.isEmpty() -> stringResource(R.string.updates_no_commits)
+                                else ->
+                                    stringResource(
+                                        R.string.updates_recent_commits_count,
+                                        commits.size,
+                                    )
+                            },
+                    )
+                },
+                leadingContent = {
+                    FeatureIcon(
+                        iconRes = R.drawable.history,
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                    )
+                },
+                trailingContent = {
+                    Icon(
+                        painter = painterResource(R.drawable.expand_more),
+                        contentDescription = null,
+                        modifier = Modifier.rotate(rotationAngle),
+                    )
+                },
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+            )
+        }
+
+        AnimatedVisibility(visible = isExpanded) {
+            when {
+                isLoading -> {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = MaterialTheme.shapes.extraLarge,
+                        colors =
+                            CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                            ),
+                    ) {
+                        Box(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 24.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                LoadingIndicator(modifier = Modifier.size(32.dp))
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Text(
+                                    text = stringResource(R.string.updates_loading_commits),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
+                }
+
+                commits.isEmpty() -> {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = MaterialTheme.shapes.extraLarge,
+                        colors =
+                            CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                            ),
+                    ) {
+                        Text(
+                            text = stringResource(R.string.updates_no_commits),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(16.dp),
+                        )
+                    }
+                }
+
+                else -> {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        commits.forEachIndexed { index, commit ->
+                            key(commit.sha) {
+                                CommitItem(
+                                    commit = commit,
+                                    index = index,
+                                    count = commits.size,
+                                    onClick = { onCommitClick(commit) },
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -1101,9 +1361,10 @@ private fun FeatureIcon(
             painter = painterResource(iconRes),
             contentDescription = null,
             tint = contentColor,
-            modifier = Modifier
-                .padding(12.dp)
-                .size(22.dp),
+            modifier =
+                Modifier
+                    .padding(12.dp)
+                    .size(22.dp),
         )
     }
 }
@@ -1111,68 +1372,92 @@ private fun FeatureIcon(
 @Composable
 private fun CommitItem(
     commit: GitCommit,
-    onClick: () -> Unit
+    index: Int,
+    count: Int,
+    onClick: () -> Unit,
 ) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth(),
-        shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLowest
-        ),
-        onClick = onClick
-    ) {
-        ListItem(
-            headlineContent = {
+    SegmentedListItem(
+        onClick = onClick,
+        shapes = ListItemDefaults.segmentedShapes(index = index, count = count),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .heightIn(min = 64.dp),
+        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+        leadingContent = {
+            CommitAvatar(avatarUrl = commit.authorAvatarUrl)
+        },
+        trailingContent = {
+            Icon(
+                painter = painterResource(R.drawable.arrow_forward),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        },
+        supportingContent = {
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text(
-                    text = commit.message,
-                    style = MaterialTheme.typography.bodyLarge,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
+                    text = commit.sha,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontFamily = FontFamily.Monospace,
+                    color = MaterialTheme.colorScheme.primary,
                 )
-            },
-            supportingContent = {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(
-                        text = commit.sha,
-                        style = MaterialTheme.typography.labelMedium,
-                        fontFamily = FontFamily.Monospace,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                    Text(
-                        text = if (commit.date.isNotEmpty()) {
+                Text(
+                    text =
+                        if (commit.date.isNotEmpty()) {
                             commit.author + " - " + formatCommitDate(commit.date)
                         } else {
                             commit.author
                         },
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            },
-            leadingContent = {
-                Surface(
-                    modifier = Modifier
-                        .padding(top = 4.dp)
-                        .size(10.dp),
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.primary,
-                ) {}
-            },
-            trailingContent = {
-                Icon(
-                    painter = painterResource(R.drawable.arrow_forward),
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
-            },
-            colors = ListItemDefaults.colors(containerColor = Color.Transparent)
-        )
+            }
+        },
+        content = {
+            Text(
+                text = commit.message,
+                style = MaterialTheme.typography.bodyLarge,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        },
+    )
+}
+
+@Composable
+private fun CommitAvatar(avatarUrl: String?) {
+    Box(
+        modifier =
+            Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (!avatarUrl.isNullOrBlank()) {
+            AsyncImage(
+                model = avatarUrl,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        } else {
+            Icon(
+                painter = painterResource(R.drawable.github),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(22.dp),
+            )
+        }
     }
 }
 
-private fun formatCommitDate(isoDate: String): String {
-    return try {
+private fun formatCommitDate(isoDate: String): String =
+    try {
         val inputFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US)
         inputFormat.timeZone = TimeZone.getTimeZone("UTC")
         val date = inputFormat.parse(isoDate)
@@ -1181,4 +1466,3 @@ private fun formatCommitDate(isoDate: String): String {
     } catch (e: Exception) {
         isoDate.take(10)
     }
-}
