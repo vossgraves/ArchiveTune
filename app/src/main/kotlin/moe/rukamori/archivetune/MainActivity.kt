@@ -130,7 +130,6 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextRange
@@ -616,7 +615,6 @@ class MainActivity : ComponentActivity() {
                     moe.rukamori.archivetune.ui.component
                         .MenuState()
                 }
-            val uriHandler = LocalUriHandler.current
             val releaseNotesState = remember { mutableStateOf<String?>(null) }
             val updateSheetContent: @Composable ColumnScope.() -> Unit = {
                 // receiver: ColumnScope
@@ -672,15 +670,9 @@ class MainActivity : ComponentActivity() {
 
                 androidx.compose.material3.Button(
                     onClick = {
-                        try {
-                            val downloadUrl =
-                                when (latestUpdateChannel) {
-                                    UpdateChannel.DAILY_NIGHTLY -> Updater.getLatestDailyNightlyDownloadUrl()
-                                    UpdateChannel.NIGHTLY -> Updater.getLatestNightlyDownloadUrl()
-                                    UpdateChannel.STABLE -> Updater.getLatestDownloadUrl()
-                                }
-                            uriHandler.openUri(downloadUrl)
-                        } catch (_: Exception) {
+                        bottomSheetPageState.dismiss()
+                        this@MainActivity.navController.navigate("settings/update") {
+                            launchSingleTop = true
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),
@@ -849,6 +841,10 @@ class MainActivity : ComponentActivity() {
                                 .isWidthAtLeastBreakpoint(WindowSizeClass.WIDTH_DP_MEDIUM_LOWER_BOUND)
 
                     val navController = rememberNavController()
+                    DisposableEffect(navController) {
+                        this@MainActivity.navController = navController
+                        onDispose {}
+                    }
                     val coroutineScope = rememberCoroutineScope()
                     val homeViewModel: HomeViewModel = hiltViewModel()
                     val networkBannerViewModel: NetworkBannerViewModel = hiltViewModel()
@@ -2341,6 +2337,13 @@ class MainActivity : ComponentActivity() {
         navController: NavHostController,
     ) {
         if (intent == null) return
+        intent.getStringExtra("navigate_to")?.takeIf { it.isNotBlank() }?.let { route ->
+            navController.navigate(route) {
+                launchSingleTop = true
+            }
+            intent.removeExtra("navigate_to")
+            return
+        }
         val dataUri = intent.data
         if (isBackupUri(dataUri)) {
             pendingBackupRestoreUri = dataUri

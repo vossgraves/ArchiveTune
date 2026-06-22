@@ -51,6 +51,7 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LargeFlexibleTopAppBar
+import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.LoadingIndicator
@@ -66,6 +67,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.TopAppBarScrollBehavior
+import androidx.compose.material3.WavyProgressIndicatorDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -105,6 +107,7 @@ import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.MarkdownText
 import moe.rukamori.archivetune.ui.component.PreferenceGroupTitle
 import moe.rukamori.archivetune.ui.utils.backToMain
+import moe.rukamori.archivetune.utils.AppUpdateInstaller
 import moe.rukamori.archivetune.utils.GitCommit
 import moe.rukamori.archivetune.utils.UpdateNotificationManager
 import moe.rukamori.archivetune.utils.Updater
@@ -113,6 +116,7 @@ import moe.rukamori.archivetune.utils.rememberPreference
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.TimeZone
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -175,6 +179,41 @@ fun UpdateScreen(
     var updateSheetIsSameVersion by remember { mutableStateOf(false) }
     var showUpdateUpToDateDialog by remember { mutableStateOf(false) }
     var showUpdateErrorDialog by remember { mutableStateOf(false) }
+    var updateDownloadProgress by remember { mutableStateOf<Float?>(null) }
+    var updateDownloadJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    var showUpdateDownloadDialog by remember { mutableStateOf(false) }
+    val useInAppUpdateInstaller = BuildConfig.DISTRIBUTION == "gms"
+
+    val openUpdateUrl: (String) -> Unit = { url ->
+        try {
+            uriHandler.openUri(url)
+        } catch (_: Exception) {
+        }
+    }
+
+    val installUpdate: (String) -> Unit = { url ->
+        if (!useInAppUpdateInstaller) {
+            openUpdateUrl(url)
+        } else if (updateDownloadJob?.isActive != true) {
+            updateDownloadProgress = null
+            updateSheetError = null
+            showUpdateErrorDialog = false
+            showUpdateDownloadDialog = true
+            updateDownloadJob =
+                coroutineScope.launch {
+                    AppUpdateInstaller
+                        .downloadAndInstall(context, url) { progress ->
+                            updateDownloadProgress = progress.fraction
+                        }.onSuccess {
+                            showUpdateDownloadDialog = false
+                        }.onFailure { error ->
+                            showUpdateDownloadDialog = false
+                            updateSheetError = error.message ?: context.getString(R.string.error_unknown)
+                            showUpdateErrorDialog = true
+                        }
+                }
+        }
+    }
 
     val updateSheetContent: @Composable ColumnScope.() -> Unit = {
         Text(
@@ -234,12 +273,7 @@ fun UpdateScreen(
             }
 
         Button(
-            onClick = {
-                try {
-                    uriHandler.openUri(downloadUrl)
-                } catch (_: Exception) {
-                }
-            },
+            onClick = { installUpdate(downloadUrl) },
             modifier = Modifier.fillMaxWidth(),
             shapes = ButtonDefaults.shapes(),
         ) {
@@ -783,7 +817,7 @@ fun UpdateScreen(
                             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
                             OutlinedButton(
-                                onClick = { uriHandler.openUri(nightlyInstallUrl) },
+                                onClick = { installUpdate(nightlyInstallUrl) },
                                 modifier = Modifier.fillMaxWidth(),
                             ) {
                                 Icon(
@@ -955,6 +989,56 @@ fun UpdateScreen(
                     text = stringResource(R.string.updates_status_checking),
                     style = MaterialTheme.typography.headlineSmall,
                 )
+            },
+            confirmButton = {},
+        )
+    }
+
+    if (showUpdateDownloadDialog) {
+        val progress = updateDownloadProgress
+        val animatedProgress by animateFloatAsState(
+            targetValue = progress ?: 0f,
+            animationSpec = WavyProgressIndicatorDefaults.ProgressAnimationSpec,
+            label = "updateDownloadProgress",
+        )
+
+        AlertDialog(
+            onDismissRequest = {},
+            icon = {
+                LoadingIndicator(
+                    modifier = Modifier.size(24.dp),
+                )
+            },
+            title = {
+                Text(
+                    text = stringResource(R.string.downloading),
+                    style = MaterialTheme.typography.headlineSmall,
+                )
+            },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    if (progress != null) {
+                        LinearWavyProgressIndicator(
+                            progress = { animatedProgress },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Text(
+                            text =
+                                stringResource(
+                                    R.string.download_progress_percent,
+                                    (animatedProgress * 100f).roundToInt().coerceIn(0, 100),
+                                ),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    } else {
+                        LinearWavyProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    }
+                }
             },
             confirmButton = {},
         )
