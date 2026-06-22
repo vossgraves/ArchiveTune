@@ -77,7 +77,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -170,7 +169,6 @@ import moe.rukamori.archivetune.ui.utils.DownloadProgressToolbarState
 import moe.rukamori.archivetune.ui.utils.HeaderDownloadItem
 import moe.rukamori.archivetune.ui.utils.HeaderDownloadProgressIndicator
 import moe.rukamori.archivetune.ui.utils.HeaderDownloadState
-import moe.rukamori.archivetune.ui.utils.ItemWrapper
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.ui.utils.formatCompactCount
 import moe.rukamori.archivetune.ui.utils.hasActiveDownloads
@@ -259,11 +257,26 @@ fun LocalPlaylistScreen(
     }
 
     var selection by remember { mutableStateOf(false) }
-
-    val wrappedSongs =
+    var selectedSongMapIds by remember { mutableStateOf(emptySet<Int>()) }
+    val visibleSongMapIds =
         remember(filteredSongs) {
-            filteredSongs.map { item -> ItemWrapper(item) }
-        }.toMutableStateList()
+            filteredSongs.map { it.map.id }.toSet()
+        }
+    val selectedPlaylistSongs =
+        remember(filteredSongs, selectedSongMapIds) {
+            filteredSongs.filter { it.map.id in selectedSongMapIds }
+        }
+
+    LaunchedEffect(selection, visibleSongMapIds) {
+        if (selection) {
+            val visibleSelectedSongMapIds = selectedSongMapIds.intersect(visibleSongMapIds)
+            if (visibleSelectedSongMapIds.size != selectedSongMapIds.size) {
+                selectedSongMapIds = visibleSelectedSongMapIds
+            }
+        } else if (selectedSongMapIds.isNotEmpty()) {
+            selectedSongMapIds = emptySet()
+        }
+    }
 
     if (isSearching) {
         BackHandler {
@@ -1341,8 +1354,7 @@ fun LocalPlaylistScreen(
                                                 if (!selection) {
                                                     selection = true
                                                 }
-                                                wrappedSongs.forEach { it.isSelected = false }
-                                                wrappedSongs.find { it.item.map.id == song.map.id }?.isSelected = true
+                                                selectedSongMapIds = setOf(song.map.id)
                                             },
                                         ),
                             )
@@ -1362,18 +1374,18 @@ fun LocalPlaylistScreen(
                 }
             } else {
                 itemsIndexed(
-                    items = wrappedSongs,
-                    key = { _, song -> song.item.map.id },
-                ) { index, songWrapper ->
+                    items = filteredSongs,
+                    key = { _, song -> song.map.id },
+                ) { index, song ->
                     ReorderableItem(
                         state = reorderableState,
-                        key = songWrapper.item.map.id,
+                        key = song.map.id,
                         modifier =
                             Modifier.graphicsLayer {
                                 compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen
                             },
                     ) {
-                        val currentItem by rememberUpdatedState(songWrapper.item)
+                        val currentItem by rememberUpdatedState(song)
 
                         fun deleteFromPlaylist() {
                             val map = currentItem.map
@@ -1410,10 +1422,10 @@ fun LocalPlaylistScreen(
 
                         val content: @Composable () -> Unit = {
                             SongListItem(
-                                song = songWrapper.item.song,
+                                song = song.song,
                                 viewCountText =
-                                    viewCounts[songWrapper.item.song.id]?.let { count -> formatCompactCount(count.toLong()) },
-                                isActive = songWrapper.item.song.id == mediaMetadata?.id,
+                                    viewCounts[song.song.id]?.let { count -> formatCompactCount(count.toLong()) },
+                                isActive = song.song.id == mediaMetadata?.id,
                                 isPlaying = isPlaying,
                                 showInLibraryIcon = true,
                                 trailingContent = {
@@ -1421,7 +1433,7 @@ fun LocalPlaylistScreen(
                                         onClick = {
                                             menuState.show {
                                                 SongMenu(
-                                                    originalSong = songWrapper.item.song,
+                                                    originalSong = song.song,
                                                     playlistBrowseId = playlist?.playlist?.browseId,
                                                     navController = navController,
                                                     onDismiss = menuState::dismiss,
@@ -1451,14 +1463,14 @@ fun LocalPlaylistScreen(
                                         }
                                     }
                                 },
-                                isSelected = songWrapper.isSelected && selection,
+                                isSelected = song.map.id in selectedSongMapIds,
                                 modifier =
                                     Modifier
                                         .fillMaxWidth()
                                         .combinedClickable(
                                             onClick = {
                                                 if (!selection) {
-                                                    if (songWrapper.item.song.id == mediaMetadata?.id) {
+                                                    if (song.song.id == mediaMetadata?.id) {
                                                         playerConnection.player.togglePlayPause()
                                                     } else {
                                                         playerConnection.playQueue(
@@ -1470,7 +1482,12 @@ fun LocalPlaylistScreen(
                                                         )
                                                     }
                                                 } else {
-                                                    songWrapper.isSelected = !songWrapper.isSelected
+                                                    selectedSongMapIds =
+                                                        if (song.map.id in selectedSongMapIds) {
+                                                            selectedSongMapIds - song.map.id
+                                                        } else {
+                                                            selectedSongMapIds + song.map.id
+                                                        }
                                                 }
                                             },
                                             onLongClick = {
@@ -1478,8 +1495,7 @@ fun LocalPlaylistScreen(
                                                 if (!selection) {
                                                     selection = true
                                                 }
-                                                wrappedSongs.forEach { it.isSelected = false }
-                                                songWrapper.isSelected = true
+                                                selectedSongMapIds = setOf(song.map.id)
                                             },
                                         ),
                             )
@@ -1542,7 +1558,7 @@ fun LocalPlaylistScreen(
             colors = topAppBarColors,
             title = {
                 if (selection) {
-                    val count = wrappedSongs.count { it.isSelected }
+                    val count = selectedPlaylistSongs.size
                     Text(
                         text = pluralStringResource(R.plurals.n_song, count, count),
                         style = MaterialTheme.typography.titleLarge,
@@ -1606,13 +1622,13 @@ fun LocalPlaylistScreen(
             },
             actions = {
                 if (selection) {
-                    val count = wrappedSongs.count { it.isSelected }
+                    val count = selectedPlaylistSongs.size
                     IconButton(
                         onClick = {
-                            if (count == wrappedSongs.size) {
-                                wrappedSongs.forEach { it.isSelected = false }
+                            if (count == filteredSongs.size) {
+                                selectedSongMapIds = emptySet()
                             } else {
-                                wrappedSongs.forEach { it.isSelected = true }
+                                selectedSongMapIds = visibleSongMapIds
                             }
                         },
                         onLongClick = {},
@@ -1620,7 +1636,7 @@ fun LocalPlaylistScreen(
                         Icon(
                             painter =
                                 painterResource(
-                                    if (count == wrappedSongs.size) R.drawable.deselect else R.drawable.select_all,
+                                    if (count == filteredSongs.size) R.drawable.deselect else R.drawable.select_all,
                                 ),
                             contentDescription = null,
                         )
@@ -1631,17 +1647,13 @@ fun LocalPlaylistScreen(
                             menuState.show {
                                 SelectionSongMenu(
                                     songSelection =
-                                        wrappedSongs
-                                            .filter { it.isSelected }
-                                            .map { it.item.song },
+                                        selectedPlaylistSongs.map { it.song },
                                     songPosition =
-                                        wrappedSongs
-                                            .filter { it.isSelected }
-                                            .map { it.item.map },
+                                        selectedPlaylistSongs.map { it.map },
                                     onDismiss = menuState::dismiss,
                                     clearAction = {
                                         selection = false
-                                        wrappedSongs.clear()
+                                        selectedSongMapIds = emptySet()
                                     },
                                 )
                             }
