@@ -83,6 +83,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationRail
@@ -1621,7 +1622,9 @@ class MainActivity : ComponentActivity() {
                                                     }
                                                 },
                                                 actions = {
-                                                    IconButton(onClick = { navController.navigate("history") }) {
+                                                    TranslucentTopAppBarIconButton(
+                                                        onClick = { navController.navigate("history") },
+                                                    ) {
                                                         Icon(
                                                             painter = painterResource(R.drawable.history),
                                                             contentDescription = stringResource(R.string.history),
@@ -1649,7 +1652,9 @@ class MainActivity : ComponentActivity() {
                                                         },
                                                         state = rememberTooltipState(),
                                                     ) {
-                                                        IconButton(onClick = { navController.navigate("news") }) {
+                                                        TranslucentTopAppBarIconButton(
+                                                            onClick = { navController.navigate("news") },
+                                                        ) {
                                                             BadgedBox(badge = {
                                                                 if (hasUnreadNews) {
                                                                     Badge()
@@ -1662,13 +1667,17 @@ class MainActivity : ComponentActivity() {
                                                             }
                                                         }
                                                     }
-                                                    IconButton(onClick = { navController.navigate("new_release") }) {
+                                                    TranslucentTopAppBarIconButton(
+                                                        onClick = { navController.navigate("new_release") },
+                                                    ) {
                                                         Icon(
                                                             painter = painterResource(R.drawable.new_release),
                                                             contentDescription = stringResource(R.string.new_release_albums),
                                                         )
                                                     }
-                                                    IconButton(onClick = { navController.navigate("settings") }) {
+                                                    TranslucentTopAppBarIconButton(
+                                                        onClick = { navController.navigate("settings") },
+                                                    ) {
                                                         BadgedBox(badge = {
                                                             if (
                                                                 BuildConfig.UPDATER_AVAILABLE &&
@@ -2706,6 +2715,27 @@ val LocalPlayerAwareWindowInsets =
     compositionLocalOf<WindowInsets> { error("No WindowInsets provided") }
 val LocalDownloadUtil = staticCompositionLocalOf<DownloadUtil> { error("No DownloadUtil provided") }
 val LocalSyncUtils = staticCompositionLocalOf<SyncUtils> { error("No SyncUtils provided") }
+
+private const val TopAppBarIconButtonContainerAlpha = 0.48f
+
+@Composable
+private fun TranslucentTopAppBarIconButton(
+    onClick: () -> Unit,
+    content: @Composable () -> Unit,
+) {
+    IconButton(
+        onClick = onClick,
+        colors =
+            IconButtonDefaults.iconButtonColors(
+                containerColor =
+                    MaterialTheme.colorScheme.surfaceContainerHighest.copy(
+                        alpha = TopAppBarIconButtonContainerAlpha,
+                    ),
+                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            ),
+        content = content,
+    )
+}
 
 @Composable
 private fun OnlineSearchSortMenu(
