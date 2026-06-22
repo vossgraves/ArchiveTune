@@ -556,13 +556,11 @@
     <string name="updates">Оновлення</string>
     <string name="current_version">Поточна версія</string>
     <string name="latest_version_format">Остання: %s</string>
-    <string name="notification_settings">Сповіщення</string>
     <string name="enable_update_notification">Увімкнути сповіщення про оновлення</string>
     <string name="enable_update_notification_desc">Отримуйте сповіщення про вихід нової стабільної версії</string>
     <string name="update_channel">Канал оновлень</string>
     <string name="channel_stable">Стабільний</string>
     <string name="channel_nightly">Нічний</string>
-    <string name="commit_history">Розробка</string>
     <string name="recent_commits">Останні зміни</string>
     <string name="changelog">Історія змін</string>
     <string name="view_changelog">Переглянути історію змін</string>

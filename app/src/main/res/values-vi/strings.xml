@@ -552,13 +552,11 @@
     <string name="updates">Cập nhật</string>
     <string name="current_version">Phiên bản hiện tại</string>
     <string name="latest_version_format">Mới nhất: %s</string>
-    <string name="notification_settings">Thông báo</string>
     <string name="enable_update_notification">Bật Thông báo Cập nhật</string>
     <string name="enable_update_notification_desc">Nhận thông báo khi phiên bản ổn định mới được phát hành</string>
     <string name="update_channel">Kênh Cập nhật</string>
     <string name="channel_stable">Ổn định</string>
     <string name="channel_nightly">Hàng đêm</string>
-    <string name="commit_history">Phát triển</string>
     <string name="recent_commits">Commits Gần đây</string>
     <string name="changelog">Nhật ký thay đổi</string>
     <string name="view_changelog">Xem nhật ký thay đổi</string>
@@ -848,7 +846,6 @@
     <string name="lyrics_synced_badge">Đã đồng bộ</string>
     <string name="proxy_connection_invalid_configuration">Máy chủ proxy hoặc cổng không hợp lệ</string>
     <string name="youtube_channels">Kênh YouTube</string>
-    <!-- Hide playlist -->
     <string name="hide_playlist">Ẩn danh sách phát</string>
     <string name="unhide_playlist">Bỏ ẩn danh sách phát</string>
     <string name="show_hidden_playlists">Hiện ẩn</string>

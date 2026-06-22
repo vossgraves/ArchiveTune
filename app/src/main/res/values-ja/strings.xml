@@ -655,14 +655,12 @@
     <string name="latest_version_format">Latest: %s</string>
     <string name="updates_status_checking">最新リリースの確認</string>
     <string name="updates_status_current">利用可能な最新リリースを使用しています</string>
-    <string name="notification_settings">お知らせ</string>
     <string name="enable_update_notification">更新通知を有効にする</string>
     <string name="enable_update_notification_desc">新しい安定バージョンがリリースされたときに通知を受け取る</string>
     <string name="update_channel">チャンネルを更新する</string>
     <string name="update_channel_desc">テスト済みのリリースと開発スナップショットのどちらかを選択します。</string>
     <string name="channel_stable">安定した</string>
     <string name="channel_nightly">毎晩</string>
-    <string name="commit_history">開発</string>
     <string name="recent_commits">最近のコミット</string>
     <string name="updates_nightly_title">夜間配送</string>
     <string name="updates_nightly_description">夜間ビルドは最新の開発コミットを追跡し、未完了の変更が含まれる場合があります。</string>
@@ -823,7 +821,6 @@
     <string name="album_backdrop_desc">プレーヤーにアートワークをぼかした背景として表示</string>
     <string name="backdrop_blur_amount">背景ブラーの量</string>
     <string name="backdrop_blur_amount_value">%1$d%%</string>
-    <!-- Hide playlist -->
     <string name="hide_playlist">プレイリストを非表示</string>
     <string name="unhide_playlist">プレイリストを表示</string>
     <string name="show_hidden_playlists">非表示を表示</string>
