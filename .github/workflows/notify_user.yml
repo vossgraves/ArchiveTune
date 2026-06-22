@@ -1,6 +1,7 @@
 name: Comment when commit references issue
 
 on:
+  workflow_call:
   workflow_run:
     workflows:
       - Build APKs
@@ -8,11 +9,10 @@ on:
       - completed
     branches:
       - main
-      - dev
 
 jobs:
   notify-issue:
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
 
     permissions:
@@ -33,7 +33,7 @@ jobs:
             const nightlyLinks = [
               {
                 label: "GMS",
-                url: "https://nightly.link/ArchiveTuneApp/ArchiveTune/workflows/build/dev/app-mobile-universal-release"
+                url: "https://nightly.link/ArchiveTuneApp/ArchiveTune/workflows/build/dev/app-gms-mobile-universal-release"
               },
               {
                 label: "FOSS",

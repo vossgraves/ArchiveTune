@@ -294,7 +294,6 @@ jobs:
           python ./.github/workflows/deploy_artifacts.py
         continue-on-error: true
 
-
   build_debug:
     if: github.actor != 'dependabot[bot]' && github.actor != 'renovate[bot]'
     runs-on: ubuntu-latest
@@ -350,3 +349,17 @@ jobs:
             app/build/outputs/apk/gmsMobileUniversal/debug/*.apk
             app/build/outputs/apk/gms/mobile/universal/debug/*.apk
             app/build/outputs/apk/mobileUniversal/debug/*.apk
+
+  notifyUser:
+    name: Notify referenced issues
+    if: github.ref == 'refs/heads/dev' && github.actor != 'dependabot[bot]' && github.actor != 'renovate[bot]'
+    needs:
+      - build
+      - aggregateAndSend
+      - build_debug
+    uses: ./.github/workflows/notify_user.yml
+    permissions:
+      issues: write
+      pull-requests: write
+      contents: read
+    secrets: inherit
