@@ -341,11 +341,7 @@ fun HistoryScreen(
                                 playerConnection.player.togglePlayPause()
                             } else {
                                 playerConnection.playQueue(
-                                    if (song.song.isLocal) {
-                                        ListQueue(items = listOf(song.toMediaItem()))
-                                    } else {
-                                        YouTubeQueue.radio(song.toMediaMetadata())
-                                    },
+                                    YouTubeQueue.radio(song.toMediaMetadata()),
                                 )
                             }
                         },
