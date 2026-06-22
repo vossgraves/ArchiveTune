@@ -793,6 +793,16 @@ fun BottomSheetPlayer(
     var isLyricsScreenVisible by rememberSaveable {
         mutableStateOf(false)
     }
+    val openQueue =
+        remember(state, queueSheetState) {
+            {
+                isLyricsScreenVisible = false
+                if (!state.isExpandedOrExpanding) {
+                    state.expandSoft()
+                }
+                queueSheetState.expandSoft()
+            }
+        }
 
     BackHandler(
         enabled =
@@ -1268,7 +1278,7 @@ fun BottomSheetPlayer(
                                     liked = currentSongLiked,
                                     onCollapse = state::collapseSoft,
                                     onToggleLike = playerConnection::toggleLike,
-                                    onExpandQueue = queueSheetState::expandSoft,
+                                    onExpandQueue = openQueue,
                                     onMenuClick = {
                                         menuState.show {
                                             PlayerMenu(
@@ -1413,7 +1423,7 @@ fun BottomSheetPlayer(
                             canvasPrimaryUrl = artworkCanvas?.animated,
                             canvasFallbackUrl = artworkCanvas?.videoUrl,
                             onCollapseClick = { state.collapseSoft() },
-                            onQueueClick = { queueSheetState.expandSoft() },
+                            onQueueClick = openQueue,
                             onLyricsClick = { isLyricsScreenVisible = true },
                             onSliderValueChange = onSliderValueChange,
                             onSliderValueChangeFinished = onSliderValueChangeFinished,
@@ -1528,7 +1538,7 @@ fun BottomSheetPlayer(
                                         liked = currentSongLiked,
                                         onCollapse = state::collapseSoft,
                                         onToggleLike = playerConnection::toggleLike,
-                                        onExpandQueue = queueSheetState::expandSoft,
+                                        onExpandQueue = openQueue,
                                         onMenuClick = {
                                             menuState.show {
                                                 PlayerMenu(
@@ -1671,7 +1681,7 @@ fun BottomSheetPlayer(
                             canvasPrimaryUrl = artworkCanvas?.animated,
                             canvasFallbackUrl = artworkCanvas?.videoUrl,
                             onCollapseClick = { state.collapseSoft() },
-                            onQueueClick = { queueSheetState.expandSoft() },
+                            onQueueClick = openQueue,
                             onLyricsClick = { isLyricsScreenVisible = true },
                             onSliderValueChange = onSliderValueChange,
                             onSliderValueChangeFinished = onSliderValueChangeFinished,
@@ -1762,10 +1772,7 @@ fun BottomSheetPlayer(
                 lyricsSyncOffset = lyricsSyncOffset,
                 onLyricsSyncOffsetChange = { lyricsSyncOffset = it },
                 onDismiss = { isLyricsScreenVisible = false },
-                onQueueClick = {
-                    isLyricsScreenVisible = false
-                    queueSheetState.expandSoft()
-                },
+                onQueueClick = openQueue,
             )
         }
 

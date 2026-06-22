@@ -400,6 +400,15 @@ fun Queue(
             }
         }
     }
+    val openQueue =
+        remember(playerBottomSheetState, state) {
+            {
+                if (!playerBottomSheetState.isExpandedOrExpanding) {
+                    playerBottomSheetState.expandSoft()
+                }
+                state.expandSoft()
+            }
+        }
 
     BottomSheet(
         state = state,
@@ -418,7 +427,7 @@ fun Queue(
                         sleepTimerTimeLeft = sleepTimerTimeLeft,
                         repeatMode = repeatMode,
                         mediaMetadata = mediaMetadata,
-                        onExpandQueue = { state.expandSoft() },
+                        onExpandQueue = openQueue,
                         onSleepTimerClick = {
                             if (sleepTimerEnabled) {
                                 playerConnection.service.sleepTimer.clear()
@@ -455,7 +464,7 @@ fun Queue(
                         textBackgroundColor = TextBackgroundColor,
                         sleepTimerEnabled = sleepTimerEnabled,
                         sleepTimerTimeLeft = sleepTimerTimeLeft,
-                        onExpandQueue = { state.expandSoft() },
+                        onExpandQueue = openQueue,
                         onSleepTimerClick = {
                             if (sleepTimerEnabled) {
                                 playerConnection.service.sleepTimer.clear()
@@ -491,7 +500,7 @@ fun Queue(
                         textBackgroundColor = TextBackgroundColor,
                         sleepTimerEnabled = sleepTimerEnabled,
                         sleepTimerTimeLeft = sleepTimerTimeLeft,
-                        onExpandQueue = { state.expandSoft() },
+                        onExpandQueue = openQueue,
                         onSleepTimerClick = {
                             if (sleepTimerEnabled) {
                                 playerConnection.service.sleepTimer.clear()
@@ -530,7 +539,7 @@ fun Queue(
                         sleepTimerEnabled = sleepTimerEnabled,
                         sleepTimerTimeLeft = sleepTimerTimeLeft,
                         mediaMetadata = mediaMetadata,
-                        onExpandQueue = { state.expandSoft() },
+                        onExpandQueue = openQueue,
                         onSleepTimerClick = {
                             if (sleepTimerEnabled) {
                                 playerConnection.service.sleepTimer.clear()
@@ -549,7 +558,7 @@ fun Queue(
                         textBackgroundColor = TextBackgroundColor,
                         sleepTimerEnabled = sleepTimerEnabled,
                         sleepTimerTimeLeft = sleepTimerTimeLeft,
-                        onExpandQueue = { state.expandSoft() },
+                        onExpandQueue = openQueue,
                         onSleepTimerClick = {
                             if (sleepTimerEnabled) {
                                 playerConnection.service.sleepTimer.clear()
@@ -571,7 +580,7 @@ fun Queue(
                         sleepTimerEnabled = sleepTimerEnabled,
                         sleepTimerTimeLeft = sleepTimerTimeLeft,
                         mediaMetadata = mediaMetadata,
-                        onExpandQueue = { state.expandSoft() },
+                        onExpandQueue = openQueue,
                         onSleepTimerClick = {
                             if (sleepTimerEnabled) {
                                 playerConnection.service.sleepTimer.clear()
@@ -643,7 +652,7 @@ fun Queue(
                         textBackgroundColor = TextBackgroundColor,
                         sleepTimerEnabled = sleepTimerEnabled,
                         sleepTimerTimeLeft = sleepTimerTimeLeft,
-                        onExpandQueue = { state.expandSoft() },
+                        onExpandQueue = openQueue,
                         onShowLyrics = onShowLyrics,
                         onSleepTimerClick = {
                             if (sleepTimerEnabled) {
