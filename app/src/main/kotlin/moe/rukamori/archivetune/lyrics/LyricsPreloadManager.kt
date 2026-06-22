@@ -8,8 +8,6 @@
 package moe.rukamori.archivetune.lyrics
 
 import android.util.Log
-import androidx.datastore.preferences.core.booleanPreferencesKey
-import androidx.datastore.preferences.core.intPreferencesKey
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -44,10 +42,6 @@ class LyricsPreloadManager
     ) {
         private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         private var preloadJob: Job? = null
-
-        // Track current queue to detect changes
-        private var currentQueueIds: List<String> = emptyList()
-        private var currentIndex: Int = -1
 
         /**
          * Called when the current song changes in the player.
@@ -177,7 +171,7 @@ class LyricsPreloadManager
          */
         private suspend fun fetchLyricsForSong(song: MediaMetadata): String? =
             try {
-                lyricsHelper.getLyrics(song, preferredProviderOnly = true)
+                lyricsHelper.getLyrics(song)
             } catch (e: Exception) {
                 Log.w(TAG, "Error fetching lyrics for ${song.title}: ${e.message}")
                 null
