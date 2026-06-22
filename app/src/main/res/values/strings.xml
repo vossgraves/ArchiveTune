@@ -796,6 +796,15 @@
     <string name="updates_nightly_title">Nightly delivery</string>
     <string name="updates_nightly_description">Nightly builds track the newest development commits and may include unfinished changes.</string>
     <string name="updates_nightly_hosting_description">Automatically generated development builds are available from successful GitHub Actions runs.</string>
+    <string name="updates_channel_warning_intro">ArchiveTune provides two download channels for builds:</string>
+    <string name="updates_channel_warning_stable_title">Stable builds</string>
+    <string name="updates_channel_warning_stable_source">Distributed via official GitHub Releases.</string>
+    <string name="updates_channel_warning_stable_desc">These versions are tested and recommended for most users.</string>
+    <string name="updates_channel_warning_nightly_title">Nightly builds</string>
+    <string name="updates_channel_warning_nightly_risk">Nightly builds may include experimental features, unfinished changes, or temporary regressions.</string>
+    <string name="updates_channel_warning_nightly_unstable">Nightly builds are provided for testing and early access only.\nStability, compatibility, and functionality are not guaranteed.</string>
+    <string name="updates_channel_warning_acknowledgement">By continuing, you acknowledge that nightly builds may be unstable and use them at your own risk.</string>
+    <string name="updates_daily_channel_confirmation">Switch to the Daily channel to receive updates from the daily-nightly repository.\n\nDaily builds are published automatically every day from the latest development branch.</string>
     <string name="updates_latest_commit">Latest commit: %s</string>
     <string name="updates_loading_commits">Loading recent commits</string>
     <string name="updates_recent_commits_count">%1$d recent commits</string>

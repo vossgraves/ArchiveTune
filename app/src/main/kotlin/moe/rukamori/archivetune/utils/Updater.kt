@@ -32,6 +32,7 @@ data class GitCommit(
     val author: String,
     val date: String,
     val url: String,
+    val authorAvatarUrl: String? = null,
 )
 
 data class ReleaseInfo(
@@ -336,6 +337,7 @@ object Updater {
                 val commitObj = jsonArray.getJSONObject(i)
                 val commit = commitObj.getJSONObject("commit")
                 val authorObj = commit.optJSONObject("author")
+                val githubAuthorObj = commitObj.optJSONObject("author")
                 commits.add(
                     GitCommit(
                         sha = commitObj.optString("sha", "").take(7),
@@ -343,6 +345,7 @@ object Updater {
                         author = authorObj?.optString("name", "Unknown") ?: "Unknown",
                         date = authorObj?.optString("date", "") ?: "",
                         url = commitObj.optString("html_url", ""),
+                        authorAvatarUrl = githubAuthorObj?.optString("avatar_url")?.takeIf { it.isNotBlank() },
                     ),
                 )
             }
