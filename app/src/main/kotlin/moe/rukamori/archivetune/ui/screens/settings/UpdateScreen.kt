@@ -726,6 +726,10 @@ fun UpdateScreen(
             animationSpec = WavyProgressIndicatorDefaults.ProgressAnimationSpec,
             label = "updateDownloadProgress",
         )
+        val centeredDialogContentModifier = remember { Modifier.fillMaxWidth() }
+        val determinateProgressModifier = remember { Modifier.size(96.dp) }
+        val determinateIndicatorModifier = remember { Modifier.fillMaxSize() }
+        val indeterminateIndicatorModifier = remember { Modifier.size(72.dp) }
 
         AlertDialog(
             onDismissRequest = {},
@@ -733,21 +737,24 @@ fun UpdateScreen(
                 Text(
                     text = stringResource(R.string.downloading),
                     style = MaterialTheme.typography.headlineSmall,
+                    textAlign = TextAlign.Center,
+                    modifier = centeredDialogContentModifier,
                 )
             },
             text = {
                 Column(
+                    modifier = centeredDialogContentModifier,
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     if (progress != null) {
                         Box(
-                            modifier = Modifier.size(96.dp),
+                            modifier = determinateProgressModifier,
                             contentAlignment = Alignment.Center,
                         ) {
                             CircularWavyProgressIndicator(
                                 progress = { animatedProgress },
-                                modifier = Modifier.fillMaxSize(),
+                                modifier = determinateIndicatorModifier,
                             )
                             Text(
                                 text =
@@ -762,7 +769,7 @@ fun UpdateScreen(
                         }
                     } else {
                         CircularWavyProgressIndicator(
-                            modifier = Modifier.size(72.dp),
+                            modifier = indeterminateIndicatorModifier,
                         )
                     }
                 }
