@@ -155,6 +155,10 @@
     <string name="refetch">Refetch</string>
     <string name="share">Share</string>
     <string name="delete">Delete</string>
+    <string name="hide_playlist">Hide playlist</string>
+    <string name="unhide_playlist">Unhide playlist</string>
+    <string name="show_hidden_playlists">Show hidden</string>
+    <string name="hide_playlist_confirm">Hide \u0022%1$s\u0022 from library?</string>
     <string name="together_participants">Participants</string>
     <string name="together_connected_count">%1$d connected</string>
     <string name="together_role_host">Host</string>
@@ -937,4 +941,8 @@
     <string name="unsaved_account_dialog_no_thanks">No thanks</string>
     <string name="unsaved_account_dialog_save_yes">Yes, save current account</string>
     <string name="youtube_channels">YouTube channels</string>
+    <string name="hidden_playlists">Hidden playlists</string>
+    <string name="hidden_playlists_description">Playlists hidden from library appear here</string>
+    <string name="no_hidden_playlists">No hidden playlists</string>
+    <string name="unhide">Unhide</string>
 </resources>
