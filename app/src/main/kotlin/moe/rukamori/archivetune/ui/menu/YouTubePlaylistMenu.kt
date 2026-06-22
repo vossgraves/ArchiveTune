@@ -430,6 +430,7 @@ fun YouTubePlaylistMenu(
     val dividerModifier = Modifier.padding(start = 56.dp)
     val playText = stringResource(R.string.play)
     val shuffleText = stringResource(R.string.shuffle)
+    val startRadioText = stringResource(R.string.start_radio)
     val playNextText = stringResource(R.string.play_next)
     val addToQueueText = stringResource(R.string.add_to_queue)
     val addToPlaylistText = stringResource(R.string.add_to_playlist)
@@ -442,8 +443,10 @@ fun YouTubePlaylistMenu(
         remember(
             playlist.playEndpoint,
             playlist.shuffleEndpoint,
+            playlist.radioEndpoint,
             playText,
             shuffleText,
+            startRadioText,
             playerConnection,
             onDismiss,
         ) {
@@ -481,6 +484,25 @@ fun YouTubePlaylistMenu(
                             text = shuffleText,
                             onClick = {
                                 playerConnection.playQueue(YouTubeQueue.playlist(shuffleEndpoint))
+                                onDismiss()
+                            },
+                        ),
+                    )
+                }
+                playlist.radioEndpoint?.let { radioEndpoint ->
+                    add(
+                        NewAction(
+                            icon = {
+                                Icon(
+                                    painter = painterResource(R.drawable.radio),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(28.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            },
+                            text = startRadioText,
+                            onClick = {
+                                playerConnection.playQueue(YouTubeQueue(radioEndpoint))
                                 onDismiss()
                             },
                         ),
