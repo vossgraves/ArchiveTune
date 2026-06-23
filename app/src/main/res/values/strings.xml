@@ -801,8 +801,8 @@
     <string name="updates_channel_warning_nightly_title">Nightly builds</string>
     <string name="updates_channel_warning_nightly_risk">Nightly builds may include experimental features, unfinished changes, or temporary regressions.</string>
     <string name="updates_channel_warning_nightly_unstable">Nightly builds are provided for testing and early access only.\nStability, compatibility, and functionality are not guaranteed.</string>
-    <string name="updates_channel_warning_acknowledgement">By continuing, you acknowledge that nightly builds may be unstable and use them at your own risk.</string>
-    <string name="updates_daily_channel_confirmation">Switch to the Daily channel to receive updates from the daily-nightly repository.\n\nDaily builds are published automatically every day from the latest development branch.</string>
+    <string name="updates_channel_warning_acknowledgement">Note: that downloading from Github directly bypasses any additional screening performed by the store you might have originally installed the app from.\nBy continuing, you acknowledge that nightly builds may be unstable and use them at your own risk.</string>
+    <string name="updates_daily_channel_confirmation">Switch to the Daily channel to receive updates from the daily-nightly repository.\n\nDaily builds are published automatically every day from the latest development branch.\nNote: that downloading from Github directly bypasses any additional screening performed by the store you might have originally installed the app from.</string>
     <string name="updates_latest_commit">Latest commit: %s</string>
     <string name="updates_loading_commits">Loading recent commits</string>
     <string name="updates_recent_commits_count">%1$d recent commits</string>
