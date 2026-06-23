@@ -8,14 +8,12 @@
 package moe.rukamori.archivetune.ui.menu
 
 import androidx.compose.foundation.layout.size
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -36,7 +34,6 @@ fun rememberCastPlayerMenuAction(): NewAction? {
     if (!castState.isAvailable) return null
 
     val text = stringResource(R.string.cast)
-    val tint = MaterialTheme.colorScheme.onSurfaceVariant
     var routeButton by remember { mutableStateOf<MediaRouteButton?>(null) }
 
     return NewAction(
@@ -45,12 +42,10 @@ fun rememberCastPlayerMenuAction(): NewAction? {
                 factory = { viewContext ->
                     MediaRouteButton(viewContext).also { button ->
                         CastButtonFactory.setUpMediaRouteButton(viewContext, button)
-                        button.setColorFilter(tint.toArgb())
                         routeButton = button
                     }
                 },
                 update = { button ->
-                    button.setColorFilter(tint.toArgb())
                     routeButton = button
                 },
                 modifier = Modifier.size(28.dp),
