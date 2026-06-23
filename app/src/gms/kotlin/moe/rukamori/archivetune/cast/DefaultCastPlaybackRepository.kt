@@ -57,7 +57,7 @@ class DefaultCastPlaybackRepository(
     private val appContext = context.applicationContext
     private val localMediaServer = LocalCastMediaServer(appContext)
     private val mutableScreenState =
-        MutableStateFlow(
+        MutableStateFlow<CastScreenState>(
             CastScreenState.Success(
                 CastUiState(
                     isAvailable = true,
