@@ -26,7 +26,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
@@ -116,14 +115,11 @@ internal fun CanvasArtworkPlayer(
                 .setMediaSourceFactory(mediaSourceFactory)
                 .build()
                 .apply {
-                    setAudioAttributes(
-                        AudioAttributes
-                            .Builder()
-                            .setUsage(C.USAGE_MEDIA)
-                            .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
-                            .build(),
-                        false,
-                    )
+                    trackSelectionParameters =
+                        trackSelectionParameters
+                            .buildUpon()
+                            .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
+                            .build()
                     volume = 0f
                     repeatMode = Player.REPEAT_MODE_ONE
                     playWhenReady = isPlaying
