@@ -470,7 +470,12 @@ private fun PermissionRow(
 ) {
     val onClick =
         remember(permission.action, onPermissionAction) {
-            { permission.action?.let(onPermissionAction) }
+            {
+                val action = permission.action
+                if (action != null) {
+                    onPermissionAction(action)
+                }
+            }
         }
 
     SegmentedListItem(
@@ -486,12 +491,6 @@ private fun PermissionRow(
         leadingContent = {
             PermissionIcon(permission = permission)
         },
-        headlineContent = {
-            Text(
-                text = stringResource(permission.titleResId),
-                style = MaterialTheme.typography.titleMedium,
-            )
-        },
         supportingContent = {
             Text(
                 text = stringResource(permission.descriptionResId),
@@ -504,7 +503,12 @@ private fun PermissionRow(
                 onPermissionAction = onPermissionAction,
             )
         },
-    )
+    ) {
+        Text(
+            text = stringResource(permission.titleResId),
+            style = MaterialTheme.typography.titleMedium,
+        )
+    }
 }
 
 @Composable
@@ -602,12 +606,6 @@ private fun CommunityRow(
                 )
             }
         },
-        headlineContent = {
-            Text(
-                text = stringResource(action.titleResId),
-                style = MaterialTheme.typography.titleMedium,
-            )
-        },
         supportingContent = {
             Text(
                 text = stringResource(action.descriptionResId),
@@ -621,7 +619,12 @@ private fun CommunityRow(
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         },
-    )
+    ) {
+        Text(
+            text = stringResource(action.titleResId),
+            style = MaterialTheme.typography.titleMedium,
+        )
+    }
 }
 
 @Composable
