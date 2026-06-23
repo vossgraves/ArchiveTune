@@ -60,13 +60,13 @@ private fun showCastRouteDialog(context: Context) {
         runCatching { CastContext.getSharedInstance(appContext) }
             .onFailure { Timber.tag("Cast").w(it, "Unable to open Cast route picker") }
             .getOrNull() ?: return
+    val selector = castContext.mergedSelector ?: return
     val router = MediaRouter.getInstance(context)
     val selectedRoute = router.selectedRoute
     if (selectedRoute.isDefault || selectedRoute.isBluetooth) {
         MediaRouteChooserDialog(context, androidx.media3.cast.R.style.AppThemeDialog)
             .apply {
-                routeSelector = castContext.mergedSelector
-                setOnShowListener { refreshRoutes() }
+                routeSelector = selector
             }.show()
     } else {
         MediaRouteControllerDialog(context, androidx.media3.cast.R.style.AppThemeDialog).show()
