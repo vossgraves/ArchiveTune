@@ -131,6 +131,19 @@
     <string name="widget_pause">Pause</string>
     <string name="widget_previous">Previous</string>
     <string name="widget_tap_to_open">Tap to open ArchiveTune</string>
+    <string name="widget_insights_title">Listening Insights</string>
+    <string name="widget_recommendations">Recommendations</string>
+    <string name="widget_listening_time_empty">No listening time yet</string>
+    <string name="widget_listening_time_minutes">%1$d min</string>
+    <string name="widget_listening_time_hours_minutes">%1$d h %2$d min</string>
+    <plurals name="widget_total_plays">
+        <item quantity="one">1 play</item>
+        <item quantity="other">%d plays</item>
+    </plurals>
+    <string name="widget_top_song_summary">Top lately: %1$s</string>
+    <string name="widget_no_recent_songs">No recent songs yet</string>
+    <string name="widget_no_genres">No genres yet</string>
+    <string name="widget_no_recommendations">No recommendations yet</string>
     <string name="play_next">Play next</string>
     <string name="add_to_queue">Add to queue</string>
     <string name="add_to_library">Add to library</string>

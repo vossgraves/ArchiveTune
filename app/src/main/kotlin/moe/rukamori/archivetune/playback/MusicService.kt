@@ -244,6 +244,7 @@ import moe.rukamori.archivetune.utils.isLocalMediaId
 import moe.rukamori.archivetune.utils.isLowDataModeActive
 import moe.rukamori.archivetune.utils.reportException
 import moe.rukamori.archivetune.utils.retryWithoutPlaybackLoginContext
+import moe.rukamori.archivetune.widget.LoadWidgetInsightsUseCase
 import okhttp3.OkHttpClient
 import timber.log.Timber
 import java.io.EOFException
@@ -287,6 +288,9 @@ class MusicService :
 
     @Inject
     lateinit var mediaLibrarySessionCallback: MediaLibrarySessionCallback
+
+    @Inject
+    lateinit var loadWidgetInsightsUseCase: LoadWidgetInsightsUseCase
 
     private lateinit var audioManager: AudioManager
     private var audioFocusRequest: AudioFocusRequest? = null
@@ -863,6 +867,7 @@ class MusicService :
                 service = this,
                 player = player,
                 scope = scope,
+                loadWidgetInsights = loadWidgetInsightsUseCase,
             )
 
         audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
