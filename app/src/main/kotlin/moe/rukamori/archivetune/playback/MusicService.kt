@@ -2304,7 +2304,25 @@ class MusicService :
 
     fun hasAudioFocusForPlayback(): Boolean = hasAudioFocus
 
-    private fun isDeviceMutedNow(): Boolean = player.isDeviceMuted || player.deviceVolume <= 0
+    private fun isDeviceMutedNow(): Boolean {
+        val streamVolume =
+            runCatching {
+                audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+            }.getOrElse { error ->
+                reportException(error)
+                return player.isDeviceMuted || player.deviceVolume <= 0
+            }
+        val isStreamMuted =
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
+                runCatching {
+                    audioManager.isStreamMute(AudioManager.STREAM_MUSIC)
+                }.getOrElse { error ->
+                    reportException(error)
+                    false
+                }
+
+        return isStreamMuted || streamVolume <= 0
+    }
 
     private fun isTogetherGuestSession(): Boolean {
         val joined = togetherSessionState.value as? moe.rukamori.archivetune.together.TogetherSessionState.Joined
