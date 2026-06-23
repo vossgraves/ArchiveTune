@@ -122,6 +122,14 @@
     <string name="retry">Retry</string>
     <string name="radio">Radio</string>
     <string name="cast">Cast</string>
+    <string name="cast_devices">Cast devices</string>
+    <string name="cast_searching_devices">Searching for devices</string>
+    <string name="cast_no_devices">No Cast devices found</string>
+    <string name="cast_no_devices_desc">Make sure your device is on the same Wi-Fi network.</string>
+    <string name="cast_connected_to">Connected to %1$s</string>
+    <string name="cast_disconnect">Disconnect</string>
+    <string name="cast_available_device">Available device</string>
+    <string name="cast_route_picker_unavailable">Cast is unavailable right now.</string>
     <string name="shuffle">Shuffle</string>
     <string name="music_recognition">Music Recognition</string>
     <string name="reset">Reset</string>
