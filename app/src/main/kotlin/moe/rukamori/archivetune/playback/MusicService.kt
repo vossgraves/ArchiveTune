@@ -290,7 +290,7 @@ class MusicService :
     lateinit var mediaLibrarySessionCallback: MediaLibrarySessionCallback
 
     @Inject
-    lateinit var loadWidgetInsightsUseCase: LoadWidgetInsightsUseCase
+    internal lateinit var loadWidgetInsightsUseCase: LoadWidgetInsightsUseCase
 
     private lateinit var audioManager: AudioManager
     private var audioFocusRequest: AudioFocusRequest? = null

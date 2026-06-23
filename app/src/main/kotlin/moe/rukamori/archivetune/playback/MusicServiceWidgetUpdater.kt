@@ -219,7 +219,6 @@ internal class MusicServiceWidgetUpdater(
             reportException(error)
             WidgetInsightsSnapshot.Empty
         }
-    }
 
     private suspend fun cacheAlbumArt(uri: Uri): File? =
         withContext(Dispatchers.IO) {
