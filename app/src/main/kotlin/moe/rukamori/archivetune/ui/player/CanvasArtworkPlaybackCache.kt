@@ -306,13 +306,13 @@ object CanvasArtworkPlaybackCache {
         url: String?,
         currentFileName: String?,
     ): String? {
-        if (url.isNullOrBlank()) return currentFileName?.takeIf { directory.resolve(it).isUsableFile() }
+        currentFileName
+            ?.takeIf { directory.resolve(it).isUsableFile() }
+            ?.let { return it }
+        if (url.isNullOrBlank()) return null
         val fileName = canvasFileName(mediaId, variant, url)
         val target = directory.resolve(fileName)
         if (target.isUsableFile()) return fileName
-        currentFileName
-            ?.takeIf { it != fileName }
-            ?.let { oldName -> runCatching { directory.resolve(oldName).delete() } }
 
         val partial = directory.resolve("$fileName.part")
         return try {
