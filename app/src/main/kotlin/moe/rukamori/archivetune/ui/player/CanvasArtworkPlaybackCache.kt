@@ -174,6 +174,10 @@ object CanvasArtworkPlaybackCache {
                     lastAccessedAtMs = now,
                 )
 
+            if (regularFileName == null && verticalFileName == null) {
+                Timber.tag(CanvasCacheLogTag).d("Canvas artwork resolved without downloadable video for %s", mediaId)
+            }
+
             persistEntry(directory = directory, entry = entry)
 
             entry.toPlayableArtwork(directory) ?: artwork
@@ -557,3 +561,4 @@ private fun Int.toCanvasCacheLimitBytes(): Long =
 
 private const val CanvasDownloadUserAgent =
     "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Mobile Safari/537.36"
+private const val CanvasCacheLogTag = "CanvasCache"

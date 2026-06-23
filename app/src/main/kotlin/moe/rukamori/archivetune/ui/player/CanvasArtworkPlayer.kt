@@ -43,6 +43,7 @@ import kotlinx.coroutines.isActive
 import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.utils.StreamClientUtils
 import okhttp3.OkHttpClient
+import timber.log.Timber
 import java.util.Locale
 
 private const val CanvasPlaybackStallCheckIntervalMs = 1_000L
@@ -80,7 +81,14 @@ internal fun CanvasArtworkPlayer(
                             host.endsWith("youtube-nocookie.com") ||
                             host.endsWith("ytimg.com")
 
-                    if (!isYouTubeMediaHost) return@addInterceptor chain.proceed(request)
+                    if (!isYouTubeMediaHost) {
+                        return@addInterceptor chain.proceed(
+                            request
+                                .newBuilder()
+                                .header("User-Agent", CanvasPlaybackUserAgent)
+                                .build(),
+                        )
+                    }
 
                     val requestProfile = StreamClientUtils.resolveRequestProfile(request.url)
                     chain.proceed(
@@ -177,6 +185,7 @@ internal fun CanvasArtworkPlayer(
         val listener =
             object : Player.Listener {
                 override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                    Timber.tag(CanvasPlaybackLogTag).w(error, "Canvas playback failed")
                     val next =
                         when (currentUrl) {
                             primary -> fallback
@@ -290,3 +299,7 @@ private fun ExoPlayer.setCanvasPlayback(isPlaying: Boolean) {
         pause()
     }
 }
+
+private const val CanvasPlaybackLogTag = "CanvasPlayback"
+private const val CanvasPlaybackUserAgent =
+    "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Mobile Safari/537.36"
