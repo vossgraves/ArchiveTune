@@ -53,7 +53,9 @@ internal suspend fun resolveCanvasArtworkForPlayback(
             return@withContext null
         }
 
-        CanvasArtworkPlaybackCache.put(mediaId, fetched)
+        CanvasArtworkPlaybackCache
+            .put(mediaId, fetched)
+            .takeIf { artwork -> artwork.hasRequiredCanvasVariant(requireVertical) }
     }
 }
 
