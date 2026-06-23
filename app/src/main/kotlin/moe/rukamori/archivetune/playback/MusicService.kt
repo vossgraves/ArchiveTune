@@ -6141,8 +6141,8 @@ class MusicService :
 
         knownContentLength?.takeIf { it > 0L }?.let { contentLengthCache[mediaId] = it }
 
-        if (allowCacheShortCircuit && !isCurrentlyNetworkConnected()) {
-            resolveCachedOnlyDataSpec(
+        if (allowCacheShortCircuit) {
+            resolveCachedDataSpec(
                 dataSpec = dataSpec,
                 mediaId = mediaId,
                 knownContentLength = knownContentLength,
@@ -6171,11 +6171,11 @@ class MusicService :
             }
         }
 
-        // Safety net: if content length is still unknown but the song has data in
-        // downloadCache, return the original dataSpec and let CacheDataSource handle
-        // it. This prevents a network call for songs that are fully downloaded but
-        // whose content length could not be determined from any metadata source.
-        if (allowCacheShortCircuit && requiredCachedLength == null && downloadCache.keys.contains(mediaId)) {
+        // Safety net: if content length is still unknown but the song has cached
+        // data, return the original dataSpec and let CacheDataSource handle it.
+        // This prevents a network call for fully cached songs whose content length
+        // could not be determined from any metadata source.
+        if (allowCacheShortCircuit && requiredCachedLength == null && hasCachedResource(mediaId)) {
             scope.launch(Dispatchers.IO) { recoverSong(mediaId) }
             return dataSpec
         }
@@ -6450,11 +6450,7 @@ class MusicService :
                 ).getOrThrow()
         }
 
-    private fun isCurrentlyNetworkConnected(): Boolean =
-        runCatching { connectivityObserver.isCurrentlyConnected() }
-            .getOrDefault(isNetworkConnected.value)
-
-    private fun resolveCachedOnlyDataSpec(
+    private fun resolveCachedDataSpec(
         dataSpec: DataSpec,
         mediaId: String,
         knownContentLength: Long?,
@@ -6485,6 +6481,10 @@ class MusicService :
 
         return dataSpec.subrange(0L, cachedLength)
     }
+
+    private fun hasCachedResource(mediaId: String): Boolean =
+        runCatching { downloadCache.keys.contains(mediaId) }.getOrDefault(false) ||
+            runCatching { playerCache.keys.contains(mediaId) }.getOrDefault(false)
 
     private fun getContinuousCachedLength(
         mediaId: String,
