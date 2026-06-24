@@ -478,7 +478,6 @@
     <string name="ai_translation_menu">Traduction par IA</string>
     <string name="ep">EP</string>
     <string name="player_design_v9">Contenu étendu</string>
-    <string name="about_position_sang765">Équipe de Contributeurs</string>
     <string name="aod_customize_show_time_labels">Afficher les horaires</string>
     <string name="aod_customize_sample_title">Archives de Minuit</string>
     <string name="aod_shape_cookie_6">Cookie 6</string>
@@ -536,7 +535,6 @@
     <string name="force_sync_on_switch_account_desc">Resynchroniser les playlists, les titres favoris, les artistes et les albums du compte sélectionné après le changement de compte</string>
     <string name="spotify_no_tracks">Aucun titre Spotify trouvé.</string>
     <string name="android_auto_sort_playlist">Trier la playlist</string>
-    <string name="about_position_miko">Équipe de Contributeurs</string>
     <string name="year_in_music_intro_details">Découvrez vos titres, artistes et albums préférés, ainsi que le temps que vous passez à les écouter.</string>
     <string name="player_stream_client_hi_res_lossless_desc">Préfère les flux audio sans perte lorsqu\'ils sont disponibles.</string>
     <string name="spotify_no_sources">Aucune playlist Spotify trouvée</string>
@@ -557,5 +555,4 @@
     <string name="aod_customize_show_exit_button">Afficher le bouton « Quitter »</string>
     <string name="storage_migration_downloads_progress">Transfert des téléchargements... %1$d%%</string>
     <string name="aod_customize_content_position">Position du contenu</string>
-    <string name="about_position_wttexe">Synchronisation des paroles avec le texte, dégradés et améliorations de l\'interface utilisateur !</string>
 </resources>

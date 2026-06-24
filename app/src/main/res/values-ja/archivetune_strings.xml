@@ -384,9 +384,6 @@
     <string name="about_respecter">リスペクター</string>
     <string name="about_contributors">コントリビューター</string>
     <string name="about_position_lead_dev">えっ？</string>
-    <string name="about_position_wttexe">歌詞同期、グラデーション、UI改善</string>
-    <string name="about_position_miko">コントリビューターチーム</string>
-    <string name="about_position_sang765">コントリビューターチーム</string>
     <string name="about_position_mo_agamy">ベースフレームワーク | Metrolist</string>
     <string name="about_position_zion_huang">InnerTune 製作者 · Metrolist、ArchiveTune などのフォークの基盤</string>
     <string name="about_content_desc_github">GitHub</string>
