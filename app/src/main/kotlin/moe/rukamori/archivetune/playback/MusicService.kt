@@ -6234,15 +6234,6 @@ class MusicService :
             }
         }
 
-        // Safety net: if content length is still unknown but the song has cached
-        // data, return the original dataSpec and let CacheDataSource handle it.
-        // This prevents a network call for fully cached songs whose content length
-        // could not be determined from any metadata source.
-        if (allowCacheShortCircuit && requiredCachedLength == null && hasCachedResource(mediaId)) {
-            scope.launch(Dispatchers.IO) { recoverSong(mediaId) }
-            return dataSpec
-        }
-
         val lowDataModeActive = isLowDataModeActive()
         val hiResLosslessSelected = preferredStreamClient == PlayerStreamClient.HI_RES_LOSSLESS
         val authFingerprint =
@@ -6529,7 +6520,7 @@ class MusicService :
                 }
 
                 else -> {
-                    CHUNK_LENGTH
+                    return null
                 }
             }
 
@@ -6540,14 +6531,10 @@ class MusicService :
                 requestedLength = requestedLength,
             )
 
-        if (cachedLength <= 0L) return null
+        if (cachedLength < requestedLength) return null
 
-        return dataSpec.subrange(0L, cachedLength)
+        return dataSpec.subrange(0L, requestedLength)
     }
-
-    private fun hasCachedResource(mediaId: String): Boolean =
-        runCatching { downloadCache.keys.contains(mediaId) }.getOrDefault(false) ||
-            runCatching { playerCache.keys.contains(mediaId) }.getOrDefault(false)
 
     private fun getContinuousCachedLength(
         mediaId: String,
