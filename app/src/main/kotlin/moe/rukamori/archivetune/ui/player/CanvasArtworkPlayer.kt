@@ -47,6 +47,8 @@ import java.util.Locale
 
 private const val CanvasPlaybackStallCheckIntervalMs = 1_000L
 private const val CanvasPlaybackStallTimeoutMs = 5_000L
+private const val CanvasMaxVideoWidth = 1_920
+private const val CanvasMaxVideoHeight = 1_920
 
 @Composable
 internal fun CanvasArtworkPlayer(
@@ -119,6 +121,7 @@ internal fun CanvasArtworkPlayer(
                         trackSelectionParameters
                             .buildUpon()
                             .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
+                            .setMaxVideoSize(CanvasMaxVideoWidth, CanvasMaxVideoHeight)
                             .build()
                     volume = 0f
                     repeatMode = Player.REPEAT_MODE_ONE
@@ -184,7 +187,7 @@ internal fun CanvasArtworkPlayer(
                     Timber.tag(CanvasPlaybackLogTag).w(error, "Canvas playback failed")
                     val next =
                         when (currentUrl) {
-                            primary -> fallback
+                            primary -> fallback?.takeIf { it != currentUrl }
                             else -> null
                         }
                     if (!next.isNullOrBlank()) {
