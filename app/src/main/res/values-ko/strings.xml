@@ -304,9 +304,6 @@
     <string name="haptics">햅틱 피드백</string>
     <string name="haptics_desc">버튼이나 메뉴를 누를 때 손끝에 가벼운 진동 반응을 줍니다.</string>
     <string name="default_open_tab">기본 열릴 탭</string>
-    <string name="grid_cell_size">그리드 셀 크기</string>
-    <string name="small">작게</string>
-    <string name="big">크게</string>
     <string name="lyrics_animation_style">가사 애니메이션 스타일</string>
     <string name="lyrics_mode">가사 렌더링 모드</string>
     <string name="lyrics_mode_v2">V2 레거시</string>
@@ -730,7 +727,6 @@
     <string name="discord_platform_samsung">삼성</string>
     <string name="check_for_update">수동 업데이트 검사</string>
     <string name="shortest_duration">재생 시간이 짧은 순</string>
-    <string name="sort_a_z">가나다순</string>
     <string name="discord_activity_type_listening_label">듣는 중</string>
     <string name="year_sort">연도</string>
     <string name="discord_activity_type_watching_label">시청 중</string>
@@ -819,7 +815,6 @@
     <string name="discord_platform_android">Android</string>
     <string name="library_subtitle">깔끔하게 정리된 나만의 음악 공간</string>
     <string name="sort_a_to_z">가나다순</string>
-    <string name="favorite_songs_title">즐겨찾는 노래</string>
     <string name="discord_platform_desktop">데스크톱</string>
     <string name="more_playlists_desc">더 많은 재생목록</string>
     <string name="tracks_count_label">곡 개수</string>

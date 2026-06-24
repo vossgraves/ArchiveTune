@@ -47,7 +47,6 @@
     <string name="library_artists_subtitle">כל האמנים שלך, במקום אחד</string>
     <string name="library_albums_subtitle">כל האלבומים שלך, מאורגנים פיקס</string>
     <string name="most_played_badge">המושמע ביותר</string>
-    <string name="favorite_songs_title">שירים אהובים</string>
     <string name="play_all">נגן הכל</string>
     <string name="offline_shortcut">לא מקוון</string>
     <string name="cached">מאוחסן במטמון</string>
@@ -76,7 +75,6 @@
     <string name="song_singular">שיר</string>
     <string name="more_playlists_desc">פלייליסטים נוספים</string>
     <string name="more_label">עוד</string>
-    <string name="sort_a_z">א-ת</string>
     <string name="tracks_count_label">מספר שירים</string>
     <string name="recently_updated">עודכן לאחרונה</string>
     <string name="custom_order">סדר מותאם אישית</string>
@@ -215,7 +213,6 @@
     <string name="edit">עריכה</string>
     <string name="lyrics_synced_badge">מסונכרן</string>
     <string name="widget_pause">עצור</string>
-    <string name="grid_cell_size">גודל תא רשת</string>
     <string name="palette_neon_pink">ורוד ניאון</string>
     <string name="palette_ruby_red">רובי</string>
     <string name="palette_midnight_navy">כחול נייבי</string>
@@ -243,7 +240,6 @@
     <string name="queue_continue_playing">המשך הפעלה</string>
     <string name="dark_theme_follow_system">לפי הגדרות המערכת</string>
     <string name="together_kick_confirm">הסר %1$s?</string>
-    <string name="big">גדול</string>
     <string name="codecs">קודקים</string>
     <string name="together_participants">משתתפים</string>
     <string name="show_button2_description">הפעלת כפתור 2 ב- Discord Rich Presence</string>
@@ -305,7 +301,6 @@
     <string name="song_title">כותרת השיר</string>
     <string name="custom_radius">התאמה אישית של רדיוס התמונה הממוזערת</string>
     <string name="player_and_audio">נגן ואודיו</string>
-    <string name="small">קטן</string>
     <string name="palette_sand">חול</string>
     <string name="persistent_queue">תור מתמיד</string>
     <string name="ip_rotation_active_proxies">%d פרוקסים פעילים</string>

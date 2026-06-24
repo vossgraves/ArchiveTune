@@ -296,9 +296,6 @@
     <string name="player_slider_style">Estilo de control deslizante del reproductor</string>
     <string name="misc">Varios</string>
     <string name="default_open_tab">Pestaña abierta por defecto</string>
-    <string name="grid_cell_size">Tamaño de celda de la cuadricula</string>
-    <string name="small">Pequeña</string>
-    <string name="big">Grande</string>
     <string name="lyrics_animation_style">Estilo de animación de las letras</string>
     <string name="lyrics_line_spacing">Espaciado entre líneas de la letra</string>
     <string name="content">Contenido</string>
@@ -719,7 +716,6 @@
     <string name="library_artists_subtitle">Todos tus artistas, en un solo lugar</string>
     <string name="library_albums_subtitle">Todos tus álbumes, perfectamente organizados</string>
     <string name="most_played_badge">MÁS REPRODUCIDOS</string>
-    <string name="favorite_songs_title">Canciones favoritas</string>
     <string name="play_all">Reproducir todo</string>
     <string name="offline_shortcut">Sin conexión</string>
     <string name="cached">En caché</string>
@@ -748,7 +744,6 @@
     <string name="song_singular">Canción</string>
     <string name="more_playlists_desc">Más listas de reproducción</string>
     <string name="more_label">Más</string>
-    <string name="sort_a_z">A-Z</string>
     <string name="tracks_count_label">Recuento de pistas</string>
     <string name="recently_updated">Actualizado recientemente</string>
     <string name="custom_order">Orden personalizado</string>
