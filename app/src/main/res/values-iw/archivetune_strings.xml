@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version='1.0' encoding='utf-8'?>
 <resources>
     <string name="explore">עיון</string>
     <string name="local_history">מקומי</string>
@@ -57,8 +57,6 @@
     <string name="local_songs_scan_folders_desc">דלג על שירים המאוחסנים בתיקיות התואמות לאחד מהנתיבים האלה.</string>
     <string name="local_songs_scan_folders_empty">עדיין לא נכללו תיקיות.</string>
     <string name="local_songs_scan_folders_add">הוסף תיקייה</string>
-    <string name="local_songs_scan_folders_dialog_title">אל תכלול תיקייה</string>
-    <string name="local_songs_scan_folders_dialog_placeholder">מוזיקה/רינגטונים</string>
     <string name="local_songs_no_matches_title">אין שירים מקומיים תואמים</string>
     <string name="local_songs_no_matches_desc">נסה שם אחר של שיר, אמן או אלבום.</string>
     <string name="sort_by_album">אלבום</string>
@@ -158,8 +156,6 @@
     <string name="aod_control_filled">ממולא</string>
     <string name="aod_control_tonal">טונלי</string>
     <string name="aod_control_minimal">מינימלי</string>
-    <string name="unknown_item_type">סוג פריט לא ידוע</string>
-    <string name="loading_charts">טוען טבלאות...</string>
     <string name="retry_button">נסה שוב</string>
     <string name="album_cover_desc">עטיפת אלבום</string>
     <string name="top_music_videos">סרטוני מוזיקה מובילים</string>
@@ -176,7 +172,6 @@
     <string name="playlist_sync_progress_step">%1$d/%2$d שירים</string>
     <string name="playlist_sync_failed">סנכרון פלייליסט נכשל: %1$s</string>
     <string name="sync_disabled">הסנכרון מושבת</string>
-    <string name="elements_selected">%1$d פריטים נבחרו</string>
     <string name="allows_for_sync_witch_youtube">הערה: זה מאפשר סנכרון עם YouTube Music. לא ניתן לשנות זאת מאוחר יותר.</string>
     <string name="generating_image">יוצר תמונה</string>
     <string name="please_wait">אנא המתן</string>
@@ -208,11 +203,6 @@
     <string name="lyrics_share_export_failed">יצירת תמונה נכשלה: %1$s</string>
     <string name="lyrics_share_export_not_supported">שיתוף תמונות דורש אנדרואיד 6.0 ומעלה</string>
     <string name="more_options">אפשרויות נוספות</string>
-    <string name="text_color">צבע הטקסט</string>
-    <string name="secondary_text_color">צבע טקסט משני</string>
-    <string name="background_color">צבע רקע</string>
-    <string name="added_to_play_next">נוסף להשמעה הבאה</string>
-    <string name="added_to_queue">נוסף לתור</string>
     <string name="remove_from_cache">הסרה מהמטמון</string>
     <string name="select">בחר הכל</string>
     <string name="manage_tags">ניהול תגיות</string>
@@ -231,7 +221,6 @@
     <string name="dislike_all">סמן הכל כ-\"לא אהבתי\"</string>
     <string name="sort_by_last_updated">תאריך שינוי</string>
     <string name="link_copied">קישור הועתק ללוח</string>
-    <string name="starting_radio">הפעלת רדיו</string>
     <string name="now_playing">מתנגן עכשיו</string>
     <string name="close">סגירה</string>
     <string name="minimum_volume">עוצמת שמע מינימלית</string>
@@ -255,14 +244,10 @@
         <item quantity="two">פעמיים</item>
         <item quantity="other">%d פעמים</item>
     </plurals>
-    <string name="seek_backward">5 שניות אחורה</string>
-    <string name="seek_forward">5 שניות קדימה</string>
     <string name="seek_forward_dynamic">+%1$d שניות קדימה</string>
     <string name="seek_backward_dynamic">-%1$d שניות אחורה</string>
     <string name="seek_seconds_addup">חיפוש מתקדם</string>
     <string name="seek_seconds_addup_description">אם מופעל, מוסיפים 5 שניות נוספות בהדרגה בכל דילוג חיפוש</string>
-    <string name="login_settings">הגדרות התחברות</string>
-    <string name="general_settings">הגדרות כלליות</string>
     <string name="player_background_style">סגנון רקע של הנגן</string>
     <string name="mini_player_background_style">סגנון רקע של נגן מיני</string>
     <string name="follow_theme">עקוב אחר ערכת הנושא</string>
@@ -277,7 +262,6 @@
     <string name="player_design_v7">סוחף</string>
     <string name="player_design_v8">סוחף (מורחב)</string>
     <string name="player_design_v9">Material (חומר)</string>
-    <string name="playing_from">מתנגן מ-%s</string>
     <string name="player_background_blur">טשטוש</string>
     <string name="coloring">מלא צבעים</string>
     <string name="blur_gradient">טשטוש עם מעבר צבע</string>
@@ -285,7 +269,6 @@
     <string name="player_buttons_style">צבעי כפתורי הנגן</string>
     <string name="default_style">ברירת מחדל</string>
     <string name="secondary_color_style">משני</string>
-    <string name="enable_squiggly_slider">הפעל מחוון מפותל</string>
     <string name="enable_swipe_thumbnail">הפעל החלקה כדי לשנות שיר</string>
     <string name="swipe_song_to_add">החלק את השיר שמאלה כדי להוסיף אותו לתור או ימינה כדי להשמיע אותו הבא</string>
     <string name="lyrics_click_change">שנה מילים בלחיצה</string>
@@ -298,22 +281,14 @@
     <string name="lyrics_romanize_chinese">בצע \"רומניזיציה\" למילות שיר סיניות</string>
     <string name="lyrics_romanize_hindi">בצע \"רומניזיציה\" למילות שיר הודיות</string>
     <string name="lyrics_romanize_other_languages">בצע \"רומניזציה\" למילות שיר של שפות אחרות שאינן לטיניות (כמו עברית וערבית)</string>
-    <string name="auto_playlists">פלייליסטים אוטומטיים</string>
-    <string name="show_liked_playlist">הצגת פלייליסטים שאהבתי</string>
-    <string name="show_downloaded_playlist">הצגת פלייליסטים שהורדו</string>
-    <string name="show_top_playlist">הצגת פלייליסטים מובילים</string>
-    <string name="show_cached_playlist">הצגת פלייליסטים ששמורים במטמון</string>
-    <string name="card_and_list">כרטיס ורשימה</string>
     <string name="quick_picks_display_mode">מצב תצוגה של בחירות מהירות</string>
     <string name="quick_picks_display_mode_card">כרטיס</string>
     <string name="quick_picks_display_mode_list">רשימה</string>
-    <string name="google">גוגל</string>
     <string name="discord">דיסקורד</string>
     <string name="advanced_login">התחבר עם טוקן</string>
     <string name="token_hidden">הקש כדי להציג טוקן</string>
     <string name="token_shown">הקש שוב כדי להעתיק או לערוך</string>
     <string name="token_adv_login_description">זוהי שיטת התחברות מתקדמת. כחלופה לפורטל האינטרנט, ניתן להזין או לעדכן את טוקן ההתחברות שלך ישירות כאן. לדוגמה, פעולה זו יכולה להאיץ את ההתחברות במספר מכשירים. שימו לב שכל פורמט טוקן לא חוקי שהאפליקציה לא מצליחה לנתח לא יתקבל</string>
-    <string name="ytm_sync">סנכרן אוטומטית עם חשבון YouTube Music שלך</string>
     <string name="yt_sync">סנכרון אוטומטי עם חשבון</string>
     <string name="force_sync_on_switch_account">כפיית סנכרון בהחלפת חשבון</string>
     <string name="force_sync_on_switch_account_desc">סנכרן מחדש פלייליסטים, שירים אהובים, אמנים ואלבומים מהחשבון שנבחר לאחר המעבר</string>
@@ -325,16 +300,8 @@
     <string name="last_song_listened">בהתבסס על השיר האחרון שהאזנתי לו</string>
     <string name="dont_show">אל תציג</string>
     <string name="app_language">שפת האפליקציה</string>
-    <string name="configure_app_language">הגדרת שפות אפליקציה</string>
-    <string name="intent_app_language_not_found">לא ניתן למצוא את הגדרות שפת האפליקציה, אנא הגדר אותן ידנית</string>
     <string name="open_supported_links">פתח קישור נתמך כברירת מחדל</string>
-    <string name="configure_supported_links">הגדרת קישורים נתמכים</string>
-    <string name="intent_supported_links_not_found">לא נמצאו הגדרות קישורים נתמכות, אנא הגדר אותן ידנית</string>
     <string name="set_first_lyrics_provider">‏ספק מילים מועדף</string>
     <string name="audio_quality_max">מקסימלי (בטא)</string>
-    <string name="enable_similar_content">‏אפשר תוכן דומה</string>
-    <string name="similar_content_desc">‏הוסף אוטומטית שירים דומים נוספים כאשר מגיעים לסוף התור</string>
-    <string name="min_playback_duration_title">‏משך הפעלה מינימלי</string>
-    <string name="min_playback_duration_description">‏אורך הזמן המינימלי של שיר שיש להשמיע לפני שהוא נחשב ”מנוגן”</string>
     <string name="percentage_format">%d%%</string>
 </resources>

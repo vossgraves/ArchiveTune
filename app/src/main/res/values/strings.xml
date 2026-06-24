@@ -86,7 +86,6 @@
     <string name="song_singular">Song</string>
     <string name="more_playlists_desc">More Playlists</string>
     <string name="more_label">More</string>
-    <string name="sort_a_z">A-Z</string>
     <string name="tracks_count_label">Tracks count</string>
     <string name="recently_updated">Recently updated</string>
     <string name="custom_order">Custom order</string>

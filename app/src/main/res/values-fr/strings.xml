@@ -743,7 +743,6 @@
     <string name="discord_platform_samsung">Samsung</string>
     <string name="check_for_update">Rechercher les mises à jour</string>
     <string name="shortest_duration">Durée la plus courte</string>
-    <string name="sort_a_z">A-Z</string>
     <string name="discord_activity_type_listening_label">Écouter</string>
     <string name="year_sort">Année</string>
     <string name="discord_activity_type_watching_label">Regarder</string>

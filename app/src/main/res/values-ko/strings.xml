@@ -730,7 +730,6 @@
     <string name="discord_platform_samsung">삼성</string>
     <string name="check_for_update">수동 업데이트 검사</string>
     <string name="shortest_duration">재생 시간이 짧은 순</string>
-    <string name="sort_a_z">가나다순</string>
     <string name="discord_activity_type_listening_label">듣는 중</string>
     <string name="year_sort">연도</string>
     <string name="discord_activity_type_watching_label">시청 중</string>

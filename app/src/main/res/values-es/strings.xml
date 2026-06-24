@@ -748,7 +748,6 @@
     <string name="song_singular">Canción</string>
     <string name="more_playlists_desc">Más listas de reproducción</string>
     <string name="more_label">Más</string>
-    <string name="sort_a_z">A-Z</string>
     <string name="tracks_count_label">Recuento de pistas</string>
     <string name="recently_updated">Actualizado recientemente</string>
     <string name="custom_order">Orden personalizado</string>
