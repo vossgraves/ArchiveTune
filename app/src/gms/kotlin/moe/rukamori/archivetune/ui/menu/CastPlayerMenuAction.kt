@@ -69,8 +69,9 @@ fun rememberCastPlayerMenuAction(): NewAction? {
             onStopDiscovery = routePickerViewModel::stopDiscovery,
             onRouteClick = remember(routePickerViewModel, viewModel) {
                 { routeId: String ->
-                    routePickerViewModel.selectRoute(routeId)
-                    viewModel.hideRoutePicker()
+                    if (routePickerViewModel.selectRoute(routeId)) {
+                        viewModel.hideRoutePicker()
+                    }
                 }
             },
             onDisconnect = remember(viewModel) {
