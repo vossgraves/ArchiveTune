@@ -13,9 +13,13 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -27,13 +31,12 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItemDefaults
+import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
@@ -51,10 +54,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.google.common.collect.ImmutableList
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.onboarding.OnboardingCommunityActionUiModel
 import moe.rukamori.archivetune.onboarding.OnboardingEvent
@@ -159,6 +164,7 @@ fun OnboardingScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun LoadingContent(contentPadding: PaddingValues) {
     Box(
@@ -168,7 +174,7 @@ private fun LoadingContent(contentPadding: PaddingValues) {
                 .padding(contentPadding),
         contentAlignment = Alignment.Center,
     ) {
-        CircularProgressIndicator()
+        LoadingIndicator()
     }
 }
 
@@ -287,49 +293,42 @@ private fun WelcomePage(
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = 24.dp, vertical = 32.dp),
+        contentPadding = OnboardingPagePadding,
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
         item(key = page.id.name, contentType = "welcome") {
-            Column(
-                modifier = Modifier.widthIn(max = OnboardingContentMaxWidth),
-                horizontalAlignment = Alignment.Start,
-                verticalArrangement = Arrangement.spacedBy(24.dp),
+            BoxWithConstraints(
+                modifier =
+                    Modifier
+                        .widthIn(max = OnboardingContentMaxWidth)
+                        .fillMaxWidth(),
             ) {
-                Surface(
-                    shape = MaterialTheme.shapes.extraLarge,
-                    color = MaterialTheme.colorScheme.primaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                ) {
-                    Icon(
-                        painter = painterResource(page.iconResId),
-                        contentDescription = null,
-                        modifier =
-                            Modifier
-                                .padding(18.dp)
-                                .size(56.dp),
-                        tint = Color.Unspecified,
-                    )
-                }
-                PageTitle(page.titleResId, page.subtitleResId)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    AssistChip(
-                        onClick = {},
-                        label = { Text(text = stringResource(uiState.variantLabelResId)) },
-                    )
-                    AssistChip(
-                        onClick = {},
-                        label = {
-                            Text(
-                                text =
-                                    stringResource(
-                                        R.string.onboarding_version_label,
-                                        uiState.versionName,
-                                    ),
-                            )
-                        },
-                    )
+                if (maxWidth >= 620.dp) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(28.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        WelcomeIdentityPanel(
+                            iconResId = page.iconResId,
+                            modifier = Modifier.weight(0.95f),
+                        )
+                        Column(
+                            modifier = Modifier.weight(1.05f),
+                            verticalArrangement = Arrangement.spacedBy(20.dp),
+                        ) {
+                            PageTitle(page.titleResId, page.subtitleResId)
+                            OnboardingMetadataPills(uiState = uiState)
+                        }
+                    }
+                } else {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(22.dp),
+                    ) {
+                        WelcomeIdentityPanel(iconResId = page.iconResId)
+                        PageTitle(page.titleResId, page.subtitleResId)
+                        OnboardingMetadataPills(uiState = uiState)
+                    }
                 }
             }
         }
@@ -337,24 +336,115 @@ private fun WelcomePage(
 }
 
 @Composable
+private fun WelcomeIdentityPanel(
+    iconResId: Int,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .aspectRatio(1.18f),
+        shape = MaterialTheme.shapes.extraLarge,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        tonalElevation = 2.dp,
+    ) {
+        Box(
+            modifier = Modifier.padding(24.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Surface(
+                modifier =
+                    Modifier
+                        .fillMaxWidth(0.64f)
+                        .aspectRatio(1f),
+                shape = MaterialTheme.shapes.extraLarge,
+                color = MaterialTheme.colorScheme.primaryContainer,
+                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        painter = painterResource(iconResId),
+                        contentDescription = null,
+                        modifier = Modifier.size(76.dp),
+                        tint = Color.Unspecified,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun OnboardingMetadataPills(uiState: OnboardingUiState) {
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        PassivePill(text = stringResource(uiState.variantLabelResId))
+        PassivePill(
+            text =
+                stringResource(
+                    R.string.onboarding_version_label,
+                    uiState.versionName,
+                ),
+        )
+    }
+}
+
+@Composable
+private fun PassivePill(text: String) {
+    Surface(
+        shape = MaterialTheme.shapes.small,
+        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            style = MaterialTheme.typography.labelLarge,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
 private fun PermissionsPage(
     uiState: OnboardingUiState,
     pageIndex: Int,
     onPermissionAction: (OnboardingPermissionAction) -> Unit,
 ) {
     val page = uiState.pages[pageIndex]
+    val needsActionCount =
+        remember(uiState.permissions) {
+            uiState.permissions.count { it.status == OnboardingPermissionStatus.NEEDS_ACTION }
+        }
+    val readyCount =
+        remember(uiState.permissions) {
+            uiState.permissions.size - needsActionCount
+        }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = 24.dp, vertical = 24.dp),
+        contentPadding = OnboardingPagePadding,
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(2.dp),
+        verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap),
     ) {
         item(key = page.id.name, contentType = "header") {
             PageHeader(
                 iconResId = page.iconResId,
                 titleResId = page.titleResId,
                 subtitleResId = page.subtitleResId,
+            )
+        }
+        item(key = "permission-summary", contentType = "summary") {
+            PermissionSummaryPanel(
+                readyCount = readyCount,
+                needsActionCount = needsActionCount,
             )
         }
         itemsIndexed(
@@ -373,6 +463,89 @@ private fun PermissionsPage(
 }
 
 @Composable
+private fun PermissionSummaryPanel(
+    readyCount: Int,
+    needsActionCount: Int,
+) {
+    Surface(
+        modifier =
+            Modifier
+                .widthIn(max = OnboardingContentMaxWidth)
+                .fillMaxWidth()
+                .padding(bottom = 20.dp),
+        shape = MaterialTheme.shapes.extraLarge,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        tonalElevation = 1.dp,
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            PermissionMetric(
+                count = readyCount,
+                labelResId = R.string.permission_status_allowed,
+                iconResId = R.drawable.done,
+                containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                modifier = Modifier.weight(1f),
+            )
+            PermissionMetric(
+                count = needsActionCount,
+                labelResId = R.string.allow,
+                iconResId = R.drawable.close,
+                containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                modifier = Modifier.weight(1f),
+            )
+        }
+    }
+}
+
+@Composable
+private fun PermissionMetric(
+    count: Int,
+    labelResId: Int,
+    iconResId: Int,
+    containerColor: Color,
+    contentColor: Color,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier.heightIn(min = 76.dp),
+        shape = MaterialTheme.shapes.large,
+        color = containerColor,
+        contentColor = contentColor,
+    ) {
+        Row(
+            modifier = Modifier.padding(14.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                painter = painterResource(iconResId),
+                contentDescription = null,
+                modifier = Modifier.size(24.dp),
+            )
+            Column {
+                Text(
+                    text = count.toString(),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = stringResource(labelResId),
+                    style = MaterialTheme.typography.labelMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
 private fun CommunityPage(
     uiState: OnboardingUiState,
     pageIndex: Int,
@@ -382,9 +555,9 @@ private fun CommunityPage(
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = 24.dp, vertical = 24.dp),
+        contentPadding = OnboardingPagePadding,
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(2.dp),
+        verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap),
     ) {
         item(key = page.id.name, contentType = "header") {
             PageHeader(
@@ -392,6 +565,9 @@ private fun CommunityPage(
                 titleResId = page.titleResId,
                 subtitleResId = page.subtitleResId,
             )
+        }
+        item(key = "community-spotlight", contentType = "spotlight") {
+            CommunitySpotlight(actions = uiState.communityActions)
         }
         itemsIndexed(
             items = uiState.communityActions,
@@ -404,6 +580,46 @@ private fun CommunityPage(
                 count = uiState.communityActions.size,
                 onCommunityAction = onCommunityAction,
             )
+        }
+    }
+}
+
+@Composable
+private fun CommunitySpotlight(actions: ImmutableList<OnboardingCommunityActionUiModel>) {
+    Surface(
+        modifier =
+            Modifier
+                .widthIn(max = OnboardingContentMaxWidth)
+                .fillMaxWidth()
+                .padding(bottom = 20.dp),
+        shape = MaterialTheme.shapes.extraLarge,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        tonalElevation = 1.dp,
+    ) {
+        Row(
+            modifier = Modifier.padding(18.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            actions.forEach { action ->
+                Surface(
+                    modifier =
+                        Modifier
+                            .weight(1f)
+                            .aspectRatio(1f),
+                    shape = MaterialTheme.shapes.large,
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            painter = painterResource(action.iconResId),
+                            contentDescription = null,
+                            modifier = Modifier.size(30.dp),
+                        )
+                    }
+                }
+            }
         }
     }
 }
@@ -649,7 +865,10 @@ private fun OnboardingBottomBar(
             horizontalArrangement = Arrangement.Center,
         ) {
             Row(
-                modifier = Modifier.widthIn(max = OnboardingContentMaxWidth),
+                modifier =
+                    Modifier
+                        .widthIn(max = OnboardingContentMaxWidth)
+                        .fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -687,3 +906,4 @@ private fun OnboardingPermissionStatus.labelResId(): Int =
     }
 
 private val OnboardingContentMaxWidth = 680.dp
+private val OnboardingPagePadding = PaddingValues(horizontal = 24.dp, vertical = 28.dp)
