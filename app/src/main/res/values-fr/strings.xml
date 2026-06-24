@@ -268,9 +268,6 @@
     <string name="player_slider_style">Style de curseur du lecteur</string>
     <string name="misc">Divers</string>
     <string name="default_open_tab">Onglet ouvert par défaut</string>
-    <string name="grid_cell_size">Taille des cellules de la grille</string>
-    <string name="small">Petite</string>
-    <string name="big">Grande</string>
     <string name="lyrics_animation_style">Style d\'animation des paroles</string>
     <string name="lyrics_line_spacing">Espacement des lignes des paroles</string>
     <string name="content">Contenu</string>
@@ -715,7 +712,6 @@
     <string name="library_artists_subtitle">Tous vos artistes, réunis au même endroit</string>
     <string name="library_albums_subtitle">Tous vos albums, parfaitement classés</string>
     <string name="most_played_badge">LES PLUS JOUÉS</string>
-    <string name="favorite_songs_title">Titres Préférés</string>
     <string name="play_all">Tout lire</string>
     <string name="offline_shortcut">Hors Ligne</string>
     <string name="cached">En Cache</string>

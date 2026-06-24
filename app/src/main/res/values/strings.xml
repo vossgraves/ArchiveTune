@@ -48,7 +48,6 @@
     <string name="library_artists_subtitle">All your artists, in one place</string>
     <string name="library_albums_subtitle">All your albums, beautifully organized</string>
     <string name="most_played_badge">MOST PLAYED</string>
-    <string name="favorite_songs_title">Favorite Songs</string>
     <string name="play_all">Play all</string>
     <string name="offline_shortcut">Offline</string>
     <string name="cached">Cached</string>
@@ -445,9 +444,6 @@
     <string name="haptics">Vibration</string>
     <string name="haptics_desc">Enable haptic feedback on interactive elements</string>
     <string name="default_open_tab">Default open tab</string>
-    <string name="grid_cell_size">Grid cell size</string>
-    <string name="small">Small</string>
-    <string name="big">Big</string>
     <string name="lyrics_animation_style">Lyrics animation style</string>
     <string name="lyrics_mode">Lyrics mode</string>
     <string name="lyrics_mode_v2">V2 Legacy</string>

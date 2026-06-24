@@ -48,7 +48,6 @@
     <string name="library_artists_subtitle">すべてのアーティストをひとつに</string>
     <string name="library_albums_subtitle">すべてのアルバムを美しく整理</string>
     <string name="most_played_badge">最も再生</string>
-    <string name="favorite_songs_title">お気に入りの曲</string>
     <string name="play_all">すべて再生</string>
     <string name="offline_shortcut">オフライン</string>
     <string name="cached">キャッシュ済み</string>
@@ -365,9 +364,6 @@
     <string name="haptics">振動</string>
     <string name="haptics_desc">インタラクティブな要素で触覚フィードバックを有効にする</string>
     <string name="default_open_tab">デフォルトで開いているタブ</string>
-    <string name="grid_cell_size">グリッドセルのサイズ</string>
-    <string name="small">小</string>
-    <string name="big">大きい</string>
     <string name="lyrics_animation_style">歌詞アニメーション風</string>
     <string name="lyrics_mode">歌詞モード</string>
     <string name="lyrics_mode_v2">V2 Legacy</string>

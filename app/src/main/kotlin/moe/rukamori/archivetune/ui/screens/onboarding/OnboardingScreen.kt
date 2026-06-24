@@ -13,6 +13,11 @@ import android.content.Intent
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -55,7 +60,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -245,48 +249,38 @@ private fun OnboardingSuccessContent(
         }
     }
 
-    Scaffold(
+    HorizontalPager(
+        state = pagerState,
+        userScrollEnabled = false,
         modifier =
             Modifier
                 .fillMaxSize()
                 .padding(contentPadding),
-        containerColor = Color.Transparent,
-        bottomBar = {
-            OnboardingBottomBar(
-                currentPage = uiState.currentPage,
-                pageCount = uiState.pages.size,
-                onBack = onBack,
-                onNext = onNext,
-            )
-        },
-    ) { innerPadding ->
-        HorizontalPager(
-            state = pagerState,
-            userScrollEnabled = false,
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding),
-        ) { pageIndex ->
-            when (uiState.pages[pageIndex].id) {
-                OnboardingPageId.WELCOME ->
-                    WelcomePage(
-                        uiState = uiState,
-                        pageIndex = pageIndex,
-                    )
-                OnboardingPageId.PERMISSIONS ->
-                    PermissionsPage(
-                        uiState = uiState,
-                        pageIndex = pageIndex,
-                        onPermissionAction = onPermissionAction,
-                    )
-                OnboardingPageId.COMMUNITY ->
-                    CommunityPage(
-                        uiState = uiState,
-                        pageIndex = pageIndex,
-                        onCommunityAction = onCommunityAction,
-                    )
-            }
+    ) { pageIndex ->
+        when (uiState.pages[pageIndex].id) {
+            OnboardingPageId.WELCOME ->
+                WelcomePage(
+                    uiState = uiState,
+                    pageIndex = pageIndex,
+                    onBack = onBack,
+                    onNext = onNext,
+                )
+            OnboardingPageId.PERMISSIONS ->
+                PermissionsPage(
+                    uiState = uiState,
+                    pageIndex = pageIndex,
+                    onBack = onBack,
+                    onNext = onNext,
+                    onPermissionAction = onPermissionAction,
+                )
+            OnboardingPageId.COMMUNITY ->
+                CommunityPage(
+                    uiState = uiState,
+                    pageIndex = pageIndex,
+                    onBack = onBack,
+                    onNext = onNext,
+                    onCommunityAction = onCommunityAction,
+                )
         }
     }
 }
@@ -296,6 +290,8 @@ private fun OnboardingSuccessContent(
 private fun WelcomePage(
     uiState: OnboardingUiState,
     pageIndex: Int,
+    onBack: () -> Unit,
+    onNext: () -> Unit,
 ) {
     val page = uiState.pages[pageIndex]
 
@@ -342,6 +338,14 @@ private fun WelcomePage(
                 }
             }
         }
+        item(key = "welcome-actions", contentType = "actions") {
+            OnboardingInlineActions(
+                currentPage = pageIndex,
+                pageCount = uiState.pages.size,
+                onBack = onBack,
+                onNext = onNext,
+            )
+        }
     }
 }
 
@@ -361,7 +365,7 @@ private fun SunnyIdentityPanel(
         Surface(
             modifier =
                 Modifier
-                    .fillMaxWidth(0.72f)
+                    .fillMaxWidth(0.80f)
                     .aspectRatio(1f),
             shape = MaterialShapes.Sunny.toShape(0),
             color = MaterialTheme.colorScheme.primary,
@@ -373,8 +377,7 @@ private fun SunnyIdentityPanel(
                 Icon(
                     painter = painterResource(iconResId),
                     contentDescription = null,
-                    modifier = Modifier.size(120.dp),
-                    tint = Color.Unspecified,
+                    modifier = Modifier.size(150.dp),
                 )
             }
         }
@@ -421,17 +424,11 @@ private fun PassivePill(text: String) {
 private fun PermissionsPage(
     uiState: OnboardingUiState,
     pageIndex: Int,
+    onBack: () -> Unit,
+    onNext: () -> Unit,
     onPermissionAction: (OnboardingPermissionAction) -> Unit,
 ) {
     val page = uiState.pages[pageIndex]
-    val needsActionCount =
-        remember(uiState.permissions) {
-            uiState.permissions.count { it.status == OnboardingPermissionStatus.NEEDS_ACTION }
-        }
-    val readyCount =
-        remember(uiState.permissions) {
-            uiState.permissions.size - needsActionCount
-        }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -446,12 +443,6 @@ private fun PermissionsPage(
                 subtitleResId = page.subtitleResId,
             )
         }
-        item(key = "permission-summary", contentType = "summary") {
-            PermissionSummaryPanel(
-                readyCount = readyCount,
-                needsActionCount = needsActionCount,
-            )
-        }
         itemsIndexed(
             items = uiState.permissions,
             key = { _, item -> item.id.name },
@@ -464,87 +455,13 @@ private fun PermissionsPage(
                 onPermissionAction = onPermissionAction,
             )
         }
-    }
-}
-
-@Composable
-private fun PermissionSummaryPanel(
-    readyCount: Int,
-    needsActionCount: Int,
-) {
-    Surface(
-        modifier =
-            Modifier
-                .widthIn(max = OnboardingContentMaxWidth)
-                .fillMaxWidth()
-                .padding(bottom = 14.dp),
-        shape = MaterialTheme.shapes.extraLarge,
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        contentColor = MaterialTheme.colorScheme.onSurface,
-        tonalElevation = 1.dp,
-    ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            PermissionMetric(
-                count = readyCount,
-                labelResId = R.string.permission_status_allowed,
-                iconResId = R.drawable.done,
-                containerColor = MaterialTheme.colorScheme.primaryContainer,
-                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                modifier = Modifier.weight(1f),
+        item(key = "permission-actions", contentType = "actions") {
+            OnboardingInlineActions(
+                currentPage = pageIndex,
+                pageCount = uiState.pages.size,
+                onBack = onBack,
+                onNext = onNext,
             )
-            PermissionMetric(
-                count = needsActionCount,
-                labelResId = R.string.allow,
-                iconResId = R.drawable.close,
-                containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
-                modifier = Modifier.weight(1f),
-            )
-        }
-    }
-}
-
-@Composable
-private fun PermissionMetric(
-    count: Int,
-    labelResId: Int,
-    iconResId: Int,
-    containerColor: Color,
-    contentColor: Color,
-    modifier: Modifier = Modifier,
-) {
-    Surface(
-        modifier = modifier.heightIn(min = 76.dp),
-        shape = MaterialTheme.shapes.large,
-        color = containerColor,
-        contentColor = contentColor,
-    ) {
-        Row(
-            modifier = Modifier.padding(14.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(
-                painter = painterResource(iconResId),
-                contentDescription = null,
-                modifier = Modifier.size(24.dp),
-            )
-            Column {
-                Text(
-                    text = count.toString(),
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Text(
-                    text = stringResource(labelResId),
-                    style = MaterialTheme.typography.labelMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
         }
     }
 }
@@ -554,6 +471,8 @@ private fun PermissionMetric(
 private fun CommunityPage(
     uiState: OnboardingUiState,
     pageIndex: Int,
+    onBack: () -> Unit,
+    onNext: () -> Unit,
     onCommunityAction: (OnboardingCommunityActionUiModel) -> Unit,
 ) {
     val page = uiState.pages[pageIndex]
@@ -584,6 +503,14 @@ private fun CommunityPage(
                 index = index,
                 count = uiState.communityActions.size,
                 onCommunityAction = onCommunityAction,
+            )
+        }
+        item(key = "community-actions", contentType = "actions") {
+            OnboardingInlineActions(
+                currentPage = pageIndex,
+                pageCount = uiState.pages.size,
+                onBack = onBack,
+                onNext = onNext,
             )
         }
     }
@@ -655,7 +582,6 @@ private fun ExpressivePageHeader(
                     painter = painterResource(iconResId),
                     contentDescription = null,
                     modifier = Modifier.size(34.dp),
-                    tint = Color.Unspecified,
                 )
             }
         }
@@ -856,58 +782,95 @@ private fun CommunityRow(
 }
 
 @Composable
-private fun OnboardingBottomBar(
+private fun OnboardingInlineActions(
     currentPage: Int,
     pageCount: Int,
     onBack: () -> Unit,
     onNext: () -> Unit,
 ) {
+    val showBack = currentPage > 0
     val isLastPage = currentPage >= pageCount - 1
+    val nextLabel =
+        if (isLastPage) {
+            stringResource(R.string.onboarding_finish)
+        } else {
+            stringResource(R.string.next)
+        }
 
-    Surface(
-        color = MaterialTheme.colorScheme.background,
-        tonalElevation = 3.dp,
+    Column(
+        modifier =
+            Modifier
+                .widthIn(max = OnboardingContentMaxWidth)
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(top = 28.dp, bottom = 8.dp),
     ) {
-        Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .navigationBarsPadding()
-                    .padding(horizontal = 24.dp, vertical = 16.dp),
-            horizontalArrangement = Arrangement.Center,
+        AnimatedVisibility(
+            visible = !showBack,
+            enter =
+                expandVertically(MaterialTheme.motionScheme.fastSpatialSpec()) +
+                    fadeIn(MaterialTheme.motionScheme.fastEffectsSpec()),
+            exit =
+                shrinkVertically(MaterialTheme.motionScheme.fastSpatialSpec()) +
+                    fadeOut(MaterialTheme.motionScheme.fastEffectsSpec()),
+        ) {
+            OnboardingNextButton(
+                text = nextLabel,
+                onClick = onNext,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        AnimatedVisibility(
+            visible = showBack,
+            enter =
+                expandVertically(MaterialTheme.motionScheme.fastSpatialSpec()) +
+                    fadeIn(MaterialTheme.motionScheme.fastEffectsSpec()),
+            exit =
+                shrinkVertically(MaterialTheme.motionScheme.fastSpatialSpec()) +
+                    fadeOut(MaterialTheme.motionScheme.fastEffectsSpec()),
         ) {
             Row(
-                modifier =
-                    Modifier
-                        .widthIn(max = OnboardingContentMaxWidth)
-                        .fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 OutlinedButton(
                     onClick = onBack,
-                    enabled = currentPage > 0,
                     modifier = Modifier.weight(1f),
-                    contentPadding = PaddingValues(vertical = 18.dp),
-                ) {
-                    Text(text = stringResource(R.string.back_button_desc))
-                }
-                Button(
-                    onClick = onNext,
-                    modifier = Modifier.weight(1f),
-                    contentPadding = PaddingValues(vertical = 18.dp),
+                    contentPadding = OnboardingActionButtonPadding,
                 ) {
                     Text(
-                        text =
-                            if (isLastPage) {
-                                stringResource(R.string.onboarding_finish)
-                            } else {
-                                stringResource(R.string.next)
-                            },
+                        text = stringResource(R.string.back_button_desc),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
                     )
                 }
+                OnboardingNextButton(
+                    text = nextLabel,
+                    onClick = onNext,
+                    modifier = Modifier.weight(1f),
+                )
             }
         }
+    }
+}
+
+@Composable
+private fun OnboardingNextButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Button(
+        onClick = onClick,
+        modifier = modifier,
+        contentPadding = OnboardingActionButtonPadding,
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+        )
     }
 }
 
@@ -921,3 +884,4 @@ private fun OnboardingPermissionStatus.labelResId(): Int =
 
 private val OnboardingContentMaxWidth = 680.dp
 private val OnboardingPagePadding = PaddingValues(horizontal = 24.dp, vertical = 28.dp)
+private val OnboardingActionButtonPadding = PaddingValues(horizontal = 20.dp, vertical = 14.dp)

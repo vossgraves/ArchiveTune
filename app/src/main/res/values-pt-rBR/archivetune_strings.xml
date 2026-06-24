@@ -548,9 +548,6 @@
     <string name="about_respecter">Respeito</string>
     <string name="about_contributors">Contribuidores</string>
     <string name="about_position_lead_dev">O quê?</string>
-    <string name="about_position_wttexe">Letras sincronizadas com Palavras, gradientes e melhorias na interface do usuário!</string>
-    <string name="about_position_miko">Equipe de Colaboradores</string>
-    <string name="about_position_sang765">Equipe de Colaboradores</string>
     <string name="about_position_mo_agamy">Estrutura Básica | Metrolist</string>
     <string name="about_position_zion_huang">Criador do InnerTune · Base para o Metrolist, o ArchiveTune e outros forks</string>
     <string name="about_content_desc_github">GitHub</string>
