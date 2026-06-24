@@ -613,8 +613,8 @@ private fun CommunitySpotlight(actions: ImmutableList<OnboardingCommunityActionU
                             .weight(1f)
                             .aspectRatio(1f),
                     shape = MaterialTheme.shapes.large,
-                    color = MaterialTheme.colorScheme.primaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    color = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.surfaceContainerHighest,
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
@@ -822,8 +822,8 @@ private fun CommunityRow(
             Surface(
                 modifier = Modifier.size(56.dp),
                 shape = MaterialTheme.shapes.large,
-                color = MaterialTheme.colorScheme.primaryContainer,
-                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                color = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.surfaceContainerHighest,
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
