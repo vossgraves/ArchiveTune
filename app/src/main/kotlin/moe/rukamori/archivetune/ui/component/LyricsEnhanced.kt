@@ -272,7 +272,9 @@ fun LyricsEnhanced(
 
         val toRomanize =
             lyricsEntries.mapIndexedNotNull { index, entry ->
-                if (providedTranslationTextForEntry(entry) != null) return@mapIndexedNotNull null
+                if (providedTranslationTextForEntry(entry) != null && (!isTtmlFormat || entry.words == null)) {
+                    return@mapIndexedNotNull null
+                }
 
                 val hasProviderRomanization =
                     providedRomanizedTextForEntry(entry, romanizationPreferences) != null
@@ -1250,7 +1252,7 @@ private fun buildSyncedLyrics(
                 }
 
             val wordsForMain = if (mainWords.isNotEmpty()) mainWords else entry.words!!
-            val wordPhonetics = if (translation == null) romanizationMap[index] ?: emptyList() else emptyList()
+            val wordPhonetics = romanizationMap[index] ?: emptyList()
             val mainSyllables = wordsForMain.toKaraokeSyllables(wordPhonetics)
 
             val lineStart = mainSyllables.first().start
