@@ -13,7 +13,6 @@ import android.content.Intent
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -365,8 +364,8 @@ private fun SunnyIdentityPanel(
                     .fillMaxWidth(0.72f)
                     .aspectRatio(1f),
             shape = MaterialShapes.Sunny.toShape(0),
-            color = MaterialTheme.colorScheme.primaryContainer,
-            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+            color = MaterialTheme.colorScheme.primary,
+            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
             tonalElevation = 2.dp,
             shadowElevation = 1.dp,
         ) {
@@ -374,7 +373,7 @@ private fun SunnyIdentityPanel(
                 Icon(
                     painter = painterResource(iconResId),
                     contentDescription = null,
-                    modifier = Modifier.size(84.dp),
+                    modifier = Modifier.size(120.dp),
                     tint = Color.Unspecified,
                 )
             }
@@ -479,8 +478,8 @@ private fun PermissionSummaryPanel(
                 .widthIn(max = OnboardingContentMaxWidth)
                 .fillMaxWidth()
                 .padding(bottom = 14.dp),
-        shape = MaterialShapes.Sunny.toShape(0),
-        color = MaterialTheme.colorScheme.secondaryContainer,
+        shape = MaterialTheme.shapes.extraLarge,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
         contentColor = MaterialTheme.colorScheme.onSurface,
         tonalElevation = 1.dp,
     ) {
@@ -492,16 +491,16 @@ private fun PermissionSummaryPanel(
                 count = readyCount,
                 labelResId = R.string.permission_status_allowed,
                 iconResId = R.drawable.done,
-                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                contentColor = MaterialTheme.colorScheme.onSurface,
+                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                 modifier = Modifier.weight(1f),
             )
             PermissionMetric(
                 count = needsActionCount,
                 labelResId = R.string.allow,
                 iconResId = R.drawable.close,
-                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                contentColor = MaterialTheme.colorScheme.onSurface,
+                containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
                 modifier = Modifier.weight(1f),
             )
         }
@@ -598,7 +597,7 @@ private fun CommunitySpotlight(actions: ImmutableList<OnboardingCommunityActionU
                 .widthIn(max = OnboardingContentMaxWidth)
                 .fillMaxWidth()
                 .padding(bottom = 14.dp),
-        shape = MaterialShapes.Sunny.toShape(0),
+        shape = MaterialTheme.shapes.extraLarge,
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
         contentColor = MaterialTheme.colorScheme.onSurface,
         tonalElevation = 1.dp,
@@ -613,7 +612,7 @@ private fun CommunitySpotlight(actions: ImmutableList<OnboardingCommunityActionU
                         Modifier
                             .weight(1f)
                             .aspectRatio(1f),
-                    shape = MaterialShapes.Sunny.toShape(0),
+                    shape = MaterialTheme.shapes.large,
                     color = MaterialTheme.colorScheme.primaryContainer,
                     contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                 ) {
@@ -754,7 +753,7 @@ private fun PermissionIcon(permission: OnboardingPermissionUiModel) {
         }
 
     Surface(
-        shape = MaterialShapes.Sunny.toShape(0),
+        shape = MaterialTheme.shapes.large,
         color = containerColor,
         contentColor = contentColor,
         modifier = Modifier.size(56.dp),
@@ -822,7 +821,7 @@ private fun CommunityRow(
         leadingContent = {
             Surface(
                 modifier = Modifier.size(56.dp),
-                shape = MaterialShapes.Sunny.toShape(0),
+                shape = MaterialTheme.shapes.large,
                 color = MaterialTheme.colorScheme.primaryContainer,
                 contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
             ) {
@@ -889,8 +888,6 @@ private fun OnboardingBottomBar(
                     onClick = onBack,
                     enabled = currentPage > 0,
                     modifier = Modifier.weight(1f),
-                    shape = MaterialShapes.Pill.toShape(0),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                     contentPadding = PaddingValues(vertical = 18.dp),
                 ) {
                     Text(text = stringResource(R.string.back_button_desc))
@@ -898,7 +895,6 @@ private fun OnboardingBottomBar(
                 Button(
                     onClick = onNext,
                     modifier = Modifier.weight(1f),
-                    shape = MaterialShapes.Pill.toShape(0),
                     contentPadding = PaddingValues(vertical = 18.dp),
                 ) {
                     Text(
