@@ -365,7 +365,7 @@ private fun SunnyIdentityPanel(
                     .aspectRatio(1f),
             shape = MaterialShapes.Sunny.toShape(0),
             color = MaterialTheme.colorScheme.primary,
-            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            contentColor = MaterialTheme.colorScheme.surfaceContainerHighest,
             tonalElevation = 2.dp,
             shadowElevation = 1.dp,
         ) {
@@ -647,8 +647,8 @@ private fun ExpressivePageHeader(
         Surface(
             modifier = Modifier.size(88.dp),
             shape = MaterialShapes.Sunny.toShape(0),
-            color = MaterialTheme.colorScheme.primaryContainer,
-            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+            color = MaterialTheme.colorScheme.primary,
+            contentColor = MaterialTheme.colorScheme.surfaceContainerHighest,
         ) {
             Box(contentAlignment = Alignment.Center) {
                 Icon(
@@ -739,16 +739,16 @@ private fun PermissionRow(
 private fun PermissionIcon(permission: OnboardingPermissionUiModel) {
     val containerColor =
         when (permission.status) {
-            OnboardingPermissionStatus.ALLOWED -> MaterialTheme.colorScheme.primaryContainer
-            OnboardingPermissionStatus.NEEDS_ACTION -> MaterialTheme.colorScheme.tertiaryContainer
-            OnboardingPermissionStatus.ALLOWED_BY_INSTALL -> MaterialTheme.colorScheme.secondaryContainer
+            OnboardingPermissionStatus.ALLOWED -> MaterialTheme.colorScheme.primary
+            OnboardingPermissionStatus.NEEDS_ACTION -> MaterialTheme.colorScheme.tertiary
+            OnboardingPermissionStatus.ALLOWED_BY_INSTALL -> MaterialTheme.colorScheme.secondary
             OnboardingPermissionStatus.UNAVAILABLE -> MaterialTheme.colorScheme.surfaceVariant
         }
     val contentColor =
         when (permission.status) {
-            OnboardingPermissionStatus.ALLOWED -> MaterialTheme.colorScheme.onPrimaryContainer
-            OnboardingPermissionStatus.NEEDS_ACTION -> MaterialTheme.colorScheme.onTertiaryContainer
-            OnboardingPermissionStatus.ALLOWED_BY_INSTALL -> MaterialTheme.colorScheme.onSecondaryContainer
+            OnboardingPermissionStatus.ALLOWED -> MaterialTheme.colorScheme.onPrimary
+            OnboardingPermissionStatus.NEEDS_ACTION -> MaterialTheme.colorScheme.onTertiary
+            OnboardingPermissionStatus.ALLOWED_BY_INSTALL -> MaterialTheme.colorScheme.onSecondary
             OnboardingPermissionStatus.UNAVAILABLE -> MaterialTheme.colorScheme.onSurfaceVariant
         }
 
