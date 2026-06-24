@@ -518,13 +518,11 @@
     <string name="updates">Обновления</string>
     <string name="current_version">Текущая версия</string>
     <string name="latest_version_format">Последняя: %s</string>
-    <string name="notification_settings">Уведомление</string>
     <string name="enable_update_notification">Включить уведомление об обновлении</string>
     <string name="enable_update_notification_desc">Будьте в курсе, когда выйдет новая версия</string>
     <string name="update_channel">Канал обновлений</string>
     <string name="channel_stable">Стабильный</string>
     <string name="channel_nightly">Ночные сборки</string>
-    <string name="commit_history">Разработка</string>
     <string name="recent_commits">Последние коммиты</string>
     <string name="changelog">Список изменений</string>
     <string name="view_changelog">Посмотреть список изменений</string>

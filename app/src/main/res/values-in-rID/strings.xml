@@ -634,14 +634,12 @@
     <string name="latest_version_format">Terbaru: %s</string>
     <string name="updates_status_checking">Memeriksa rilis terbaru</string>
     <string name="updates_status_current">Anda sedang menggunakan rilis terbaru yang tersedia</string>
-    <string name="notification_settings">Pemberitahuan</string>
     <string name="enable_update_notification">Aktifkan Pemberitahuan Pembaruan</string>
     <string name="enable_update_notification_desc">Dapatkan pemberitahuan ketika versi stabil baru dirilis</string>
     <string name="update_channel">Saluran Pembaruan</string>
     <string name="update_channel_desc">Pilih antara rilis teruji dan cuplikan pengembangan.</string>
     <string name="channel_stable">Stabil</string>
     <string name="channel_nightly">Nightly</string>
-    <string name="commit_history">Pengembangan</string>
     <string name="recent_commits">Commit Terbaru</string>
     <string name="updates_nightly_title">Pengiriman Nightly</string>
     <string name="updates_nightly_description">Build Nightly melacak commit pengembangan terbaru dan mungkin mencakup perubahan yang belum selesai.</string>

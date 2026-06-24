@@ -298,8 +298,14 @@ fun AppearanceSettings(
         PlayerBackgroundStyle.entries.filter {
             it != PlayerBackgroundStyle.BLUR || Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
         }
-    val isPlayerBackgroundStyleEnabled =
-        playerDesignStyle != PlayerDesignStyle.V7 && playerDesignStyle != PlayerDesignStyle.V8 && playerDesignStyle != PlayerDesignStyle.V9
+    val isPlayerStyleCustomizationEnabled =
+        when (playerDesignStyle) {
+            PlayerDesignStyle.V7,
+            PlayerDesignStyle.V8,
+            PlayerDesignStyle.V9 -> false
+
+            else -> true
+        }
     val isSystemInDarkTheme = isSystemInDarkTheme()
     val useDarkTheme =
         remember(darkMode, isSystemInDarkTheme) {
@@ -316,13 +322,19 @@ fun AppearanceSettings(
         mutableStateOf(false)
     }
 
-    LaunchedEffect(isPlayerBackgroundStyleEnabled, playerBackground) {
-        if (!isPlayerBackgroundStyleEnabled && playerBackground != PlayerBackgroundStyle.DEFAULT) {
+    LaunchedEffect(isPlayerStyleCustomizationEnabled, playerBackground) {
+        if (!isPlayerStyleCustomizationEnabled && playerBackground != PlayerBackgroundStyle.DEFAULT) {
             onPlayerBackgroundChange(PlayerBackgroundStyle.DEFAULT)
         }
     }
 
-    if (showSliderOptionDialog) {
+    LaunchedEffect(isPlayerStyleCustomizationEnabled) {
+        if (!isPlayerStyleCustomizationEnabled) {
+            showSliderOptionDialog = false
+        }
+    }
+
+    if (showSliderOptionDialog && isPlayerStyleCustomizationEnabled) {
         val sliderStyles =
             remember {
                 listOf(
@@ -566,7 +578,7 @@ fun AppearanceSettings(
                 EnumListPreference(
                     title = { Text(stringResource(R.string.player_background_style)) },
                     description =
-                        if (isPlayerBackgroundStyleEnabled) {
+                        if (isPlayerStyleCustomizationEnabled) {
                             null
                         } else {
                             stringResource(R.string.player_background_style_v8_v9_desc)
@@ -574,7 +586,7 @@ fun AppearanceSettings(
                     icon = { Icon(painterResource(R.drawable.gradient), null) },
                     selectedValue = playerBackground,
                     onValueSelected = onPlayerBackgroundChange,
-                    isEnabled = isPlayerBackgroundStyleEnabled,
+                    isEnabled = isPlayerStyleCustomizationEnabled,
                     valueText = {
                         when (it) {
                             PlayerBackgroundStyle.DEFAULT -> stringResource(R.string.follow_theme)
@@ -663,7 +675,7 @@ fun AppearanceSettings(
                 EnumListPreference(
                     title = { Text(stringResource(R.string.player_buttons_style)) },
                     description =
-                        if (isPlayerBackgroundStyleEnabled) {
+                        if (isPlayerStyleCustomizationEnabled) {
                             null
                         } else {
                             stringResource(R.string.player_background_style_v8_v9_desc)
@@ -671,7 +683,7 @@ fun AppearanceSettings(
                     icon = { Icon(painterResource(R.drawable.palette), null) },
                     selectedValue = playerButtonsStyle,
                     onValueSelected = onPlayerButtonsStyleChange,
-                    isEnabled = isPlayerBackgroundStyleEnabled,
+                    isEnabled = isPlayerStyleCustomizationEnabled,
                     valueText = {
                         when (it) {
                             PlayerButtonsStyle.DEFAULT -> stringResource(R.string.default_style)
@@ -689,6 +701,7 @@ fun AppearanceSettings(
                     onClick = {
                         showSliderOptionDialog = true
                     },
+                    isEnabled = isPlayerStyleCustomizationEnabled,
                 )
             }
 

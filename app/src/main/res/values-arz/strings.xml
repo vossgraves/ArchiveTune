@@ -118,7 +118,6 @@
     <string name="latest_version_format">اخر اصدار: %s</string>
     <string name="updates_status_checking">بنشوفلك اخر اصدار</string>
     <string name="updates_status_current">انت على اخر اصدار متاح حالياً</string>
-    <string name="notification_settings">اشعارات</string>
     <string name="enable_update_notification">فعل إشعارات التحديث</string>
     <string name="enable_update_notification_desc">هيجي لك إشعار لما ينزل إصدار مستقر جديد</string>
     <string name="unknown">مش معروف</string>

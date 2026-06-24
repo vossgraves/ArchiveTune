@@ -126,6 +126,7 @@ class MediaLibrarySessionCallback
                 connectionResult.availableSessionCommands
                     .buildUpon()
                     .add(MediaSessionConstants.CommandToggleLike)
+                    .add(MediaSessionConstants.CommandToggleStartRadio)
                     .add(MediaSessionConstants.CommandToggleLibrary)
                     .add(MediaSessionConstants.CommandToggleShuffle)
                     .add(MediaSessionConstants.CommandToggleRepeatMode)

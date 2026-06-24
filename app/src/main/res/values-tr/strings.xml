@@ -454,13 +454,11 @@
     <string name="updates">Güncellemeler</string>
     <string name="current_version">Güncel Sürüm</string>
     <string name="latest_version_format">En son: %s</string>
-    <string name="notification_settings">Bildirim</string>
     <string name="enable_update_notification">Güncelleme Bildirimini Etkinleştir</string>
     <string name="enable_update_notification_desc">Yeni bir kararlı sürüm yayınlandığında bildirim alın</string>
     <string name="update_channel">Kanalı Güncelle</string>
     <string name="channel_stable">Kararlı</string>
     <string name="channel_nightly">Gecelik</string>
-    <string name="commit_history">Geliştirme</string>
     <string name="recent_commits">Son Taahhütler</string>
     <string name="update_notification_channel_name">Uygulama Güncellemeleri</string>
     <string name="update_notification_channel_desc">Yeni uygulama güncellemeleri için bildirimler</string>

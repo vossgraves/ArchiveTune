@@ -47,13 +47,13 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LargeFlexibleTopAppBar
-import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.LoadingIndicator
@@ -64,6 +64,8 @@ import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SegmentedListItem
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -189,6 +191,7 @@ fun UpdateScreen(
     var updateDownloadJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     var showUpdateDownloadDialog by remember { mutableStateOf(false) }
     val useInAppUpdateInstaller = BuildConfig.DISTRIBUTION == "gms"
+    val snackbarHostState = remember { SnackbarHostState() }
 
     val openUpdateUrl: (String) -> Unit = { url ->
         try {
@@ -212,6 +215,9 @@ fun UpdateScreen(
                             updateDownloadProgress = progress.fraction
                         }.onSuccess {
                             showUpdateDownloadDialog = false
+                            snackbarHostState.showSnackbar(
+                                context.getString(R.string.download_complete),
+                            )
                         }.onFailure { error ->
                             showUpdateDownloadDialog = false
                             updateSheetError = error.message ?: context.getString(R.string.error_unknown)
@@ -573,6 +579,7 @@ fun UpdateScreen(
                 .nestedScroll(scrollBehavior.nestedScrollConnection),
         containerColor = MaterialTheme.colorScheme.surface,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         topBar = {
             LargeFlexibleTopAppBar(
                 title = {
@@ -726,46 +733,79 @@ fun UpdateScreen(
             animationSpec = WavyProgressIndicatorDefaults.ProgressAnimationSpec,
             label = "updateDownloadProgress",
         )
+        val centeredDialogContentModifier = remember { Modifier.fillMaxWidth() }
+        val determinateProgressModifier = remember { Modifier.size(96.dp) }
+        val determinateIndicatorModifier = remember { Modifier.fillMaxSize() }
+        val indeterminateIndicatorModifier = remember { Modifier.size(72.dp) }
+
+        val downloadTitle = buildString {
+            when (updateChannel) {
+                UpdateChannel.DAILY_NIGHTLY -> append("${context.getString(R.string.app_name)} Nightly")
+                else -> append(context.getString(R.string.app_name))
+            }
+            append(' ')
+            if (updateChannel == UpdateChannel.NIGHTLY) {
+                append(latestCommit?.sha?.take(7) ?: updateSheetVersion ?: "?")
+            } else {
+                append(updateSheetVersion ?: "?")
+            }
+        }
 
         AlertDialog(
             onDismissRequest = {},
-            icon = {
-                LoadingIndicator(
-                    modifier = Modifier.size(24.dp),
-                )
-            },
             title = {
                 Text(
-                    text = stringResource(R.string.downloading),
+                    text = downloadTitle,
                     style = MaterialTheme.typography.headlineSmall,
+                    textAlign = TextAlign.Center,
+                    modifier = centeredDialogContentModifier,
                 )
             },
             text = {
                 Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = centeredDialogContentModifier,
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     if (progress != null) {
-                        LinearWavyProgressIndicator(
-                            progress = { animatedProgress },
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        Text(
-                            text =
-                                stringResource(
-                                    R.string.download_progress_percent,
-                                    (animatedProgress * 100f).roundToInt().coerceIn(0, 100),
-                                ),
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                        Box(
+                            modifier = determinateProgressModifier,
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            CircularWavyProgressIndicator(
+                                progress = { animatedProgress },
+                                modifier = determinateIndicatorModifier,
+                            )
+                            Text(
+                                text =
+                                    stringResource(
+                                        R.string.download_progress_percent,
+                                        (animatedProgress * 100f).roundToInt().coerceIn(0, 100),
+                                    ),
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                        }
                     } else {
-                        LinearWavyProgressIndicator(modifier = Modifier.fillMaxWidth())
+                        CircularWavyProgressIndicator(
+                            modifier = indeterminateIndicatorModifier,
+                        )
                     }
                 }
             },
-            confirmButton = {},
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        updateDownloadJob?.cancel()
+                        updateDownloadJob = null
+                        updateDownloadProgress = null
+                        showUpdateDownloadDialog = false
+                    },
+                ) {
+                    Text(text = stringResource(android.R.string.cancel))
+                }
+            },
         )
     }
 

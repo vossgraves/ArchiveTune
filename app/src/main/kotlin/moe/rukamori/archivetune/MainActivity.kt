@@ -9,7 +9,6 @@
 
 package moe.rukamori.archivetune
 
-import android.Manifest
 import android.annotation.SuppressLint
 import android.content.ComponentName
 import android.content.Context
@@ -27,9 +26,7 @@ import android.view.WindowManager
 import android.webkit.MimeTypeMap
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
@@ -83,6 +80,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationRail
@@ -109,6 +107,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -145,7 +144,6 @@ import androidx.compose.ui.util.fastForEach
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.zIndex
-import androidx.core.content.ContextCompat
 import androidx.core.content.IntentCompat
 import androidx.core.net.toUri
 import androidx.core.view.WindowCompat
@@ -270,8 +268,10 @@ import moe.rukamori.archivetune.ui.screens.search.OnlineSearchResultRoutePrefix
 import moe.rukamori.archivetune.ui.screens.search.OnlineSearchScreen
 import moe.rukamori.archivetune.ui.screens.search.decodeOnlineSearchQuery
 import moe.rukamori.archivetune.ui.screens.search.onlineSearchResultRoute
+import moe.rukamori.archivetune.onboarding.OnboardingScreenState
+import moe.rukamori.archivetune.onboarding.OnboardingViewModel
+import moe.rukamori.archivetune.ui.screens.onboarding.OnboardingRoute
 import moe.rukamori.archivetune.ui.screens.settings.DarkMode
-import moe.rukamori.archivetune.ui.screens.settings.DiscordPresenceManager
 import moe.rukamori.archivetune.ui.screens.settings.NavigationTab
 import moe.rukamori.archivetune.ui.theme.ArchiveTuneTheme
 import moe.rukamori.archivetune.ui.theme.ColorSaver
@@ -321,6 +321,7 @@ class MainActivity : ComponentActivity() {
     private var pendingVoiceSearchQuery: String? = null
     private var pendingAodModeRequest = false
     private var pendingAodModeJob: Job? = null
+    private var aodModeLaunchRequestCount by mutableIntStateOf(0)
     private var pendingTogetherJoinLink: String? = null
     private var pendingBackupRestoreUri by mutableStateOf<Uri?>(null)
     private var latestVersionName by mutableStateOf(BuildConfig.VERSION_NAME)
@@ -384,7 +385,7 @@ class MainActivity : ComponentActivity() {
             lifecycleScope.launch {
                 connection.queueRestoreCompleted.first { it }
                 if (awaitRestorablePlayback(connection)) {
-                    connection.aodModeEnabled.value = true
+                    aodModeLaunchRequestCount++
                 }
             }
     }
@@ -456,14 +457,6 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        // Only clear/stop presence when the activity is actually finishing (not on rotation)
-        // and do not clear it for transient configuration changes.
-        if (isFinishing && !isChangingConfigurations) {
-            try {
-                DiscordPresenceManager.stop()
-            } catch (_: Exception) {
-            }
-        }
 
         val shouldStopOnTaskClear =
             if (!isFinishing) {
@@ -544,25 +537,9 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            val notificationPermissionLauncher =
-                rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
-                    if (isGranted) {
-                        playerConnection?.service?.refreshPlaybackNotification()
-                    }
-                }
-
             val updateChannel by rememberEnumPreference(UpdateChannelKey, defaultValue = defaultUpdateChannel)
 
             LaunchedEffect(Unit) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-                    ContextCompat.checkSelfPermission(
-                        this@MainActivity,
-                        Manifest.permission.POST_NOTIFICATIONS,
-                    ) != PackageManager.PERMISSION_GRANTED
-                ) {
-                    notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                }
-
                 while (playerConnection == null) {
                     delay(100)
                 }
@@ -817,6 +794,21 @@ class MainActivity : ComponentActivity() {
                 fontPreference = fontPreference,
                 customFontUri = customFontUri,
             ) {
+                val onboardingViewModel: OnboardingViewModel = hiltViewModel()
+                val onboardingState by onboardingViewModel.screenState.collectAsStateWithLifecycle()
+                val shouldShowOnboarding =
+                    when (val state = onboardingState) {
+                        OnboardingScreenState.Loading -> true
+                        OnboardingScreenState.Empty -> true
+                        is OnboardingScreenState.Error -> false
+                        is OnboardingScreenState.Success -> state.uiState.shouldShowOnboarding
+                    }
+
+                if (shouldShowOnboarding) {
+                    OnboardingRoute(viewModel = onboardingViewModel)
+                    return@ArchiveTuneTheme
+                }
+
                 BoxWithConstraints(
                     modifier =
                         Modifier
@@ -1002,6 +994,20 @@ class MainActivity : ComponentActivity() {
                     val aodModeEnabled by remember(playerConnection) {
                         playerConnection?.aodModeEnabled ?: MutableStateFlow(false)
                     }.collectAsStateWithLifecycle()
+
+                    LaunchedEffect(aodModeLaunchRequestCount, playerConnection) {
+                        val launchRequestCount = aodModeLaunchRequestCount
+                        if (launchRequestCount == 0) return@LaunchedEffect
+                        val connection = playerConnection ?: return@LaunchedEffect
+                        if (!awaitRestorablePlayback(connection)) return@LaunchedEffect
+                        if (!playerBottomSheetState.isExpandedOrExpanding) {
+                            playerBottomSheetState.expandSoft()
+                        }
+                        connection.aodModeEnabled.value = true
+                        if (aodModeLaunchRequestCount == launchRequestCount) {
+                            aodModeLaunchRequestCount = 0
+                        }
+                    }
 
                     LaunchedEffect(aodModeEnabled) {
                         val controller = WindowCompat.getInsetsController(window, window.decorView)
@@ -1621,7 +1627,9 @@ class MainActivity : ComponentActivity() {
                                                     }
                                                 },
                                                 actions = {
-                                                    IconButton(onClick = { navController.navigate("history") }) {
+                                                    TranslucentTopAppBarIconButton(
+                                                        onClick = { navController.navigate("history") },
+                                                    ) {
                                                         Icon(
                                                             painter = painterResource(R.drawable.history),
                                                             contentDescription = stringResource(R.string.history),
@@ -1649,7 +1657,9 @@ class MainActivity : ComponentActivity() {
                                                         },
                                                         state = rememberTooltipState(),
                                                     ) {
-                                                        IconButton(onClick = { navController.navigate("news") }) {
+                                                        TranslucentTopAppBarIconButton(
+                                                            onClick = { navController.navigate("news") },
+                                                        ) {
                                                             BadgedBox(badge = {
                                                                 if (hasUnreadNews) {
                                                                     Badge()
@@ -1662,13 +1672,17 @@ class MainActivity : ComponentActivity() {
                                                             }
                                                         }
                                                     }
-                                                    IconButton(onClick = { navController.navigate("new_release") }) {
+                                                    TranslucentTopAppBarIconButton(
+                                                        onClick = { navController.navigate("new_release") },
+                                                    ) {
                                                         Icon(
                                                             painter = painterResource(R.drawable.new_release),
                                                             contentDescription = stringResource(R.string.new_release_albums),
                                                         )
                                                     }
-                                                    IconButton(onClick = { navController.navigate("settings") }) {
+                                                    TranslucentTopAppBarIconButton(
+                                                        onClick = { navController.navigate("settings") },
+                                                    ) {
                                                         BadgedBox(badge = {
                                                             if (
                                                                 BuildConfig.UPDATER_AVAILABLE &&
@@ -2706,6 +2720,27 @@ val LocalPlayerAwareWindowInsets =
     compositionLocalOf<WindowInsets> { error("No WindowInsets provided") }
 val LocalDownloadUtil = staticCompositionLocalOf<DownloadUtil> { error("No DownloadUtil provided") }
 val LocalSyncUtils = staticCompositionLocalOf<SyncUtils> { error("No SyncUtils provided") }
+
+private const val TopAppBarIconButtonContainerAlpha = 0.48f
+
+@Composable
+private fun TranslucentTopAppBarIconButton(
+    onClick: () -> Unit,
+    content: @Composable () -> Unit,
+) {
+    IconButton(
+        onClick = onClick,
+        colors =
+            IconButtonDefaults.iconButtonColors(
+                containerColor =
+                    MaterialTheme.colorScheme.surfaceContainerHighest.copy(
+                        alpha = TopAppBarIconButtonContainerAlpha,
+                    ),
+                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            ),
+        content = content,
+    )
+}
 
 @Composable
 private fun OnlineSearchSortMenu(

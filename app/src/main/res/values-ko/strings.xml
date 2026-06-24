@@ -593,14 +593,12 @@
     <string name="latest_version_format">최신 버전: %s</string>
     <string name="updates_status_checking">최신 정식 릴리즈가 배포되었는지 확인 중…</string>
     <string name="updates_status_current">사용 가능한 가장 최신의 릴리즈 버전을 사용하고 있습니다.</string>
-    <string name="notification_settings">알림 설정</string>
     <string name="enable_update_notification">신규 업데이트 푸시 알림 받기</string>
     <string name="enable_update_notification_desc">성공적으로 빌드된 새로운 안정화 패치가 나왔을 때 즉각 기기 알림을 받습니다.</string>
     <string name="update_channel">업데이트 채널</string>
     <string name="update_channel_desc">철저하게 테스트를 마친 정식 릴리즈와, 실시간 스냅샷 채널 중에서 수집 형태를 선택하세요.</string>
     <string name="channel_stable">정식 릴리즈 (Stable)</string>
     <string name="channel_nightly">Nightly</string>
-    <string name="commit_history">개발 과정 이력</string>
     <string name="recent_commits">최근 수집된 커밋 이력</string>
     <string name="updates_nightly_title">Nightly 개발 버전</string>
     <string name="updates_nightly_description">Nightly 빌드는 매 순간 커밋된 가장 원초적인 개발 진행 코드를 즉각 수집해 반영하므로 다소 불안정할 수 있습니다.</string>

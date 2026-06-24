@@ -87,7 +87,6 @@
     <string name="update_channel">更新频道</string>
     <string name="channel_stable">稳定</string>
     <string name="channel_nightly">每晚</string>
-    <string name="commit_history">发展</string>
     <string name="update_notification_channel_name">应用更新</string>
     <string name="update_notification_channel_desc">新应用更新通知</string>
     <string name="update_notification_title">更新可用</string>
@@ -282,7 +281,6 @@
     <string name="updates">更新</string>
     <string name="current_version">当前版本</string>
     <string name="latest_version_format">最新消息：%s</string>
-    <string name="notification_settings">通知</string>
     <string name="enable_update_notification">启用更新通知</string>
     <string name="recent_commits">近期提交</string>
     <string name="update_notification_text">ArchiveTune%s现已发布</string>

@@ -513,13 +513,11 @@
     <string name="updates">Actualizaciones</string>
     <string name="current_version">Versión Actual</string>
     <string name="latest_version_format">Ultima: %s</string>
-    <string name="notification_settings">Notificación</string>
     <string name="enable_update_notification">Activar la Notificación de Actualización</string>
     <string name="enable_update_notification_desc">Recibe una notificación cuando se publique una nueva versión estable</string>
     <string name="update_channel">Canal de actualización</string>
     <string name="channel_stable">Estable</string>
     <string name="channel_nightly">Experimental</string>
-    <string name="commit_history">Desarrollo</string>
     <string name="recent_commits">Cambios recientes</string>
     <string name="changelog">Registro de cambios</string>
     <string name="view_changelog">Ver registro de cambios</string>

@@ -26,7 +26,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
@@ -43,10 +42,13 @@ import kotlinx.coroutines.isActive
 import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.utils.StreamClientUtils
 import okhttp3.OkHttpClient
+import timber.log.Timber
 import java.util.Locale
 
 private const val CanvasPlaybackStallCheckIntervalMs = 1_000L
 private const val CanvasPlaybackStallTimeoutMs = 5_000L
+private const val CanvasMaxVideoWidth = 1_920
+private const val CanvasMaxVideoHeight = 1_920
 
 @Composable
 internal fun CanvasArtworkPlayer(
@@ -80,7 +82,14 @@ internal fun CanvasArtworkPlayer(
                             host.endsWith("youtube-nocookie.com") ||
                             host.endsWith("ytimg.com")
 
-                    if (!isYouTubeMediaHost) return@addInterceptor chain.proceed(request)
+                    if (!isYouTubeMediaHost) {
+                        return@addInterceptor chain.proceed(
+                            request
+                                .newBuilder()
+                                .header("User-Agent", CanvasPlaybackUserAgent)
+                                .build(),
+                        )
+                    }
 
                     val requestProfile = StreamClientUtils.resolveRequestProfile(request.url)
                     chain.proceed(
@@ -108,14 +117,12 @@ internal fun CanvasArtworkPlayer(
                 .setMediaSourceFactory(mediaSourceFactory)
                 .build()
                 .apply {
-                    setAudioAttributes(
-                        AudioAttributes
-                            .Builder()
-                            .setUsage(C.USAGE_MEDIA)
-                            .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
-                            .build(),
-                        false,
-                    )
+                    trackSelectionParameters =
+                        trackSelectionParameters
+                            .buildUpon()
+                            .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
+                            .setMaxVideoSize(CanvasMaxVideoWidth, CanvasMaxVideoHeight)
+                            .build()
                     volume = 0f
                     repeatMode = Player.REPEAT_MODE_ONE
                     playWhenReady = isPlaying
@@ -177,9 +184,10 @@ internal fun CanvasArtworkPlayer(
         val listener =
             object : Player.Listener {
                 override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                    Timber.tag(CanvasPlaybackLogTag).w(error, "Canvas playback failed")
                     val next =
                         when (currentUrl) {
-                            primary -> fallback
+                            primary -> fallback?.takeIf { it != currentUrl }
                             else -> null
                         }
                     if (!next.isNullOrBlank()) {
@@ -290,3 +298,7 @@ private fun ExoPlayer.setCanvasPlayback(isPlaying: Boolean) {
         pause()
     }
 }
+
+private const val CanvasPlaybackLogTag = "CanvasPlayback"
+private const val CanvasPlaybackUserAgent =
+    "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Mobile Safari/537.36"

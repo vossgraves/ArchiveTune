@@ -432,13 +432,11 @@
     <string name="updates">Mises à jour</string>
     <string name="current_version">Version actuelle</string>
     <string name="latest_version_format">Dernière mise à jour : %s</string>
-    <string name="notification_settings">Notification</string>
     <string name="enable_update_notification">Activer les notifications de mise à jour</string>
     <string name="enable_update_notification_desc">Soyez averti(e) lorsqu\'une nouvelle version stable est publiée</string>
     <string name="update_channel">Chaîne de mise à jour</string>
     <string name="channel_stable">Stable</string>
     <string name="channel_nightly">Nocturne</string>
-    <string name="commit_history">Développement</string>
     <string name="recent_commits">Engagements récents</string>
     <string name="update_notification_channel_name">Mises à jour de l\'application</string>
     <string name="update_notification_channel_desc">Notifications pour les nouvelles mises à jour de l\'application</string>
