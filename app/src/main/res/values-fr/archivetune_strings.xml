@@ -555,4 +555,13 @@
     <string name="aod_customize_show_exit_button">Afficher le bouton « Quitter »</string>
     <string name="storage_migration_downloads_progress">Transfert des téléchargements... %1$d%%</string>
     <string name="aod_customize_content_position">Position du contenu</string>
+    <string name="suggestions">Suggestions</string>
+    <string name="restore_missing_content">L\'archive de sauvegarde ne contient aucune donnée pouvant être restaurée.</string>
+    <string name="restore_corrupted">Le fichier de sauvegarde semble être corrompu et n\'a pas pu être lu.</string>
+    <string name="restore_file_not_found">Impossible d\'ouvrir le fichier sélectionné.</string>
+    <string name="restore_select_backup">Sélectionnez un fichier de sauvegarde à restaurer.</string>
+    <string name="about_license">LICENCE</string>
+    <string name="about_license_unknown">Licence inconnue</string>
+    <string name="about_position_developers">Développeur | Équipe</string>
+    <string name="about_position_yuki">Juste pour le plaisir 😂 | Administrateur</string>
 </resources>
