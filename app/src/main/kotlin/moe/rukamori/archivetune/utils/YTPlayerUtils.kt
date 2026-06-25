@@ -1381,6 +1381,7 @@ object YTPlayerUtils {
 
         val message = clientError.message.orEmpty()
         if (!message.contains("/youtubei/v1/player", ignoreCase = true)) return false
+        if (message.contains("Origin doesn't match Host", ignoreCase = true)) return false
 
         return message.contains("INVALID_ARGUMENT", ignoreCase = true) ||
             message.contains("invalid argument", ignoreCase = true)
