@@ -697,7 +697,7 @@
     <string name="aod_mode_exit">Quitter AOD</string>
     <string name="error_malformed_stream">Erreur source</string>
     <string name="support_development_title">Soutenir le développement</string>
-    <string name="support_development_message">Salut ! Je m\'appelle Koiverse, je suis le développeur d\'ArchiveTune. Si ArchiveTune fait désormais partie de vos habitudes d\'écoute quotidiennes, vous pouvez contribuer à son développement en faisant un don ou en ajoutant le projet à vos favoris sur GitHub. Merci de soutenir le travail qui se cache derrière cette application.</string>
+    <string name="support_development_message">Salut ! Je m\'appelle Koiverse, je suis le développeur d\'ArchiveTune. Si ArchiveTune fait désormais partie de vos habitudes d\'écoute quotidiennes, vous pouvez contribuer à son développement en faisant un don ou en ajoutant le projet à vos favoris sur GitHub. Merci de soutenir le travail qui se cache derrière cette application.</string>
     <string name="support_development_donate">Faites un don pour soutenir le développement</string>
     <string name="support_development_star">Ajouter à vos favoris sur GitHub</string>
     <string name="later">Plus tard</string>
@@ -894,4 +894,25 @@
     <string name="hide_playlist">Masquer la playlist</string>
     <string name="unhide_playlist">Afficher la playlist</string>
     <string name="show_hidden_playlists">Afficher le contenu masqué</string>
+    <string name="hide_playlist_confirm">Masquer « %1$s » dans la bibliothèque ?</string>
+    <string name="together_transfer_host">Hôte de transfert</string>
+    <string name="together_approve">Approuver</string>
+    <string name="together_reject">Refuser</string>
+    <string name="together_transfer_host_confirm">Transférer la propriété de l\'hôte à %1$s ?</string>
+    <string name="together_participant_joined_notification">%1$s a rejoint la salle</string>
+    <string name="together_participant_left_notification">%1$s a quitté la salle</string>
+    <string name="together_unknown_participant">Quelqu\'un</string>
+    <string name="lyrics_search_plain_badge">Simple</string>
+    <string name="lyrics_searching_providers">Recherche de prestataires</string>
+    <string name="lyrics_search_still_searching">Recherche en cours</string>
+    <string name="lyrics_search_results_count">%1$d résultats</string>
+    <string name="duration_seconds_short">%1$ds</string>
+    <string name="percent_format">%1$d%%</string>
+    <string name="translate_in_background">Traduire en arrière-plan</string>
+    <string name="onboarding_permission_bluetooth_connect_title">Connexion audio Bluetooth</string>
+    <string name="onboarding_permission_bluetooth_connect_desc">Connectez-vous à des appareils audio Bluetooth à proximité pour écouter du contenu.</string>
+    <string name="together_current_playback">Lecture en cours</string>
+    <string name="together_playback_empty">Aucun contenu en cours de lecture</string>
+    <string name="together_playback_playing">Lecture en cours</string>
+    <string name="unsaved_account_dialog_no_thanks">Non, merci</string>
 </resources>
