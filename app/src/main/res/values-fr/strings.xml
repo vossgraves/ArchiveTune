@@ -74,7 +74,7 @@
     <string name="share">Partager</string>
     <string name="delete">Supprimer</string>
     <string name="remove_from_history">Supprimer de l\'historique</string>
-    <string name="remove_from_playlist">Supprimer de l\'historique</string>
+    <string name="remove_from_playlist">Supprimer de la playlist</string>
     <string name="remove_from_queue">Retirer de la file d\'attente</string>
     <string name="search_online">Recherche en ligne</string>
     <string name="tempo_and_pitch">Tempo et Hauteur</string>
@@ -389,7 +389,7 @@
     <string name="discord_show_when_paused_desc">Si cette option est activée, Rich Presence restera visible pendant la pause, avec une icône de pause. Si elle est désactivée, RPC disparaîtra pendant la pause.</string>
     <string name="discord_paused">En pause</string>
     <string name="logout_confirm_title">Confirmer la déconnexion</string>
-    <string name="logout_confirm_message">Êtes-vous sûr de vouloir vous déconnecter de Discord ?</string>
+    <string name="logout_confirm_message">Êtes-vous sûr de vouloir vous déconnecter de Discord ?</string>
     <string name="logout_confirm_yes">Déconnexion</string>
     <string name="logout_confirm_no">Annuler</string>
     <string name="experiment_settings">Paramètres avancés</string>
