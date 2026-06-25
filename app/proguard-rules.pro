@@ -141,3 +141,10 @@
 # Keep GlanceAppWidget and its receiver
 -keep class * extends androidx.glance.appwidget.GlanceAppWidget { *; }
 -keep class * extends androidx.glance.appwidget.GlanceAppWidgetReceiver { *; }
+
+# internal Ktor HTTP Client
+-keep class io.ktor.** { *; }
+-dontwarn io.ktor.**
+
+# engine HTTP Android/OkHttp Ktor
+-dontwarn kotlinx.coroutines.**
