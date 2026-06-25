@@ -6235,13 +6235,7 @@ class MusicService :
         }
 
         val lowDataModeActive = isLowDataModeActive()
-        val hiResLosslessSelected = preferredStreamClient == PlayerStreamClient.HI_RES_LOSSLESS
-        val authFingerprint =
-            if (hiResLosslessSelected) {
-                HiResLosslessPlaybackResolver.EXTERNAL_AUTH_FINGERPRINT
-            } else {
-                YouTube.currentPlaybackAuthState().fingerprint
-            }
+        val authFingerprint = YouTube.currentPlaybackAuthState().fingerprint
         playbackUrlCache[mediaId]
             ?.takeUnless { lowDataModeActive }
             ?.takeIf {
@@ -6267,24 +6261,6 @@ class MusicService :
 
         val playbackData =
             runBlocking(Dispatchers.IO) {
-                if (hiResLosslessSelected) {
-                    resolveHiResLosslessPlayback(mediaId).recoverCatching { externalFailure ->
-                        Timber.tag("MusicService").w(
-                            externalFailure,
-                            "Hi-Res external stream failed for %s; falling back to Web Remix",
-                            mediaId,
-                        )
-                        retryWithoutPlaybackLoginContext {
-                            YTPlayerUtils.playerResponseForPlayback(
-                                mediaId,
-                                audioQuality = if (lowDataModeActive) AudioQuality.LOW else audioQuality,
-                                connectivityManager = connectivityManager,
-                                preferredStreamClient = PlayerStreamClient.WEB_REMIX,
-                                networkMetered = lowDataModeActive,
-                            )
-                        }.getOrThrow()
-                    }
-                } else {
                     retryWithoutPlaybackLoginContext {
                         YTPlayerUtils.playerResponseForPlayback(
                             mediaId,
@@ -6310,7 +6286,6 @@ class MusicService :
                             throw youtubeFailure
                         }
                     }
-                }
             }.getOrElse { throwable ->
                 when {
                     throwable is YTPlayerUtils.InvalidPlaybackLoginContextException -> {
@@ -6457,52 +6432,6 @@ class MusicService :
             resolvedDataSpec.subrange(0L, nonNullLength)
         } ?: resolvedDataSpec
     }
-
-    private suspend fun resolveHiResLosslessPlayback(mediaId: String): Result<YTPlayerUtils.PlaybackData> =
-        runCatching {
-            val song = database.song(mediaId).first()
-            val mediaItem =
-                withContext(Dispatchers.Main) {
-                    player.findNextMediaItemById(mediaId)
-                        ?: player.currentMediaItem?.takeIf { it.mediaId == mediaId }
-                }
-            val mediaMetadata = mediaItem?.metadata
-            val mediaItemMetadata = mediaItem?.mediaMetadata
-            val title =
-                song?.song?.title?.takeIf { it.isNotBlank() }
-                    ?: mediaMetadata?.title?.takeIf { it.isNotBlank() }
-                    ?: mediaItemMetadata?.title?.toString()?.takeIf { it.isNotBlank() }
-                    ?: throw IllegalStateException("Missing track title for external stream lookup")
-            val artists =
-                song
-                    ?.artists
-                    ?.map { it.name }
-                    ?.filter { it.isNotBlank() }
-                    ?.takeIf { it.isNotEmpty() }
-                    ?: mediaMetadata
-                        ?.artists
-                        ?.map { it.name }
-                        ?.filter { it.isNotBlank() }
-                        ?.takeIf { it.isNotEmpty() }
-                    ?: mediaItemMetadata
-                        ?.artist
-                        ?.toString()
-                        ?.split(',', '&')
-                        ?.mapNotNull { it.trim().takeIf(String::isNotEmpty) }
-                        .orEmpty()
-            val durationSeconds =
-                song?.song?.duration?.takeIf { it > 0 }
-                    ?: mediaMetadata?.duration?.takeIf { it > 0 }
-
-            HiResLosslessPlaybackResolver
-                .resolve(
-                    HiResLosslessPlaybackResolver.TrackIdentity(
-                        title = title,
-                        artists = artists,
-                        durationSeconds = durationSeconds,
-                    ),
-                ).getOrThrow()
-        }
 
     private fun resolveCachedDataSpec(
         dataSpec: DataSpec,

@@ -21,6 +21,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -30,7 +31,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.navigation.NavController
-import moe.rukamori.archivetune.LocalDatabase
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.ArtistSeparatorsKey
@@ -204,11 +204,29 @@ fun PlayerSettings(
             WakelockKey,
             defaultValue = false,
         )
+    val playerStreamClients =
+        remember {
+            listOf(
+                PlayerStreamClient.ANDROID_VR,
+                PlayerStreamClient.WEB_REMIX,
+            )
+        }
+    val selectedPlayerStreamClient =
+        if (playerStreamClient in playerStreamClients) {
+            playerStreamClient
+        } else {
+            PlayerStreamClient.ANDROID_VR
+        }
 
     var showArtistSeparatorsDialog by remember { mutableStateOf(false) }
     var showTagsManagementDialog by remember { mutableStateOf(false) }
     var showExternalDownloaderPackageDialog by remember { mutableStateOf(false) }
-    val database = LocalDatabase.current
+
+    LaunchedEffect(playerStreamClient) {
+        if (playerStreamClient !in playerStreamClients) {
+            onPlayerStreamClientChange(PlayerStreamClient.ANDROID_VR)
+        }
+    }
 
     if (showArtistSeparatorsDialog) {
         ArtistSeparatorsDialog(
@@ -279,27 +297,18 @@ fun PlayerSettings(
                     title = { Text(stringResource(R.string.player_stream_client)) },
                     description = stringResource(R.string.player_stream_client_desc),
                     icon = { Icon(painterResource(R.drawable.integration), null) },
-                    selectedValue = playerStreamClient,
-                    values =
-                        remember {
-                            listOf(
-                                PlayerStreamClient.ANDROID_VR,
-                                PlayerStreamClient.WEB_REMIX,
-                                PlayerStreamClient.HI_RES_LOSSLESS,
-                            )
-                        },
+                    selectedValue = selectedPlayerStreamClient,
+                    values = playerStreamClients,
                     onValueSelected = onPlayerStreamClientChange,
                     valueText = {
                         when (it) {
                             PlayerStreamClient.ANDROID_VR -> stringResource(R.string.player_stream_client_android_vr)
-                            PlayerStreamClient.HI_RES_LOSSLESS -> stringResource(R.string.player_stream_client_hi_res_lossless)
                             else -> stringResource(R.string.player_stream_client_web_remix)
                         }
                     },
                     valueDescription = {
                         when (it) {
                             PlayerStreamClient.ANDROID_VR -> stringResource(R.string.player_stream_client_android_vr_desc)
-                            PlayerStreamClient.HI_RES_LOSSLESS -> stringResource(R.string.player_stream_client_hi_res_lossless_desc)
                             else -> stringResource(R.string.player_stream_client_web_remix_desc)
                         }
                     },
