@@ -6277,14 +6277,7 @@ class MusicService :
                             "YouTube stream clients hit bot detection for %s; trying external audio fallback",
                             mediaId,
                         )
-                        resolveHiResLosslessPlayback(mediaId).getOrElse { externalFailure ->
-                            Timber.tag("MusicService").w(
-                                externalFailure,
-                                "External audio fallback failed after YouTube bot detection for %s",
-                                mediaId,
-                            )
-                            throw youtubeFailure
-                        }
+                        throw youtubeFailure
                     }
             }.getOrElse { throwable ->
                 when {
