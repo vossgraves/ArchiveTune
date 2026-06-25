@@ -214,6 +214,8 @@ import moe.rukamori.archivetune.lastfm.LastFM
 import moe.rukamori.archivetune.lyrics.LyricsHelper
 import moe.rukamori.archivetune.lyrics.LyricsPreloadManager
 import moe.rukamori.archivetune.lyrics.LyricsUtils.displayLyricsText
+import moe.rukamori.archivetune.moriextractor.ArchiveTuneExtractorException
+import moe.rukamori.archivetune.moriextractor.StreamingExtractionManager
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.models.PersistPlayerState
 import moe.rukamori.archivetune.models.PersistQueue
@@ -349,8 +351,14 @@ class MusicService :
         PlayerStreamClient.ANDROID_VR,
     )
     private val playbackUrlCache = ConcurrentHashMap<String, AuthScopedCacheValue>()
+    private val extractorPlaybackUrlCache = ConcurrentHashMap<String, AuthScopedCacheValue>()
     private val remotePlaybackTrackingUrlCache = ConcurrentHashMap<String, String>()
     private val contentLengthCache = ConcurrentHashMap<String, Long>()
+    private val streamingExtractionManager by lazy {
+        StreamingExtractionManager(
+            bearerToken = moe.rukamori.archivetune.BuildConfig.EXTRACTOR_BEARER,
+        )
+    }
     private val mediaOkHttpClient: OkHttpClient by lazy {
         OkHttpClient
             .Builder()
@@ -529,6 +537,15 @@ class MusicService :
         while (current != null) {
             if (current is SocketTimeoutException) return true
             if (current.message?.contains("Request timeout has expired", ignoreCase = true) == true) return true
+            current = current.cause
+        }
+        return false
+    }
+
+    private fun Throwable.isNetworkConnectionFailure(): Boolean {
+        var current: Throwable? = this
+        while (current != null) {
+            if (current is ConnectException || current is UnknownHostException) return true
             current = current.cause
         }
         return false
@@ -2646,6 +2663,7 @@ class MusicService :
         val requestProfile = StreamClientUtils.resolveRequestProfile(failedUrl)
         val authFingerprint = YouTube.currentPlaybackAuthState().fingerprint
         val cachedFailedUrl = playbackUrlCache[mediaId]?.takeIf { it.url == failedUrl }
+        val cachedExtractorFailedUrl = extractorPlaybackUrlCache[mediaId]?.takeIf { it.url == failedUrl }
         val failedExpiredUrl =
             YTPlayerUtils.isExpiredOrNearExpiredStreamUrl(failedUrl) ||
                 (
@@ -2655,9 +2673,18 @@ class MusicService :
                             minimumRemainingMs = YTPlayerUtils.STREAM_URL_EXPIRY_SAFETY_MS,
                         )
                     } == true
+                ) ||
+                (
+                    cachedExtractorFailedUrl?.let {
+                        !it.isValidFor(
+                            authFingerprint = ArchiveTuneExtractorCacheFingerprint,
+                            minimumRemainingMs = 0L,
+                        )
+                    } == true
                 )
 
         playbackUrlCache.remove(mediaId)
+        extractorPlaybackUrlCache.remove(mediaId)
         YTPlayerUtils.invalidateCachedStreamUrls(mediaId)
         if (!failedExpiredUrl && requestProfile.clientKey.isNotEmpty()) {
             YTPlayerUtils.markStreamClientFailed(mediaId, requestProfile.clientKey, responseException.responseCode)
@@ -5960,6 +5987,7 @@ class MusicService :
             )
 
             playbackUrlCache.remove(currentMediaId)
+            extractorPlaybackUrlCache.remove(currentMediaId)
             YTPlayerUtils.invalidateCachedStreamUrls(currentMediaId)
 
             scope.launch(Dispatchers.IO) {
@@ -5993,6 +6021,7 @@ class MusicService :
 
         if (!isLocalMedia && !isFullyCachedMedia && YTPlayerUtils.isBotDetectionException(error)) {
             playbackUrlCache.remove(currentMediaId)
+            extractorPlaybackUrlCache.remove(currentMediaId)
             YTPlayerUtils.invalidateCachedStreamUrls(currentMediaId)
             YTPlayerUtils.clearPlaybackAuthCaches()
             if (playbackStreamRecoveryTracker.registerRetryAttempt(currentMediaId)) {
@@ -6004,6 +6033,7 @@ class MusicService :
 
         if (!isLocalMedia && !isFullyCachedMedia && YTPlayerUtils.isBadStreamPlayerResponseException(error)) {
             playbackUrlCache.remove(currentMediaId)
+            extractorPlaybackUrlCache.remove(currentMediaId)
             YTPlayerUtils.invalidateCachedStreamUrls(currentMediaId)
             if (playbackStreamRecoveryTracker.registerRetryAttempt(currentMediaId)) {
                 scope.launch(Dispatchers.IO) {
@@ -6033,6 +6063,7 @@ class MusicService :
 
         if (!isLocalMedia && !isFullyCachedMedia && isRetryableRemoteParserFailure(error)) {
             playbackUrlCache.remove(currentMediaId)
+            extractorPlaybackUrlCache.remove(currentMediaId)
             YTPlayerUtils.invalidateCachedStreamUrls(currentMediaId)
             if (playbackStreamRecoveryTracker.registerRetryAttempt(currentMediaId)) {
                 Timber.tag("MusicService").i(
@@ -6235,6 +6266,13 @@ class MusicService :
         }
 
         val lowDataModeActive = isLowDataModeActive()
+        if (preferredStreamClient == PlayerStreamClient.ARCHIVETUNE_EXTRACTOR) {
+            return resolveArchiveTuneExtractorDataSpec(
+                dataSpec = dataSpec,
+                mediaId = mediaId,
+            )
+        }
+
         val authFingerprint = YouTube.currentPlaybackAuthState().fingerprint
         playbackUrlCache[mediaId]
             ?.takeUnless { lowDataModeActive }
@@ -6318,7 +6356,7 @@ class MusicService :
                         throw throwable
                     }
 
-                    throwable is java.net.ConnectException || throwable is java.net.UnknownHostException -> {
+                    throwable.isNetworkConnectionFailure() -> {
                         throw PlaybackException(
                             getString(R.string.error_no_internet),
                             throwable,
@@ -6425,6 +6463,78 @@ class MusicService :
             resolvedDataSpec.subrange(0L, nonNullLength)
         } ?: resolvedDataSpec
     }
+
+    private fun resolveArchiveTuneExtractorDataSpec(
+        dataSpec: DataSpec,
+        mediaId: String,
+    ): DataSpec {
+        extractorPlaybackUrlCache[mediaId]
+            ?.takeIf {
+                it.isValidFor(
+                    authFingerprint = ArchiveTuneExtractorCacheFingerprint,
+                    minimumRemainingMs = 0L,
+                )
+            }?.let { cached ->
+                scope.launch(Dispatchers.IO) { recoverSong(mediaId) }
+                return dataSpec.withUri(cached.url.toUri())
+            }
+
+        val streamUrl =
+            runCatching {
+                runBlocking(Dispatchers.IO) {
+                    streamingExtractionManager.extractAudioUrl(mediaId.toYouTubeWatchUrl())
+                }
+            }.getOrElse { throwable ->
+                when {
+                    throwable.isNetworkConnectionFailure() -> {
+                        throw PlaybackException(
+                            getString(R.string.error_no_internet),
+                            throwable,
+                            PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
+                        )
+                    }
+
+                    throwable.isRequestTimeout() -> {
+                        throw PlaybackException(
+                            getString(R.string.error_timeout),
+                            throwable,
+                            PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,
+                        )
+                    }
+
+                    throwable is ArchiveTuneExtractorException -> {
+                        throw PlaybackException(
+                            getString(R.string.error_no_stream),
+                            throwable,
+                            PlaybackException.ERROR_CODE_REMOTE_ERROR,
+                        )
+                    }
+
+                    throwable is PlaybackException -> {
+                        throw throwable
+                    }
+
+                    else -> {
+                        throw PlaybackException(
+                            getString(R.string.error_unknown),
+                            throwable,
+                            PlaybackException.ERROR_CODE_REMOTE_ERROR,
+                        )
+                    }
+                }
+            }
+
+        extractorPlaybackUrlCache[mediaId] =
+            AuthScopedCacheValue(
+                url = streamUrl,
+                expiresAtMs = System.currentTimeMillis() + ArchiveTuneExtractorCacheTtlMs,
+                authFingerprint = ArchiveTuneExtractorCacheFingerprint,
+            )
+        scope.launch(Dispatchers.IO) { recoverSong(mediaId) }
+        return dataSpec.withUri(streamUrl.toUri())
+    }
+
+    private fun String.toYouTubeWatchUrl(): String = "https://www.youtube.com/watch?v=$this"
 
     private fun resolveCachedDataSpec(
         dataSpec: DataSpec,
@@ -7281,5 +7391,7 @@ class MusicService :
         const val MIN_AUDIBLE_EFFECTIVE_VOLUME = 0.01f
         const val STUCK_MUTED_VOLUME_EPSILON = 0.001f
         const val AUDIBLE_PLAYBACK_VOLUME_CHECK_MS = 2_000L
+        private const val ArchiveTuneExtractorCacheFingerprint = "archivetune_extractor"
+        private const val ArchiveTuneExtractorCacheTtlMs = 5 * 60 * 1000L
     }
 }

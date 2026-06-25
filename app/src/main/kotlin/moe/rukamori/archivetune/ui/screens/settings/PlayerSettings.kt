@@ -209,6 +209,7 @@ fun PlayerSettings(
             listOf(
                 PlayerStreamClient.ANDROID_VR,
                 PlayerStreamClient.WEB_REMIX,
+                PlayerStreamClient.ARCHIVETUNE_EXTRACTOR,
             )
         }
     val selectedPlayerStreamClient =
@@ -217,6 +218,7 @@ fun PlayerSettings(
         } else {
             PlayerStreamClient.ANDROID_VR
         }
+    val audioQualityEnabled = selectedPlayerStreamClient != PlayerStreamClient.ARCHIVETUNE_EXTRACTOR
 
     var showArtistSeparatorsDialog by remember { mutableStateOf(false) }
     var showTagsManagementDialog by remember { mutableStateOf(false) }
@@ -281,6 +283,7 @@ fun PlayerSettings(
                     icon = { Icon(painterResource(R.drawable.graphic_eq), null) },
                     selectedValue = audioQuality,
                     onValueSelected = onAudioQualityChange,
+                    isEnabled = audioQualityEnabled,
                     valueText = {
                         when (it) {
                             AudioQuality.HIGHEST -> stringResource(R.string.audio_quality_max)
@@ -303,12 +306,16 @@ fun PlayerSettings(
                     valueText = {
                         when (it) {
                             PlayerStreamClient.ANDROID_VR -> stringResource(R.string.player_stream_client_android_vr)
+                            PlayerStreamClient.WEB_REMIX -> stringResource(R.string.player_stream_client_web_remix)
+                            PlayerStreamClient.ARCHIVETUNE_EXTRACTOR -> stringResource(R.string.player_stream_client_archivetune_extractor)
                             else -> stringResource(R.string.player_stream_client_web_remix)
                         }
                     },
                     valueDescription = {
                         when (it) {
                             PlayerStreamClient.ANDROID_VR -> stringResource(R.string.player_stream_client_android_vr_desc)
+                            PlayerStreamClient.WEB_REMIX -> stringResource(R.string.player_stream_client_web_remix_desc)
+                            PlayerStreamClient.ARCHIVETUNE_EXTRACTOR -> stringResource(R.string.player_stream_client_archivetune_extractor_desc)
                             else -> stringResource(R.string.player_stream_client_web_remix_desc)
                         }
                     },

@@ -395,6 +395,10 @@ object YTPlayerUtils {
                 WEB_REMIX
             }
 
+            PlayerStreamClient.ARCHIVETUNE_EXTRACTOR -> {
+                if (authState.hasPlaybackLoginContext) ANDROID_MUSIC else ANDROID_VR_NO_AUTH
+            }
+
             PlayerStreamClient.HI_RES_LOSSLESS -> {
                 WEB_REMIX
             }
@@ -560,7 +564,11 @@ object YTPlayerUtils {
             addAll(
                 PlayerStreamClient
                     .values()
-                    .filterNot { it == PlayerStreamClient.WEB_REMIX || it == PlayerStreamClient.ANDROID_VR },
+                    .filterNot {
+                        it == PlayerStreamClient.WEB_REMIX ||
+                            it == PlayerStreamClient.ANDROID_VR ||
+                            it == PlayerStreamClient.ARCHIVETUNE_EXTRACTOR
+                    },
             )
             add(PlayerStreamClient.ANDROID_VR)
         }.distinct()
