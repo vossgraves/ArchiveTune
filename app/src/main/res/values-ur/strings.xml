@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="home">گھر</string>
-    <string name="songs">گانے</string>
+    <string name="songs">گیت</string>
     <string name="artists">کلاکار</string>
     <string name="albums">البومات</string>
     <string name="playlists">مجموعہ گیت</string>
@@ -14,7 +14,7 @@
     <string name="mood_and_genres">رنگ و انداز</string>
     <string name="account">اکاَئونٹ</string>
     <string name="quick_picks">فوری پکس</string>
-    <string name="speed_dial">سپید ڈائل</string>
+    <string name="speed_dial">سپیڈ ڈائل</string>
     <string name="forgotten_favorites">بھولے ہوئے پسندیدہ</string>
     <string name="keep_listening">سنتے رہیے</string>
     <string name="your_youtube_playlists">آپکے یوٹیوب کے مجموعہ گیت</string>
@@ -41,12 +41,12 @@
     <string name="filter_community_playlists">سماجی مجموعہ گیت</string>
     <string name="filter_featured_playlists">نمایاں مجموعہ گیت</string>
     <string name="no_results_found">کوئ نتیجہ میسر نہیں</string>
-    <string name="top_results">اہم نتئاج</string>
+    <string name="top_results">اہم نتائج</string>
     <string name="library_title">آپکی فہرست</string>
     <string name="library_subtitle">آپکی موسیقی، آپکے لئے منظم کردہ</string>
     <string name="library_playlists_subtitle">آپکے سارے مجموعہ گیت، آپکے لئے منظم کردہ</string>
     <string name="library_songs_subtitle">آپکے سارے گیت، آپکے لئے منظم کردہ</string>
-    <string name="library_artists_subtitle">آپکی سارے کلکار، اک مرکز پر</string>
+    <string name="library_artists_subtitle">آپکے سارے کلاکار، اک مرکز پر</string>
     <string name="library_albums_subtitle">آپکے سارے مجموعہ گیت،خوبصورتی سے منظم کردہ</string>
     <string name="most_played_badge">سب سے زیادہ سنا گیا</string>
     <string name="play_all">سب سنیں</string>
@@ -57,16 +57,16 @@
     <string name="instant_playback">فوری نشر</string>
     <string name="on_device">اختراع آلہ پر</string>
     <string name="recently_played">حالیہ سنا گیا</string>
-    <string name="top_mixes">اپکے لئے مخلوط اعلیٰ</string>
-    <string name="library_top_mixes_loading">آپکے اے آئ مخلوط تیار کیے جا رہے ہیں…</string>
-    <string name="library_top_mixes_refresh">مخلوط کو تازہ کریں</string>
+    <string name="top_mixes">آپکے لئے اعلیٰ امیزہ گیت</string>
+    <string name="library_top_mixes_loading">آپکے اے آئ امیزہ گیت تیار کیے جا رہے ہیں…</string>
+    <string name="library_top_mixes_refresh">آمیزہ گیت کو تازہ کریں</string>
     <string name="library_top_mixes_configure_ai">اے آئ کی تشکیل کریں</string>
-    <string name="library_top_mixes_ai_not_configured_title">اے آئ کو مخلوط کروانے کی تشکیل کریں</string>
-    <string name="library_top_mixes_ai_not_configured_desc">زاتی مخلوط کی تعمیر کے لئے آرکائو ٹیون کو اے آئ کی تشکیل ضروری ہے۔</string>
-    <string name="library_top_mixes_no_recent_history_title">کوئ حالیہ سننے والا مخلوط نہیں</string>
-    <string name="library_top_mixes_no_recent_history">مزید گیت سنیں پھر تازہ کر کے حالیہ سرگزشت سے اے آئ مخلوط تعمیر کریں۔</string>
-    <string name="library_top_mixes_no_valid_mixes">آپکی حالیہ سرگزشت سے اے آئ کوئ امیزہ تیار نہیں کر سکا۔</string>
-    <string name="library_top_mixes_failed">اعلیٰ امیزہ مخلوط کرنے میں ناکام</string>
+    <string name="library_top_mixes_ai_not_configured_title">اے آئ کو آمیزہ گیت کروانے کی تشکیل کریں</string>
+    <string name="library_top_mixes_ai_not_configured_desc">زاتی امیزہ گیت کو تیار کرنے کے لئے آرکائو ٹیون کو اے آئ کی تشکیل ضروری ہے۔</string>
+    <string name="library_top_mixes_no_recent_history_title">کوئ حالیہ آمیزہ گیت نہیں</string>
+    <string name="library_top_mixes_no_recent_history">مزید گیت سنیں پھر تازہ کر کے حالیہ سرگزشت سے اے آئ آمیزہ گیت تیار کریں۔</string>
+    <string name="library_top_mixes_no_valid_mixes">آپکی حالیہ سرگزشت سے اے آئ کوئ امیزہ گیت تیار نہیں کر سکا۔</string>
+    <string name="library_top_mixes_failed">اعلیٰ امیزہ گیت تیار کرنے میں ناکام</string>
     <string name="your_playlists">آپکے مجموعہ گیت</string>
     <string name="see_all">سب دیکھیں</string>
     <string name="your_artists">آپکے کلاکار</string>
@@ -81,11 +81,15 @@
     <string name="sort_descending">گھٹتی ہوئ</string>
     <string name="sort_ascending">بڑھتی ہوئ</string>
     <string name="your_collection">آپکا مجموعہ</string>
-    <string name="playing_desc">چل رہا ہے</string>
+    <string name="playing_desc">سنا جا رہا ہے</string>
     <string name="tracks_label">گانے</string>
     <string name="song_singular">گیت</string>
     <string name="more_playlists_desc">مزید مجموعہ گیت</string>
     <string name="more_label">مزید</string>
     <string name="tracks_count_label">گانوں کی تعداد</string>
     <string name="recently_updated">حالیہ پیش رفت کردہ</string>
+    <string name="custom_order">حسب ضرورت تربیب</string>
+    <string name="list_view">لسٹ ویو</string>
+    <string name="grid_view">گرڈ ویو</string>
+    <string name="personal_label">زاتی</string>
 </resources>
