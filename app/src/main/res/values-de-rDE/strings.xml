@@ -1,4 +1,4 @@
-<?xml version='1.0' encoding='utf-8'?>
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="home">Home</string>
     <string name="songs">Lieder</string>
@@ -269,7 +269,7 @@
     <string name="system_default">Systemstandard</string>
     <string name="enable_proxy">Proxy aktivieren</string>
     <string name="proxy_type">Proxy-Typ</string>
-    <string name="enable_betterlyrics">Aktivieren Sie BetterLyrics</string>
+    <string name="enable_betterlyrics">BetterLyrics aktivieren</string>
     <string name="player_and_audio">Player und Audio</string>
     <string name="audio_quality">Audioqualität</string>
     <string name="audio_quality_auto">Auto</string>
@@ -278,7 +278,7 @@
     <string name="queue">Warteschlange</string>
     <string name="persistent_queue">Persistente Warteschlange</string>
     <string name="persistent_queue_desc">Stellen Sie Ihre letzte Warteschlange wieder her, wenn die App gestartet wird</string>
-    <string name="skip_silence">Überspringen Sie die Stille</string>
+    <string name="skip_silence">Stille überspringen</string>
     <string name="audio_normalization">Audionormalisierung</string>
     <string name="auto_skip_next_on_error">Automatisches Springen zum nächsten Lied, wenn ein Fehler auftritt</string>
     <string name="auto_skip_next_on_error_desc">Sorgen Sie für ein kontinuierliches Wiedergabeerlebnis</string>
@@ -449,4 +449,11 @@
     <string name="album_backdrop_desc">Kunstwerk als unscharfen Hintergrund auf dem Player anzeigen</string>
     <string name="backdrop_blur_amount">Stärke der Hintergrundunschärfe</string>
     <string name="backdrop_blur_amount_value">%1$d%%</string>
+    <string name="enable_unison_lyrics">Unison Songtexte aktivieren</string>
+    <string name="enable_simpmusic_lyrics">SimpMusic Songtexte aktivieren</string>
+    <string name="enable_paxsenix_lyrics">Paxsenix Songtexte aktivieren</string>
+    <string name="low_data_mode_title">Datensparmodus</string>
+    <string name="low_data_mode_description">Reduziert den mobilen Datenverbrauch, indem in Netzwerken mit Datenvolumenbegrenzung Streams in niedriger Qualität verwendet und die Wiedergabecache-Funktion, Canvas sowie das Vorladen von Songtexten im Hintergrund deaktiviert werden</string>
+    <string name="permanent_shuffle">Permanenter Shuffle-Modus</string>
+    <string name="permanent_shuffle_desc">Lässt Schuffle aktiviert, wenn du einen neuen Song startest</string>
 </resources>
