@@ -1423,7 +1423,7 @@ class MainActivity : ComponentActivity() {
                                         val launch = withContext(Dispatchers.IO) { dataStore[LaunchCountKey] ?: 0 }
                                         withContext(Dispatchers.IO) {
                                             dataStore.edit { prefs ->
-                                                prefs[RemindAfterKey] = launch + 10
+                                                prefs[RemindAfterKey] = launch + 20
                                             }
                                         }
                                     } catch (e: Exception) {
