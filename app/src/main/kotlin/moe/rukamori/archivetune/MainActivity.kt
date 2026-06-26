@@ -2113,6 +2113,10 @@ class MainActivity : ComponentActivity() {
                                                 onItemClick = { screen, isSelected ->
                                                     handlePrimaryNavigationClick(screen, isSelected)
                                                 },
+                                                onSearchItemDoubleClick = {
+                                                    searchSource = SearchSource.ONLINE
+                                                    openSearch()
+                                                },
                                             )
                                         }
                                     }
