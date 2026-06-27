@@ -92,7 +92,7 @@
     <string name="list_view">لسٹ ویو</string>
     <string name="grid_view">گرڈ ویو</string>
     <string name="personal_label">زاتی</string>
-    <string name="youtube_synced">یوٹیوب سے ربط ہوا</string>
+    <string name="youtube_synced">یوٹیوب سے ہم عہد ہوا</string>
     <string name="options_label">انتخاب</string>
     <string name="top_artist_badge">سب سے اوپر کا کلاکار</string>
     <string name="no_artist_yet">اب تک کوئ کلاکار نہیں</string>
@@ -233,10 +233,10 @@
     <string name="loudness">شور</string>
     <string name="volume">مقدارِ آواز</string>
     <string name="file_size">حجمِ فائل</string>
-    <string name="unknown">غیر معروف</string>
+    <string name="unknown">نامعلوم</string>
     <string name="copied">تختہ پر نقل کیا</string>
     <string name="search_lyrics">بول تلاش کریں</string>
-    <string name="lyrics_synced_badge">ربط ہوا</string>
+    <string name="lyrics_synced_badge">ہم عہد ہوا</string>
     <string name="lyrics_search_plain_badge">سادہ</string>
     <string name="lyrics_searching_providers">تلاش کرنے والے مہیا کار</string>
     <string name="lyrics_search_still_searching">ابھی تک تلاش کر رہا ہے</string>
@@ -246,4 +246,70 @@
     <string name="song_title">گیت کا نام</string>
     <string name="song_artists">گیت کے کلاکار</string>
     <string name="unsupported_language">بے تائید زبان :%1$s</string>
+    <string name="save">حفظ</string>
+    <string name="edit_playlist">مجموعہ گیت کی ترمیم کریں</string>
+    <string name="create_playlist">مجموعہ گیت تخلیق کریں</string>
+    <string name="playlist_name">مجموعہ گیت کا نام</string>
+    <string name="artist_name">کلاکار کا نام</string>
+    <string name="duplicates">دوہرات</string>
+    <string name="skip_duplicates">دوہرات کو چھوڑیں</string>
+    <string name="add_anyway">بہر طور شامل کریں</string>
+    <string name="duplicates_description_single">یہ گیت آپکے مجموعہ گیت میں پہلے سے موجود ہے</string>
+    <string name="duplicates_description_multiple">%d گیت آپکے مجموعہ گیت میں پہلے سے موجود ہیں</string>
+    <plurals name="n_song">
+        <item quantity="one">%d گیت</item>
+        <item quantity="other">%d گیت</item>
+    </plurals>
+    <plurals name="n_artist">
+        <item quantity="one">%d کلاکار</item>
+        <item quantity="other">%d کلاکار</item>
+    </plurals>
+    <plurals name="n_album">
+        <item quantity="one">%d البم</item>
+        <item quantity="other">%d البومات</item>
+    </plurals>
+    <plurals name="n_playlist">
+        <item quantity="one">%d مجموعہ گیت</item>
+        <item quantity="other">%d مجموعہ گیت</item>
+    </plurals>
+    <plurals name="n_week">
+        <item quantity="one">%d ہفتہ</item>
+        <item quantity="other">%d ہفتے</item>
+    </plurals>
+    <plurals name="n_month">
+        <item quantity="one">%d مہینہ</item>
+        <item quantity="other">%d مہینے</item>
+    </plurals>
+    <plurals name="n_year">
+        <item quantity="one">%d سال</item>
+        <item quantity="other">%d سال</item>
+    </plurals>
+    <string name="added_to_playlist">%s میں شامل کیا</string>
+    <string name="added_n_songs_to_playlist">%1$d گیت کو %2$s میں شامل کیا</string>
+    <string name="added_to_n_playlists">%d مجموعہ گیت میں شامل کیا</string>
+    <string name="added_n_songs_to_n_playlists">%1$d گیت کو %2$d مجموعہ گیت میں شامل کیا</string>
+    <string name="playlist_synced">مجموعہ گیت ہم عہد ہوا</string>
+    <string name="undo">تردید</string>
+    <string name="lyrics_not_found">بول نہ مل سکے</string>
+    <string name="lyrics_word_sync">الفاظ کی ہم عہدی</string>
+    <string name="sleep_timer">نیند ٹائمر</string>
+    <string name="end_of_song">گیت کا اختتام</string>
+    <plurals name="minute">
+        <item quantity="one">ایک منٹ</item>
+        <item quantity="other">%d منٹ</item>
+    </plurals>
+    <string name="error_no_stream">نشر دستیاب نہیں</string>
+    <string name="error_no_internet">کوئ نیٹورک ربط نہیں</string>
+    <string name="error_timeout">وقت ختم</string>
+    <string name="error_malformed_stream">مصدر کی تحریف</string>
+    <string name="error_unknown">نامعلوم تحریف</string>
+    <string name="action_like">بسند</string>
+    <string name="action_remove_like">پسند کردہ سے حزف کریں</string>
+    <string name="action_shuffle_on">‍گڈمڈ کریں</string>
+    <string name="action_shuffle_off">‍گڈمڈ بند کریں</string>
+    <string name="repeat_mode_off">دوہرانا بند کریں</string>
+    <string name="repeat_mode_one">موجودہ گیت کو دوہرائیں</string>
+    <string name="repeat_mode_all">قطار کو دوہرائیں</string>
+    <string name="queue_all_songs">سارے گیت</string>
+    <string name="queue_searched_songs">مقرر شدہ گیت</string>
 </resources>
