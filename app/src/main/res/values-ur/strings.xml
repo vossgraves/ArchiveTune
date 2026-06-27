@@ -242,4 +242,8 @@
     <string name="lyrics_search_still_searching">ابھی تک تلاش کر رہا ہے</string>
     <string name="lyrics_search_results_count">%1$d نتائج</string>
     <string name="lyrics_search_result_stats">%1$d سطریں، %2$d حروف</string>
+    <string name="edit_song">گیت کی ترمیم کریں</string>
+    <string name="song_title">گیت کا نام</string>
+    <string name="song_artists">گیت کے کلاکار</string>
+    <string name="unsupported_language">بے تائید زبان :%1$s</string>
 </resources>
