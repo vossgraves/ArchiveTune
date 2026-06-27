@@ -214,7 +214,7 @@
     <string name="aod_mode_exit">اے او ڈی سے نکلیں</string>
     <string name="tempo">ٹیمپو</string>
     <string name="pitch">پچ</string>
-    <string name="pitch_mode_semitones_short">سیمی ٹون</string>
+    <string name="pitch_mode_semitones_short">st</string>
     <string name="pitch_mode_multiplier_short">x</string>
     <string name="sort_by_create_date">تاریخ اضافہ</string>
     <string name="sort_by_name">نام</string>
@@ -314,7 +314,7 @@
     <string name="queue_searched_songs">مقرر شدہ گیت</string>
     <string name="queue_continue_playing">سننا جاری رکھیں</string>
     <string name="queue_autoplaying_similar">ایک جیسے گیت خود بجائیں</string>
-    <string name="music_player">مشغلِ موسقی</string>
+    <string name="music_player">پخش کننده موسیقی</string>
     <string name="settings">تنظیمات</string>
     <string name="appearance">صورت</string>
     <string name="theme">بناوٹ</string>
@@ -431,4 +431,25 @@
     <string name="blur_intensity">دھندلاوٹ کی شدت</string>
     <string name="blur_intensity_value">%1$d dp</string>
     <string name="album_backdrop">پس منظر کی دھندلاوٹ</string>
+    <string name="album_backdrop_desc">پخش کننده کے پس منظر پر البم کی تصویر دھندلی کرکے دکھائیں</string>
+    <string name="backdrop_blur_amount">پس منظر کی دھندلاوٹ کی مقدار</string>
+    <string name="backdrop_blur_amount_value">%1$d%%</string>
+    <string name="player">پخش کننده</string>
+    <string name="player_slider_style">پخش کننده کے سلاخ کا انداز</string>
+    <string name="player_and_audio">پخش کننده اور سمعی</string>
+    <string name="slider_style_standard">معمولی</string>
+    <string name="slider_style_wavy">لہراتا</string>
+    <string name="slider_style_thick">موٹا</string>
+    <string name="slider_style_circular">گول</string>
+    <string name="slider_style_simple">سادہ</string>
+    <string name="misc">متفرق</string>
+    <string name="haptics">تھرتھرانا</string>
+    <string name="haptics_desc">تفاعلی عناصر پر تھرتھرانا فیعل کریں</string>
+    <string name="default_open_tab">کھلنے کے بعد کا ڈیفالٹ پنا</string>
+    <string name="lyrics_animation_style">بول کی حراکات کا طرز</string>
+    <string name="lyrics_mode">بول کا اسلوب</string>
+    <string name="lyrics_mode_v2">V2 میراث</string>
+    <string name="lyrics_mode_enhanced">ان ہینسڈ</string>
+    <string name="lyrics_animation_style_v2_only">صرف V2 بول اسلوب میں دستیاب ہے</string>
+    <string name="low_data_mode_title">کم ڈیٹا اسلوب</string>
 </resources>
