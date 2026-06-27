@@ -422,4 +422,13 @@
     <string name="show_button1_description">ڈسکورڈ رچ پریژنس کے پہلے رکمے کی رؤیت کو تبدیل کریں</string>
     <string name="show_button2_description">ڈسکورڈ رچ پریژنس کے دوسرے رکمے کی رؤیت کو تبدیل کریں</string>
     <string name="discord_activity_type">مشق کی قسم</string>
+    <string name="dark_theme_follow_system">سسٹم کی تابع داری کریں</string>
+    <string name="pure_black">بلکل کالا</string>
+    <string name="disable_blur">دھندلاوٹ غیر فعل کریں</string>
+    <string name="disable_blur_desc">پورے ایپ سے دھندلاوٹ غیر فعل کریں</string>
+    <string name="disable_animations">حرکات غیر فعل کریں</string>
+    <string name="disable_animations_desc">ایپ کی زیادہ تر حرکات غیر فعل کریں۔کمزور اختراع آلہ کے لئے صلاح شدہ</string>
+    <string name="blur_intensity">دھندلاوٹ کی شدت</string>
+    <string name="blur_intensity_value">%1$d dp</string>
+    <string name="album_backdrop">پس منظر کی دھندلاوٹ</string>
 </resources>
