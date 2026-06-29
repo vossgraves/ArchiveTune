@@ -119,6 +119,7 @@ import moe.rukamori.archivetune.constants.LyricsRomanizeOtherLanguagesKey
 import moe.rukamori.archivetune.constants.LyricsTextSizeKey
 import moe.rukamori.archivetune.constants.PlayerBackgroundStyle
 import moe.rukamori.archivetune.constants.PlayerBackgroundStyleKey
+import moe.rukamori.archivetune.db.entities.LyricsEntity
 import moe.rukamori.archivetune.db.entities.LyricsEntity.Companion.LYRICS_NOT_FOUND
 import moe.rukamori.archivetune.lyrics.LyricsEntry
 import moe.rukamori.archivetune.lyrics.LyricsRomanizationPreferences
@@ -228,6 +229,10 @@ fun LyricsEnhanced(
             currentLyrics
                 ?.takeIf { lyricsEntity -> lyricsEntity.id == mediaMetadata?.id }
                 ?.lyrics
+        }
+    val showTranslations =
+        remember(currentLyrics?.source) {
+            currentLyrics?.source == LyricsEntity.Source.AI_TRANSLATION.value
         }
     val lyricsSessionKey =
         remember(mediaMetadata?.id, lyrics) {
@@ -729,7 +734,7 @@ fun LyricsEnhanced(
                             phoneticTextStyle = phoneticTextStyle,
                             blendMode = BlendMode.SrcOver,
                             useBlurEffect = lyricsLineBlur,
-                            showTranslation = true,
+                            showTranslation = showTranslations,
                             showPhonetic = romanizationPreferences.isEnabled,
                             offset = lyricsViewportOffset,
                             keepAliveZone = 72.dp,

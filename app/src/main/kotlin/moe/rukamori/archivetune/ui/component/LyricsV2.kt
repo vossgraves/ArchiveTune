@@ -134,6 +134,7 @@ import moe.rukamori.archivetune.constants.LyricsV2GlowFactorKey
 import moe.rukamori.archivetune.constants.LyricsV2LrcBounceEnabledKey
 import moe.rukamori.archivetune.constants.PlayerBackgroundStyle
 import moe.rukamori.archivetune.constants.PlayerBackgroundStyleKey
+import moe.rukamori.archivetune.db.entities.LyricsEntity
 import moe.rukamori.archivetune.db.entities.LyricsEntity.Companion.LYRICS_NOT_FOUND
 import moe.rukamori.archivetune.lyrics.LyricsEntry
 import moe.rukamori.archivetune.lyrics.LyricsRomanizationPreferences
@@ -274,6 +275,10 @@ fun LyricsV2(
     // ── Lyrics data ──
     val currentLyrics by playerConnection.currentLyrics.collectAsState(initial = null)
     val lyrics = currentLyrics?.lyrics
+    val showTranslations =
+        remember(currentLyrics?.source) {
+            currentLyrics?.source == LyricsEntity.Source.AI_TRANSLATION.value
+        }
 
     // ── Parse lyrics into entries ──
     val isSynced = remember(lyrics) { lyrics != null && (isLineSyncedLrc(lyrics!!) || isTtml(lyrics!!)) }
@@ -853,7 +858,10 @@ fun LyricsV2(
                             } else {
                                 null
                             }
-                        val translationText = remember(item.providerTranslationText, item.text) { providedTranslationTextForEntry(item) }
+                        val translationText =
+                            remember(showTranslations, item.providerTranslationText, item.text) {
+                                if (showTranslations) providedTranslationTextForEntry(item) else null
+                            }
                         val supplementaryBaseTextStyle = MaterialTheme.typography.bodyMedium
                         val supplementaryTextStyle =
                             remember(supplementaryBaseTextStyle, lyricsTextSize, lyricsFontFamily, isAllBackground) {
