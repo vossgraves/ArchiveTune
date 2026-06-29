@@ -864,4 +864,7 @@
     <string name="widget_no_recent_songs">Aún no hay canciones recientes</string>
     <string name="widget_no_genres">Aún no hay géneros</string>
     <string name="widget_no_recommendations">Sin recomendaciones</string>
+    <string name="library_top_mixes_loading">Preparando tus mezclas de IA…</string>
+    <string name="library_top_mixes_refresh">Actualizar las mezclas</string>
+    <string name="library_top_mixes_configure_ai">Configurar la IA</string>
 </resources>
