@@ -621,7 +621,7 @@
     <string name="allow">권한 승인</string>
     <string name="you_might_like">당신을 위한 맞춤 추천 리스트</string>
     <string name="refresh_suggestions">추천 리스트 새로고침</string>
-    <string name="you_might_like_source">추천 음원 추출 기준</string>
+    <string name="you_might_like_source">재생목록 추천 소스</string>
     <string name="playlist_suggestion_source_title">내 재생목록 타이틀 기준</string>
     <string name="playlist_suggestion_source_content">내 재생목록에 담긴 수록 곡 기준</string>
     <string name="playlist_suggestion_source_both">내 재생목록 타이틀 및 수록 곡 모두 기준</string>
@@ -998,4 +998,6 @@
     <string name="hidden_playlists_description">보관함 목록에서 숨김 처리된 모든 플레이리스트를 조회하고 관리합니다.</string>
     <string name="no_hidden_playlists">숨겨진 플레이리스트가 존재하지 않습니다.</string>
     <string name="unhide">숨기기 해제</string>
+    <string name="source">소스</string>
+    <string name="enable_youlyplus_lyrics">YouLyPlus 자막 활성화</string>
 </resources>
