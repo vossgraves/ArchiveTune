@@ -72,8 +72,19 @@ fun IconScreen(
     viewModel: IconViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    val navigateUp = remember(navController) { { navController.navigateUp() } }
-    val navigateHome = remember(navController) { { navController.backToMain() } }
+    val navigateUp: () -> Unit =
+        remember(navController) {
+            {
+                navController.navigateUp()
+                Unit
+            }
+        }
+    val navigateHome: () -> Unit =
+        remember(navController) {
+            {
+                navController.backToMain()
+            }
+        }
     val retry = remember(viewModel) { { viewModel.retry() } }
     val selectIcon =
         remember(viewModel) {
