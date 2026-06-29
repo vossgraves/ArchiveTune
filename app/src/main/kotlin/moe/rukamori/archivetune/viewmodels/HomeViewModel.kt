@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.supervisorScope
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.auth.SwitchSavedYouTubeAccountUseCase
 import moe.rukamori.archivetune.constants.AccountChannelHandleKey
 import moe.rukamori.archivetune.constants.AccountEmailKey
 import moe.rukamori.archivetune.constants.AccountNameKey
@@ -33,7 +34,6 @@ import moe.rukamori.archivetune.constants.QuickPicks
 import moe.rukamori.archivetune.constants.QuickPicksKey
 import moe.rukamori.archivetune.constants.SpeedDialSongIdsKey
 import moe.rukamori.archivetune.constants.YtmSyncKey
-import moe.rukamori.archivetune.auth.SwitchSavedYouTubeAccountUseCase
 import moe.rukamori.archivetune.db.MusicDatabase
 import moe.rukamori.archivetune.db.entities.*
 import moe.rukamori.archivetune.extensions.toEnum
@@ -49,7 +49,6 @@ import moe.rukamori.archivetune.innertube.models.WatchEndpoint
 import moe.rukamori.archivetune.innertube.models.YTItem
 import moe.rukamori.archivetune.innertube.models.filterExplicit
 import moe.rukamori.archivetune.innertube.models.filterVideo
-import moe.rukamori.archivetune.innertube.pages.ExplorePage
 import moe.rukamori.archivetune.innertube.pages.HomePage
 import moe.rukamori.archivetune.innertube.utils.completed
 import moe.rukamori.archivetune.innertube.utils.hasYouTubeLoginCookie
@@ -172,14 +171,14 @@ private data class HomeStateInputs(
 class HomeViewModel
     @Inject
     constructor(
-        @ApplicationContext val context: Context,
-        val database: MusicDatabase,
-        val syncUtils: SyncUtils,
+        @ApplicationContext private val context: Context,
+        private val database: MusicDatabase,
+        private val syncUtils: SyncUtils,
         private val switchSavedYouTubeAccount: SwitchSavedYouTubeAccountUseCase,
         observeHomePresentationPreferences: ObserveHomePresentationPreferencesUseCase,
     ) : ViewModel() {
-        val isRefreshing = MutableStateFlow(false)
-        val isLoading = MutableStateFlow(false)
+        private val isRefreshing = MutableStateFlow(false)
+        private val isLoading = MutableStateFlow(false)
         private val isInitialLoadComplete = MutableStateFlow(false)
         private val loadError = MutableStateFlow<Int?>(null)
         private val isLoadingMore = MutableStateFlow(false)
@@ -190,29 +189,27 @@ class HomeViewModel
                     it[QuickPicksKey].toEnum(QuickPicks.QUICK_PICKS)
                 }.distinctUntilChanged()
 
-        val quickPicks = MutableStateFlow<List<Song>?>(null)
-        val speedDialItems = MutableStateFlow<List<LocalItem>>(emptyList())
-        val forgottenFavorites = MutableStateFlow<List<Song>?>(null)
-        val keepListening = MutableStateFlow<List<LocalItem>?>(null)
-        val similarRecommendations = MutableStateFlow<List<SimilarRecommendation>?>(null)
-        val accountPlaylists = MutableStateFlow<List<PlaylistItem>?>(null)
-        val homePage = MutableStateFlow<HomePage?>(null)
-        val explorePage = MutableStateFlow<ExplorePage?>(null)
-        val selectedChip = MutableStateFlow<HomePage.Chip?>(null)
+        private val quickPicks = MutableStateFlow<List<Song>?>(null)
+        private val speedDialItems = MutableStateFlow<List<LocalItem>>(emptyList())
+        private val forgottenFavorites = MutableStateFlow<List<Song>?>(null)
+        private val keepListening = MutableStateFlow<List<LocalItem>?>(null)
+        private val similarRecommendations = MutableStateFlow<List<SimilarRecommendation>?>(null)
+        private val accountPlaylists = MutableStateFlow<List<PlaylistItem>?>(null)
+        private val homePage = MutableStateFlow<HomePage?>(null)
+        private val selectedChip = MutableStateFlow<HomePage.Chip?>(null)
         private val previousHomePage = MutableStateFlow<HomePage?>(null)
 
-        val recentActivity = MutableStateFlow<List<YTItem>?>(null)
-        val recentPlaylistsDb = MutableStateFlow<List<Playlist>?>(null)
+        private val _allLocalItems = MutableStateFlow<List<LocalItem>>(emptyList())
+        val allLocalItems: StateFlow<List<LocalItem>> = _allLocalItems.asStateFlow()
+        private val _allYtItems = MutableStateFlow<List<YTItem>>(emptyList())
+        val allYtItems: StateFlow<List<YTItem>> = _allYtItems.asStateFlow()
 
-        val allLocalItems = MutableStateFlow<List<LocalItem>>(emptyList())
-        val allYtItems = MutableStateFlow<List<YTItem>>(emptyList())
-
-        // Account display info
-        val accountName = MutableStateFlow("")
-        val accountImageUrl = MutableStateFlow<String?>(null)
-        val isAccountLoading = MutableStateFlow(true)
-        val isAccountLoggedIn = MutableStateFlow(false)
-        val accountChannelsState = MutableStateFlow<AccountChannelsState>(AccountChannelsState.Empty)
+        private val _accountName = MutableStateFlow("")
+        val accountName: StateFlow<String> = _accountName.asStateFlow()
+        private val _accountImageUrl = MutableStateFlow<String?>(null)
+        val accountImageUrl: StateFlow<String?> = _accountImageUrl.asStateFlow()
+        private val _accountChannelsState = MutableStateFlow<AccountChannelsState>(AccountChannelsState.Empty)
+        val accountChannelsState: StateFlow<AccountChannelsState> = _accountChannelsState.asStateFlow()
 
         private val presentationPreferences = observeHomePresentationPreferences()
 
@@ -291,11 +288,6 @@ class HomeViewModel
                 initialValue = HomeScreenState.Loading,
             )
 
-        // Track last processed cookie to avoid unnecessary updates
-        private var lastProcessedCookie: String? = null
-
-        // Track if we're currently processing account data
-        private var isProcessingAccountData = false
         private var wasLoggedIn = false
         private var chipLoadJob: Job? = null
 
@@ -323,7 +315,7 @@ class HomeViewModel
             distinctUntilChanged { old, new -> old.hasSameSongIdsAs(new) }
 
         private fun updateAllLocalItems() {
-            allLocalItems.value =
+            _allLocalItems.value =
                 (quickPicks.value.orEmpty() + forgottenFavorites.value.orEmpty() + keepListening.value.orEmpty())
                     .filter { it is Song || it is Album }
         }
@@ -500,42 +492,6 @@ class HomeViewModel
                                 loadError.value = R.string.error_unknown
                             }
                     }
-
-                    launch {
-                        YouTube
-                            .explore()
-                            .onSuccess { page ->
-                                val artists: MutableMap<Int, String> = mutableMapOf()
-                                val favouriteArtists: MutableMap<Int, String> = mutableMapOf()
-                                database.allArtistsByPlayTime().first().let { list ->
-                                    var favIndex = 0
-                                    for ((artistsIndex, artist) in list.withIndex()) {
-                                        artists[artistsIndex] = artist.id
-                                        if (artist.artist.bookmarkedAt != null) {
-                                            favouriteArtists[favIndex] = artist.id
-                                            favIndex++
-                                        }
-                                    }
-                                }
-                                explorePage.value =
-                                    page.copy(
-                                        newReleaseAlbums =
-                                            page.newReleaseAlbums
-                                                .sortedBy { album ->
-                                                    val artistIds = album.artists.orEmpty().mapNotNull { it.id }
-                                                    val firstArtistKey =
-                                                        artistIds.firstNotNullOfOrNull { artistId ->
-                                                            if (artistId in favouriteArtists.values) {
-                                                                favouriteArtists.entries.firstOrNull { it.value == artistId }?.key
-                                                            } else {
-                                                                artists.entries.firstOrNull { it.value == artistId }?.key
-                                                            }
-                                                        } ?: Int.MAX_VALUE
-                                                    firstArtistKey
-                                                }.filterExplicit(hideExplicit),
-                                    )
-                            }.onFailure { reportException(it) }
-                    }
                 }
 
                 updateAllLocalItems()
@@ -544,7 +500,7 @@ class HomeViewModel
                     loadSimilarRecommendations()
                 }
 
-                allYtItems.value = similarRecommendations.value?.flatMap { it.items }.orEmpty() +
+                _allYtItems.value = similarRecommendations.value?.flatMap { it.items }.orEmpty() +
                     homePage.value
                         ?.sections
                         ?.flatMap { it.items }
@@ -628,7 +584,7 @@ class HomeViewModel
 
             similarRecommendations.value = (artistRecommendations + songRecommendations).shuffled()
 
-            allYtItems.value = similarRecommendations.value?.flatMap { it.items }.orEmpty() +
+            _allYtItems.value = similarRecommendations.value?.flatMap { it.items }.orEmpty() +
                 homePage.value
                     ?.sections
                     ?.flatMap { it.items }
@@ -636,10 +592,10 @@ class HomeViewModel
         }
 
         private fun clearAccountData() {
-            accountName.value = ""
-            accountImageUrl.value = null
+            _accountName.value = ""
+            _accountImageUrl.value = null
             accountPlaylists.value = null
-            accountChannelsState.value = AccountChannelsState.Empty
+            _accountChannelsState.value = AccountChannelsState.Empty
         }
 
         private fun prepareYouTubeAccount(cookie: String): Boolean =
@@ -652,16 +608,16 @@ class HomeViewModel
             }
 
         private suspend fun refreshAccountIdentity() {
-            accountName.value = ""
-            accountImageUrl.value = null
-            accountChannelsState.value = AccountChannelsState.Loading
+            _accountName.value = ""
+            _accountImageUrl.value = null
+            _accountChannelsState.value = AccountChannelsState.Loading
 
             try {
                 YouTube
                     .accountInfo()
                     .onSuccess { info ->
-                        accountName.value = info.name
-                        accountImageUrl.value = info.thumbnailUrl
+                        _accountName.value = info.name
+                        _accountImageUrl.value = info.thumbnailUrl
                     }.onFailure { error ->
                         Timber.w(error, "Failed to fetch account info")
                     }
@@ -669,7 +625,7 @@ class HomeViewModel
                 YouTube
                     .accountChannels()
                     .onSuccess { channels ->
-                        accountChannelsState.value = channels
+                        _accountChannelsState.value = channels
                             .map { it.toUiModel() }
                             .takeIf { it.size > 1 }
                             ?.let { AccountChannelsState.Success(AccountChannelCollection(it)) }
@@ -677,15 +633,15 @@ class HomeViewModel
                     }.onFailure { error ->
                         Timber.w(error, "Failed to fetch account channels")
                         reportException(error)
-                        accountChannelsState.value = AccountChannelsState.Error(error.message.orEmpty())
+                        _accountChannelsState.value = AccountChannelsState.Error(error.message.orEmpty())
                     }
             } catch (e: CancellationException) {
-                accountChannelsState.value = AccountChannelsState.Empty
+                _accountChannelsState.value = AccountChannelsState.Empty
                 throw e
             } catch (e: Exception) {
                 Timber.e(e, "Exception fetching account info")
                 reportException(e)
-                accountChannelsState.value = AccountChannelsState.Error(e.message.orEmpty())
+                _accountChannelsState.value = AccountChannelsState.Error(e.message.orEmpty())
             }
         }
 
@@ -721,7 +677,7 @@ class HomeViewModel
             }
         }
 
-        fun loadMoreYouTubeItems(continuation: String?) {
+        private fun loadMoreYouTubeItems(continuation: String?) {
             if (continuation == null || isLoadingMore.value) return
             val hideExplicit = context.dataStore.get(HideExplicitKey, false)
             val hideVideo = context.dataStore.get(HideVideoKey, false)
@@ -744,7 +700,7 @@ class HomeViewModel
             }
         }
 
-        fun toggleChip(chip: HomePage.Chip?) {
+        private fun toggleChip(chip: HomePage.Chip?) {
             chipLoadJob?.cancel()
             if (chip == null || chip == selectedChip.value && previousHomePage.value != null) {
                 homePage.value = previousHomePage.value
@@ -757,21 +713,22 @@ class HomeViewModel
                 previousHomePage.value = homePage.value
             }
 
-            chipLoadJob = viewModelScope.launch(Dispatchers.IO) {
-                val hideExplicit = context.dataStore.get(HideExplicitKey, false)
-                val hideVideo = context.dataStore.get(HideVideoKey, false)
-                val nextSections = YouTube.home(params = chip?.endpoint?.params).getOrNull() ?: return@launch
+            chipLoadJob =
+                viewModelScope.launch(Dispatchers.IO) {
+                    val hideExplicit = context.dataStore.get(HideExplicitKey, false)
+                    val hideVideo = context.dataStore.get(HideVideoKey, false)
+                    val nextSections = YouTube.home(params = chip?.endpoint?.params).getOrNull() ?: return@launch
 
-                homePage.value =
-                    nextSections.copy(
-                        chips = homePage.value?.chips,
-                        sections =
-                            nextSections.sections.map { section ->
-                                section.copy(items = section.items.filterExplicit(hideExplicit).filterVideo(hideVideo))
-                            },
-                    )
-                selectedChip.value = chip
-            }
+                    homePage.value =
+                        nextSections.copy(
+                            chips = homePage.value?.chips,
+                            sections =
+                                nextSections.sections.map { section ->
+                                    section.copy(items = section.items.filterExplicit(hideExplicit).filterVideo(hideVideo))
+                                },
+                        )
+                    selectedChip.value = chip
+                }
         }
 
         fun onAction(action: HomeAction) {
@@ -782,7 +739,7 @@ class HomeViewModel
             }
         }
 
-        fun refresh() {
+        private fun refresh() {
             if (isRefreshing.value) return
             viewModelScope.launch(Dispatchers.IO) {
                 isRefreshing.value = true
@@ -797,35 +754,6 @@ class HomeViewModel
                     reportException(e)
                 } finally {
                     isRefreshing.value = false
-                }
-            }
-        }
-
-        fun refreshAccountData() {
-            viewModelScope.launch(Dispatchers.IO) {
-                if (isProcessingAccountData) return@launch
-
-                isProcessingAccountData = true
-                isAccountLoading.value = true
-                try {
-                    val cookie = context.dataStore.get(InnerTubeCookieKey, "")
-                    val loggedIn = hasYouTubeLoginCookie(cookie)
-                    isAccountLoggedIn.value = loggedIn
-
-                    if (loggedIn && prepareYouTubeAccount(cookie)) {
-                        supervisorScope {
-                            launch { refreshAccountIdentity() }
-                            launch { refreshAccountPlaylistsInternal() }
-                        }
-                    } else {
-                        clearAccountData()
-                    }
-                } catch (e: Exception) {
-                    Timber.e(e, "Error refreshing account data")
-                    clearAccountData()
-                } finally {
-                    isAccountLoading.value = false
-                    isProcessingAccountData = false
                 }
             }
         }
@@ -856,7 +784,7 @@ class HomeViewModel
 
             viewModelScope.launch(Dispatchers.IO) {
                 try {
-                    accountChannelsState.value = AccountChannelsState.Loading
+                    _accountChannelsState.value = AccountChannelsState.Loading
 
                     context.dataStore.edit { preferences ->
                         preferences[DataSyncIdKey] = channel.dataSyncId
@@ -886,7 +814,7 @@ class HomeViewModel
                 } catch (e: Exception) {
                     Timber.e(e, "Error switching account channel")
                     reportException(e)
-                    accountChannelsState.value = AccountChannelsState.Error(e.message.orEmpty())
+                    _accountChannelsState.value = AccountChannelsState.Error(e.message.orEmpty())
                 }
             }
         }
@@ -918,17 +846,10 @@ class HomeViewModel
                     .map { it[InnerTubeCookieKey] }
                     .distinctUntilChanged()
                     .collect { cookie ->
-                        if (isProcessingAccountData) return@collect
-
-                        lastProcessedCookie = cookie
-                        isProcessingAccountData = true
-                        isAccountLoading.value = true
-
                         try {
                             val isLoggedIn = hasYouTubeLoginCookie(cookie)
                             val loginTransition = isLoggedIn && !wasLoggedIn
                             wasLoggedIn = isLoggedIn
-                            isAccountLoggedIn.value = isLoggedIn
 
                             if (isLoggedIn && cookie != null && cookie.isNotEmpty()) {
                                 if (!prepareYouTubeAccount(cookie)) {
@@ -957,13 +878,11 @@ class HomeViewModel
                             } else {
                                 clearAccountData()
                             }
+                        } catch (e: CancellationException) {
+                            throw e
                         } catch (e: Exception) {
                             Timber.e(e, "Error processing cookie change")
                             clearAccountData()
-                            isAccountLoggedIn.value = false
-                        } finally {
-                            isAccountLoading.value = false
-                            isProcessingAccountData = false
                         }
                     }
             }
