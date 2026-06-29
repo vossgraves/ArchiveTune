@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version='1.0' encoding='utf-8'?>
 <resources>
     <string name="home">בית</string>
     <string name="songs">שירים</string>
@@ -944,10 +944,6 @@
     <string name="discord_reauthorize_required_title">סשן Discord פג תוקפו</string>
     <string name="discord_reauthorize_required_description">לא ניתן להציג את Rich Presence עד שתאשר שוב את Discord.</string>
     <string name="discord_reauthorize_action">הרשאה מחדש</string>
-    <string name="translate_in_background">תרגום ברקע</string>
-    <string name="ai_translate_in_background_desc">התרגום ימשיך ברקע. תקבלו הודעה כאשר הוא יושלם.</string>
-    <string name="ai_translation_notification_channel_name">תרגום מבוסס AI</string>
-    <string name="ai_translation_notification_title">תרגום מבוסס AI</string>
     <string name="updates_channel_warning_intro">ArchiveTune מספקת שני ערוצי הורדה עבור גרסאות הפצה:</string>
     <string name="updates_channel_warning_stable_title">גרסאות הפצה יציבות</string>
     <string name="updates_channel_warning_stable_source">מופץ דרך גרסאות GitHub רשמיות.</string>

@@ -272,10 +272,6 @@ fun LyricsEnhanced(
 
         val toRomanize =
             lyricsEntries.mapIndexedNotNull { index, entry ->
-                if (providedTranslationTextForEntry(entry) != null && (!isTtmlFormat || entry.words == null)) {
-                    return@mapIndexedNotNull null
-                }
-
                 val hasProviderRomanization =
                     providedRomanizedTextForEntry(entry, romanizationPreferences) != null
                 if (hasProviderRomanization || shouldRomanizeLyricsLine(entry.text, romanizationPreferences)) {
@@ -1308,9 +1304,9 @@ private fun buildSyncedLyrics(
                     (entry.time + 4000L).toInt()
                 }
             lines.add(
-                SyncedLine(
-                    content = entry.text,
-                    translation = providedTranslationTextForEntry(entry) ?: romanizationMap[index]?.firstOrNull(),
+                buildLineSyncedLrcLine(
+                    entry = entry,
+                    romanizedText = romanizationMap[index]?.firstOrNull(),
                     start = entry.time.toInt(),
                     end = lineEnd,
                 ),
@@ -1319,4 +1315,74 @@ private fun buildSyncedLyrics(
     }
 
     return SyncedLyrics(lines = lines)
+}
+
+private fun buildLineSyncedLrcLine(
+    entry: LyricsEntry,
+    romanizedText: String?,
+    start: Int,
+    end: Int,
+): ISyncedLine {
+    val translation = providedTranslationTextForEntry(entry)
+    val normalizedRomanizedText = romanizedText?.trim()?.takeIf { it.isNotEmpty() }
+
+    if (normalizedRomanizedText == null) {
+        return SyncedLine(
+            content = entry.text,
+            translation = translation,
+            start = start,
+            end = end,
+        )
+    }
+
+    val syllables =
+        buildWrappingKaraokeSyllables(
+            content = entry.text,
+            romanizedText = normalizedRomanizedText,
+            start = start,
+            end = end,
+        )
+
+    return KaraokeLine.MainKaraokeLine(
+        syllables = syllables,
+        translation = translation,
+        alignment = KaraokeAlignment.Start,
+        start = start,
+        end = end,
+    )
+}
+
+private fun buildWrappingKaraokeSyllables(
+    content: String,
+    romanizedText: String,
+    start: Int,
+    end: Int,
+): List<KaraokeSyllable> {
+    val contentUnits = content.toLyricsWrappingUnits().ifEmpty { listOf(content) }
+    val phoneticWords = romanizedText.split(Regex("\\s+")).filter(String::isNotEmpty)
+    val phoneticAnchorIndices =
+        contentUnits.indices.filter { index ->
+            contentUnits[index].any(Char::isLetterOrDigit)
+        }
+    val phoneticsByUnit = MutableList<String?>(contentUnits.size) { null }
+
+    if (phoneticAnchorIndices.isNotEmpty()) {
+        phoneticWords.forEachIndexed { wordIndex, word ->
+            val anchorIndex = wordIndex * phoneticAnchorIndices.size / phoneticWords.size
+            val unitIndex = phoneticAnchorIndices[anchorIndex]
+            phoneticsByUnit[unitIndex] = listOfNotNull(phoneticsByUnit[unitIndex], word).joinToString(" ")
+        }
+    }
+
+    val duration = (end - start).coerceAtLeast(contentUnits.size)
+    return contentUnits.mapIndexed { index, unit ->
+        val unitStart = start + (duration.toLong() * index / contentUnits.size).toInt()
+        val unitEnd = start + (duration.toLong() * (index + 1) / contentUnits.size).toInt()
+        KaraokeSyllable(
+            content = unit,
+            start = unitStart,
+            end = unitEnd.coerceAtLeast(unitStart + MIN_KARAOKE_SYLLABLE_DURATION_MS),
+            phonetic = phoneticsByUnit[index],
+        )
+    }
 }

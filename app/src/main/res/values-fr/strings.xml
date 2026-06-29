@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version='1.0' encoding='utf-8'?>
 <resources>
     <string name="home">Accueil</string>
     <string name="songs">Titres</string>
@@ -908,7 +908,6 @@
     <string name="lyrics_search_results_count">%1$d résultats</string>
     <string name="duration_seconds_short">%1$ds</string>
     <string name="percent_format">%1$d%%</string>
-    <string name="translate_in_background">Traduire en arrière-plan</string>
     <string name="onboarding_permission_bluetooth_connect_title">Connexion audio Bluetooth</string>
     <string name="onboarding_permission_bluetooth_connect_desc">Connectez-vous à des appareils audio Bluetooth à proximité pour écouter du contenu.</string>
     <string name="together_current_playback">Lecture en cours</string>
@@ -949,9 +948,6 @@
     <string name="lastfm_login_api_key_suspended">Clé API suspendue.</string>
     <string name="lastfm_login_network_error">Erreur réseau. Vérifiez votre connexion.</string>
     <string name="lastfm_login_failed">Échec de la connexion. Veuillez réessayer.</string>
-    <string name="ai_translate_in_background_desc">La traduction se poursuivra en arrière-plan. Vous recevrez une notification dès qu\'elle sera terminée.</string>
-    <string name="ai_translation_notification_channel_name">Traduction par IA</string>
-    <string name="ai_translation_notification_title">Traduction par IA</string>
     <string name="updates_channel_warning_intro">ArchiveTune propose deux canaux de téléchargement pour les versions :</string>
     <string name="updates_channel_warning_stable_title">Versions stables</string>
     <string name="updates_channel_warning_stable_source">Distribué via les versions officielles de GitHub.</string>

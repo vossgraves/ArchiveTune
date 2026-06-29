@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version='1.0' encoding='utf-8'?>
 <resources>
     <string name="home">홈</string>
     <string name="songs">노래</string>
@@ -918,10 +918,6 @@
     <string name="lastfm_login_failed">로그인 실패 다시 시도해주세요.</string>
     <string name="duration_seconds_short">%1$d초</string>
     <string name="percent_format">%1$d%%</string>
-    <string name="translate_in_background">백그라운드에서 번역</string>
-    <string name="ai_translate_in_background_desc">백그라운드에서 AI를 통해 가사를 미리 번역합니다.</string>
-    <string name="ai_translation_notification_channel_name">AI 가사 번역</string>
-    <string name="ai_translation_notification_title">가사 번역하는 중</string>
     <string name="updates_channel_warning_intro">경고: 업데이트 채널을 변경하려고 합니다.</string>
     <string name="updates_channel_warning_stable_title">안정(Stable) 채널로 변경</string>
     <string name="updates_channel_warning_stable_source">공식 배포 버전을 통해 가장 안정적인 기능만을 제공합니다.</string>
