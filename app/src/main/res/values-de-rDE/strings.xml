@@ -501,4 +501,19 @@
     <string name="library_artists_subtitle">All deine Künstler an einem Platz</string>
     <string name="onboarding_permission_audio_settings_title">Audioeinstellungen und Vibration</string>
     <string name="instant_playback">Sofortige Wiedergabe</string>
+    <string name="internet_warning_doh">DNS über HTTPS funktioniert nur, wenn dein Land YouTube blockiert. Sollte YouTube aktiv deine Region blockieren, nutze bitte einen Proxy oder VPN.</string>
+    <string name="internet_warning_proxy">Bitte nutze nur Proxies, bei denen du sicher bist, dass sie sicher sind. Kostenlose Proxies sind bequem, aber nicht immer sicher. Sei also vorsichtig. Du wurdest gewarnt, wir sind nicht für deine Sicherheit verantwortlich.</string>
+    <string name="proxy_host">Proxy Host (IP)</string>
+    <string name="proxy_port">Proxy-Port</string>
+    <string name="proxy_auth">Proxy Authorisierung (optional)</string>
+    <string name="proxy_username">Benutzername</string>
+    <string name="proxy_password">Passwort</string>
+    <string name="test_proxy_connection">Teste Proxy-Verbindung</string>
+    <string name="testing_proxy_connection">Teste Proxy-Verbindung</string>
+    <string name="proxy_connection_success">Proxy-Verbindung erfolgreich!</string>
+    <string name="proxy_connection_failed">Proxy-Verbindung fehlgeschlagen: %s</string>
+    <string name="proxy_connection_invalid_configuration">Ungültiger Proxy-Host oder Port</string>
+    <string name="ip_rotation_loading">Lade Proxy-Liste</string>
+    <string name="stream_bypass_proxy">Proxy für Streams umgehen</string>
+    <string name="stream_bypass_proxy_desc">Verwendt direkte IP-Adresse für die Stream-Wiedergabe, um eine IP-Diskrepanz zu vermeiden</string>
 </resources>
