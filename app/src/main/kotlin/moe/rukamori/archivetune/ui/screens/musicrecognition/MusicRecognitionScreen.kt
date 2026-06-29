@@ -606,10 +606,6 @@ private fun ResultIdentity(
     artworkSize: Dp,
     modifier: Modifier = Modifier,
 ) {
-    val openShazam =
-        remember(track.shazamUrl, onOpenUri) {
-            { track.shazamUrl?.let(onOpenUri) }
-        }
     Column(
         modifier = modifier,
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -665,6 +661,11 @@ private fun ResultSupportingContent(
     onOpenUri: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val shazamUrl = track.shazamUrl
+    val openShazam: () -> Unit =
+        remember(shazamUrl, onOpenUri) {
+            { shazamUrl?.let(onOpenUri) }
+        }
     Column(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -685,7 +686,7 @@ private fun ResultSupportingContent(
             )
         }
 
-        if (track.shazamUrl != null) {
+        if (shazamUrl != null) {
             OutlinedButton(
                 onClick = openShazam,
                 modifier =
@@ -767,7 +768,11 @@ private fun ResultActions(
                 Modifier
                     .weight(1f)
                     .heightIn(min = 56.dp),
-            shapes = ButtonGroupDefaults.connectedLeadingButtonShapes(),
+            shapes =
+                ButtonDefaults.shapes(
+                    shape = ButtonGroupDefaults.connectedLeadingButtonShape,
+                    pressedShape = ButtonGroupDefaults.connectedLeadingButtonPressShape,
+                ),
         ) {
             Icon(
                 painter = painterResource(R.drawable.replay),
@@ -788,7 +793,11 @@ private fun ResultActions(
                 Modifier
                     .weight(1f)
                     .heightIn(min = 56.dp),
-            shapes = ButtonGroupDefaults.connectedTrailingButtonShapes(),
+            shapes =
+                ButtonDefaults.shapes(
+                    shape = ButtonGroupDefaults.connectedTrailingButtonShape,
+                    pressedShape = ButtonGroupDefaults.connectedTrailingButtonPressShape,
+                ),
         ) {
             Icon(
                 painter = painterResource(R.drawable.search),
@@ -998,9 +1007,10 @@ private fun RecognitionHistoryListItem(
     onOpenUri: (String) -> Unit,
 ) {
     val searchAction = remember(item.searchQuery, onSearch) { { onSearch(item.searchQuery) } }
-    val openShazamAction =
-        remember(item.shazamUrl, onOpenUri) {
-            { item.shazamUrl?.let(onOpenUri) }
+    val shazamUrl = item.shazamUrl
+    val openShazamAction: () -> Unit =
+        remember(shazamUrl, onOpenUri) {
+            { shazamUrl?.let(onOpenUri) }
         }
     SegmentedListItem(
         onClick = searchAction,
@@ -1046,7 +1056,7 @@ private fun RecognitionHistoryListItem(
         },
         trailingContent = {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                if (item.shazamUrl != null) {
+                if (shazamUrl != null) {
                     IconButton(onClick = openShazamAction) {
                         Icon(
                             painter = painterResource(R.drawable.link),
