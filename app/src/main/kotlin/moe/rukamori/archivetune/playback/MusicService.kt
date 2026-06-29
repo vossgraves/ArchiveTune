@@ -1679,6 +1679,7 @@ class MusicService :
             completeDiscordRefreshWaiters(refreshWaiters, false)
             throw error
         } catch (error: Exception) {
+            Timber.tag(DISCORD_SYNC_TAG).e(error, "syncDiscordStateInternal failed epoch=%d reason=%s", request.epoch, request.reason)
             completeDiscordRefreshWaiters(refreshWaiters, false)
             throw error
         }
@@ -1789,6 +1790,7 @@ class MusicService :
                         song = snapshot.song,
                         positionMs = snapshot.positionMs,
                         isPaused = snapshot.isPaused,
+                        isMusicVideo = currentMediaMetadata.value?.isMusicVideo ?: false,
                     )
                 if (!updated) {
                     Timber.tag(DISCORD_SYNC_TAG).d(
