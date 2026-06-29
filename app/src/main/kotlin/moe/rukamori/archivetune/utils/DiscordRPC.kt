@@ -30,7 +30,6 @@ import moe.rukamori.archivetune.constants.DiscordLargeImageTypeKey
 import moe.rukamori.archivetune.constants.DiscordLargeTextCustomKey
 import moe.rukamori.archivetune.constants.DiscordLargeTextSourceKey
 import moe.rukamori.archivetune.constants.DiscordPresenceStatusKey
-import moe.rukamori.archivetune.constants.DiscordShowWhenPausedKey
 import moe.rukamori.archivetune.constants.DiscordSmallImageCustomUrlKey
 import moe.rukamori.archivetune.constants.DiscordSmallImageTypeKey
 import moe.rukamori.archivetune.constants.EnableTranslatorKey
@@ -86,13 +85,6 @@ class DiscordRPC(
             translationCache.clear()
             DiscordImageResolver.clearCache()
             lastSongId = song.song.id
-        }
-
-        val showWhenPaused = context.dataStore[DiscordShowWhenPausedKey] ?: false
-        if (isPaused && !showWhenPaused) {
-            Timber.tag(TAG).v("Paused and show-when-paused is disabled; clearing Discord presence")
-            stopActivity()
-            return@runCatching
         }
 
         val translatedMap = translateSongFields(song)
@@ -195,7 +187,6 @@ class DiscordRPC(
                 song = song,
                 currentPlaybackTimeMillis = currentPlaybackTimeMillis,
                 isPaused = isPaused,
-                showWhenPaused = showWhenPaused,
             )
 
         val activity =
@@ -299,7 +290,7 @@ class DiscordRPC(
         default: String,
     ): String =
         when (pref.uppercase()) {
-            "ARTIST" -> translatedMap["{artist}"] ?: song.artists.firstOrNull()?.name ?: default
+            "ARTIST" -> translatedMap["{artist}"] ?: song.artists.joinToString { it.name }.ifBlank { default }
             "ALBUM" -> translatedMap["{album}"] ?: song.song.albumName ?: song.album?.title ?: default
             "SONG" -> translatedMap["{song}"] ?: song.song.title.ifBlank { default }
             "APP" -> context.getString(R.string.app_name)
@@ -312,7 +303,7 @@ class DiscordRPC(
     ): String? =
         when ((context.dataStore[DiscordLargeTextSourceKey] ?: "album").lowercase()) {
             "song" -> translatedMap["{song}"] ?: song.song.title
-            "artist" -> translatedMap["{artist}"] ?: song.artists.firstOrNull()?.name
+            "artist" -> translatedMap["{artist}"] ?: song.artists.joinToString { it.name }.takeIf { it.isNotBlank() }
             "album" -> translatedMap["{album}"] ?: song.song.albumName ?: song.album?.title ?: song.song.title
             "app" -> context.getString(R.string.app_name)
             "custom" -> (context.dataStore[DiscordLargeTextCustomKey] ?: "").ifBlank { null }
@@ -329,11 +320,11 @@ class DiscordRPC(
         val base =
             when (smallImageType.lowercase()) {
                 "song" -> translatedMap["{song}"] ?: song.song.title
-                "artist" -> translatedMap["{artist}"] ?: song.artists.firstOrNull()?.name
+                "artist" -> translatedMap["{artist}"] ?: song.artists.joinToString { it.name }.takeIf { it.isNotBlank() }
                 "thumbnail", "album" -> translatedMap["{album}"] ?: song.song.albumName ?: song.album?.title
                 "appicon", "app" -> appName
                 "dontshow", "none" -> null
-                else -> translatedMap["{artist}"] ?: song.artists.firstOrNull()?.name
+                else -> translatedMap["{artist}"] ?: song.artists.joinToString { it.name }.takeIf { it.isNotBlank() }
             }
 
         return base?.let { "$it on $appName" }
@@ -399,9 +390,8 @@ class DiscordRPC(
         song: Song,
         currentPlaybackTimeMillis: Long,
         isPaused: Boolean,
-        showWhenPaused: Boolean,
     ): DiscordPresenceTimestamps {
-        if (isPaused && showWhenPaused) {
+        if (isPaused) {
             val pausedStartMs = System.currentTimeMillis() - currentPlaybackTimeMillis.coerceAtLeast(0L)
             return DiscordPresenceTimestamps(
                 startEpochSeconds = pausedStartMs / 1000L,
