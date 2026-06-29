@@ -1,4 +1,4 @@
-<?xml version='1.0' encoding='utf-8'?>
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="explore">تصفح</string>
     <string name="local_history">على الجهاز</string>
@@ -202,4 +202,10 @@
     <string name="music_recognition_processing">جاري التحليل…</string>
     <string name="music_recognition_no_match">لا توجد نتائج مطابقة</string>
     <string name="music_recognition_recognition_failed">فشل التعرف</string>
+    <string name="top_songs">أفضل الأغاني</string>
+    <string name="theme_creator_title">منشئ السمات</string>
+    <string name="theme_applied">تم تطبيق السمة</string>
+    <string name="theme_export_success">تم تصدير السمة</string>
+    <string name="theme_export_failed">فشل التصدير</string>
+    <string name="theme_import_failed_title">لا يمكن استيراد السمة</string>
 </resources>
