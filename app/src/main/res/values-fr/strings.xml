@@ -662,7 +662,7 @@
     <string name="updates_loading_commits">Chargement des modifications récentes</string>
     <string name="updates_recent_commits_count">%1$d modifications récentes</string>
     <string name="updates_no_commits">Aucune modification récente n\'a été trouvée</string>
-    <string name="you_might_like_source">Cela pourrait vous intéresser</string>
+    <string name="you_might_like_source">Source des recommandations de playlists</string>
     <string name="playlist_suggestion_source_title">Titre de la playlist</string>
     <string name="playlist_suggestion_source_content">Contenu de la playlist</string>
     <string name="playlist_suggestion_source_both">Titre et contenu de la playlist</string>
@@ -1018,4 +1018,6 @@
     <string name="together_activity_error">Erreur : %1$s</string>
     <string name="add_another_account">Ajouter un autre compte</string>
     <string name="unsaved_account_dialog_title">Compte non enregistré</string>
+    <string name="source">Source</string>
+    <string name="enable_youlyplus_lyrics">Activer les paroles de YouLyPlus</string>
 </resources>
