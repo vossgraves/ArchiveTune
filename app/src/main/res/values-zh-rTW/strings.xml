@@ -1,3 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="home">首頁</string>
+    <string name="songs">歌曲</string>
+    <string name="artists">藝人</string>
+    <string name="albums">專輯</string>
+    <string name="playlists">播放清單</string>
+    <plurals name="n_selected">
+        <item quantity="other">%d 已選取</item>
+    </plurals>
+    <string name="history">歷史紀錄</string>
+    <string name="stats">統計數據</string>
+    <string name="account">帳戶</string>
+    <string name="your_youtube_playlists">你的YouTube播放清單</string>
 </resources>
