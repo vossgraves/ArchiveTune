@@ -1,5 +1,5 @@
 plugins {
-    `kotlin-dsl`
+    kotlin("jvm") version "2.4.0"
 }
 
 repositories {
@@ -9,5 +9,6 @@ repositories {
 }
 
 dependencies {
+    implementation(gradleApi())
     implementation(localGroovy())
 }
