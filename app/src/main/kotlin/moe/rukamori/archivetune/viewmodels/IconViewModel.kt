@@ -42,6 +42,7 @@ sealed interface IconScreenState {
 @Immutable
 data class IconScreenUiModel(
     val icons: AppIconUiCollection,
+    val selectedIcon: AppIconUiModel,
     val selectionInProgressId: String?,
 )
 
@@ -53,6 +54,7 @@ data class AppIconUiModel(
     val author: String?,
     @DrawableRes val previewDrawableResId: Int,
     val isSelected: Boolean,
+    val isDefault: Boolean,
 )
 
 @Immutable
@@ -132,21 +134,22 @@ class IconViewModel
 
         private fun AppIconCatalog.toScreenState(): IconScreenState {
             if (icons.isEmpty()) return IconScreenState.Empty
+            val uiIcons =
+                icons.map { icon ->
+                    AppIconUiModel(
+                        id = icon.id,
+                        name = icon.name,
+                        nameResId = if (icon.isDefault) R.string.app_icon_default else null,
+                        author = icon.author,
+                        previewDrawableResId = icon.previewDrawableResId,
+                        isSelected = icon.id == selectedIconId,
+                        isDefault = icon.isDefault,
+                    )
+                }
             return IconScreenState.Success(
                 IconScreenUiModel(
-                    icons =
-                        AppIconUiCollection.from(
-                            icons.map { icon ->
-                                AppIconUiModel(
-                                    id = icon.id,
-                                    name = icon.name,
-                                    nameResId = if (icon.isDefault) R.string.app_icon_default else null,
-                                    author = icon.author,
-                                    previewDrawableResId = icon.previewDrawableResId,
-                                    isSelected = icon.id == selectedIconId,
-                                )
-                            },
-                        ),
+                    icons = AppIconUiCollection.from(uiIcons),
+                    selectedIcon = uiIcons.firstOrNull(AppIconUiModel::isSelected) ?: uiIcons.first(),
                     selectionInProgressId = null,
                 ),
             )

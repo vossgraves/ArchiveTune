@@ -17,10 +17,12 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -29,8 +31,9 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.selection.selectableGroup
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalButton
@@ -50,9 +53,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -121,6 +128,9 @@ private fun IconScreenContent(
             MediumFlexibleTopAppBar(
                 title = {
                     Text(text = stringResource(R.string.app_icon))
+                },
+                subtitle = {
+                    Text(text = stringResource(R.string.app_icon_subtitle))
                 },
                 navigationIcon = {
                     IconButton(
@@ -210,6 +220,37 @@ private fun AppIconList(
         verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
+        item(
+            key = CurrentIconContentKey,
+            contentType = CurrentIconContentType,
+        ) {
+            CurrentIconCard(
+                icon = model.selectedIcon,
+                modifier =
+                    Modifier
+                        .widthIn(max = IconListMaxWidth)
+                        .fillMaxWidth()
+                        .padding(bottom = 24.dp),
+            )
+        }
+        item(
+            key = IconSectionHeaderKey,
+            contentType = IconSectionHeaderContentType,
+        ) {
+            IconListHeader(
+                iconCount = model.icons.size,
+                modifier =
+                    Modifier
+                        .widthIn(max = IconListMaxWidth)
+                        .fillMaxWidth()
+                        .padding(
+                            start = 4.dp,
+                            top = 4.dp,
+                            end = 4.dp,
+                            bottom = 10.dp,
+                        ),
+            )
+        }
         items(
             count = model.icons.size,
             key = { index -> model.icons[index].id },
@@ -229,6 +270,97 @@ private fun AppIconList(
 }
 
 @Composable
+private fun CurrentIconCard(
+    icon: AppIconUiModel,
+    modifier: Modifier = Modifier,
+) {
+    val name = appIconName(icon)
+    val author = icon.author
+
+    ElevatedCard(
+        modifier = modifier,
+        shape = MaterialTheme.shapes.extraLarge,
+        colors =
+            CardDefaults.elevatedCardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            ),
+        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp),
+    ) {
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(20.dp),
+        ) {
+            AppIconPreview(
+                icon = icon,
+                size = 88.dp,
+                imagePadding = 6.dp,
+            )
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    text = stringResource(R.string.app_icon_current),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                Text(
+                    text = name,
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    text =
+                        if (author != null) {
+                            author
+                        } else {
+                            stringResource(R.string.app_icon_builtin_description)
+                        },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (!icon.isDefault) {
+                    Text(
+                        text = stringResource(R.string.app_icon_identifier, icon.id),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontFamily = FontFamily.Monospace,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun IconListHeader(
+    iconCount: Int,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Text(
+            text = stringResource(R.string.app_icon_available),
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        Text(
+            text = pluralStringResource(R.plurals.app_icon_count, iconCount, iconCount),
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
 private fun AppIconRow(
     icon: AppIconUiModel,
     index: Int,
@@ -237,10 +369,7 @@ private fun AppIconRow(
     isApplying: Boolean,
     onClick: (String) -> Unit,
 ) {
-    val name =
-        icon.nameResId?.let { nameResId ->
-            stringResource(nameResId)
-        } ?: icon.name.orEmpty()
+    val name = appIconName(icon)
     val author = icon.author
     val select = remember(icon.id, onClick) { { onClick(icon.id) } }
 
@@ -252,26 +381,55 @@ private fun AppIconRow(
         modifier =
             Modifier
                 .widthIn(max = IconListMaxWidth)
-                .fillMaxWidth(),
+                .fillMaxWidth()
+                .heightIn(min = 104.dp),
         colors =
             ListItemDefaults.segmentedColors(
                 containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
             ),
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
         leadingContent = {
-            AppIconPreview(icon = icon)
+            AppIconPreview(
+                icon = icon,
+                size = 64.dp,
+                imagePadding = 4.dp,
+            )
+        },
+        overlineContent = {
+            Text(
+                text =
+                    stringResource(
+                        if (icon.isDefault) {
+                            R.string.app_icon_builtin
+                        } else {
+                            R.string.app_icon_community
+                        },
+                    ),
+                style = MaterialTheme.typography.labelMedium,
+            )
         },
         supportingContent =
-            if (author != null) {
-                {
+            {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(
-                        text = stringResource(R.string.app_icon_by_author, author),
+                        text =
+                            if (author != null) {
+                                author
+                            } else {
+                                stringResource(R.string.app_icon_builtin_description)
+                            },
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    if (!icon.isDefault) {
+                        Text(
+                            text = stringResource(R.string.app_icon_identifier, icon.id),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontFamily = FontFamily.Monospace,
+                        )
+                    }
                 }
-            } else {
-                null
             },
         trailingContent = {
             if (isApplying) {
@@ -293,11 +451,16 @@ private fun AppIconRow(
 }
 
 @Composable
-private fun AppIconPreview(icon: AppIconUiModel) {
+private fun AppIconPreview(
+    icon: AppIconUiModel,
+    size: Dp,
+    imagePadding: Dp,
+) {
     Surface(
-        modifier = Modifier.size(64.dp),
-        shape = MaterialTheme.shapes.medium,
+        modifier = Modifier.size(size),
+        shape = MaterialTheme.shapes.large,
         color = MaterialTheme.colorScheme.surfaceContainerHighest,
+        tonalElevation = 1.dp,
     ) {
         Image(
             painter = painterResource(icon.previewDrawableResId),
@@ -306,10 +469,16 @@ private fun AppIconPreview(icon: AppIconUiModel) {
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .padding(4.dp),
+                    .padding(imagePadding),
         )
     }
 }
+
+@Composable
+private fun appIconName(icon: AppIconUiModel): String =
+    icon.nameResId?.let { nameResId ->
+        stringResource(nameResId)
+    } ?: icon.name.orEmpty()
 
 @Composable
 private fun IconScreenLoading(modifier: Modifier = Modifier) {
@@ -361,4 +530,8 @@ private fun Modifier.playerAwareInsets(): Modifier =
     )
 
 private const val AppIconContentType = "app_icon"
+private const val CurrentIconContentKey = "current_icon"
+private const val CurrentIconContentType = "current_icon_summary"
+private const val IconSectionHeaderKey = "icon_section_header"
+private const val IconSectionHeaderContentType = "icon_section_header"
 private val IconListMaxWidth = 720.dp
