@@ -334,6 +334,7 @@ private fun SearchDiscoveryTabs(
     PrimaryTabRow(
         selectedTabIndex = tabs.indexOf(selectedTab),
         modifier = modifier,
+        containerColor = Color.Transparent,
     ) {
         tabs.forEach { tab ->
             Tab(
