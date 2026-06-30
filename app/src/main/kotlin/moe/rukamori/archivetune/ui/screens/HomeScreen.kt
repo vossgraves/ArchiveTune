@@ -23,9 +23,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
@@ -84,7 +84,7 @@ fun HomeScreen(
     val isPlaying by playerConnection.isPlaying.collectAsStateWithLifecycle()
     val mediaMetadata by playerConnection.mediaMetadata.collectAsStateWithLifecycle()
 
-    val lazyListState = remember { LazyListState() }
+    val lazyListState = rememberLazyListState()
     val forgottenFavoritesGridState = rememberLazyGridState()
     val scope = rememberCoroutineScope()
     val backStackEntry by navController.currentBackStackEntryAsState()
@@ -246,7 +246,7 @@ private fun HomeContent(
     menuState: MenuState,
     haptic: HapticFeedback,
     scope: CoroutineScope,
-    lazyListState: LazyListState,
+    lazyListState: androidx.compose.foundation.lazy.LazyListState,
     forgottenFavoritesGridState: LazyGridState,
     onAction: (HomeAction) -> Unit,
     modifier: Modifier = Modifier,
@@ -300,7 +300,7 @@ private fun HomeContent(
                             .fillMaxWidth()
                             .align(Alignment.TopCenter),
                 ) {
-                    if (uiState.showCategoryChips && uiState.homePage?.chips?.isNotEmpty() == true) {
+                    if (uiState.showCategoryChips) {
                         item(
                             key = "home_category_chips",
                             contentType = "category_chips",
