@@ -12,6 +12,14 @@
 
 package moe.rukamori.archivetune.ui.screens.settings
 
+import android.app.Activity
+import android.app.ActivityManager
+import android.content.Context
+import android.content.ContextWrapper
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.os.Build
+import androidx.annotation.DrawableRes
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.border
@@ -59,6 +67,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
@@ -74,6 +83,8 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.ui.component.IconButton
@@ -90,7 +101,20 @@ fun IconScreen(
     viewModel: IconViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    val activity = remember(context) { context.findActivity() }
     val uriHandler = LocalUriHandler.current
+    val selectedTaskIconResId =
+        (state as? IconScreenState.Success)
+            ?.model
+            ?.selectedIcon
+            ?.previewDrawableResId
+
+    LaunchedEffect(activity, selectedTaskIconResId) {
+        if (activity != null && selectedTaskIconResId != null) {
+            activity.updateTaskIcon(selectedTaskIconResId)
+        }
+    }
     LaunchedEffect(viewModel, uriHandler) {
         viewModel.effects.collect { effect ->
             when (effect) {
@@ -738,6 +762,45 @@ private fun Modifier.playerAwareInsets(): Modifier =
         ),
     )
 
+private tailrec fun Context.findActivity(): Activity? =
+    when (this) {
+        is Activity -> this
+        is ContextWrapper -> baseContext.findActivity()
+        else -> null
+    }
+
+@Suppress("DEPRECATION")
+private suspend fun Activity.updateTaskIcon(
+    @DrawableRes drawableResId: Int,
+) {
+    val description =
+        withContext(Dispatchers.Default) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                ActivityManager.TaskDescription
+                    .Builder()
+                    .setIcon(drawableResId)
+                    .build()
+            } else {
+                val iconSize =
+                    getSystemService(ActivityManager::class.java)
+                        ?.launcherLargeIconSize
+                        ?.coerceIn(1, MaximumLegacyTaskIconSize)
+                        ?: DefaultLegacyTaskIconSize
+                val drawable = getDrawable(drawableResId) ?: return@withContext null
+                val bitmap =
+                    Bitmap.createBitmap(
+                        iconSize,
+                        iconSize,
+                        Bitmap.Config.ARGB_8888,
+                    )
+                drawable.setBounds(0, 0, iconSize, iconSize)
+                drawable.draw(Canvas(bitmap))
+                ActivityManager.TaskDescription(null, bitmap)
+            }
+        } ?: return
+    setTaskDescription(description)
+}
+
 private const val AppIconContentType = "app_icon"
 private const val CurrentIconContentKey = "current_icon"
 private const val CurrentIconContentType = "current_icon_summary"
@@ -745,4 +808,6 @@ private const val IconSectionHeaderKey = "icon_section_header"
 private const val IconSectionHeaderContentType = "icon_section_header"
 private const val CommunityNoticeContentKey = "community_icon_notice"
 private const val CommunityNoticeContentType = "community_icon_notice"
+private const val DefaultLegacyTaskIconSize = 192
+private const val MaximumLegacyTaskIconSize = 512
 private val IconListMaxWidth = 720.dp

@@ -60,9 +60,13 @@ class AppIconRepository
         suspend fun loadCatalog(): AppIconCatalog =
             withContext(Dispatchers.IO) {
                 val icons = loadIcons()
+                val selectedIcon = findSelectedIcon(icons)
+                if (!isSelectionApplied(icons, selectedIcon)) {
+                    applySelection(icons, selectedIcon)
+                }
                 AppIconCatalog(
                     icons = icons,
-                    selectedIconId = findSelectedIconId(icons),
+                    selectedIconId = selectedIcon.id,
                 )
             }
 
@@ -72,8 +76,7 @@ class AppIconRepository
                 val selectedIcon =
                     icons.firstOrNull { icon -> icon.id == iconId }
                         ?: throw IllegalArgumentException("Unknown app icon ID.")
-                val currentIconId = findSelectedIconId(icons)
-                if (currentIconId != selectedIcon.id) {
+                if (!isSelectionApplied(icons, selectedIcon)) {
                     applySelection(icons, selectedIcon)
                 }
                 AppIconCatalog(
@@ -125,14 +128,26 @@ class AppIconRepository
             }
         }
 
-        private fun findSelectedIconId(icons: List<AppIcon>): String {
-            val explicitlyEnabled =
-                icons.firstOrNull { icon ->
-                    packageManager.getComponentEnabledSetting(icon.componentName()) ==
-                        PackageManager.COMPONENT_ENABLED_STATE_ENABLED
-                }
-            return explicitlyEnabled?.id ?: DefaultIconId
-        }
+        private fun findSelectedIcon(icons: List<AppIcon>): AppIcon =
+            icons.firstOrNull { icon ->
+                packageManager.getComponentEnabledSetting(icon.componentName()) ==
+                    PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+            }
+                ?: icons.first { icon -> icon.id == DefaultIconId }
+
+        private fun isSelectionApplied(
+            icons: List<AppIcon>,
+            selectedIcon: AppIcon,
+        ): Boolean =
+            icons.count(::isEffectivelyEnabled) == 1 &&
+                isEffectivelyEnabled(selectedIcon)
+
+        private fun isEffectivelyEnabled(icon: AppIcon): Boolean =
+            when (packageManager.getComponentEnabledSetting(icon.componentName())) {
+                PackageManager.COMPONENT_ENABLED_STATE_ENABLED -> true
+                PackageManager.COMPONENT_ENABLED_STATE_DEFAULT -> icon.isDefault
+                else -> false
+            }
 
         private fun applySelection(
             icons: List<AppIcon>,
@@ -152,40 +167,43 @@ class AppIconRepository
                         )
                     },
                 )
-                return
+            } else {
+                val previousStates =
+                    icons.associateWith { icon ->
+                        packageManager.getComponentEnabledSetting(icon.componentName())
+                    }
+                try {
+                    packageManager.setComponentEnabledSetting(
+                        selectedIcon.componentName(),
+                        PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+                        PackageManager.DONT_KILL_APP,
+                    )
+                    icons
+                        .asSequence()
+                        .filterNot { icon -> icon.id == selectedIcon.id }
+                        .forEach { icon ->
+                            packageManager.setComponentEnabledSetting(
+                                icon.componentName(),
+                                PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                                PackageManager.DONT_KILL_APP,
+                            )
+                        }
+                } catch (error: RuntimeException) {
+                    previousStates.forEach { (icon, state) ->
+                        runCatching {
+                            packageManager.setComponentEnabledSetting(
+                                icon.componentName(),
+                                state,
+                                PackageManager.DONT_KILL_APP,
+                            )
+                        }
+                    }
+                    throw error
+                }
             }
 
-            val previousStates =
-                icons.associateWith { icon ->
-                    packageManager.getComponentEnabledSetting(icon.componentName())
-                }
-            try {
-                packageManager.setComponentEnabledSetting(
-                    selectedIcon.componentName(),
-                    PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
-                    PackageManager.DONT_KILL_APP,
-                )
-                icons
-                    .asSequence()
-                    .filterNot { icon -> icon.id == selectedIcon.id }
-                    .forEach { icon ->
-                        packageManager.setComponentEnabledSetting(
-                            icon.componentName(),
-                            PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
-                            PackageManager.DONT_KILL_APP,
-                        )
-                    }
-            } catch (error: RuntimeException) {
-                previousStates.forEach { (icon, state) ->
-                    runCatching {
-                        packageManager.setComponentEnabledSetting(
-                            icon.componentName(),
-                            state,
-                            PackageManager.DONT_KILL_APP,
-                        )
-                    }
-                }
-                throw error
+            check(isSelectionApplied(icons, selectedIcon)) {
+                "Unable to apply launcher icon ${selectedIcon.id} exclusively."
             }
         }
 
