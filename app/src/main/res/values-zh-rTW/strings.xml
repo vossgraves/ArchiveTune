@@ -2,7 +2,7 @@
 <resources>
     <string name="home">首頁</string>
     <string name="songs">歌曲</string>
-    <string name="artists">藝人</string>
+    <string name="artists">藝術家</string>
     <string name="albums">專輯</string>
     <string name="playlists">播放清單</string>
     <plurals name="n_selected">
@@ -36,4 +36,6 @@
     <string name="filter_videos">影片</string>
     <string name="filter_albums">專輯</string>
     <string name="filter_artists">藝術家</string>
+    <string name="filter_playlists">播放清單</string>
+    <string name="filter_community_playlists">社區資源</string>
 </resources>
