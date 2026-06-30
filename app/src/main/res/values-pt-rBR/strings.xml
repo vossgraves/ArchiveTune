@@ -892,7 +892,7 @@
     <string name="onboarding_community_donate_desc">Apoiar o desenvolvimento contínuo.</string>
     <string name="you_might_like">Você pode gostar</string>
     <string name="refresh_suggestions">Atualizar sugestões</string>
-    <string name="you_might_like_source">Fonte das sugestões</string>
+    <string name="you_might_like_source">Fonte de recomendações de playlists</string>
     <string name="playlist_suggestion_source_title">Título da playlist</string>
     <string name="playlist_suggestion_source_content">Conteúdo da playlist</string>
     <string name="playlist_suggestion_source_both">Título e conteúdo da playlist</string>
@@ -1018,4 +1018,6 @@
     <string name="hidden_playlists_description">Playlists ocultas da biblioteca aparecem aqui</string>
     <string name="no_hidden_playlists">Nenhuma playlist oculta</string>
     <string name="unhide">Reexibir</string>
+    <string name="source">Origem</string>
+    <string name="enable_youlyplus_lyrics">Ativar letras do YouLyPlus</string>
 </resources>
