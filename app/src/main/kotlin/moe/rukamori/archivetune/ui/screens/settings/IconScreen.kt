@@ -12,7 +12,9 @@
 
 package moe.rukamori.archivetune.ui.screens.settings
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -40,6 +42,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
@@ -156,6 +159,7 @@ private fun IconScreenContent(
                     IconButton(
                         onClick = onNavigateUp,
                         onLongClick = onNavigateHome,
+                        colors = IconButtonDefaults.filledTonalIconButtonColors(),
                     ) {
                         Icon(
                             painter = painterResource(R.drawable.arrow_back),
@@ -236,6 +240,11 @@ private fun AppIconList(
     onOpenAuthorProfile: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val hasCommunityIcons =
+        remember(model.icons) {
+            model.icons.any { icon -> !icon.isDefault }
+        }
+
     LazyColumn(
         modifier = modifier.selectableGroup(),
         contentPadding = contentPadding,
@@ -248,7 +257,6 @@ private fun AppIconList(
         ) {
             CurrentIconCard(
                 icon = model.selectedIcon,
-                onOpenAuthorProfile = onOpenAuthorProfile,
                 modifier =
                     Modifier
                         .widthIn(max = IconListMaxWidth)
@@ -290,17 +298,29 @@ private fun AppIconList(
                 onOpenAuthorProfile = onOpenAuthorProfile,
             )
         }
+        if (hasCommunityIcons) {
+            item(
+                key = CommunityNoticeContentKey,
+                contentType = CommunityNoticeContentType,
+            ) {
+                CommunityIconNotice(
+                    modifier =
+                        Modifier
+                            .widthIn(max = IconListMaxWidth)
+                            .fillMaxWidth()
+                            .padding(top = 4.dp),
+                )
+            }
+        }
     }
 }
 
 @Composable
 private fun CurrentIconCard(
     icon: AppIconUiModel,
-    onOpenAuthorProfile: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val name = appIconName(icon)
-    val author = icon.author
 
     ElevatedCard(
         modifier = modifier,
@@ -322,7 +342,7 @@ private fun CurrentIconCard(
             AppIconPreview(
                 icon = icon,
                 size = 88.dp,
-                imagePadding = 6.dp,
+                imagePadding = if (icon.isDefault) 6.dp else 0.dp,
             )
             Column(
                 modifier = Modifier.weight(1f),
@@ -352,17 +372,6 @@ private fun CurrentIconCard(
                         fontFamily = FontFamily.Monospace,
                     )
                 }
-                if (author != null) {
-                    Box(
-                        modifier = Modifier.fillMaxWidth(),
-                        contentAlignment = Alignment.CenterEnd,
-                    ) {
-                        AuthorAttribution(
-                            icon = icon,
-                            onOpenAuthorProfile = onOpenAuthorProfile,
-                        )
-                    }
-                }
             }
         }
     }
@@ -387,7 +396,7 @@ private fun IconListHeader(
         Text(
             text = pluralStringResource(R.plurals.app_icon_count, iconCount, iconCount),
             style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = MaterialTheme.colorScheme.primary,
         )
     }
 }
@@ -405,6 +414,20 @@ private fun AppIconRow(
     val name = appIconName(icon)
     val author = icon.author
     val select = remember(icon.id, onClick) { { onClick(icon.id) } }
+    val selectedBorderColor = MaterialTheme.colorScheme.primary
+    val selectedBorderShape = MaterialTheme.shapes.extraLarge
+    val selectedBorder =
+        remember(icon.isSelected, selectedBorderColor, selectedBorderShape) {
+            if (icon.isSelected) {
+                Modifier.border(
+                    width = 1.dp,
+                    color = selectedBorderColor,
+                    shape = selectedBorderShape,
+                )
+            } else {
+                Modifier
+            }
+        }
 
     SegmentedListItem(
         selected = icon.isSelected,
@@ -415,30 +438,28 @@ private fun AppIconRow(
             Modifier
                 .widthIn(max = IconListMaxWidth)
                 .fillMaxWidth()
-                .heightIn(min = 104.dp),
+                .heightIn(min = 112.dp)
+                .then(selectedBorder),
         colors =
             ListItemDefaults.segmentedColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                containerColor =
+                    if (icon.isSelected) {
+                        MaterialTheme.colorScheme.secondaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.surfaceContainerLow
+                    },
             ),
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
         leadingContent = {
             AppIconPreview(
                 icon = icon,
-                size = 64.dp,
-                imagePadding = 4.dp,
+                size = 72.dp,
+                imagePadding = if (icon.isDefault) 4.dp else 0.dp,
             )
         },
         overlineContent = {
-            Text(
-                text =
-                    stringResource(
-                        if (icon.isDefault) {
-                            R.string.app_icon_builtin
-                        } else {
-                            R.string.app_icon_community
-                        },
-                    ),
-                style = MaterialTheme.typography.labelMedium,
+            IconTypeBadge(
+                isDefault = icon.isDefault,
             )
         },
         supportingContent =
@@ -491,6 +512,62 @@ private fun AppIconRow(
 }
 
 @Composable
+private fun IconTypeBadge(
+    isDefault: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val containerColor =
+        if (isDefault) {
+            MaterialTheme.colorScheme.primaryContainer
+        } else {
+            MaterialTheme.colorScheme.tertiaryContainer
+        }
+    val contentColor =
+        if (isDefault) {
+            MaterialTheme.colorScheme.onPrimaryContainer
+        } else {
+            MaterialTheme.colorScheme.onTertiaryContainer
+        }
+
+    Surface(
+        modifier = modifier,
+        shape = MaterialTheme.shapes.extraLarge,
+        color = containerColor,
+        contentColor = contentColor,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Icon(
+                painter =
+                    painterResource(
+                        if (isDefault) {
+                            R.drawable.auto_awesome
+                        } else {
+                            R.drawable.person
+                        },
+                    ),
+                contentDescription = null,
+                modifier = Modifier.size(14.dp),
+            )
+            Text(
+                text =
+                    stringResource(
+                        if (isDefault) {
+                            R.string.app_icon_builtin
+                        } else {
+                            R.string.app_icon_community
+                        },
+                    ),
+                style = MaterialTheme.typography.labelMedium,
+            )
+        }
+    }
+}
+
+@Composable
 private fun AuthorAttribution(
     icon: AppIconUiModel,
     onOpenAuthorProfile: (String) -> Unit,
@@ -530,6 +607,54 @@ private fun AuthorAttribution(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
+    }
+}
+
+@Composable
+private fun CommunityIconNotice(modifier: Modifier = Modifier) {
+    ElevatedCard(
+        modifier = modifier,
+        shape = MaterialTheme.shapes.extraLarge,
+        colors =
+            CardDefaults.elevatedCardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+            ),
+        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 1.dp),
+    ) {
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Surface(
+                modifier = Modifier.size(48.dp),
+                shape = MaterialTheme.shapes.extraLarge,
+                color = MaterialTheme.colorScheme.surfaceContainerLow,
+                contentColor = MaterialTheme.colorScheme.primary,
+                border =
+                    BorderStroke(
+                        width = 1.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant,
+                    ),
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        painter = painterResource(R.drawable.auto_awesome),
+                        contentDescription = null,
+                        modifier = Modifier.size(22.dp),
+                    )
+                }
+            }
+            Text(
+                text = stringResource(R.string.app_icon_community_notice),
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 
@@ -617,4 +742,6 @@ private const val CurrentIconContentKey = "current_icon"
 private const val CurrentIconContentType = "current_icon_summary"
 private const val IconSectionHeaderKey = "icon_section_header"
 private const val IconSectionHeaderContentType = "icon_section_header"
+private const val CommunityNoticeContentKey = "community_icon_notice"
+private const val CommunityNoticeContentType = "community_icon_notice"
 private val IconListMaxWidth = 720.dp

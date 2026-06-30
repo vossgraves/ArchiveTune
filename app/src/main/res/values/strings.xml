@@ -326,6 +326,7 @@
     <string name="app_icon_community">Community icon</string>
     <string name="app_icon_builtin_description">Original ArchiveTune icon</string>
     <string name="app_icon_identifier">ID %1$s</string>
+    <string name="app_icon_community_notice">Community icons are created by users and may change over time.</string>
     <plurals name="app_icon_count">
         <item quantity="one">%d icon</item>
         <item quantity="other">%d icons</item>
