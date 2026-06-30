@@ -66,6 +66,7 @@ abstract class GenerateIconPackTask : DefaultTask() {
                 val author = entry.requiredString("Author", index)
                 val source = entry.requiredString("Source", index)
                 val link = entry.optionalString("Link")
+                val githubAuthorUrl = entry.optionalString("GitHubAuthorUrl")
 
                 if (id == DefaultIconId) {
                     throw GradleException("IconPack Id \"$DefaultIconId\" is reserved.")
@@ -92,6 +93,7 @@ abstract class GenerateIconPackTask : DefaultTask() {
                     "name" to name,
                     "author" to author,
                     "link" to link,
+                    "githubAuthorUrl" to githubAuthorUrl,
                     "source" to source,
                     "drawableResourceName" to drawableName,
                     "aliasClassName" to "${applicationId.get()}.launcher.IconAlias$hash",

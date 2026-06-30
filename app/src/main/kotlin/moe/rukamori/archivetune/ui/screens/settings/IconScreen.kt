@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
@@ -26,6 +27,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -49,16 +51,19 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -69,6 +74,7 @@ import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.viewmodels.AppIconUiModel
+import moe.rukamori.archivetune.viewmodels.IconScreenEffect
 import moe.rukamori.archivetune.viewmodels.IconScreenState
 import moe.rukamori.archivetune.viewmodels.IconScreenUiModel
 import moe.rukamori.archivetune.viewmodels.IconViewModel
@@ -79,6 +85,14 @@ fun IconScreen(
     viewModel: IconViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val uriHandler = LocalUriHandler.current
+    LaunchedEffect(viewModel, uriHandler) {
+        viewModel.effects.collect { effect ->
+            when (effect) {
+                is IconScreenEffect.OpenUri -> uriHandler.openUri(effect.uri)
+            }
+        }
+    }
     val navigateUp: () -> Unit =
         remember(navController) {
             {
@@ -97,6 +111,10 @@ fun IconScreen(
         remember(viewModel) {
             { iconId: String -> viewModel.selectIcon(iconId) }
         }
+    val openAuthorProfile =
+        remember(viewModel) {
+            { iconId: String -> viewModel.openAuthorProfile(iconId) }
+        }
 
     IconScreenContent(
         state = state,
@@ -104,6 +122,7 @@ fun IconScreen(
         onNavigateHome = navigateHome,
         onRetry = retry,
         onSelectIcon = selectIcon,
+        onOpenAuthorProfile = openAuthorProfile,
     )
 }
 
@@ -114,6 +133,7 @@ private fun IconScreenContent(
     onNavigateHome: () -> Unit,
     onRetry: () -> Unit,
     onSelectIcon: (String) -> Unit,
+    onOpenAuthorProfile: (String) -> Unit,
 ) {
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
 
@@ -197,6 +217,7 @@ private fun IconScreenContent(
                             bottom = SettingsDimensions.ScreenBottomPadding,
                         ),
                     onSelectIcon = onSelectIcon,
+                    onOpenAuthorProfile = onOpenAuthorProfile,
                     modifier =
                         Modifier
                             .fillMaxSize()
@@ -212,6 +233,7 @@ private fun AppIconList(
     model: IconScreenUiModel,
     contentPadding: PaddingValues,
     onSelectIcon: (String) -> Unit,
+    onOpenAuthorProfile: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(
@@ -226,6 +248,7 @@ private fun AppIconList(
         ) {
             CurrentIconCard(
                 icon = model.selectedIcon,
+                onOpenAuthorProfile = onOpenAuthorProfile,
                 modifier =
                     Modifier
                         .widthIn(max = IconListMaxWidth)
@@ -264,6 +287,7 @@ private fun AppIconList(
                 enabled = model.selectionInProgressId == null,
                 isApplying = model.selectionInProgressId == icon.id,
                 onClick = onSelectIcon,
+                onOpenAuthorProfile = onOpenAuthorProfile,
             )
         }
     }
@@ -272,6 +296,7 @@ private fun AppIconList(
 @Composable
 private fun CurrentIconCard(
     icon: AppIconUiModel,
+    onOpenAuthorProfile: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val name = appIconName(icon)
@@ -313,23 +338,30 @@ private fun CurrentIconCard(
                     style = MaterialTheme.typography.headlineSmall,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
-                Text(
-                    text =
-                        if (author != null) {
-                            author
-                        } else {
-                            stringResource(R.string.app_icon_builtin_description)
-                        },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                if (!icon.isDefault) {
+                if (icon.isDefault) {
+                    Text(
+                        text = stringResource(R.string.app_icon_builtin_description),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else {
                     Text(
                         text = stringResource(R.string.app_icon_identifier, icon.id),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontFamily = FontFamily.Monospace,
                     )
+                }
+                if (author != null) {
+                    Box(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentAlignment = Alignment.CenterEnd,
+                    ) {
+                        AuthorAttribution(
+                            icon = icon,
+                            onOpenAuthorProfile = onOpenAuthorProfile,
+                        )
+                    }
                 }
             }
         }
@@ -368,6 +400,7 @@ private fun AppIconRow(
     enabled: Boolean,
     isApplying: Boolean,
     onClick: (String) -> Unit,
+    onOpenAuthorProfile: (String) -> Unit,
 ) {
     val name = appIconName(icon)
     val author = icon.author
@@ -411,23 +444,30 @@ private fun AppIconRow(
         supportingContent =
             {
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(
-                        text =
-                            if (author != null) {
-                                author
-                            } else {
-                                stringResource(R.string.app_icon_builtin_description)
-                            },
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    if (!icon.isDefault) {
+                    if (icon.isDefault) {
+                        Text(
+                            text = stringResource(R.string.app_icon_builtin_description),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    } else {
                         Text(
                             text = stringResource(R.string.app_icon_identifier, icon.id),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontFamily = FontFamily.Monospace,
                         )
+                    }
+                    if (author != null) {
+                        Box(
+                            modifier = Modifier.fillMaxWidth(),
+                            contentAlignment = Alignment.CenterEnd,
+                        ) {
+                            AuthorAttribution(
+                                icon = icon,
+                                onOpenAuthorProfile = onOpenAuthorProfile,
+                            )
+                        }
                     }
                 }
             },
@@ -446,6 +486,49 @@ private fun AppIconRow(
         Text(
             text = name,
             style = MaterialTheme.typography.titleMedium,
+        )
+    }
+}
+
+@Composable
+private fun AuthorAttribution(
+    icon: AppIconUiModel,
+    onOpenAuthorProfile: (String) -> Unit,
+) {
+    val author = icon.author ?: return
+    if (icon.githubAuthorUrl != null) {
+        val openProfile =
+            remember(icon.id, onOpenAuthorProfile) {
+                { onOpenAuthorProfile(icon.id) }
+            }
+        FilledTonalButton(
+            onClick = openProfile,
+            modifier =
+                Modifier
+                    .heightIn(min = 48.dp)
+                    .widthIn(max = 220.dp),
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+            shapes = ButtonDefaults.shapes(),
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.github),
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = author,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    } else {
+        Text(
+            text = author,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }
