@@ -68,7 +68,7 @@ import moe.rukamori.archivetune.ui.utils.SnapLayoutInfoProvider
 import moe.rukamori.archivetune.viewmodels.HomeViewModel
 
 private val HomeFeedMaxWidth = 1_200.dp
-private val HomeSectionSpacing = 28.dp
+private val HomeSectionSpacing = 18.dp
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
