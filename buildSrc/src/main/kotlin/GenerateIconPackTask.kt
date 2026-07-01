@@ -17,6 +17,10 @@ import java.io.File
 import java.security.MessageDigest
 import javax.xml.XMLConstants
 import javax.xml.parsers.DocumentBuilderFactory
+import javax.xml.transform.OutputKeys
+import javax.xml.transform.TransformerFactory
+import javax.xml.transform.dom.DOMSource
+import javax.xml.transform.stream.StreamResult
 
 abstract class GenerateIconPackTask : DefaultTask() {
     @get:InputFile
@@ -81,12 +85,10 @@ abstract class GenerateIconPackTask : DefaultTask() {
                 }
 
                 val sourceFile = resolveSource(source)
-                val backgroundColor = validateVector(sourceFile)
-
                 val drawableName = "icon_pack_$hash"
                 val targetFile = File(resourcesDirectory, "drawable/$drawableName.xml")
                 targetFile.parentFile.mkdirs()
-                sourceFile.copyTo(target = targetFile, overwrite = true)
+                val backgroundColor = convertVector(sourceFile, targetFile)
 
                 mapOf(
                     "id" to id,
@@ -141,7 +143,10 @@ abstract class GenerateIconPackTask : DefaultTask() {
         return sourceFile
     }
 
-    private fun validateVector(sourceFile: File): String {
+    private fun convertVector(
+        sourceFile: File,
+        targetFile: File,
+    ): String {
         val factory =
             DocumentBuilderFactory.newInstance().apply {
                 isNamespaceAware = true
@@ -162,22 +167,42 @@ abstract class GenerateIconPackTask : DefaultTask() {
             throw GradleException("IconPack Source \"${sourceFile.name}\" must have a <vector> root.")
         }
 
-        val paths = document.getElementsByTagName("path")
+        val paths = document.getElementsByTagNameNS("*", "path")
+        var backgroundColor: String? = null
         for (index in 0 until paths.length) {
-            val fillColor =
-                paths
-                    .item(index)
-                    .attributes
-                    ?.getNamedItemNS(AndroidNamespace, "fillColor")
-                    ?.nodeValue
-                    ?.toOpaqueColor()
-            if (fillColor != null) {
-                return fillColor
+            val path = paths.item(index)
+            val fillColor = path.attributes?.getNamedItemNS(AndroidNamespace, "fillColor")?.nodeValue
+            if (fillColor == null || fillColor.isBlank()) {
+                path.ownerDocument
+                    .createAttributeNS(AndroidNamespace, "android:fillColor")
+                    .also { attribute ->
+                        attribute.value = DefaultPathFillColor
+                        path.attributes?.setNamedItemNS(attribute)
+                    }
+            } else if (backgroundColor == null) {
+                backgroundColor = fillColor.toOpaqueColor()
             }
         }
-        throw GradleException(
-            "IconPack Source \"${sourceFile.name}\" must contain a path with a literal, non-transparent fillColor.",
-        )
+        writeVector(document = DOMSource(document), targetFile = targetFile)
+        return backgroundColor ?: DefaultPathFillColor
+    }
+
+    private fun writeVector(
+        document: DOMSource,
+        targetFile: File,
+    ) {
+        val factory =
+            TransformerFactory.newInstance().apply {
+                setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true)
+                setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "")
+                setAttribute(XMLConstants.ACCESS_EXTERNAL_STYLESHEET, "")
+            }
+        factory
+            .newTransformer()
+            .apply {
+                setOutputProperty(OutputKeys.ENCODING, Charsets.UTF_8.name())
+                setOutputProperty(OutputKeys.INDENT, "yes")
+            }.transform(document, StreamResult(targetFile))
     }
 
     private fun writeAdaptiveIconResources(
@@ -314,6 +339,7 @@ ${aliases.prependIndent("        ")}
     private companion object {
         const val AndroidNamespace = "http://schemas.android.com/apk/res/android"
         const val DefaultIconId = "default"
+        const val DefaultPathFillColor = "#FF000000"
         val ShortRgbColor = Regex("^#[0-9A-Fa-f]{3}$")
         val ShortArgbColor = Regex("^#[0-9A-Fa-f]{4}$")
         val RgbColor = Regex("^#[0-9A-Fa-f]{6}$")
