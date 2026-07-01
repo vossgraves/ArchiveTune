@@ -10,7 +10,6 @@
 package moe.rukamori.archivetune.ui.screens.settings
 
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
@@ -22,10 +21,10 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -53,10 +52,7 @@ import moe.rukamori.archivetune.utils.rememberPreference
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PrivacySettings(
-    navController: NavController,
-    scrollBehavior: TopAppBarScrollBehavior,
-) {
+fun PrivacySettings(navController: NavController) {
     val database = LocalDatabase.current
     val (pauseListenHistory, onPauseListenHistoryChange) =
         rememberPreference(
@@ -153,93 +149,92 @@ fun PrivacySettings(
         )
     }
 
-    Column(
-        Modifier
-            .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom))
-            .verticalScroll(rememberScrollState())
-            .padding(bottom = SettingsDimensions.ScreenBottomPadding),
-    ) {
-        Spacer(
-            Modifier.windowInsetsPadding(
-                LocalPlayerAwareWindowInsets.current.only(
-                    WindowInsetsSides.Top,
-                ),
-            ),
-        )
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text(stringResource(R.string.privacy)) },
+                navigationIcon = {
+                    IconButton(
+                        onClick = navController::navigateUp,
+                        onLongClick = navController::backToMain,
+                    ) {
+                        Icon(
+                            painterResource(R.drawable.arrow_back),
+                            contentDescription = null,
+                        )
+                    }
+                },
+            )
+        },
+    ) { innerPadding ->
+        val topPadding = innerPadding.calculateTopPadding()
 
-        PreferenceGroup(title = stringResource(R.string.listen_history)) {
-            item {
-                SwitchPreference(
-                    title = { Text(stringResource(R.string.pause_listen_history)) },
-                    icon = { Icon(painterResource(R.drawable.history), null) },
-                    checked = pauseListenHistory,
-                    onCheckedChange = onPauseListenHistoryChange,
-                )
+        Column(
+            Modifier
+                .padding(top = topPadding)
+                .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom))
+                .verticalScroll(rememberScrollState())
+                .padding(bottom = SettingsDimensions.ScreenBottomPadding),
+        ) {
+            PreferenceGroup(title = stringResource(R.string.listen_history)) {
+                item {
+                    SwitchPreference(
+                        title = { Text(stringResource(R.string.pause_listen_history)) },
+                        icon = { Icon(painterResource(R.drawable.history), null) },
+                        checked = pauseListenHistory,
+                        onCheckedChange = onPauseListenHistoryChange,
+                    )
+                }
+
+                item {
+                    PreferenceEntry(
+                        title = { Text(stringResource(R.string.clear_listen_history)) },
+                        icon = { Icon(painterResource(R.drawable.delete_history), null) },
+                        onClick = { showClearListenHistoryDialog = true },
+                    )
+                }
             }
 
-            item {
-                PreferenceEntry(
-                    title = { Text(stringResource(R.string.clear_listen_history)) },
-                    icon = { Icon(painterResource(R.drawable.delete_history), null) },
-                    onClick = { showClearListenHistoryDialog = true },
-                )
-            }
-        }
+            PreferenceGroup(title = stringResource(R.string.search_history)) {
+                item {
+                    SwitchPreference(
+                        title = { Text(stringResource(R.string.pause_search_history)) },
+                        icon = { Icon(painterResource(R.drawable.search_off), null) },
+                        checked = pauseSearchHistory,
+                        onCheckedChange = onPauseSearchHistoryChange,
+                    )
+                }
 
-        PreferenceGroup(title = stringResource(R.string.search_history)) {
-            item {
-                SwitchPreference(
-                    title = { Text(stringResource(R.string.pause_search_history)) },
-                    icon = { Icon(painterResource(R.drawable.search_off), null) },
-                    checked = pauseSearchHistory,
-                    onCheckedChange = onPauseSearchHistoryChange,
-                )
-            }
-
-            item {
-                PreferenceEntry(
-                    title = { Text(stringResource(R.string.clear_search_history)) },
-                    icon = { Icon(painterResource(R.drawable.clear_all), null) },
-                    onClick = { showClearSearchHistoryDialog = true },
-                )
-            }
-        }
-
-        PreferenceGroup(title = stringResource(R.string.misc)) {
-            item {
-                SwitchPreference(
-                    title = { Text(stringResource(R.string.haptics)) },
-                    description = stringResource(R.string.haptics_desc),
-                    icon = { Icon(painterResource(R.drawable.vibration), null) },
-                    checked = enableHapticFeedback,
-                    onCheckedChange = onEnableHapticFeedbackChange,
-                )
+                item {
+                    PreferenceEntry(
+                        title = { Text(stringResource(R.string.clear_search_history)) },
+                        icon = { Icon(painterResource(R.drawable.clear_all), null) },
+                        onClick = { showClearSearchHistoryDialog = true },
+                    )
+                }
             }
 
-            item {
-                SwitchPreference(
-                    title = { Text(stringResource(R.string.disable_screenshot)) },
-                    description = stringResource(R.string.disable_screenshot_desc),
-                    icon = { Icon(painterResource(R.drawable.screenshot), null) },
-                    checked = disableScreenshot,
-                    onCheckedChange = onDisableScreenshotChange,
-                )
+            PreferenceGroup(title = stringResource(R.string.misc)) {
+                item {
+                    SwitchPreference(
+                        title = { Text(stringResource(R.string.haptics)) },
+                        description = stringResource(R.string.haptics_desc),
+                        icon = { Icon(painterResource(R.drawable.vibration), null) },
+                        checked = enableHapticFeedback,
+                        onCheckedChange = onEnableHapticFeedbackChange,
+                    )
+                }
+
+                item {
+                    SwitchPreference(
+                        title = { Text(stringResource(R.string.disable_screenshot)) },
+                        description = stringResource(R.string.disable_screenshot_desc),
+                        icon = { Icon(painterResource(R.drawable.screenshot), null) },
+                        checked = disableScreenshot,
+                        onCheckedChange = onDisableScreenshotChange,
+                    )
+                }
             }
         }
     }
-
-    TopAppBar(
-        title = { Text(stringResource(R.string.privacy)) },
-        navigationIcon = {
-            IconButton(
-                onClick = navController::navigateUp,
-                onLongClick = navController::backToMain,
-            ) {
-                Icon(
-                    painterResource(R.drawable.arrow_back),
-                    contentDescription = null,
-                )
-            }
-        },
-    )
 }

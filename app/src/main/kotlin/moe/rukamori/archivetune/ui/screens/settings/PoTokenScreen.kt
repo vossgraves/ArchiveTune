@@ -51,10 +51,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -109,7 +109,6 @@ private val SUPPORTED_CLIENTS =
 @Composable
 fun PoTokenScreen(
     navController: NavController,
-    scrollBehavior: TopAppBarScrollBehavior,
     viewModel: PoTokenViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
@@ -283,182 +282,183 @@ fun PoTokenScreen(
         }
     }
 
-    Column(
-        Modifier
-            .windowInsetsPadding(
-                LocalPlayerAwareWindowInsets.current.only(
-                    WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
-                ),
-            ).verticalScroll(rememberScrollState())
-            .padding(bottom = SettingsDimensions.ScreenBottomPadding)
-            .animateContentSize(
-                animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
-            ),
-    ) {
-        Spacer(
-            Modifier.windowInsetsPadding(
-                LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Top),
-            ),
-        )
-
-        PreferenceGroup {
-            item {
-                SwitchPreference(
-                    title = { Text(stringResource(R.string.web_client_po_token)) },
-                    description = stringResource(R.string.web_client_po_token_desc),
-                    icon = { Icon(painterResource(R.drawable.token), null) },
-                    checked = webClientPoTokenEnabled,
-                    onCheckedChange = onWebClientPoTokenEnabledChange,
-                )
-            }
-        }
-
-        AnimatedVisibility(
-            visible = webClientPoTokenEnabled,
-            enter =
-                expandVertically(
-                    animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
-                ) + fadeIn(),
-            exit =
-                shrinkVertically(
-                    animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
-                ) + fadeOut(),
-        ) {
-            Column {
-                PreferenceGroupTitle(
-                    title = stringResource(R.string.generated_tokens),
-                )
-
-                SelectableTokenCard(
-                    label = stringResource(R.string.po_token_gvs),
-                    token = displayGvsToken,
-                    onCopy = {
-                        clipboardManager.setText(AnnotatedString(displayGvsToken))
-                        Toast.makeText(context, R.string.token_copied, Toast.LENGTH_SHORT).show()
-                    },
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                )
-
-                SelectableTokenCard(
-                    label = stringResource(R.string.po_token_player),
-                    token = displayPlayerToken,
-                    onCopy = {
-                        clipboardManager.setText(AnnotatedString(displayPlayerToken))
-                        Toast.makeText(context, R.string.token_copied, Toast.LENGTH_SHORT).show()
-                    },
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                )
-
-                SelectableTokenCard(
-                    label = stringResource(R.string.visitor_data),
-                    token = displayVisitorData,
-                    onCopy = {
-                        clipboardManager.setText(AnnotatedString(displayVisitorData))
-                        Toast.makeText(context, R.string.token_copied, Toast.LENGTH_SHORT).show()
-                    },
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                )
-
-                PreferenceGroupTitle(
-                    title = stringResource(R.string.supported_clients),
-                )
-
-                FlowRow(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    SUPPORTED_CLIENTS.forEach { client ->
-                        AssistChip(
-                            onClick = {},
-                            label = {
-                                Text(
-                                    text = client,
-                                    style = MaterialTheme.typography.labelMedium,
-                                )
-                            },
-                            colors =
-                                AssistChipDefaults.assistChipColors(
-                                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                                    labelColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                                ),
-                        )
-                    }
-                }
-
-                PreferenceGroup(title = stringResource(R.string.token_settings)) {
-                    item {
-                        SwitchPreference(
-                            title = { Text(stringResource(R.string.use_visitor_data)) },
-                            description = stringResource(R.string.use_visitor_data_desc),
-                            icon = { Icon(painterResource(R.drawable.person), null) },
-                            checked = useVisitorData,
-                            onCheckedChange = { enabled ->
-                                if (enabled && hasCookie) {
-                                    Toast
-                                        .makeText(
-                                            context,
-                                            R.string.cookies_must_be_disabled,
-                                            Toast.LENGTH_LONG,
-                                        ).show()
-                                } else {
-                                    onUseVisitorDataChange(enabled)
-                                }
-                            },
-                        )
-                    }
-                }
-
-                Spacer(Modifier.height(12.dp))
-
-                ExtendedFloatingActionButton(
-                    onClick = {
-                        showRegenerateSheet = true
-                    },
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp),
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                    shape = MaterialTheme.shapes.medium,
-                    icon = {
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text(stringResource(R.string.po_token_generation)) },
+                navigationIcon = {
+                    IconButton(
+                        onClick = navController::navigateUp,
+                        onLongClick = navController::backToMain,
+                    ) {
                         Icon(
-                            painter = painterResource(R.drawable.sync),
+                            painterResource(R.drawable.arrow_back),
                             contentDescription = null,
-                            modifier = Modifier.size(18.dp),
                         )
-                    },
-                    text = {
-                        Text(
-                            text = stringResource(R.string.regenerate),
-                            style = MaterialTheme.typography.labelLarge,
-                        )
-                    },
-                )
+                    }
+                },
+            )
+        },
+    ) { innerPadding ->
+        val topPadding = innerPadding.calculateTopPadding()
 
-                Spacer(Modifier.height(24.dp))
+        Column(
+            Modifier
+                .padding(top = topPadding)
+                .windowInsetsPadding(
+                    LocalPlayerAwareWindowInsets.current.only(
+                        WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
+                    ),
+                ).verticalScroll(rememberScrollState())
+                .padding(bottom = SettingsDimensions.ScreenBottomPadding)
+                .animateContentSize(
+                    animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+                ),
+        ) {
+            PreferenceGroup {
+                item {
+                    SwitchPreference(
+                        title = { Text(stringResource(R.string.web_client_po_token)) },
+                        description = stringResource(R.string.web_client_po_token_desc),
+                        icon = { Icon(painterResource(R.drawable.token), null) },
+                        checked = webClientPoTokenEnabled,
+                        onCheckedChange = onWebClientPoTokenEnabledChange,
+                    )
+                }
+            }
+
+            AnimatedVisibility(
+                visible = webClientPoTokenEnabled,
+                enter =
+                    expandVertically(
+                        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+                    ) + fadeIn(),
+                exit =
+                    shrinkVertically(
+                        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+                    ) + fadeOut(),
+            ) {
+                Column {
+                    PreferenceGroupTitle(
+                        title = stringResource(R.string.generated_tokens),
+                    )
+
+                    SelectableTokenCard(
+                        label = stringResource(R.string.po_token_gvs),
+                        token = displayGvsToken,
+                        onCopy = {
+                            clipboardManager.setText(AnnotatedString(displayGvsToken))
+                            Toast.makeText(context, R.string.token_copied, Toast.LENGTH_SHORT).show()
+                        },
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                    )
+
+                    SelectableTokenCard(
+                        label = stringResource(R.string.po_token_player),
+                        token = displayPlayerToken,
+                        onCopy = {
+                            clipboardManager.setText(AnnotatedString(displayPlayerToken))
+                            Toast.makeText(context, R.string.token_copied, Toast.LENGTH_SHORT).show()
+                        },
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                    )
+
+                    SelectableTokenCard(
+                        label = stringResource(R.string.visitor_data),
+                        token = displayVisitorData,
+                        onCopy = {
+                            clipboardManager.setText(AnnotatedString(displayVisitorData))
+                            Toast.makeText(context, R.string.token_copied, Toast.LENGTH_SHORT).show()
+                        },
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                    )
+
+                    PreferenceGroupTitle(
+                        title = stringResource(R.string.supported_clients),
+                    )
+
+                    FlowRow(
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        SUPPORTED_CLIENTS.forEach { client ->
+                            AssistChip(
+                                onClick = {},
+                                label = {
+                                    Text(
+                                        text = client,
+                                        style = MaterialTheme.typography.labelMedium,
+                                    )
+                                },
+                                colors =
+                                    AssistChipDefaults.assistChipColors(
+                                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                        labelColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    ),
+                            )
+                        }
+                    }
+
+                    PreferenceGroup(title = stringResource(R.string.token_settings)) {
+                        item {
+                            SwitchPreference(
+                                title = { Text(stringResource(R.string.use_visitor_data)) },
+                                description = stringResource(R.string.use_visitor_data_desc),
+                                icon = { Icon(painterResource(R.drawable.person), null) },
+                                checked = useVisitorData,
+                                onCheckedChange = { enabled ->
+                                    if (enabled && hasCookie) {
+                                        Toast
+                                            .makeText(
+                                                context,
+                                                R.string.cookies_must_be_disabled,
+                                                Toast.LENGTH_LONG,
+                                            ).show()
+                                    } else {
+                                        onUseVisitorDataChange(enabled)
+                                    }
+                                },
+                            )
+                        }
+                    }
+
+                    Spacer(Modifier.height(12.dp))
+
+                    ExtendedFloatingActionButton(
+                        onClick = {
+                            showRegenerateSheet = true
+                        },
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp),
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                        shape = MaterialTheme.shapes.medium,
+                        icon = {
+                            Icon(
+                                painter = painterResource(R.drawable.sync),
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                            )
+                        },
+                        text = {
+                            Text(
+                                text = stringResource(R.string.regenerate),
+                                style = MaterialTheme.typography.labelLarge,
+                            )
+                        },
+                    )
+
+                    Spacer(Modifier.height(24.dp))
+                }
             }
         }
     }
-
-    TopAppBar(
-        title = { Text(stringResource(R.string.po_token_generation)) },
-        navigationIcon = {
-            IconButton(
-                onClick = navController::navigateUp,
-                onLongClick = navController::backToMain,
-            ) {
-                Icon(
-                    painterResource(R.drawable.arrow_back),
-                    contentDescription = null,
-                )
-            }
-        },
-    )
 }
 
 @Composable

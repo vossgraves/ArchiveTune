@@ -32,72 +32,65 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.navigation.NavController
 import coil3.compose.AsyncImage
 import moe.rukamori.archivetune.LocalDatabase
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.PlaylistSortType
-import androidx.navigation.NavController
 import moe.rukamori.archivetune.db.entities.Playlist
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.utils.backToMain
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HiddenPlaylistsScreen(
-    navController: NavController,
-    scrollBehavior: TopAppBarScrollBehavior,
-) {
+fun HiddenPlaylistsScreen(navController: NavController) {
     val database = LocalDatabase.current
-    val allPlaylists by database.playlists(
-        PlaylistSortType.CREATE_DATE,
-        descending = true,
-    ).collectAsState(initial = emptyList())
+    val allPlaylists by database
+        .playlists(
+            PlaylistSortType.CREATE_DATE,
+            descending = true,
+        ).collectAsState(initial = emptyList())
 
     val hiddenPlaylists = allPlaylists.filter { it.playlist.isHidden }
 
     Scaffold(
-        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.hidden_playlists)) },
                 navigationIcon = {
-                    IconButton(onClick = { navController.backToMain() }, onLongClick = {}) {
+                    IconButton(
+                        onClick = navController::navigateUp,
+                        onLongClick = navController::backToMain,
+                    ) {
                         Icon(
                             painter = painterResource(R.drawable.arrow_back),
                             contentDescription = null,
                         )
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer,
-                ),
-                scrollBehavior = scrollBehavior,
             )
         },
     ) { innerPadding ->
         if (hiddenPlaylists.isEmpty()) {
             Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding)
-                    .padding(32.dp),
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .padding(innerPadding)
+                        .padding(32.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
             ) {
@@ -116,19 +109,21 @@ fun HiddenPlaylistsScreen(
             }
         } else {
             LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .windowInsetsPadding(
-                        LocalPlayerAwareWindowInsets.current.only(
-                            WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .windowInsetsPadding(
+                            LocalPlayerAwareWindowInsets.current.only(
+                                WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
+                            ),
                         ),
+                contentPadding =
+                    PaddingValues(
+                        start = 16.dp,
+                        top = innerPadding.calculateTopPadding() + 8.dp,
+                        end = 16.dp,
+                        bottom = SettingsDimensions.ScreenBottomPadding,
                     ),
-                contentPadding = PaddingValues(
-                    start = 16.dp,
-                    top = innerPadding.calculateTopPadding() + 8.dp,
-                    end = 16.dp,
-                    bottom = SettingsDimensions.ScreenBottomPadding,
-                ),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 items(hiddenPlaylists, key = { it.id }) { playlist ->
@@ -154,21 +149,23 @@ private fun HiddenPlaylistCard(
     val cardShape = RoundedCornerShape(20.dp)
 
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(cardShape)
-            .background(MaterialTheme.colorScheme.surfaceContainerLow)
-            .padding(12.dp),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clip(cardShape)
+                .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         AsyncImage(
             model = playlist.thumbnails.getOrNull(0),
             contentDescription = null,
             contentScale = ContentScale.Crop,
-            modifier = Modifier
-                .size(56.dp)
-                .clip(RoundedCornerShape(16.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant),
+            modifier =
+                Modifier
+                    .size(56.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
         )
 
         Spacer(modifier = Modifier.width(14.dp))

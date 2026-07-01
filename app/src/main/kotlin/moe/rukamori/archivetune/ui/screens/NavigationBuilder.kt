@@ -13,48 +13,19 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.AlertDialogDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarScrollBehavior
-import androidx.compose.material3.rememberModalBottomSheetState
-import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.DialogProperties
-import androidx.lifecycle.Lifecycle
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import moe.rukamori.archivetune.BuildConfig
-import moe.rukamori.archivetune.R
-import moe.rukamori.archivetune.constants.DarkModeKey
-import moe.rukamori.archivetune.constants.PureBlackKey
 import moe.rukamori.archivetune.constants.UpdateChannel
 import moe.rukamori.archivetune.defaultUpdateChannel
 import moe.rukamori.archivetune.musicrecognition.MusicRecognitionRoute
-import moe.rukamori.archivetune.ui.component.BottomSheet
-import moe.rukamori.archivetune.ui.component.BottomSheetMenu
-import moe.rukamori.archivetune.ui.component.LocalMenuState
-import moe.rukamori.archivetune.ui.component.rememberBottomSheetState
 import moe.rukamori.archivetune.ui.screens.BrowseScreen
 import moe.rukamori.archivetune.ui.screens.artist.ArtistAlbumsScreen
 import moe.rukamori.archivetune.ui.screens.artist.ArtistItemsScreen
@@ -83,10 +54,10 @@ import moe.rukamori.archivetune.ui.screens.settings.BackupAndRestore
 import moe.rukamori.archivetune.ui.screens.settings.ChangelogScreen
 import moe.rukamori.archivetune.ui.screens.settings.ContentSettings
 import moe.rukamori.archivetune.ui.screens.settings.CustomizeBackground
-import moe.rukamori.archivetune.ui.screens.settings.DarkMode
 import moe.rukamori.archivetune.ui.screens.settings.DebugSettings
 import moe.rukamori.archivetune.ui.screens.settings.DiscordSettings
 import moe.rukamori.archivetune.ui.screens.settings.HiddenPlaylistsScreen
+import moe.rukamori.archivetune.ui.screens.settings.IconScreen
 import moe.rukamori.archivetune.ui.screens.settings.IntegrationScreen
 import moe.rukamori.archivetune.ui.screens.settings.InternetSettings
 import moe.rukamori.archivetune.ui.screens.settings.LastFMSettings
@@ -101,9 +72,6 @@ import moe.rukamori.archivetune.ui.screens.settings.SettingsScreen
 import moe.rukamori.archivetune.ui.screens.settings.StorageSettings
 import moe.rukamori.archivetune.ui.screens.settings.ThemeCreatorScreen
 import moe.rukamori.archivetune.ui.screens.settings.UpdateScreen
-import moe.rukamori.archivetune.ui.utils.ShowMediaInfo
-import moe.rukamori.archivetune.utils.rememberEnumPreference
-import moe.rukamori.archivetune.utils.rememberPreference
 
 @OptIn(ExperimentalMaterial3Api::class)
 fun NavGraphBuilder.navigationBuilder(
@@ -387,25 +355,28 @@ fun NavGraphBuilder.navigationBuilder(
         YouTubeBrowseScreen(navController)
     }
     composable("settings") {
-        SettingsScreen(navController, scrollBehavior, latestVersionName())
+        SettingsScreen(navController, latestVersionName())
     }
     composable("settings/account") {
-        AccountSettings(navController, scrollBehavior, latestVersionName())
+        AccountSettings(navController, latestVersionName())
     }
     composable("settings/hidden_playlists") {
-        HiddenPlaylistsScreen(navController, scrollBehavior)
+        HiddenPlaylistsScreen(navController)
     }
     composable("settings/appearance") {
-        AppearanceSettings(navController, scrollBehavior)
+        AppearanceSettings(navController)
+    }
+    composable("settings/appearance/icon") {
+        IconScreen(navController)
     }
     composable("settings/appearance/aod_customized") {
-        AodCustomizedScreen(navController, scrollBehavior)
+        AodCustomizedScreen(navController)
     }
     composable("settings/appearance/palette_picker") {
         PalettePickerScreen(navController)
     }
     composable("settings/appearance/lyrics_animations") {
-        LyricsAnimationSettings(navController, scrollBehavior)
+        LyricsAnimationSettings(navController)
     }
     composable("settings/appearance/theme_creator") {
         ThemeCreatorScreen(navController)
@@ -417,34 +388,34 @@ fun NavGraphBuilder.navigationBuilder(
         LyricsSettings(navController)
     }
     composable("settings/internet") {
-        InternetSettings(navController, scrollBehavior)
+        InternetSettings(navController)
     }
     composable("settings/player") {
-        PlayerSettings(navController, scrollBehavior)
+        PlayerSettings(navController)
     }
     composable("settings/storage") {
-        StorageSettings(navController, scrollBehavior)
+        StorageSettings(navController)
     }
     composable("settings/privacy") {
-        PrivacySettings(navController, scrollBehavior)
+        PrivacySettings(navController)
     }
     composable("settings/backup_restore") {
-        BackupAndRestore(navController, scrollBehavior)
+        BackupAndRestore(navController)
     }
     composable("settings/discord") {
-        DiscordSettings(navController, scrollBehavior)
+        DiscordSettings(navController)
     }
     composable("settings/integration") {
-        IntegrationScreen(navController, scrollBehavior)
+        IntegrationScreen(navController)
     }
     composable("settings/ai_integration") {
         AiIntegrationSettings(navController)
     }
     composable("settings/music_together") {
-        MusicTogetherScreen(navController, scrollBehavior)
+        MusicTogetherScreen(navController)
     }
     composable("settings/lastfm") {
-        LastFMSettings(navController, scrollBehavior)
+        LastFMSettings(navController)
     }
     composable("settings/discord/experimental") {
         moe.rukamori.archivetune.ui.screens.settings
@@ -455,7 +426,7 @@ fun NavGraphBuilder.navigationBuilder(
     }
     if (BuildConfig.UPDATER_AVAILABLE) {
         composable("settings/update") {
-            UpdateScreen(navController, scrollBehavior, onUpToDate = onClearUpdateBadge)
+            UpdateScreen(navController, onUpToDate = onClearUpdateBadge)
         }
     }
     composable(
@@ -474,13 +445,13 @@ fun NavGraphBuilder.navigationBuilder(
             channelName?.let {
                 runCatching { UpdateChannel.valueOf(it) }.getOrNull()
             } ?: defaultUpdateChannel
-        ChangelogScreen(navController, scrollBehavior, channel = channel)
+        ChangelogScreen(navController, channel = channel)
     }
     composable("settings/about") {
-        AboutScreen(navController, scrollBehavior)
+        AboutScreen(navController)
     }
     composable("settings/po_token") {
-        PoTokenScreen(navController, scrollBehavior)
+        PoTokenScreen(navController)
     }
     composable("customize_background") {
         CustomizeBackground(navController)

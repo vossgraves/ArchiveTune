@@ -555,14 +555,21 @@ fun Thumbnail(
                                                 playerDesignStyle != PlayerDesignStyle.V7 &&
                                                 playerDesignStyle != PlayerDesignStyle.V8
 
-                                        val thumbnailBgUrl =
+                                        val baseArtworkUrl =
                                             item.metadata?.thumbnailUrl?.highRes()
                                                 ?: item.mediaMetadata.artworkUri?.toString()
-                                        val thumbnailBgRequest = rememberOfflineArtworkImageRequest(thumbnailBgUrl)
-                                        val thumbnailArtworkUrl =
-                                            item.metadata?.thumbnailUrl?.highRes()
-                                                ?: item.mediaMetadata.artworkUri?.toString()
-                                        val thumbnailArtworkRequest = rememberOfflineArtworkImageRequest(thumbnailArtworkUrl)
+
+                                        val thumbnailSwapState = rememberThumbnailSwapState(
+                                            videoId = item.metadata?.id,
+                                            ytmUrl = baseArtworkUrl,
+                                            lowDataMode = lowDataModeActive,
+                                            isMusicVideo = item.metadata?.isMusicVideo ?: false,
+                                        )
+
+                                        val displayUrl = thumbnailSwapState.displayUrl
+
+                                        val thumbnailBgRequest = rememberOfflineArtworkImageRequest(displayUrl)
+                                        val thumbnailArtworkRequest = rememberOfflineArtworkImageRequest(displayUrl)
                                         val thumbnailBgBlurEnabled = backdropEnabled && backdropBlurAmount > 0
 
                                         if (thumbnailBgBlurEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -582,7 +589,7 @@ fun Thumbnail(
                                             )
                                         } else if (thumbnailBgBlurEnabled) {
                                             ThumbnailBgBlurApi30(
-                                                imageUrl = thumbnailBgUrl,
+                                                imageUrl = displayUrl,
                                                 blurAmount = backdropBlurAmount,
                                                 shouldCropArtwork = shouldCropArtwork,
                                             )

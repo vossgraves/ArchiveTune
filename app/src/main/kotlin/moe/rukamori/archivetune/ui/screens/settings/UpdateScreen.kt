@@ -71,7 +71,6 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.material3.WavyProgressIndicatorDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -114,6 +113,7 @@ import moe.rukamori.archivetune.ui.component.BottomSheetPage
 import moe.rukamori.archivetune.ui.component.BottomSheetPageState
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.MarkdownText
+import moe.rukamori.archivetune.ui.utils.appBarScrollBehavior
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.AppUpdateInstaller
 import moe.rukamori.archivetune.utils.GitCommit
@@ -130,11 +130,11 @@ import kotlin.math.roundToInt
 @Composable
 fun UpdateScreen(
     navController: NavController,
-    scrollBehavior: TopAppBarScrollBehavior,
     onUpToDate: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
+    val scrollBehavior = appBarScrollBehavior()
     val coroutineScope = rememberCoroutineScope()
     val nightlyInstallUrl = remember { Updater.getLatestNightlyDownloadUrl() }
 
@@ -738,18 +738,19 @@ fun UpdateScreen(
         val determinateIndicatorModifier = remember { Modifier.fillMaxSize() }
         val indeterminateIndicatorModifier = remember { Modifier.size(72.dp) }
 
-        val downloadTitle = buildString {
-            when (updateChannel) {
-                UpdateChannel.DAILY_NIGHTLY -> append("${context.getString(R.string.app_name)} Nightly")
-                else -> append(context.getString(R.string.app_name))
+        val downloadTitle =
+            buildString {
+                when (updateChannel) {
+                    UpdateChannel.DAILY_NIGHTLY -> append("${context.getString(R.string.app_name)} Nightly")
+                    else -> append(context.getString(R.string.app_name))
+                }
+                append(' ')
+                if (updateChannel == UpdateChannel.NIGHTLY) {
+                    append(latestCommit?.sha?.take(7) ?: updateSheetVersion ?: "?")
+                } else {
+                    append(updateSheetVersion ?: "?")
+                }
             }
-            append(' ')
-            if (updateChannel == UpdateChannel.NIGHTLY) {
-                append(latestCommit?.sha?.take(7) ?: updateSheetVersion ?: "?")
-            } else {
-                append(updateSheetVersion ?: "?")
-            }
-        }
 
         AlertDialog(
             onDismissRequest = {},
@@ -1288,13 +1289,20 @@ private fun CommitHistorySection(
                     Text(
                         text =
                             when {
-                                isLoading -> stringResource(R.string.updates_loading_commits)
-                                commits.isEmpty() -> stringResource(R.string.updates_no_commits)
-                                else ->
+                                isLoading -> {
+                                    stringResource(R.string.updates_loading_commits)
+                                }
+
+                                commits.isEmpty() -> {
+                                    stringResource(R.string.updates_no_commits)
+                                }
+
+                                else -> {
                                     stringResource(
                                         R.string.updates_recent_commits_count,
                                         commits.size,
                                     )
+                                }
                             },
                     )
                 },

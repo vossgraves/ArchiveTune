@@ -104,6 +104,7 @@ import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.SwitchPreference
+import moe.rukamori.archivetune.ui.utils.appBarScrollBehavior
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.ui.utils.supportsArtworkGlowShadow
 import moe.rukamori.archivetune.ui.utils.toComposeShape
@@ -139,10 +140,8 @@ private data class AodPreviewSettings(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AodCustomizedScreen(
-    navController: NavController,
-    scrollBehavior: androidx.compose.material3.TopAppBarScrollBehavior,
-) {
+fun AodCustomizedScreen(navController: NavController) {
+    val scrollBehavior = appBarScrollBehavior()
     val (thumbnailShape, onThumbnailShapeChange) =
         rememberEnumPreference(
             AodThumbnailShapeKey,
