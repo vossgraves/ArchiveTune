@@ -19,7 +19,6 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -58,11 +57,10 @@ import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SegmentedListItem
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
@@ -151,7 +149,6 @@ import moe.rukamori.archivetune.ui.component.AlbumGridItem
 import moe.rukamori.archivetune.ui.component.HideOnScrollFAB
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.LocalMenuState
-import moe.rukamori.archivetune.ui.component.MenuSurfaceSection
 import moe.rukamori.archivetune.ui.component.NavigationTitle
 import moe.rukamori.archivetune.ui.component.SongListItem
 import moe.rukamori.archivetune.ui.component.YouTubeGridItem
@@ -1276,28 +1273,32 @@ private fun ArtistOverflowMenu(
     onAction: (ArtistAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    MenuSurfaceSection(modifier = modifier.padding(bottom = 24.dp)) {
+    Column(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .padding(bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
         ArtistOverflowMenuItem(
             text = stringResource(R.string.share),
             iconRes = R.drawable.share,
+            index = 0,
+            count = ArtistOverflowMenuItemCount,
             onClick = { onAction(ArtistAction.Share) },
-        )
-        HorizontalDivider(
-            modifier = Modifier.padding(start = 56.dp),
-            color = MaterialTheme.colorScheme.outlineVariant,
         )
         ArtistOverflowMenuItem(
             text = stringResource(R.string.copy_link),
             iconRes = R.drawable.copy,
+            index = 1,
+            count = ArtistOverflowMenuItemCount,
             onClick = { onAction(ArtistAction.CopyLink) },
-        )
-        HorizontalDivider(
-            modifier = Modifier.padding(start = 56.dp),
-            color = MaterialTheme.colorScheme.outlineVariant,
         )
         ArtistOverflowMenuItem(
             text = stringResource(if (isBlocked) R.string.unblock_artist else R.string.block_artist),
             iconRes = R.drawable.block,
+            index = 2,
+            count = ArtistOverflowMenuItemCount,
             enabled = blockActionEnabled,
             onClick = { onAction(ArtistAction.ToggleBlock) },
         )
@@ -1308,22 +1309,37 @@ private fun ArtistOverflowMenu(
 private fun ArtistOverflowMenuItem(
     text: String,
     iconRes: Int,
+    index: Int,
+    count: Int,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
 ) {
-    ListItem(
-        headlineContent = { Text(text = text) },
+    SegmentedListItem(
+        onClick = onClick,
+        enabled = enabled,
+        shapes = ListItemDefaults.segmentedShapes(index = index, count = count),
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .heightIn(min = 56.dp),
+        colors =
+            ListItemDefaults.segmentedColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+            ),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
         leadingContent = {
             Icon(
                 painter = painterResource(iconRes),
                 contentDescription = null,
             )
         },
-        modifier = modifier.clickable(enabled = enabled, onClick = onClick),
-        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-    )
+    ) {
+        Text(text = text)
+    }
 }
+
+private const val ArtistOverflowMenuItemCount = 3
 
 @Immutable
 private data class ArtistStatItemUiModel(
