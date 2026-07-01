@@ -133,7 +133,7 @@
     <string name="empty_playlist">Leere Playlist</string>
     <string name="empty_playlist_desc">Diese Playlist enthält keine Songs</string>
     <plurals name="seconds">
-        <item quantity="one">1 second</item>
+        <item quantity="one">1 Sekunde</item>
         <item quantity="other">%d Sekunden</item>
     </plurals>
     <string name="settings_section_player_content">Inhalt von Spieler &amp;</string>
@@ -219,7 +219,7 @@
     <string name="music_recognition_history_empty_title">Keine Lieder bisher erkannt</string>
     <string name="history_remote_error_title">Remote Verlauf konnte nicht geladen werden</string>
     <string name="clear_selection">Selektion aufheben</string>
-    <string name="history_no_results_desc">Versuche einen anderen Song oder Künstlername</string>
+    <string name="history_no_results_desc">Versuche einen anderen Song oder Künstlername.</string>
     <string name="local_songs_scan_summary">Letzter Scan: %1$d lieder gefunden, %2$d entfernt</string>
     <string name="history_remote_error_desc">Versuche es später erneut.</string>
     <string name="local_songs_scan_title">Scanne lokale Lieder</string>
