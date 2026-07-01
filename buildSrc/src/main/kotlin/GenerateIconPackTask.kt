@@ -185,7 +185,7 @@ abstract class GenerateIconPackTask : DefaultTask() {
         val output = ByteArrayOutputStream()
         val errors =
             try {
-                Svg2Vector.parseSvgToXml(sourceFile, output)
+                Svg2Vector.parseSvgToXml(sourceFile.toPath(), output)
             } catch (error: Exception) {
                 throw GradleException(
                     "Unable to convert IconPack Source \"${sourceFile.name}\" to VectorDrawable.",
