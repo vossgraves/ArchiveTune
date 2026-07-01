@@ -202,7 +202,10 @@ abstract class GenerateIconPackTask : DefaultTask() {
                 "IconPack Source \"${sourceFile.name}\" produced an empty VectorDrawable.",
             )
         }
-        targetFile.writeBytes(output.toByteArray())
+        val xmlContent = output.toString(Charsets.UTF_8.name())
+            .replace("android:fillColor=\"None\"", "android:fillColor=\"#00000000\"")
+            .replace("android:strokeColor=\"None\"", "android:strokeColor=\"#00000000\"")
+        targetFile.writeText(xmlContent, Charsets.UTF_8)
     }
 
     private fun analyzeSvg(sourceFile: File): SvgAnalysis {
