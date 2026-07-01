@@ -76,7 +76,6 @@ import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -436,8 +435,9 @@ private fun AppIconRow(
     val name = appIconName(icon)
     val author = icon.author
     val select = remember(icon.id, onClick) { { onClick(icon.id) } }
+    val rowShapes = remember(index, count) { ListItemDefaults.segmentedShapes(index = index, count = count) }
     val selectedBorderColor = MaterialTheme.colorScheme.primary
-    val selectedBorderShape = MaterialTheme.shapes.extraLarge
+    val selectedBorderShape = rowShapes.selectedShape
     val selectedBorder =
         remember(icon.isSelected, selectedBorderColor, selectedBorderShape) {
             if (icon.isSelected) {
@@ -450,27 +450,26 @@ private fun AppIconRow(
                 Modifier
             }
         }
+    val secondaryContainer = MaterialTheme.colorScheme.secondaryContainer
+    val surfaceContainerLow = MaterialTheme.colorScheme.surfaceContainerLow
+    val itemColors = remember(icon.isSelected, secondaryContainer, surfaceContainerLow) {
+        ListItemDefaults.segmentedColors(
+            containerColor = if (icon.isSelected) secondaryContainer else surfaceContainerLow,
+        )
+    }
 
     SegmentedListItem(
         selected = icon.isSelected,
         onClick = select,
         enabled = enabled,
-        shapes = ListItemDefaults.segmentedShapes(index = index, count = count),
+        shapes = rowShapes,
         modifier =
             Modifier
                 .widthIn(max = IconListMaxWidth)
                 .fillMaxWidth()
                 .heightIn(min = 104.dp)
                 .then(selectedBorder),
-        colors =
-            ListItemDefaults.segmentedColors(
-                containerColor =
-                    if (icon.isSelected) {
-                        MaterialTheme.colorScheme.secondaryContainer
-                    } else {
-                        MaterialTheme.colorScheme.surfaceContainerLow
-                    },
-            ),
+        colors = itemColors,
         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
         leadingContent = {
             AppIconPreview(
