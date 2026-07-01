@@ -19,6 +19,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -57,7 +58,10 @@ import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -115,6 +119,7 @@ import coil3.size.Size
 import coil3.toBitmap
 import com.valentinilk.shimmer.shimmer
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalDatabase
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
@@ -146,6 +151,7 @@ import moe.rukamori.archivetune.ui.component.AlbumGridItem
 import moe.rukamori.archivetune.ui.component.HideOnScrollFAB
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.LocalMenuState
+import moe.rukamori.archivetune.ui.component.MenuSurfaceSection
 import moe.rukamori.archivetune.ui.component.NavigationTitle
 import moe.rukamori.archivetune.ui.component.SongListItem
 import moe.rukamori.archivetune.ui.component.YouTubeGridItem
@@ -166,6 +172,9 @@ import moe.rukamori.archivetune.ui.utils.formatCompactCount
 import moe.rukamori.archivetune.ui.utils.resize
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.ArtistViewModel
+import moe.rukamori.archivetune.viewmodels.ArtistAction
+import moe.rukamori.archivetune.viewmodels.ArtistBlockState
+import moe.rukamori.archivetune.viewmodels.ArtistEvent
 import java.util.Locale
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
@@ -183,16 +192,59 @@ fun ArtistScreen(
     val playerConnection = LocalPlayerConnection.current ?: return
     val isPlaying by playerConnection.isPlaying.collectAsStateWithLifecycle()
     val mediaMetadata by playerConnection.mediaMetadata.collectAsStateWithLifecycle()
-    val artistPage = viewModel.artistPage
+    val loadedArtistPage = viewModel.artistPage
     val libraryArtist by viewModel.libraryArtist.collectAsStateWithLifecycle()
-    val librarySongs by viewModel.librarySongs.collectAsStateWithLifecycle()
-    val libraryAlbums by viewModel.libraryAlbums.collectAsStateWithLifecycle()
+    val loadedLibrarySongs by viewModel.librarySongs.collectAsStateWithLifecycle()
+    val loadedLibraryAlbums by viewModel.libraryAlbums.collectAsStateWithLifecycle()
+    val blockState by viewModel.blockState.collectAsStateWithLifecycle()
     val hideExplicit by rememberPreference(key = HideExplicitKey, defaultValue = false)
+    val isArtistBlocked = (blockState as? ArtistBlockState.Success)?.isBlocked == true
+    val artistPage =
+        remember(loadedArtistPage, isArtistBlocked) {
+            if (isArtistBlocked) {
+                loadedArtistPage?.copy(
+                    artist =
+                        loadedArtistPage.artist.copy(
+                            playEndpoint = null,
+                            shuffleEndpoint = null,
+                            radioEndpoint = null,
+                        ),
+                    sections = emptyList(),
+                )
+            } else {
+                loadedArtistPage
+            }
+        }
+    val librarySongs = remember(loadedLibrarySongs, isArtistBlocked) { loadedLibrarySongs.takeUnless { isArtistBlocked }.orEmpty() }
+    val libraryAlbums = remember(loadedLibraryAlbums, isArtistBlocked) { loadedLibraryAlbums.takeUnless { isArtistBlocked }.orEmpty() }
 
     val lazyListState = rememberLazyListState()
     val snackbarHostState = remember { SnackbarHostState() }
     var showLocal by rememberSaveable { mutableStateOf(false) }
     val density = LocalDensity.current
+
+    LaunchedEffect(viewModel) {
+        viewModel.events.collect { event ->
+            when (event) {
+                is ArtistEvent.Share -> {
+                    val shareIntent =
+                        Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_TEXT, event.link)
+                        }
+                    context.startActivity(Intent.createChooser(shareIntent, null))
+                }
+
+                is ArtistEvent.CopyLink -> {
+                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    clipboard.setPrimaryClip(ClipData.newPlainText(context.getString(R.string.copy_link), event.link))
+                    Toast.makeText(context, R.string.link_copied, Toast.LENGTH_SHORT).show()
+                }
+
+                is ArtistEvent.ShowMessage -> snackbarHostState.showSnackbar(context.getString(event.messageRes))
+            }
+        }
+    }
 
     // System bars padding
     val systemBarsTopPadding = WindowInsets.systemBars.asPaddingValues().calculateTopPadding()
@@ -1182,44 +1234,29 @@ fun ArtistScreen(
             }
         },
         actions = {
-            // Share/Copy link button
             IconButton(
                 onClick = {
-                    viewModel.artistPage?.artist?.shareLink?.let { link ->
-                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                        val clip = ClipData.newPlainText("Artist Link", link)
-                        clipboard.setPrimaryClip(clip)
-                        Toast.makeText(context, R.string.link_copied, Toast.LENGTH_SHORT).show()
+                    menuState.show {
+                        ArtistOverflowMenu(
+                            isBlocked = isArtistBlocked,
+                            blockActionEnabled =
+                                blockState !is ArtistBlockState.Loading &&
+                                    (
+                                        artistPage?.artist?.title.orEmpty().isNotBlank() ||
+                                            libraryArtist?.artist?.name.orEmpty().isNotBlank()
+                                    ),
+                            onAction = { action ->
+                                viewModel.onAction(action)
+                                menuState.dismiss()
+                            },
+                        )
                     }
                 },
                 onLongClick = {},
             ) {
                 Icon(
-                    painterResource(R.drawable.link),
-                    contentDescription = null,
-                )
-            }
-
-            // Share button
-            IconButton(
-                onClick = {
-                    val shareIntent =
-                        Intent().apply {
-                            action = Intent.ACTION_SEND
-                            type = "text/plain"
-                            putExtra(
-                                Intent.EXTRA_TEXT,
-                                viewModel.artistPage?.artist?.shareLink
-                                    ?: "https://music.youtube.com/channel/${viewModel.artistId}",
-                            )
-                        }
-                    context.startActivity(Intent.createChooser(shareIntent, null))
-                },
-                onLongClick = {},
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.share),
-                    contentDescription = null,
+                    painter = painterResource(R.drawable.more_vert),
+                    contentDescription = stringResource(R.string.more_options),
                 )
             }
         },
@@ -1229,6 +1266,62 @@ fun ArtistScreen(
             } else {
                 TopAppBarDefaults.topAppBarColors()
             },
+    )
+}
+
+@Composable
+private fun ArtistOverflowMenu(
+    isBlocked: Boolean,
+    blockActionEnabled: Boolean,
+    onAction: (ArtistAction) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    MenuSurfaceSection(modifier = modifier.padding(bottom = 24.dp)) {
+        ArtistOverflowMenuItem(
+            text = stringResource(R.string.share),
+            iconRes = R.drawable.share,
+            onClick = { onAction(ArtistAction.Share) },
+        )
+        HorizontalDivider(
+            modifier = Modifier.padding(start = 56.dp),
+            color = MaterialTheme.colorScheme.outlineVariant,
+        )
+        ArtistOverflowMenuItem(
+            text = stringResource(R.string.copy_link),
+            iconRes = R.drawable.copy,
+            onClick = { onAction(ArtistAction.CopyLink) },
+        )
+        HorizontalDivider(
+            modifier = Modifier.padding(start = 56.dp),
+            color = MaterialTheme.colorScheme.outlineVariant,
+        )
+        ArtistOverflowMenuItem(
+            text = stringResource(if (isBlocked) R.string.unblock_artist else R.string.block_artist),
+            iconRes = R.drawable.block,
+            enabled = blockActionEnabled,
+            onClick = { onAction(ArtistAction.ToggleBlock) },
+        )
+    }
+}
+
+@Composable
+private fun ArtistOverflowMenuItem(
+    text: String,
+    iconRes: Int,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+) {
+    ListItem(
+        headlineContent = { Text(text = text) },
+        leadingContent = {
+            Icon(
+                painter = painterResource(iconRes),
+                contentDescription = null,
+            )
+        },
+        modifier = modifier.clickable(enabled = enabled, onClick = onClick),
+        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
     )
 }
 
