@@ -752,10 +752,10 @@
     <string name="discord_refresh_success">Discord Rich Presence를 새로고침했습니다.</string>
     <string name="library_artists_subtitle">모든 즐겨찾기 아티스트</string>
     <string name="app_icon">앱 아이콘</string>
-    <string name="youtube_synced">YouTube 동기화 완료</string>
+    <string name="youtube_synced">YouTube 동기화됨</string>
     <string name="your_collection">내 컬렉션</string>
     <string name="discord_login_description">내 Discord 계정을 안전하게 연동하여 내가 듣고 있는 음악 정보를 프로필 상태 메시지에 실시간으로 보여줍니다.</string>
-    <string name="personal_label">개인 맞춤</string>
+    <string name="personal_label">개인용</string>
     <string name="most_played_badge">최다 재생</string>
     <string name="discord_platform_ios">iOS</string>
     <string name="font_preference_custom">사용자 지정 글꼴 (.ttf)</string>
