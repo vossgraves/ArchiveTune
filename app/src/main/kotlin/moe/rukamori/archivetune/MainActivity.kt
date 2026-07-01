@@ -1135,12 +1135,7 @@ class MainActivity : ComponentActivity() {
                                     ) + WindowInsetsSides.Top,
                                 ).add(WindowInsets(top = AppBarHeight, bottom = bottom))
                         }
-
-                    // Per-route floating-header state (Step 2a). Home and Search each own
-                    // their own TopAppBarState so a hidden header on one tab does not carry
-                    // over to the other. Library is self-contained (its own internal header;
-                    // shell bar offset 0) and OnlineSearchResult uses the TopSearch overlay
-                    // with canScroll=false, so neither needs a dedicated floating behavior.
+                        
                     val homeScrollBehavior =
                         appBarScrollBehavior(
                             canScroll = {
@@ -1157,8 +1152,6 @@ class MainActivity : ComponentActivity() {
                                     (playerBottomSheetState.isCollapsed || playerBottomSheetState.isDismissed)
                             },
                         )
-                    // Shared behavior for the 14 shell-driven sub-screens (Album/Artist/
-                    // Playlist/Account/...). Unchanged from before (was topAppBarScrollBehavior).
                     val topAppBarScrollBehavior =
                         appBarScrollBehavior(
                             canScroll = {
@@ -1209,6 +1202,7 @@ class MainActivity : ComponentActivity() {
                                 currentRoute !in topLevelScreens &&
                                 currentRoute.startsWith(OnlineSearchResultRoutePrefix) != true
                         if (isEnteringSubScreen) {
+                            topAppBarScrollBehavior.state.heightOffset = 0f
                             topAppBarScrollBehavior.state.contentOffset = 0f
                         }
 
