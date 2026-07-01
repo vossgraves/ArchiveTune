@@ -1153,9 +1153,13 @@ class MainActivity : ComponentActivity() {
 
                     val handlePrimaryNavigationClick: (Screens, Boolean) -> Unit = { screen, isSelected ->
                         if (isSelected) {
-                            navController.currentBackStackEntry?.savedStateHandle?.set("scrollToTop", true)
-                            coroutineScope.launch {
-                                searchBarScrollBehavior.state.resetHeightOffset()
+                            if (screen == Screens.Search) {
+                                openSearch()
+                            } else {
+                                navController.currentBackStackEntry?.savedStateHandle?.set("scrollToTop", true)
+                                coroutineScope.launch {
+                                    searchBarScrollBehavior.state.resetHeightOffset()
+                                }
                             }
                         } else {
                             navController.navigate(screen.route) {
