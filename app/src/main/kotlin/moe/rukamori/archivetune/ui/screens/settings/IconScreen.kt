@@ -435,7 +435,7 @@ private fun AppIconRow(
     val name = appIconName(icon)
     val author = icon.author
     val select = remember(icon.id, onClick) { { onClick(icon.id) } }
-    val rowShapes = remember(index, count) { ListItemDefaults.segmentedShapes(index = index, count = count) }
+    val rowShapes = ListItemDefaults.segmentedShapes(index = index, count = count)
     val selectedBorderColor = MaterialTheme.colorScheme.primary
     val selectedBorderShape = rowShapes.selectedShape
     val selectedBorder =
@@ -450,13 +450,6 @@ private fun AppIconRow(
                 Modifier
             }
         }
-    val secondaryContainer = MaterialTheme.colorScheme.secondaryContainer
-    val surfaceContainerLow = MaterialTheme.colorScheme.surfaceContainerLow
-    val itemColors = remember(icon.isSelected, secondaryContainer, surfaceContainerLow) {
-        ListItemDefaults.segmentedColors(
-            containerColor = if (icon.isSelected) secondaryContainer else surfaceContainerLow,
-        )
-    }
 
     SegmentedListItem(
         selected = icon.isSelected,
@@ -469,7 +462,15 @@ private fun AppIconRow(
                 .fillMaxWidth()
                 .heightIn(min = 104.dp)
                 .then(selectedBorder),
-        colors = itemColors,
+        colors =
+            ListItemDefaults.segmentedColors(
+                containerColor =
+                    if (icon.isSelected) {
+                        MaterialTheme.colorScheme.secondaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.surfaceContainerLow
+                    },
+            ),
         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
         leadingContent = {
             AppIconPreview(
