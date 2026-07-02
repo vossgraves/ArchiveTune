@@ -406,7 +406,16 @@ abstract class GenerateIconPackTask : DefaultTask() {
             )
 
             File(resourcesDirectory, "drawable/$foregroundName.xml").writeText(
-                """
+                if (hasIntegratedBackground) {
+                    """
+<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="$AndroidNamespace"
+    android:shape="rectangle">
+    <solid android:color="@android:color/transparent" />
+</shape>
+                    """.trimIndent() + System.lineSeparator()
+                } else {
+                    """
 <?xml version="1.0" encoding="utf-8"?>
 <inset xmlns:android="$AndroidNamespace"
     android:drawable="@drawable/$drawableName"
@@ -414,7 +423,8 @@ abstract class GenerateIconPackTask : DefaultTask() {
     android:insetLeft="$AdaptiveIconForegroundInset"
     android:insetRight="$AdaptiveIconForegroundInset"
     android:insetTop="$AdaptiveIconForegroundInset" />
-                """.trimIndent() + System.lineSeparator(),
+                    """.trimIndent() + System.lineSeparator()
+                },
             )
 
             writeAdaptiveIconWrapper(
