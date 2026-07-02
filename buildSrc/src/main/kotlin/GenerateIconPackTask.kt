@@ -615,7 +615,7 @@ ${aliases.prependIndent("        ")}
     }
 
     private companion object {
-        const val AdaptiveIconForegroundInset = "15dp"
+        const val AdaptiveIconForegroundInset = "20dp"
         const val AccessExternalDtdProperty = "http://javax.xml.XMLConstants/property/accessExternalDTD"
         const val AccessExternalSchemaProperty = "http://javax.xml.XMLConstants/property/accessExternalSchema"
         const val AndroidNamespace = "http://schemas.android.com/apk/res/android"
