@@ -376,7 +376,7 @@ private fun RecognitionTaskState(
             RecognitionPhaseUi.Processing -> R.drawable.cached
             null -> R.drawable.mic
         }
-    val heroShape = remember { MaterialShapes.Cookie9Sided.toShape() }
+    val heroShape = MaterialShapes.Cookie9Sided.toShape()
 
     Column(
         modifier =
@@ -665,7 +665,7 @@ private fun ResultIdentity(
     artworkSize: Dp,
     modifier: Modifier = Modifier,
 ) {
-    val artworkShape = remember { MaterialShapes.Cookie4Sided.toShape() }
+    val artworkShape = MaterialShapes.Cookie4Sided.toShape()
     Column(
         modifier = modifier,
         horizontalAlignment = Alignment.CenterHorizontally,
