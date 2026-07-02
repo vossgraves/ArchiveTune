@@ -65,8 +65,9 @@ abstract class GenerateIconPackTask : DefaultTask() {
         val seenHashes = mutableSetOf<String>()
         val catalog =
             metadata.mapIndexed { index, rawEntry ->
-                val entry = rawEntry as? Map<*, *>
-                    ?: throw GradleException("IconPack metadata entry $index must be an object.")
+                val entry =
+                    rawEntry as? Map<*, *>
+                        ?: throw GradleException("IconPack metadata entry $index must be an object.")
                 val id = entry.requiredString("Id", index)
                 val name = entry.requiredString("Name", index)
                 val author = entry.requiredString("Author", index)
@@ -92,14 +93,24 @@ abstract class GenerateIconPackTask : DefaultTask() {
                 val analysis = analyzeSvg(sourceFile)
                 val hasIntegratedBackground =
                     when (backgroundMode.lowercase()) {
-                        "" -> analysis.hasIntegratedBackground
-                        IntegratedBackgroundMode -> true
-                        TransparentBackgroundMode -> false
-                        else ->
+                        "" -> {
+                            analysis.hasIntegratedBackground
+                        }
+
+                        IntegratedBackgroundMode -> {
+                            true
+                        }
+
+                        TransparentBackgroundMode -> {
+                            false
+                        }
+
+                        else -> {
                             throw GradleException(
                                 "IconPack BackgroundMode \"$backgroundMode\" for Id \"$id\" must be " +
                                     "\"$IntegratedBackgroundMode\" or \"$TransparentBackgroundMode\".",
                             )
+                        }
                     }
                 val backgroundColor =
                     if (configuredBackgroundColor.isEmpty()) {
@@ -202,9 +213,11 @@ abstract class GenerateIconPackTask : DefaultTask() {
                 "IconPack Source \"${sourceFile.name}\" produced an empty VectorDrawable.",
             )
         }
-        val xmlContent = output.toString(Charsets.UTF_8.name())
-            .replace("android:fillColor=\"None\"", "android:fillColor=\"#00000000\"")
-            .replace("android:strokeColor=\"None\"", "android:strokeColor=\"#00000000\"")
+        val xmlContent =
+            output
+                .toString(Charsets.UTF_8.name())
+                .replace("android:fillColor=\"None\"", "android:fillColor=\"#00000000\"")
+                .replace("android:strokeColor=\"None\"", "android:strokeColor=\"#00000000\"")
         targetFile.writeText(xmlContent, Charsets.UTF_8)
     }
 
@@ -245,8 +258,10 @@ abstract class GenerateIconPackTask : DefaultTask() {
 
         val hasIntegratedBackground =
             hasFullCanvasShape ||
-                (paths.length + rectangles.length >= ComplexArtworkPathThreshold &&
-                    colors.toSet().size >= ComplexArtworkColorThreshold)
+                (
+                    paths.length + rectangles.length >= ComplexArtworkPathThreshold &&
+                        colors.toSet().size >= ComplexArtworkColorThreshold
+                )
         val dominantColor =
             colors
                 .groupingBy { color -> color.uppercase() }
@@ -505,7 +520,7 @@ abstract class GenerateIconPackTask : DefaultTask() {
 ${aliases.prependIndent("        ")}
     </application>
 </manifest>
-        """.trimIndent() + System.lineSeparator()
+            """.trimIndent() + System.lineSeparator()
     }
 
     private fun Map<*, *>.requiredString(
@@ -525,8 +540,7 @@ ${aliases.prependIndent("        ")}
             ?.takeIf(String::isNotEmpty)
             ?: throw GradleException("IconPack metadata entry $index requires a non-empty $key.")
 
-    private fun Map<*, *>.optionalString(key: String): String =
-        (this[key] as? String)?.trim().orEmpty()
+    private fun Map<*, *>.optionalString(key: String): String = (this[key] as? String)?.trim().orEmpty()
 
     private fun String.sha256Prefix(): String =
         MessageDigest

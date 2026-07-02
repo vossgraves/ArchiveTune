@@ -168,10 +168,10 @@ import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.ui.utils.formatCompactCount
 import moe.rukamori.archivetune.ui.utils.resize
 import moe.rukamori.archivetune.utils.rememberPreference
-import moe.rukamori.archivetune.viewmodels.ArtistViewModel
 import moe.rukamori.archivetune.viewmodels.ArtistAction
 import moe.rukamori.archivetune.viewmodels.ArtistBlockState
 import moe.rukamori.archivetune.viewmodels.ArtistEvent
+import moe.rukamori.archivetune.viewmodels.ArtistViewModel
 import java.util.Locale
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
@@ -238,7 +238,9 @@ fun ArtistScreen(
                     Toast.makeText(context, R.string.link_copied, Toast.LENGTH_SHORT).show()
                 }
 
-                is ArtistEvent.ShowMessage -> snackbarHostState.showSnackbar(context.getString(event.messageRes))
+                is ArtistEvent.ShowMessage -> {
+                    snackbarHostState.showSnackbar(context.getString(event.messageRes))
+                }
             }
         }
     }
@@ -1239,8 +1241,16 @@ fun ArtistScreen(
                             blockActionEnabled =
                                 blockState !is ArtistBlockState.Loading &&
                                     (
-                                        artistPage?.artist?.title.orEmpty().isNotBlank() ||
-                                            libraryArtist?.artist?.name.orEmpty().isNotBlank()
+                                        artistPage
+                                            ?.artist
+                                            ?.title
+                                            .orEmpty()
+                                            .isNotBlank() ||
+                                            libraryArtist
+                                                ?.artist
+                                                ?.name
+                                                .orEmpty()
+                                                .isNotBlank()
                                     ),
                             onAction = { action ->
                                 viewModel.onAction(action)

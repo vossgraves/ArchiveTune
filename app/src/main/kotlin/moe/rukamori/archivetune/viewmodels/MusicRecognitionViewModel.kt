@@ -12,8 +12,6 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
-import java.text.DateFormat
-import java.util.Date
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
@@ -34,6 +32,8 @@ import moe.rukamori.archivetune.musicrecognition.RecognitionHistoryEntry
 import moe.rukamori.archivetune.musicrecognition.RecognitionPhase
 import moe.rukamori.archivetune.musicrecognition.RecognizeMusicUseCase
 import moe.rukamori.archivetune.musicrecognition.RecognizedTrack
+import java.text.DateFormat
+import java.util.Date
 import javax.inject.Inject
 
 sealed interface MusicRecognitionScreenState {
@@ -303,8 +303,7 @@ class MusicRecognitionViewModel
                 }
         }
 
-        private fun currentHistory(): RecognitionHistoryUiModel =
-            _historyUi.value
+        private fun currentHistory(): RecognitionHistoryUiModel = _historyUi.value
     }
 
 private fun RecognitionPhase.toUiModel(): RecognitionPhaseUi =

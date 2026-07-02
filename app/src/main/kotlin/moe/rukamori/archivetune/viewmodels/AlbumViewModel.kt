@@ -20,9 +20,9 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.db.MusicDatabase
+import moe.rukamori.archivetune.extensions.filterBlockedArtists
 import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.innertube.models.AlbumItem
-import moe.rukamori.archivetune.extensions.filterBlockedArtists
 import moe.rukamori.archivetune.utils.reportException
 import javax.inject.Inject
 
@@ -69,8 +69,7 @@ class AlbumViewModel
                                 album.songs.filterBlockedArtists()
                             },
                     )
-                }
-                .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+                }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
         var otherVersions = MutableStateFlow<List<AlbumItem>>(emptyList())
 
         private val _fetchState = MutableStateFlow<FetchState>(FetchState.Pending)

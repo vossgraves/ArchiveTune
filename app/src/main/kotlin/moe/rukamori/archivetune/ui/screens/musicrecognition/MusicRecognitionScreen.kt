@@ -117,7 +117,13 @@ fun MusicRecognitionScreen(
     val screenState by viewModel.screenState.collectAsStateWithLifecycle()
     val historySheetState by viewModel.historySheetState.collectAsStateWithLifecycle()
     val modalSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val onNavigateBack = remember(navController) { { navController.navigateUp(); Unit } }
+    val onNavigateBack =
+        remember(navController) {
+            {
+                navController.navigateUp()
+                Unit
+            }
+        }
     val onShowHistory = remember(viewModel) { { viewModel.onHistoryVisibilityChanged(true) } }
     val onListen = remember(viewModel) { { viewModel.onListenRequested() } }
     val onCancel = remember(viewModel) { { viewModel.onCancelRecognition() } }
@@ -437,23 +443,37 @@ private fun RecognitionErrorState(
     val isPermissionError = error == MusicRecognitionErrorUi.PermissionRequired
     val title =
         when (error) {
-            MusicRecognitionErrorUi.PermissionRequired ->
+            MusicRecognitionErrorUi.PermissionRequired -> {
                 stringResource(R.string.music_recognition_permission_title)
-            MusicRecognitionErrorUi.NoMatch ->
+            }
+
+            MusicRecognitionErrorUi.NoMatch -> {
                 stringResource(R.string.music_recognition_no_match)
-            else ->
+            }
+
+            else -> {
                 stringResource(R.string.music_recognition_error)
+            }
         }
     val message =
         when (error) {
-            MusicRecognitionErrorUi.PermissionRequired ->
+            MusicRecognitionErrorUi.PermissionRequired -> {
                 stringResource(R.string.music_recognition_permission_desc)
-            MusicRecognitionErrorUi.SignatureFailed ->
+            }
+
+            MusicRecognitionErrorUi.SignatureFailed -> {
                 stringResource(R.string.music_recognition_signature_failed)
+            }
+
             MusicRecognitionErrorUi.RecordingFailed,
-            MusicRecognitionErrorUi.RecognitionFailed ->
+            MusicRecognitionErrorUi.RecognitionFailed,
+            -> {
                 stringResource(R.string.music_recognition_recognition_failed)
-            MusicRecognitionErrorUi.NoMatch -> null
+            }
+
+            MusicRecognitionErrorUi.NoMatch -> {
+                null
+            }
         }
 
     Column(
@@ -929,7 +949,7 @@ private fun RecognitionHistoryBottomSheet(
                                     }
                                 } else {
                                     null
-                                }
+                                },
                         )
                     },
                     expanded = false,
@@ -1028,10 +1048,11 @@ private fun RecognitionHistoryListItem(
         },
         overlineContent = {
             Text(
-                text = stringResource(
-                    R.string.music_recognition_history_recognized_at,
-                    item.recognizedAt,
-                ),
+                text =
+                    stringResource(
+                        R.string.music_recognition_history_recognized_at,
+                        item.recognizedAt,
+                    ),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )

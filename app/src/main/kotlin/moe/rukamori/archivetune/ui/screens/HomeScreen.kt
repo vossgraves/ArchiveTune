@@ -43,9 +43,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedback
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.hapticfeedback.HapticFeedback
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -154,49 +154,49 @@ fun HomeScreen(
                     },
                 ),
     ) {
-    when (val state = screenState) {
-        HomeScreenState.Loading -> {
-            HomeStatePane(
-                iconResId = null,
-                messageResId = null,
-                showLoadingIndicator = true,
-            )
-        }
+        when (val state = screenState) {
+            HomeScreenState.Loading -> {
+                HomeStatePane(
+                    iconResId = null,
+                    messageResId = null,
+                    showLoadingIndicator = true,
+                )
+            }
 
-        HomeScreenState.Empty -> {
-            HomeStatePane(
-                iconResId = R.drawable.music_note,
-                messageResId = R.string.no_results_found,
-                actionResId = R.string.retry,
-                onAction = { viewModel.onAction(HomeAction.Refresh) },
-            )
-        }
+            HomeScreenState.Empty -> {
+                HomeStatePane(
+                    iconResId = R.drawable.music_note,
+                    messageResId = R.string.no_results_found,
+                    actionResId = R.string.retry,
+                    onAction = { viewModel.onAction(HomeAction.Refresh) },
+                )
+            }
 
-        is HomeScreenState.Error -> {
-            HomeStatePane(
-                iconResId = R.drawable.info,
-                messageResId = state.messageResId,
-                actionResId = R.string.retry,
-                onAction = { viewModel.onAction(HomeAction.Refresh) },
-            )
-        }
+            is HomeScreenState.Error -> {
+                HomeStatePane(
+                    iconResId = R.drawable.info,
+                    messageResId = state.messageResId,
+                    actionResId = R.string.retry,
+                    onAction = { viewModel.onAction(HomeAction.Refresh) },
+                )
+            }
 
-        is HomeScreenState.Success -> {
-            HomeContent(
-                uiState = state.uiState,
-                mediaMetadata = mediaMetadata,
-                isPlaying = isPlaying,
-                navController = navController,
-                playerConnection = playerConnection,
-                menuState = menuState,
-                haptic = haptic,
-                scope = scope,
-                lazyListState = lazyListState,
-                forgottenFavoritesGridState = forgottenFavoritesGridState,
-                onAction = viewModel::onAction,
-            )
+            is HomeScreenState.Success -> {
+                HomeContent(
+                    uiState = state.uiState,
+                    mediaMetadata = mediaMetadata,
+                    isPlaying = isPlaying,
+                    navController = navController,
+                    playerConnection = playerConnection,
+                    menuState = menuState,
+                    haptic = haptic,
+                    scope = scope,
+                    lazyListState = lazyListState,
+                    forgottenFavoritesGridState = forgottenFavoritesGridState,
+                    onAction = viewModel::onAction,
+                )
+            }
         }
-    }
     }
 }
 

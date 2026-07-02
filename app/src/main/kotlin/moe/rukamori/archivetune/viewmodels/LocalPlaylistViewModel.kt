@@ -41,8 +41,8 @@ import moe.rukamori.archivetune.constants.PlaylistSuggestionSource
 import moe.rukamori.archivetune.constants.PlaylistSuggestionSourceKey
 import moe.rukamori.archivetune.db.MusicDatabase
 import moe.rukamori.archivetune.db.entities.PlaylistSong
-import moe.rukamori.archivetune.extensions.reversed
 import moe.rukamori.archivetune.extensions.filterBlockedArtists
+import moe.rukamori.archivetune.extensions.reversed
 import moe.rukamori.archivetune.extensions.toEnum
 import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.innertube.models.SongItem

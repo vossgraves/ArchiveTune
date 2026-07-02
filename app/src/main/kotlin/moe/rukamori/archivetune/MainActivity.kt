@@ -1135,7 +1135,7 @@ class MainActivity : ComponentActivity() {
                                     ) + WindowInsetsSides.Top,
                                 ).add(WindowInsets(top = AppBarHeight, bottom = bottom))
                         }
-                        
+
                     val homeScrollBehavior =
                         appBarScrollBehavior(
                             canScroll = {
@@ -1161,7 +1161,7 @@ class MainActivity : ComponentActivity() {
                             },
                         )
 
-                     val handlePrimaryNavigationClick: (Screens, Boolean) -> Unit = { screen, isSelected ->
+                    val handlePrimaryNavigationClick: (Screens, Boolean) -> Unit = { screen, isSelected ->
                         if (isSelected) {
                             if (screen == Screens.Search) {
                                 openSearch()
@@ -1169,7 +1169,10 @@ class MainActivity : ComponentActivity() {
                             } else {
                                 navController.currentBackStackEntry?.savedStateHandle?.set("scrollToTop", true)
                                 when (screen) {
-                                    Screens.Home -> coroutineScope.launch { homeScrollBehavior.state.resetHeightOffset() }
+                                    Screens.Home -> {
+                                        coroutineScope.launch { homeScrollBehavior.state.resetHeightOffset() }
+                                    }
+
                                     else -> {}
                                 }
                             }
@@ -1186,8 +1189,14 @@ class MainActivity : ComponentActivity() {
 
                     LaunchedEffect(currentRoute) {
                         when (currentRoute) {
-                            Screens.Home.route -> homeScrollBehavior.state.resetHeightOffset()
-                            Screens.Search.route -> searchScrollBehavior.state.resetHeightOffset()
+                            Screens.Home.route -> {
+                                homeScrollBehavior.state.resetHeightOffset()
+                            }
+
+                            Screens.Search.route -> {
+                                searchScrollBehavior.state.resetHeightOffset()
+                            }
+
                             else -> {}
                         }
                     }
@@ -1240,8 +1249,14 @@ class MainActivity : ComponentActivity() {
                     LaunchedEffect(active) {
                         if (active) {
                             when (currentRoute) {
-                                Screens.Home.route -> homeScrollBehavior.state.resetHeightOffset()
-                                Screens.Search.route -> searchScrollBehavior.state.resetHeightOffset()
+                                Screens.Home.route -> {
+                                    homeScrollBehavior.state.resetHeightOffset()
+                                }
+
+                                Screens.Search.route -> {
+                                    searchScrollBehavior.state.resetHeightOffset()
+                                }
+
                                 else -> {}
                             }
                             searchBarFocusRequester.requestFocus()
@@ -1564,7 +1579,9 @@ class MainActivity : ComponentActivity() {
                                         val currentScrollBehavior =
                                             when (navBackStackEntry?.destination?.route) {
                                                 Screens.Home.route -> homeScrollBehavior
+
                                                 Screens.Search.route -> searchScrollBehavior
+
                                                 // Library hits else but is offset 0 (self-contained);
                                                 // sub-screens use the shared shell behavior.
                                                 else -> topAppBarScrollBehavior
@@ -1604,7 +1621,13 @@ class MainActivity : ComponentActivity() {
                                                     }.offset {
                                                         IntOffset(
                                                             x = 0,
-                                                            y = if (isLibraryRoute) 0 else currentScrollBehavior.state.heightOffset.roundToInt(),
+                                                            y =
+                                                                if (isLibraryRoute) {
+                                                                    0
+                                                                } else {
+                                                                    currentScrollBehavior.state.heightOffset
+                                                                        .roundToInt()
+                                                                },
                                                         )
                                                     },
                                         ) {

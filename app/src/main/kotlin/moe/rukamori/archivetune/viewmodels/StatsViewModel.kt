@@ -74,11 +74,12 @@ class StatsViewModel
         val mostPlayedSongs =
             periodPair()
                 .flatMapLatest { (selection, t) ->
-                    database.mostPlayedSongs(
-                        fromTimeStamp = statToPeriod(selection, t),
-                        limit = -1,
-                        toTimeStamp = toTimestamp(selection, t),
-                    ).map { songs -> songs.filter { song -> song.artists.none { it.blockedAt != null } } }
+                    database
+                        .mostPlayedSongs(
+                            fromTimeStamp = statToPeriod(selection, t),
+                            limit = -1,
+                            toTimeStamp = toTimestamp(selection, t),
+                        ).map { songs -> songs.filter { song -> song.artists.none { it.blockedAt != null } } }
                 }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
         val mostPlayedArtists =
@@ -97,11 +98,12 @@ class StatsViewModel
         val mostPlayedAlbums =
             periodPair()
                 .flatMapLatest { (selection, t) ->
-                    database.mostPlayedAlbums(
-                        statToPeriod(selection, t),
-                        limit = -1,
-                        toTimeStamp = toTimestamp(selection, t),
-                    ).map { albums -> albums.filter { album -> album.artists.none { it.blockedAt != null } } }
+                    database
+                        .mostPlayedAlbums(
+                            statToPeriod(selection, t),
+                            limit = -1,
+                            toTimeStamp = toTimestamp(selection, t),
+                        ).map { albums -> albums.filter { album -> album.artists.none { it.blockedAt != null } } }
                 }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
         val listeningByHour =

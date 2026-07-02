@@ -36,8 +36,8 @@ import moe.rukamori.archivetune.constants.SpeedDialSongIdsKey
 import moe.rukamori.archivetune.constants.YtmSyncKey
 import moe.rukamori.archivetune.db.MusicDatabase
 import moe.rukamori.archivetune.db.entities.*
-import moe.rukamori.archivetune.extensions.toEnum
 import moe.rukamori.archivetune.extensions.filterBlockedArtists
+import moe.rukamori.archivetune.extensions.toEnum
 import moe.rukamori.archivetune.home.HomeAction
 import moe.rukamori.archivetune.home.HomePresentationPreferences
 import moe.rukamori.archivetune.home.HomeScreenState
@@ -424,22 +424,23 @@ class HomeViewModel
             val playlistsById = playlistIds.mapNotNull { id -> database.getPlaylistById(id) }.associateBy { it.id }
 
             speedDialItems.value =
-                pins.mapNotNull { pin ->
-                    when (pin.type.value) {
-                        SpeedDialPinType.SONG.value -> songsById[pin.id]
-                        SpeedDialPinType.ALBUM.value -> albumsById[pin.id]
-                        SpeedDialPinType.ARTIST.value -> artistsById[pin.id]
-                        SpeedDialPinType.PLAYLIST.value -> playlistsById[pin.id]
-                        else -> null
+                pins
+                    .mapNotNull { pin ->
+                        when (pin.type.value) {
+                            SpeedDialPinType.SONG.value -> songsById[pin.id]
+                            SpeedDialPinType.ALBUM.value -> albumsById[pin.id]
+                            SpeedDialPinType.ARTIST.value -> artistsById[pin.id]
+                            SpeedDialPinType.PLAYLIST.value -> playlistsById[pin.id]
+                            else -> null
+                        }
+                    }.filter { item ->
+                        when (item) {
+                            is Song -> item.artists.none { it.blockedAt != null }
+                            is Album -> item.artists.none { it.blockedAt != null }
+                            is Artist -> item.artist.blockedAt == null
+                            else -> true
+                        }
                     }
-                }.filter { item ->
-                    when (item) {
-                        is Song -> item.artists.none { it.blockedAt != null }
-                        is Album -> item.artists.none { it.blockedAt != null }
-                        is Artist -> item.artist.blockedAt == null
-                        else -> true
-                    }
-                }
         }
 
         private suspend fun load() {
@@ -488,8 +489,7 @@ class HomeViewModel
                                     it.artist.blockedAt == null &&
                                         it.artist.isYouTubeArtist &&
                                         it.artist.thumbnailUrl != null
-                                }
-                                .shuffled()
+                                }.shuffled()
                                 .take(5)
                         keepListening.value = (keepListeningSongs + keepListeningAlbums + keepListeningArtists).shuffled()
                     }

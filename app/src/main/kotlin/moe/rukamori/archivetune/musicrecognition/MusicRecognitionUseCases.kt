@@ -17,9 +17,7 @@ class RecognizeMusicUseCase
     constructor(
         private val repository: MusicRecognitionRepository,
     ) {
-        suspend operator fun invoke(
-            onPhaseChanged: (RecognitionPhase) -> Unit,
-        ): Result<RecognizedTrack> {
+        suspend operator fun invoke(onPhaseChanged: (RecognitionPhase) -> Unit): Result<RecognizedTrack> {
             onPhaseChanged(RecognitionPhase.Listening)
             val samples =
                 try {

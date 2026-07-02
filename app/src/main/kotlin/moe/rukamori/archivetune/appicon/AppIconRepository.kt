@@ -207,8 +207,7 @@ class AppIconRepository
             }
         }
 
-        private fun AppIcon.componentName(): ComponentName =
-            ComponentName(context.packageName, aliasClassName)
+        private fun AppIcon.componentName(): ComponentName = ComponentName(context.packageName, aliasClassName)
 
         private companion object {
             const val CatalogAssetPath = "icon_pack/catalog.json"

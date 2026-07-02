@@ -17,8 +17,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.R
@@ -76,8 +76,7 @@ data class AppIconUiCollection private constructor(
     operator fun get(index: Int): AppIconUiModel = values[index]
 
     companion object {
-        fun from(values: List<AppIconUiModel>): AppIconUiCollection =
-            AppIconUiCollection(values.toList())
+        fun from(values: List<AppIconUiModel>): AppIconUiCollection = AppIconUiCollection(values.toList())
     }
 }
 

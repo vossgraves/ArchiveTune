@@ -80,11 +80,12 @@ class YearInMusicViewModel
         private val topSongs =
             selectedYear
                 .flatMapLatest { year ->
-                    database.mostPlayedSongs(
-                        fromTimeStamp = getYearStartTimestamp(year),
-                        limit = 5,
-                        toTimeStamp = getYearEndTimestamp(year),
-                    ).map { songs -> songs.filter { song -> song.artists.none { it.blockedAt != null } } }
+                    database
+                        .mostPlayedSongs(
+                            fromTimeStamp = getYearStartTimestamp(year),
+                            limit = 5,
+                            toTimeStamp = getYearEndTimestamp(year),
+                        ).map { songs -> songs.filter { song -> song.artists.none { it.blockedAt != null } } }
                 }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
         private val topArtists =
@@ -103,11 +104,12 @@ class YearInMusicViewModel
         private val topAlbums =
             selectedYear
                 .flatMapLatest { year ->
-                    database.mostPlayedAlbums(
-                        fromTimeStamp = getYearStartTimestamp(year),
-                        limit = 5,
-                        toTimeStamp = getYearEndTimestamp(year),
-                    ).map { albums -> albums.filter { album -> album.artists.none { it.blockedAt != null } } }
+                    database
+                        .mostPlayedAlbums(
+                            fromTimeStamp = getYearStartTimestamp(year),
+                            limit = 5,
+                            toTimeStamp = getYearEndTimestamp(year),
+                        ).map { albums -> albums.filter { album -> album.artists.none { it.blockedAt != null } } }
                 }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
         private val listeningTotals =
