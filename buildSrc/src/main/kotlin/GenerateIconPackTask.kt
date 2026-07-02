@@ -23,7 +23,6 @@ import org.w3c.dom.Node
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.security.MessageDigest
-import javax.xml.XMLConstants
 import javax.xml.parsers.DocumentBuilderFactory
 import kotlin.math.abs
 
@@ -290,8 +289,8 @@ abstract class GenerateIconPackTask : DefaultTask() {
                 setFeature("http://xml.org/sax/features/external-general-entities", false)
                 setFeature("http://xml.org/sax/features/external-parameter-entities", false)
                 setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false)
-                setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "")
-                setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "")
+                setAttribute(AccessExternalDtdProperty, "")
+                setAttribute(AccessExternalSchemaProperty, "")
             }
         return try {
             factory.newDocumentBuilder().parse(sourceFile)
@@ -610,6 +609,8 @@ ${aliases.prependIndent("        ")}
 
     private companion object {
         const val AdaptiveIconForegroundInset = "15dp"
+        const val AccessExternalDtdProperty = "http://javax.xml.XMLConstants/property/accessExternalDTD"
+        const val AccessExternalSchemaProperty = "http://javax.xml.XMLConstants/property/accessExternalSchema"
         const val AndroidNamespace = "http://schemas.android.com/apk/res/android"
         const val SvgNamespace = "http://www.w3.org/2000/svg"
         const val CatalogAssetPath = "icon_pack/catalog.json"
