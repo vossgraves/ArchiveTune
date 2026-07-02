@@ -394,6 +394,13 @@ abstract class GenerateIconPackTask : DefaultTask() {
         resourcesDirectory: File,
         catalog: List<Map<String, String>>,
     ) {
+        val drawableDirectory = File(resourcesDirectory, "drawable")
+        if (!drawableDirectory.isDirectory && !drawableDirectory.mkdirs()) {
+            throw GradleException(
+                "Unable to create adaptive icon drawable directory ${drawableDirectory.path}.",
+            )
+        }
+
         catalog.forEach { entry ->
             val resourceName = entry.getValue("adaptiveIconResourceName")
             val roundResourceName = entry.getValue("roundAdaptiveIconResourceName")
@@ -403,7 +410,7 @@ abstract class GenerateIconPackTask : DefaultTask() {
             val hasIntegratedBackground =
                 entry.getValue("hasIntegratedBackground").toBooleanStrict()
 
-            File(resourcesDirectory, "drawable/$backgroundName.xml").writeText(
+            File(drawableDirectory, "$backgroundName.xml").writeText(
                 if (hasIntegratedBackground) {
                     """
 <?xml version="1.0" encoding="utf-8"?>
@@ -426,7 +433,7 @@ abstract class GenerateIconPackTask : DefaultTask() {
                 },
             )
 
-            File(resourcesDirectory, "drawable/$foregroundName.xml").writeText(
+            File(drawableDirectory, "$foregroundName.xml").writeText(
                 if (hasIntegratedBackground) {
                     """
 <?xml version="1.0" encoding="utf-8"?>
