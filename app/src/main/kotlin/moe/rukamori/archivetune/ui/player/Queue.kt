@@ -69,6 +69,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -393,9 +394,11 @@ fun Queue(
             }
         }
     }
+    var scrollToCurrentRequested by remember { mutableStateOf(true) }
     val openQueue =
         remember(playerBottomSheetState, state) {
             {
+                scrollToCurrentRequested = true
                 if (!playerBottomSheetState.isExpandedOrExpanding) {
                     playerBottomSheetState.expandSoft()
                 }
@@ -681,7 +684,12 @@ fun Queue(
         },
     ) {
         val queueWindows by playerConnection.queueWindows.collectAsState()
-        val mutableQueueWindows = remember { mutableStateListOf<Timeline.Window>() }
+        val mutableQueueWindows =
+            remember {
+                mutableStateListOf<Timeline.Window>().apply {
+                    addAll(queueWindows)
+                }
+            }
         val queueLength by remember {
             derivedStateOf {
                 queueWindows.sumOf { it.mediaItem.metadata?.duration ?: 0 }
@@ -691,9 +699,6 @@ fun Queue(
         val headerItems = 1
         val lazyListState = rememberLazyListState()
         var dragInfo by remember { mutableStateOf<Pair<Int, Int>?>(null) }
-
-        var shouldScrollToCurrent by remember { mutableStateOf(false) }
-        var lastScrolledUid by remember { mutableStateOf<Long?>(null) }
 
         val currentPlayingUid =
             remember(currentWindowIndex, queueWindows) {
@@ -749,21 +754,6 @@ fun Queue(
                 }
             }
 
-        LaunchedEffect(mutableQueueWindows) {
-            if (mutableQueueWindows.isNotEmpty() && !shouldScrollToCurrent) {
-                shouldScrollToCurrent = true
-            }
-        }
-
-        LaunchedEffect(currentPlayingUid, shouldScrollToCurrent) {
-            if (currentPlayingUid != null && shouldScrollToCurrent) {
-                val indexInMutableList = mutableQueueWindows.indexOfFirst { it.uid == currentPlayingUid }
-                if (indexInMutableList != -1) {
-                    lazyListState.scrollToItem(indexInMutableList + 1)
-                }
-            }
-        }
-
         LaunchedEffect(reorderableState.isAnyItemDragging) {
             if (!reorderableState.isAnyItemDragging) {
                 dragInfo?.let { (from, to) ->
@@ -790,20 +780,18 @@ fun Queue(
         }
 
         LaunchedEffect(queueWindows) {
-            mutableQueueWindows.apply {
-                clear()
-                addAll(queueWindows)
+            Snapshot.withMutableSnapshot {
+                mutableQueueWindows.clear()
+                mutableQueueWindows.addAll(queueWindows)
             }
         }
 
-        LaunchedEffect(state.isCollapsed) {
-            if (!state.isCollapsed && currentPlayingUid != null) {
+        LaunchedEffect(state.isCollapsed, scrollToCurrentRequested, currentPlayingUid) {
+            if (!state.isCollapsed && scrollToCurrentRequested && currentPlayingUid != null) {
                 val indexInMutableList = mutableQueueWindows.indexOfFirst { it.uid == currentPlayingUid }
                 if (indexInMutableList != -1) {
-                    // Scroll to the item + headerItems (Spacer)
-                    // The Spacer is at index 0, so the first song is at index 1.
-                    // If indexInMutableList is 0 (first song), we want to scroll to index 1.
-                    lazyListState.scrollToItem(indexInMutableList + 1)
+                    lazyListState.scrollToItem(indexInMutableList + headerItems)
+                    scrollToCurrentRequested = false
                 }
             }
         }
@@ -912,7 +900,10 @@ fun Queue(
                             .weight(1f)
                             .nestedScroll(state.preUpPostDownNestedScrollConnection),
                 ) {
-                    item {
+                    item(
+                        key = "queue_selection_spacer",
+                        contentType = "queue_selection_spacer",
+                    ) {
                         Spacer(
                             modifier =
                                 Modifier
@@ -923,11 +914,12 @@ fun Queue(
 
                     itemsIndexed(
                         items = mutableQueueWindows,
-                        key = { _, item -> item.uid.hashCode() },
+                        key = { _, item -> item.uid },
+                        contentType = { _, _ -> "queue_item" },
                     ) { index, window ->
                         ReorderableItem(
                             state = reorderableState,
-                            key = window.uid.hashCode(),
+                            key = window.uid,
                         ) {
                             val currentItem by rememberUpdatedState(window)
                             val isActive = window.uid == currentPlayingUid
@@ -1072,13 +1064,11 @@ fun Queue(
                                                                             positionMs = 0L,
                                                                         ),
                                                                     )
-                                                                    shouldScrollToCurrent = false
                                                                 } else {
                                                                     playerConnection.player.seekToDefaultPosition(
                                                                         window.firstPeriodIndex,
                                                                     )
                                                                     playerConnection.player.playWhenReady = true
-                                                                    shouldScrollToCurrent = false
                                                                 }
                                                             }
                                                         }
