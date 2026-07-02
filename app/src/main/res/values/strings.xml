@@ -805,6 +805,7 @@
     <string name="filter_discord_only">Discord</string>
     <string name="filter_all_logs">All</string>
     <string name="clear">Clear</string>
+    <string name="export">Export</string>
     <string name="logs_empty_message">Logs will appear here when available</string>
     <string name="real_time_playback_stats">Real-time playback statistics</string>
     <string name="copied_to_clipboard">Copied log to clipboard</string>

@@ -9,6 +9,8 @@
 
 package moe.rukamori.archivetune.ui.screens.settings
 
+import android.content.ClipData
+import android.content.Context
 import android.content.Intent
 import android.os.Process
 import android.text.format.DateFormat
@@ -47,6 +49,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
@@ -104,6 +107,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.FileProvider
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.media3.common.Player
 import androidx.navigation.NavController
@@ -124,10 +128,12 @@ import moe.rukamori.archivetune.utils.LogEntry
 import moe.rukamori.archivetune.utils.makeTimeString
 import moe.rukamori.archivetune.utils.rememberPreference
 import java.io.BufferedReader
+import java.io.File
 import java.io.InputStreamReader
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.floor
 import kotlin.math.roundToInt
 
@@ -437,6 +443,7 @@ private fun LogViewerPanel() {
     val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
+    val exportInProgress = remember { AtomicBoolean(false) }
 
     var filterMode by remember { mutableStateOf(0) }
     var selectedLevels by remember {
@@ -732,7 +739,7 @@ private fun LogViewerPanel() {
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
             ) {
                 FilledTonalButton(
                     onClick = {
@@ -741,7 +748,8 @@ private fun LogViewerPanel() {
                     },
                     enabled = filtered.isNotEmpty(),
                     modifier = Modifier.weight(1f),
-                    shapes = ButtonDefaults.shapes(),
+                    shapes = ButtonGroupDefaults.connectedLeadingButtonShapes(),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
                 ) {
                     Icon(
                         painter = painterResource(R.drawable.clear_all),
@@ -766,7 +774,8 @@ private fun LogViewerPanel() {
                     },
                     enabled = filtered.isNotEmpty(),
                     modifier = Modifier.weight(1f),
-                    shapes = ButtonDefaults.shapes(),
+                    shapes = ButtonGroupDefaults.connectedMiddleButtonShapes(),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
                 ) {
                     Icon(
                         painter = painterResource(R.drawable.share),
@@ -775,6 +784,41 @@ private fun LogViewerPanel() {
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(stringResource(R.string.share))
+                }
+
+                FilledTonalButton(
+                    onClick = {
+                        if (filtered.isEmpty() || !exportInProgress.compareAndSet(false, true)) {
+                            return@FilledTonalButton
+                        }
+                        coroutineScope.launch {
+                            try {
+                                exportAndShareLogs(context, filtered)
+                            } catch (exception: Exception) {
+                                if (exception is kotlinx.coroutines.CancellationException) throw exception
+                                Log.e("DebugSettings", "Unable to export logs", exception)
+                                GlobalLog.append(
+                                    Log.ERROR,
+                                    "DebugSettings",
+                                    "Unable to export logs: ${exception.message.orEmpty()}",
+                                )
+                            } finally {
+                                exportInProgress.set(false)
+                            }
+                        }
+                    },
+                    enabled = filtered.isNotEmpty(),
+                    modifier = Modifier.weight(1f),
+                    shapes = ButtonGroupDefaults.connectedTrailingButtonShapes(),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.download),
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(stringResource(R.string.export))
                 }
             }
         }
@@ -791,6 +835,37 @@ private fun LogViewerPanel() {
             isLogAutoScrollPaused = false
         }
     }
+}
+
+private suspend fun exportAndShareLogs(
+    context: Context,
+    entries: List<LogEntry>,
+) {
+    val logFile =
+        withContext(Dispatchers.IO) {
+            val sharedLogsDirectory = File(context.cacheDir, "shared_logs").apply { mkdirs() }
+            File(sharedLogsDirectory, "log.txt").apply {
+                bufferedWriter().use { writer ->
+                    entries.forEach { entry ->
+                        writer.appendLine(GlobalLog.format(entry))
+                    }
+                }
+            }
+        }
+    val logUri =
+        FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.FileProvider",
+            logFile,
+        )
+    val shareIntent =
+        Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            clipData = ClipData.newRawUri(logFile.name, logUri)
+            putExtra(Intent.EXTRA_STREAM, logUri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+    context.startActivity(Intent.createChooser(shareIntent, context.getString(R.string.share_logs)))
 }
 
 @Composable
