@@ -448,6 +448,7 @@ class MusicService :
     private var discordSyncWorkerJob: Job? = null
     private val pendingDiscordRefreshWaiters = mutableListOf<CompletableDeferred<Boolean>>()
     private val discordRefreshWaitersMutex = Mutex()
+    private val toggleLikeMutex = Mutex()
 
     @Volatile
     private var lastLoginRecoveryPrompt: Pair<String, Long>? = null
@@ -5200,10 +5201,25 @@ class MusicService :
     }
 
     fun toggleLike() {
-        database.query {
-            currentSong.value?.let {
-                val song = it.song.toggleLike()
-                update(song)
+        val mediaMetadata = currentMediaMetadata.value ?: return
+        ioScope.launch {
+            try {
+                val song =
+                    toggleLikeMutex.withLock {
+                        database.withTransaction {
+                            val currentSongEntity =
+                                getSongById(mediaMetadata.id)
+                                    ?: run {
+                                        insert(mediaMetadata) {
+                                            it.copy(isLocal = mediaMetadata.id.isLocalMediaId())
+                                        }
+                                        getSongById(mediaMetadata.id)
+                                    }
+                                    ?: return@withTransaction null
+                            currentSongEntity.toggleLike().also(::update)
+                        }
+                    } ?: return@launch
+
                 syncUtils.likeSong(song)
 
                 // Check if auto-download on like is enabled and the song is now liked
@@ -5222,6 +5238,10 @@ class MusicService :
                         false,
                     )
                 }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                reportException(error)
             }
         }
     }
