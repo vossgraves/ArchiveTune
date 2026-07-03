@@ -7089,8 +7089,7 @@ class MusicService :
     }
 
     private fun PlaybackAuthState.resolveExtractorPoToken(): String? =
-        resolveExtractorGvsToken()
-            ?: poTokenPlayer.normalizeExtractorRequestValue()
+        poTokenPlayer.normalizeExtractorRequestValue()
 
     private fun PlaybackAuthState.resolveExtractorGvsToken(): String? =
         resolveGvsPoToken().normalizeExtractorRequestValue()
