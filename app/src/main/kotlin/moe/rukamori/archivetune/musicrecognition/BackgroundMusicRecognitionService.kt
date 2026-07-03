@@ -96,6 +96,10 @@ class BackgroundMusicRecognitionService : Service() {
                 Timber.e(throwable, "Unable to create media projection for music recognition")
                 publishFailure(MusicRecognitionFailure.RecordingFailed)
                 return
+            } ?: run {
+                Timber.e("Media projection was unavailable for music recognition")
+                publishFailure(MusicRecognitionFailure.RecordingFailed)
+                return
             }
         mediaProjection = projection
         recognitionJob =

@@ -5216,7 +5216,7 @@ class MusicService :
                                         getSongById(mediaMetadata.id)
                                     }
                                     ?: return@withTransaction null
-                            currentSongEntity.toggleLike().also(::update)
+                            currentSongEntity.song.toggleLike().also(::update)
                         }
                     } ?: return@launch
 
