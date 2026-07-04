@@ -230,6 +230,10 @@ private fun LogcatScreenContent(
         floatingActionButton = {
             AnimatedVisibility(
                 visible = model?.isAutoScrollPaused == true && model.entries.isNotEmpty(),
+                modifier =
+                    Modifier.windowInsetsPadding(
+                        LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Bottom),
+                    ),
                 enter = scaleIn(),
                 exit = scaleOut(),
             ) {
