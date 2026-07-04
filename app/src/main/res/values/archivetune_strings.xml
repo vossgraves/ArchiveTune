@@ -575,6 +575,7 @@
     <string name="ai_model_fetch_hint">Tap refresh to load available models</string>
     <string name="mori_cipher_settings_title">YouTube decryption</string>
     <string name="mori_cipher_settings_description">Manage automatic player decryption updates</string>
+    <string name="mori_cipher_loading_configuration">Preparing the current player configuration…%1$d%%</string>
     <string name="mori_cipher_next_refresh">Next automatic refresh</string>
     <string name="mori_cipher_runtime_section">Decryption status</string>
     <string name="mori_cipher_update_section">Updates</string>
