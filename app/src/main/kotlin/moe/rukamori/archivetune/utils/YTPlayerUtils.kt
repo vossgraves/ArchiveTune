@@ -1300,7 +1300,7 @@ object YTPlayerUtils {
     /**
      * Wrapper around the [NewPipeUtils.getSignatureTimestamp] function which reports exceptions
      */
-    private fun getSignatureTimestampOrNull(videoId: String): Int? {
+    private suspend fun getSignatureTimestampOrNull(videoId: String): Int? {
         Timber.tag(logTag).i("Getting signature timestamp for videoId: $videoId")
         return NewPipeUtils
             .getSignatureTimestamp(videoId)
@@ -1315,7 +1315,7 @@ object YTPlayerUtils {
      * Wrapper around the [NewPipeUtils.getStreamUrl] function which reports exceptions.
      * Also patches cver to match the client version.
      */
-    private fun findUrlOrNull(
+    private suspend fun findUrlOrNull(
         format: PlayerResponse.StreamingData.Format,
         videoId: String,
         client: YouTubeClient? = null,
