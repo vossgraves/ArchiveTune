@@ -158,6 +158,12 @@ class App :
         applicationScope.launch(Dispatchers.IO) {
             try {
                 val prefs = dataStore.data.first()
+                val playbackSessionId = prefs.toPlaybackAuthState().sessionId
+                if (!playbackSessionId.isNullOrBlank()) {
+                    applicationScope.launch(Dispatchers.IO) {
+                        BotGuardTokenGenerator.preWarm(playbackSessionId)
+                    }
+                }
 
                 prefs[ContentCountryKey]?.takeIf { it != SYSTEM_DEFAULT }?.let { country ->
                     YouTube.locale = YouTube.locale.copy(gl = country)
@@ -188,14 +194,6 @@ class App :
 
                 if (prefs[UseLoginForBrowse] != false) {
                     YouTube.useLoginForBrowse = true
-                }
-
-                // Pre-warm BotGuard token generator
-                val initialVisitor = prefs[VisitorDataKey] ?: YouTube.visitorData
-                if (!initialVisitor.isNullOrBlank()) {
-                    applicationScope.launch(Dispatchers.IO) {
-                        BotGuardTokenGenerator.preWarm(initialVisitor)
-                    }
                 }
 
                 // Apply random theme on startup if enabled
