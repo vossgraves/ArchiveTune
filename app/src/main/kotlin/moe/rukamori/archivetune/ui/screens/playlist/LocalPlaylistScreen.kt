@@ -1022,14 +1022,15 @@ fun LocalPlaylistScreen(
                                     ToggleButton(
                                         checked = downloadState == HeaderDownloadState.Completed,
                                         onCheckedChange = {
-                                            when (downloadState) {
+                                            val currentDownloadState = downloadState
+                                            when (currentDownloadState) {
                                                 HeaderDownloadState.Completed -> {
                                                     showRemoveDownloadDialog = true
                                                 }
 
                                                 is HeaderDownloadState.Partial -> {
                                                     val songIds = songs.map { it.song.id }
-                                                    if (downloadState.paused) {
+                                                    if (currentDownloadState.paused) {
                                                         sendResumeDownloads(context, songIds)
                                                     } else {
                                                         sendPauseDownloads(context, songIds)

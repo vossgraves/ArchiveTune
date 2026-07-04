@@ -626,7 +626,8 @@ fun AlbumScreen(
                             ToggleButton(
                                 checked = downloadState == HeaderDownloadState.Completed,
                                 onCheckedChange = {
-                                    when (downloadState) {
+                                    val currentDownloadState = downloadState
+                                    when (currentDownloadState) {
                                         HeaderDownloadState.Completed -> {
                                             sendRemoveDownloads(
                                                 context = context,
@@ -636,7 +637,7 @@ fun AlbumScreen(
 
                                         is HeaderDownloadState.Partial -> {
                                             val songIds = albumWithSongs.songs.map { it.id }
-                                            if (downloadState.paused) {
+                                            if (currentDownloadState.paused) {
                                                 sendResumeDownloads(context, songIds)
                                             } else {
                                                 sendPauseDownloads(context, songIds)
