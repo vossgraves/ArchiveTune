@@ -63,6 +63,7 @@ import moe.rukamori.archivetune.ui.screens.settings.IconScreen
 import moe.rukamori.archivetune.ui.screens.settings.IntegrationScreen
 import moe.rukamori.archivetune.ui.screens.settings.InternetSettings
 import moe.rukamori.archivetune.ui.screens.settings.LastFMSettings
+import moe.rukamori.archivetune.ui.screens.settings.LogcatScreen
 import moe.rukamori.archivetune.ui.screens.settings.LyricsAnimationSettings
 import moe.rukamori.archivetune.ui.screens.settings.LyricsSettings
 import moe.rukamori.archivetune.ui.screens.settings.MusicTogetherScreen
@@ -431,6 +432,9 @@ fun NavGraphBuilder.navigationBuilder(
     }
     composable("settings/misc") {
         DebugSettings(navController)
+    }
+    composable("settings/logcat") {
+        LogcatScreen(navController)
     }
     if (BuildConfig.UPDATER_AVAILABLE) {
         composable("settings/update") {
