@@ -196,6 +196,7 @@ fun PoTokenScreen(
                     snackbarHostState.currentSnackbarData?.dismiss()
                     snackbarHostState.showSnackbar(tokenCopiedMessage)
                 }
+                Unit
             }
         }
 
