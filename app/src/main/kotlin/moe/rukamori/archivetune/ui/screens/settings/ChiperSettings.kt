@@ -547,7 +547,4 @@ private fun CipherMessageState(
 }
 
 @Composable
-private fun rememberCipherStatusShape(): Shape =
-    remember {
-        MaterialShapes.Cookie9Sided.toShape()
-    }
+private fun rememberCipherStatusShape(): Shape = MaterialShapes.Cookie9Sided.toShape()
