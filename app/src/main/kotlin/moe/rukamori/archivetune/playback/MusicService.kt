@@ -6167,6 +6167,10 @@ class MusicService :
             (events.contains(Player.EVENT_IS_PLAYING_CHANGED) && player.isPlaying)
         ) {
             playbackStreamRecoveryTracker.onPlaybackRecovered(currentMediaId)
+            currentMediaId
+                ?.let(playbackUrlCache::get)
+                ?.url
+                ?.let(YTPlayerUtils::markStreamUrlSuccessful)
             ensureAudiblePlaybackVolume("player_event")
         }
         if (events.containsAny(
