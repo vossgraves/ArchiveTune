@@ -93,13 +93,13 @@ class ChiperSettingsViewModel
             refreshJob =
                 viewModelScope.launch {
                     try {
-                        when (
+                        val refreshResult =
                             refreshCipher(
                                 nowMillis = domain.nowMillis,
                                 remainingRefreshes = domain.remainingRefreshes,
                                 rateLimitResetsAtMillis = domain.rateLimitResetsAtMillis,
                             )
-                        ) {
+                        when (refreshResult) {
                             ManualCipherRefreshResult.Updated -> {
                                 mutableEvents.emit(ChiperSettingsSnackbarEvent(R.string.mori_cipher_refresh_success))
                             }
@@ -109,7 +109,7 @@ class ChiperSettingsViewModel
                             }
 
                             is ManualCipherRefreshResult.Failed -> {
-                                reportException(it.cause)
+                                reportException(refreshResult.cause)
                                 mutableEvents.emit(ChiperSettingsSnackbarEvent(R.string.mori_cipher_refresh_failed))
                             }
                         }
@@ -125,10 +125,11 @@ class ChiperSettingsViewModel
             val runtime = runtime
             val lastUpdated = runtime.lastSuccessfulRefreshMillis
             val nextRefresh = runtime.nextRefreshAtMillis
+            val playerId = runtime.playerId
             if (runtime.status == CipherRuntimeStatus.REFRESHING && lastUpdated == null) {
                 return ChiperSettingsUiState.Loading
             }
-            if (lastUpdated == null || nextRefresh == null || runtime.playerId.isNullOrBlank()) {
+            if (lastUpdated == null || nextRefresh == null || playerId.isNullOrBlank()) {
                 return if (runtime.lastFailure == null) {
                     ChiperSettingsUiState.Empty
                 } else {
@@ -145,7 +146,7 @@ class ChiperSettingsViewModel
             return ChiperSettingsUiState.Success(
                 ChiperSettingsUiData(
                     status = runtime.status,
-                    playerId = runtime.playerId,
+                    playerId = playerId,
                     lastUpdatedMillis = lastUpdated,
                     countdown = remaining.toCountdown(),
                     intervalProgress = elapsed.toFloat() / MORI_CIPHER_REFRESH_INTERVAL_MILLIS.toFloat(),
