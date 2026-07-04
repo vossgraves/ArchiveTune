@@ -33,7 +33,9 @@ import java.util.Locale
 import javax.inject.Inject
 
 sealed interface ChiperSettingsUiState {
-    data object Loading : ChiperSettingsUiState
+    data class Loading(
+        val progressPercent: Int,
+    ) : ChiperSettingsUiState
 
     data class Success(
         val data: ChiperSettingsUiData,
@@ -69,7 +71,10 @@ class ChiperSettingsViewModel
         observeCipherSettings: ObserveCipherSettingsUseCase,
         private val refreshCipher: RefreshCipherUseCase,
     ) : ViewModel() {
-        private val mutableState = MutableStateFlow<ChiperSettingsUiState>(ChiperSettingsUiState.Loading)
+        private val mutableState =
+            MutableStateFlow<ChiperSettingsUiState>(
+                ChiperSettingsUiState.Loading(progressPercent = 0),
+            )
         val state: StateFlow<ChiperSettingsUiState> = mutableState.asStateFlow()
 
         private val mutableEvents = MutableSharedFlow<ChiperSettingsSnackbarEvent>(extraBufferCapacity = 1)
@@ -127,7 +132,9 @@ class ChiperSettingsViewModel
             val nextRefresh = runtime.nextRefreshAtMillis
             val playerId = runtime.playerId
             if (runtime.status == CipherRuntimeStatus.REFRESHING && lastUpdated == null) {
-                return ChiperSettingsUiState.Loading
+                return ChiperSettingsUiState.Loading(
+                    progressPercent = runtime.refreshProgressPercent?.coerceIn(0, 100) ?: 0,
+                )
             }
             if (lastUpdated == null || nextRefresh == null || playerId.isNullOrBlank()) {
                 return if (runtime.lastFailure == null) {
