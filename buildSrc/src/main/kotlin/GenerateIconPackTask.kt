@@ -409,9 +409,11 @@ abstract class GenerateIconPackTask : DefaultTask() {
             val foregroundName = "${drawableName}_foreground"
             val hasIntegratedBackground =
                 entry.getValue("hasIntegratedBackground").toBooleanStrict()
+            val backgroundDrawable: String
+            val foregroundDrawable: String
 
-            File(drawableDirectory, "$backgroundName.xml").writeText(
-                if (hasIntegratedBackground) {
+            if (hasIntegratedBackground) {
+                backgroundDrawable =
                     """
 <?xml version="1.0" encoding="utf-8"?>
 <inset xmlns:android="$AndroidNamespace"
@@ -421,8 +423,17 @@ abstract class GenerateIconPackTask : DefaultTask() {
     android:insetRight="0dp"
     android:insetTop="0dp" />
                     """.trimIndent() + System.lineSeparator()
-                } else {
-                    val backgroundColor = entry.getValue("backgroundColor")
+                foregroundDrawable =
+                    """
+<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="$AndroidNamespace"
+    android:shape="rectangle">
+    <solid android:color="@android:color/transparent" />
+</shape>
+                    """.trimIndent() + System.lineSeparator()
+            } else {
+                val backgroundColor = entry.getValue("backgroundColor")
+                backgroundDrawable =
                     """
 <?xml version="1.0" encoding="utf-8"?>
 <shape xmlns:android="$AndroidNamespace"
@@ -430,11 +441,8 @@ abstract class GenerateIconPackTask : DefaultTask() {
     <solid android:color="$backgroundColor" />
 </shape>
                     """.trimIndent() + System.lineSeparator()
-                },
-            )
-
-            File(drawableDirectory, "$foregroundName.xml").writeText(
-                """
+                foregroundDrawable =
+                    """
 <?xml version="1.0" encoding="utf-8"?>
 <inset xmlns:android="$AndroidNamespace"
     android:drawable="@drawable/$drawableName"
@@ -442,8 +450,11 @@ abstract class GenerateIconPackTask : DefaultTask() {
     android:insetLeft="$AdaptiveIconForegroundInset"
     android:insetRight="$AdaptiveIconForegroundInset"
     android:insetTop="$AdaptiveIconForegroundInset" />
-                """.trimIndent() + System.lineSeparator(),
-            )
+                    """.trimIndent() + System.lineSeparator()
+            }
+
+            File(drawableDirectory, "$backgroundName.xml").writeText(backgroundDrawable)
+            File(drawableDirectory, "$foregroundName.xml").writeText(foregroundDrawable)
 
             writeAdaptiveIconWrapper(
                 targetFile = File(resourcesDirectory, "mipmap-anydpi-v26/$resourceName.xml"),
