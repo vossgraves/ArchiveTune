@@ -11,7 +11,6 @@ package moe.rukamori.archivetune.ui.screens.settings
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,9 +32,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AssistChip
-import androidx.compose.material3.Badge
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
@@ -43,20 +40,22 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalIconButton
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.LoadingIndicator
+import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedListItem
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.TopAppBarScrollBehavior
+import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -64,16 +63,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -331,11 +328,19 @@ private fun AboutMessageContent(
         modifier = modifier.padding(24.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(
-            text = message,
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        Column(
+            modifier = Modifier.widthIn(max = 480.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            SurfaceAppIcon()
+            Text(
+                text = message,
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(top = 24.dp),
+            )
+        }
     }
 }
 
@@ -571,15 +576,10 @@ private fun TranslationContributorList(
             contentType = { "translation_contributor" },
         ) { index ->
             val contributor = contributors[index]
-            SegmentedListItemSurface(
-                index = index,
-                itemCount = contributors.size,
-            ) {
-                TranslationContributorListItem(
-                    language = contributor.language,
-                    contributors = contributor.contributors,
-                )
-            }
+            TranslationContributorListItem(
+                language = contributor.language,
+                contributors = contributor.contributors,
+            )
         }
     }
 }
@@ -592,7 +592,10 @@ private fun TranslationContributorListItem(
 ) {
     ListItem(
         modifier = modifier.heightIn(min = if (contributors == null) 56.dp else 72.dp),
-        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+        colors =
+            ListItemDefaults.colors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+            ),
         leadingContent = {
             Icon(
                 painter = painterResource(R.drawable.language),
@@ -641,16 +644,11 @@ private fun DependencyLicenseList(
             contentType = { "dependency_license" },
         ) { index ->
             val dependency = licenses[index]
-            SegmentedListItemSurface(
-                index = index,
-                itemCount = licenses.size,
-            ) {
-                DependencyLicenseListItem(
-                    name = dependency.name,
-                    version = dependency.version,
-                    licenses = dependency.licenses,
-                )
-            }
+            DependencyLicenseListItem(
+                name = dependency.name,
+                version = dependency.version,
+                licenses = dependency.licenses,
+            )
         }
     }
 }
@@ -664,7 +662,10 @@ private fun DependencyLicenseListItem(
 ) {
     ListItem(
         modifier = modifier.heightIn(min = 72.dp),
-        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+        colors =
+            ListItemDefaults.colors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+            ),
         leadingContent = {
             Icon(
                 painter = painterResource(R.drawable.info),
@@ -707,60 +708,6 @@ private fun DependencyLicenseListItem(
 }
 
 @Composable
-private fun SegmentedListItemSurface(
-    index: Int,
-    itemCount: Int,
-    modifier: Modifier = Modifier,
-    content: @Composable () -> Unit,
-) {
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        shape =
-            segmentedListItemShape(
-                index = index,
-                itemCount = itemCount,
-            ),
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-        content = content,
-    )
-}
-
-private fun segmentedListItemShape(
-    index: Int,
-    itemCount: Int,
-): Shape {
-    val outerCorner = 24.dp
-    val innerCorner = 4.dp
-    return when {
-        itemCount <= 1 -> {
-            RoundedCornerShape(outerCorner)
-        }
-
-        index == 0 -> {
-            RoundedCornerShape(
-                topStart = outerCorner,
-                topEnd = outerCorner,
-                bottomEnd = innerCorner,
-                bottomStart = innerCorner,
-            )
-        }
-
-        index == itemCount - 1 -> {
-            RoundedCornerShape(
-                topStart = innerCorner,
-                topEnd = innerCorner,
-                bottomEnd = outerCorner,
-                bottomStart = outerCorner,
-            )
-        }
-
-        else -> {
-            RoundedCornerShape(innerCorner)
-        }
-    }
-}
-
-@Composable
 private fun AboutSuccessContent(
     model: AboutUiModel,
     onOpenUri: (String) -> Unit,
@@ -769,16 +716,30 @@ private fun AboutSuccessContent(
     contentPadding: PaddingValues,
     listState: LazyListState,
 ) {
+    val leadDeveloperGroup =
+        remember(model.leadDeveloper) {
+            TeamMemberCollection.of(model.leadDeveloper)
+        }
+
     LazyColumn(
         state = listState,
         modifier = modifier,
         contentPadding = contentPadding,
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        verticalArrangement = Arrangement.spacedBy(24.dp),
     ) {
         item(key = "identity", contentType = "about_identity") {
             AboutContentContainer {
-                AboutIdentityCard(
+                AboutIdentitySection(
                     model = model,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        }
+
+        item(key = "links", contentType = "about_links") {
+            AboutContentContainer {
+                ProjectLinksSection(
+                    links = model.primaryLinks,
                     onOpenUri = onOpenUri,
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -787,8 +748,9 @@ private fun AboutSuccessContent(
 
         item(key = "lead_developer", contentType = "about_lead_developer") {
             AboutContentContainer {
-                LeadDeveloperSection(
-                    member = model.leadDeveloper,
+                TeamMemberSection(
+                    title = stringResource(R.string.about_lead_developer),
+                    members = leadDeveloperGroup,
                     onOpenUri = onOpenUri,
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -856,9 +818,8 @@ private fun AboutContentContainer(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun AboutIdentityCard(
+private fun AboutIdentitySection(
     model: AboutUiModel,
-    onOpenUri: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Card(
@@ -866,17 +827,16 @@ private fun AboutIdentityCard(
         shape = MaterialTheme.shapes.extraLarge,
         colors =
             CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                containerColor = MaterialTheme.colorScheme.surfaceContainer,
             ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Column(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .padding(20.dp),
+                    .padding(horizontal = 24.dp, vertical = 28.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
             SurfaceAppIcon()
 
@@ -886,10 +846,11 @@ private fun AboutIdentityCard(
             ) {
                 Text(
                     text = stringResource(model.appNameResId),
-                    style = MaterialTheme.typography.headlineSmall,
+                    style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
 
@@ -897,29 +858,23 @@ private fun AboutIdentityCard(
                     horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    AboutMetadataBadge(text = model.versionName)
+                    AboutMetadataLabel(text = model.versionName)
                     model.buildHash?.let { buildHash ->
-                        AboutMetadataBadge(text = buildHash)
+                        AboutMetadataLabel(text = buildHash)
                     }
-                    AboutMetadataBadge(text = model.buildVariant)
+                    AboutMetadataLabel(text = model.buildVariant)
                 }
             }
-
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-
-            LinkChipRow(
-                links = model.primaryLinks,
-                onOpenUri = onOpenUri,
-            )
         }
     }
 }
 
 @Composable
 private fun SurfaceAppIcon(modifier: Modifier = Modifier) {
-    androidx.compose.material3.Surface(
-        modifier = modifier,
-        shape = CircleShape,
+    val iconShape = remember { MaterialShapes.Cookie9Sided.toShape() }
+    Surface(
+        modifier = modifier.size(96.dp),
+        shape = iconShape,
         color = MaterialTheme.colorScheme.primaryContainer,
         contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
     ) {
@@ -931,100 +886,82 @@ private fun SurfaceAppIcon(modifier: Modifier = Modifier) {
             colorFilter = iconColorFilter,
             modifier =
                 Modifier
-                    .padding(16.dp)
-                    .size(64.dp),
+                    .padding(20.dp)
+                    .fillMaxSize(),
         )
     }
 }
 
 @Composable
-private fun AboutMetadataBadge(
+private fun AboutMetadataLabel(
     text: String,
     modifier: Modifier = Modifier,
 ) {
-    Badge(
-        modifier = modifier.heightIn(min = 32.dp),
-        containerColor = MaterialTheme.colorScheme.secondaryContainer,
-        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+    Surface(
+        modifier = modifier,
+        shape = MaterialTheme.shapes.small,
+        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
     ) {
         Text(
             text = text,
             style = MaterialTheme.typography.labelMedium,
             maxLines = 1,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
         )
     }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun LinkChipRow(
+private fun ProjectLinksSection(
     links: AboutLinkCollection,
-    onOpenUri: (String) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    FlowRow(
-        modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        repeat(links.size) { index ->
-            val link = links[index]
-            val label = stringResource(link.labelResId)
-            val onClick =
-                remember(link.url, onOpenUri) {
-                    { onOpenUri(link.url) }
-                }
-
-            AssistChip(
-                onClick = onClick,
-                leadingIcon = {
-                    Icon(
-                        painter = painterResource(link.iconResId),
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                    )
-                },
-                label = {
-                    Text(
-                        text = label,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                },
-            )
-        }
-    }
-}
-
-@Composable
-private fun LeadDeveloperSection(
-    member: TeamMember,
     onOpenUri: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
         modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        AboutSectionHeader(title = stringResource(R.string.about_lead_developer))
-
         Card(
             modifier = Modifier.fillMaxWidth(),
-            shape = MaterialTheme.shapes.extraLarge,
+            shape = MaterialTheme.shapes.large,
             colors =
                 CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
                 ),
-            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         ) {
-            TeamMemberListItem(
-                member = member,
-                onOpenUri = onOpenUri,
-                containerColor = MaterialTheme.colorScheme.surfaceContainer,
-                avatarSize = 72.dp,
-                minHeight = 104.dp,
-            )
+            FlowRow(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                repeat(links.size) { index ->
+                    val link = links[index]
+                    val onClick =
+                        remember(link.url, onOpenUri) {
+                            { onOpenUri(link.url) }
+                        }
+                    AssistChip(
+                        onClick = onClick,
+                        leadingIcon = {
+                            Icon(
+                                painter = painterResource(link.iconResId),
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                            )
+                        },
+                        label = {
+                            Text(
+                                text = stringResource(link.labelResId),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        },
+                    )
+                }
+            }
         }
     }
 }
@@ -1038,35 +975,20 @@ private fun TeamMemberSection(
 ) {
     Column(
         modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         AboutSectionHeader(title = title)
-
-        Card(
+        Column(
             modifier = Modifier.fillMaxWidth(),
-            shape = MaterialTheme.shapes.large,
-            colors =
-                CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                ),
-            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+            verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap),
         ) {
-            Column {
-                repeat(members.size) { index ->
-                    TeamMemberListItem(
-                        member = members[index],
-                        onOpenUri = onOpenUri,
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                    )
-
-                    if (index < members.size - 1) {
-                        HorizontalDivider(
-                            modifier = Modifier.padding(start = 88.dp),
-                            thickness = SettingsDimensions.DividerThickness,
-                            color = MaterialTheme.colorScheme.outlineVariant,
-                        )
-                    }
-                }
+            repeat(members.size) { index ->
+                TeamMemberListItem(
+                    member = members[index],
+                    index = index,
+                    itemCount = members.size,
+                    onOpenUri = onOpenUri,
+                )
             }
         }
     }
@@ -1078,11 +1000,10 @@ private fun AboutSectionHeader(
     modifier: Modifier = Modifier,
 ) {
     Text(
-        text = title.uppercase(),
-        style = MaterialTheme.typography.labelSmall,
+        text = title,
+        style = MaterialTheme.typography.titleMedium,
         fontWeight = FontWeight.SemiBold,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        letterSpacing = MaterialTheme.typography.labelSmall.letterSpacing,
+        color = MaterialTheme.colorScheme.onSurface,
         modifier =
             modifier.padding(
                 horizontal = SettingsDimensions.SectionHeaderHorizontalPadding,
@@ -1094,41 +1015,40 @@ private fun AboutSectionHeader(
 @Composable
 private fun TeamMemberListItem(
     member: TeamMember,
+    index: Int,
+    itemCount: Int,
     onOpenUri: (String) -> Unit,
-    containerColor: Color,
     modifier: Modifier = Modifier,
-    avatarSize: Dp = 56.dp,
-    minHeight: Dp = 88.dp,
 ) {
     val profileUrl = member.profileUrl
-    val itemClickModifier =
+    val onClick =
         remember(profileUrl, onOpenUri) {
-            if (profileUrl.isNullOrBlank()) {
-                Modifier
-            } else {
-                Modifier.clickable { onOpenUri(profileUrl) }
+            {
+                if (!profileUrl.isNullOrBlank()) {
+                    onOpenUri(profileUrl)
+                }
             }
         }
 
-    ListItem(
+    SegmentedListItem(
+        onClick = onClick,
+        shapes = ListItemDefaults.segmentedShapes(index = index, count = itemCount),
         modifier =
             modifier
                 .fillMaxWidth()
-                .heightIn(min = minHeight)
-                .then(itemClickModifier),
-        colors = ListItemDefaults.colors(containerColor = containerColor),
+                .heightIn(min = 88.dp),
         leadingContent = {
             AsyncImage(
                 model = member.avatarUrl,
                 contentDescription = member.name,
                 modifier =
                     Modifier
-                        .size(avatarSize)
+                        .size(56.dp)
                         .clip(CircleShape)
                         .background(MaterialTheme.colorScheme.surfaceContainerHighest),
             )
         },
-        headlineContent = {
+        content = {
             Text(
                 text = member.name,
                 style = MaterialTheme.typography.titleMedium,
@@ -1139,19 +1059,19 @@ private fun TeamMemberListItem(
             )
         },
         supportingContent = {
-            Text(
-                text = stringResource(member.positionResId),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-        },
-        trailingContent = {
-            MemberLinkActions(
-                links = member.links,
-                onOpenUri = onOpenUri,
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = stringResource(member.positionResId),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                MemberLinkActions(
+                    links = member.links,
+                    onOpenUri = onOpenUri,
+                )
+            }
         },
     )
 }
@@ -1164,8 +1084,8 @@ private fun MemberLinkActions(
     modifier: Modifier = Modifier,
 ) {
     FlowRow(
-        modifier = modifier.widthIn(max = 160.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End),
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         repeat(links.size) { index ->
@@ -1199,51 +1119,65 @@ private fun ContributorsSection(
 ) {
     Column(
         modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         AboutSectionHeader(title = stringResource(R.string.about_contributors))
 
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = MaterialTheme.shapes.large,
-            colors =
-                CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                ),
-            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        ) {
-            when (state) {
-                AboutContributorsUiState.Loading -> {
+        when (state) {
+            AboutContributorsUiState.Loading -> {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors =
+                        CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                        ),
+                ) {
                     ContributorStatusContent(
                         message = stringResource(R.string.loading),
                         showRetry = false,
                         onRetry = onRetry,
                     )
                 }
+            }
 
-                AboutContributorsUiState.Empty -> {
+            AboutContributorsUiState.Empty -> {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors =
+                        CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                        ),
+                ) {
                     ContributorStatusContent(
                         message = stringResource(R.string.no_results_found),
                         showRetry = true,
                         onRetry = onRetry,
                     )
                 }
+            }
 
-                is AboutContributorsUiState.Error -> {
+            is AboutContributorsUiState.Error -> {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors =
+                        CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                        ),
+                ) {
                     ContributorStatusContent(
                         message = stringResource(state.messageResId),
                         showRetry = true,
                         onRetry = onRetry,
                     )
                 }
+            }
 
-                is AboutContributorsUiState.Success -> {
-                    ContributorList(
-                        contributors = state.contributors,
-                        readMoreUrl = readMoreUrl,
-                        onOpenProfile = onOpenProfile,
-                    )
-                }
+            is AboutContributorsUiState.Success -> {
+                ContributorList(
+                    contributors = state.contributors,
+                    readMoreUrl = readMoreUrl,
+                    onOpenProfile = onOpenProfile,
+                )
             }
         }
     }
@@ -1271,6 +1205,7 @@ private fun ContributorStatusContent(
             text = message,
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
         )
         if (showRetry) {
             TextButton(onClick = onRetry) {
@@ -1287,7 +1222,11 @@ private fun ContributorList(
     onOpenProfile: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier = modifier.fillMaxWidth()) {
+    val itemCount = contributors.size + 1
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap),
+    ) {
         repeat(contributors.size) { index ->
             val contributor = contributors[index]
 
@@ -1295,26 +1234,16 @@ private fun ContributorList(
                 login = contributor.login,
                 avatarUrl = contributor.avatarUrl,
                 profileUrl = contributor.profileUrl,
+                index = index,
+                itemCount = itemCount,
                 onOpenProfile = onOpenProfile,
             )
-
-            if (index < contributors.size - 1) {
-                HorizontalDivider(
-                    modifier = Modifier.padding(start = 72.dp),
-                    thickness = SettingsDimensions.DividerThickness,
-                    color = MaterialTheme.colorScheme.outlineVariant,
-                )
-            }
         }
-
-        HorizontalDivider(
-            modifier = Modifier.padding(start = 72.dp),
-            thickness = SettingsDimensions.DividerThickness,
-            color = MaterialTheme.colorScheme.outlineVariant,
-        )
 
         ContributorReadMoreListItem(
             readMoreUrl = readMoreUrl,
+            index = contributors.size,
+            itemCount = itemCount,
             onOpenProfile = onOpenProfile,
         )
     }
@@ -1325,40 +1254,39 @@ private fun ContributorListItem(
     login: String,
     avatarUrl: String,
     profileUrl: String,
+    index: Int,
+    itemCount: Int,
     onOpenProfile: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val itemClickModifier =
+    val onClick =
         remember(profileUrl, onOpenProfile) {
-            if (profileUrl.isBlank()) {
-                Modifier
-            } else {
-                Modifier.clickable { onOpenProfile(profileUrl) }
+            {
+                if (profileUrl.isNotBlank()) {
+                    onOpenProfile(profileUrl)
+                }
             }
         }
 
-    ListItem(
+    SegmentedListItem(
+        onClick = onClick,
+        shapes = ListItemDefaults.segmentedShapes(index = index, count = itemCount),
         modifier =
             modifier
                 .fillMaxWidth()
-                .heightIn(min = 72.dp)
-                .then(itemClickModifier),
-        colors =
-            ListItemDefaults.colors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-            ),
+                .heightIn(min = 72.dp),
         leadingContent = {
             AsyncImage(
                 model = avatarUrl,
                 contentDescription = login,
                 modifier =
                     Modifier
-                        .size(44.dp)
+                        .size(48.dp)
                         .clip(CircleShape)
                         .background(MaterialTheme.colorScheme.surfaceContainerHighest),
             )
         },
-        headlineContent = {
+        content = {
             Text(
                 text = login,
                 style = MaterialTheme.typography.bodyLarge,
@@ -1374,6 +1302,8 @@ private fun ContributorListItem(
 @Composable
 private fun ContributorReadMoreListItem(
     readMoreUrl: String,
+    index: Int,
+    itemCount: Int,
     onOpenProfile: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -1382,25 +1312,28 @@ private fun ContributorReadMoreListItem(
             { onOpenProfile(readMoreUrl) }
         }
 
-    ListItem(
+    SegmentedListItem(
+        onClick = onClick,
+        shapes = ListItemDefaults.segmentedShapes(index = index, count = itemCount),
         modifier =
             modifier
                 .fillMaxWidth()
-                .heightIn(min = 72.dp)
-                .clickable(onClick = onClick),
-        colors =
-            ListItemDefaults.colors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-            ),
+                .heightIn(min = 72.dp),
         leadingContent = {
-            Icon(
-                painter = painterResource(R.drawable.add_circle),
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(44.dp),
-            )
+            Surface(
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.secondaryContainer,
+                contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                modifier = Modifier.size(48.dp),
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.add_circle),
+                    contentDescription = null,
+                    modifier = Modifier.padding(12.dp),
+                )
+            }
         },
-        headlineContent = {
+        content = {
             Text(
                 text = stringResource(R.string.more),
                 style = MaterialTheme.typography.bodyLarge,
