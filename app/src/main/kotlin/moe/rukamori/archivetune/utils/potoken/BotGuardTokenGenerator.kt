@@ -32,6 +32,8 @@ import java.util.Collections
 import java.util.LinkedHashMap
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 /**
  * Generates cryptographically valid PoTokens by running YouTube's BotGuard
@@ -339,6 +341,7 @@ object BotGuardTokenGenerator {
     ) {
         private val scope = MainScope()
         private val closed = AtomicBoolean(false)
+        private val readyCompleted = AtomicBoolean(false)
         private val pendingMints =
             Collections.synchronizedMap(
                 ArrayMap<String, CancellableContinuation<String>>(),
@@ -420,7 +423,7 @@ object BotGuardTokenGenerator {
         @JavascriptInterface
         fun onMinterReady() {
             Timber.tag(TAG).d("Minter ready")
-            readySignal.tryResume(this@BotGuardEngine)?.let(readySignal::completeResume)
+            resumeReady(this@BotGuardEngine)
         }
 
         @JavascriptInterface
@@ -466,7 +469,9 @@ object BotGuardTokenGenerator {
             pendingMints
                 .remove(identifier)
                 ?.let { continuation ->
-                    continuation.tryResume(base64)?.let(continuation::completeResume)
+                    if (continuation.isActive) {
+                        continuation.resume(base64)
+                    }
                 }
         }
 
@@ -479,9 +484,9 @@ object BotGuardTokenGenerator {
             pendingMints
                 .remove(identifier)
                 ?.let { continuation ->
-                    continuation
-                        .tryResumeWithException(classifyJsError(error))
-                        ?.let(continuation::completeResume)
+                    if (continuation.isActive) {
+                        continuation.resumeWithException(classifyJsError(error))
+                    }
                 }
         }
 
@@ -489,7 +494,27 @@ object BotGuardTokenGenerator {
 
         private fun signalError(error: Throwable) {
             close()
-            readySignal.tryResumeWithException(error)?.let(readySignal::completeResume)
+            resumeReadyWithException(error)
+        }
+
+        private fun resumeReady(engine: BotGuardEngine) {
+            if (!readyCompleted.compareAndSet(false, true)) return
+            if (!readySignal.isActive) return
+            runCatching {
+                readySignal.resume(engine)
+            }.onFailure { error ->
+                Timber.tag(TAG).w(error, "Ready signal was already completed")
+            }
+        }
+
+        private fun resumeReadyWithException(error: Throwable) {
+            if (!readyCompleted.compareAndSet(false, true)) return
+            if (!readySignal.isActive) return
+            runCatching {
+                readySignal.resumeWithException(error)
+            }.onFailure { resumeError ->
+                Timber.tag(TAG).w(resumeError, "Ready signal was already completed")
+            }
         }
 
         private fun postToBotGuard(
@@ -552,6 +577,7 @@ object BotGuardTokenGenerator {
             suspend fun create(context: Context): BotGuardEngine {
                 return withContext(Dispatchers.Main) {
                     suspendCancellableCoroutine { cont ->
+                        lateinit var engine: BotGuardEngine
                         val wv =
                             WebView(context).apply {
                                 settings.javaScriptEnabled = true
@@ -562,9 +588,7 @@ object BotGuardTokenGenerator {
                                         override fun onConsoleMessage(m: ConsoleMessage): Boolean {
                                             if (m.message().contains("Uncaught")) {
                                                 val err = "\"${m.message()}\", ${m.sourceId()} (${m.lineNumber()})"
-                                                cont
-                                                    .tryResumeWithException(BrokenWebViewException(err))
-                                                    ?.let(cont::completeResume)
+                                                engine.signalError(BrokenWebViewException(err))
                                             }
                                             return super.onConsoleMessage(m)
                                         }
@@ -576,17 +600,12 @@ object BotGuardTokenGenerator {
                                             detail: android.webkit.RenderProcessGoneDetail,
                                         ): Boolean {
                                             Timber.tag(TAG).w("WebView renderer gone (crashed=${detail.didCrash()})")
-                                            cont
-                                                .tryResumeWithException(
-                                                    PoTokenException("WebView renderer process gone"),
-                                                ).let { token ->
-                                                    if (token != null) cont.completeResume(token)
-                                                }
+                                            engine.signalError(PoTokenException("WebView renderer process gone"))
                                             return true
                                         }
                                     }
                             }
-                        val engine = BotGuardEngine(wv, cont)
+                        engine = BotGuardEngine(wv, cont)
                         cont.invokeOnCancellation {
                             wv.post(engine::close)
                         }
