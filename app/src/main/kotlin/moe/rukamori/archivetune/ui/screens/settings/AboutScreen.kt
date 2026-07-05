@@ -42,7 +42,6 @@ import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LargeFlexibleTopAppBar
-import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialShapes
@@ -568,7 +567,7 @@ private fun TranslationContributorList(
     LazyColumn(
         modifier = modifier,
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp),
+        verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap),
     ) {
         items(
             count = contributors.size,
@@ -579,6 +578,8 @@ private fun TranslationContributorList(
             TranslationContributorListItem(
                 language = contributor.language,
                 contributors = contributor.contributors,
+                index = index,
+                itemCount = contributors.size,
             )
         }
     }
@@ -588,14 +589,14 @@ private fun TranslationContributorList(
 private fun TranslationContributorListItem(
     language: String,
     contributors: String?,
+    index: Int,
+    itemCount: Int,
     modifier: Modifier = Modifier,
 ) {
-    ListItem(
+    SegmentedListItem(
+        shapes = ListItemDefaults.segmentedShapes(index = index, count = itemCount),
+        colors = aboutSegmentedListItemColors(),
         modifier = modifier.heightIn(min = if (contributors == null) 56.dp else 72.dp),
-        colors =
-            ListItemDefaults.colors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-            ),
         leadingContent = {
             Icon(
                 painter = painterResource(R.drawable.language),
@@ -604,7 +605,7 @@ private fun TranslationContributorListItem(
                 modifier = Modifier.size(32.dp),
             )
         },
-        headlineContent = {
+        content = {
             Text(
                 text = language,
                 style = MaterialTheme.typography.titleMedium,
@@ -636,7 +637,7 @@ private fun DependencyLicenseList(
     LazyColumn(
         modifier = modifier,
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp),
+        verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap),
     ) {
         items(
             count = licenses.size,
@@ -648,6 +649,8 @@ private fun DependencyLicenseList(
                 name = dependency.name,
                 version = dependency.version,
                 licenses = dependency.licenses,
+                index = index,
+                itemCount = licenses.size,
             )
         }
     }
@@ -658,14 +661,14 @@ private fun DependencyLicenseListItem(
     name: String,
     version: String?,
     licenses: String?,
+    index: Int,
+    itemCount: Int,
     modifier: Modifier = Modifier,
 ) {
-    ListItem(
+    SegmentedListItem(
+        shapes = ListItemDefaults.segmentedShapes(index = index, count = itemCount),
+        colors = aboutSegmentedListItemColors(),
         modifier = modifier.heightIn(min = 72.dp),
-        colors =
-            ListItemDefaults.colors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-            ),
         leadingContent = {
             Icon(
                 painter = painterResource(R.drawable.info),
@@ -674,7 +677,7 @@ private fun DependencyLicenseListItem(
                 modifier = Modifier.size(32.dp),
             )
         },
-        headlineContent = {
+        content = {
             Text(
                 text = name,
                 style = MaterialTheme.typography.titleMedium,
@@ -933,8 +936,11 @@ private fun ProjectLinksSection(
                 ),
         ) {
             FlowRow(
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 repeat(links.size) { index ->
@@ -965,6 +971,12 @@ private fun ProjectLinksSection(
         }
     }
 }
+
+@Composable
+private fun aboutSegmentedListItemColors() =
+    ListItemDefaults.segmentedColors(
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+    )
 
 @Composable
 private fun TeamMemberSection(
@@ -1033,6 +1045,7 @@ private fun TeamMemberListItem(
     SegmentedListItem(
         onClick = onClick,
         shapes = ListItemDefaults.segmentedShapes(index = index, count = itemCount),
+        colors = aboutSegmentedListItemColors(),
         modifier =
             modifier
                 .fillMaxWidth()
@@ -1271,6 +1284,7 @@ private fun ContributorListItem(
     SegmentedListItem(
         onClick = onClick,
         shapes = ListItemDefaults.segmentedShapes(index = index, count = itemCount),
+        colors = aboutSegmentedListItemColors(),
         modifier =
             modifier
                 .fillMaxWidth()
@@ -1315,6 +1329,7 @@ private fun ContributorReadMoreListItem(
     SegmentedListItem(
         onClick = onClick,
         shapes = ListItemDefaults.segmentedShapes(index = index, count = itemCount),
+        colors = aboutSegmentedListItemColors(),
         modifier =
             modifier
                 .fillMaxWidth()
