@@ -315,6 +315,12 @@ class MusicService :
     private var lastAudioOutputDeviceSignature: String? = null
     private var lastAudioRouteRecoveryRealtimeMs = 0L
 
+    private lateinit var audioOutputResolver: AudioOutputResolver
+
+    val activeAudioDevice get() = audioOutputResolver.activeAudioDevice
+
+    fun refreshActiveDevice() = audioOutputResolver.refresh()
+
     private val audioDeviceCallback =
         object : AudioDeviceCallback() {
             override fun onAudioDevicesAdded(addedDevices: Array<AudioDeviceInfo>) {
@@ -1083,6 +1089,7 @@ class MusicService :
             )
 
         audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        audioOutputResolver = AudioOutputResolver(audioManager)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             audioManager.setAllowedCapturePolicy(android.media.AudioAttributes.ALLOW_CAPTURE_BY_ALL)
         }
@@ -1094,6 +1101,7 @@ class MusicService :
         audioManager.registerAudioDeviceCallback(audioDeviceCallback, android.os.Handler(mainLooper))
         audioDeviceCallbackRegistered = true
         lastAudioOutputDeviceSignature = currentAudioOutputDeviceSignature()
+        audioOutputResolver.refresh()
 
         mediaLibrarySessionCallback.apply {
             toggleLike = ::toggleLike
@@ -2118,6 +2126,7 @@ class MusicService :
         val outputSignature = currentAudioOutputDeviceSignature()
         if (outputSignature == lastAudioOutputDeviceSignature) return
         lastAudioOutputDeviceSignature = outputSignature
+        audioOutputResolver.refresh()
         cancelCrossfade(resetVolume = true, resetPauseAtEnd = true)
         player.setAudioAttributes(playbackAudioAttributes(), false)
         audioRouteRecoveryJob?.cancel()
