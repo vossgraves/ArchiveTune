@@ -336,6 +336,25 @@ fun StatsScreen(
                 )
             }
 
+            item(key = "artistDistribution", contentType = "insights") {
+                if (mostPlayedArtists.isNotEmpty()) {
+                    Column(modifier = Modifier.animateItem()) {
+                        StatsSectionHeader(
+                            title = stringResource(R.string.stats_artist_breakdown),
+                            supportingText = mostPlayedArtists.take(5).size.toString(),
+                        )
+                        SegmentedArtistChart(
+                            artists = mostPlayedArtists.take(5),
+                            totalTimeListened = listeningSummary.totalTimeListened,
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                        )
+                    }
+                }
+            }
+
             item(key = "spotlights", contentType = "spotlights") {
                 val topSong = mostPlayedSongsStats.firstOrNull()
                 StatsHighlightsSection(
@@ -549,24 +568,6 @@ fun StatsScreen(
                 }
             }
 
-            item(key = "artistDistribution", contentType = "insights") {
-                if (mostPlayedArtists.isNotEmpty()) {
-                    Column(modifier = Modifier.animateItem()) {
-                        StatsSectionHeader(
-                            title = stringResource(R.string.stats_artist_breakdown),
-                            supportingText = mostPlayedArtists.take(5).size.toString(),
-                        )
-                        SegmentedArtistChart(
-                            artists = mostPlayedArtists.take(5),
-                            totalTimeListened = listeningSummary.totalTimeListened,
-                            modifier =
-                                Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 4.dp),
-                        )
-                    }
-                }
-            }
         }
 
         if (isYearPickerOpen) {
