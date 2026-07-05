@@ -22,7 +22,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.calculateTopPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -182,6 +181,7 @@ fun StatsScreen(
     val listeningByHour = data.listeningByHour
     val listeningByDayOfWeek = data.listeningByDayOfWeek
     val listeningSummary = data.listeningSummary
+    val songsById = remember(mostPlayedSongs) { mostPlayedSongs.associateBy { it.id } }
 
     val coroutineScope = rememberCoroutineScope()
     val currentDate = remember { LocalDateTime.now() }
@@ -374,7 +374,6 @@ fun StatsScreen(
             }
 
             val visibleRankedSongs = mostPlayedSongsStats
-            val songsById = remember(mostPlayedSongs) { mostPlayedSongs.associateBy { it.id } }
 
             itemsIndexed(
                 items = visibleRankedSongs,

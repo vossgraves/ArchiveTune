@@ -783,7 +783,12 @@ fun LyricsMenu(
                     onClick = {
                         onShowPlayerControlsChange(!showPlayerControls)
                     },
-                    modifier = Modifier.padding(horizontal = 8.dp, bottom = 8.dp),
+                    modifier =
+                        Modifier.padding(
+                            start = 8.dp,
+                            end = 8.dp,
+                            bottom = 8.dp,
+                        ),
                 )
             }
         }
