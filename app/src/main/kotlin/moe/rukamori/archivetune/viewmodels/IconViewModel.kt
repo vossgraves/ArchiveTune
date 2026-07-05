@@ -243,7 +243,7 @@ class IconViewModel
                             AppIconSortOrder.NEW_ADDED -> icons.asReversed()
                             AppIconSortOrder.ALPHABETICAL ->
                                 icons.sortedWith(
-                                    compareBy<AppIconUiModel>(
+                                    compareBy<AppIconUiModel, String>(
                                         String.CASE_INSENSITIVE_ORDER,
                                     ) { icon ->
                                         icon.name.orEmpty()

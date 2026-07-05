@@ -400,7 +400,13 @@ private fun AppIconSearchBar(
     modifier: Modifier = Modifier,
 ) {
     val keyboardController = LocalSoftwareKeyboardController.current
-    val submitSearch = remember(keyboardController) { { _: String -> keyboardController?.hide() } }
+    val submitSearch =
+        remember(keyboardController) {
+            { _: String ->
+                keyboardController?.hide()
+                Unit
+            }
+        }
     val clearSearch = remember(onQueryChange) { { onQueryChange("") } }
 
     SearchBar(
