@@ -1218,10 +1218,11 @@ private fun SegmentedArtistChart(
             }
         }
 
+    val primaryColor = MaterialTheme.colorScheme.primary
     val segmentColors =
-        remember(MaterialTheme.colorScheme.primary, segmentData.size) {
+        remember(primaryColor, segmentData.size) {
             createDistinctArtistColors(
-                seedColor = MaterialTheme.colorScheme.primary,
+                seedColor = primaryColor,
                 count = segmentData.size,
             )
         }

@@ -871,7 +871,7 @@ private fun AboutIdentitySection(
 
 @Composable
 private fun SurfaceAppIcon(modifier: Modifier = Modifier) {
-    val iconShape = remember { MaterialShapes.Cookie9Sided.toShape() }
+    val iconShape = MaterialShapes.Cookie9Sided.toShape()
     Surface(
         modifier = modifier.size(96.dp),
         shape = iconShape,
