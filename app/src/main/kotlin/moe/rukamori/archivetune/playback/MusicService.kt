@@ -411,6 +411,8 @@ class MusicService :
 
     private var currentQueue: Queue = EmptyQueue
     var queueTitle: String? = null
+    private var infiniteQueueJob: Job? = null
+    private var infiniteQueueGeneration = 0L
     private val persistentStateLock = Any()
     private val persistentSaveGeneration = AtomicLong(0L)
 
@@ -3414,6 +3416,7 @@ class MusicService :
         cancelRestoredQueueHydration()
         ensureScopesActive()
         cancelCrossfade(resetVolume = true, resetPauseAtEnd = true)
+        cancelInfiniteQueueBootstrap()
         suppressAutoPlayback = false
         currentQueue = queue
         queueTitle = null
@@ -3562,6 +3565,7 @@ class MusicService :
             showTogetherNotice(getString(R.string.not_allowed), key = "GUEST_RADIO_UNSUPPORTED")
             return
         }
+        cancelInfiniteQueueBootstrap()
         suppressAutoPlayback = false
         val currentMediaMetadata = player.currentMetadata ?: return
 
@@ -3614,7 +3618,7 @@ class MusicService :
     }
 
     fun onInfiniteQueueDisabled() {
-        infiniteQueueLoading.value = false
+        cancelInfiniteQueueBootstrap()
         val currentIndex = player.currentMediaItemIndex
         val idsToRemove = synchronized(autoAddedMediaIds) { autoAddedMediaIds.toSet() }
         if (idsToRemove.isEmpty()) {
@@ -3634,38 +3638,85 @@ class MusicService :
     fun onInfiniteQueueEnabled() {
         val currentMeta = player.currentMetadata ?: return
         if (isCurrentPlaybackItemLocal(currentMeta)) return
-        if (infiniteQueueLoading.value) return
+        if (infiniteQueueJob?.isActive == true) return
+
+        val seedMediaId = currentMeta.id.trim().ifBlank { return }
+        val generation = ++infiniteQueueGeneration
         infiniteQueueLoading.value = true
 
-        scope.launch(SilentHandler) {
-            try {
-                val radioQueue = YouTubeQueue(WatchEndpoint(videoId = currentMeta.id), followAutomixPreview = true)
-                val status = withContext(Dispatchers.IO) { radioQueue.getInitialStatus() }
+        infiniteQueueJob =
+            scope.launch(SilentHandler) {
+                try {
+                    val hideExplicit = dataStore.get(HideExplicitKey, false)
+                    val hideVideo = dataStore.get(HideVideoKey, false)
+                    val radioQueue = YouTubeQueue(WatchEndpoint(videoId = seedMediaId), followAutomixPreview = true)
+                    val status =
+                        withContext(Dispatchers.IO) {
+                            radioQueue
+                                .getInitialStatus()
+                                .filterExplicit(hideExplicit)
+                                .filterVideo(hideVideo)
+                        }
+                    val knownIds =
+                        (0 until player.mediaItemCount)
+                            .mapTo(mutableSetOf()) { player.getMediaItemAt(it).mediaId }
+                    val newItems = status.items.filter { knownIds.add(it.mediaId) }.toMutableList()
+                    var loadedPageCount = 1
 
-                val existingIds = (0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }.toSet()
-                val newItems = status.items.filter { it.mediaId !in existingIds }
+                    while (
+                        newItems.isEmpty() &&
+                        radioQueue.hasNextPage() &&
+                        loadedPageCount < INFINITE_QUEUE_MAX_BOOTSTRAP_PAGES
+                    ) {
+                        loadedPageCount++
+                        val page =
+                            withContext(Dispatchers.IO) {
+                                radioQueue
+                                    .nextPage()
+                                    .filterExplicit(hideExplicit)
+                                    .filterVideo(hideVideo)
+                            }
+                        newItems += page.filter { knownIds.add(it.mediaId) }
+                    }
 
-                if (newItems.isNotEmpty()) {
-                    player.addMediaItems(newItems)
-                    newItems.forEach { autoAddedMediaIds.add(it.mediaId) }
+                    if (generation != infiniteQueueGeneration) return@launch
+
+                    if (newItems.isNotEmpty()) {
+                        player.addMediaItems(newItems)
+                        newItems.forEach { autoAddedMediaIds.add(it.mediaId) }
+                    }
+
+                    currentQueue = radioQueue
+
+                    if (player.playbackState == Player.STATE_ENDED ||
+                        player.mediaItemCount == player.currentMediaItemIndex + 1
+                    ) {
+                        player.seekToNext()
+                        player.play()
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Timber.e(e, "Failed to bootstrap auto-queue")
+                } finally {
+                    if (generation == infiniteQueueGeneration) {
+                        infiniteQueueJob = null
+                        infiniteQueueLoading.value = false
+                    }
                 }
-
-                currentQueue = radioQueue
-
-                if (player.playbackState == Player.STATE_ENDED || player.mediaItemCount == player.currentMediaItemIndex + 1) {
-                    player.seekToNext()
-                    player.play()
-                }
-            } catch (e: Exception) {
-                Timber.e(e, "Failed to bootstrap auto-queue")
-            } finally {
-                infiniteQueueLoading.value = false
             }
-        }
+    }
+
+    private fun cancelInfiniteQueueBootstrap() {
+        infiniteQueueGeneration++
+        infiniteQueueJob?.cancel()
+        infiniteQueueJob = null
+        infiniteQueueLoading.value = false
     }
 
     fun stopAndClearPlayback(clearPersistentState: Boolean = false) {
         cancelRestoredQueueHydration()
+        cancelInfiniteQueueBootstrap()
         suppressAutoPlayback = true
         cancelCrossfade(resetVolume = true, resetPauseAtEnd = true)
         clearAutomix()
@@ -5967,29 +6018,7 @@ class MusicService :
             player.mediaItemCount - player.currentMediaItemIndex <= 3 &&
             !currentQueue.hasNextPage()
         ) {
-            scope.launch(SilentHandler) {
-                if (suppressAutoPlayback || player.mediaItemCount == 0) return@launch
-
-                val currentMediaMetadata = player.currentMetadata ?: return@launch
-                val currentMediaId = currentMediaMetadata.id.trim().ifBlank { return@launch }
-                if (isCurrentPlaybackItemLocal(currentMediaMetadata)) return@launch
-
-                try {
-                    val radioQueue = YouTubeQueue(WatchEndpoint(videoId = currentMediaId), followAutomixPreview = true)
-                    val status = withContext(Dispatchers.IO) { radioQueue.getInitialStatus() }
-
-                    val queueIds = (0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }.toSet()
-                    val newItems = status.items.filter { it.mediaId !in queueIds }
-
-                    if (newItems.isNotEmpty()) {
-                        player.addMediaItems(newItems)
-                        newItems.forEach { autoAddedMediaIds.add(it.mediaId) }
-                    }
-                    currentQueue = radioQueue
-                } catch (e: Exception) {
-                    Timber.e(e, "Failed to inject YouTube replacement queue")
-                }
-            }
+            onInfiniteQueueEnabled()
         }
 
         if (player.playWhenReady && player.playbackState == Player.STATE_READY) {
@@ -6026,6 +6055,14 @@ class MusicService :
             enqueueCurrentHistorySessionForFinalization()
             if (!isCrossfading || playbackState == Player.STATE_IDLE) {
                 cancelCrossfade(resetVolume = true, resetPauseAtEnd = true)
+            }
+            if (playbackState == Player.STATE_ENDED &&
+                !suppressAutoPlayback &&
+                dataStore.get(AutoLoadMoreKey, true) &&
+                player.repeatMode == REPEAT_MODE_OFF &&
+                player.currentMediaItem != null
+            ) {
+                onInfiniteQueueEnabled()
             }
         } else if (playbackState == Player.STATE_READY) {
             scheduleCrossfade()
@@ -6097,56 +6134,6 @@ class MusicService :
 
         widgetUpdater.update()
         widgetUpdater.updateProgressTracking()
-    }
-
-    private fun onMediaItemTransitionInternal() {
-        if (player.playbackState == Player.STATE_IDLE || player.playbackState == Player.STATE_ENDED) {
-            scrobbleManager?.onSongStop()
-        }
-
-        // Auto-start recommendations when playback ends (handoff finite queues into infinite)
-        if (!suppressAutoPlayback &&
-            player.playbackState == Player.STATE_ENDED &&
-            dataStore.get(AutoLoadMoreKey, true) &&
-            player.repeatMode == REPEAT_MODE_OFF &&
-            player.currentMediaItem != null
-        ) {
-            onInfiniteQueueEnabled()
-        }
-
-        requestDiscordSync(
-            reason = "media_item_transition",
-            force = true,
-        )
-        scope.launch {
-            try {
-                val mediaId = player.currentMediaItem?.mediaId
-                val song = if (mediaId != null) withContext(Dispatchers.IO) { database.song(mediaId).first() } else null
-                val finalSong =
-                    resolvePresenceSong(
-                        dbSong = song,
-                        mediaMetadata = player.currentMetadata,
-                        durationMs = player.duration,
-                    ) ?: return@launch
-
-                try {
-                    val lbEnabled = withContext(Dispatchers.IO) { dataStore.get(ListenBrainzEnabledKey, false) }
-                    val lbToken = withContext(Dispatchers.IO) { dataStore.get(ListenBrainzTokenKey, "") }
-                    if (lbEnabled && !lbToken.isNullOrBlank()) {
-                        scope.launch(Dispatchers.IO) {
-                            try {
-                                ListenBrainzManager.submitPlayingNow(this@MusicService, lbToken, finalSong, player.currentPosition)
-                            } catch (ie: Exception) {
-                                Timber.tag("MusicService").v(ie, "ListenBrainz playing_now submit failed")
-                            }
-                        }
-                    }
-                } catch (_: Exception) {
-                }
-            } catch (e: Exception) {
-                Timber.tag("MusicService").v(e, "media item transition follow-up work failed")
-            }
-        }
     }
 
     override fun onEvents(
@@ -8008,6 +7995,7 @@ class MusicService :
         private const val TAG = "MusicService"
         private const val AUDIO_EFFECT_INITIALIZATION_MAX_ATTEMPTS = 4
         private const val AUDIO_EFFECT_INITIALIZATION_RETRY_DELAY_MS = 250L
+        private const val INFINITE_QUEUE_MAX_BOOTSTRAP_PAGES = 3
         private const val DISCORD_SYNC_TAG = "DiscordSync"
         private const val DISCORD_HOLD_TIMEOUT_MS = 7_000L
         const val CHANNEL_ID = "music_channel_01"
