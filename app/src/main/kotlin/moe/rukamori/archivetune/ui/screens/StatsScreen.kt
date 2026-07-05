@@ -1174,32 +1174,44 @@ private fun SegmentedArtistChart(
         remember(totalTimeListened, visibleArtistTime) {
             totalTimeListened.takeIf { it > 0L } ?: visibleArtistTime
         }
-    val chartTotalTime =
-        remember(displayTotalTime, visibleArtistTime) {
-            maxOf(displayTotalTime, visibleArtistTime)
-        }
-    if (chartTotalTime == 0L) return
+    if (visibleArtistTime == 0L) return
 
     val segmentData =
-        remember(artists, chartTotalTime) {
-            var startAngle = -90f
-            artists.mapNotNull { artist ->
-                val time = artist.timeListened?.toLong() ?: 0L
-                val sweep = (time.toFloat() / chartTotalTime) * 360f
-                if (sweep < 1f) return@mapNotNull null
-                val entry = Triple(artist, startAngle, sweep)
-                startAngle += sweep
-                entry
+        remember(artists, visibleArtistTime) {
+            val rawSegments =
+                artists.mapNotNull { artist ->
+                    val time = artist.timeListened?.toLong() ?: 0L
+                    if (time <= 0L) return@mapNotNull null
+                    artist to (time.toFloat() / visibleArtistTime) * 360f
+                }
+
+            if (rawSegments.isEmpty()) {
+                emptyList()
+            } else {
+                val topArtistId = rawSegments.maxByOrNull { it.second }?.first?.id
+                val retainedSegments =
+                    rawSegments
+                        .filter { (_, sweep) -> sweep >= 1f }
+                        .ifEmpty { listOf(rawSegments.maxBy { it.second }) }
+                val retainedSweep = retainedSegments.sumOf { it.second.toDouble() }.toFloat()
+                val remainderSweep = (360f - retainedSweep).coerceAtLeast(0f)
+                val completedSegments =
+                    retainedSegments.map { (artist, sweep) ->
+                        artist to
+                            if (artist.id == topArtistId) {
+                                sweep + remainderSweep
+                            } else {
+                                sweep
+                            }
+                    }
+
+                var startAngle = -90f
+                completedSegments.map { (artist, sweep) ->
+                    Triple(artist, startAngle, sweep).also {
+                        startAngle += sweep
+                    }
+                }
             }
-        }
-    val visibleSegmentSweep =
-        remember(segmentData) {
-            segmentData.sumOf { it.third.toDouble() }.toFloat()
-        }
-    val remainingSweep =
-        remember(visibleSegmentSweep) {
-            (360f - visibleSegmentSweep)
-                .takeIf { it >= 1f }
         }
 
     val colorScheme = MaterialTheme.colorScheme
@@ -1209,11 +1221,10 @@ private fun SegmentedArtistChart(
                 colorScheme.primary,
                 colorScheme.secondary,
                 colorScheme.tertiary,
-                colorScheme.inversePrimary,
-                colorScheme.primary.copy(alpha = 0.55f),
+                colorScheme.error,
+                colorScheme.secondaryContainer,
             )
         }
-    val remainingColor = MaterialTheme.colorScheme.surfaceVariant
 
     ElevatedCard(
         modifier = modifier,
@@ -1249,17 +1260,6 @@ private fun SegmentedArtistChart(
                                         color = segmentColors[i % segmentColors.size],
                                         startAngle = startAngle + gapDeg / 2f,
                                         sweepAngle = (sweep - gapDeg).coerceAtLeast(0f),
-                                        useCenter = false,
-                                        topLeft = arcRect.topLeft,
-                                        size = Size(arcRect.width, arcRect.height),
-                                        style = Stroke(width = strokeWidth, cap = StrokeCap.Butt),
-                                    )
-                                }
-                                remainingSweep?.let { sweep ->
-                                    drawArc(
-                                        color = remainingColor,
-                                        startAngle = -90f + visibleSegmentSweep,
-                                        sweepAngle = sweep,
                                         useCenter = false,
                                         topLeft = arcRect.topLeft,
                                         size = Size(arcRect.width, arcRect.height),
