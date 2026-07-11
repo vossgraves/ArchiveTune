@@ -52,7 +52,7 @@ private data class ReleasesNetworkResult(
 object Updater {
     private val client = HttpClient()
     private const val ReleaseCacheCheckIntervalMs: Long = 6 * 60 * 60 * 1000L
-    private const val StableReleaseBaseUrl = "https://github.com/ArchiveTuneApp/ArchiveTune/releases"
+    private const val StableReleaseBaseUrl = "https://github.com/rukamori/ArchiveTune/releases"
     private const val DailyNightlyReleaseBaseUrl =
         "https://github.com/ArchiveTuneApp/daily-nightly/releases"
     var lastCheckTime = -1L
@@ -272,7 +272,7 @@ object Updater {
         cachedEtag: String?,
     ): ReleasesNetworkResult {
         val response: HttpResponse =
-            client.get("https://api.github.com/repos/ArchiveTuneApp/ArchiveTune/releases?per_page=$perPage") {
+            client.get("https://api.github.com/repos/rukamori/ArchiveTune/releases?per_page=$perPage") {
                 headers {
                     append("Accept", "application/vnd.github+json")
                     append("User-Agent", "ArchiveTune")
@@ -346,7 +346,7 @@ object Updater {
 
             val response =
                 client
-                    .get("https://api.github.com/repos/ArchiveTuneApp/ArchiveTune/commits?sha=$branch&per_page=$count")
+                    .get("https://api.github.com/repos/rukamori/ArchiveTune/commits?sha=$branch&per_page=$count")
                     .bodyAsText()
             val jsonArray = JSONArray(response)
             val commits = mutableListOf<GitCommit>()
@@ -392,7 +392,7 @@ object Updater {
         }
 
         val artifactName = "app-$workflowArtifactPrefix${BuildConfig.DEVICE}-${BuildConfig.ARCHITECTURE}-release"
-        val artifactUrl = "https://nightly.link/ArchiveTuneApp/ArchiveTune/workflows/build/dev/$artifactName"
+        val artifactUrl = "https://nightly.link/rukamori/ArchiveTune/workflows/build/dev/$artifactName"
         return if (canDownloadUpdatesDirectly) {
             "$artifactUrl.zip"
         } else {
