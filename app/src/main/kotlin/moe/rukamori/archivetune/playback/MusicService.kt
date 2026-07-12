@@ -8126,9 +8126,15 @@ class MusicService :
         session: MediaSession,
         startInForegroundRequired: Boolean,
     ) {
-        val keepInForeground = startInForegroundRequired || hasResumablePlaybackNotification()
-        if (keepInForeground) ensureStartedAsForeground()
-        runCatching { super.onUpdateNotification(session, keepInForeground) }
+        val shouldShowNotification =
+            shouldShowPlaybackNotification(
+                startInForegroundRequired = startInForegroundRequired,
+                hasResumablePlayback = hasResumablePlaybackNotification(),
+            )
+        if (!shouldShowNotification) return
+
+        ensureStartedAsForeground()
+        runCatching { super.onUpdateNotification(session, true) }
             .onFailure { reportException(it) }
     }
 
@@ -8149,6 +8155,11 @@ class MusicService :
             isHostSessionActive: Boolean,
             isPlaybackInactive: Boolean,
         ): Boolean = (isHostSessionActive && isPlaybackInactive) || stopMusicOnTaskClearEnabled
+
+        internal fun shouldShowPlaybackNotification(
+            startInForegroundRequired: Boolean,
+            hasResumablePlayback: Boolean,
+        ): Boolean = startInForegroundRequired || hasResumablePlayback
 
         const val ROOT = "root"
         const val HOME = "home"
