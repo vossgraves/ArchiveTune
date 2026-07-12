@@ -11,6 +11,9 @@ import android.net.ConnectivityManager
 import androidx.media3.common.PlaybackException
 import io.ktor.client.plugins.ClientRequestException
 import io.ktor.http.HttpStatusCode
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import moe.rukamori.archivetune.constants.AudioQuality
 import moe.rukamori.archivetune.constants.PlayerStreamClient
 import moe.rukamori.archivetune.innertube.NewPipeUtils
@@ -42,6 +45,8 @@ object YTPlayerUtils {
     private const val logTag = "YTPlayerUtils"
     private const val FAILED_CLIENT_BACKOFF_MS = 10 * 60 * 1000L
     private const val DEFAULT_STREAM_EXPIRE_SECONDS = 300
+    private const val MAX_PLAYBACK_DATA_CACHE_ENTRIES = 128
+    private const val PLAYBACK_DATA_RESOLUTION_MUTEX_COUNT = 32
     const val STREAM_URL_EXPIRY_SAFETY_MS = 60_000L
     private val RETRYABLE_STREAM_RESPONSE_CODES = setOf(403, 404, 410, 416)
 
@@ -141,13 +146,28 @@ object YTPlayerUtils {
         val authFingerprint: String,
     )
 
+    private data class PlaybackDataCacheKey(
+        val videoId: String,
+        val audioQuality: AudioQuality,
+        val networkMetered: Boolean,
+        val authFingerprint: String,
+    )
+
+    private data class CachedPlaybackData(
+        val playbackData: PlaybackData,
+        val expiresAtMs: Long,
+    )
+
     private val streamUrlCache = ConcurrentHashMap<String, CachedStreamUrl>()
+    private val playbackDataCache = ConcurrentHashMap<PlaybackDataCacheKey, CachedPlaybackData>()
+    private val playbackDataResolutionMutexes = Array(PLAYBACK_DATA_RESOLUTION_MUTEX_COUNT) { Mutex() }
     private val failedStreamClientsUntil = ConcurrentHashMap<String, Long>()
 
     @Volatile private var lastSuccessfulClientKey: String? = null
 
     fun clearPlaybackAuthCaches() {
         streamUrlCache.clear()
+        playbackDataCache.clear()
         failedStreamClientsUntil.clear()
         lastSuccessfulClientKey = null
     }
@@ -272,6 +292,7 @@ object YTPlayerUtils {
     fun invalidateCachedStreamUrls(videoId: String) {
         val marker = ":$videoId:"
         streamUrlCache.keys.removeIf { it.contains(marker) }
+        playbackDataCache.keys.removeIf { it.videoId == videoId }
     }
 
     fun markStreamUrlSuccessful(url: String) {
@@ -424,6 +445,53 @@ object YTPlayerUtils {
         preferredStreamClient: PlayerStreamClient = PlayerStreamClient.WEB_REMIX,
         // if provided, this preference overrides ConnectivityManager.isActiveNetworkMetered
         networkMetered: Boolean? = null,
+    ): Result<PlaybackData> {
+        val isMetered = networkMetered ?: connectivityManager.isActiveNetworkMetered
+        val initialKey =
+            buildPlaybackDataCacheKey(
+                videoId = videoId,
+                audioQuality = audioQuality,
+                networkMetered = isMetered,
+                authFingerprint = YouTube.currentPlaybackAuthState().fingerprint,
+            )
+        getCachedPlaybackData(initialKey)?.let { return Result.success(it) }
+        val resolutionMutex =
+            playbackDataResolutionMutexes[(initialKey.hashCode() and Int.MAX_VALUE) % playbackDataResolutionMutexes.size]
+        return resolutionMutex.withLock {
+            val currentKey =
+                buildPlaybackDataCacheKey(
+                    videoId = videoId,
+                    audioQuality = audioQuality,
+                    networkMetered = isMetered,
+                    authFingerprint = YouTube.currentPlaybackAuthState().fingerprint,
+                )
+            getCachedPlaybackData(currentKey)?.let { return@withLock Result.success(it) }
+            resolvePlaybackData(
+                videoId = videoId,
+                playlistId = playlistId,
+                audioQuality = audioQuality,
+                connectivityManager = connectivityManager,
+                preferredStreamClient = preferredStreamClient,
+                networkMetered = isMetered,
+            ).onSuccess { playbackData ->
+                cachePlaybackData(
+                    key = currentKey.copy(authFingerprint = playbackData.authFingerprint),
+                    playbackData = playbackData,
+                )
+            }.also { result ->
+                val failure = result.exceptionOrNull()
+                if (failure is CancellationException) throw failure
+            }
+        }
+    }
+
+    private suspend fun resolvePlaybackData(
+        videoId: String,
+        playlistId: String?,
+        audioQuality: AudioQuality,
+        connectivityManager: ConnectivityManager,
+        preferredStreamClient: PlayerStreamClient,
+        networkMetered: Boolean,
     ): Result<PlaybackData> =
         runCatching {
             val attempts =
@@ -451,6 +519,7 @@ object YTPlayerUtils {
                     }
                 if (attemptResult.isSuccess) return@runCatching attemptResult.getOrThrow()
                 lastError = attemptResult.exceptionOrNull()
+                if (lastError is CancellationException) throw lastError
                 if (
                     !didRefreshIpRotationAfterBotDetection &&
                     lastError is BotDetectionPlaybackException &&
@@ -470,10 +539,54 @@ object YTPlayerUtils {
                         }
                     if (rotatedAttemptResult.isSuccess) return@runCatching rotatedAttemptResult.getOrThrow()
                     lastError = rotatedAttemptResult.exceptionOrNull()
+                    if (lastError is CancellationException) throw lastError
                 }
             }
             throw lastError ?: IllegalStateException("Failed to resolve stream")
         }
+
+    private fun buildPlaybackDataCacheKey(
+        videoId: String,
+        audioQuality: AudioQuality,
+        networkMetered: Boolean,
+        authFingerprint: String,
+    ): PlaybackDataCacheKey =
+        PlaybackDataCacheKey(
+            videoId = videoId,
+            audioQuality = audioQuality,
+            networkMetered = networkMetered,
+            authFingerprint = authFingerprint,
+        )
+
+    private fun getCachedPlaybackData(key: PlaybackDataCacheKey): PlaybackData? {
+        val cached = playbackDataCache[key] ?: return null
+        val now = System.currentTimeMillis()
+        if (
+            cached.expiresAtMs <= now + STREAM_URL_EXPIRY_SAFETY_MS ||
+            isExpiredOrNearExpiredStreamUrl(cached.playbackData.streamUrl, now)
+        ) {
+            playbackDataCache.remove(key, cached)
+            return null
+        }
+        return cached.playbackData
+    }
+
+    private fun cachePlaybackData(
+        key: PlaybackDataCacheKey,
+        playbackData: PlaybackData,
+    ) {
+        val now = System.currentTimeMillis()
+        val expiresAtMs = now + playbackData.streamExpiresInSeconds.coerceAtLeast(1) * 1000L
+        playbackDataCache[key] = CachedPlaybackData(playbackData, expiresAtMs)
+        if (playbackDataCache.size <= MAX_PLAYBACK_DATA_CACHE_ENTRIES) return
+        playbackDataCache.entries.removeIf { (_, cached) ->
+            cached.expiresAtMs <= now + STREAM_URL_EXPIRY_SAFETY_MS
+        }
+        while (playbackDataCache.size > MAX_PLAYBACK_DATA_CACHE_ENTRIES) {
+            val oldest = playbackDataCache.entries.minByOrNull { it.value.expiresAtMs } ?: break
+            playbackDataCache.remove(oldest.key, oldest.value)
+        }
+    }
 
     suspend fun playerResponseForDownload(
         videoId: String,
