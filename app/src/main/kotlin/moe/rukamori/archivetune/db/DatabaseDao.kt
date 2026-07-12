@@ -1397,8 +1397,11 @@ interface DatabaseDao {
     suspend fun searchPlaylistsCount(query: String): Int
 
     @Transaction
-    @Query("SELECT * FROM event ORDER BY rowId DESC")
-    fun events(): Flow<List<EventWithSong>>
+    @Query("SELECT * FROM event ORDER BY rowId DESC LIMIT :limit OFFSET :offset")
+    suspend fun events(
+        limit: Int,
+        offset: Int,
+    ): List<EventWithSong>
 
     @Transaction
     @Query(

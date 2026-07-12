@@ -76,6 +76,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -148,6 +149,8 @@ fun HistoryScreen(
 
     val historySource by viewModel.historySource.collectAsStateWithLifecycle()
     val events by viewModel.events.collectAsStateWithLifecycle()
+    val isLoadingMoreEvents by viewModel.isLoadingMoreEvents.collectAsStateWithLifecycle()
+    val canLoadMoreEvents by viewModel.canLoadMoreEvents.collectAsStateWithLifecycle()
     val remoteHistoryState by viewModel.remoteHistoryState.collectAsStateWithLifecycle()
 
     val innerTubeCookie by rememberPreference(InnerTubeCookieKey, "")
@@ -344,6 +347,8 @@ fun HistoryScreen(
                         headerContent = historySourceDock,
                         filteredEvents = filteredEvents,
                         visibleEvents = localVisibleEvents,
+                        isLoadingMore = isLoadingMoreEvents,
+                        canLoadMore = canLoadMoreEvents,
                         isSearchActive = searchQuery.isNotBlank(),
                         selectedEventIds = selectedEventIdSet,
                         isPlaying = isPlaying,
@@ -387,6 +392,7 @@ fun HistoryScreen(
                                 )
                             }
                         },
+                        onLoadMore = viewModel::loadMoreEvents,
                     )
                 }
             }
@@ -652,6 +658,8 @@ private fun LocalHistoryFeed(
     headerContent: @Composable () -> Unit,
     filteredEvents: Map<DateAgo, List<EventWithSong>>,
     visibleEvents: List<EventWithSong>,
+    isLoadingMore: Boolean,
+    canLoadMore: Boolean,
     isSearchActive: Boolean,
     selectedEventIds: Set<Long>,
     isPlaying: Boolean,
@@ -662,8 +670,19 @@ private fun LocalHistoryFeed(
     onStartSelection: (Long) -> Unit,
     onSongMenu: (EventWithSong) -> Unit,
     onSongClick: (DateAgo, List<EventWithSong>, Int, EventWithSong) -> Unit,
+    onLoadMore: () -> Unit,
 ) {
     val isSelectionMode = selectedEventIds.isNotEmpty()
+
+    LaunchedEffect(listState, canLoadMore) {
+        snapshotFlow {
+            val layoutInfo = listState.layoutInfo
+            val lastVisibleIndex = layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
+            canLoadMore && lastVisibleIndex >= layoutInfo.totalItemsCount - HISTORY_LOAD_MORE_THRESHOLD
+        }.collect { shouldLoadMore ->
+            if (shouldLoadMore) onLoadMore()
+        }
+    }
 
     LazyColumn(
         state = listState,
@@ -684,7 +703,16 @@ private fun LocalHistoryFeed(
             headerContent()
         }
 
-        if (visibleEvents.isEmpty()) {
+        if (visibleEvents.isEmpty() && isLoadingMore) {
+            item("local_history_initial_loading") {
+                Box(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    ContainedLoadingIndicator()
+                }
+            }
+        } else if (visibleEvents.isEmpty()) {
             item("local_history_empty") {
                 HistoryStateCard(
                     title =
@@ -750,6 +778,19 @@ private fun LocalHistoryFeed(
                                     },
                                 ).animateItem(),
                     )
+                }
+            }
+
+            if (canLoadMore) {
+                item("local_history_loading_more") {
+                    Box(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        if (isLoadingMore) {
+                            ContainedLoadingIndicator()
+                        }
+                    }
                 }
             }
         }
@@ -1223,3 +1264,5 @@ private fun filterRemoteSections(
             )
         }.filter { it.songs.isNotEmpty() }
 }
+
+    private const val HISTORY_LOAD_MORE_THRESHOLD = 12
