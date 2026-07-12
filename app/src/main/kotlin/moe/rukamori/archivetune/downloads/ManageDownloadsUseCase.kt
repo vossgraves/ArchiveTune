@@ -15,6 +15,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import moe.rukamori.archivetune.db.entities.Song
+import moe.rukamori.archivetune.models.MediaMetadata
+import moe.rukamori.archivetune.models.toMediaMetadata
 import javax.inject.Inject
 import kotlin.math.roundToInt
 
@@ -30,6 +32,9 @@ data class DownloadEntryUiModel(
     val title: String,
     val supportingText: String?,
     val thumbnailUrl: String?,
+    val destinationRoute: String?,
+    val playbackMetadata: MediaMetadata?,
+    val durationSeconds: Int?,
     val songIds: List<String>,
     val totalCount: Int,
     val progress: Float,
@@ -183,6 +188,11 @@ class ManageDownloadsUseCase
                     title = playlist.title,
                     supportingText = null,
                     thumbnailUrl = playlist.thumbnails.firstOrNull(),
+                    destinationRoute =
+                        playlist.playlist.browseId?.let { "online_playlist/$it" }
+                            ?: "local_playlist/${playlist.id}",
+                    playbackMetadata = null,
+                    durationSeconds = null,
                     songIds = songIds,
                     downloads = downloads,
                     speeds = speeds,
@@ -205,6 +215,9 @@ class ManageDownloadsUseCase
                     title = album.title,
                     supportingText = album.artists.joinToString { it.name }.ifBlank { null },
                     thumbnailUrl = album.thumbnailUrl,
+                    destinationRoute = "album/${album.id}",
+                    playbackMetadata = null,
+                    durationSeconds = null,
                     songIds = songIds,
                     downloads = downloads,
                     speeds = speeds,
@@ -225,6 +238,16 @@ class ManageDownloadsUseCase
                     title = song?.song?.title ?: download.requestTitle(),
                     supportingText = song?.artists?.joinToString { it.name }?.ifBlank { null },
                     thumbnailUrl = song?.song?.thumbnailUrl,
+                    destinationRoute = null,
+                    playbackMetadata =
+                        song?.toMediaMetadata()
+                            ?: MediaMetadata(
+                                id = songId,
+                                title = download.requestTitle(),
+                                artists = emptyList(),
+                                duration = -1,
+                            ),
+                    durationSeconds = song?.song?.duration?.takeIf { it > 0 },
                     songIds = listOf(songId),
                     downloads = downloads,
                     speeds = speeds,
@@ -236,6 +259,9 @@ class ManageDownloadsUseCase
             title: String,
             supportingText: String?,
             thumbnailUrl: String?,
+            destinationRoute: String?,
+            playbackMetadata: MediaMetadata?,
+            durationSeconds: Int?,
             songIds: List<String>,
             downloads: Map<String, Download>,
             speeds: Map<String, Long>,
@@ -259,6 +285,9 @@ class ManageDownloadsUseCase
                 title = title,
                 supportingText = supportingText,
                 thumbnailUrl = thumbnailUrl,
+                destinationRoute = destinationRoute,
+                playbackMetadata = playbackMetadata,
+                durationSeconds = durationSeconds,
                 songIds = songIds,
                 totalCount = songIds.size,
                 progress = progress,

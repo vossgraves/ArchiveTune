@@ -872,6 +872,8 @@
     <string name="downloads_load_failed">Couldn’t load downloads</string>
     <string name="download_action_failed">Couldn’t update the download</string>
     <string name="download_failed_state">Download failed</string>
+    <string name="search_downloads">Search downloads</string>
+    <string name="no_matching_downloads">No matching downloads</string>
     <string name="permissions_title">Allow ArchiveTune to work best</string>
     <string name="permissions_subtitle">We use a few permissions to play and manage your music reliably. You can change these anytime in system settings.</string>
     <string name="permission_storage_title">Storage access</string>
