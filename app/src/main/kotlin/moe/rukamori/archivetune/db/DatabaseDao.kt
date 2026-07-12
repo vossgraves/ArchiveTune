@@ -1918,6 +1918,12 @@ interface DatabaseDao {
     @Upsert
     fun upsert(format: FormatEntity)
 
+    @Query("UPDATE format SET bitrate = :bitrate, sampleRate = :sampleRate WHERE id = :id")
+    suspend fun updateLocalAudioMetadata(id: String, bitrate: Int, sampleRate: Int?)
+
+    @Query("SELECT * FROM format WHERE id IN (:ids)")
+    suspend fun getFormatsByIds(ids: List<String>): List<FormatEntity>
+
     @Upsert
     fun upsert(artist: ArtistEntity)
 
