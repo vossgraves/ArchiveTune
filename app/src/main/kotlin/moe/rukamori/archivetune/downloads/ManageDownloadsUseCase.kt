@@ -51,7 +51,13 @@ data class DownloadSectionUiModel(
 ) {
     val songIds: List<String> = entries.flatMap(DownloadEntryUiModel::songIds).distinct()
     val paused: Boolean = entries.isNotEmpty() && entries.all(DownloadEntryUiModel::paused)
-    val percent: Int = entries.map(DownloadEntryUiModel::progress).average().times(100).roundToInt().coerceIn(0, 100)
+    val percent: Int =
+        entries
+            .map(DownloadEntryUiModel::progress)
+            .average()
+            .times(100)
+            .roundToInt()
+            .coerceIn(0, 100)
     val speedBytesPerSecond: Long = entries.sumOf(DownloadEntryUiModel::speedBytesPerSecond)
 }
 
@@ -70,8 +76,7 @@ class ManageDownloadsUseCase
     ) {
         private val byteSamples = mutableMapOf<String, ByteSample>()
 
-        fun observe(): Flow<DownloadLibraryUiModel> =
-            repository.observeDownloads().map(::mapSnapshot).flowOn(Dispatchers.Default)
+        fun observe(): Flow<DownloadLibraryUiModel> = repository.observeDownloads().map(::mapSnapshot).flowOn(Dispatchers.Default)
 
         fun pause(songIds: Collection<String>) = repository.pause(songIds)
 
@@ -180,24 +185,25 @@ class ManageDownloadsUseCase
             speeds: Map<String, Long>,
             requireCompleted: Boolean,
         ): List<DownloadEntryUiModel> =
-            snapshot.playlists.mapNotNull { playlist ->
-                val songIds = groupSongIds[playlist.id].orEmpty().distinct()
-                if (!songIds.isCollectionMatch(relevantIds, downloads, requireCompleted)) return@mapNotNull null
-                buildEntry(
-                    id = "playlist:${playlist.id}",
-                    title = playlist.title,
-                    supportingText = null,
-                    thumbnailUrl = playlist.thumbnails.firstOrNull(),
-                    destinationRoute =
-                        playlist.playlist.browseId?.let { "online_playlist/$it" }
-                            ?: "local_playlist/${playlist.id}",
-                    playbackMetadata = null,
-                    durationSeconds = null,
-                    songIds = songIds,
-                    downloads = downloads,
-                    speeds = speeds,
-                )
-            }.sortedByDescending { entry -> entry.songIds.maxOfOrNull { downloads[it]?.updateTimeMs ?: 0L } ?: 0L }
+            snapshot.playlists
+                .mapNotNull { playlist ->
+                    val songIds = groupSongIds[playlist.id].orEmpty().distinct()
+                    if (!songIds.isCollectionMatch(relevantIds, downloads, requireCompleted)) return@mapNotNull null
+                    buildEntry(
+                        id = "playlist:${playlist.id}",
+                        title = playlist.title,
+                        supportingText = null,
+                        thumbnailUrl = playlist.thumbnails.firstOrNull(),
+                        destinationRoute =
+                            playlist.playlist.browseId?.let { "online_playlist/$it" }
+                                ?: "local_playlist/${playlist.id}",
+                        playbackMetadata = null,
+                        durationSeconds = null,
+                        songIds = songIds,
+                        downloads = downloads,
+                        speeds = speeds,
+                    )
+                }.sortedByDescending { entry -> entry.songIds.maxOfOrNull { downloads[it]?.updateTimeMs ?: 0L } ?: 0L }
 
         private fun buildAlbumEntries(
             snapshot: DownloadRepositorySnapshot,
@@ -207,22 +213,23 @@ class ManageDownloadsUseCase
             speeds: Map<String, Long>,
             requireCompleted: Boolean,
         ): List<DownloadEntryUiModel> =
-            snapshot.albums.mapNotNull { album ->
-                val songIds = groupSongIds[album.id].orEmpty().distinct()
-                if (!songIds.isCollectionMatch(relevantIds, downloads, requireCompleted)) return@mapNotNull null
-                buildEntry(
-                    id = "album:${album.id}",
-                    title = album.title,
-                    supportingText = album.artists.joinToString { it.name }.ifBlank { null },
-                    thumbnailUrl = album.thumbnailUrl,
-                    destinationRoute = "album/${album.id}",
-                    playbackMetadata = null,
-                    durationSeconds = null,
-                    songIds = songIds,
-                    downloads = downloads,
-                    speeds = speeds,
-                )
-            }.sortedByDescending { entry -> entry.songIds.maxOfOrNull { downloads[it]?.updateTimeMs ?: 0L } ?: 0L }
+            snapshot.albums
+                .mapNotNull { album ->
+                    val songIds = groupSongIds[album.id].orEmpty().distinct()
+                    if (!songIds.isCollectionMatch(relevantIds, downloads, requireCompleted)) return@mapNotNull null
+                    buildEntry(
+                        id = "album:${album.id}",
+                        title = album.title,
+                        supportingText = album.artists.joinToString { it.name }.ifBlank { null },
+                        thumbnailUrl = album.thumbnailUrl,
+                        destinationRoute = "album/${album.id}",
+                        playbackMetadata = null,
+                        durationSeconds = null,
+                        songIds = songIds,
+                        downloads = downloads,
+                        speeds = speeds,
+                    )
+                }.sortedByDescending { entry -> entry.songIds.maxOfOrNull { downloads[it]?.updateTimeMs ?: 0L } ?: 0L }
 
         private fun buildSongEntries(
             songIds: Set<String>,
@@ -230,29 +237,30 @@ class ManageDownloadsUseCase
             downloads: Map<String, Download>,
             speeds: Map<String, Long>,
         ): List<DownloadEntryUiModel> =
-            songIds.mapNotNull { songId ->
-                val download = downloads[songId] ?: return@mapNotNull null
-                val song = songsById[songId]
-                buildEntry(
-                    id = "song:$songId",
-                    title = song?.song?.title ?: download.requestTitle(),
-                    supportingText = song?.artists?.joinToString { it.name }?.ifBlank { null },
-                    thumbnailUrl = song?.song?.thumbnailUrl,
-                    destinationRoute = null,
-                    playbackMetadata =
-                        song?.toMediaMetadata()
-                            ?: MediaMetadata(
-                                id = songId,
-                                title = download.requestTitle(),
-                                artists = emptyList(),
-                                duration = -1,
-                            ),
-                    durationSeconds = song?.song?.duration?.takeIf { it > 0 },
-                    songIds = listOf(songId),
-                    downloads = downloads,
-                    speeds = speeds,
-                )
-            }.sortedByDescending { downloads[it.songIds.single()]?.updateTimeMs ?: 0L }
+            songIds
+                .mapNotNull { songId ->
+                    val download = downloads[songId] ?: return@mapNotNull null
+                    val song = songsById[songId]
+                    buildEntry(
+                        id = "song:$songId",
+                        title = song?.song?.title ?: download.requestTitle(),
+                        supportingText = song?.artists?.joinToString { it.name }?.ifBlank { null },
+                        thumbnailUrl = song?.song?.thumbnailUrl,
+                        destinationRoute = null,
+                        playbackMetadata =
+                            song?.toMediaMetadata()
+                                ?: MediaMetadata(
+                                    id = songId,
+                                    title = download.requestTitle(),
+                                    artists = emptyList(),
+                                    duration = -1,
+                                ),
+                        durationSeconds = song?.song?.duration?.takeIf { it > 0 },
+                        songIds = listOf(songId),
+                        downloads = downloads,
+                        speeds = speeds,
+                    )
+                }.sortedByDescending { downloads[it.songIds.single()]?.updateTimeMs ?: 0L }
 
         private fun buildEntry(
             id: String,
@@ -269,17 +277,24 @@ class ManageDownloadsUseCase
             val entries = songIds.mapNotNull(downloads::get)
             val activeEntries = entries.filter { it.isVisibleInProgress() }
             val progress =
-                songIds.map { songId ->
-                    when (val download = downloads[songId]) {
-                        null -> 0f
-                        else ->
-                            if (download.state == Download.STATE_COMPLETED) {
-                                1f
-                            } else {
-                                download.percentDownloaded.takeIf { it >= 0f }?.div(100f) ?: 0f
+                songIds
+                    .map { songId ->
+                        when (val download = downloads[songId]) {
+                            null -> {
+                                0f
                             }
-                    }
-                }.average().toFloat().coerceIn(0f, 1f)
+
+                            else -> {
+                                if (download.state == Download.STATE_COMPLETED) {
+                                    1f
+                                } else {
+                                    download.percentDownloaded.takeIf { it >= 0f }?.div(100f) ?: 0f
+                                }
+                            }
+                        }
+                    }.average()
+                    .toFloat()
+                    .coerceIn(0f, 1f)
             return DownloadEntryUiModel(
                 id = id,
                 title = title,
@@ -332,8 +347,7 @@ class ManageDownloadsUseCase
             }
         }
 
-        private fun Download.requestTitle(): String =
-            request.data.toString(Charsets.UTF_8).ifBlank { request.id }
+        private fun Download.requestTitle(): String = request.data.toString(Charsets.UTF_8).ifBlank { request.id }
 
         private fun Download.isVisibleInProgress(): Boolean = state.isProgressState()
 

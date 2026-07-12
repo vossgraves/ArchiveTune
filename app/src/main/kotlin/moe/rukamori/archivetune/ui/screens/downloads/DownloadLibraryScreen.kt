@@ -118,7 +118,10 @@ fun DownloadLibraryScreen(
                     snackbarHostState.showSnackbar(navController.context.getString(event.messageRes))
                 }
 
-                is DownloadLibraryEvent.Navigate -> navController.navigate(event.route)
+                is DownloadLibraryEvent.Navigate -> {
+                    navController.navigate(event.route)
+                }
+
                 is DownloadLibraryEvent.PlaySong -> {
                     playerConnection?.playQueue(
                         ListQueue(
@@ -432,7 +435,14 @@ private fun DownloadSections(
 ) {
     if (sections.isEmpty()) {
         EmptyPlaceholder(
-            icon = if (query.isNotBlank()) R.drawable.search else if (inProgress) R.drawable.download else R.drawable.offline,
+            icon =
+                if (query.isNotBlank()) {
+                    R.drawable.search
+                } else if (inProgress) {
+                    R.drawable.download
+                } else {
+                    R.drawable.offline
+                },
             text =
                 stringResource(
                     if (query.isNotBlank()) {

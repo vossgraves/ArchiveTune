@@ -29,8 +29,8 @@ import moe.rukamori.archivetune.downloads.DownloadLibraryUiModel
 import moe.rukamori.archivetune.downloads.DownloadSectionUiModel
 import moe.rukamori.archivetune.downloads.ManageDownloadsUseCase
 import moe.rukamori.archivetune.models.MediaMetadata
-import javax.inject.Inject
 import java.util.concurrent.ConcurrentHashMap
+import javax.inject.Inject
 
 enum class DownloadLibraryTab {
     DOWNLOADED,
@@ -66,11 +66,17 @@ sealed interface DownloadLibraryScreenState {
 }
 
 sealed interface DownloadLibraryEvent {
-    data class Message(@StringRes val messageRes: Int) : DownloadLibraryEvent
+    data class Message(
+        @StringRes val messageRes: Int,
+    ) : DownloadLibraryEvent
 
-    data class Navigate(val route: String) : DownloadLibraryEvent
+    data class Navigate(
+        val route: String,
+    ) : DownloadLibraryEvent
 
-    data class PlaySong(val metadata: MediaMetadata) : DownloadLibraryEvent
+    data class PlaySong(
+        val metadata: MediaMetadata,
+    ) : DownloadLibraryEvent
 }
 
 @HiltViewModel
@@ -179,14 +185,11 @@ class DownloadLibraryViewModel
 
         fun remove(entry: DownloadEntryUiModel) = runAction(entry.id) { manageDownloads.remove(entry.songIds) }
 
-        fun pause(section: DownloadSectionUiModel) =
-            runAction("section:${section.mediaType}") { manageDownloads.pause(section.songIds) }
+        fun pause(section: DownloadSectionUiModel) = runAction("section:${section.mediaType}") { manageDownloads.pause(section.songIds) }
 
-        fun resume(section: DownloadSectionUiModel) =
-            runAction("section:${section.mediaType}") { manageDownloads.resume(section.songIds) }
+        fun resume(section: DownloadSectionUiModel) = runAction("section:${section.mediaType}") { manageDownloads.resume(section.songIds) }
 
-        fun remove(section: DownloadSectionUiModel) =
-            runAction("section:${section.mediaType}") { manageDownloads.remove(section.songIds) }
+        fun remove(section: DownloadSectionUiModel) = runAction("section:${section.mediaType}") { manageDownloads.remove(section.songIds) }
 
         private fun runAction(
             key: String,
@@ -205,7 +208,9 @@ class DownloadLibraryViewModel
         }
 
         private sealed interface DownloadLibraryResult {
-            data class Data(val library: DownloadLibraryUiModel) : DownloadLibraryResult
+            data class Data(
+                val library: DownloadLibraryUiModel,
+            ) : DownloadLibraryResult
 
             data object Failure : DownloadLibraryResult
         }
