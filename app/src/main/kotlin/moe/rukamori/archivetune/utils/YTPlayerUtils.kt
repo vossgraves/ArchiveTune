@@ -252,19 +252,6 @@ object YTPlayerUtils {
         return repairedAuthState
     }
 
-    internal fun shouldPreferWebRemixForLoggedInPlayback(
-        preferredStreamClient: PlayerStreamClient,
-        isLoggedIn: Boolean,
-        webClientPoTokenEnabled: Boolean,
-        hasPlayerPoToken: Boolean,
-        hasGvsPoToken: Boolean,
-    ): Boolean =
-        preferredStreamClient == PlayerStreamClient.ANDROID_VR &&
-            isLoggedIn &&
-            webClientPoTokenEnabled &&
-            hasPlayerPoToken &&
-            hasGvsPoToken
-
     private fun hasCompleteWebPlaybackPoToken(authState: PlaybackAuthState): Boolean =
         authState.webClientPoTokenEnabled &&
             !authState.resolvePlayerPoToken(WEB_REMIX).isNullOrBlank() &&
@@ -358,30 +345,14 @@ object YTPlayerUtils {
     internal fun resolvePreferredPlaybackClient(
         preferredStreamClient: PlayerStreamClient,
         authState: PlaybackAuthState,
-    ): YouTubeClient {
-        if (
-            shouldPreferWebRemixForLoggedInPlayback(
-                preferredStreamClient = preferredStreamClient,
-                isLoggedIn = authState.hasPlaybackLoginContext,
-                webClientPoTokenEnabled = authState.webClientPoTokenEnabled,
-                hasPlayerPoToken = !authState.resolvePlayerPoToken(WEB_REMIX).isNullOrBlank(),
-                hasGvsPoToken = !authState.resolveGvsPoToken(WEB_REMIX).isNullOrBlank(),
-            )
-        ) {
-            return WEB_REMIX
-        }
-
-        return when (preferredStreamClient) {
-            PlayerStreamClient.ANDROID_VR -> {
-                if (authState.hasPlaybackLoginContext) ANDROID_MUSIC else ANDROID_VR_NO_AUTH
-            }
-
+    ): YouTubeClient =
+        when (preferredStreamClient) {
             PlayerStreamClient.WEB_REMIX -> {
                 WEB_REMIX
             }
 
             PlayerStreamClient.ARCHIVETUNE_EXTRACTOR -> {
-                if (authState.hasPlaybackLoginContext) ANDROID_MUSIC else ANDROID_VR_NO_AUTH
+                if (authState.hasPlaybackLoginContext) ANDROID_MUSIC else WEB_REMIX
             }
 
             PlayerStreamClient.HI_RES_LOSSLESS -> {
@@ -399,8 +370,11 @@ object YTPlayerUtils {
             PlayerStreamClient.ANDROID_MUSIC -> {
                 ANDROID_MUSIC
             }
+
+            else -> {
+                WEB_REMIX
+            }
         }
-    }
 
     internal fun buildStreamClientOrder(
         preferredStreamClient: PlayerStreamClient,
@@ -453,7 +427,7 @@ object YTPlayerUtils {
         playlistId: String? = null,
         audioQuality: AudioQuality,
         connectivityManager: ConnectivityManager,
-        preferredStreamClient: PlayerStreamClient = PlayerStreamClient.ANDROID_VR,
+        preferredStreamClient: PlayerStreamClient = PlayerStreamClient.WEB_REMIX,
         // if provided, this preference overrides ConnectivityManager.isActiveNetworkMetered
         networkMetered: Boolean? = null,
     ): Result<PlaybackData> =
@@ -544,19 +518,16 @@ object YTPlayerUtils {
         }
 
     private val downloadPreferredStreamClientAttempts: List<PlayerStreamClient> =
-        buildList {
-            add(PlayerStreamClient.WEB_REMIX)
-            addAll(
-                PlayerStreamClient
-                    .values()
-                    .filterNot {
-                        it == PlayerStreamClient.WEB_REMIX ||
-                            it == PlayerStreamClient.ANDROID_VR ||
-                            it == PlayerStreamClient.ARCHIVETUNE_EXTRACTOR
-                    },
-            )
-            add(PlayerStreamClient.ANDROID_VR)
-        }.distinct()
+        listOf(
+            PlayerStreamClient.ANDROID_VR_NO_AUTH,
+            PlayerStreamClient.ANDROID_VR_1_61_48,
+            PlayerStreamClient.ANDROID_VR_1_43_32,
+            PlayerStreamClient.WEB_REMIX,
+            PlayerStreamClient.HI_RES_LOSSLESS,
+            PlayerStreamClient.IOS,
+            PlayerStreamClient.TVHTML5,
+            PlayerStreamClient.ANDROID_MUSIC,
+        )
 
     private suspend fun refreshIpRotationForBotDetection(
         videoId: String,
@@ -623,18 +594,6 @@ object YTPlayerUtils {
         var streamPlayerResponse: PlayerResponse? = null
         var streamClientUsed: YouTubeClient? = null
         var didRepairAuthAfterBotDetection = false
-
-        val preferredYouTubeClient = resolvePreferredPlaybackClient(preferredStreamClient, authState)
-        if (
-            preferredYouTubeClient == WEB_REMIX &&
-            preferredStreamClient == PlayerStreamClient.ANDROID_VR &&
-            canUseLoggedInPlayback
-        ) {
-            Timber.tag(logTag).i(
-                "Promoting playback client to WEB_REMIX for %s because login and Web PoToken playback are available",
-                videoId,
-            )
-        }
 
         val metadataClient = MAIN_CLIENT
 
