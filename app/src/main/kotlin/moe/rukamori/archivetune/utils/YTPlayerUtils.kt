@@ -21,9 +21,6 @@ import moe.rukamori.archivetune.innertube.models.YouTubeClient.Companion.ANDROID
 import moe.rukamori.archivetune.innertube.models.YouTubeClient.Companion.ANDROID_MUSIC
 import moe.rukamori.archivetune.innertube.models.YouTubeClient.Companion.ANDROID_TESTSUITE
 import moe.rukamori.archivetune.innertube.models.YouTubeClient.Companion.ANDROID_UNPLUGGED
-import moe.rukamori.archivetune.innertube.models.YouTubeClient.Companion.ANDROID_VR_1_43_32
-import moe.rukamori.archivetune.innertube.models.YouTubeClient.Companion.ANDROID_VR_1_61_48
-import moe.rukamori.archivetune.innertube.models.YouTubeClient.Companion.ANDROID_VR_NO_AUTH
 import moe.rukamori.archivetune.innertube.models.YouTubeClient.Companion.IOS
 import moe.rukamori.archivetune.innertube.models.YouTubeClient.Companion.IOS_MUSIC
 import moe.rukamori.archivetune.innertube.models.YouTubeClient.Companion.IPADOS
@@ -122,13 +119,11 @@ object YTPlayerUtils {
      */
     private val STREAM_FALLBACK_CLIENTS: Array<YouTubeClient> =
         arrayOf(
+            WEB_REMIX,
             IOS,
             MOBILE,
             ANDROID_MUSIC,
             IOS_MUSIC,
-            ANDROID_VR_NO_AUTH,
-            ANDROID_VR_1_61_48,
-            ANDROID_VR_1_43_32,
             ANDROID_CREATOR,
             ANDROID_TESTSUITE,
             ANDROID_UNPLUGGED,
@@ -138,7 +133,6 @@ object YTPlayerUtils {
             TVHTML5_SIMPLY_EMBEDDED_PLAYER,
             WEB,
             WEB_CREATOR,
-            WEB_REMIX,
         )
 
     private data class CachedStreamUrl(
@@ -519,9 +513,6 @@ object YTPlayerUtils {
 
     private val downloadPreferredStreamClientAttempts: List<PlayerStreamClient> =
         listOf(
-            PlayerStreamClient.ANDROID_VR_NO_AUTH,
-            PlayerStreamClient.ANDROID_VR_1_61_48,
-            PlayerStreamClient.ANDROID_VR_1_43_32,
             PlayerStreamClient.WEB_REMIX,
             PlayerStreamClient.HI_RES_LOSSLESS,
             PlayerStreamClient.IOS,
