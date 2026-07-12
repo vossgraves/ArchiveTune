@@ -3574,16 +3574,20 @@ class MusicService :
             }
             if (initialStatus.items.isEmpty()) return@launch
             if (queue.preloadItem != null) {
-                player.addMediaItems(
-                    0,
-                    initialStatus.items.subList(0, initialStatus.mediaItemIndex),
-                )
-                player.addMediaItems(
-                    initialStatus.items.subList(
-                        initialStatus.mediaItemIndex + 1,
-                        initialStatus.items.size,
-                    ),
-                )
+                val preloadMediaId = checkNotNull(queue.preloadItem).id.trim()
+                val insertionIndex =
+                    initialStatus.mediaItemIndex.coerceIn(0, initialStatus.items.size)
+                val itemsBeforeCurrent =
+                    initialStatus.items
+                        .subList(0, insertionIndex)
+                        .filterNot { preloadMediaId.isNotEmpty() && it.mediaId.trim() == preloadMediaId }
+                val itemsAfterCurrent =
+                    initialStatus.items
+                        .subList(insertionIndex, initialStatus.items.size)
+                        .filterNot { preloadMediaId.isNotEmpty() && it.mediaId.trim() == preloadMediaId }
+
+                player.addMediaItems(0, itemsBeforeCurrent)
+                player.addMediaItems(itemsAfterCurrent)
                 if (player.shuffleModeEnabled) {
                     applyCurrentFirstShuffleOrder()
                 }
