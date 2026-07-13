@@ -44,11 +44,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.wrapContentWidth
-import androidx.compose.foundation.shape.CornerSize
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CornerSize
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.ContainedLoadingIndicator
@@ -1012,7 +1012,10 @@ private fun HistorySongGroupItem(
     val shape =
         remember(index, lastIndex, outerShape, innerCorner) {
             when {
-                lastIndex == 0 -> outerShape
+                lastIndex == 0 -> {
+                    outerShape
+                }
+
                 index == 0 -> {
                     outerShape.copy(
                         bottomStart = innerCorner,

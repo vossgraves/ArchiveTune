@@ -1166,8 +1166,14 @@ private fun CommitHistorySection(
                 Text(
                     text =
                         when {
-                            isLoading -> stringResource(R.string.updates_loading_commits)
-                            commits.isEmpty() -> stringResource(R.string.updates_no_commits)
+                            isLoading -> {
+                                stringResource(R.string.updates_loading_commits)
+                            }
+
+                            commits.isEmpty() -> {
+                                stringResource(R.string.updates_no_commits)
+                            }
+
                             else -> {
                                 stringResource(
                                     R.string.updates_recent_commits_count,

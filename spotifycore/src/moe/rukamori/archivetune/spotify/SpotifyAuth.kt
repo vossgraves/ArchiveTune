@@ -156,9 +156,10 @@ object SpotifyAuth {
         }
 
     private fun String.isValidBase32Secret(): Boolean =
-        isNotBlank() && all { character ->
-            character == '=' || character.uppercaseChar() in "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"
-        }
+        isNotBlank() &&
+            all { character ->
+                character == '=' || character.uppercaseChar() in "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"
+            }
 
     private suspend fun fetchServerTime(): Long =
         withContext(Dispatchers.IO) {
