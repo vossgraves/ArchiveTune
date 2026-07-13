@@ -13,7 +13,6 @@ import android.os.SystemClock
 import android.view.ViewConfiguration
 import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -40,7 +39,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import moe.rukamori.archivetune.constants.FloatingToolbarHeight
+import moe.rukamori.archivetune.constants.NavigationBarHeight
 import moe.rukamori.archivetune.ui.screens.Screens
 
 private val NavigationBarMaxWidth = 420.dp
@@ -81,77 +80,71 @@ fun FloatingNavigationToolbar(
                 Modifier
                     .widthIn(max = NavigationBarMaxWidth)
                     .fillMaxWidth()
-                    .height(FloatingToolbarHeight),
+                    .height(NavigationBarHeight),
             shape = navigationShape,
             color = navigationContainerColor,
             tonalElevation = NavigationBarDefaults.Elevation,
             shadowElevation = NavigationBarDefaults.Elevation,
         ) {
             ShortNavigationBar(
-                modifier = Modifier.fillMaxSize(),
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .padding(vertical = NavigationItemVerticalPadding),
                 containerColor = Color.Transparent,
                 contentColor = if (pureBlack) Color.White else MaterialTheme.colorScheme.onSurface,
                 windowInsets = WindowInsets(0, 0, 0, 0),
-                arrangement = ShortNavigationBarArrangement.EqualWeight,
+                arrangement = ShortNavigationBarArrangement.Centered,
             ) {
-                Row(
-                    modifier =
-                        Modifier
-                            .fillMaxSize()
-                            .padding(vertical = NavigationItemVerticalPadding),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    items.forEach { screen ->
-                        val selected = isSelected(screen)
-                        val onDoubleClick =
-                            remember(screen, onSearchItemDoubleClick) {
-                                if (screen == Screens.Search) onSearchItemDoubleClick else null
-                            }
-                        val lastClickTime = remember(screen) { mutableLongStateOf(0L) }
-                        val onClick =
-                            remember(screen, selected, onItemClick, onDoubleClick) {
-                                {
-                                    val currentTime = SystemClock.uptimeMillis()
-                                    val isDoubleClick =
-                                        onDoubleClick != null &&
-                                            currentTime - lastClickTime.longValue <= ViewConfiguration.getDoubleTapTimeout()
-                                    lastClickTime.longValue = if (isDoubleClick) 0L else currentTime
-                                    if (isDoubleClick) {
-                                        onDoubleClick?.invoke()
-                                        Unit
-                                    } else {
-                                        onItemClick(screen, selected)
-                                    }
+                items.forEach { screen ->
+                    val selected = isSelected(screen)
+                    val onDoubleClick =
+                        remember(screen, onSearchItemDoubleClick) {
+                            if (screen == Screens.Search) onSearchItemDoubleClick else null
+                        }
+                    val lastClickTime = remember(screen) { mutableLongStateOf(0L) }
+                    val onClick =
+                        remember(screen, selected, onItemClick, onDoubleClick) {
+                            {
+                                val currentTime = SystemClock.uptimeMillis()
+                                val isDoubleClick =
+                                    onDoubleClick != null &&
+                                        currentTime - lastClickTime.longValue <= ViewConfiguration.getDoubleTapTimeout()
+                                lastClickTime.longValue = if (isDoubleClick) 0L else currentTime
+                                if (isDoubleClick) {
+                                    onDoubleClick?.invoke()
+                                    Unit
+                                } else {
+                                    onItemClick(screen, selected)
                                 }
                             }
+                        }
 
-                        ShortNavigationBarItem(
-                            selected = selected,
-                            onClick = onClick,
-                            modifier = Modifier.weight(1f),
-                            icon = {
-                                Crossfade(
-                                    targetState = selected,
-                                    animationSpec = motionScheme.fastEffectsSpec(),
-                                    label = "navigationItemIcon",
-                                ) { isSelected ->
-                                    Icon(
-                                        painter =
-                                            painterResource(
-                                                if (isSelected) screen.iconIdActive else screen.iconIdInactive,
-                                            ),
-                                        contentDescription = null,
-                                    )
-                                }
-                            },
-                            label = {
-                                Text(
-                                    text = stringResource(screen.titleId),
-                                    maxLines = 1,
+                    ShortNavigationBarItem(
+                        selected = selected,
+                        onClick = onClick,
+                        icon = {
+                            Crossfade(
+                                targetState = selected,
+                                animationSpec = motionScheme.fastEffectsSpec(),
+                                label = "navigationItemIcon",
+                            ) { isSelected ->
+                                Icon(
+                                    painter =
+                                        painterResource(
+                                            if (isSelected) screen.iconIdActive else screen.iconIdInactive,
+                                        ),
+                                    contentDescription = null,
                                 )
-                            },
-                        )
-                    }
+                            }
+                        },
+                        label = {
+                            Text(
+                                text = stringResource(screen.titleId),
+                                maxLines = 1,
+                            )
+                        },
+                    )
                 }
             }
         }

@@ -84,6 +84,8 @@ import moe.rukamori.archivetune.utils.rememberPreference
 import kotlin.math.absoluteValue
 import kotlin.math.roundToInt
 
+private val MiniPlayerTransportButtonSpacing = 4.dp
+
 @Immutable
 data class MiniPlayerContentColors(
     val title: Color,
@@ -456,7 +458,7 @@ private fun MiniPlayerTransportControls(
         }
 
     Row(
-        horizontalArrangement = Arrangement.spacedBy(0.dp),
+        horizontalArrangement = Arrangement.spacedBy(MiniPlayerTransportButtonSpacing),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         MiniPlayerTransportButton(

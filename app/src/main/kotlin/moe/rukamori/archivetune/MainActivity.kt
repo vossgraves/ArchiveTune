@@ -196,9 +196,9 @@ import moe.rukamori.archivetune.constants.DisableAnimationsKey
 import moe.rukamori.archivetune.constants.DisableScreenshotKey
 import moe.rukamori.archivetune.constants.DynamicThemeKey
 import moe.rukamori.archivetune.constants.EnableHapticFeedbackKey
-import moe.rukamori.archivetune.constants.FloatingToolbarBottomPadding
-import moe.rukamori.archivetune.constants.FloatingToolbarHeight
-import moe.rukamori.archivetune.constants.FloatingToolbarHorizontalPadding
+import moe.rukamori.archivetune.constants.NavigationBarBottomPadding
+import moe.rukamori.archivetune.constants.NavigationBarHeight
+import moe.rukamori.archivetune.constants.NavigationBarHorizontalPadding
 import moe.rukamori.archivetune.constants.FontPreferenceKey
 import moe.rukamori.archivetune.constants.HasPressedStarKey
 import moe.rukamori.archivetune.constants.LaunchCountKey
@@ -959,13 +959,13 @@ class MainActivity : ComponentActivity() {
 
                     fun getBottomNavPadding(): Dp =
                         if (shouldShowNavigationBar && !useRail) {
-                            FloatingToolbarHeight
+                            NavigationBarHeight
                         } else {
                             0.dp
                         }
 
-                    val floatingBarsBottomPadding = FloatingToolbarBottomPadding
-                    val navVisibleHeight = FloatingToolbarHeight
+                    val floatingBarsBottomPadding = NavigationBarBottomPadding
+                    val navVisibleHeight = NavigationBarHeight
 
                     val bottomNavigationBarHeight by animateDpAsState(
                         targetValue = if (shouldShowNavigationBar && !useRail) navVisibleHeight else 0.dp,
@@ -2079,8 +2079,8 @@ class MainActivity : ComponentActivity() {
                                                     Modifier
                                                         .align(Alignment.BottomCenter)
                                                         .padding(
-                                                            start = FloatingToolbarHorizontalPadding,
-                                                            end = FloatingToolbarHorizontalPadding,
+                                                            start = NavigationBarHorizontalPadding,
+                                                            end = NavigationBarHorizontalPadding,
                                                             bottom = bottomInset + floatingBarsBottomPadding,
                                                         ).height(navVisibleHeight),
                                                 isSelected = { screen ->
@@ -2113,7 +2113,7 @@ class MainActivity : ComponentActivity() {
                                                 Modifier
                                                     .align(Alignment.BottomEnd)
                                                     .padding(
-                                                        end = FloatingToolbarHorizontalPadding,
+                                                        end = NavigationBarHorizontalPadding,
                                                         bottom = homeOverflowFabBottomPadding,
                                                     ),
                                         ) {
