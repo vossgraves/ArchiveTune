@@ -40,7 +40,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -54,19 +53,12 @@ import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
-import androidx.compose.material3.ListItem
-import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SegmentedListItem
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -113,11 +105,11 @@ import moe.rukamori.archivetune.spotify.SpotifyAccountUiState
 import moe.rukamori.archivetune.spotify.SpotifyAccountViewModel
 import moe.rukamori.archivetune.spotify.SpotifyAuth
 import moe.rukamori.archivetune.ui.component.DefaultDialog
+import moe.rukamori.archivetune.ui.component.EnumListPreference
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.PreferenceGroupScope
-import moe.rukamori.archivetune.ui.component.PreferenceGroupTitle
 import moe.rukamori.archivetune.ui.component.SwitchPreference
 import moe.rukamori.archivetune.ui.menu.AddToPlaylistDialogOnline
 import moe.rukamori.archivetune.ui.menu.LoadingScreen
@@ -490,141 +482,62 @@ private fun ScheduledBackupSection(
     onDirectoryClick: () -> Unit,
     onOverwriteChanged: (Boolean) -> Unit,
 ) {
-    val itemCount = 4
-    val colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
-
-    Column {
-        PreferenceGroupTitle(
-            title = stringResource(R.string.scheduled_backup),
-            modifier = Modifier.padding(horizontal = 26.dp),
-        )
-        Column(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 26.dp),
-            verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap),
-        ) {
-            SegmentedListItem(
+    PreferenceGroup(title = stringResource(R.string.scheduled_backup)) {
+        item {
+            SwitchPreference(
+                title = { Text(stringResource(R.string.scheduled_backup_enabled)) },
+                description =
+                    stringResource(
+                        if (data.enabled) {
+                            R.string.scheduled_backup_enabled_description
+                        } else {
+                            R.string.scheduled_backup_disabled_description
+                        },
+                    ),
+                icon = { Icon(painterResource(R.drawable.repeat_on), contentDescription = null) },
                 checked = data.enabled,
                 onCheckedChange = onEnabledChanged,
-                enabled = enabled,
-                colors = colors,
-                shapes = ListItemDefaults.segmentedShapes(index = 0, count = itemCount),
-                leadingContent = {
-                    Icon(painterResource(R.drawable.repeat_on), contentDescription = null)
-                },
-                trailingContent = {
-                    Switch(
-                        checked = data.enabled,
-                        onCheckedChange = null,
-                        enabled = enabled,
-                    )
-                },
-                supportingContent = {
-                    Text(
-                        stringResource(
-                            if (data.enabled) {
-                                R.string.scheduled_backup_enabled_description
-                            } else {
-                                R.string.scheduled_backup_disabled_description
-                            },
-                        ),
-                    )
-                },
-                content = { Text(stringResource(R.string.scheduled_backup_enabled)) },
+                isEnabled = enabled,
             )
+        }
 
-            val scheduleShape =
-                remember {
-                    RoundedCornerShape(
-                        6.dp,
-                    )
-                }
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = scheduleShape,
-                color = MaterialTheme.colorScheme.surfaceContainer,
-            ) {
-                ListItem(
-                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                    leadingContent = {
-                        Icon(painterResource(R.drawable.calendar_today), contentDescription = null)
+        item {
+            EnumListPreference(
+                title = { Text(stringResource(R.string.scheduled_backup_frequency)) },
+                description =
+                    if (data.frequency == ScheduledBackupFrequency.CUSTOM && data.customDateLabel != null) {
+                        stringResource(R.string.scheduled_backup_custom_date, data.customDateLabel)
+                    } else {
+                        stringResource(R.string.scheduled_backup_frequency_description)
                     },
-                    supportingContent = {
-                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Text(
-                                text =
-                                    if (data.frequency == ScheduledBackupFrequency.CUSTOM && data.customDateLabel != null) {
-                                        stringResource(R.string.scheduled_backup_custom_date, data.customDateLabel)
-                                    } else {
-                                        stringResource(R.string.scheduled_backup_frequency_description)
-                                    },
-                            )
-                            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                                ScheduledBackupFrequency.entries.forEachIndexed { index, frequency ->
-                                    SegmentedButton(
-                                        selected = data.frequency == frequency,
-                                        onClick = { onFrequencySelected(frequency) },
-                                        enabled = enabled,
-                                        shape =
-                                            SegmentedButtonDefaults.itemShape(
-                                                index = index,
-                                                count = ScheduledBackupFrequency.entries.size,
-                                            ),
-                                        label = {
-                                            Text(
-                                                text = stringResource(frequency.labelRes),
-                                                maxLines = 1,
-                                                style = MaterialTheme.typography.labelMedium,
-                                            )
-                                        },
-                                    )
-                                }
-                            }
-                        }
-                    },
-                    headlineContent = { Text(stringResource(R.string.scheduled_backup_frequency)) },
-                )
-            }
+                icon = { Icon(painterResource(R.drawable.calendar_today), contentDescription = null) },
+                selectedValue = data.frequency,
+                valueText = { frequency -> stringResource(frequency.labelRes) },
+                onValueSelected = onFrequencySelected,
+                isEnabled = enabled,
+            )
+        }
 
-            SegmentedListItem(
+        item {
+            PreferenceEntry(
+                title = { Text(stringResource(R.string.scheduled_backup_directory)) },
+                description =
+                    data.directoryName
+                        ?: stringResource(R.string.scheduled_backup_directory_description),
+                icon = { Icon(painterResource(R.drawable.snippet_folder), contentDescription = null) },
                 onClick = onDirectoryClick,
-                enabled = enabled,
-                colors = colors,
-                shapes = ListItemDefaults.segmentedShapes(index = 2, count = itemCount),
-                leadingContent = {
-                    Icon(painterResource(R.drawable.snippet_folder), contentDescription = null)
-                },
-                supportingContent = {
-                    Text(
-                        data.directoryName
-                            ?: stringResource(R.string.scheduled_backup_directory_description),
-                    )
-                },
-                content = { Text(stringResource(R.string.scheduled_backup_directory)) },
+                isEnabled = enabled,
             )
+        }
 
-            SegmentedListItem(
+        item {
+            SwitchPreference(
+                title = { Text(stringResource(R.string.scheduled_backup_overwrite)) },
+                description = stringResource(R.string.scheduled_backup_overwrite_description),
+                icon = { Icon(painterResource(R.drawable.backup), contentDescription = null) },
                 checked = data.overwriteExisting,
                 onCheckedChange = onOverwriteChanged,
-                enabled = enabled && data.directoryName != null,
-                colors = colors,
-                shapes = ListItemDefaults.segmentedShapes(index = 3, count = itemCount),
-                leadingContent = {
-                    Icon(painterResource(R.drawable.backup), contentDescription = null)
-                },
-                trailingContent = {
-                    Switch(
-                        checked = data.overwriteExisting,
-                        onCheckedChange = null,
-                        enabled = enabled && data.directoryName != null,
-                    )
-                },
-                supportingContent = {
-                    Text(stringResource(R.string.scheduled_backup_overwrite_description))
-                },
-                content = { Text(stringResource(R.string.scheduled_backup_overwrite)) },
+                isEnabled = enabled && data.directoryName != null,
             )
         }
     }
@@ -690,9 +603,9 @@ private fun ScheduledBackupDatePickerDialog(
     ) {
         DatePicker(
             state = datePickerState,
-            modifier = Modifier.widthIn(max = 560.dp),
+            modifier = Modifier.verticalScroll(rememberScrollState()),
             title = { Text(stringResource(R.string.scheduled_backup_custom_title)) },
-            headline = null,
+            showModeToggle = false,
         )
     }
 }
