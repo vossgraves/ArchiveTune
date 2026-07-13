@@ -13,7 +13,9 @@ import android.os.SystemClock
 import android.view.ViewConfiguration
 import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -43,6 +45,7 @@ import moe.rukamori.archivetune.constants.NavigationBarHeight
 import moe.rukamori.archivetune.ui.screens.Screens
 
 private val NavigationBarMaxWidth = 420.dp
+private val NavigationItemsMaxWidth = 360.dp
 private val NavigationItemVerticalPadding = 8.dp
 
 @Composable
@@ -87,64 +90,77 @@ fun FloatingNavigationToolbar(
             shadowElevation = NavigationBarDefaults.Elevation,
         ) {
             ShortNavigationBar(
-                modifier =
-                    Modifier
-                        .fillMaxSize()
-                        .padding(vertical = NavigationItemVerticalPadding),
+                modifier = Modifier.fillMaxSize(),
                 containerColor = Color.Transparent,
                 contentColor = if (pureBlack) Color.White else MaterialTheme.colorScheme.onSurface,
                 windowInsets = WindowInsets(0, 0, 0, 0),
-                arrangement = ShortNavigationBarArrangement.Centered,
+                arrangement = ShortNavigationBarArrangement.EqualWeight,
             ) {
-                items.forEach { screen ->
-                    val selected = isSelected(screen)
-                    val onDoubleClick =
-                        remember(screen, onSearchItemDoubleClick) {
-                            if (screen == Screens.Search) onSearchItemDoubleClick else null
-                        }
-                    val lastClickTime = remember(screen) { mutableLongStateOf(0L) }
-                    val onClick =
-                        remember(screen, selected, onItemClick, onDoubleClick) {
-                            {
-                                val currentTime = SystemClock.uptimeMillis()
-                                val isDoubleClick =
-                                    onDoubleClick != null &&
-                                        currentTime - lastClickTime.longValue <= ViewConfiguration.getDoubleTapTimeout()
-                                lastClickTime.longValue = if (isDoubleClick) 0L else currentTime
-                                if (isDoubleClick) {
-                                    onDoubleClick?.invoke()
-                                    Unit
-                                } else {
-                                    onItemClick(screen, selected)
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Row(
+                        modifier =
+                            Modifier
+                                .widthIn(max = NavigationItemsMaxWidth)
+                                .fillMaxWidth()
+                                .fillMaxHeight()
+                                .padding(vertical = NavigationItemVerticalPadding),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        items.forEach { screen ->
+                            val selected = isSelected(screen)
+                            val onDoubleClick =
+                                remember(screen, onSearchItemDoubleClick) {
+                                    if (screen == Screens.Search) onSearchItemDoubleClick else null
                                 }
-                            }
-                        }
+                            val lastClickTime = remember(screen) { mutableLongStateOf(0L) }
+                            val onClick =
+                                remember(screen, selected, onItemClick, onDoubleClick) {
+                                    {
+                                        val currentTime = SystemClock.uptimeMillis()
+                                        val isDoubleClick =
+                                            onDoubleClick != null &&
+                                                currentTime - lastClickTime.longValue <= ViewConfiguration.getDoubleTapTimeout()
+                                        lastClickTime.longValue = if (isDoubleClick) 0L else currentTime
+                                        if (isDoubleClick) {
+                                            onDoubleClick?.invoke()
+                                            Unit
+                                        } else {
+                                            onItemClick(screen, selected)
+                                        }
+                                    }
+                                }
 
-                    ShortNavigationBarItem(
-                        selected = selected,
-                        onClick = onClick,
-                        icon = {
-                            Crossfade(
-                                targetState = selected,
-                                animationSpec = motionScheme.fastEffectsSpec(),
-                                label = "navigationItemIcon",
-                            ) { isSelected ->
-                                Icon(
-                                    painter =
-                                        painterResource(
-                                            if (isSelected) screen.iconIdActive else screen.iconIdInactive,
-                                        ),
-                                    contentDescription = null,
-                                )
-                            }
-                        },
-                        label = {
-                            Text(
-                                text = stringResource(screen.titleId),
-                                maxLines = 1,
+                            ShortNavigationBarItem(
+                                selected = selected,
+                                onClick = onClick,
+                                modifier = Modifier.weight(1f),
+                                icon = {
+                                    Crossfade(
+                                        targetState = selected,
+                                        animationSpec = motionScheme.fastEffectsSpec(),
+                                        label = "navigationItemIcon",
+                                    ) { isSelected ->
+                                        Icon(
+                                            painter =
+                                                painterResource(
+                                                    if (isSelected) screen.iconIdActive else screen.iconIdInactive,
+                                                ),
+                                            contentDescription = null,
+                                        )
+                                    }
+                                },
+                                label = {
+                                    Text(
+                                        text = stringResource(screen.titleId),
+                                        maxLines = 1,
+                                    )
+                                },
                             )
-                        },
-                    )
+                        }
+                    }
                 }
             }
         }
