@@ -75,6 +75,7 @@ import moe.rukamori.archivetune.ui.screens.settings.SettingsScreen
 import moe.rukamori.archivetune.ui.screens.settings.StorageSettings
 import moe.rukamori.archivetune.ui.screens.settings.ThemeCreatorScreen
 import moe.rukamori.archivetune.ui.screens.settings.UpdateScreen
+import moe.rukamori.archivetune.viewmodels.OnlineSearchSort
 
 @OptIn(ExperimentalMaterial3Api::class)
 fun NavGraphBuilder.navigationBuilder(
@@ -85,6 +86,7 @@ fun NavGraphBuilder.navigationBuilder(
     onClearUpdateBadge: () -> Unit = {},
     homeScrollConnection: NestedScrollConnection? = null,
     searchScrollConnection: NestedScrollConnection? = null,
+    onlineSearchSort: OnlineSearchSort = OnlineSearchSort.DEFAULT,
 ) {
     composable(Screens.Home.route) {
         HomeScreen(navController, headerScrollConnection = homeScrollConnection)
@@ -213,7 +215,10 @@ fun NavGraphBuilder.navigationBuilder(
             }
         },
     ) {
-        OnlineSearchResult(navController)
+        OnlineSearchResult(
+            navController = navController,
+            searchSort = onlineSearchSort,
+        )
     }
     composable(
         route = "album/{albumId}",
