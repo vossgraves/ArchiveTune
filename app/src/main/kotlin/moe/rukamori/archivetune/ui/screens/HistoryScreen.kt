@@ -81,6 +81,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
@@ -719,18 +720,22 @@ private fun LocalHistoryFeed(
                     key = { _, event -> event.event.id },
                     contentType = { _, _ -> "local_history_song" },
                 ) { index, event ->
+                    val isActive = event.song.id == activeMediaId
                     HistorySongGroupItem(
                         index = index,
                         lastIndex = songsForDate.lastIndex,
                         isSelected = event.event.id in selectedEventIds,
+                        isActive = isActive,
                         modifier = Modifier.animateItem(),
-                    ) {
+                    ) { containerColor ->
                         SongListItem(
                             song = event.song,
-                            isActive = event.song.id == activeMediaId,
+                            isActive = isActive,
                             isPlaying = isPlaying,
                             showInLibraryIcon = true,
                             isSelected = event.event.id in selectedEventIds,
+                            swipeContentBackgroundColor = containerColor,
+                            showActiveContainer = false,
                             trailingContent = {
                                 androidx.compose.material3.IconButton(
                                     onClick = {
@@ -874,15 +879,19 @@ private fun RemoteHistoryFeed(
                             key = { _, song -> "${section.title}_${song.id}" },
                             contentType = { _, _ -> "remote_history_song" },
                         ) { index, song ->
+                            val isActive = song.id == activeMediaId
                             HistorySongGroupItem(
                                 index = index,
                                 lastIndex = section.songs.lastIndex,
+                                isActive = isActive,
                                 modifier = Modifier.animateItem(),
-                            ) {
+                            ) { containerColor ->
                                 YouTubeListItem(
                                     item = song,
-                                    isActive = song.id == activeMediaId,
+                                    isActive = isActive,
                                     isPlaying = isPlaying,
+                                    swipeContentBackgroundColor = containerColor,
+                                    showActiveContainer = false,
                                     trailingContent = {
                                         androidx.compose.material3.IconButton(
                                             onClick = { onSongMenu(song) },
@@ -1005,7 +1014,8 @@ private fun HistorySongGroupItem(
     lastIndex: Int,
     modifier: Modifier = Modifier,
     isSelected: Boolean = false,
-    content: @Composable () -> Unit,
+    isActive: Boolean = false,
+    content: @Composable (containerColor: Color) -> Unit,
 ) {
     val outerShape = MaterialTheme.shapes.extraLarge
     val innerCorner = remember { CornerSize(4.dp) }
@@ -1041,20 +1051,23 @@ private fun HistorySongGroupItem(
             }
         }
 
+    val containerColor =
+        when {
+            isActive -> MaterialTheme.colorScheme.secondaryContainer
+            isSelected -> MaterialTheme.colorScheme.surfaceContainerHighest
+            else -> MaterialTheme.colorScheme.surfaceContainerLow
+        }
+
     Surface(
         modifier =
             modifier
                 .fillMaxWidth()
                 .padding(start = 16.dp, end = 16.dp, bottom = 4.dp),
         shape = shape,
-        color =
-            if (isSelected) {
-                MaterialTheme.colorScheme.surfaceContainerHighest
-            } else {
-                MaterialTheme.colorScheme.surfaceContainerLow
-            },
-        content = content,
-    )
+        color = containerColor,
+    ) {
+        content(containerColor)
+    }
 }
 
 @Composable
