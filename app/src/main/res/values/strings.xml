@@ -1038,4 +1038,23 @@
     <string name="hidden_playlists_description">Playlists hidden from library appear here</string>
     <string name="no_hidden_playlists">No hidden playlists</string>
     <string name="unhide">Unhide</string>
+    <string name="scheduled_backup">Scheduled auto backup</string>
+    <string name="scheduled_backup_enabled">Enable scheduled backup</string>
+    <string name="scheduled_backup_enabled_description">Backups run automatically using the schedule below.</string>
+    <string name="scheduled_backup_disabled_description">Automatic backups are paused.</string>
+    <string name="scheduled_backup_frequency">Backup schedule</string>
+    <string name="scheduled_backup_frequency_description">Choose how often ArchiveTune creates a backup.</string>
+    <string name="scheduled_backup_daily">Daily</string>
+    <string name="scheduled_backup_weekly">Weekly</string>
+    <string name="scheduled_backup_monthly">Monthly</string>
+    <string name="scheduled_backup_custom">Custom</string>
+    <string name="scheduled_backup_custom_title">Choose backup date</string>
+    <string name="scheduled_backup_custom_date">Next backup: %1$s</string>
+    <string name="scheduled_backup_directory">Backup directory</string>
+    <string name="scheduled_backup_directory_description">Choose a folder to enable scheduled backups.</string>
+    <string name="scheduled_backup_overwrite">Overwrite existing backup</string>
+    <string name="scheduled_backup_overwrite_description">Keep one current backup instead of creating a dated history.</string>
+    <string name="scheduled_backup_directory_saved">Backup directory saved</string>
+    <string name="scheduled_backup_load_failed">Scheduled backup settings could not be loaded</string>
+    <string name="scheduled_backup_update_failed">Scheduled backup settings could not be saved</string>
 </resources>

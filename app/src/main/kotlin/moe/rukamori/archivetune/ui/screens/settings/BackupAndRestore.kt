@@ -40,6 +40,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -48,18 +49,28 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularWavyProgressIndicator
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SegmentedListItem
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -95,6 +106,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.backup.ScheduledBackupFrequency
 import moe.rukamori.archivetune.constants.ShowSpotifyPlaylistsKey
 import moe.rukamori.archivetune.db.entities.Song
 import moe.rukamori.archivetune.spotify.SpotifyAccountUiState
@@ -105,6 +117,7 @@ import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.PreferenceGroupScope
+import moe.rukamori.archivetune.ui.component.PreferenceGroupTitle
 import moe.rukamori.archivetune.ui.component.SwitchPreference
 import moe.rukamori.archivetune.ui.menu.AddToPlaylistDialogOnline
 import moe.rukamori.archivetune.ui.menu.LoadingScreen
@@ -113,7 +126,12 @@ import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.utils.resetAuthWebViewSession
 import moe.rukamori.archivetune.viewmodels.BackupCategory
 import moe.rukamori.archivetune.viewmodels.BackupRestoreViewModel
+import moe.rukamori.archivetune.viewmodels.ScheduledBackupScreenState
+import moe.rukamori.archivetune.viewmodels.ScheduledBackupUiData
+import java.time.Instant
+import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 
 private val CSV_MIME_TYPES =
@@ -155,6 +173,7 @@ fun BackupAndRestore(
     var pendingRestoreUri by remember { mutableStateOf<Uri?>(null) }
 
     val backupRestoreProgress by viewModel.backupRestoreProgress.collectAsStateWithLifecycle()
+    val scheduledBackupState by viewModel.scheduledBackupState.collectAsStateWithLifecycle()
     val spotifyState by spotifyAccountViewModel.uiState.collectAsStateWithLifecycle()
     val (showSpotifyPlaylists, onShowSpotifyPlaylistsChange) = rememberPreference(ShowSpotifyPlaylistsKey, false)
     val context = LocalContext.current
@@ -167,11 +186,21 @@ fun BackupAndRestore(
         }
     }
 
+    LaunchedEffect(Unit) {
+        viewModel.scheduledBackupEvent.collect { messageRes ->
+            snackbarHostState.showSnackbar(context.getString(messageRes))
+        }
+    }
+
     val backupLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
             if (uri != null) {
                 viewModel.backup(context, uri, pendingBackupCategories)
             }
+        }
+    val backupDirectoryLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+            uri?.let(viewModel::onScheduledBackupDirectorySelected)
         }
     val restoreLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -256,6 +285,32 @@ fun BackupAndRestore(
                 .verticalScroll(rememberScrollState())
                 .padding(bottom = SettingsDimensions.ScreenBottomPadding),
         ) {
+            val scheduledBackupData =
+                when (val state = scheduledBackupState) {
+                    is ScheduledBackupScreenState.Success -> state.data
+                    ScheduledBackupScreenState.Loading,
+                    ScheduledBackupScreenState.Empty,
+                    is ScheduledBackupScreenState.Error,
+                    -> ScheduledBackupUiData(
+                        enabled = false,
+                        frequency = ScheduledBackupFrequency.WEEKLY,
+                        customDateEpochDay = null,
+                        customDateLabel = null,
+                        directoryName = null,
+                        overwriteExisting = false,
+                        showCustomDatePicker = false,
+                    )
+                }
+
+            ScheduledBackupSection(
+                data = scheduledBackupData,
+                enabled = scheduledBackupState !is ScheduledBackupScreenState.Loading,
+                onEnabledChanged = viewModel::onScheduledBackupEnabledChanged,
+                onFrequencySelected = viewModel::onScheduledBackupFrequencySelected,
+                onDirectoryClick = { backupDirectoryLauncher.launch(null) },
+                onOverwriteChanged = viewModel::onScheduledBackupOverwriteChanged,
+            )
+
             PreferenceGroup(title = stringResource(R.string.internal_service)) {
                 item {
                     PreferenceEntry(
@@ -307,6 +362,15 @@ fun BackupAndRestore(
                 )
             }
         }
+    }
+
+    val scheduledBackupData = (scheduledBackupState as? ScheduledBackupScreenState.Success)?.data
+    if (scheduledBackupData?.showCustomDatePicker == true) {
+        ScheduledBackupDatePickerDialog(
+            selectedEpochDay = scheduledBackupData.customDateEpochDay,
+            onDateSelected = viewModel::onScheduledBackupCustomDateSelected,
+            onDismiss = viewModel::onScheduledBackupCustomDateDismissed,
+        )
     }
 
     if (showBackupOptionsDialog) {
@@ -411,6 +475,231 @@ fun BackupAndRestore(
         indeterminate = backupRestoreProgress?.indeterminate ?: false,
     )
 }
+
+@Composable
+private fun ScheduledBackupSection(
+    data: ScheduledBackupUiData,
+    enabled: Boolean,
+    onEnabledChanged: (Boolean) -> Unit,
+    onFrequencySelected: (ScheduledBackupFrequency) -> Unit,
+    onDirectoryClick: () -> Unit,
+    onOverwriteChanged: (Boolean) -> Unit,
+) {
+    val itemCount = 4
+    val colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
+
+    Column {
+        PreferenceGroupTitle(
+            title = stringResource(R.string.scheduled_backup),
+            modifier = Modifier.padding(horizontal = 26.dp),
+        )
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 26.dp),
+            verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap),
+        ) {
+            SegmentedListItem(
+                checked = data.enabled,
+                onCheckedChange = onEnabledChanged,
+                enabled = enabled,
+                colors = colors,
+                shapes = ListItemDefaults.segmentedShapes(index = 0, count = itemCount),
+                leadingContent = {
+                    Icon(painterResource(R.drawable.repeat_on), contentDescription = null)
+                },
+                trailingContent = {
+                    Switch(
+                        checked = data.enabled,
+                        onCheckedChange = null,
+                        enabled = enabled,
+                    )
+                },
+                supportingContent = {
+                    Text(
+                        stringResource(
+                            if (data.enabled) {
+                                R.string.scheduled_backup_enabled_description
+                            } else {
+                                R.string.scheduled_backup_disabled_description
+                            },
+                        ),
+                    )
+                },
+                content = { Text(stringResource(R.string.scheduled_backup_enabled)) },
+            )
+
+            val scheduleShape =
+                remember {
+                    RoundedCornerShape(
+                        6.dp,
+                    )
+                }
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = scheduleShape,
+                color = MaterialTheme.colorScheme.surfaceContainer,
+            ) {
+                ListItem(
+                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    leadingContent = {
+                        Icon(painterResource(R.drawable.calendar_today), contentDescription = null)
+                    },
+                    supportingContent = {
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Text(
+                                text =
+                                    if (data.frequency == ScheduledBackupFrequency.CUSTOM && data.customDateLabel != null) {
+                                        stringResource(R.string.scheduled_backup_custom_date, data.customDateLabel)
+                                    } else {
+                                        stringResource(R.string.scheduled_backup_frequency_description)
+                                    },
+                            )
+                            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                                ScheduledBackupFrequency.entries.forEachIndexed { index, frequency ->
+                                    SegmentedButton(
+                                        selected = data.frequency == frequency,
+                                        onClick = { onFrequencySelected(frequency) },
+                                        enabled = enabled,
+                                        shape =
+                                            SegmentedButtonDefaults.itemShape(
+                                                index = index,
+                                                count = ScheduledBackupFrequency.entries.size,
+                                            ),
+                                        label = {
+                                            Text(
+                                                text = stringResource(frequency.labelRes),
+                                                maxLines = 1,
+                                                style = MaterialTheme.typography.labelMedium,
+                                            )
+                                        },
+                                    )
+                                }
+                            }
+                        }
+                    },
+                    headlineContent = { Text(stringResource(R.string.scheduled_backup_frequency)) },
+                )
+            }
+
+            SegmentedListItem(
+                onClick = onDirectoryClick,
+                enabled = enabled,
+                colors = colors,
+                shapes = ListItemDefaults.segmentedShapes(index = 2, count = itemCount),
+                leadingContent = {
+                    Icon(painterResource(R.drawable.snippet_folder), contentDescription = null)
+                },
+                supportingContent = {
+                    Text(
+                        data.directoryName
+                            ?: stringResource(R.string.scheduled_backup_directory_description),
+                    )
+                },
+                content = { Text(stringResource(R.string.scheduled_backup_directory)) },
+            )
+
+            SegmentedListItem(
+                checked = data.overwriteExisting,
+                onCheckedChange = onOverwriteChanged,
+                enabled = enabled && data.directoryName != null,
+                colors = colors,
+                shapes = ListItemDefaults.segmentedShapes(index = 3, count = itemCount),
+                leadingContent = {
+                    Icon(painterResource(R.drawable.backup), contentDescription = null)
+                },
+                trailingContent = {
+                    Switch(
+                        checked = data.overwriteExisting,
+                        onCheckedChange = null,
+                        enabled = enabled && data.directoryName != null,
+                    )
+                },
+                supportingContent = {
+                    Text(stringResource(R.string.scheduled_backup_overwrite_description))
+                },
+                content = { Text(stringResource(R.string.scheduled_backup_overwrite)) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun ScheduledBackupDatePickerDialog(
+    selectedEpochDay: Long?,
+    onDateSelected: (Long) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val todayEpochDay = remember { LocalDate.now().toEpochDay() }
+    val initialEpochDay = selectedEpochDay?.coerceAtLeast(todayEpochDay) ?: todayEpochDay + 1
+    val datePickerState =
+        rememberDatePickerState(
+            initialSelectedDateMillis =
+                LocalDate
+                    .ofEpochDay(initialEpochDay)
+                    .atStartOfDay(ZoneOffset.UTC)
+                    .toInstant()
+                    .toEpochMilli(),
+            selectableDates =
+                remember(todayEpochDay) {
+                    object : androidx.compose.material3.SelectableDates {
+                        override fun isSelectableDate(utcTimeMillis: Long): Boolean =
+                            Instant
+                                .ofEpochMilli(utcTimeMillis)
+                                .atZone(ZoneOffset.UTC)
+                                .toLocalDate()
+                                .toEpochDay() >= todayEpochDay
+                    }
+                },
+        )
+
+    DatePickerDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    val selectedMillis = datePickerState.selectedDateMillis ?: return@TextButton
+                    val epochDay =
+                        Instant
+                            .ofEpochMilli(selectedMillis)
+                            .atZone(ZoneOffset.UTC)
+                            .toLocalDate()
+                            .toEpochDay()
+                    onDateSelected(epochDay)
+                },
+                enabled = datePickerState.selectedDateMillis != null,
+                shapes = ButtonDefaults.shapes(),
+            ) {
+                Text(stringResource(android.R.string.ok))
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                shapes = ButtonDefaults.shapes(),
+            ) {
+                Text(stringResource(android.R.string.cancel))
+            }
+        },
+    ) {
+        DatePicker(
+            state = datePickerState,
+            modifier = Modifier.widthIn(max = 560.dp),
+            title = { Text(stringResource(R.string.scheduled_backup_custom_title)) },
+            headline = null,
+        )
+    }
+}
+
+private val ScheduledBackupFrequency.labelRes: Int
+    get() =
+        when (this) {
+            ScheduledBackupFrequency.DAILY -> R.string.scheduled_backup_daily
+            ScheduledBackupFrequency.WEEKLY -> R.string.scheduled_backup_weekly
+            ScheduledBackupFrequency.MONTHLY -> R.string.scheduled_backup_monthly
+            ScheduledBackupFrequency.CUSTOM -> R.string.scheduled_backup_custom
+        }
 
 private fun PreferenceGroupScope.spotifyAccountPreferences(
     state: SpotifyAccountUiState,
