@@ -55,7 +55,6 @@ import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MediumFlexibleTopAppBar
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -911,23 +910,23 @@ private fun UpdateStatusPanel(
 
     Card(
         modifier = modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.extraLarge,
+        shape = MaterialTheme.shapes.large,
         colors =
             CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
             ),
     ) {
         Column(
-            modifier = Modifier.padding(24.dp),
-            verticalArrangement = Arrangement.spacedBy(24.dp),
+            modifier = Modifier.padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(18.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
                 verticalAlignment = Alignment.Top,
             ) {
                 Surface(
-                    modifier = Modifier.size(72.dp),
+                    modifier = Modifier.size(56.dp),
                     shape = statusShape,
                     color = statusContainerColor,
                     contentColor = statusContentColor,
@@ -936,23 +935,41 @@ private fun UpdateStatusPanel(
                         Icon(
                             painter = painterResource(R.drawable.update),
                             contentDescription = null,
-                            modifier = Modifier.size(30.dp),
+                            modifier = Modifier.size(24.dp),
                         )
                     }
                 }
 
                 Column(
                     modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    Text(
-                        text = stringResource(R.string.current_version),
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = stringResource(R.string.current_version),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Surface(
+                            shape = MaterialTheme.shapes.large,
+                            color = channelContainerColor,
+                            contentColor = channelContentColor,
+                        ) {
+                            Text(
+                                text = channelLabel,
+                                style = MaterialTheme.typography.labelMedium,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            )
+                        }
+                    }
                     Text(
                         text = currentVersion,
-                        style = MaterialTheme.typography.headlineMedium,
+                        style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.Bold,
                     )
                     Text(
@@ -963,21 +980,9 @@ private fun UpdateStatusPanel(
                 }
             }
 
-            Surface(
-                shape = MaterialTheme.shapes.large,
-                color = channelContainerColor,
-                contentColor = channelContentColor,
-            ) {
-                Text(
-                    text = channelLabel,
-                    style = MaterialTheme.typography.labelLarge,
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-                )
-            }
-
             Column(
                 modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 Button(
                     onClick = onCheckForUpdate,
@@ -996,7 +1001,7 @@ private fun UpdateStatusPanel(
                     Text(text = stringResource(R.string.check_for_update))
                 }
 
-                OutlinedButton(
+                TextButton(
                     onClick = onOpenChangelog,
                     modifier =
                         Modifier
