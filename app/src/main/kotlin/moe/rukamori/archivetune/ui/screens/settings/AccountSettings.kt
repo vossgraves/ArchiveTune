@@ -649,13 +649,15 @@ private fun AccountSummaryCard(
                             overflow = TextOverflow.Ellipsis,
                         )
                     }
-                    Text(
-                        text = accountEmail.ifBlank { stringResource(R.string.not_logged_in) },
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    if (accountEmail.isNotBlank() || !isLoggedIn) {
+                        Text(
+                            text = accountEmail.ifBlank { stringResource(R.string.not_logged_in) },
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
             }
 
