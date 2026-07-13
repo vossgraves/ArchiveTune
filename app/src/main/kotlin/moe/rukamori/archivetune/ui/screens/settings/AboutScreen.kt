@@ -287,7 +287,9 @@ private fun AboutFullScreenDialogs(
     onRetryDependencyLicenses: () -> Unit,
 ) {
     when (model.activeDialog) {
-        AboutDialog.NONE -> Unit
+        AboutDialog.NONE -> {
+            Unit
+        }
 
         AboutDialog.TRANSLATION_CONTRIBUTORS -> {
             AboutFullScreenDialog(

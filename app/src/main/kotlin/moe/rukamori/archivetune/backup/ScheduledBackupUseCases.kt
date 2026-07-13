@@ -25,20 +25,16 @@ class UpdateScheduledBackupUseCase
         private val repository: ScheduledBackupRepository,
         private val scheduler: ScheduledBackupScheduler,
     ) {
-        suspend fun setEnabled(enabled: Boolean): ScheduledBackupSettings =
-            repository.updateEnabled(enabled).also(scheduler::replace)
+        suspend fun setEnabled(enabled: Boolean): ScheduledBackupSettings = repository.updateEnabled(enabled).also(scheduler::replace)
 
         suspend fun setFrequency(frequency: ScheduledBackupFrequency): ScheduledBackupSettings =
             repository.updateFrequency(frequency).also(scheduler::replace)
 
-        suspend fun setCustomDate(epochDay: Long): ScheduledBackupSettings =
-            repository.updateCustomDate(epochDay).also(scheduler::replace)
+        suspend fun setCustomDate(epochDay: Long): ScheduledBackupSettings = repository.updateCustomDate(epochDay).also(scheduler::replace)
 
-        suspend fun setDirectory(uri: Uri): ScheduledBackupSettings =
-            repository.updateDirectory(uri).also(scheduler::replace)
+        suspend fun setDirectory(uri: Uri): ScheduledBackupSettings = repository.updateDirectory(uri).also(scheduler::replace)
 
-        suspend fun setOverwrite(overwriteExisting: Boolean): ScheduledBackupSettings =
-            repository.updateOverwrite(overwriteExisting)
+        suspend fun setOverwrite(overwriteExisting: Boolean): ScheduledBackupSettings = repository.updateOverwrite(overwriteExisting)
     }
 
 class CreateBackupUseCase

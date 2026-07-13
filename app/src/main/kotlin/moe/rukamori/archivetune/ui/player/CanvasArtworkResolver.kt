@@ -22,12 +22,13 @@ internal suspend fun resolveCanvasArtworkForPlayback(
     requireVertical: Boolean,
     allowNetwork: Boolean,
 ): CanvasArtwork? {
-    val cachedArtwork = withContext(Dispatchers.IO) {
-        CanvasArtworkPlaybackCache.get(
-            mediaId = mediaId,
-            preferCachedOnly = true,
-        )
-    }
+    val cachedArtwork =
+        withContext(Dispatchers.IO) {
+            CanvasArtworkPlaybackCache.get(
+                mediaId = mediaId,
+                preferCachedOnly = true,
+            )
+        }
     if (cachedArtwork != null) {
         val isValid =
             cachedArtwork.hasRequiredCanvasVariant(requireVertical) &&

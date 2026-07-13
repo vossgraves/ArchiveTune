@@ -28,10 +28,11 @@ class ScheduledBackupScheduler
     ) {
         fun replace(settings: ScheduledBackupSettings) {
             val workManager = WorkManager.getInstance(context)
-            val runAt = nextRunAt(settings) ?: run {
-                workManager.cancelUniqueWork(WORK_NAME)
-                return
-            }
+            val runAt =
+                nextRunAt(settings) ?: run {
+                    workManager.cancelUniqueWork(WORK_NAME)
+                    return
+                }
             workManager.enqueueUniqueWork(
                 WORK_NAME,
                 ExistingWorkPolicy.REPLACE,
@@ -67,9 +68,18 @@ class ScheduledBackupScheduler
             val now = ZonedDateTime.now()
             val nextDate =
                 when (settings.frequency) {
-                    ScheduledBackupFrequency.DAILY -> now.toLocalDate().plusDays(1)
-                    ScheduledBackupFrequency.WEEKLY -> now.toLocalDate().plusWeeks(1)
-                    ScheduledBackupFrequency.MONTHLY -> now.toLocalDate().plusMonths(1)
+                    ScheduledBackupFrequency.DAILY -> {
+                        now.toLocalDate().plusDays(1)
+                    }
+
+                    ScheduledBackupFrequency.WEEKLY -> {
+                        now.toLocalDate().plusWeeks(1)
+                    }
+
+                    ScheduledBackupFrequency.MONTHLY -> {
+                        now.toLocalDate().plusMonths(1)
+                    }
+
                     ScheduledBackupFrequency.CUSTOM -> {
                         val epochDay = settings.customDateEpochDay ?: return null
                         LocalDate.ofEpochDay(epochDay).takeUnless { it.isBefore(now.toLocalDate()) } ?: return null

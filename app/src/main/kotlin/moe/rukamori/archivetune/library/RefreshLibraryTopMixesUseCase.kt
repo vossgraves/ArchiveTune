@@ -157,73 +157,83 @@ class RefreshLibraryTopMixesUseCase
         ): List<GeneratedLibraryTopMix> {
             val json = JSONObject(response.substringAfter('{').substringBeforeLast('}').let { "{$it}" })
             val mixes = json.optJSONArray("mixes") ?: JSONArray()
-            
-            val recQueries = buildList {
-                for (index in 0 until mixes.length()) {
-                    val mixJson = mixes.optJSONObject(index) ?: continue
-                    val recs = mixJson.optJSONArray("recommendations") ?: JSONArray()
-                    for (r in 0 until recs.length()) {
-                        val recJson = recs.optJSONObject(r) ?: continue
-                        val title = recJson.optString("title").trim()
-                        val artist = recJson.optString("artist").trim()
-                        if (title.isNotEmpty() && artist.isNotEmpty()) {
-                            add(title to artist)
-                        }
-                    }
-                }
-            }.distinct()
 
-            val resolvedRecommendations = kotlinx.coroutines.coroutineScope {
-                recQueries.map { (title, artist) ->
-                    async(kotlinx.coroutines.Dispatchers.IO) {
-                        val query = "$artist $title"
-                        val songs = YouTube
-                            .search(query, YouTube.SearchFilter.FILTER_SONG)
-                            .getOrNull()
-                            ?.items
-                            .orEmpty()
-                            .filterIsInstance<SongItem>()
-                        
-                        val match = songs.firstOrNull { song ->
-                            song.title.contains(title, ignoreCase = true) &&
-                            song.artists.any { it.name.contains(artist, ignoreCase = true) }
-                        } ?: songs.firstOrNull()
-                        
-                        if (match != null) {
-                            (title to artist) to ValidatedTopMixSong(match)
-                        } else {
-                            null
-                        }
-                    }
-                }.awaitAll().filterNotNull().toMap()
-            }
-
-            return buildList {
-                for (index in 0 until mixes.length()) {
-                    if (size >= TopMixCountLimit) break
-                    val mixJson = mixes.optJSONObject(index) ?: continue
-                    
-                    val candidatesList = mixJson
-                        .optJSONArray("songIds")
-                        .toStringList()
-                        .mapNotNull(candidateById::get)
-                    
-                    val recommendedList = buildList {
+            val recQueries =
+                buildList {
+                    for (index in 0 until mixes.length()) {
+                        val mixJson = mixes.optJSONObject(index) ?: continue
                         val recs = mixJson.optJSONArray("recommendations") ?: JSONArray()
                         for (r in 0 until recs.length()) {
                             val recJson = recs.optJSONObject(r) ?: continue
                             val title = recJson.optString("title").trim()
                             val artist = recJson.optString("artist").trim()
-                            val resolved = resolvedRecommendations[title to artist]
-                            if (resolved != null) {
-                                add(resolved)
+                            if (title.isNotEmpty() && artist.isNotEmpty()) {
+                                add(title to artist)
                             }
                         }
                     }
+                }.distinct()
 
-                    val selected = (candidatesList + recommendedList)
-                        .distinctBy { it.id }
-                        .take(TopMixSongsPerMix)
+            val resolvedRecommendations =
+                kotlinx.coroutines.coroutineScope {
+                    recQueries
+                        .map { (title, artist) ->
+                            async(kotlinx.coroutines.Dispatchers.IO) {
+                                val query = "$artist $title"
+                                val songs =
+                                    YouTube
+                                        .search(query, YouTube.SearchFilter.FILTER_SONG)
+                                        .getOrNull()
+                                        ?.items
+                                        .orEmpty()
+                                        .filterIsInstance<SongItem>()
+
+                                val match =
+                                    songs.firstOrNull { song ->
+                                        song.title.contains(title, ignoreCase = true) &&
+                                            song.artists.any { it.name.contains(artist, ignoreCase = true) }
+                                    } ?: songs.firstOrNull()
+
+                                if (match != null) {
+                                    (title to artist) to ValidatedTopMixSong(match)
+                                } else {
+                                    null
+                                }
+                            }
+                        }.awaitAll()
+                        .filterNotNull()
+                        .toMap()
+                }
+
+            return buildList {
+                for (index in 0 until mixes.length()) {
+                    if (size >= TopMixCountLimit) break
+                    val mixJson = mixes.optJSONObject(index) ?: continue
+
+                    val candidatesList =
+                        mixJson
+                            .optJSONArray("songIds")
+                            .toStringList()
+                            .mapNotNull(candidateById::get)
+
+                    val recommendedList =
+                        buildList {
+                            val recs = mixJson.optJSONArray("recommendations") ?: JSONArray()
+                            for (r in 0 until recs.length()) {
+                                val recJson = recs.optJSONObject(r) ?: continue
+                                val title = recJson.optString("title").trim()
+                                val artist = recJson.optString("artist").trim()
+                                val resolved = resolvedRecommendations[title to artist]
+                                if (resolved != null) {
+                                    add(resolved)
+                                }
+                            }
+                        }
+
+                    val selected =
+                        (candidatesList + recommendedList)
+                            .distinctBy { it.id }
+                            .take(TopMixSongsPerMix)
 
                     if (selected.isEmpty()) continue
 

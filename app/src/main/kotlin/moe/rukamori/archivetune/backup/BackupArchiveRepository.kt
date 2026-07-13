@@ -146,7 +146,10 @@ class BackupArchiveRepository
             outputStream: OutputStream,
             excludedKeyNames: Set<String>,
         ) {
-            val preferences = context.dataStore.data.first().asMap()
+            val preferences =
+                context.dataStore.data
+                    .first()
+                    .asMap()
             val serializer = android.util.Xml.newSerializer()
             serializer.setOutput(outputStream, Charsets.UTF_8.name())
             serializer.startDocument(Charsets.UTF_8.name(), true)

@@ -58,10 +58,10 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SegmentedListItem
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -287,19 +287,24 @@ fun BackupAndRestore(
         ) {
             val scheduledBackupData =
                 when (val state = scheduledBackupState) {
-                    is ScheduledBackupScreenState.Success -> state.data
+                    is ScheduledBackupScreenState.Success -> {
+                        state.data
+                    }
+
                     ScheduledBackupScreenState.Loading,
                     ScheduledBackupScreenState.Empty,
                     is ScheduledBackupScreenState.Error,
-                    -> ScheduledBackupUiData(
-                        enabled = false,
-                        frequency = ScheduledBackupFrequency.WEEKLY,
-                        customDateEpochDay = null,
-                        customDateLabel = null,
-                        directoryName = null,
-                        overwriteExisting = false,
-                        showCustomDatePicker = false,
-                    )
+                    -> {
+                        ScheduledBackupUiData(
+                            enabled = false,
+                            frequency = ScheduledBackupFrequency.WEEKLY,
+                            customDateEpochDay = null,
+                            customDateLabel = null,
+                            directoryName = null,
+                            overwriteExisting = false,
+                            showCustomDatePicker = false,
+                        )
+                    }
                 }
 
             ScheduledBackupSection(

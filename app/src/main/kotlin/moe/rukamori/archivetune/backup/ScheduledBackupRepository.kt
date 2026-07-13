@@ -58,32 +58,36 @@ class ScheduledBackupRepository
 
         suspend fun updateEnabled(enabled: Boolean): ScheduledBackupSettings =
             updateMutex.withLock {
-                context.dataStore.edit { preferences ->
-                    preferences[ENABLED_KEY] = enabled
-                }.toScheduledBackupSettings()
+                context.dataStore
+                    .edit { preferences ->
+                        preferences[ENABLED_KEY] = enabled
+                    }.toScheduledBackupSettings()
             }
 
         suspend fun updateFrequency(frequency: ScheduledBackupFrequency): ScheduledBackupSettings =
             updateMutex.withLock {
-                context.dataStore.edit { preferences ->
-                    preferences[FREQUENCY_KEY] = frequency.name
-                }.toScheduledBackupSettings()
+                context.dataStore
+                    .edit { preferences ->
+                        preferences[FREQUENCY_KEY] = frequency.name
+                    }.toScheduledBackupSettings()
             }
 
         suspend fun updateCustomDate(epochDay: Long): ScheduledBackupSettings =
             updateMutex.withLock {
                 require(epochDay >= LocalDate.now().toEpochDay()) { "Backup date cannot be in the past" }
-                context.dataStore.edit { preferences ->
-                    preferences[FREQUENCY_KEY] = ScheduledBackupFrequency.CUSTOM.name
-                    preferences[CUSTOM_DATE_KEY] = epochDay
-                }.toScheduledBackupSettings()
+                context.dataStore
+                    .edit { preferences ->
+                        preferences[FREQUENCY_KEY] = ScheduledBackupFrequency.CUSTOM.name
+                        preferences[CUSTOM_DATE_KEY] = epochDay
+                    }.toScheduledBackupSettings()
             }
 
         suspend fun updateOverwrite(overwriteExisting: Boolean): ScheduledBackupSettings =
             updateMutex.withLock {
-                context.dataStore.edit { preferences ->
-                    preferences[OVERWRITE_KEY] = overwriteExisting
-                }.toScheduledBackupSettings()
+                context.dataStore
+                    .edit { preferences ->
+                        preferences[OVERWRITE_KEY] = overwriteExisting
+                    }.toScheduledBackupSettings()
             }
 
         suspend fun updateDirectory(uri: Uri): ScheduledBackupSettings =
@@ -93,10 +97,11 @@ class ScheduledBackupRepository
                     Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
                 )
                 val directoryName = resolveDirectoryName(uri)
-                context.dataStore.edit { preferences ->
-                    preferences[DIRECTORY_URI_KEY] = uri.toString()
-                    preferences[DIRECTORY_NAME_KEY] = directoryName
-                }.toScheduledBackupSettings()
+                context.dataStore
+                    .edit { preferences ->
+                        preferences[DIRECTORY_URI_KEY] = uri.toString()
+                        preferences[DIRECTORY_NAME_KEY] = directoryName
+                    }.toScheduledBackupSettings()
             }
 
         private fun resolveDirectoryName(uri: Uri): String {

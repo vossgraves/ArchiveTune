@@ -109,10 +109,11 @@ class LocalSongScanner
                     val existingArtists = loadArtists(snapshot.artists.map(LocalArtistRecord::id))
                     val existingAlbums = loadAlbums(snapshot.albums.map(LocalAlbumRecord::id))
 
-                    val existingFormats = scannedIds
-                        .chunked(SqlBatchSize)
-                        .flatMap { chunk -> database.getFormatsByIds(chunk) }
-                        .associateBy { it.id }
+                    val existingFormats =
+                        scannedIds
+                            .chunked(SqlBatchSize)
+                            .flatMap { chunk -> database.getFormatsByIds(chunk) }
+                            .associateBy { it.id }
 
                     snapshot.artists.forEach { artist ->
                         val existingArtist = existingArtists[artist.id]
@@ -192,9 +193,10 @@ class LocalSongScanner
                             ),
                         )
 
-                        val isFileUnchanged = existingFormat != null &&
-                            existingFormat.contentLength == track.sizeBytes &&
-                            (track.dateModified == null || existingSong?.dateModified == track.dateModified)
+                        val isFileUnchanged =
+                            existingFormat != null &&
+                                existingFormat.contentLength == track.sizeBytes &&
+                                (track.dateModified == null || existingSong?.dateModified == track.dateModified)
                         upsert(
                             FormatEntity(
                                 id = track.id,

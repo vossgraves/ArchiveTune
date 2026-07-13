@@ -23,8 +23,8 @@ import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -33,7 +33,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.MainActivity
@@ -258,35 +257,43 @@ class BackupRestoreViewModel
             categories: Set<BackupCategory>,
         ) {
             if (manualBackupJob?.isActive == true) return
-            manualBackupJob = viewModelScope.launch(Dispatchers.IO) {
-                val title = context.getString(R.string.backup_in_progress)
-                try {
-                    createBackupUseCase(
-                        uri = uri,
-                        categories = categories.mapTo(linkedSetOf()) { BackupArchiveCategory.valueOf(it.name) },
-                    ) { progress ->
-                        val step =
-                            when (progress.step) {
-                                BackupArchiveStep.EXPORT_SETTINGS -> context.getString(R.string.backup_step_export_settings)
-                                BackupArchiveStep.CHECKPOINT_DATABASE -> context.getString(R.string.backup_step_checkpoint_database)
-                                BackupArchiveStep.COPY_DATABASE_FILE ->
-                                    context.getString(R.string.backup_step_copying_file, progress.fileName.orEmpty())
-                            }
-                        emitProgress(title, step, progress.percent, progress.indeterminate)
-                    }
+            manualBackupJob =
+                viewModelScope.launch(Dispatchers.IO) {
+                    val title = context.getString(R.string.backup_in_progress)
+                    try {
+                        createBackupUseCase(
+                            uri = uri,
+                            categories = categories.mapTo(linkedSetOf()) { BackupArchiveCategory.valueOf(it.name) },
+                        ) { progress ->
+                            val step =
+                                when (progress.step) {
+                                    BackupArchiveStep.EXPORT_SETTINGS -> {
+                                        context.getString(R.string.backup_step_export_settings)
+                                    }
 
-                    val msg = context.getString(R.string.backup_create_success)
-                    _backupEvent.tryEmit(msg)
-                } catch (cancellation: CancellationException) {
-                    throw cancellation
-                } catch (exception: Exception) {
-                    reportException(exception)
-                    val msg = exception.message ?: context.getString(R.string.backup_create_failed)
-                    _backupEvent.tryEmit(msg)
-                } finally {
-                    _backupRestoreProgress.value = null
+                                    BackupArchiveStep.CHECKPOINT_DATABASE -> {
+                                        context.getString(R.string.backup_step_checkpoint_database)
+                                    }
+
+                                    BackupArchiveStep.COPY_DATABASE_FILE -> {
+                                        context.getString(R.string.backup_step_copying_file, progress.fileName.orEmpty())
+                                    }
+                                }
+                            emitProgress(title, step, progress.percent, progress.indeterminate)
+                        }
+
+                        val msg = context.getString(R.string.backup_create_success)
+                        _backupEvent.tryEmit(msg)
+                    } catch (cancellation: CancellationException) {
+                        throw cancellation
+                    } catch (exception: Exception) {
+                        reportException(exception)
+                        val msg = exception.message ?: context.getString(R.string.backup_create_failed)
+                        _backupEvent.tryEmit(msg)
+                    } finally {
+                        _backupRestoreProgress.value = null
+                    }
                 }
-            }
         }
 
         fun onScheduledBackupEnabledChanged(enabled: Boolean) {

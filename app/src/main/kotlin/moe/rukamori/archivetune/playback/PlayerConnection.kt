@@ -114,30 +114,36 @@ class PlayerConnection(
             service.currentMediaMetadata.value = player.currentMetadata
         }
 
-        metadataExtractionJob = scope.launch(Dispatchers.IO) {
-            mediaMetadata
-                .distinctUntilChangedBy { it?.id }
-                .collectLatest { metadata ->
-                    val mediaId = metadata?.id ?: return@collectLatest
-                    if (mediaId.isLocalMediaId()) {
-                        val storedFormat = database.format(mediaId).first()
-                        if (storedFormat != null && storedFormat.bitrate == 0 && storedFormat.sampleRate == null) {
-                            val result = extractLocalAudioProperties(context, mediaId)
-                                ?: return@collectLatest
-                            ensureActive()
-                            val finalBitrate = if (result.first <= 0 && result.second == null) {
-                                -1
-                            } else {
-                                result.first
+        metadataExtractionJob =
+            scope.launch(Dispatchers.IO) {
+                mediaMetadata
+                    .distinctUntilChangedBy { it?.id }
+                    .collectLatest { metadata ->
+                        val mediaId = metadata?.id ?: return@collectLatest
+                        if (mediaId.isLocalMediaId()) {
+                            val storedFormat = database.format(mediaId).first()
+                            if (storedFormat != null && storedFormat.bitrate == 0 && storedFormat.sampleRate == null) {
+                                val result =
+                                    extractLocalAudioProperties(context, mediaId)
+                                        ?: return@collectLatest
+                                ensureActive()
+                                val finalBitrate =
+                                    if (result.first <= 0 && result.second == null) {
+                                        -1
+                                    } else {
+                                        result.first
+                                    }
+                                database.updateLocalAudioMetadata(mediaId, finalBitrate, result.second)
                             }
-                            database.updateLocalAudioMetadata(mediaId, finalBitrate, result.second)
                         }
                     }
-                }
-        }
+            }
     }
 
-    private suspend fun extractLocalAudioProperties(context: Context, uriString: String): Pair<Int, Int?>? =
+    private suspend fun extractLocalAudioProperties(
+        context: Context,
+        uriString: String,
+    ): Pair<Int, Int?>? =
         withContext(Dispatchers.IO) {
             val extractor = android.media.MediaExtractor()
             var bitrate = 0
@@ -146,7 +152,9 @@ class PlayerConnection(
                 val uri = android.net.Uri.parse(uriString)
                 val pfd = context.contentResolver.openFileDescriptor(uri, "r")
                 if (pfd == null) {
-                    timber.log.Timber.tag("LocalMetadataExtractor").w("Could not open file descriptor for %s", uriString)
+                    timber.log.Timber
+                        .tag("LocalMetadataExtractor")
+                        .w("Could not open file descriptor for %s", uriString)
                     return@withContext null
                 }
                 pfd.use { descriptor ->
@@ -177,22 +185,32 @@ class PlayerConnection(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: SecurityException) {
-                timber.log.Timber.tag("LocalMetadataExtractor").w(e, "Permission denied extracting metadata for %s", uriString)
+                timber.log.Timber
+                    .tag("LocalMetadataExtractor")
+                    .w(e, "Permission denied extracting metadata for %s", uriString)
                 null
             } catch (e: java.io.FileNotFoundException) {
-                timber.log.Timber.tag("LocalMetadataExtractor").w(e, "File not found for %s", uriString)
+                timber.log.Timber
+                    .tag("LocalMetadataExtractor")
+                    .w(e, "File not found for %s", uriString)
                 null
             } catch (e: java.io.IOException) {
                 val message = e.message?.lowercase() ?: ""
                 if ("unsupported" in message || "malformed" in message || "invalid" in message || "failed to instantiate" in message) {
-                    timber.log.Timber.tag("LocalMetadataExtractor").w(e, "Confirmed unsupported file %s", uriString)
+                    timber.log.Timber
+                        .tag("LocalMetadataExtractor")
+                        .w(e, "Confirmed unsupported file %s", uriString)
                     Pair(-1, null)
                 } else {
-                    timber.log.Timber.tag("LocalMetadataExtractor").w(e, "Transient I/O error extracting metadata for %s", uriString)
+                    timber.log.Timber
+                        .tag("LocalMetadataExtractor")
+                        .w(e, "Transient I/O error extracting metadata for %s", uriString)
                     null
                 }
             } catch (e: Exception) {
-                timber.log.Timber.tag("LocalMetadataExtractor").w(e, "Unexpected error extracting metadata for %s", uriString)
+                timber.log.Timber
+                    .tag("LocalMetadataExtractor")
+                    .w(e, "Unexpected error extracting metadata for %s", uriString)
                 null
             } finally {
                 runCatching { extractor.release() }
