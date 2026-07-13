@@ -2107,9 +2107,7 @@ class MainActivity : ComponentActivity() {
                                                 } else {
                                                     0.dp
                                                 }
-                                        val motionScheme = MaterialTheme.motionScheme
-
-                                        AnimatedVisibility(
+                                        HomeOverflowFabVisibility(
                                             visible = showHomeOverflowFab,
                                             modifier =
                                                 Modifier
@@ -2117,18 +2115,6 @@ class MainActivity : ComponentActivity() {
                                                     .padding(
                                                         end = FloatingToolbarHorizontalPadding,
                                                         bottom = homeOverflowFabBottomPadding,
-                                                    ),
-                                            enter =
-                                                fadeIn(animationSpec = motionScheme.fastEffectsSpec()) +
-                                                    scaleIn(
-                                                        initialScale = 0.8f,
-                                                        animationSpec = motionScheme.defaultSpatialSpec(),
-                                                    ),
-                                            exit =
-                                                fadeOut(animationSpec = motionScheme.fastEffectsSpec()) +
-                                                    scaleOut(
-                                                        targetScale = 0.8f,
-                                                        animationSpec = motionScheme.fastSpatialSpec(),
                                                     ),
                                         ) {
                                             HomeOverflowFab(
@@ -2869,6 +2855,35 @@ val LocalSyncUtils = staticCompositionLocalOf<SyncUtils> { error("No SyncUtils p
 private val HomeOverflowFabSize = 56.dp
 private val HomeOverflowFabSpacing = 12.dp
 private val HomeOverflowMenuIconSize = 40.dp
+
+@Composable
+private fun HomeOverflowFabVisibility(
+    visible: Boolean,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    val motionScheme = MaterialTheme.motionScheme
+
+    AnimatedVisibility(
+        visible = visible,
+        modifier = modifier,
+        enter =
+            fadeIn(animationSpec = motionScheme.fastEffectsSpec()) +
+                scaleIn(
+                    initialScale = 0.8f,
+                    animationSpec = motionScheme.defaultSpatialSpec(),
+                ),
+        exit =
+            fadeOut(animationSpec = motionScheme.fastEffectsSpec()) +
+                scaleOut(
+                    targetScale = 0.8f,
+                    animationSpec = motionScheme.fastSpatialSpec(),
+                ),
+        label = "homeOverflowFabVisibility",
+    ) {
+        content()
+    }
+}
 
 @Composable
 private fun HomeOverflowFab(
