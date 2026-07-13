@@ -907,7 +907,7 @@ private fun UpdateStatusPanel(
         } else {
             MaterialTheme.colorScheme.onSecondaryContainer
         }
-    val statusShape = remember { MaterialShapes.SoftBurst.toShape() }
+    val statusShape = MaterialShapes.SoftBurst.toShape()
 
     Card(
         modifier = modifier.fillMaxWidth(),
