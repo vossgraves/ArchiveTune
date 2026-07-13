@@ -37,6 +37,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.CircularWavyProgressIndicator
@@ -65,6 +66,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -75,6 +77,7 @@ import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.EnableHapticFeedbackKey
 import moe.rukamori.archivetune.constants.MiniPlayerHeight
+import moe.rukamori.archivetune.constants.NavigationBarHorizontalPadding
 import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.playback.PlayerConnection
@@ -106,6 +109,7 @@ data class MiniPlayerContentColors(
 @Composable
 fun SwipeableMiniPlayerBox(
     modifier: Modifier = Modifier,
+    contentMaxWidth: Dp? = null,
     swipeSensitivity: Float,
     swipeThumbnail: Boolean,
     playerConnection: PlayerConnection,
@@ -131,29 +135,51 @@ fun SwipeableMiniPlayerBox(
     fun calculateAutoSwipeThreshold(swipeSensitivity: Float): Int =
         (600 / (1f + kotlin.math.exp(-(-11.44748 * swipeSensitivity + 9.04945)))).roundToInt()
     val autoSwipeThreshold = calculateAutoSwipeThreshold(swipeSensitivity)
+    val containerMaxWidth =
+        if (useLegacyBackground) {
+            null
+        } else {
+            contentMaxWidth?.let {
+                it + NavigationBarHorizontalPadding + NavigationBarHorizontalPadding
+            }
+        }
 
     Box(
         modifier =
             modifier
                 .fillMaxWidth()
                 .height(MiniPlayerHeight)
-                .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal))
-                .let { baseModifier ->
-                    if (useLegacyBackground) {
-                        baseModifier.background(
-                            if (pureBlack) {
-                                Color.Black
-                            } else {
-                                MaterialTheme.colorScheme.surfaceContainer
-                            },
-                        )
-                    } else {
-                        baseModifier.padding(horizontal = 12.dp)
-                    }
-                }.let { baseModifier ->
-                    if (swipeThumbnail) {
-                        baseModifier.pointerInput(Unit) {
-                            detectHorizontalDragGestures(
+                .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            modifier =
+                Modifier
+                    .let { baseModifier ->
+                        if (containerMaxWidth == null) {
+                            baseModifier.fillMaxWidth()
+                        } else {
+                            baseModifier
+                                .widthIn(max = containerMaxWidth)
+                                .fillMaxWidth()
+                        }
+                    }.height(MiniPlayerHeight)
+                    .let { baseModifier ->
+                        if (useLegacyBackground) {
+                            baseModifier.background(
+                                if (pureBlack) {
+                                    Color.Black
+                                } else {
+                                    MaterialTheme.colorScheme.surfaceContainer
+                                },
+                            )
+                        } else {
+                            baseModifier.padding(horizontal = NavigationBarHorizontalPadding)
+                        }
+                    }.let { baseModifier ->
+                        if (swipeThumbnail) {
+                            baseModifier.pointerInput(Unit) {
+                                detectHorizontalDragGestures(
                                 onDragStart = {
                                     dragStartTime = System.currentTimeMillis()
                                     totalDragDistance = 0f
@@ -225,34 +251,35 @@ fun SwipeableMiniPlayerBox(
                                         )
                                     }
                                 },
-                            )
+                                )
+                            }
+                        } else {
+                            baseModifier
                         }
-                    } else {
-                        baseModifier
-                    }
-                },
-    ) {
-        content(offsetXAnimatable.value)
+                    },
+        ) {
+            content(offsetXAnimatable.value)
 
-        if (offsetXAnimatable.value.absoluteValue > 50f) {
-            Box(
-                modifier =
-                    Modifier
-                        .align(if (offsetXAnimatable.value > 0) Alignment.CenterStart else Alignment.CenterEnd)
-                        .padding(horizontal = 16.dp),
-            ) {
-                Icon(
-                    painter =
-                        painterResource(
-                            if (offsetXAnimatable.value > 0) R.drawable.skip_previous else R.drawable.skip_next,
-                        ),
-                    contentDescription = null,
-                    tint =
-                        MaterialTheme.colorScheme.primary.copy(
-                            alpha = (offsetXAnimatable.value.absoluteValue / autoSwipeThreshold).coerceIn(0f, 1f),
-                        ),
-                    modifier = Modifier.size(24.dp),
-                )
+            if (offsetXAnimatable.value.absoluteValue > 50f) {
+                Box(
+                    modifier =
+                        Modifier
+                            .align(if (offsetXAnimatable.value > 0) Alignment.CenterStart else Alignment.CenterEnd)
+                            .padding(horizontal = 16.dp),
+                ) {
+                    Icon(
+                        painter =
+                            painterResource(
+                                if (offsetXAnimatable.value > 0) R.drawable.skip_previous else R.drawable.skip_next,
+                            ),
+                        contentDescription = null,
+                        tint =
+                            MaterialTheme.colorScheme.primary.copy(
+                                alpha = (offsetXAnimatable.value.absoluteValue / autoSwipeThreshold).coerceIn(0f, 1f),
+                            ),
+                        modifier = Modifier.size(24.dp),
+                    )
+                }
             }
         }
     }
