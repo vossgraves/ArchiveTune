@@ -20,7 +20,6 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -40,16 +39,17 @@ import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -59,10 +59,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -95,7 +93,6 @@ data class MiniPlayerContentColors(
     val artworkContainer: Color,
     val artworkBorder: Color,
     val primaryButtonContainer: Color,
-    val buttonBorder: Color,
     val buttonIcon: Color,
     val disabledButtonIcon: Color,
     val togetherContainer: Color,
@@ -266,7 +263,7 @@ fun RowScope.MiniPlayerInfo(
         modifier =
             Modifier
                 .weight(1f)
-                .padding(horizontal = 12.dp),
+                .padding(horizontal = 10.dp),
         verticalArrangement = Arrangement.Center,
     ) {
         AnimatedContent(
@@ -276,7 +273,7 @@ fun RowScope.MiniPlayerInfo(
         ) { title ->
             Text(
                 text = title,
-                style = MaterialTheme.typography.titleMedium,
+                style = MaterialTheme.typography.titleMediumEmphasized,
                 color = colors.title,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -304,66 +301,44 @@ fun RowScope.MiniPlayerInfo(
 @Composable
 private fun MiniPlayerArtwork(
     mediaMetadata: MediaMetadata?,
-    position: Long,
-    duration: Long,
-    isLoading: Boolean,
     colors: MiniPlayerContentColors,
     modifier: Modifier = Modifier,
 ) {
+    val artworkShape = MaterialTheme.shapes.large
     Box(
         contentAlignment = Alignment.Center,
-        modifier = modifier.size(47.dp),
+        modifier =
+            modifier
+                .size(48.dp)
+                .clip(artworkShape)
+                .background(colors.artworkContainer)
+                .border(
+                    width = 1.dp,
+                    color = colors.artworkBorder,
+                    shape = artworkShape,
+                ),
     ) {
-        if (isLoading) {
-            CircularWavyProgressIndicator(
+        val baseThumbnailUrl = mediaMetadata?.thumbnailUrl
+        if (baseThumbnailUrl != null) {
+            val thumbnailSwapState =
+                rememberThumbnailSwapState(
+                    videoId = mediaMetadata.id,
+                    ytmUrl = baseThumbnailUrl,
+                    lowDataMode = rememberLowDataModeActive(),
+                    isMusicVideo = mediaMetadata.isMusicVideo,
+                )
+            AsyncImage(
+                model = thumbnailSwapState.displayUrl,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
-                color = colors.progress,
-                trackColor = colors.progressTrack,
             )
         } else {
-            CircularWavyProgressIndicator(
-                progress = { if (duration > 0) (position.toFloat() / duration).coerceIn(0f, 1f) else 0f },
-                modifier = Modifier.fillMaxSize(),
-                color = colors.progress,
-                trackColor = colors.progressTrack,
+            Image(
+                painter = painterResource(R.drawable.about_splash),
+                contentDescription = null,
+                modifier = Modifier.size(24.dp),
             )
-        }
-
-        Box(
-            contentAlignment = Alignment.Center,
-            modifier =
-                Modifier
-                    .size(37.dp)
-                    .clip(CircleShape)
-                    .background(colors.artworkContainer)
-                    .border(
-                        width = 1.dp,
-                        color = colors.artworkBorder,
-                        shape = CircleShape,
-                    ),
-        ) {
-            val baseThumbnailUrl = mediaMetadata?.thumbnailUrl
-            if (baseThumbnailUrl != null) {
-                val thumbnailSwapState =
-                    rememberThumbnailSwapState(
-                        videoId = mediaMetadata?.id,
-                        ytmUrl = baseThumbnailUrl,
-                        lowDataMode = rememberLowDataModeActive(),
-                        isMusicVideo = mediaMetadata?.isMusicVideo ?: false,
-                    )
-                AsyncImage(
-                    model = thumbnailSwapState.displayUrl,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            } else {
-                Image(
-                    painter = painterResource(R.drawable.about_splash),
-                    contentDescription = null,
-                    modifier = Modifier.size(22.dp),
-                )
-            }
         }
     }
 }
@@ -381,41 +356,55 @@ private fun MiniPlayerTransportButton(
     val view = LocalView.current
     val (enableHapticFeedback) = rememberPreference(EnableHapticFeedbackKey, true)
 
-    LaunchedEffect(enableHapticFeedback) {
-        view.isHapticFeedbackEnabled = enableHapticFeedback
-    }
-
     val containerColor =
         if (isPrimary) colors.primaryButtonContainer else Color.Transparent
-    val borderColor =
-        if (enabled) colors.buttonBorder else colors.buttonBorder.copy(alpha = 0.12f)
-    val iconTint =
-        if (enabled) colors.buttonIcon else colors.disabledButtonIcon
+    val buttonColors =
+        IconButtonDefaults.iconButtonColors(
+            containerColor = containerColor,
+            contentColor = colors.buttonIcon,
+            disabledContainerColor = Color.Transparent,
+            disabledContentColor = colors.disabledButtonIcon,
+        )
+    val handleClick =
+        remember(enableHapticFeedback, onClick, view) {
+            {
+                if (enableHapticFeedback) {
+                    view.performHapticFeedback(
+                        android.view.HapticFeedbackConstants.CONTEXT_CLICK,
+                        android.view.HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING,
+                    )
+                }
+                onClick()
+            }
+        }
+    val content: @Composable () -> Unit =
+        remember(iconResId, contentDescription, isPrimary) {
+            @Composable {
+                Icon(
+                    painter = painterResource(iconResId),
+                    contentDescription = contentDescription,
+                    modifier = Modifier.size(if (isPrimary) 24.dp else 20.dp),
+                )
+            }
+        }
 
-    Box(
-        contentAlignment = Alignment.Center,
-        modifier =
-            Modifier
-                .then(modifier)
-                .size(if (isPrimary) 40.dp else 36.dp)
-                .clip(CircleShape)
-                .background(containerColor)
-                .border(width = 1.dp, color = borderColor, shape = CircleShape)
-                .clickable(enabled = enabled, onClick = {
-                    if (enableHapticFeedback) {
-                        view.performHapticFeedback(
-                            android.view.HapticFeedbackConstants.CONTEXT_CLICK,
-                            android.view.HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING,
-                        )
-                    }
-                    onClick()
-                }),
-    ) {
-        Icon(
-            painter = painterResource(iconResId),
-            contentDescription = contentDescription,
-            tint = iconTint,
-            modifier = Modifier.size(if (isPrimary) 22.dp else 18.dp),
+    if (isPrimary) {
+        FilledIconButton(
+            onClick = handleClick,
+            shapes = IconButtonDefaults.shapes(),
+            modifier = modifier.size(48.dp),
+            enabled = enabled,
+            colors = buttonColors,
+            content = content,
+        )
+    } else {
+        IconButton(
+            onClick = handleClick,
+            shapes = IconButtonDefaults.shapes(),
+            modifier = modifier.size(48.dp),
+            enabled = enabled,
+            colors = buttonColors,
+            content = content,
         )
     }
 }
@@ -429,59 +418,52 @@ private fun MiniPlayerTransportControls(
     playerConnection: PlayerConnection,
     colors: MiniPlayerContentColors,
 ) {
-    val haptic = LocalHapticFeedback.current
+    val onPrevious = remember(playerConnection) { { playerConnection.seekToPrevious() } }
+    val onNext = remember(playerConnection) { { playerConnection.seekToNext() } }
+    val onPlayPause =
+        remember(playbackState, playerConnection) {
+            {
+                if (playbackState == Player.STATE_ENDED) {
+                    playerConnection.player.seekTo(0, 0)
+                    playerConnection.player.playWhenReady = true
+                } else {
+                    playerConnection.player.togglePlayPause()
+                }
+            }
+        }
 
     Row(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(0.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         MiniPlayerTransportButton(
             iconResId = R.drawable.skip_previous,
-            contentDescription = null,
-            onClick = {
-                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                playerConnection.seekToPrevious()
-            },
+            contentDescription = stringResource(R.string.widget_previous),
+            onClick = onPrevious,
             enabled = canSkipPrevious,
             colors = colors,
         )
 
-        Box(
-            contentAlignment = Alignment.Center,
-            modifier = Modifier.size(40.dp),
-        ) {
-            MiniPlayerTransportButton(
-                iconResId =
-                    when {
-                        playbackState == Player.STATE_ENDED -> R.drawable.replay
-                        isPlaying -> R.drawable.pause
-                        else -> R.drawable.play
-                    },
-                contentDescription =
-                    stringResource(
-                        if (playbackState == Player.STATE_ENDED || !isPlaying) R.string.play else R.string.widget_pause,
-                    ),
-                onClick = {
-                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                    if (playbackState == Player.STATE_ENDED) {
-                        playerConnection.player.seekTo(0, 0)
-                        playerConnection.player.playWhenReady = true
-                    } else {
-                        playerConnection.player.togglePlayPause()
-                    }
+        MiniPlayerTransportButton(
+            iconResId =
+                when {
+                    playbackState == Player.STATE_ENDED -> R.drawable.replay
+                    isPlaying -> R.drawable.pause
+                    else -> R.drawable.play
                 },
-                isPrimary = true,
-                colors = colors,
-            )
-        }
+            contentDescription =
+                stringResource(
+                    if (playbackState == Player.STATE_ENDED || !isPlaying) R.string.play else R.string.widget_pause,
+                ),
+            onClick = onPlayPause,
+            isPrimary = true,
+            colors = colors,
+        )
 
         MiniPlayerTransportButton(
             iconResId = R.drawable.skip_next,
-            contentDescription = null,
-            onClick = {
-                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                playerConnection.seekToNext()
-            },
+            contentDescription = stringResource(R.string.next),
+            onClick = onNext,
             enabled = canSkipNext,
             colors = colors,
         )
@@ -503,60 +485,79 @@ fun NewMiniPlayerContent(
     val canSkipNext by playerConnection.canSkipNext.collectAsStateWithLifecycle()
 
     val isLoading = playbackState == Player.STATE_BUFFERING
+    val progressProvider =
+        remember(position, duration) {
+            { if (duration > 0) (position.toFloat() / duration).coerceIn(0f, 1f) else 0f }
+        }
 
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier =
-            Modifier
-                .fillMaxSize()
-                .padding(horizontal = 8.dp, vertical = 8.dp),
-    ) {
-        MiniPlayerArtwork(
-            mediaMetadata = mediaMetadata,
-            position = position,
-            duration = duration,
-            isLoading = isLoading,
-            colors = colors,
-        )
-
-        Spacer(modifier = Modifier.width(5.dp))
-
-        mediaMetadata?.let {
-            MiniPlayerInfo(
-                mediaMetadata = it,
+    Box(modifier = Modifier.fillMaxSize()) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(start = 8.dp, end = 4.dp, bottom = 6.dp),
+        ) {
+            MiniPlayerArtwork(
+                mediaMetadata = mediaMetadata,
                 colors = colors,
             )
-        } ?: Spacer(Modifier.weight(1f))
 
-        if (togetherSessionState.isConnectedToSession) {
-            Spacer(modifier = Modifier.width(8.dp))
-            Surface(
-                shape = RoundedCornerShape(999.dp),
-                color = colors.togetherContainer,
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            mediaMetadata?.let {
+                MiniPlayerInfo(
+                    mediaMetadata = it,
+                    colors = colors,
+                )
+            } ?: Spacer(Modifier.weight(1f))
+
+            if (togetherSessionState.isConnectedToSession) {
+                Surface(
+                    shape = CircleShape,
+                    color = colors.togetherContainer,
                 ) {
                     Icon(
                         painter = painterResource(R.drawable.all_inclusive),
                         contentDescription = stringResource(R.string.music_together),
                         tint = colors.togetherContent,
-                        modifier = Modifier.size(14.dp),
+                        modifier =
+                            Modifier
+                                .padding(7.dp)
+                                .size(14.dp),
                     )
                 }
             }
+
+            MiniPlayerTransportControls(
+                isPlaying = isPlaying,
+                playbackState = playbackState,
+                canSkipPrevious = canSkipPrevious,
+                canSkipNext = canSkipNext,
+                playerConnection = playerConnection,
+                colors = colors,
+            )
         }
 
-        Spacer(modifier = Modifier.width(12.dp))
-
-        MiniPlayerTransportControls(
-            isPlaying = isPlaying,
-            playbackState = playbackState,
-            canSkipPrevious = canSkipPrevious,
-            canSkipNext = canSkipNext,
-            playerConnection = playerConnection,
-            colors = colors,
-        )
+        if (isLoading) {
+            LinearWavyProgressIndicator(
+                modifier =
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .height(6.dp),
+                color = colors.progress,
+                trackColor = colors.progressTrack,
+            )
+        } else {
+            LinearWavyProgressIndicator(
+                progress = progressProvider,
+                modifier =
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .height(6.dp),
+                color = colors.progress,
+                trackColor = colors.progressTrack,
+            )
+        }
     }
 }

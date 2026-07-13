@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
@@ -45,6 +44,7 @@ import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.constants.MiniPlayerBackgroundStyle
 import moe.rukamori.archivetune.constants.MiniPlayerBackgroundStyleKey
+import moe.rukamori.archivetune.constants.MiniPlayerHeight
 import moe.rukamori.archivetune.constants.SwipeSensitivityKey
 import moe.rukamori.archivetune.ui.theme.PlayerColorExtractor
 import moe.rukamori.archivetune.utils.rememberEnumPreference
@@ -173,6 +173,7 @@ private fun NewMiniPlayer(
         rememberMiniPlayerContentColors(
             useArtworkBackground = effectiveBackgroundStyle != MiniPlayerBackgroundStyle.THEME,
         )
+    val miniPlayerShape = MaterialTheme.shapes.extraLarge
 
     SwipeableMiniPlayerBox(
         modifier = modifier,
@@ -188,9 +189,9 @@ private fun NewMiniPlayer(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .height(64.dp)
+                    .height(MiniPlayerHeight)
                     .offset { IntOffset(offsetX.roundToInt(), 0) }
-                    .clip(RoundedCornerShape(32.dp)),
+                    .clip(miniPlayerShape),
         ) {
             MiniPlayerBackground(
                 style = effectiveBackgroundStyle,
@@ -230,7 +231,6 @@ private fun rememberMiniPlayerContentColors(useArtworkBackground: Boolean): Mini
                 artworkContainer = Color.White.copy(alpha = 0.14f),
                 artworkBorder = Color.White.copy(alpha = 0.22f),
                 primaryButtonContainer = Color.White.copy(alpha = 0.16f),
-                buttonBorder = Color.White.copy(alpha = 0.24f),
                 buttonIcon = Color.White,
                 disabledButtonIcon = Color.White.copy(alpha = 0.38f),
                 togetherContainer = Color.White.copy(alpha = 0.16f),
@@ -245,7 +245,6 @@ private fun rememberMiniPlayerContentColors(useArtworkBackground: Boolean): Mini
                 artworkContainer = colorScheme.surfaceVariant,
                 artworkBorder = colorScheme.outline.copy(alpha = 0.2f),
                 primaryButtonContainer = colorScheme.surface,
-                buttonBorder = colorScheme.outline.copy(alpha = 0.3f),
                 buttonIcon = colorScheme.onSurface,
                 disabledButtonIcon = colorScheme.onSurface.copy(alpha = 0.38f),
                 togetherContainer = colorScheme.primaryContainer,
