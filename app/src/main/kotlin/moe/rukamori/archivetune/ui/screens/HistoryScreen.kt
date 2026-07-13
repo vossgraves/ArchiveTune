@@ -22,7 +22,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -37,6 +36,7 @@ import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -44,23 +44,23 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.wrapContentWidth
+import androidx.compose.foundation.shape.CornerSize
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.ContainedLoadingIndicator
-import androidx.compose.material3.ElevatedButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FloatingToolbarDefaults
 import androidx.compose.material3.HorizontalFloatingToolbar
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.MediumFlexibleTopAppBar
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -260,14 +260,6 @@ fun HistoryScreen(
             }
         }
 
-    val currentSourceSummary =
-        stringResource(
-            if (historySource == HistorySource.LOCAL) {
-                R.string.history_local_summary
-            } else {
-                R.string.history_remote_summary
-            },
-        )
     val currentVisibleCount =
         if (historySource == HistorySource.REMOTE) {
             remoteVisibleSongs.size
@@ -462,7 +454,7 @@ fun HistoryScreen(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             if (!showSearchBar) {
-                MediumFlexibleTopAppBar(
+                LargeFlexibleTopAppBar(
                     title = {
                         Text(
                             text =
@@ -472,22 +464,6 @@ fun HistoryScreen(
                                     stringResource(R.string.history)
                                 },
                             fontWeight = FontWeight.Bold,
-                        )
-                    },
-                    subtitle = {
-                        Text(
-                            text =
-                                if (selectionCount == 0) {
-                                    pluralStringResource(
-                                        R.plurals.n_song,
-                                        currentVisibleCount,
-                                        currentVisibleCount,
-                                    ) + " · " + currentSourceSummary
-                                } else {
-                                    currentSourceSummary
-                                },
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
                         )
                     },
                     navigationIcon = {
@@ -743,43 +719,49 @@ private fun LocalHistoryFeed(
                     key = { _, event -> event.event.id },
                     contentType = { _, _ -> "local_history_song" },
                 ) { index, event ->
-                    SongListItem(
-                        song = event.song,
-                        isActive = event.song.id == activeMediaId,
-                        isPlaying = isPlaying,
-                        showInLibraryIcon = true,
+                    HistorySongGroupItem(
+                        index = index,
+                        lastIndex = songsForDate.lastIndex,
                         isSelected = event.event.id in selectedEventIds,
-                        trailingContent = {
-                            androidx.compose.material3.IconButton(
-                                onClick = {
-                                    if (!isSelectionMode) {
-                                        onSongMenu(event)
-                                    }
-                                },
-                            ) {
-                                Icon(
-                                    painter = painterResource(R.drawable.more_vert),
-                                    contentDescription = null,
-                                )
-                            }
-                        },
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 8.dp)
-                                .combinedClickable(
+                        modifier = Modifier.animateItem(),
+                    ) {
+                        SongListItem(
+                            song = event.song,
+                            isActive = event.song.id == activeMediaId,
+                            isPlaying = isPlaying,
+                            showInLibraryIcon = true,
+                            isSelected = event.event.id in selectedEventIds,
+                            trailingContent = {
+                                androidx.compose.material3.IconButton(
                                     onClick = {
-                                        if (isSelectionMode) {
-                                            onToggleSelection(event.event.id)
-                                        } else {
-                                            onSongClick(dateAgo, songsForDate, index, event)
+                                        if (!isSelectionMode) {
+                                            onSongMenu(event)
                                         }
                                     },
-                                    onLongClick = {
-                                        onStartSelection(event.event.id)
-                                    },
-                                ).animateItem(),
-                    )
+                                ) {
+                                    Icon(
+                                        painter = painterResource(R.drawable.more_vert),
+                                        contentDescription = null,
+                                    )
+                                }
+                            },
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .combinedClickable(
+                                        onClick = {
+                                            if (isSelectionMode) {
+                                                onToggleSelection(event.event.id)
+                                            } else {
+                                                onSongClick(dateAgo, songsForDate, index, event)
+                                            }
+                                        },
+                                        onLongClick = {
+                                            onStartSelection(event.event.id)
+                                        },
+                                    ),
+                        )
+                    }
                 }
             }
 
@@ -887,34 +869,39 @@ private fun RemoteHistoryFeed(
                             )
                         }
 
-                        items(
+                        itemsIndexed(
                             items = section.songs,
-                            key = { song -> "${section.title}_${song.id}" },
-                            contentType = { "remote_history_song" },
-                        ) { song ->
-                            YouTubeListItem(
-                                item = song,
-                                isActive = song.id == activeMediaId,
-                                isPlaying = isPlaying,
-                                trailingContent = {
-                                    androidx.compose.material3.IconButton(
-                                        onClick = { onSongMenu(song) },
-                                    ) {
-                                        Icon(
-                                            painter = painterResource(R.drawable.more_vert),
-                                            contentDescription = null,
-                                        )
-                                    }
-                                },
-                                modifier =
-                                    Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 8.dp)
-                                        .combinedClickable(
-                                            onClick = { onSongClick(song) },
-                                            onLongClick = { onSongMenu(song) },
-                                        ).animateItem(),
-                            )
+                            key = { _, song -> "${section.title}_${song.id}" },
+                            contentType = { _, _ -> "remote_history_song" },
+                        ) { index, song ->
+                            HistorySongGroupItem(
+                                index = index,
+                                lastIndex = section.songs.lastIndex,
+                                modifier = Modifier.animateItem(),
+                            ) {
+                                YouTubeListItem(
+                                    item = song,
+                                    isActive = song.id == activeMediaId,
+                                    isPlaying = isPlaying,
+                                    trailingContent = {
+                                        androidx.compose.material3.IconButton(
+                                            onClick = { onSongMenu(song) },
+                                        ) {
+                                            Icon(
+                                                painter = painterResource(R.drawable.more_vert),
+                                                contentDescription = null,
+                                            )
+                                        }
+                                    },
+                                    modifier =
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .combinedClickable(
+                                                onClick = { onSongClick(song) },
+                                                onLongClick = { onSongMenu(song) },
+                                            ),
+                                )
+                            }
                         }
                     }
                 }
@@ -932,42 +919,139 @@ private fun HistorySourceDock(
     modifier: Modifier = Modifier,
 ) {
     Box(
-        modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+        modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
         contentAlignment = Alignment.Center,
     ) {
         Surface(
             modifier = Modifier.fillMaxWidth().widthIn(max = 840.dp),
-            shape = MaterialTheme.shapes.large,
-            color = MaterialTheme.colorScheme.surfaceContainer,
+            shape = MaterialTheme.shapes.extraLarge,
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
         ) {
             Column(
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                modifier = Modifier.fillMaxWidth().padding(20.dp),
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
-                    Text(
-                        text = stringResource(R.string.history),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    Text(
-                        text = pluralStringResource(R.plurals.n_song, visibleSongCount, visibleSongCount),
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.primary,
+                    Surface(
+                        modifier = Modifier.size(64.dp),
+                        shape = MaterialTheme.shapes.large,
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                painter = painterResource(R.drawable.history),
+                                contentDescription = null,
+                                modifier = Modifier.size(28.dp),
+                            )
+                        }
+                    }
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Text(
+                            text =
+                                stringResource(
+                                    if (currentSource == HistorySource.LOCAL) {
+                                        R.string.local_history
+                                    } else {
+                                        R.string.remote_history
+                                    },
+                                ),
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        Text(
+                            text =
+                                stringResource(
+                                    if (currentSource == HistorySource.LOCAL) {
+                                        R.string.history_local_summary
+                                    } else {
+                                        R.string.history_remote_summary
+                                    },
+                                ),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            text = pluralStringResource(R.plurals.n_song, visibleSongCount, visibleSongCount),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                }
+                if (availableSources.size > 1) {
+                    HistorySourceSelector(
+                        currentSource = currentSource,
+                        availableSources = availableSources,
+                        onSourceChange = onSourceChange,
                     )
                 }
-                HistorySourceSelector(
-                    currentSource = currentSource,
-                    availableSources = availableSources,
-                    onSourceChange = onSourceChange,
-                )
             }
         }
     }
+}
+
+@Composable
+private fun HistorySongGroupItem(
+    index: Int,
+    lastIndex: Int,
+    modifier: Modifier = Modifier,
+    isSelected: Boolean = false,
+    content: @Composable () -> Unit,
+) {
+    val outerShape = MaterialTheme.shapes.extraLarge
+    val innerCorner = remember { CornerSize(4.dp) }
+    val shape =
+        remember(index, lastIndex, outerShape, innerCorner) {
+            when {
+                lastIndex == 0 -> outerShape
+                index == 0 -> {
+                    outerShape.copy(
+                        bottomStart = innerCorner,
+                        bottomEnd = innerCorner,
+                    )
+                }
+
+                index == lastIndex -> {
+                    outerShape.copy(
+                        topStart = innerCorner,
+                        topEnd = innerCorner,
+                    )
+                }
+
+                else -> {
+                    outerShape.copy(
+                        topStart = innerCorner,
+                        topEnd = innerCorner,
+                        bottomStart = innerCorner,
+                        bottomEnd = innerCorner,
+                    )
+                }
+            }
+        }
+
+    Surface(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .padding(start = 16.dp, end = 16.dp, bottom = 4.dp),
+        shape = shape,
+        color =
+            if (isSelected) {
+                MaterialTheme.colorScheme.surfaceContainerHighest
+            } else {
+                MaterialTheme.colorScheme.surfaceContainerLow
+            },
+        content = content,
+    )
 }
 
 @Composable
@@ -976,19 +1060,19 @@ private fun HistorySectionHeader(
     songCount: Int,
 ) {
     Surface(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surface)
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-        shape = MaterialTheme.shapes.large,
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        modifier = Modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.surface,
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            modifier = Modifier.padding(start = 24.dp, top = 20.dp, end = 24.dp, bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            Surface(
+                modifier = Modifier.size(12.dp),
+                shape = MaterialTheme.shapes.extraLarge,
+                color = MaterialTheme.colorScheme.primary,
+            ) {}
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleMedium,
@@ -1001,7 +1085,6 @@ private fun HistorySectionHeader(
                 text = pluralStringResource(R.plurals.n_song, songCount, songCount),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 16.dp),
             )
         }
     }
@@ -1013,21 +1096,6 @@ private fun HistorySourceSelector(
     availableSources: List<HistorySource>,
     onSourceChange: (HistorySource) -> Unit,
 ) {
-    if (availableSources.size == 1) {
-        Surface(
-            shape = MaterialTheme.shapes.large,
-            color = MaterialTheme.colorScheme.secondaryContainer,
-            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-        ) {
-            Text(
-                text = stringResource(R.string.local_history),
-                style = MaterialTheme.typography.labelLarge,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-            )
-        }
-        return
-    }
-
     Row(
         horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
         modifier = Modifier.fillMaxWidth(),
@@ -1086,19 +1154,17 @@ private fun HistoryStateCard(
     loading: Boolean = false,
     icon: Int? = null,
 ) {
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.extraLarge,
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-        tonalElevation = 1.dp,
+    Box(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .heightIn(min = 360.dp),
+        contentAlignment = Alignment.Center,
     ) {
         Column(
             verticalArrangement = Arrangement.spacedBy(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 24.dp, vertical = 32.dp),
+            modifier = Modifier.padding(horizontal = 24.dp, vertical = 40.dp),
         ) {
             if (loading) {
                 ContainedLoadingIndicator()
@@ -1136,7 +1202,7 @@ private fun HistoryStateCard(
             )
 
             if (actionLabel != null && onActionClick != null) {
-                ElevatedButton(
+                FilledTonalButton(
                     onClick = onActionClick,
                     shapes = ButtonDefaults.shapes(),
                 ) {
