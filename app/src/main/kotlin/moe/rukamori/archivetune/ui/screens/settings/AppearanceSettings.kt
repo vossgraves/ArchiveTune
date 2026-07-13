@@ -898,7 +898,6 @@ fun AppearanceSettings(navController: NavController) {
                             when (it) {
                                 NavigationTab.HOME -> stringResource(R.string.home)
                                 NavigationTab.SEARCH -> stringResource(R.string.search)
-                                NavigationTab.MOODANDGENRES -> stringResource(R.string.mood_and_genres)
                                 NavigationTab.LIBRARY -> stringResource(R.string.filter_library)
                             }
                         },
@@ -1101,7 +1100,6 @@ enum class DarkMode {
 enum class NavigationTab {
     HOME,
     SEARCH,
-    MOODANDGENRES,
     LIBRARY,
 }
 
