@@ -8142,6 +8142,7 @@ class MusicService :
 
     fun updateWidget() {
         widgetUpdater.update()
+        widgetUpdater.updateProgressTracking()
     }
 
     inner class MusicBinder : Binder() {
