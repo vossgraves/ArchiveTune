@@ -1,5 +1,34 @@
+import org.gradle.api.DefaultTask
+import org.gradle.api.provider.Property
+import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.TaskAction
+import org.gradle.work.DisableCachingByDefault
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.util.Properties
+
+@DisableCachingByDefault(because = "Validation-only task has no outputs.")
+abstract class ValidateAdMobReleaseConfigurationTask : DefaultTask() {
+    @get:Input
+    abstract val appId: Property<String>
+
+    @get:Input
+    abstract val rewardedAdUnitId: Property<String>
+
+    @TaskAction
+    fun validate() {
+        require(APP_ID_PATTERN.matches(appId.get())) {
+            "A valid ADMOB_APP_ID is required for GMS release builds."
+        }
+        require(AD_UNIT_ID_PATTERN.matches(rewardedAdUnitId.get())) {
+            "A valid ADMOB_REWARDED_AD_UNIT_ID is required for GMS release builds."
+        }
+    }
+
+    private companion object {
+        val APP_ID_PATTERN = Regex("^ca-app-pub-\\d{16}~\\d{10}$")
+        val AD_UNIT_ID_PATTERN = Regex("^ca-app-pub-\\d{16}/\\d{10}$")
+    }
+}
 
 plugins {
     alias(libs.plugins.android.application)
@@ -49,19 +78,12 @@ val admobRewardedAdUnitId =
         ).trim()
 val admobSampleAppId = "ca-app-pub-3940256099942544~3347511713"
 val admobSampleRewardedAdUnitId = "ca-app-pub-3940256099942544/5224354917"
-val admobAppIdPattern = Regex("^ca-app-pub-\\d{16}~\\d{10}$")
-val admobAdUnitIdPattern = Regex("^ca-app-pub-\\d{16}/\\d{10}$")
-val validateAdMobReleaseConfiguration =
-    tasks.register("validateAdMobReleaseConfiguration") {
-        doLast {
-            require(admobAppIdPattern.matches(admobAppId)) {
-                "A valid ADMOB_APP_ID is required for GMS release builds."
-            }
-            require(admobAdUnitIdPattern.matches(admobRewardedAdUnitId)) {
-                "A valid ADMOB_REWARDED_AD_UNIT_ID is required for GMS release builds."
-            }
-        }
-    }
+tasks.register<ValidateAdMobReleaseConfigurationTask>("validateAdMobReleaseConfiguration") {
+    group = "verification"
+    description = "Validates production AdMob identifiers for GMS release artifacts."
+    appId.set(admobAppId)
+    rewardedAdUnitId.set(admobRewardedAdUnitId)
+}
 
 tasks.configureEach {
     val isGmsReleaseArtifactTask =
@@ -69,7 +91,7 @@ tasks.configureEach {
             name.contains("Gms") &&
             name.endsWith("Release")
     if (isGmsReleaseArtifactTask) {
-        dependsOn(validateAdMobReleaseConfiguration)
+        dependsOn("validateAdMobReleaseConfiguration")
     }
 }
 
