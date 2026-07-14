@@ -233,7 +233,7 @@ internal class StartIoSupportAdRepository
                         }
                     }
 
-                    override fun onFailedToReceiveAd(failedAd: Ad) {
+                    override fun onFailedToReceiveAd(failedAd: Ad?) {
                         mainHandler.post {
                             if (startAppAd !== ad) {
                                 ad.close()
@@ -244,7 +244,7 @@ internal class StartIoSupportAdRepository
                             ad.close()
                             adLoading.set(false)
                             _availability.value = SupportAdAvailability.Failed
-                            Timber.w("Start.io rewarded ad failed to load: %s", failedAd.errorMessage)
+                            Timber.w("Start.io rewarded ad failed to load: %s", failedAd?.errorMessage)
                             clearPendingRequest(SupportAdEvent.AdFailed)
                         }
                     }
