@@ -23,6 +23,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -34,6 +35,7 @@ import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.ads.presentation.SupportArchiveTuneScreenState
 import moe.rukamori.archivetune.ads.presentation.SupportArchiveTuneUiEvent
 import moe.rukamori.archivetune.ads.presentation.SupportArchiveTuneViewModel
+import moe.rukamori.archivetune.ads.presentation.StartIoConsentDialog
 
 internal const val supportArchiveTuneAvailable = true
 
@@ -47,6 +49,21 @@ internal fun SupportArchiveTuneSection(
     val rewardMessage = stringResource(R.string.support_archivetune_thanks)
     val failureMessage = stringResource(R.string.support_archivetune_failed)
     val activityUnavailableMessage = stringResource(R.string.support_archivetune_activity_unavailable)
+    val uriHandler = LocalUriHandler.current
+    val openPrivacyPolicy = remember(uriHandler) { { uriHandler.openUri(START_IO_PRIVACY_POLICY_URL) } }
+    val selectPersonalizedAds =
+        remember(viewModel) { { viewModel.onConsentSelected(personalized = true) } }
+    val selectNonPersonalizedAds =
+        remember(viewModel) { { viewModel.onConsentSelected(personalized = false) } }
+
+    if (state.model.consentDialogPurpose != null) {
+        StartIoConsentDialog(
+            onPersonalizedAdsSelected = selectPersonalizedAds,
+            onNonPersonalizedAdsSelected = selectNonPersonalizedAds,
+            onPrivacyPolicyClick = openPrivacyPolicy,
+            onDismiss = viewModel::onConsentDialogDismissed,
+        )
+    }
 
     LaunchedEffect(viewModel, onMessage, rewardMessage, failureMessage, activityUnavailableMessage) {
         viewModel.events.collect { event ->
@@ -54,9 +71,7 @@ internal fun SupportArchiveTuneSection(
                 SupportArchiveTuneUiEvent.RewardEarned -> onMessage(rewardMessage)
                 SupportArchiveTuneUiEvent.AdFailed -> onMessage(failureMessage)
                 SupportArchiveTuneUiEvent.ActivityUnavailable -> onMessage(activityUnavailableMessage)
-                SupportArchiveTuneUiEvent.PrivacyOptionsUpdated,
-                SupportArchiveTuneUiEvent.PrivacyOptionsFailed,
-                -> Unit
+                SupportArchiveTuneUiEvent.PrivacyOptionsUpdated -> Unit
             }
         }
     }
@@ -67,6 +82,8 @@ internal fun SupportArchiveTuneSection(
         modifier = modifier,
     )
 }
+
+private const val START_IO_PRIVACY_POLICY_URL = "https://www.start.io/policy/privacy-policy/"
 
 @Composable
 private fun SupportArchiveTuneCard(
@@ -113,12 +130,12 @@ private fun SupportArchiveTuneCard(
                 .heightIn(min = 128.dp),
     ) {
         Row(
-            horizontalArrangement = Arrangement.spacedBy(18.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically,
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 22.dp),
+                    .padding(horizontal = 16.dp, vertical = 22.dp),
         ) {
             Box(
                 contentAlignment = Alignment.Center,
@@ -151,19 +168,24 @@ private fun SupportArchiveTuneCard(
                 )
             }
 
-            if (state is SupportArchiveTuneScreenState.Loading) {
-                CircularProgressIndicator(
-                    color = contentColor,
-                    strokeWidth = 3.dp,
-                    modifier = Modifier.size(28.dp),
-                )
-            } else {
-                Icon(
-                    painter = painterResource(R.drawable.play),
-                    contentDescription = null,
-                    tint = contentColor,
-                    modifier = Modifier.size(32.dp),
-                )
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier.size(64.dp),
+            ) {
+                if (state is SupportArchiveTuneScreenState.Loading) {
+                    CircularProgressIndicator(
+                        color = contentColor,
+                        strokeWidth = 3.dp,
+                        modifier = Modifier.size(28.dp),
+                    )
+                } else {
+                    Icon(
+                        painter = painterResource(R.drawable.play),
+                        contentDescription = null,
+                        tint = contentColor,
+                        modifier = Modifier.size(32.dp),
+                    )
+                }
             }
         }
     }

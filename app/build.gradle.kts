@@ -7,26 +7,15 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.util.Properties
 
 @DisableCachingByDefault(because = "Validation-only task has no outputs.")
-abstract class ValidateAdMobReleaseConfigurationTask : DefaultTask() {
+abstract class ValidateStartIoReleaseConfigurationTask : DefaultTask() {
     @get:Input
     abstract val appId: Property<String>
 
-    @get:Input
-    abstract val rewardedAdUnitId: Property<String>
-
     @TaskAction
     fun validate() {
-        require(APP_ID_PATTERN.matches(appId.get())) {
-            "A valid ADMOB_APP_ID is required for GMS release builds."
+        require(appId.get().isNotBlank()) {
+            "START_IO_APP_ID is required for GMS release builds."
         }
-        require(AD_UNIT_ID_PATTERN.matches(rewardedAdUnitId.get())) {
-            "A valid ADMOB_REWARDED_AD_UNIT_ID is required for GMS release builds."
-        }
-    }
-
-    private companion object {
-        val APP_ID_PATTERN = Regex("^ca-app-pub-\\d{16}~\\d{10}$")
-        val AD_UNIT_ID_PATTERN = Regex("^ca-app-pub-\\d{16}/\\d{10}$")
     }
 }
 
@@ -64,25 +53,16 @@ val hasReleaseSigningConfig =
         releaseStorePassword != null &&
         releaseKeyAlias != null &&
         releaseKeyPassword != null
-val admobAppId =
+val startIoAppId =
     (
-        localProperties.getProperty("ADMOB_APP_ID")
-            ?: System.getenv("ADMOB_APP_ID")
+        localProperties.getProperty("START_IO_APP_ID")
+            ?: System.getenv("START_IO_APP_ID")
             ?: ""
         ).trim()
-val admobRewardedAdUnitId =
-    (
-        localProperties.getProperty("ADMOB_REWARDED_AD_UNIT_ID")
-            ?: System.getenv("ADMOB_REWARDED_AD_UNIT_ID")
-            ?: ""
-        ).trim()
-val admobSampleAppId = "ca-app-pub-3940256099942544~3347511713"
-val admobSampleRewardedAdUnitId = "ca-app-pub-3940256099942544/5224354917"
-tasks.register<ValidateAdMobReleaseConfigurationTask>("validateAdMobReleaseConfiguration") {
+tasks.register<ValidateStartIoReleaseConfigurationTask>("validateStartIoReleaseConfiguration") {
     group = "verification"
-    description = "Validates production AdMob identifiers for GMS release artifacts."
-    appId.set(admobAppId)
-    rewardedAdUnitId.set(admobRewardedAdUnitId)
+    description = "Validates the production Start.io identifier for GMS release artifacts."
+    appId.set(startIoAppId)
 }
 
 tasks.configureEach {
@@ -91,7 +71,7 @@ tasks.configureEach {
             name.contains("Gms") &&
             name.endsWith("Release")
     if (isGmsReleaseArtifactTask) {
-        dependsOn("validateAdMobReleaseConfiguration")
+        dependsOn("validateStartIoReleaseConfiguration")
     }
 }
 
@@ -160,16 +140,10 @@ android {
             buildConfigField("long", "DISCORD_APPLICATION_ID_LONG", "${discordApplicationIdLong}L")
             buildConfigField("String", "DISCORD_REDIRECT_SCHEME", "\"$discordRedirectScheme\"")
             manifestPlaceholders["discordRedirectScheme"] = discordRedirectScheme
-            manifestPlaceholders["admobAppId"] = admobAppId.ifBlank { admobSampleAppId }
             buildConfigField(
                 "String",
-                "ADMOB_APP_ID",
-                "\"${admobAppId.ifBlank { admobSampleAppId }}\"",
-            )
-            buildConfigField(
-                "String",
-                "ADMOB_REWARDED_AD_UNIT_ID",
-                "\"${admobRewardedAdUnitId.ifBlank { admobSampleRewardedAdUnitId }}\"",
+                "START_IO_APP_ID",
+                "\"$startIoAppId\"",
             )
         }
         create("foss") {
@@ -244,13 +218,6 @@ android {
         debug {
             applicationIdSuffix = ".debug"
             isDebuggable = true
-            manifestPlaceholders["admobAppId"] = admobSampleAppId
-            buildConfigField("String", "ADMOB_APP_ID", "\"$admobSampleAppId\"")
-            buildConfigField(
-                "String",
-                "ADMOB_REWARDED_AD_UNIT_ID",
-                "\"$admobSampleRewardedAdUnitId\"",
-            )
         }
     }
 
@@ -367,8 +334,7 @@ dependencies {
     implementation("androidx.media3:media3-ui-compose:${libs.versions.media3.get()}")
     add("gmsImplementation", libs.media3.cast)
     add("gmsImplementation", libs.mediarouter)
-    add("gmsImplementation", libs.google.mobile.ads)
-    add("gmsImplementation", libs.google.ump)
+    add("gmsImplementation", libs.startio.ads)
     implementation(libs.squigglyslider)
 
     implementation(libs.room.runtime)

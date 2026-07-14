@@ -5,6 +5,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -13,6 +15,7 @@ import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.ads.presentation.SupportArchiveTuneScreenState
 import moe.rukamori.archivetune.ads.presentation.SupportArchiveTuneUiEvent
 import moe.rukamori.archivetune.ads.presentation.SupportArchiveTuneViewModel
+import moe.rukamori.archivetune.ads.presentation.StartIoConsentDialog
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
 
@@ -23,14 +26,27 @@ internal fun SupportAdPrivacySettingsSection(
 ) {
     val state by viewModel.screenState.collectAsStateWithLifecycle()
     val updatedMessage = stringResource(R.string.ad_privacy_updated)
-    val failureMessage = stringResource(R.string.ad_privacy_failed)
     val activityUnavailableMessage = stringResource(R.string.support_archivetune_activity_unavailable)
+    val uriHandler = LocalUriHandler.current
+    val openPrivacyPolicy = remember(uriHandler) { { uriHandler.openUri(START_IO_PRIVACY_POLICY_URL) } }
+    val selectPersonalizedAds =
+        remember(viewModel) { { viewModel.onConsentSelected(personalized = true) } }
+    val selectNonPersonalizedAds =
+        remember(viewModel) { { viewModel.onConsentSelected(personalized = false) } }
 
-    LaunchedEffect(viewModel, onMessage, updatedMessage, failureMessage, activityUnavailableMessage) {
+    if (state.model.consentDialogPurpose != null) {
+        StartIoConsentDialog(
+            onPersonalizedAdsSelected = selectPersonalizedAds,
+            onNonPersonalizedAdsSelected = selectNonPersonalizedAds,
+            onPrivacyPolicyClick = openPrivacyPolicy,
+            onDismiss = viewModel::onConsentDialogDismissed,
+        )
+    }
+
+    LaunchedEffect(viewModel, onMessage, updatedMessage, activityUnavailableMessage) {
         viewModel.events.collect { event ->
             when (event) {
                 SupportArchiveTuneUiEvent.PrivacyOptionsUpdated -> onMessage(updatedMessage)
-                SupportArchiveTuneUiEvent.PrivacyOptionsFailed -> onMessage(failureMessage)
                 SupportArchiveTuneUiEvent.ActivityUnavailable -> onMessage(activityUnavailableMessage)
                 SupportArchiveTuneUiEvent.RewardEarned,
                 SupportArchiveTuneUiEvent.AdFailed,
@@ -39,15 +55,7 @@ internal fun SupportAdPrivacySettingsSection(
         }
     }
 
-    val currentState = state
-    val privacyOptionsRequired =
-        when (currentState) {
-            is SupportArchiveTuneScreenState.Loading -> currentState.privacyOptionsRequired
-            is SupportArchiveTuneScreenState.Success -> currentState.model.privacyOptionsRequired
-            is SupportArchiveTuneScreenState.Empty -> currentState.privacyOptionsRequired
-            is SupportArchiveTuneScreenState.Error -> currentState.privacyOptionsRequired
-        }
-    if (privacyOptionsRequired) {
+    if (state.model.privacyOptionsRequired) {
         PreferenceGroup(title = stringResource(R.string.ad_privacy_section)) {
             item {
                 PreferenceEntry(
@@ -60,3 +68,5 @@ internal fun SupportAdPrivacySettingsSection(
         }
     }
 }
+
+private const val START_IO_PRIVACY_POLICY_URL = "https://www.start.io/policy/privacy-policy/"

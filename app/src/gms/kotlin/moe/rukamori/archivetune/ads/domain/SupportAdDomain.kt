@@ -16,24 +16,23 @@ internal enum class SupportAdEvent {
     RewardEarned,
     AdFailed,
     ActivityUnavailable,
-    PrivacyOptionsUpdated,
-    PrivacyOptionsFailed,
 }
 
 internal enum class SupportAdRequestResult {
     Accepted,
     AlreadyPending,
     ActivityUnavailable,
+    ConsentRequired,
+    ConfigurationMissing,
 }
 
 internal interface SupportAdRepository {
     val availability: StateFlow<SupportAdAvailability>
     val events: Flow<SupportAdEvent>
-    val privacyOptionsRequired: StateFlow<Boolean>
 
     fun requestSupportAd(): SupportAdRequestResult
 
-    fun showPrivacyOptions(): SupportAdRequestResult
+    fun setPersonalizedAdsConsent(personalized: Boolean)
 }
 
 internal class ObserveSupportAdAvailabilityUseCase
@@ -52,14 +51,6 @@ internal class ObserveSupportAdEventsUseCase
         operator fun invoke(): Flow<SupportAdEvent> = repository.events
     }
 
-internal class ObserveAdPrivacyOptionsUseCase
-    @Inject
-    constructor(
-        private val repository: SupportAdRepository,
-    ) {
-        operator fun invoke(): StateFlow<Boolean> = repository.privacyOptionsRequired
-    }
-
 internal class ShowSupportAdUseCase
     @Inject
     constructor(
@@ -68,10 +59,12 @@ internal class ShowSupportAdUseCase
         operator fun invoke(): SupportAdRequestResult = repository.requestSupportAd()
     }
 
-internal class ShowAdPrivacyOptionsUseCase
+internal class SetPersonalizedAdsConsentUseCase
     @Inject
     constructor(
         private val repository: SupportAdRepository,
     ) {
-        operator fun invoke(): SupportAdRequestResult = repository.showPrivacyOptions()
+        operator fun invoke(personalized: Boolean) {
+            repository.setPersonalizedAdsConsent(personalized)
+        }
     }

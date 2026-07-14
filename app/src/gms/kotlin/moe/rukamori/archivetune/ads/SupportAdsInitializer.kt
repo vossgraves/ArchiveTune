@@ -5,7 +5,7 @@ import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
-import moe.rukamori.archivetune.ads.data.GoogleSupportAdRepository
+import moe.rukamori.archivetune.ads.data.StartIoSupportAdRepository
 
 object SupportAdsInitializer {
     fun initialize(application: Application) {
@@ -19,5 +19,5 @@ object SupportAdsInitializer {
 @EntryPoint
 @InstallIn(SingletonComponent::class)
 internal interface SupportAdsEntryPoint {
-    fun supportAdRepository(): GoogleSupportAdRepository
+    fun supportAdRepository(): StartIoSupportAdRepository
 }

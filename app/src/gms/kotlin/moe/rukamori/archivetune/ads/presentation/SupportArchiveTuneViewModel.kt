@@ -5,16 +5,16 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import moe.rukamori.archivetune.ads.domain.ObserveAdPrivacyOptionsUseCase
 import moe.rukamori.archivetune.ads.domain.ObserveSupportAdAvailabilityUseCase
 import moe.rukamori.archivetune.ads.domain.ObserveSupportAdEventsUseCase
-import moe.rukamori.archivetune.ads.domain.ShowAdPrivacyOptionsUseCase
+import moe.rukamori.archivetune.ads.domain.SetPersonalizedAdsConsentUseCase
 import moe.rukamori.archivetune.ads.domain.ShowSupportAdUseCase
 import moe.rukamori.archivetune.ads.domain.SupportAdAvailability
 import moe.rukamori.archivetune.ads.domain.SupportAdEvent
@@ -22,38 +22,45 @@ import moe.rukamori.archivetune.ads.domain.SupportAdRequestResult
 import javax.inject.Inject
 
 internal sealed interface SupportArchiveTuneScreenState {
+    val model: SupportArchiveTuneUiModel
+
     @Immutable
     data class Loading(
-        val privacyOptionsRequired: Boolean,
+        override val model: SupportArchiveTuneUiModel,
     ) : SupportArchiveTuneScreenState
 
     @Immutable
     data class Success(
-        val model: SupportArchiveTuneUiModel,
+        override val model: SupportArchiveTuneUiModel,
     ) : SupportArchiveTuneScreenState
 
     @Immutable
     data class Empty(
-        val privacyOptionsRequired: Boolean,
+        override val model: SupportArchiveTuneUiModel,
     ) : SupportArchiveTuneScreenState
 
     @Immutable
     data class Error(
-        val privacyOptionsRequired: Boolean,
+        override val model: SupportArchiveTuneUiModel,
     ) : SupportArchiveTuneScreenState
 }
 
 @Immutable
 internal data class SupportArchiveTuneUiModel(
     val privacyOptionsRequired: Boolean,
+    val consentDialogPurpose: ConsentDialogPurpose?,
 )
+
+internal enum class ConsentDialogPurpose {
+    SupportAd,
+    PrivacyOptions,
+}
 
 internal enum class SupportArchiveTuneUiEvent {
     RewardEarned,
     AdFailed,
     ActivityUnavailable,
     PrivacyOptionsUpdated,
-    PrivacyOptionsFailed,
 }
 
 @HiltViewModel
@@ -62,36 +69,36 @@ internal class SupportArchiveTuneViewModel
     constructor(
         observeAvailability: ObserveSupportAdAvailabilityUseCase,
         observeEvents: ObserveSupportAdEventsUseCase,
-        observePrivacyOptions: ObserveAdPrivacyOptionsUseCase,
         private val showSupportAd: ShowSupportAdUseCase,
-        private val showPrivacyOptions: ShowAdPrivacyOptionsUseCase,
+        private val setPersonalizedAdsConsent: SetPersonalizedAdsConsentUseCase,
     ) : ViewModel() {
+        private val consentDialogPurpose = MutableStateFlow<ConsentDialogPurpose?>(null)
+
         val screenState: StateFlow<SupportArchiveTuneScreenState> =
-            combine(observeAvailability(), observePrivacyOptions()) { availability, privacyRequired ->
+            combine(observeAvailability(), consentDialogPurpose) { availability, dialogPurpose ->
+                val model =
+                    SupportArchiveTuneUiModel(
+                        privacyOptionsRequired = true,
+                        consentDialogPurpose = dialogPurpose,
+                    )
                 when (availability) {
-                    SupportAdAvailability.Preparing ->
-                        SupportArchiveTuneScreenState.Loading(privacyRequired)
-                    SupportAdAvailability.Ready ->
-                        SupportArchiveTuneScreenState.Success(
-                            SupportArchiveTuneUiModel(
-                                privacyOptionsRequired = privacyRequired,
-                            ),
-                        )
-                    SupportAdAvailability.ConsentRequired ->
-                        SupportArchiveTuneScreenState.Success(
-                            SupportArchiveTuneUiModel(
-                                privacyOptionsRequired = privacyRequired,
-                            ),
-                        )
-                    SupportAdAvailability.Unavailable ->
-                        SupportArchiveTuneScreenState.Empty(privacyRequired)
-                    SupportAdAvailability.Failed ->
-                        SupportArchiveTuneScreenState.Error(privacyRequired)
+                    SupportAdAvailability.Preparing -> SupportArchiveTuneScreenState.Loading(model)
+                    SupportAdAvailability.Ready,
+                    SupportAdAvailability.ConsentRequired,
+                    -> SupportArchiveTuneScreenState.Success(model)
+                    SupportAdAvailability.Unavailable -> SupportArchiveTuneScreenState.Empty(model)
+                    SupportAdAvailability.Failed -> SupportArchiveTuneScreenState.Error(model)
                 }
             }.stateIn(
                 scope = viewModelScope,
                 started = SharingStarted.WhileSubscribed(5_000),
-                initialValue = SupportArchiveTuneScreenState.Loading(false),
+                initialValue =
+                    SupportArchiveTuneScreenState.Loading(
+                        SupportArchiveTuneUiModel(
+                            privacyOptionsRequired = true,
+                            consentDialogPurpose = null,
+                        ),
+                    ),
             )
 
         private val eventChannel = Channel<SupportArchiveTuneUiEvent>(Channel.BUFFERED)
@@ -110,12 +117,35 @@ internal class SupportArchiveTuneViewModel
         }
 
         fun onPrivacyOptionsClick() {
-            handleRequestResult(showPrivacyOptions())
+            consentDialogPurpose.value = ConsentDialogPurpose.PrivacyOptions
+        }
+
+        fun onConsentSelected(personalized: Boolean) {
+            val purpose = consentDialogPurpose.value ?: return
+            consentDialogPurpose.value = null
+            setPersonalizedAdsConsent(personalized)
+            if (purpose == ConsentDialogPurpose.SupportAd) {
+                handleRequestResult(showSupportAd())
+            } else {
+                eventChannel.trySend(SupportArchiveTuneUiEvent.PrivacyOptionsUpdated)
+            }
+        }
+
+        fun onConsentDialogDismissed() {
+            consentDialogPurpose.value = null
         }
 
         private fun handleRequestResult(result: SupportAdRequestResult) {
-            if (result == SupportAdRequestResult.ActivityUnavailable) {
-                eventChannel.trySend(SupportArchiveTuneUiEvent.ActivityUnavailable)
+            when (result) {
+                SupportAdRequestResult.ConsentRequired ->
+                    consentDialogPurpose.value = ConsentDialogPurpose.SupportAd
+                SupportAdRequestResult.ActivityUnavailable ->
+                    eventChannel.trySend(SupportArchiveTuneUiEvent.ActivityUnavailable)
+                SupportAdRequestResult.ConfigurationMissing ->
+                    eventChannel.trySend(SupportArchiveTuneUiEvent.AdFailed)
+                SupportAdRequestResult.Accepted,
+                SupportAdRequestResult.AlreadyPending,
+                -> Unit
             }
         }
 
@@ -124,7 +154,5 @@ internal class SupportArchiveTuneViewModel
                 SupportAdEvent.RewardEarned -> SupportArchiveTuneUiEvent.RewardEarned
                 SupportAdEvent.AdFailed -> SupportArchiveTuneUiEvent.AdFailed
                 SupportAdEvent.ActivityUnavailable -> SupportArchiveTuneUiEvent.ActivityUnavailable
-                SupportAdEvent.PrivacyOptionsUpdated -> SupportArchiveTuneUiEvent.PrivacyOptionsUpdated
-                SupportAdEvent.PrivacyOptionsFailed -> SupportArchiveTuneUiEvent.PrivacyOptionsFailed
             }
     }
