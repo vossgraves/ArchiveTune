@@ -39,16 +39,17 @@ internal fun SupportAdPrivacySettingsSection(
         }
     }
 
+    val currentState = state
     val privacyOptionsRequired =
-        when (state) {
-            is SupportArchiveTuneScreenState.Loading -> state.privacyOptionsRequired
-            is SupportArchiveTuneScreenState.Success -> state.model.privacyOptionsRequired
-            is SupportArchiveTuneScreenState.Empty -> state.privacyOptionsRequired
-            is SupportArchiveTuneScreenState.Error -> state.privacyOptionsRequired
+        when (currentState) {
+            is SupportArchiveTuneScreenState.Loading -> currentState.privacyOptionsRequired
+            is SupportArchiveTuneScreenState.Success -> currentState.model.privacyOptionsRequired
+            is SupportArchiveTuneScreenState.Empty -> currentState.privacyOptionsRequired
+            is SupportArchiveTuneScreenState.Error -> currentState.privacyOptionsRequired
         }
     if (privacyOptionsRequired) {
         PreferenceGroup(title = stringResource(R.string.ad_privacy_section)) {
-            item(key = "ad_privacy_options") {
+            item {
                 PreferenceEntry(
                     title = { Text(stringResource(R.string.ad_privacy_title)) },
                     description = stringResource(R.string.ad_privacy_description),
