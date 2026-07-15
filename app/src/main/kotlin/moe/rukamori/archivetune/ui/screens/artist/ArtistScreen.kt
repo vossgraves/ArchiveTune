@@ -1102,6 +1102,7 @@ private val ArtistHeroMinHeight = 560.dp
 private val ArtistHorizontalPadding = 24.dp
 private val ArtistContentMaxWidth = 720.dp
 private val ArtistSecondaryActionSize = 52.dp
+private val ArtistPlayActionMinWidth = 132.dp
 private val ArtistReleaseArtworkSize = 112.dp
 private const val ArtistStatSeparator = "  •  "
 
@@ -1139,7 +1140,7 @@ private fun ArtistPrimaryActions(
             modifier
                 .fillMaxWidth()
                 .widthIn(max = ArtistContentMaxWidth),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         FilledTonalIconButton(
@@ -1171,7 +1172,7 @@ private fun ArtistPrimaryActions(
             contentPadding = ButtonDefaults.contentPaddingFor(playButtonHeight, hasStartIcon = true),
             modifier =
                 Modifier
-                    .weight(1f)
+                    .widthIn(min = ArtistPlayActionMinWidth)
                     .heightIn(min = playButtonHeight),
         ) {
             Icon(
@@ -1228,21 +1229,9 @@ private fun ArtistNewReleaseSection(
         modifier =
             modifier
                 .fillMaxWidth()
-                .padding(start = 16.dp, top = 24.dp, end = 16.dp, bottom = 8.dp),
+                .padding(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text(
-            text = stringResource(R.string.new_release),
-            style = MaterialTheme.typography.titleLarge,
-            color = MaterialTheme.colorScheme.onSurface,
-            fontWeight = FontWeight.Bold,
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .widthIn(max = ArtistContentMaxWidth)
-                    .padding(start = 4.dp, end = 4.dp, bottom = 12.dp),
-        )
-
         Card(
             onClick = onClick,
             shape = MaterialTheme.shapes.large,

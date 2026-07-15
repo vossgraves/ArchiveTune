@@ -395,7 +395,6 @@
     <string name="album_not_found">Album not found</string>
     <string name="album_not_found_desc">The requested album could not be loaded</string>
     <string name="new_releases">New releases</string>
-    <string name="new_release">New Release</string>
     <string name="latest_release">Latest Release</string>
     <string name="release_type_album">Album</string>
     <string name="release_type_single">Single</string>
