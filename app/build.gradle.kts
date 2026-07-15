@@ -147,12 +147,14 @@ android {
         buildConfigField("String", "EXTRACTOR_BEARER", "\"$extractorBearer\"")
 
         // Base URL of the community Source Pool website (Next.js). When set, the app auto-discovers
-        // health-checked Tidal/Qobuz instances from it. Optional: blank disables remote discovery.
+        // health-checked Tidal/Qobuz instances from it. Precedence: local.properties override, then
+        // the SOURCE_PROVIDER_URL env/CI variable, then the baked-in default below. Set to "" in
+        // local.properties to disable remote discovery for a build.
         val sourceProviderUrl =
             (
                 localProperties.getProperty("SOURCE_PROVIDER_URL")
                     ?: System.getenv("SOURCE_PROVIDER_URL")
-                    ?: ""
+                    ?: "https://archivepool.up.railway.app"
                 ).trim().trimEnd('/')
         buildConfigField("String", "SOURCE_PROVIDER_URL", "\"$sourceProviderUrl\"")
 
