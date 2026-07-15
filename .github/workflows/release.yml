@@ -178,6 +178,8 @@ jobs:
           # Public base URL of the community Source Pool site. Repo variable (not a secret) so the
           # app auto-discovers health-checked Tidal/Qobuz instances. Blank disables discovery.
           SOURCE_PROVIDER_URL: ${{ vars.SOURCE_PROVIDER_URL }}
+          # Per-app read key for the pool (secret). Blank is fine while the pool runs unenforced.
+          SOURCE_PROVIDER_KEY: ${{ secrets.SOURCE_PROVIDER_KEY }}
 
       - name: Resolve release output directory
         id: release_dir

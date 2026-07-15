@@ -203,6 +203,8 @@ jobs:
           START_IO_APP_ID: ${{ secrets.START_IO_APP_ID }}
           # Public base URL of the community Source Pool site (repo variable, not a secret).
           SOURCE_PROVIDER_URL: ${{ vars.SOURCE_PROVIDER_URL }}
+          # Per-app read key for the pool (secret). Blank is fine while the pool runs unenforced.
+          SOURCE_PROVIDER_KEY: ${{ secrets.SOURCE_PROVIDER_KEY }}
 
       - name: Resolve release output directory
         id: release_dir

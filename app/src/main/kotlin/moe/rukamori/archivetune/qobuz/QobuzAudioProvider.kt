@@ -171,13 +171,16 @@ object QobuzAudioProvider {
         val discovered = LinkedHashSet<String>()
         for (source in instanceDiscoverySources) {
             runCatching {
-                val request =
+                val builder =
                     Request
                         .Builder()
                         .url(source)
                         .header("User-Agent", USER_AGENT)
-                        .get()
-                        .build()
+                // Present the per-app read key when the pool has gating enabled.
+                if (BuildConfig.SOURCE_PROVIDER_KEY.isNotBlank()) {
+                    builder.header("Authorization", "Bearer ${BuildConfig.SOURCE_PROVIDER_KEY}")
+                }
+                val request = builder.get().build()
                 healthClient.newCall(request).execute().use { response ->
                     if (!response.isSuccessful) return@use
                     val body = response.body?.string().orEmpty()

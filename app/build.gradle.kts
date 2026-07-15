@@ -156,6 +156,16 @@ android {
                 ).trim().trimEnd('/')
         buildConfigField("String", "SOURCE_PROVIDER_URL", "\"$sourceProviderUrl\"")
 
+        // Per-app read key for the Source Pool. Sent as a Bearer token on discovery requests so the
+        // pool can gate access. Optional: blank works fine while the pool runs unenforced.
+        val sourceProviderKey =
+            (
+                localProperties.getProperty("SOURCE_PROVIDER_KEY")
+                    ?: System.getenv("SOURCE_PROVIDER_KEY")
+                    ?: ""
+                ).trim()
+        buildConfigField("String", "SOURCE_PROVIDER_KEY", "\"$sourceProviderKey\"")
+
         val nightlyBuildHash =
             (
                 localProperties.getProperty("NIGHTLY_BUILD_HASH")
