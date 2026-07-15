@@ -166,6 +166,17 @@ android {
                 ).trim()
         buildConfigField("String", "SOURCE_PROVIDER_KEY", "\"$sourceProviderKey\"")
 
+        // End-to-end decryption key for sensitive Source Pool credentials (base64 32-byte AES-256
+        // key, matching the site's POOL_CLIENT_KEY). When the pool returns encrypted account tokens
+        // the app decrypts them locally with this. Optional: blank means the pool is unencrypted.
+        val poolClientKey =
+            (
+                localProperties.getProperty("POOL_CLIENT_KEY")
+                    ?: System.getenv("POOL_CLIENT_KEY")
+                    ?: ""
+                ).trim()
+        buildConfigField("String", "POOL_CLIENT_KEY", "\"$poolClientKey\"")
+
         val nightlyBuildHash =
             (
                 localProperties.getProperty("NIGHTLY_BUILD_HASH")
