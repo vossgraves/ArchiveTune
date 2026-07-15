@@ -2128,5 +2128,4 @@ interface DatabaseDao {
             addTagToPlaylist(playlistId, tagId)
         }
     }
-
 }

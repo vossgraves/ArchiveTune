@@ -118,8 +118,7 @@ fun SpeedDialGridItem(
                                 height = heightPx,
                                 ytimgResizePolicy = YtimgResizePolicy.PreserveOriginal,
                             ),
-                        )
-                        .size(widthPx, heightPx)
+                        ).size(widthPx, heightPx)
                         .build()
                 }
 

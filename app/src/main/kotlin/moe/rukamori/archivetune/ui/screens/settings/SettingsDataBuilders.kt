@@ -254,12 +254,13 @@ fun buildSettingsGroups(
         ),
         SettingsGroup(
             title = stringResource(R.string.about),
-            items = buildList {
-                add(developerOptions)
-                defaultLinks?.let(::add)
-                updates?.let(::add)
-                add(about)
-            },
+            items =
+                buildList {
+                    add(developerOptions)
+                    defaultLinks?.let(::add)
+                    updates?.let(::add)
+                    add(about)
+                },
         ),
     )
 }

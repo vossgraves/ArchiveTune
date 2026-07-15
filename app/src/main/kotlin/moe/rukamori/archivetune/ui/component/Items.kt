@@ -1727,7 +1727,7 @@ fun ItemThumbnail(
                         if (state is coil3.compose.AsyncImagePainter.State.Error) {
                             getNextFallbackUrl(currentUrl)?.let { currentUrl = it }
                         }
-                    }
+                    },
                 )
             } else if (placeholderIconRes == null) {
                 Box(
@@ -1962,8 +1962,7 @@ fun PlaylistThumbnail(
                                 height = (sizePx * 1.5).toInt(),
                                 ytimgResizePolicy = YtimgResizePolicy.PreserveOriginal,
                             ),
-                        )
-                        .size(sizePx, sizePx)
+                        ).size(sizePx, sizePx)
                         .allowHardware(true)
                         .build()
                 }
@@ -2003,8 +2002,7 @@ fun PlaylistThumbnail(
                                         height = (halfPx * 1.5).toInt(),
                                         ytimgResizePolicy = YtimgResizePolicy.PreserveOriginal,
                                     ),
-                                )
-                                .size(halfPx, halfPx)
+                                ).size(halfPx, halfPx)
                                 .allowHardware(true)
                                 .build()
                         }

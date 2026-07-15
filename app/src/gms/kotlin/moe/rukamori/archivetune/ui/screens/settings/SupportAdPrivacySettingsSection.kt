@@ -12,10 +12,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import moe.rukamori.archivetune.R
-import moe.rukamori.archivetune.ads.presentation.SupportArchiveTuneScreenState
+import moe.rukamori.archivetune.ads.presentation.StartIoConsentDialog
 import moe.rukamori.archivetune.ads.presentation.SupportArchiveTuneUiEvent
 import moe.rukamori.archivetune.ads.presentation.SupportArchiveTuneViewModel
-import moe.rukamori.archivetune.ads.presentation.StartIoConsentDialog
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
 
@@ -47,7 +46,9 @@ internal fun SupportAdPrivacySettingsSection(
         viewModel.events.collect { event ->
             when (event) {
                 SupportArchiveTuneUiEvent.PrivacyOptionsUpdated -> onMessage(updatedMessage)
+
                 SupportArchiveTuneUiEvent.ActivityUnavailable -> onMessage(activityUnavailableMessage)
+
                 SupportArchiveTuneUiEvent.RewardEarned,
                 SupportArchiveTuneUiEvent.AdFailed,
                 -> Unit

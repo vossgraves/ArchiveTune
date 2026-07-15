@@ -109,8 +109,8 @@ import moe.rukamori.archivetune.constants.HideExplicitKey
 import moe.rukamori.archivetune.db.entities.ArtistEntity
 import moe.rukamori.archivetune.extensions.toMediaItem
 import moe.rukamori.archivetune.extensions.togglePlayPause
-import moe.rukamori.archivetune.innertube.models.AlbumReleaseType
 import moe.rukamori.archivetune.innertube.models.AlbumItem
+import moe.rukamori.archivetune.innertube.models.AlbumReleaseType
 import moe.rukamori.archivetune.innertube.models.ArtistItem
 import moe.rukamori.archivetune.innertube.models.BrowseEndpoint
 import moe.rukamori.archivetune.innertube.models.PlaylistItem

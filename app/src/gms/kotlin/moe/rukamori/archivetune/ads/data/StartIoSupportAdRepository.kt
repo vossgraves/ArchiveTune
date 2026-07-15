@@ -42,7 +42,8 @@ import javax.inject.Singleton
 @Singleton
 internal class StartIoSupportAdRepository
     @Inject
-    constructor() : SupportAdRepository,
+    constructor() :
+    SupportAdRepository,
         Application.ActivityLifecycleCallbacks {
         private val backgroundScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         private val mainHandler = Handler(Looper.getMainLooper())
@@ -90,10 +91,17 @@ internal class StartIoSupportAdRepository
                     personalizedAds = personalized
                     consentTimestamp = timestamp
                     when {
-                        BuildConfig.START_IO_APP_ID.isBlank() ->
+                        BuildConfig.START_IO_APP_ID.isBlank() -> {
                             _availability.value = SupportAdAvailability.Failed
-                        hasConsent -> initializeSdk()
-                        else -> _availability.value = SupportAdAvailability.ConsentRequired
+                        }
+
+                        hasConsent -> {
+                            initializeSdk()
+                        }
+
+                        else -> {
+                            _availability.value = SupportAdAvailability.ConsentRequired
+                        }
                     }
                 }
             }
@@ -276,10 +284,11 @@ internal class StartIoSupportAdRepository
                         finishDisplayedAd(ad, completionHandled, failed = true)
                     }
                 }
-            val shown = runCatching { ad.showAd(displayListener) }.getOrElse { throwable ->
-                Timber.e(throwable, "Start.io support ad show call failed")
-                false
-            }
+            val shown =
+                runCatching { ad.showAd(displayListener) }.getOrElse { throwable ->
+                    Timber.e(throwable, "Start.io support ad show call failed")
+                    false
+                }
             if (!shown) finishDisplayedAd(ad, completionHandled, failed = true)
         }
 
@@ -357,8 +366,7 @@ internal class StartIoSupportAdRepository
 
         private fun currentActivity(): Activity? = resumedActivity.get()?.takeIf(::isActivityUsable)
 
-        private fun isActivityUsable(activity: Activity): Boolean =
-            !activity.isFinishing && !activity.isDestroyed
+        private fun isActivityUsable(activity: Activity): Boolean = !activity.isFinishing && !activity.isDestroyed
 
         private fun isArchiveTuneActivity(activity: Activity): Boolean = activity is MainActivity
 
@@ -411,7 +419,5 @@ internal class StartIoSupportAdRepository
 internal abstract class SupportAdDataModule {
     @Binds
     @Singleton
-    abstract fun bindSupportAdRepository(
-        repository: StartIoSupportAdRepository,
-    ): SupportAdRepository
+    abstract fun bindSupportAdRepository(repository: StartIoSupportAdRepository): SupportAdRepository
 }

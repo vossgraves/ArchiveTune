@@ -39,7 +39,10 @@ private val videoIdRegex = Regex("/vi/([a-zA-Z0-9_-]{11})")
 
 private val DEFAULT_SIZE_BUCKETS = listOf(48, 72, 96, 120, 200, 320, 480, 544, 720, 1080)
 
-private fun getBucketSize(size: Int, buckets: List<Int>): Int {
+private fun getBucketSize(
+    size: Int,
+    buckets: List<Int>,
+): Int {
     val sortedBuckets = buckets.sorted()
     for (bucket in sortedBuckets) {
         if (size <= bucket) return bucket
@@ -47,8 +50,7 @@ private fun getBucketSize(size: Int, buckets: List<Int>): Int {
     return sortedBuckets.lastOrNull() ?: 1080
 }
 
-private fun chooseFourThreeQuality(size: Int): YTThumbQuality =
-    if (size <= 120) YTThumbQuality.DEFAULT else YTThumbQuality.HQ
+private fun chooseFourThreeQuality(size: Int): YTThumbQuality = if (size <= 120) YTThumbQuality.DEFAULT else YTThumbQuality.HQ
 
 private fun chooseLandscapeQuality(
     size: Int,
@@ -124,7 +126,10 @@ fun String.resize(
         val size = maxOf(width ?: 0, height ?: 0)
         val quality =
             when (ytimgResizePolicy) {
-                YtimgResizePolicy.PreserveOriginal -> return this
+                YtimgResizePolicy.PreserveOriginal -> {
+                    return this
+                }
+
                 YtimgResizePolicy.MatchSourceAspect -> {
                     val sourceRatio =
                         sourceAspectRatio
@@ -137,7 +142,9 @@ fun String.resize(
                     }
                 }
 
-                YtimgResizePolicy.AllowAnyAspect -> chooseAnyAspectQuality(size, maxresAllowed)
+                YtimgResizePolicy.AllowAnyAspect -> {
+                    chooseAnyAspectQuality(size, maxresAllowed)
+                }
             }
         return buildYTThumbnailUrl(videoId, quality)
     }
@@ -159,7 +166,10 @@ fun getMusicVideoYTThumbnail(
     quality: YTThumbQuality = YTThumbQuality.HQ,
 ): String? = if (videoId != null && isMusicVideo) buildYTThumbnailUrl(videoId, quality) else ytmUrl
 
-fun resolveMaxresFallback(url: String?, targetQuality: YTThumbQuality = YTThumbQuality.HQ720): String? {
+fun resolveMaxresFallback(
+    url: String?,
+    targetQuality: YTThumbQuality = YTThumbQuality.HQ720,
+): String? {
     if (url == null) return null
     val videoId = videoIdRegex.find(url)?.groupValues?.get(1) ?: return null
     return buildYTThumbnailUrl(videoId, targetQuality)
@@ -176,8 +186,11 @@ fun getNextFallbackUrl(url: String?): String? {
     val targetQuality =
         when (url.ytThumbQuality()) {
             YTThumbQuality.MAXRES -> YTThumbQuality.HQ720
+
             YTThumbQuality.HQ720 -> YTThumbQuality.MQ
+
             YTThumbQuality.HQ -> YTThumbQuality.DEFAULT
+
             YTThumbQuality.MQ,
             YTThumbQuality.DEFAULT,
             null,

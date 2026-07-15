@@ -35,8 +35,7 @@ private fun String?.toNotificationArtworkUri() =
             width = NotificationArtworkSizePx,
             height = NotificationArtworkSizePx,
             ytimgResizePolicy = YtimgResizePolicy.PreserveOriginal,
-        )
-        ?.toUri()
+        )?.toUri()
 
 private fun MediaItem.Builder.setCacheKeyIfRemote(mediaId: String): MediaItem.Builder {
     if (!mediaId.isLocalMediaId()) {

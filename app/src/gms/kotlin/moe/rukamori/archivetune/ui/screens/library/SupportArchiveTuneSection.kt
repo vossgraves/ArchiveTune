@@ -32,10 +32,10 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.ads.presentation.StartIoConsentDialog
 import moe.rukamori.archivetune.ads.presentation.SupportArchiveTuneScreenState
 import moe.rukamori.archivetune.ads.presentation.SupportArchiveTuneUiEvent
 import moe.rukamori.archivetune.ads.presentation.SupportArchiveTuneViewModel
-import moe.rukamori.archivetune.ads.presentation.StartIoConsentDialog
 
 internal const val supportArchiveTuneAvailable = true
 
@@ -103,14 +103,21 @@ private fun SupportArchiveTuneCard(
         }
     val description =
         when (state) {
-            is SupportArchiveTuneScreenState.Loading ->
+            is SupportArchiveTuneScreenState.Loading -> {
                 stringResource(R.string.support_archivetune_preparing)
-            is SupportArchiveTuneScreenState.Success ->
+            }
+
+            is SupportArchiveTuneScreenState.Success -> {
                 stringResource(R.string.support_archivetune_description)
-            is SupportArchiveTuneScreenState.Empty ->
+            }
+
+            is SupportArchiveTuneScreenState.Empty -> {
                 stringResource(R.string.support_archivetune_unavailable)
-            is SupportArchiveTuneScreenState.Error ->
+            }
+
+            is SupportArchiveTuneScreenState.Error -> {
                 stringResource(R.string.support_archivetune_retry)
+            }
         }
 
     Card(
