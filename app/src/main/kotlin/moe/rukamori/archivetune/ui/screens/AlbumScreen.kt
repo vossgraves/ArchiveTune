@@ -713,6 +713,7 @@ fun AlbumScreen(
                             contentDescription = null,
                         )
                     }
+                }
             },
         )
     }

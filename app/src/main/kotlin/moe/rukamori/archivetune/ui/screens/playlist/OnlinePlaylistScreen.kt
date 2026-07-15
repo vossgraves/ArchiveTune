@@ -581,6 +581,7 @@ fun OnlinePlaylistScreen(
                                 modifier = Modifier.animateItem(),
                             )
                         }
+                    }
 
                     if (songs.isEmpty() && !isLoading && error == null) {
                         item(key = "empty") {
