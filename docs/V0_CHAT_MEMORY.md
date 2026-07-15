@@ -113,6 +113,17 @@ future sessions (or contributors) can pick up with full context.
   APKs build on forks/CI. Official builds still inject it via secret.
 - Debug builds sign with a committed `persistent-debug.keystore` for a stable
   signature (no forced uninstall/reinstall between builds).
+- **Release APK signing (stable signature across builds/ABIs):** CI previously
+  ran `keytool -genkeypair` to create a fresh EPHEMERAL keystore whenever no
+  `KEYSTORE` secret was set (the fork case). Because each ABI variant
+  (arm64, x86_64, universal, TV, FOSS) is a separate matrix job, even variants
+  from the SAME run got different signatures → Android refused in-place updates
+  → forced uninstall+reinstall. Fixed: when no `KEYSTORE` secret is present,
+  both `.github/workflows/build.yml` and `release.yml` now sign with the
+  committed `app/persistent-debug.keystore` (standard `androiddebugkey` /
+  `android` creds), so every build and every ABI shares ONE stable signature
+  and installs over the previous one. Upstream's real-`KEYSTORE`-secret path is
+  unchanged; PR builds (lint-only) were left untouched.
 - Various release resource-link/merge fixes (duplicate color resource, Qobuz
   vector `?attr/colorControlNormal` tint moved to call site).
 
