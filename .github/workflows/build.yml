@@ -233,25 +233,26 @@ jobs:
             # Real release keystore is configured (e.g. upstream); use it as-is.
             echo "mode=secret" >> "$GITHUB_OUTPUT"
           else
-            # No KEYSTORE secret (expected on forks): generate an ephemeral test
-            # keystore so the release APK is still signed and installable.
-            echo "::warning::No KEYSTORE secret configured. Generating an ephemeral test keystore. The resulting APK is signed with a throwaway debug-grade key and is NOT suitable for production / Play Store use."
-            TEST_ALIAS="archivetune-test"
-            TEST_STORE_PASS="archivetune"
-            TEST_KEY_PASS="archivetune"
-            keytool -genkeypair -v \
-              -keystore "$RUNNER_TEMP/test.keystore" \
-              -alias "$TEST_ALIAS" \
-              -keyalg RSA -keysize 2048 -validity 10000 \
-              -storepass "$TEST_STORE_PASS" \
-              -keypass "$TEST_KEY_PASS" \
-              -dname "CN=ArchiveTune Test, OU=CI, O=ArchiveTune, C=US"
+            # No KEYSTORE secret (expected on forks): sign with the FIXED, committed
+            # keystore (app/persistent-debug.keystore) instead of generating a throwaway
+            # one. Previously each run - and each ABI variant within a run - generated a
+            # brand-new ephemeral key, so every build was signed differently and Android
+            # refused to update in place (forcing uninstall + reinstall). Using one stable
+            # committed key means every build and every ABI (arm64, x86_64, universal, ...)
+            # shares the same signature and installs/updates over the previous one.
+            # Debug-grade key: fine for self-distribution, NOT for the Play Store.
+            FIXED_KEYSTORE="$GITHUB_WORKSPACE/app/persistent-debug.keystore"
+            if [ ! -f "$FIXED_KEYSTORE" ]; then
+              echo "::error::Fixed keystore not found at $FIXED_KEYSTORE"
+              exit 1
+            fi
+            echo "::notice::No KEYSTORE secret configured. Signing with the fixed committed keystore for stable, updatable signatures across all builds and ABIs."
             {
               echo "mode=test"
-              echo "signing_key=$(base64 -w0 "$RUNNER_TEMP/test.keystore")"
-              echo "alias=$TEST_ALIAS"
-              echo "store_pass=$TEST_STORE_PASS"
-              echo "key_pass=$TEST_KEY_PASS"
+              echo "signing_key=$(base64 -w0 "$FIXED_KEYSTORE")"
+              echo "alias=androiddebugkey"
+              echo "store_pass=android"
+              echo "key_pass=android"
             } >> "$GITHUB_OUTPUT"
           fi
 
@@ -266,7 +267,7 @@ jobs:
           keyPassword: ${{ secrets.KEY_PASSWORD }}
           buildToolsVersion: 35.0.0
 
-      - name: Sign APK (test keystore)
+      - name: Sign APK (fixed keystore)
         if: steps.signing.outputs.mode == 'test'
         uses: ilharp/sign-android-release@v2.0.0
         with:
