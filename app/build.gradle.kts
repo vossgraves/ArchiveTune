@@ -59,11 +59,14 @@ val hasReleaseSigningConfig =
         releaseStorePassword != null &&
         releaseKeyAlias != null &&
         releaseKeyPassword != null
+// Start.io (StartApp) app identifier used to initialize the support-ads SDK in GMS builds.
+// The fork ships a default committed ID so ads work out of the box; an override can still be
+// supplied via local.properties or the START_IO_APP_ID environment variable (e.g. in CI).
 val startIoAppId =
     (
         localProperties.getProperty("START_IO_APP_ID")
             ?: System.getenv("START_IO_APP_ID")
-            ?: ""
+            ?: "206779743"
         ).trim()
 tasks.register<ValidateStartIoReleaseConfigurationTask>("validateStartIoReleaseConfiguration") {
     group = "verification"
