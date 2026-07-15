@@ -47,7 +47,6 @@
     <string name="remove_download_playlist_confirm">Gerçekten tüm \"%s\" çalma listesi şarkısını İndirilen Şarkılar deposundan kaldırmak istiyor musunuz?</string>
     <string name="delete_playlist_confirm">Gerçekten \"%s\" çalma listesini silmek istiyor musunuz?</string>
     <string name="retry">Yeniden dene</string>
-    <string name="radio">Radyo</string>
     <string name="shuffle">Karıştır</string>
     <string name="reset">Sıfırla</string>
     <string name="details">Ayrıntılar</string>
@@ -304,10 +303,6 @@
     <string name="eq_flat">Düz</string>
     <string name="eq_profiles">Profiller</string>
     <string name="eq_manage">Yönet</string>
-    <string name="eq_system_preset">Sistem ön ayarı</string>
-    <string name="eq_manual">Manuel</string>
-    <string name="eq_profile_hint">Bir profil uygulayın veya mevcut ayarlarınızı kaydedin</string>
-    <string name="eq_save">Kaydet</string>
     <string name="eq_save_profile">Profili kaydet</string>
     <string name="eq_profile_name">Profil adı</string>
     <string name="eq_custom_profile">Özel profil</string>

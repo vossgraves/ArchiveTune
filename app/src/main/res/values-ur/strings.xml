@@ -119,7 +119,6 @@
     <string name="delete_playlist_confirm">کیا آپ سہی میں مجموعہ گیت \"%s\" کو ختم کرنا چاہتے ہیں؟</string>
     <string name="change_playlist_cover">مجموعہ گیت کی تصویر تبدیل کریں</string>
     <string name="retry">دوبارہ کوشش کریں</string>
-    <string name="radio">ریڈیو</string>
     <string name="cast">براہ راست</string>
     <string name="cast_devices">اختراع آلہ پر براہ راست کریں</string>
     <string name="cast_sheet_subtitle">طے کریں کہ آرکائوٹیون کہاں چلے</string>
@@ -541,17 +540,12 @@
     <string name="add_symbol">علامت شامل کریں</string>
     <string name="enter_symbol">علامت داخل کریں</string>
     <string name="equalizer">ایکولائزر</string>
-    <string name="tap_to_activate_equalizer">ادھر ضرب لگا کر ایکولائزر کو فعال کریں</string>
     <string name="eq_waiting_for_audio_session">سمعی سِشَن کا انتظار کر رہا ہے</string>
     <string name="eq_open_system_equalizer">سسٹم ایکولائزر کو کھولیں</string>
     <string name="eq_presets">پریسیٹز</string>
     <string name="eq_flat">چپٹا</string>
     <string name="eq_profiles">پروفائلیں</string>
     <string name="eq_manage">انتظام کریں</string>
-    <string name="eq_system_preset">سسٹم پریسیٹ</string>
-    <string name="eq_manual">دستی</string>
-    <string name="eq_profile_hint">کوئ پروفائل لگائیں یا اپنی موجودہ تنظیمات کو حفظ کرین</string>
-    <string name="eq_save">حفظ</string>
     <string name="eq_save_profile">پروفائل کو حفظ کریں</string>
     <string name="eq_profile_name">پروفائل کا نام</string>
     <string name="eq_custom_profile">حسب ضرورت پروفائل</string>

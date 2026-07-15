@@ -107,7 +107,6 @@
     <string name="delete_playlist_confirm">Bạn có muốn xóa danh sách phát \"%s\" không?</string>
     <string name="change_playlist_cover">Thay đổi ảnh bìa danh sách phát</string>
     <string name="retry">Thử lại</string>
-    <string name="radio">Radio</string>
     <string name="shuffle">Xáo trộn</string>
     <string name="reset">Đặt lại</string>
     <string name="details">Chi tiết</string>
@@ -391,10 +390,6 @@
     <string name="eq_flat">Phẳng</string>
     <string name="eq_profiles">Hồ sơ</string>
     <string name="eq_manage">Quản lý</string>
-    <string name="eq_system_preset">Cài đặt sẵn hệ thống</string>
-    <string name="eq_manual">Thủ công</string>
-    <string name="eq_profile_hint">Áp dụng hồ sơ hoặc lưu cài đặt hiện tại của bạn</string>
-    <string name="eq_save">Lưu</string>
     <string name="eq_save_profile">Lưu hồ sơ</string>
     <string name="eq_profile_name">Tên hồ sơ</string>
     <string name="eq_custom_profile">Hồ sơ tùy chỉnh</string>
@@ -615,8 +610,6 @@
     <string name="session_link">Liên kết phiên</string>
     <string name="session_code">Mã phiên</string>
     <string name="add_current_song">Thêm bài hát hiện tại</string>
-    <string name="enabled">Đã bật</string>
-    <string name="disabled">Đã tắt</string>
     <string name="invalid_link">Liên kết không hợp lệ</string>
     <string name="invalid_code">Mã không hợp lệ</string>
     <string name="not_allowed">Không được phép</string>
@@ -709,7 +702,6 @@
     <string name="sort_order_descending">Giảm dần</string>
     <string name="disable_animations">Vô hiệu hóa hoạt ảnh</string>
     <string name="disable_animations_desc">Vô hiệu hóa hầu hết các hoạt ảnh ứng dụng. Được đề xuất cho các thiết bị cấu hình thấp</string>
-    <string name="tap_to_activate_equalizer">Nhấn để kích hoạt bộ cân bằng</string>
     <string name="updates_subtitle_stable">Phát hành ổn định và ghi chú phát hành</string>
     <string name="updates_status_checking">Kiểm tra bản phát hành mới nhất</string>
     <string name="updates_status_current">Bạn đang ở trên phiên bản mới nhất có sẵn</string>

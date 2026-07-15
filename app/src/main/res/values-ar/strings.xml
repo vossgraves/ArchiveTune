@@ -51,7 +51,6 @@
     <string name="remove_download_playlist_confirm">هل تريد حقًا إزالة جميع أغاني قائمة التشغيل %s من مساحة الأغاني المحملة؟</string>
     <string name="delete_playlist_confirm">هل تريد حقًا حذف قائمة التشغيل %s؟</string>
     <string name="retry">اعادة المحاولة</string>
-    <string name="radio">راديو</string>
     <string name="shuffle">تشغيل عشوائي</string>
     <string name="reset">إعادة الضبط</string>
     <string name="details">التفاصيل</string>
@@ -342,10 +341,6 @@
     <string name="eq_flat">مسطح</string>
     <string name="eq_profiles">أنماط الصوت</string>
     <string name="eq_manage">إدارة الأنماط</string>
-    <string name="eq_system_preset">الإعدادات الافتراضية للنظام</string>
-    <string name="eq_manual">يدوي</string>
-    <string name="eq_profile_hint">طبّق نمطًا صوتيًا أو احفظ إعداداتك الحالية</string>
-    <string name="eq_save">حفظ</string>
     <string name="eq_save_profile">حفظ نمط الصوت</string>
     <string name="eq_profile_name">اسم نمط الصوت</string>
     <string name="eq_custom_profile">نمط صوت مخصص</string>

@@ -49,7 +49,6 @@
     <string name="delete_playlist_confirm">\"%s\" 재생목록을 삭제하시겠습니까?</string>
     <string name="change_playlist_cover">재생목록 커버 변경</string>
     <string name="retry">재시도</string>
-    <string name="radio">라디오</string>
     <string name="shuffle">셔플</string>
     <string name="music_recognition">노래 검색</string>
     <string name="reset">재설정</string>
@@ -387,17 +386,12 @@
     <string name="add_symbol">특수 기호 추가</string>
     <string name="enter_symbol">사용할 특수 기호 입력</string>
     <string name="equalizer">이퀄라이저 (EQ)</string>
-    <string name="tap_to_activate_equalizer">탭하여 이퀄라이저 설정 켜기</string>
     <string name="eq_waiting_for_audio_session">오디오 활성 세션 감지 대기 중</string>
     <string name="eq_open_system_equalizer">안드로이드 순정 시스템 이퀄라이저 열기</string>
     <string name="eq_presets">EQ 기본 프리셋</string>
     <string name="eq_flat">플랫 (Flat)</string>
     <string name="eq_profiles">사용자 지정 EQ 프로필</string>
     <string name="eq_manage">프로필 관리</string>
-    <string name="eq_system_preset">기본 프리셋</string>
-    <string name="eq_manual">수동 조절</string>
-    <string name="eq_profile_hint">저장된 사용자 프로필을 불러오거나 현재 수치를 저장합니다.</string>
-    <string name="eq_save">저장</string>
     <string name="eq_save_profile">현재 프로필 저장</string>
     <string name="eq_profile_name">프로필 이름 설정</string>
     <string name="eq_custom_profile">나만의 오디오 맞춤 프로필</string>
@@ -634,8 +628,6 @@
     <string name="session_code">세션 고유 코드</string>
     <string name="add_current_song">현재 곡 대기열에 추가</string>
     <string name="dismiss">닫기</string>
-    <string name="enabled">사용 중</string>
-    <string name="disabled">사용 안 함</string>
     <string name="invalid_link">유효하지 않은 다이렉트 주소 구조입니다.</string>
     <string name="invalid_code">전달받은 고유 코드가 일치하지 않습니다.</string>
     <string name="not_allowed">해당 세션에 입장할 권한이 주어지지 않았습니다.</string>

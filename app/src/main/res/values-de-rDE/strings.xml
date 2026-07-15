@@ -47,7 +47,6 @@
     <string name="remove_download_playlist_confirm">Möchten Sie wirklich alle \"%s\" Playlist-Lieder aus dem Speicher für heruntergeladene Songs entfernen?</string>
     <string name="delete_playlist_confirm">Möchten Sie die Playlist \"%s\" wirklich löschen?</string>
     <string name="retry">Wiederholen</string>
-    <string name="radio">Radio</string>
     <string name="shuffle">Shuffle</string>
     <string name="reset">Zurücksetzen</string>
     <string name="details">Details</string>
@@ -569,16 +568,11 @@
     <string name="external_downloader_package_desc">Paketname der externen Downloader-App (z.B. com.deniscerri.ytdl)</string>
     <string name="open_with_downloader">Mit Downloader öffnen</string>
     <string name="external_downloader_not_installed">Externe Downloader-App ist nicht installiert</string>
-    <string name="tap_to_activate_equalizer">Tippen, um den Equalizer zu aktivieren</string>
     <string name="eq_open_system_equalizer">Öffne System-Equalizer</string>
     <string name="eq_presets">Voreinstellungen</string>
     <string name="eq_flat">Flach</string>
     <string name="eq_profiles">Profile</string>
     <string name="eq_manage">Verwalten</string>
-    <string name="eq_system_preset">Systemvoreinstellung</string>
-    <string name="eq_manual">Manuell</string>
-    <string name="eq_profile_hint">Wende ein Profil an oder speichere deine aktuellen Einstellungen</string>
-    <string name="eq_save">Speichern</string>
     <string name="eq_save_profile">Profil speichern</string>
     <string name="eq_profile_name">Profilname</string>
     <string name="eq_custom_profile">Benutzerdefiniertes Profil</string>
@@ -706,8 +700,6 @@
     <string name="session_link">Sitzungslink</string>
     <string name="session_code">Sitzungscode</string>
     <string name="add_current_song">Aktuelles Lied hinzufügen</string>
-    <string name="enabled">Aktiviert</string>
-    <string name="disabled">Deaktiviert</string>
     <string name="invalid_link">Ungültiger Link</string>
     <string name="invalid_code">Ungültiger Code</string>
     <string name="not_allowed">Nicht erlaubt</string>

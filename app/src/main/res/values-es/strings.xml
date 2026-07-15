@@ -49,7 +49,6 @@
     <string name="delete_playlist_confirm">¿Realmente quieres eliminar la lista de reproducción \"%s\"?</string>
     <string name="change_playlist_cover">Cambiar caratula de lista de reproducción</string>
     <string name="retry">Re-intentar</string>
-    <string name="radio">Radio</string>
     <string name="shuffle">Aleatorio</string>
     <string name="reset">Reiniciar</string>
     <string name="details">Detalles</string>
@@ -337,10 +336,6 @@
     <string name="eq_flat">Plano</string>
     <string name="eq_profiles">Perfiles</string>
     <string name="eq_manage">Administrar</string>
-    <string name="eq_system_preset">Preajuste del sistema</string>
-    <string name="eq_manual">Manual</string>
-    <string name="eq_profile_hint">Aplica un perfil o guarda tus ajustes actuales</string>
-    <string name="eq_save">Guardar</string>
     <string name="eq_save_profile">Guardar perfil</string>
     <string name="eq_profile_name">Nombre del perfil</string>
     <string name="eq_custom_profile">Perfil personalizado</string>
@@ -548,8 +543,6 @@
     <string name="session_code">Código de sesión</string>
     <string name="add_current_song">Añadir canción actual</string>
     <string name="dismiss">Descartar</string>
-    <string name="enabled">Habilitado</string>
-    <string name="disabled">Deshabilitado</string>
     <string name="invalid_link">Enlace invalido</string>
     <string name="invalid_code">Código invalido</string>
     <string name="not_allowed">No permitido</string>
@@ -638,7 +631,6 @@
     <string name="sort_order_descending">Descendente</string>
     <string name="disable_animations">Desactivar animaciones</string>
     <string name="disable_animations_desc">Desactiva la mayoría de las animaciones de las aplicaciones. Recomendado para dispositivos de gama baja</string>
-    <string name="tap_to_activate_equalizer">Toca para activar el ecualizador</string>
     <string name="updates_subtitle_stable">Versiones estables y notas de la versión</string>
     <string name="updates_status_checking">Comprobar si hay una nueva versión</string>
     <string name="updates_status_current">Tienes la última versión disponible</string>

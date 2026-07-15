@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version='1.0' encoding='utf-8'?>
 <resources>
     <string name="album_backdrop">Achtergrondvervaging</string>
     <string name="album_backdrop_desc">Toon artwork als vervaagde achtergrond op de speler</string>
@@ -119,7 +119,6 @@
     <string name="delete_playlist_confirm">Wil je de afspeellijst “%s” echt verwijderen?</string>
     <string name="change_playlist_cover">Afbeelding van afspeellijst wijzigen</string>
     <string name="retry">Opnieuw proberen</string>
-    <string name="radio">Radio</string>
     <string name="cast">Cast</string>
     <string name="cast_devices">Cast apparaten</string>
     <string name="cast_sheet_subtitle">Kies waar ArchiveTune wordt afgespeeld</string>

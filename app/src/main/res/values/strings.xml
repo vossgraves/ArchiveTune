@@ -118,7 +118,6 @@
     <string name="delete_playlist_confirm">Do you really want to delete the playlist \"%s\"?</string>
     <string name="change_playlist_cover">Change playlist cover</string>
     <string name="retry">Retry</string>
-    <string name="radio">Radio</string>
     <string name="cast">Cast</string>
     <string name="cast_devices">Cast devices</string>
     <string name="cast_sheet_subtitle">Choose where ArchiveTune plays</string>
@@ -971,8 +970,6 @@
     <string name="session_code">Session code</string>
     <string name="add_current_song">Add current song</string>
     <string name="dismiss">Dismiss</string>
-    <string name="enabled">Enabled</string>
-    <string name="disabled">Disabled</string>
     <string name="invalid_link">Invalid link</string>
     <string name="invalid_code">Invalid code</string>
     <string name="not_allowed">Not allowed</string>
