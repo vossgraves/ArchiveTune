@@ -470,4 +470,22 @@
     <string name="ai_api_connected">API verbunden</string>
     <string name="ai_api_test_failed">API-Test fehlgeschlagen</string>
     <string name="ai_translation_menu">KI-Übersetzung</string>
+    <string name="suggestions">Vorschläge</string>
+    <string name="local_songs_scan_included_folders_title">Eingeschlossene Ordner</string>
+    <string name="lyrics_share_resolution_value">%1$d x %2$d</string>
+    <string name="storage_location_internal">Interner Speicher</string>
+    <string name="storage_location_free">%s frei</string>
+    <string name="storage_migration_cache_progress">Verschiebe Cache…%1$d%%</string>
+    <string name="storage_migration_downloads_progress">Verschiebe Downloads...%1$d%%</string>
+    <string name="storage_folder_invalid">Wähle einen gültigen Ordner.</string>
+    <string name="music_recognition_background_title">Erkennung im Hintergrund</string>
+    <string name="music_recognition_notification_channel_name">Musikerkennung</string>
+    <string name="music_recognition_notification_status_result">ERGEBNIS</string>
+    <string name="music_recognition_notification_processing_title">Audio verarbeiten</string>
+    <string name="music_recognition_notification_artist">Künstler: %1$s</string>
+    <string name="music_recognition_notification_album">Album: %1$s</string>
+    <string name="music_recognition_notification_genre">Genre: %1$s</string>
+    <string name="music_recognition_notification_isrc">ISRC: %1$s</string>
+    <string name="local_songs_scan_included_folders_empty">Alle Ordner sind eingeschlossen.</string>
+    <string name="local_songs_scan_included_folders_add">Ordner einschließen</string>
 </resources>
