@@ -52,7 +52,7 @@ private data class ReleasesNetworkResult(
 object Updater {
     private val client = HttpClient()
     private const val ReleaseCacheCheckIntervalMs: Long = 6 * 60 * 60 * 1000L
-    private const val StableReleaseBaseUrl = "https://github.com/rukamori/ArchiveTune/releases"
+    private const val StableReleaseBaseUrl = "https://github.com/vossgraves/ArchiveTune/releases"
     private const val CanaryReleaseBaseUrl =
         "https://github.com/rukamori/canary/releases"
     var lastCheckTime = -1L
@@ -264,7 +264,7 @@ object Updater {
         cachedEtag: String?,
     ): ReleasesNetworkResult {
         val response: HttpResponse =
-            client.get("https://api.github.com/repos/rukamori/ArchiveTune/releases?per_page=$perPage") {
+            client.get("https://api.github.com/repos/vossgraves/ArchiveTune/releases?per_page=$perPage") {
                 headers {
                     append("Accept", "application/vnd.github+json")
                     append("User-Agent", "ArchiveTune")
@@ -329,7 +329,7 @@ object Updater {
 
     suspend fun getCommitHistory(
         count: Int = 20,
-        branch: String = "dev",
+        branch: String = "main",
     ): Result<List<GitCommit>> =
         runCatching {
             if (!isUpdaterDistribution) {
@@ -338,7 +338,7 @@ object Updater {
 
             val response =
                 client
-                    .get("https://api.github.com/repos/rukamori/ArchiveTune/commits?sha=$branch&per_page=$count")
+                    .get("https://api.github.com/repos/vossgraves/ArchiveTune/commits?sha=$branch&per_page=$count")
                     .bodyAsText()
             val jsonArray = JSONArray(response)
             val commits = mutableListOf<GitCommit>()
