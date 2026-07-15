@@ -1,4 +1,4 @@
-<?xml version='1.0' encoding='utf-8'?>
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="home">Trang chủ</string>
     <string name="songs">Bài hát</string>
@@ -983,4 +983,29 @@
     <string name="onboarding_community_telegram_title">Tham gia Telegram</string>
     <string name="onboarding_community_telegram_desc">Trò chuyện với cộng đồng và nhận cập nhật.</string>
     <string name="onboarding_community_donate_desc">Hỗ trợ phát triển liên tục.</string>
+    <string name="together_room_closed_inactivity_notification">Phòng bị đóng vì không có ai tham gia trong 10 phút</string>
+    <string name="show_player_volume_bar">Hiện thanh âm lượng</string>
+    <string name="player_volume_bar_v7_v8_only">Chỉ khả dụng với kiểu trình phát V7 và V8</string>
+    <string name="app_icon_description">Chọn biểu tượng trình khởi động</string>
+    <string name="app_icon_default">Mặc định</string>
+    <string name="app_icon_subtitle">Cá nhân hoá trình khởi động của bạn</string>
+    <string name="app_icon_current">Biểu tượng hiện tại</string>
+    <string name="app_icon_available">Biểu tượng hiện có</string>
+    <string name="app_icon_builtin">Tích hợp sẵn</string>
+    <string name="app_icon_community">Biểu tượng cộng đồng</string>
+    <string name="app_icon_builtin_description">Biểu tượng mặc định của ArchiveTune</string>
+    <string name="app_icon_identifier">ID %1$s</string>
+    <string name="app_icon_community_notice">Những biểu tượng cồng đồng được tạo bởi người dùng và có thể thay đổi theo thời gian</string>
+    <plurals name="app_icon_count">
+        <item quantity="other">%d biểu tượng</item>
+    </plurals>
+    <string name="app_icon_empty">Không có biểu tượng</string>
+    <string name="app_icon_load_failed">Không thể tải biểu tượng ứng dụng</string>
+    <string name="app_icon_change_failed">Không thể đổi biểu tượng ứng dụng</string>
+    <string name="force_high_refresh_rate">Ép tần số quét cao</string>
+    <string name="max_supported_refresh_rate">Cao nhất được hỗ trợ: %1$d Hz</string>
+    <string name="view_debug_logs_description">Xem và lọc nhật ký ứng dụng</string>
+    <string name="resume_logs">Tiếp tục nhật ký</string>
+    <string name="jump_to_latest_log">Nhảy đến nhật ký mới nhất</string>
+    <string name="copy_log_entry">Sao chép nội dung nhật ký</string>
 </resources>
