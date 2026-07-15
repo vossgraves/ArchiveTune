@@ -74,6 +74,7 @@ import kotlinx.coroutines.isActive
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.constants.ManualSourceLoginEnabledKey
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
@@ -101,6 +102,12 @@ fun DebugSettings(navController: NavController) {
     val (showCodecOnPlayer, onShowCodecOnPlayerChange) =
         rememberPreference(
             key = booleanPreferencesKey("show_codec_on_player"),
+            defaultValue = false,
+        )
+
+    val (manualSourceLogin, onManualSourceLoginChange) =
+        rememberPreference(
+            key = ManualSourceLoginEnabledKey,
             defaultValue = false,
         )
 
@@ -168,6 +175,16 @@ fun DebugSettings(navController: NavController) {
                         icon = { Icon(painterResource(R.drawable.graphic_eq), null) },
                         checked = showCodecOnPlayer,
                         onCheckedChange = onShowCodecOnPlayerChange,
+                    )
+                }
+
+                item {
+                    SwitchPreference(
+                        title = { Text(stringResource(R.string.manual_source_login)) },
+                        description = stringResource(R.string.description_manual_source_login),
+                        icon = { Icon(painterResource(R.drawable.login), null) },
+                        checked = manualSourceLogin,
+                        onCheckedChange = onManualSourceLoginChange,
                     )
                 }
 

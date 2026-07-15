@@ -815,6 +815,14 @@ val QobuzInstancesKey = stringPreferencesKey("qobuzInstances")
 // JSON cache of the last Qobuz instance health scan, mirroring TidalVerifiedInstancesKey.
 val QobuzVerifiedInstancesKey = stringPreferencesKey("qobuzVerifiedInstances")
 
+// ---------------------------------------------------------------------------
+// Experimental: manual source sign-in
+// ---------------------------------------------------------------------------
+// When OFF (default) the app relies solely on the community Source Pool: users never see the
+// manual Tidal/Qobuz instance & account sign-in fields. Flipping this ON in Experimental Settings
+// re-exposes the manual sign-in UI for power users who want to add their own private sources.
+val ManualSourceLoginEnabledKey = booleanPreferencesKey("dev_manual_source_login")
+
 // The last Qobuz track id that resolved successfully, used as a health "probe" track so we can tell
 // a fully-working instance from a reachable-but-preview-only one.
 val QobuzLastProbeTrackKey = stringPreferencesKey("qobuzLastProbeTrack")

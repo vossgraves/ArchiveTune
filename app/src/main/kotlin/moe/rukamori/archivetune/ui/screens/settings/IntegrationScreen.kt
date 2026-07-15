@@ -30,6 +30,7 @@ import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.ListenBrainzEnabledKey
 import moe.rukamori.archivetune.constants.ListenBrainzTokenKey
+import moe.rukamori.archivetune.constants.ManualSourceLoginEnabledKey
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.InfoLabel
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
@@ -44,6 +45,10 @@ import moe.rukamori.archivetune.utils.rememberPreference
 fun IntegrationScreen(navController: NavController) {
     val (listenBrainzEnabled, onListenBrainzEnabledChange) = rememberPreference(ListenBrainzEnabledKey, false)
     val (listenBrainzToken, onListenBrainzTokenChange) = rememberPreference(ListenBrainzTokenKey, "")
+    // Manual Tidal/Qobuz instance & account management is an advanced flow gated behind the
+    // "Manual source sign-in" experimental toggle. Off by default: the app auto-uses the community
+    // source pool, so most users never need to see raw instance/token fields.
+    val (manualSourceLogin, _) = rememberPreference(ManualSourceLoginEnabledKey, false)
 
     var showListenBrainzTokenEditor = remember { mutableStateOf(false) }
 
@@ -92,27 +97,33 @@ fun IntegrationScreen(navController: NavController) {
                 }
             }
 
-            PreferenceGroup(title = stringResource(R.string.music_sources)) {
-                item {
-                    PreferenceEntry(
-                        title = { Text(stringResource(R.string.tidal_integration)) },
-                        description = stringResource(R.string.tidal_integration_description),
-                        icon = { Icon(painterResource(R.drawable.provider_tidal), null) },
-                        onClick = {
-                            navController.navigate("settings/tidal")
-                        },
-                    )
-                }
+            if (manualSourceLogin) {
+                PreferenceGroup(title = stringResource(R.string.music_sources)) {
+                    item {
+                        InfoLabel(text = stringResource(R.string.manual_source_login_active_note))
+                    }
 
-                item {
-                    PreferenceEntry(
-                        title = { Text(stringResource(R.string.qobuz_integration)) },
-                        description = stringResource(R.string.qobuz_integration_description),
-                        icon = { Icon(painterResource(R.drawable.provider_qobuz), null) },
-                        onClick = {
-                            navController.navigate("settings/qobuz")
-                        },
-                    )
+                    item {
+                        PreferenceEntry(
+                            title = { Text(stringResource(R.string.tidal_integration)) },
+                            description = stringResource(R.string.tidal_integration_description),
+                            icon = { Icon(painterResource(R.drawable.provider_tidal), null) },
+                            onClick = {
+                                navController.navigate("settings/tidal")
+                            },
+                        )
+                    }
+
+                    item {
+                        PreferenceEntry(
+                            title = { Text(stringResource(R.string.qobuz_integration)) },
+                            description = stringResource(R.string.qobuz_integration_description),
+                            icon = { Icon(painterResource(R.drawable.provider_qobuz), null) },
+                            onClick = {
+                                navController.navigate("settings/qobuz")
+                            },
+                        )
+                    }
                 }
             }
 

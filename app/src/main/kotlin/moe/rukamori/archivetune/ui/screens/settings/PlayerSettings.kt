@@ -310,10 +310,6 @@ fun PlayerSettings(navController: NavController) {
                 .verticalScroll(rememberScrollState())
                 .padding(bottom = SettingsDimensions.ScreenBottomPadding),
         ) {
-            // Provider choice by preference + common source settings, at the very top, followed by
-            // YouTube / Tidal / Qobuz specific groups. Account/API/login lives in Integration.
-            PlaybackSourceSections(navController = navController)
-
             PreferenceGroup(title = stringResource(R.string.player)) {
                 item {
                     EnumListPreference(

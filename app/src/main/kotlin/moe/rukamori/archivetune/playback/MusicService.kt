@@ -201,6 +201,7 @@ import moe.rukamori.archivetune.audiosource.AudioSourceConfig
 import moe.rukamori.archivetune.audiosource.DirectStream
 import moe.rukamori.archivetune.tidal.TidalAccountManager
 import moe.rukamori.archivetune.tidal.TidalAudioProvider
+import moe.rukamori.archivetune.tidal.TidalInstanceHealthManager
 import moe.rukamori.archivetune.constants.PlayerVolumeKey
 import moe.rukamori.archivetune.constants.RepeatModeKey
 import moe.rukamori.archivetune.constants.ScrobbleDelayPercentKey
@@ -7359,9 +7360,23 @@ class MusicService :
         }
 
         // Fallback: public HiFi/QQDL instances (empty list falls back to built-in defaults).
+        // Union the user's configured instances with community instances discovered from the
+        // Source Pool website (verified-healthy ones, cached by the startup scan). User entries are
+        // kept and ordered first; discovery only adds, never removes.
         val configuredInstances = parseTidalInstances()
-        Timber.tag("MusicService").d("Tidal public-instance fallback | configured=%d instances", configuredInstances.size)
-        TidalAudioProvider.setInstances(configuredInstances)
+        val discoveredInstances = TidalInstanceHealthManager.healthyUrls(this)
+        val mergedInstances =
+            LinkedHashSet<String>().apply {
+                addAll(configuredInstances)
+                addAll(discoveredInstances)
+            }.toList()
+        Timber.tag("MusicService").d(
+            "Tidal public-instance fallback | configured=%d discovered=%d merged=%d",
+            configuredInstances.size,
+            discoveredInstances.size,
+            mergedInstances.size,
+        )
+        TidalAudioProvider.setInstances(mergedInstances)
         val resolved =
             runCatching {
                 TidalAudioProvider.resolve(
@@ -7395,7 +7410,15 @@ class MusicService :
 
     /** Resolves a Qobuz stream through the user-provided proxy instances. */
     private fun resolveQobuzStream(query: SourceQuery): DirectStream? {
-        val configuredInstances = parseQobuzInstances()
+        val userInstances = parseQobuzInstances()
+        // Union user-configured instances with community instances discovered from the Source Pool
+        // website (cached ~10min inside the provider). User entries stay first; discovery only adds.
+        val discoveredInstances = runCatching { QobuzAudioProvider.discoverInstances() }.getOrDefault(emptyList())
+        val configuredInstances =
+            LinkedHashSet<String>().apply {
+                addAll(userInstances)
+                addAll(discoveredInstances)
+            }.toList()
         val configuredTokens = QobuzToken.listFromJson(dataStore.get(QobuzTokensKey, ""))
         if (configuredInstances.isEmpty() && configuredTokens.isEmpty()) {
             Timber.tag("MusicService").d("Qobuz skip: no tokens or instances configured")

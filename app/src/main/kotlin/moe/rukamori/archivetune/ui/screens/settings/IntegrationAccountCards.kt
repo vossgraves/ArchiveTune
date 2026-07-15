@@ -100,7 +100,10 @@ fun IntegrationAccountCards(navController: NavController) {
             onClick = { navController.navigate("settings/account") },
         )
 
-        // Pinnable cards sorted so pinned ones come first.
+        // Pinnable cards. Unlike the always-on YouTube card, the Last.fm and Discord cards only
+        // appear once the user has actually signed in — an empty "Not connected" card adds noise,
+        // and login for these services is initiated from their own Integration entries, not here.
+        // Sorted so pinned ones come first.
         val pinnables =
             listOf(
                 PinnableCard(
@@ -135,7 +138,8 @@ fun IntegrationAccountCards(navController: NavController) {
                     onTogglePin = { setPinDiscord(!pinDiscord) },
                     onClick = { navController.navigate("settings/discord") },
                 ),
-            ).sortedBy { it.order }
+            ).filter { it.connected }
+                .sortedBy { it.order }
 
         pinnables.forEach { card ->
             AccountCard(

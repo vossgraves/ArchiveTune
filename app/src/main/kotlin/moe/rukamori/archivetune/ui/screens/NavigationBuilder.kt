@@ -79,6 +79,7 @@ import moe.rukamori.archivetune.ui.screens.settings.PlayerSettings
 import moe.rukamori.archivetune.ui.screens.settings.PoTokenScreen
 import moe.rukamori.archivetune.ui.screens.settings.PrivacySettings
 import moe.rukamori.archivetune.ui.screens.settings.SettingsScreen
+import moe.rukamori.archivetune.ui.screens.settings.SourceSettings
 import moe.rukamori.archivetune.ui.screens.settings.StorageSettings
 import moe.rukamori.archivetune.ui.screens.settings.ThemeCreatorScreen
 import moe.rukamori.archivetune.ui.screens.settings.UpdateScreen
@@ -414,6 +415,9 @@ fun NavGraphBuilder.navigationBuilder(
     }
     composable("settings/player") {
         PlayerSettings(navController)
+    }
+    composable("settings/sources") {
+        SourceSettings(navController)
     }
     composable("settings/player/chiper") {
         ChiperSettings(navController)

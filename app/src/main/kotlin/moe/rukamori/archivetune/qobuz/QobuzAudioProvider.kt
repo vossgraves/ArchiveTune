@@ -6,6 +6,7 @@
 
 package moe.rukamori.archivetune.qobuz
 
+import moe.rukamori.archivetune.BuildConfig
 import moe.rukamori.archivetune.audiosource.DirectStream
 import moe.rukamori.archivetune.constants.AudioSourceType
 import moe.rukamori.archivetune.tidal.TidalAudioProvider
@@ -138,6 +139,85 @@ object QobuzAudioProvider {
                 if (!seen.add(normalized)) return@mapNotNull null
                 Instance(instanceLabel(normalized), normalized)
             }
+    }
+
+    // Community Source Pool discovery feed ({ streaming, api } shape) for Qobuz, derived from the
+    // build-time SOURCE_PROVIDER_URL. Empty when no provider is configured.
+    private val instanceDiscoverySources: List<String> =
+        BuildConfig.SOURCE_PROVIDER_URL
+            .trim()
+            .trimEnd('/')
+            .takeIf { it.isNotEmpty() }
+            ?.let { listOf("$it/api/discovery/qobuz") }
+            ?: emptyList()
+
+    /**
+     * Best-effort discovery of community Qobuz proxy instances from the Source Pool website. Returns
+     * newly discovered valid base URLs (may be empty). Never throws; blocking network I/O, so call
+     * off the main thread.
+     */
+    @Volatile
+    private var discoveryCache: List<String> = emptyList()
+
+    @Volatile
+    private var discoveryCacheExpiresAt: Long = 0L
+
+    private const val DISCOVERY_CACHE_MS = 10 * 60 * 1000L
+
+    fun discoverInstances(): List<String> {
+        if (instanceDiscoverySources.isEmpty()) return emptyList()
+        val now = System.currentTimeMillis()
+        if (now < discoveryCacheExpiresAt && discoveryCache.isNotEmpty()) return discoveryCache
+        val discovered = LinkedHashSet<String>()
+        for (source in instanceDiscoverySources) {
+            runCatching {
+                val request =
+                    Request
+                        .Builder()
+                        .url(source)
+                        .header("User-Agent", USER_AGENT)
+                        .get()
+                        .build()
+                healthClient.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) return@use
+                    val body = response.body?.string().orEmpty()
+                    if (body.isBlank()) return@use
+                    val obj = JSONObject(body)
+                    for (key in listOf("streaming", "instances", "api")) {
+                        val arr = obj.optJSONArray(key) ?: continue
+                        for (i in 0 until arr.length()) {
+                            when (val item = arr.opt(i)) {
+                                is String -> normalizeInstanceUrl(item)?.let(discovered::add)
+                                is JSONObject ->
+                                    (item.optString("url").takeIf { it.isNotBlank() }
+                                        ?: item.optString("host").takeIf { it.isNotBlank() })
+                                        ?.let { normalizeInstanceUrl(it)?.let(discovered::add) }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        val result = discovered.toList()
+        if (result.isNotEmpty()) {
+            discoveryCache = result
+            discoveryCacheExpiresAt = System.currentTimeMillis() + DISCOVERY_CACHE_MS
+        }
+        return result
+    }
+
+    /**
+     * Unions community-discovered instances with the user's configured list (user entries kept and
+     * ordered first). No-op when discovery is disabled or returns nothing. Call off the main thread.
+     */
+    fun mergeDiscoveredInstances() {
+        val discovered = discoverInstances()
+        if (discovered.isEmpty()) return
+        val merged = LinkedHashSet<String>()
+        merged += activeInstanceUrls
+        merged += discovered
+        setInstances(merged.toList())
+        Timber.tag("QobuzDiscovery").d("Merged %d discovered instance(s)", discovered.size)
     }
 
     /** Normalizes an instance URL to `scheme://host[:port]` form, or null when invalid. */

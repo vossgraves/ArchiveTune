@@ -923,6 +923,11 @@
     <string name="description_show_nerd_stats">Display real-time playback statistics (codec, bitrate, buffer)</string>
     <string name="display_codec_on_player">Display Codec on Player</string>
     <string name="description_display_codec_on_player">Show current audio codec information on the player</string>
+    <string name="source_settings">Sources</string>
+    <string name="source_settings_subtitle">Streaming sources, priority and quality</string>
+    <string name="manual_source_login">Manual source sign-in</string>
+    <string name="description_manual_source_login">Show the advanced Tidal/Qobuz instance &amp; account fields. Off by default — the app uses the community source pool automatically.</string>
+    <string name="manual_source_login_active_note">Advanced: add your own private Tidal/Qobuz instances or account tokens. The community source pool is already used automatically without any setup.</string>
     <string name="nerd_stats">Nerd Stats</string>
     <string name="track_label">Track</string>
     <string name="no_track_playing">No track playing</string>

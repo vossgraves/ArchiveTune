@@ -146,6 +146,16 @@ android {
                 ?: ""
         buildConfigField("String", "EXTRACTOR_BEARER", "\"$extractorBearer\"")
 
+        // Base URL of the community Source Pool website (Next.js). When set, the app auto-discovers
+        // health-checked Tidal/Qobuz instances from it. Optional: blank disables remote discovery.
+        val sourceProviderUrl =
+            (
+                localProperties.getProperty("SOURCE_PROVIDER_URL")
+                    ?: System.getenv("SOURCE_PROVIDER_URL")
+                    ?: ""
+                ).trim().trimEnd('/')
+        buildConfigField("String", "SOURCE_PROVIDER_URL", "\"$sourceProviderUrl\"")
+
         val nightlyBuildHash =
             (
                 localProperties.getProperty("NIGHTLY_BUILD_HASH")

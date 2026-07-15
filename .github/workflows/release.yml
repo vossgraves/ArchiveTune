@@ -175,6 +175,9 @@ jobs:
           CANVAS_BEARER_TOKEN: ${{ secrets.CANVAS_BEARER_TOKEN }}
           EXTRACTOR_BEARER: ${{ secrets.EXTRACTOR_BEARER }}
           START_IO_APP_ID: ${{ secrets.START_IO_APP_ID }}
+          # Public base URL of the community Source Pool site. Repo variable (not a secret) so the
+          # app auto-discovers health-checked Tidal/Qobuz instances. Blank disables discovery.
+          SOURCE_PROVIDER_URL: ${{ vars.SOURCE_PROVIDER_URL }}
 
       - name: Resolve release output directory
         id: release_dir

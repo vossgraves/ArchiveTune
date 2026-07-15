@@ -231,7 +231,11 @@ class App :
                             TidalAudioProvider.seedProbeTrack(it)
                         }
                     }
-                    TidalInstanceHealthManager.refresh(this@App, includeDiscovery = false, staggered = true)
+                    // When a community Source Pool URL is baked in, auto-discover its
+                    // health-checked instances on startup so playback is seamless without any
+                    // manual setup. With no provider configured this stays a cheap re-verify.
+                    val autoDiscover = BuildConfig.SOURCE_PROVIDER_URL.isNotBlank()
+                    TidalInstanceHealthManager.refresh(this@App, includeDiscovery = autoDiscover, staggered = true)
                 }
             } catch (e: Exception) {
                 Timber.w(e, "Tidal instance startup health scan failed")

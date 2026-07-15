@@ -6,6 +6,7 @@
 package moe.rukamori.archivetune.tidal
 
 import android.net.Uri
+import moe.rukamori.archivetune.BuildConfig
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.Dispatchers
@@ -78,7 +79,18 @@ object TidalAudioProvider {
     // fail and callers keep the manual/default list. The payload is a JSON object of the form
     // { "api": [{ "url", "version" }, ...], "streaming": [...], "qobuz": [...] }.
     // (tidal-uptime.geeked.wtf now NXDOMAINs; left empty until a live feed URL is confirmed.)
-    private val INSTANCE_DISCOVERY_SOURCES = emptyList<String>()
+    //
+    // The community Source Pool website (configured via BuildConfig.SOURCE_PROVIDER_URL) exposes a
+    // health-checked feed in this exact { streaming, api } shape at /api/discovery/tidal. When the
+    // URL is set at build time, it becomes the discovery source so the app auto-pulls verified
+    // instances contributed by the community. When blank, discovery stays disabled.
+    private val INSTANCE_DISCOVERY_SOURCES: List<String> =
+        BuildConfig.SOURCE_PROVIDER_URL
+            .trim()
+            .trimEnd('/')
+            .takeIf { it.isNotEmpty() }
+            ?.let { listOf("$it/api/discovery/tidal") }
+            ?: emptyList()
 
     /**
      * User-configured instance list (base URLs), applied via [setInstances]. When empty there are
