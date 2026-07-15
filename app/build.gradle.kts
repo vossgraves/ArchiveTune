@@ -40,6 +40,13 @@ if (localPropertiesFile.exists()) {
     localProperties.load(localPropertiesFile.inputStream())
 }
 
+// Base version. Bump these manually for a big release (e.g. 13.7.x -> 14.0.x). CI derives the
+// per-commit patch/versionCode from the git commit count and injects them via the
+// VERSION_NAME_OVERRIDE / VERSION_CODE_OVERRIDE env vars. Keep each on a single line so the
+// release/canary workflows can grep the base value reliably.
+val baseVersionName = "13.7.1"
+val baseVersionCode = 139
+
 val discordApplicationId =
     (
         localProperties.getProperty("DISCORD_APPLICATION_ID")
@@ -99,8 +106,13 @@ android {
     applicationId = "moe.rukamori.archivetune"
         minSdk = 26
         targetSdk = 37
-        versionCode = 139
-        versionName = "13.7.1"
+        // Version. Locally the committed base values are used. In CI, the release/canary
+        // workflows override them via VERSION_CODE_OVERRIDE / VERSION_NAME_OVERRIDE (derived from
+        // the git commit count) so every push produces a strictly-newer, installable build
+        // without committing a bump back to this file.
+        versionCode = System.getenv("VERSION_CODE_OVERRIDE")?.trim()?.toIntOrNull() ?: baseVersionCode
+        versionName =
+            System.getenv("VERSION_NAME_OVERRIDE")?.trim()?.takeIf { it.isNotEmpty() } ?: baseVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true

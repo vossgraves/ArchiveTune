@@ -3,9 +3,12 @@ on:
   push:
     branches:
       - 'main'
-    paths:
-      - 'app/build.gradle.kts'
   workflow_dispatch:
+
+concurrency:
+  # Serialize main releases so concurrent pushes don't create clashing tags.
+  group: stable-release
+  cancel-in-progress: false
 
 jobs:
   check-version:
@@ -14,32 +17,41 @@ jobs:
     outputs:
       version_changed: ${{ steps.check_version.outputs.version_changed }}
       new_version: ${{ steps.check_version.outputs.new_version }}
+      version_code: ${{ steps.check_version.outputs.version_code }}
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      
-      - name: Check version and Tag
+
+      - name: Compute auto-bumped version
         id: check_version
         run: |
+          set -euo pipefail
           if [ ! -f app/build.gradle.kts ]; then
             echo "Error: app/build.gradle.kts does not exist"
             exit 1
           fi
 
-          # 1. Extract the version from Gradle (using your regex)
-          NEW_VERSION=$(grep -oP 'versionName\s*=\s*"\K[^"]+' app/build.gradle.kts || echo "")
-          
-          if [ -z "$NEW_VERSION" ]; then
-            echo "Error: Could not find versionName in app/build.gradle.kts"
+          # Base major.minor comes from the committed versionName (bump it manually for a big
+          # release, e.g. 13.7.x -> 14.0.x). The patch and versionCode are derived from the git
+          # commit count so every push to main yields a strictly-increasing, installable release
+          # with no commit-back loop.
+          BASE_VERSION="$(grep -oP 'baseVersionName\s*=\s*"\K[^"]+' app/build.gradle.kts || echo '')"
+          if [ -z "$BASE_VERSION" ]; then
+            echo "Error: Could not find baseVersionName in app/build.gradle.kts"
             exit 1
           fi
+          MAJOR_MINOR="$(echo "$BASE_VERSION" | cut -d. -f1-2)"
 
-          # 2. ALWAYS Output the detected version (Fixes the missing output bug)
-          echo "Detected version: $NEW_VERSION"
+          COMMIT_COUNT="$(git rev-list --count HEAD)"
+          NEW_VERSION="${MAJOR_MINOR}.${COMMIT_COUNT}"
+          VERSION_CODE="$COMMIT_COUNT"
+
+          echo "Base version: $BASE_VERSION -> new version: $NEW_VERSION (code $VERSION_CODE)"
           echo "new_version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+          echo "version_code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
 
-          # 3. Check if this version is already released (Tag Existence Check)
+          # Skip only if this exact version tag somehow already exists (e.g. a re-run).
           if git rev-parse "v$NEW_VERSION" >/dev/null 2>&1; then
             echo "Tag v$NEW_VERSION already exists. Skipping release."
             echo "version_changed=false" >> "$GITHUB_OUTPUT"
@@ -52,11 +64,15 @@ jobs:
         run: |
           echo "version_changed: ${{ steps.check_version.outputs.version_changed }}"
           echo "new_version: ${{ steps.check_version.outputs.new_version }}"
+          echo "version_code: ${{ steps.check_version.outputs.version_code }}"
 
   reproducibility:
     needs: check-version
     if: needs.check-version.outputs.version_changed == 'true'
     runs-on: ubuntu-latest
+    env:
+      VERSION_NAME_OVERRIDE: ${{ needs.check-version.outputs.new_version }}
+      VERSION_CODE_OVERRIDE: ${{ needs.check-version.outputs.version_code }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -224,6 +240,9 @@ jobs:
     # Removed '|| workflow_dispatch' so it respects the version check
     if: needs.check-version.outputs.version_changed == 'true'
     runs-on: ubuntu-latest
+    env:
+      VERSION_NAME_OVERRIDE: ${{ needs.check-version.outputs.new_version }}
+      VERSION_CODE_OVERRIDE: ${{ needs.check-version.outputs.version_code }}
     strategy:
       matrix:
         include:

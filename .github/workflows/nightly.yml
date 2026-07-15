@@ -1,21 +1,23 @@
 name: Nightly (canary) build
 
-# Produces canary/nightly builds for the in-app updater's CANARY channel.
-# The updater looks for GitHub releases whose tag starts with "N" followed by date digits
-# (newest wins) and whose assets are named app-<dist>-<device>-<abi>-nightly.apk.
+# Produces canary/dev builds for the in-app updater's CANARY channel.
+# Runs on every push to the 'dev' branch (and on demand). The updater looks for GitHub
+# releases whose tag starts with "N" followed by date digits (newest wins) and whose assets
+# are named app-<dist>-<device>-<abi>-nightly.apk.
 on:
-  schedule:
-    # 03:30 UTC daily. Only actually publishes if there are new commits since the last nightly.
-    - cron: '30 3 * * *'
+  push:
+    branches:
+      - 'dev'
   workflow_dispatch:
     inputs:
       force:
-        description: 'Build even if there are no new commits since the last nightly'
+        description: 'Build even if there are no new commits since the last canary build'
         type: boolean
         default: false
 
 concurrency:
-  group: nightly
+  # Serialize dev canary builds; cancel superseded in-progress runs on rapid pushes.
+  group: dev-canary
   cancel-in-progress: true
 
 jobs:
@@ -26,6 +28,8 @@ jobs:
       should_build: ${{ steps.decide.outputs.should_build }}
       nightly_tag: ${{ steps.decide.outputs.nightly_tag }}
       nightly_name: ${{ steps.decide.outputs.nightly_name }}
+      version_name: ${{ steps.decide.outputs.version_name }}
+      version_code: ${{ steps.decide.outputs.version_code }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -43,10 +47,20 @@ jobs:
           # digits after the leading "N", so a lexical/numeric timestamp gives correct ordering.
           TS="$(date -u +'%Y%m%d%H%M')"
           NIGHTLY_TAG="N${TS}"
-          VERSION_NAME="$(grep -oP 'versionName\s*=\s*"\K[^"]+' app/build.gradle.kts || echo '0.0.0')"
+          BASE_VERSION="$(grep -oP 'baseVersionName\s*=\s*"\K[^"]+' app/build.gradle.kts || echo '0.0.0')"
+          MAJOR_MINOR="$(echo "$BASE_VERSION" | cut -d. -f1-2)"
           SHORT_SHA="$(git rev-parse --short HEAD)"
+          COMMIT_COUNT="$(git rev-list --count HEAD)"
+
+          # Derive a monotonic canary version from the commit count (same scheme as stable) so
+          # each dev build installs over the previous one. The versionName carries a -canary
+          # prerelease tag so it never outranks a stable release with the same numbers.
+          CANARY_VERSION_NAME="${MAJOR_MINOR}.${COMMIT_COUNT}-canary.${SHORT_SHA}"
+
           echo "nightly_tag=${NIGHTLY_TAG}" >> "$GITHUB_OUTPUT"
-          echo "nightly_name=Nightly ${VERSION_NAME}-${SHORT_SHA} (${TS})" >> "$GITHUB_OUTPUT"
+          echo "nightly_name=Canary ${MAJOR_MINOR}.${COMMIT_COUNT}-${SHORT_SHA} (${TS})" >> "$GITHUB_OUTPUT"
+          echo "version_name=${CANARY_VERSION_NAME}" >> "$GITHUB_OUTPUT"
+          echo "version_code=${COMMIT_COUNT}" >> "$GITHUB_OUTPUT"
 
           if [ "${FORCE:-false}" = "true" ]; then
             echo "Forced build requested."
@@ -84,6 +98,9 @@ jobs:
     needs: check
     if: needs.check.outputs.should_build == 'true'
     runs-on: ubuntu-latest
+    env:
+      VERSION_NAME_OVERRIDE: ${{ needs.check.outputs.version_name }}
+      VERSION_CODE_OVERRIDE: ${{ needs.check.outputs.version_code }}
     strategy:
       matrix:
         include:
