@@ -323,7 +323,7 @@
     <string name="news_important_badge">Importante</string>
     <string name="news_tooltip_title">Novedades</string>
     <string name="ai_translation_menu">Traducción con IA</string>
-    <string name="ai_api_test_failed">La prueba de la API falló.</string>
+    <string name="ai_api_test_failed">La prueba de la API falló</string>
     <string name="ai_api_connected">Conectado a la API</string>
     <string name="ai_model_no_results">No hay modelos que coincidan con tu búsqueda</string>
     <string name="ai_model_search">Modelos de búsqueda</string>
@@ -505,7 +505,7 @@
     <string name="year_in_music_current_card">Tarjeta compartida</string>
     <string name="internal_service">Servicios internos</string>
     <string name="external_service">Servicio externo</string>
-    <string name="backup_create_backup_desc">Exportar la biblioteca, la configuración y los detalles de la cuenta</string>
+    <string name="backup_create_backup_desc">Exportar la biblioteca, la configuración y los detalles de la cuenta.</string>
     <string name="import_m3u_format">Lista de reproducción de audio M3U</string>
     <string name="import_csv_format">Lista de reproducción de audio cSV</string>
     <string name="spotify_connect">Conectar Spotify</string>
@@ -514,7 +514,7 @@
     <string name="spotify_not_connected">Spotify no está conectado</string>
     <string name="spotify_login_title">Iniciar sesión en Spotify</string>
     <string name="spotify_loading_library">Cargando la biblioteca de Spotify</string>
-    <string name="spotify_no_sources">Sin listas de reproducción de Spotify.</string>
+    <string name="spotify_no_sources">Sin listas de reproducción de Spotify</string>
     <string name="spotify_account">Cuenta de Spotify</string>
     <string name="spotify_playlists">Lista de reproducción de Spotify</string>
     <string name="spotify_waiting_for_login">Esperando inicio de sesión de Spotify</string>
@@ -529,13 +529,13 @@
     <string name="ai_api_testing">Probando la conexión…</string>
     <string name="ai_api_status_unknown">No probado</string>
     <string name="ai_api_status_success">API lista</string>
-    <string name="ai_api_status_failed">La API falló. Inténtalo de nuevo después de actualizar la configuración</string>
+    <string name="ai_api_status_failed">La API falló. Inténtalo de nuevo después de actualizar la configuración.</string>
     <string name="ai_model">Modelo</string>
-    <string name="ai_model_fetch_hint">Toca actualizar para cargar los modelos disponibles.</string>
-    <string name="ai_model_api_key_required">Se requiere una clave API para cargar los modelos.</string>
+    <string name="ai_model_fetch_hint">Toca actualizar para cargar los modelos disponibles</string>
+    <string name="ai_model_api_key_required">Se requiere una clave API para cargar los modelos</string>
     <string name="ai_model_not_selected">No seleccionado</string>
     <string name="ai_model_loading">Cargando los modelos disponibles…</string>
-    <string name="ai_model_fetch_failed">No se pudieron obtener los modelos disponibles.</string>
+    <string name="ai_model_fetch_failed">No se pudieron obtener los modelos disponibles</string>
     <string name="ai_fetch_models">Obtener modelos</string>
     <string name="about_lead_developer">Desarrollador principal</string>
     <string name="about_archive_tune_team">Equipo</string>
