@@ -124,6 +124,9 @@ fun LibraryMixScreen(
 
     val likedSongsCount by database.likedSongsCount().collectAsState(initial = 0)
     val recentSongs by database.recentSongs(15).collectAsState(initial = emptyList())
+    val topSize by viewModel.topValue.collectAsStateWithLifecycle(initialValue = "50")
+    val myTopTitle = stringResource(R.string.my_top)
+    val topPlaylistTitle = remember(myTopTitle, topSize) { "$myTopTitle $topSize" }
 
     val albums by viewModel.albums.collectAsStateWithLifecycle()
     val artists by viewModel.artists.collectAsStateWithLifecycle()
@@ -211,8 +214,8 @@ fun LibraryMixScreen(
                 }
             }
 
-            // 2. Shortcuts 2x2 Grid
-            item(key = "shortcuts_grid") {
+            // 2. Shortcuts Grid
+            item(key = "shortcuts_grid", contentType = "shortcuts_grid") {
                 Column(
                     modifier =
                         Modifier
@@ -272,6 +275,23 @@ fun LibraryMixScreen(
                             modifier = Modifier.weight(1f),
                             onClick = { navController.navigate("local_songs") },
                         )
+                    }
+
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        ShortcutCard(
+                            title = topPlaylistTitle,
+                            countText = stringResource(R.string.all_time),
+                            iconRes = R.drawable.trending_up,
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f),
+                            iconColor = MaterialTheme.colorScheme.secondary,
+                            modifier = Modifier.weight(1f),
+                            onClick = { navController.navigate("top_playlist/$topSize") },
+                        )
+
+                        Spacer(modifier = Modifier.weight(1f))
                     }
                 }
             }
