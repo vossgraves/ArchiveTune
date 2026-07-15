@@ -54,7 +54,7 @@ object Updater {
     private const val ReleaseCacheCheckIntervalMs: Long = 6 * 60 * 60 * 1000L
     private const val StableReleaseBaseUrl = "https://github.com/vossgraves/ArchiveTune/releases"
     private const val CanaryReleaseBaseUrl =
-        "https://github.com/rukamori/canary/releases"
+        "https://github.com/vossgraves/ArchiveTune/releases"
     var lastCheckTime = -1L
         private set
     private var latestReleaseTag: String? = null
@@ -503,7 +503,7 @@ object Updater {
         cachedEtag: String?,
     ): ReleasesNetworkResult {
         val response: HttpResponse =
-            client.get("https://api.github.com/repos/rukamori/canary/releases?per_page=$perPage") {
+            client.get("https://api.github.com/repos/vossgraves/ArchiveTune/releases?per_page=$perPage") {
                 headers {
                     append("Accept", "application/vnd.github+json")
                     append("User-Agent", "ArchiveTune")
