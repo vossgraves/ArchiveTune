@@ -40,6 +40,7 @@ import java.io.IOException
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.coroutines.resume
 
 @Singleton
 class AiContentFilterRepository
@@ -235,7 +236,7 @@ class AiContentFilterRepository
                             if (!call.isCanceled()) {
                                 Timber.w(exception, "Failed to update AI content filter lists")
                             }
-                            continuation.tryResume(null)?.let(continuation::completeResume)
+                            continuation.resume(null)
                         }
 
                         override fun onResponse(
@@ -249,7 +250,7 @@ class AiContentFilterRepository
                                     Timber.w(exception, "Failed to read AI content filter response")
                                     null
                                 }
-                            continuation.tryResume(result)?.let(continuation::completeResume)
+                            continuation.resume(result)
                         }
                     },
                 )
