@@ -178,13 +178,15 @@ object Updater {
         parseSemVerOrNull(release.tagName) ?: parseSemVerOrNull(release.name)
 
     // Canary builds share a single fixed display versionName (e.g. "13.7.5"), so the version *name*
-    // can't distinguish two canary builds. Instead each canary build number is carried as semver
-    // build-metadata: "13.7.5+build.<versionCode>". When a version string carries that metadata we
-    // compare the monotonic build number against the running app's BuildConfig.VERSION_CODE, which
-    // is what makes "update available" true only for a genuinely newer canary build.
-    private val buildMetadataRegex = Regex("""\+build\.(\d+)""")
+    // can't distinguish two canary builds. Instead each canary build number is carried inline as a
+    // human-readable suffix: "13.7.5 (build <versionCode>)". This string is both shown in the UI and
+    // used for comparison — when it carries a build number we compare that monotonic number against
+    // the running app's BuildConfig.VERSION_CODE, which is what makes "update available" true only
+    // for a genuinely newer canary build. The string never leaves the app (it is produced and parsed
+    // by this same Updater), so the format is free to be display-friendly.
+    private val buildNumberRegex = Regex("""\(build (\d+)\)""")
 
-    internal fun buildNumberOrNull(version: String): Int? = buildMetadataRegex.find(version)?.groupValues?.get(1)?.toIntOrNull()
+    internal fun buildNumberOrNull(version: String): Int? = buildNumberRegex.find(version)?.groupValues?.get(1)?.toIntOrNull()
 
     internal fun isSameVersion(
         a: String,
@@ -403,12 +405,12 @@ object Updater {
 
     suspend fun getLatestCanaryVersionName(): Result<String> =
         getLatestCanaryReleaseInfo().map { latest ->
-            // Return the fixed display versionName carrying the build number as semver build-metadata
-            // (e.g. "13.7.5+build.4992") so downstream comparisons detect genuinely newer builds while
-            // the UI still shows a clean, fixed version string.
+            // Return the fixed display versionName with the build number as a readable suffix
+            // (e.g. "13.7.5 (build 4992)"). This shows cleanly in the update UI and is parsed back by
+            // buildNumberOrNull for comparison, so the popup only appears for a genuinely newer build.
             val buildNumber = canaryBuildNumber(latest)
             if (buildNumber != null) {
-                "${BuildConfig.VERSION_NAME}+build.$buildNumber"
+                "${BuildConfig.VERSION_NAME} (build $buildNumber)"
             } else {
                 latest.tagName.ifBlank { latest.name }
             }
