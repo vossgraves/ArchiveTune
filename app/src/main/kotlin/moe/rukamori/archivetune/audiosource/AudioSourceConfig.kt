@@ -6,6 +6,7 @@
 
 package moe.rukamori.archivetune.audiosource
 
+import java.text.Normalizer
 import moe.rukamori.archivetune.constants.AudioSourceType
 
 /**
@@ -20,7 +21,88 @@ data class DirectStream(
     /** Human-readable label for logging/UI, e.g. "Tidal (account) HI_RES". */
     val label: String,
     val source: AudioSourceType,
+    /**
+     * The title of the track the provider actually matched, used by the playback layer to gate on
+     * title-match accuracy (see [TitleMatch]). Null when the provider resolved a stream by a trusted
+     * direct id and no candidate title was scored, in which case the match is treated as exact.
+     */
+    val matchedTitle: String? = null,
 )
+
+/**
+ * Title-only fuzzy match scoring used to gate lossless source playback. The playback layer only
+ * switches away from YouTube to a lossless source (Tidal/Qobuz) when the resolved track's title
+ * matches the requested title with a high similarity ratio, and — when several sources qualify —
+ * the source with the highest title similarity wins. Artist/album are deliberately ignored here so
+ * that a correct recording is not rejected because of differing artist credit formatting.
+ */
+object TitleMatch {
+    /** Similarity ratio (0.0..1.0) required to accept a lossless source over YouTube. */
+    const val ACCEPT_THRESHOLD = 0.95
+
+    /**
+     * Normalizes a title for comparison: lowercased, diacritics stripped, feat/version qualifiers
+     * removed, and reduced to a compact `a-z0-9 ` token string. Mirrors the per-provider title
+     * normalization so the gate agrees with each provider's own candidate scoring.
+     */
+    fun normalize(value: String?): String =
+        (value ?: "")
+            .lowercase()
+            .let { Normalizer.normalize(it, Normalizer.Form.NFD) }
+            .replace(Regex("\\p{Mn}+"), "")
+            .replace(Regex("[^a-z0-9]+"), " ")
+            .replace(Regex("""\b(feat|ft|featuring)\b.*$"""), "")
+            .replace(Regex("""\b(explicit|clean|remaster|remastered|version|audio|official)\b"""), " ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+
+    /**
+     * Returns the title-match ratio in 0.0..1.0 between [wanted] and [candidate] after
+     * normalization, using a Levenshtein-based similarity (1 - distance / longestLength). Two blank
+     * titles are treated as a non-match (0.0) so missing metadata never passes the gate.
+     */
+    fun ratio(
+        wanted: String?,
+        candidate: String?,
+    ): Double {
+        val a = normalize(wanted)
+        val b = normalize(candidate)
+        if (a.isEmpty() || b.isEmpty()) return 0.0
+        if (a == b) return 1.0
+        val distance = levenshtein(a, b)
+        val longest = maxOf(a.length, b.length)
+        if (longest == 0) return 0.0
+        return 1.0 - distance.toDouble() / longest.toDouble()
+    }
+
+    private fun levenshtein(
+        a: String,
+        b: String,
+    ): Int {
+        val m = a.length
+        val n = b.length
+        if (m == 0) return n
+        if (n == 0) return m
+        var previous = IntArray(n + 1) { it }
+        var current = IntArray(n + 1)
+        for (i in 1..m) {
+            current[0] = i
+            for (j in 1..n) {
+                val cost = if (a[i - 1] == b[j - 1]) 0 else 1
+                current[j] =
+                    minOf(
+                        current[j - 1] + 1,
+                        previous[j] + 1,
+                        previous[j - 1] + cost,
+                    )
+            }
+            val tmp = previous
+            previous = current
+            current = tmp
+        }
+        return previous[n]
+    }
+}
 
 /**
  * Pure helpers for the multi-source framework. These operate on already-read preference values so

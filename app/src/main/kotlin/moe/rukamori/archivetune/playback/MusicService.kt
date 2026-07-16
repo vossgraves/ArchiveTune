@@ -200,6 +200,7 @@ import moe.rukamori.archivetune.qobuz.QobuzAudioProvider
 import moe.rukamori.archivetune.qobuz.QobuzToken
 import moe.rukamori.archivetune.audiosource.AudioSourceConfig
 import moe.rukamori.archivetune.audiosource.DirectStream
+import moe.rukamori.archivetune.audiosource.TitleMatch
 import moe.rukamori.archivetune.tidal.TidalAccountManager
 import moe.rukamori.archivetune.tidal.TidalAudioProvider
 import moe.rukamori.archivetune.utils.PoolAccountManager
@@ -7138,6 +7139,15 @@ class MusicService :
         }
         Timber.tag("MusicService").d("Source query built: title=\"%s\" artists=%s durationMs=%s", query.title, query.artists.joinToString("/"), query.durationMs?.toString() ?: "?")
 
+        // Resolve each enabled lossless source and only accept one whose *title* matches the
+        // requested title with high accuracy (>= TitleMatch.ACCEPT_THRESHOLD, i.e. 95%). Artist and
+        // album are intentionally ignored for the gate. When more than one source qualifies, the one
+        // with the highest title-match ratio wins (ties keep the user's preferred chain order), so
+        // e.g. Tidal is used over Qobuz only when its match is at least as accurate. If no source
+        // clears the threshold, playback silently falls through to YouTube.
+        var best: DirectStream? = null
+        var bestSource: AudioSourceType? = null
+        var bestRatio = 0.0
         for (source in chain) {
             Timber.tag("MusicService").d("Trying source: %s for \"%s\"", source.name, query.title)
             val stream: DirectStream? =
@@ -7146,31 +7156,62 @@ class MusicService :
                     AudioSourceType.QOBUZ -> resolveQobuzStream(query)
                     AudioSourceType.YOUTUBE -> null
                 }
-            if (stream != null) {
-                Timber.tag("MusicService").i("Source WIN: %s resolved \"%s\" [%s] (%s)", source.name, query.title, stream.label, stream.uri.take(80))
-                // Persist the winning source's track id as a future health-probe track.
-                if (source == AudioSourceType.TIDAL) {
-                    TidalAudioProvider.lastResolvedTrackId?.takeIf { it.isNotBlank() }?.let { probe ->
-                        runCatching {
-                            runBlocking { dataStore.edit { prefs -> prefs[TidalLastProbeTrackKey] = probe } }
-                        }
-                    }
-                } else if (source == AudioSourceType.QOBUZ) {
-                    QobuzAudioProvider.lastResolvedTrackId?.takeIf { it.isNotBlank() }?.let { probe ->
-                        runCatching {
-                            runBlocking { dataStore.edit { prefs -> prefs[QobuzLastProbeTrackKey] = probe } }
-                        }
-                    }
-                }
-                return applyDirectStream(dataSpec, mediaId, stream)
+            if (stream == null) {
+                Timber.tag("MusicService").d("Source %s did not resolve \"%s\"", source.name, query.title)
+                continue
             }
-            Timber.tag("MusicService").d("Source %s did not resolve \"%s\"", source.name, query.title)
+            // A null matchedTitle means the provider streamed a trusted direct id without scoring a
+            // candidate title; treat that as an exact match so explicit id playback is not blocked.
+            val ratio =
+                if (stream.matchedTitle == null) 1.0 else TitleMatch.ratio(query.title, stream.matchedTitle)
+            if (ratio < TitleMatch.ACCEPT_THRESHOLD) {
+                Timber.tag("MusicService").i(
+                    "Source %s rejected for \"%s\": title match %.1f%% (< %.0f%%) matched=\"%s\"",
+                    source.name, query.title, ratio * 100, TitleMatch.ACCEPT_THRESHOLD * 100, stream.matchedTitle ?: "?",
+                )
+                continue
+            }
+            Timber.tag("MusicService").d(
+                "Source %s candidate for \"%s\": title match %.1f%% [%s]",
+                source.name, query.title, ratio * 100, stream.label,
+            )
+            if (ratio > bestRatio) {
+                best = stream
+                bestSource = source
+                bestRatio = ratio
+            }
+            // A near-exact match cannot be beaten; stop probing further sources.
+            if (bestRatio >= 0.999) break
         }
 
-        // A non-YouTube source was requested but none could resolve this track; silently fall back
-        // to YouTube (no user-facing notice — the track just plays from YouTube). Kept as a debug
-        // log only.
-        Timber.tag("MusicService").w("All lossless sources failed for \"%s\"; falling back to YouTube", query.title)
+        val winningStream = best
+        val winningSource = bestSource
+        if (winningStream != null && winningSource != null) {
+            Timber.tag("MusicService").i(
+                "Source WIN: %s resolved \"%s\" [%s] title match %.1f%% (%s)",
+                winningSource.name, query.title, winningStream.label, bestRatio * 100, winningStream.uri.take(80),
+            )
+            // Persist the winning source's track id as a future health-probe track.
+            if (winningSource == AudioSourceType.TIDAL) {
+                TidalAudioProvider.lastResolvedTrackId?.takeIf { it.isNotBlank() }?.let { probe ->
+                    runCatching {
+                        runBlocking { dataStore.edit { prefs -> prefs[TidalLastProbeTrackKey] = probe } }
+                    }
+                }
+            } else if (winningSource == AudioSourceType.QOBUZ) {
+                QobuzAudioProvider.lastResolvedTrackId?.takeIf { it.isNotBlank() }?.let { probe ->
+                    runCatching {
+                        runBlocking { dataStore.edit { prefs -> prefs[QobuzLastProbeTrackKey] = probe } }
+                    }
+                }
+            }
+            return applyDirectStream(dataSpec, mediaId, winningStream)
+        }
+
+        // A non-YouTube source was requested but none matched the title accurately enough; silently
+        // fall back to YouTube (no user-facing notice — the track just plays from YouTube). Kept as a
+        // debug log only.
+        Timber.tag("MusicService").w("No lossless source cleared the 95%% title match for \"%s\"; falling back to YouTube", query.title)
         tidalActiveMediaIds.remove(mediaId)
         return null
     }
@@ -7441,6 +7482,7 @@ class MusicService :
             contentLength = resolved.contentLength,
             label = "Tidal ${resolved.label}",
             source = AudioSourceType.TIDAL,
+            matchedTitle = resolved.matchedTitle,
         )
     }
 

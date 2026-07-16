@@ -105,6 +105,12 @@ import moe.rukamori.archivetune.utils.SpeedDialPin
 import moe.rukamori.archivetune.utils.SpeedDialPinType
 import moe.rukamori.archivetune.utils.isLocalMediaId
 import moe.rukamori.archivetune.utils.parseSpeedDialPins
+import moe.rukamori.archivetune.audiosource.AudioSourceConfig
+import moe.rukamori.archivetune.constants.AudioSourceOrderKey
+import moe.rukamori.archivetune.constants.AudioSourceType
+import moe.rukamori.archivetune.constants.QobuzEnabledKey
+import moe.rukamori.archivetune.constants.TidalEnabledKey
+import moe.rukamori.archivetune.ui.screens.settings.SourceOrderDialog
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.utils.serializeSpeedDialPins
 import moe.rukamori.archivetune.utils.shareLocalAudio
@@ -218,6 +224,32 @@ fun PlayerMenu(
             Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
         },
     )
+
+    // Preferred-source picker (same order + enabled state as the Settings > Playback sources screen).
+    val (sourceOrderRaw, onSourceOrderChange) = rememberPreference(AudioSourceOrderKey, "")
+    val (tidalSourceEnabled) = rememberPreference(TidalEnabledKey, true)
+    val (qobuzSourceEnabled) = rememberPreference(QobuzEnabledKey, false)
+    val sourceOrder =
+        remember(sourceOrderRaw) { AudioSourceConfig.parseOrder(sourceOrderRaw.ifBlank { null }) }
+    fun isSourceEnabled(source: AudioSourceType): Boolean =
+        when (source) {
+            AudioSourceType.TIDAL -> tidalSourceEnabled
+            AudioSourceType.QOBUZ -> qobuzSourceEnabled
+            AudioSourceType.YOUTUBE -> true
+        }
+    var showSourceDialog by rememberSaveable { mutableStateOf(false) }
+
+    if (showSourceDialog) {
+        SourceOrderDialog(
+            initialOrder = sourceOrder,
+            isEnabled = ::isSourceEnabled,
+            onDismiss = { showSourceDialog = false },
+            onConfirm = { newOrder ->
+                onSourceOrderChange(newOrder.joinToString(",") { it.name })
+                showSourceDialog = false
+            },
+        )
+    }
 
     var showSelectArtistDialog by rememberSaveable {
         mutableStateOf(false)
@@ -551,6 +583,20 @@ fun PlayerMenu(
                                             playerBottomSheetState.snapTo(playerBottomSheetState.collapsedBound)
                                             navController.navigate("settings/music_together")
                                         },
+                                    ),
+                                )
+                                add(
+                                    NewAction(
+                                        icon = {
+                                            Icon(
+                                                painter = painterResource(R.drawable.tune),
+                                                contentDescription = null,
+                                                modifier = Modifier.size(28.dp),
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        },
+                                        text = stringResource(R.string.source),
+                                        onClick = { showSourceDialog = true },
                                     ),
                                 )
                             }

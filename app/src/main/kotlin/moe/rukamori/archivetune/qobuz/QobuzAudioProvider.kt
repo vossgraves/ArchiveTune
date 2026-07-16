@@ -121,7 +121,10 @@ object QobuzAudioProvider {
             .callTimeout(8, TimeUnit.SECONDS)
             .build()
 
-    private data class CachedSearch(val trackId: String?, val expiresAt: Long)
+    private data class CachedSearch(val match: Match?, val expiresAt: Long)
+
+    /** A scored search hit: the track id to stream plus the title that was matched. */
+    private data class Match(val id: String, val title: String)
 
     private data class CachedStream(val stream: DirectStream, val expiresAt: Long)
 
@@ -357,10 +360,11 @@ object QobuzAudioProvider {
 
         val available = backends.filterNot { isInstanceCoolingDown(it.id, now) }.ifEmpty { backends }
         for (backend in available) {
-            val trackId =
+            val match =
                 runCatching { resolveTrackId(backend, query) }
                     .onFailure { markInstanceFailed(backend.id, hardFailure = it is java.io.IOException) }
                     .getOrNull() ?: continue
+            val trackId = match.id
             val download =
                 runCatching { backend.download(trackId, formatId) }
                     .onFailure { markInstanceFailed(backend.id, hardFailure = it is java.io.IOException) }
@@ -385,6 +389,7 @@ object QobuzAudioProvider {
                     contentLength = null,
                     label = "Qobuz ${qualityLabel(formatId)}",
                     source = AudioSourceType.QOBUZ,
+                    matchedTitle = match.title,
                 )
             streamCache[cacheKey] = CachedStream(stream, now + STREAM_CACHE_MS)
             Timber.tag("Qobuz").i("resolved \"%s\" via %s [%s]", query.title, backend.label, stream.label)
@@ -435,11 +440,11 @@ object QobuzAudioProvider {
     private fun resolveTrackId(
         backend: Backend,
         query: Query,
-    ): String? {
+    ): Match? {
         val now = System.currentTimeMillis()
         val key = backend.id + "|" + query.cacheKey()
         searchCache[key]?.let { cached ->
-            if (cached.expiresAt > now) return cached.trackId
+            if (cached.expiresAt > now) return cached.match
             searchCache.remove(key)
         }
         val searchQuery =
@@ -447,26 +452,28 @@ object QobuzAudioProvider {
                 .filter { it.isNotBlank() }
                 .joinToString(" ")
                 .ifBlank { query.title }
-        val trackId = bestMatch(backend, searchQuery, query)
-        searchCache[key] = CachedSearch(trackId, now + SEARCH_CACHE_MS)
-        return trackId
+        val match = bestMatch(backend, searchQuery, query)
+        searchCache[key] = CachedSearch(match, now + SEARCH_CACHE_MS)
+        return match
     }
 
-    /** Runs search and scores results against [query], returning the best track id above threshold. */
+    /** Runs search and scores results against [query], returning the best match above threshold. */
     private fun bestMatch(
         backend: Backend,
         searchQuery: String,
         query: Query,
-    ): String? {
+    ): Match? {
         val items = backend.search(searchQuery) ?: return null
         val wantedTitle = query.title.titleMatchNormalized()
         val wantedArtists = query.artists.map { it.normalized() }.filter { it.isNotBlank() }
         var bestId: String? = null
+        var bestTitle = ""
         var bestScore = Int.MIN_VALUE
         for (index in 0 until items.length()) {
             val item = items.optJSONObject(index) ?: continue
             val id = item.trackId() ?: continue
-            val candidateTitle = (item.stringOrNull("title") ?: continue).titleMatchNormalized()
+            val rawTitle = item.stringOrNull("title") ?: continue
+            val candidateTitle = rawTitle.titleMatchNormalized()
             val candidateArtist =
                 item.optJSONObject("performer")?.stringOrNull("name")
                     ?: item.stringOrNull("artist")
@@ -485,9 +492,11 @@ object QobuzAudioProvider {
             if (score > bestScore) {
                 bestScore = score
                 bestId = id
+                bestTitle = rawTitle
             }
         }
-        return if (bestScore >= MIN_MATCH_SCORE) bestId else null
+        val id = bestId
+        return if (bestScore >= MIN_MATCH_SCORE && id != null) Match(id, bestTitle) else null
     }
 
     /** Health-only search helper: returns any track id for a canned query (or null). */
