@@ -682,10 +682,10 @@
     <string name="source_youtube">YouTube</string>
     <string name="playback_sources">Sources</string>
     <string name="preferred_sources">Preferred sources</string>
-    <string name="preferred_sources_summary">Top of the list is tried first</string>
+    <string name="preferred_sources_summary"></string>
     <string name="set_source_priority">Drag to set source priority</string>
     <string name="source_priority_description"></string>
-    <string name="youtube_source_note">YouTube always works and needs no setup. Place a lossless source above it to override YouTube playback.</string>
+    <string name="youtube_source_note"></string>
     <string name="tidal_specific">Tidal</string>
     <string name="qobuz_specific">Qobuz</string>
     <string name="manage_in_integration">Log in, tokens &amp; instances — in Integration</string>
@@ -726,10 +726,13 @@
     <string name="tidal_no_instances">No instances configured. Add one or reset to defaults.</string>
     <string name="tidal_check_instances">Test instances</string>
     <string name="tidal_checking_instances">Testing…</string>
-    <string name="tidal_instance_healthy">online — %1$d ms</string>
-    <string name="tidal_instance_unreachable">connection failed</string>
-    <string name="tidal_instance_preview_only">deprecated — %1$d ms</string>
-    <string name="tidal_instance_unknown">Not tested — tap Test instances</string>
+    <string name="tidal_instance_healthy">Online — %1$d ms</string>
+    <string name="tidal_instance_unreachable">Dead</string>
+    <string name="tidal_instance_preview_only">Degraded — %1$d ms</string>
+    <string name="tidal_instance_unknown">Not tested</string>
+    <string name="instance_info_online">Working — full quality, premium account confirmed.</string>
+    <string name="instance_info_degraded">No premium account or lossless quality unavailable. Instance is reachable but returned a 30-second preview.</string>
+    <string name="instance_info_dead">Connection failed — instance unreachable.</string>
 
     <!-- Qobuz music source integration -->
     <string name="source_qobuz">Qobuz</string>
@@ -765,10 +768,13 @@
     <string name="qobuz_checking_tokens">Testing tokens…</string>
     <string name="qobuz_reset_tokens">Clear all tokens</string>
     <string name="qobuz_token_subtitle">%1$s · id %2$s</string>
-    <string name="qobuz_token_status_ok">signed in — full quality</string>
-    <string name="qobuz_token_status_preview">no lossless — check subscription</string>
-    <string name="qobuz_token_status_invalid">invalid or expired — sign in again</string>
-    <string name="qobuz_token_status_unknown">not checked</string>
+    <string name="qobuz_token_status_ok">Online</string>
+    <string name="qobuz_token_status_preview">Degraded — no lossless</string>
+    <string name="qobuz_token_status_invalid">Dead</string>
+    <string name="qobuz_token_status_unknown">Not tested</string>
+    <string name="token_info_online">Signed in — full lossless quality confirmed.</string>
+    <string name="token_info_degraded">Account does not have lossless quality. Check your Qobuz subscription.</string>
+    <string name="token_info_dead">Invalid or expired token — sign in again.</string>
 
     <!-- Shared source settings -->
     <string name="source_manage_instances">Manage instances</string>

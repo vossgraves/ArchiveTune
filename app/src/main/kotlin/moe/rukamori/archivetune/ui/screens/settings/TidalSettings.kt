@@ -113,6 +113,7 @@ fun TidalSettings(navController: NavController) {
     var testingInstances by remember { mutableStateOf(false) }
     var showAddDialog by remember { mutableStateOf(false) }
     var showBulkDialog by remember { mutableStateOf(false) }
+    var infoDialogMessage by remember { mutableStateOf<String?>(null) }
 
     fun toast(message: String) {
         Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
@@ -176,6 +177,18 @@ fun TidalSettings(navController: NavController) {
             applyRecords(records)
             testingInstances = false
         }
+    }
+
+    infoDialogMessage?.let { message ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { infoDialogMessage = null },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = { infoDialogMessage = null }) {
+                    Text(stringResource(android.R.string.ok))
+                }
+            },
+            text = { Text(message) },
+        )
     }
 
     if (showAddDialog) {
@@ -336,21 +349,32 @@ fun TidalSettings(navController: NavController) {
                 effectiveInstances.forEach { instance ->
                     item {
                         val status = healthStatus[instance]
-                        // Status colors: online = light blue, deprecated/preview-only = purple,
-                        // connection failed = error red. Untested falls back to the muted default.
+                        val onlineColor = Color(0xFF4FC3F7)
+                        val degradedColor = Color(0xFFB388FF)
+                        val deadColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        val untestedColor = MaterialTheme.colorScheme.onSurfaceVariant
                         val statusColor =
                             when (status) {
-                                TidalAudioProvider.InstanceHealth.HEALTHY -> Color(0xFF4FC3F7)
-                                TidalAudioProvider.InstanceHealth.PREVIEW_ONLY -> Color(0xFFB388FF)
-                                TidalAudioProvider.InstanceHealth.UNREACHABLE ->
-                                    MaterialTheme.colorScheme.error
-                                null -> MaterialTheme.colorScheme.onSurfaceVariant
+                                TidalAudioProvider.InstanceHealth.HEALTHY -> onlineColor
+                                TidalAudioProvider.InstanceHealth.PREVIEW_ONLY -> degradedColor
+                                TidalAudioProvider.InstanceHealth.UNREACHABLE -> deadColor
+                                null -> untestedColor
                             }
                         val statusLabel =
                             if (status != null) {
                                 labelFor(status, healthLatency[instance])
                             } else {
                                 stringResource(R.string.tidal_instance_unknown)
+                            }
+                        val infoMessage =
+                            when (status) {
+                                TidalAudioProvider.InstanceHealth.HEALTHY ->
+                                    stringResource(R.string.instance_info_online)
+                                TidalAudioProvider.InstanceHealth.PREVIEW_ONLY ->
+                                    stringResource(R.string.instance_info_degraded)
+                                TidalAudioProvider.InstanceHealth.UNREACHABLE ->
+                                    stringResource(R.string.instance_info_dead)
+                                null -> null
                             }
                         PreferenceEntry(
                             title = {
@@ -365,16 +389,30 @@ fun TidalSettings(navController: NavController) {
                             },
                             icon = { Icon(painterResource(R.drawable.link), null) },
                             trailingContent = {
-                                IconButton(
-                                    onClick = {
-                                        val remaining = effectiveInstances - instance
-                                        healthStatus.remove(instance)
-                                        healthLatency.remove(instance)
-                                        persistInstances(remaining)
-                                    },
-                                    onLongClick = {},
-                                ) {
-                                    Icon(painterResource(R.drawable.delete), null)
+                                androidx.compose.foundation.layout.Row {
+                                    if (infoMessage != null) {
+                                        IconButton(
+                                            onClick = { infoDialogMessage = infoMessage },
+                                            onLongClick = {},
+                                        ) {
+                                            Icon(
+                                                painterResource(R.drawable.info),
+                                                contentDescription = null,
+                                                tint = statusColor,
+                                            )
+                                        }
+                                    }
+                                    IconButton(
+                                        onClick = {
+                                            val remaining = effectiveInstances - instance
+                                            healthStatus.remove(instance)
+                                            healthLatency.remove(instance)
+                                            persistInstances(remaining)
+                                        },
+                                        onLongClick = {},
+                                    ) {
+                                        Icon(painterResource(R.drawable.delete), null)
+                                    }
                                 }
                             },
                         )

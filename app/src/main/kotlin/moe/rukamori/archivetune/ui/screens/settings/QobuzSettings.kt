@@ -97,6 +97,7 @@ fun QobuzSettings(navController: NavController) {
     var testingInstances by remember { mutableStateOf(false) }
     var showAddDialog by remember { mutableStateOf(false) }
     var showBulkDialog by remember { mutableStateOf(false) }
+    var infoDialogMessage by remember { mutableStateOf<String?>(null) }
 
     // Direct-API tokens, stored as a JSON list. Tried before proxy instances during resolution.
     val (storedTokens, onStoredTokensChange) = rememberPreference(QobuzTokensKey, "")
@@ -195,6 +196,18 @@ fun QobuzSettings(navController: NavController) {
             return
         }
         copyToClipboard(context, "Qobuz instances", online)
+    }
+
+    infoDialogMessage?.let { message ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { infoDialogMessage = null },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = { infoDialogMessage = null }) {
+                    Text(stringResource(android.R.string.ok))
+                }
+            },
+            text = { Text(message) },
+        )
     }
 
     if (showBulkDialog) {
@@ -341,12 +354,14 @@ fun QobuzSettings(navController: NavController) {
                 tokens.forEach { token ->
                     item {
                         val status = tokenHealth[token.id]
+                        val onlineColor = Color(0xFF4FC3F7)
+                        val degradedColor = Color(0xFFB388FF)
+                        val deadColor = MaterialTheme.colorScheme.onSurfaceVariant
                         val statusColor =
                             when (status) {
-                                TidalAudioProvider.InstanceHealth.HEALTHY -> Color(0xFF4FC3F7)
-                                TidalAudioProvider.InstanceHealth.PREVIEW_ONLY -> Color(0xFFB388FF)
-                                TidalAudioProvider.InstanceHealth.UNREACHABLE ->
-                                    MaterialTheme.colorScheme.error
+                                TidalAudioProvider.InstanceHealth.HEALTHY -> onlineColor
+                                TidalAudioProvider.InstanceHealth.PREVIEW_ONLY -> degradedColor
+                                TidalAudioProvider.InstanceHealth.UNREACHABLE -> deadColor
                                 null -> MaterialTheme.colorScheme.onSurfaceVariant
                             }
                         val statusLabel =
@@ -358,6 +373,16 @@ fun QobuzSettings(navController: NavController) {
                                 TidalAudioProvider.InstanceHealth.UNREACHABLE ->
                                     stringResource(R.string.qobuz_token_status_invalid)
                                 null -> stringResource(R.string.qobuz_token_status_unknown)
+                            }
+                        val tokenInfoMessage =
+                            when (status) {
+                                TidalAudioProvider.InstanceHealth.HEALTHY ->
+                                    stringResource(R.string.token_info_online)
+                                TidalAudioProvider.InstanceHealth.PREVIEW_ONLY ->
+                                    stringResource(R.string.token_info_degraded)
+                                TidalAudioProvider.InstanceHealth.UNREACHABLE ->
+                                    stringResource(R.string.token_info_dead)
+                                null -> null
                             }
                         val displayName = token.label.ifBlank { token.userId.ifBlank { "Qobuz account" } }
                         PreferenceEntry(
@@ -373,14 +398,28 @@ fun QobuzSettings(navController: NavController) {
                             },
                             icon = { Icon(painterResource(R.drawable.token), null) },
                             trailingContent = {
-                                IconButton(
-                                    onClick = {
-                                        tokenHealth.remove(token.id)
-                                        persistTokens(tokens - token)
-                                    },
-                                    onLongClick = {},
-                                ) {
-                                    Icon(painterResource(R.drawable.delete), null)
+                                androidx.compose.foundation.layout.Row {
+                                    if (tokenInfoMessage != null) {
+                                        IconButton(
+                                            onClick = { infoDialogMessage = tokenInfoMessage },
+                                            onLongClick = {},
+                                        ) {
+                                            Icon(
+                                                painterResource(R.drawable.info),
+                                                contentDescription = null,
+                                                tint = statusColor,
+                                            )
+                                        }
+                                    }
+                                    IconButton(
+                                        onClick = {
+                                            tokenHealth.remove(token.id)
+                                            persistTokens(tokens - token)
+                                        },
+                                        onLongClick = {},
+                                    ) {
+                                        Icon(painterResource(R.drawable.delete), null)
+                                    }
                                 }
                             },
                         )
@@ -426,15 +465,74 @@ fun QobuzSettings(navController: NavController) {
                 effectiveInstances.forEach { instance ->
                     item {
                         val status = healthStatus[instance]
-                        // online = light blue, deprecated/preview-only = purple, failed = error red.
+                        val onlineColor = Color(0xFF4FC3F7)
+                        val degradedColor = Color(0xFFB388FF)
+                        val deadColor = MaterialTheme.colorScheme.onSurfaceVariant
                         val statusColor =
                             when (status) {
-                                TidalAudioProvider.InstanceHealth.HEALTHY -> Color(0xFF4FC3F7)
-                                TidalAudioProvider.InstanceHealth.PREVIEW_ONLY -> Color(0xFFB388FF)
-                                TidalAudioProvider.InstanceHealth.UNREACHABLE ->
-                                    MaterialTheme.colorScheme.error
+                                TidalAudioProvider.InstanceHealth.HEALTHY -> onlineColor
+                                TidalAudioProvider.InstanceHealth.PREVIEW_ONLY -> degradedColor
+                                TidalAudioProvider.InstanceHealth.UNREACHABLE -> deadColor
                                 null -> MaterialTheme.colorScheme.onSurfaceVariant
                             }
+                        val statusLabel =
+                            if (status != null) {
+                                labelFor(status, healthLatency[instance])
+                            } else {
+                                stringResource(R.string.tidal_instance_unknown)
+                            }
+                        val instanceInfoMessage =
+                            when (status) {
+                                TidalAudioProvider.InstanceHealth.HEALTHY ->
+                                    stringResource(R.string.instance_info_online)
+                                TidalAudioProvider.InstanceHealth.PREVIEW_ONLY ->
+                                    stringResource(R.string.instance_info_degraded)
+                                TidalAudioProvider.InstanceHealth.UNREACHABLE ->
+                                    stringResource(R.string.instance_info_dead)
+                                null -> null
+                            }
+                        PreferenceEntry(
+                            title = {
+                                Column {
+                                    Text(instance)
+                                    Text(
+                                        text = statusLabel,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = statusColor,
+                                    )
+                                }
+                            },
+                            icon = { Icon(painterResource(R.drawable.link), null) },
+                            trailingContent = {
+                                androidx.compose.foundation.layout.Row {
+                                    if (instanceInfoMessage != null) {
+                                        IconButton(
+                                            onClick = { infoDialogMessage = instanceInfoMessage },
+                                            onLongClick = {},
+                                        ) {
+                                            Icon(
+                                                painterResource(R.drawable.info),
+                                                contentDescription = null,
+                                                tint = statusColor,
+                                            )
+                                        }
+                                    }
+                                    IconButton(
+                                        onClick = {
+                                            val remaining = effectiveInstances - instance
+                                            healthStatus.remove(instance)
+                                            healthLatency.remove(instance)
+                                            persistInstances(remaining)
+                                        },
+                                        onLongClick = {},
+                                    ) {
+                                        Icon(painterResource(R.drawable.delete), null)
+                                    }
+                                }
+                            },
+                        )
+                    }
+                }
                         val statusLabel =
                             if (status != null) {
                                 labelFor(status, healthLatency[instance])
