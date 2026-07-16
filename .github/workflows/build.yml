@@ -408,7 +408,9 @@ jobs:
 
   notifyUser:
     name: Notify referenced issues
-    if: github.ref == 'refs/heads/dev' && github.actor != 'dependabot[bot]' && github.actor != 'renovate[bot]'
+    # Fork: only run on the upstream repo. On forks the referenced issue numbers don't exist, so
+    # this job fails with "Not Found" and shows a spurious red X on otherwise-green builds.
+    if: github.repository == 'rukamori/ArchiveTune' && github.ref == 'refs/heads/dev' && github.actor != 'dependabot[bot]' && github.actor != 'renovate[bot]'
     needs:
       - build
       - aggregateAndSend
