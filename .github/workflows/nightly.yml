@@ -101,6 +101,7 @@ jobs:
     env:
       VERSION_NAME_OVERRIDE: ${{ needs.check.outputs.version_name }}
       VERSION_CODE_OVERRIDE: ${{ needs.check.outputs.version_code }}
+      NIGHTLY_BUILD_HASH: ${{ github.sha }}
       # Marks the APK as a canary/nightly build (BuildConfig.IS_NIGHTLY). Drives the default update
       # channel and the build-number-based canary update comparison.
       IS_NIGHTLY_BUILD: 'true'

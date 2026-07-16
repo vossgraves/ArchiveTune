@@ -314,7 +314,11 @@ fun UpdateScreen(
 
                     releaseResult
                         .onSuccess { release ->
-                            val version = Updater.getReleaseVersionName(release)
+                            val version =
+                                when (updateChannel) {
+                                    UpdateChannel.CANARY -> Updater.getCanaryReleaseVersionName(release)
+                                    UpdateChannel.STABLE -> Updater.getReleaseVersionName(release)
+                                }
                             latestVersion = version
                             updateSheetNotes = release.body
                             updateSheetIsSameVersion = !Updater.isUpdateAvailable(version, BuildConfig.VERSION_NAME)

@@ -60,7 +60,7 @@ object Updater {
     private const val CanaryReleaseBaseUrl =
         "https://github.com/vossgraves/ArchiveTune/releases"
     private const val CanaryWorkflowRunsUrl =
-        "https://api.github.com/repos/vossgraves/ArchiveTune/actions/workflows/build.yml/runs" +
+        "https://api.github.com/repos/vossgraves/ArchiveTune/actions/workflows/nightly.yml/runs" +
             "?branch=dev&status=success&per_page=1&exclude_pull_requests=true"
     var lastCheckTime = -1L
         private set
@@ -95,11 +95,11 @@ object Updater {
         "app-$releaseArtifactPrefix${BuildConfig.DEVICE}-${BuildConfig.ARCHITECTURE}-nightly.apk"
 
     private fun workflowArtifactName(): String =
-        "app-$releaseArtifactPrefix${BuildConfig.DEVICE}-${BuildConfig.ARCHITECTURE}-release"
+        "app-$releaseArtifactPrefix${BuildConfig.DEVICE}-${BuildConfig.ARCHITECTURE}-nightly"
 
     private fun workflowArtifactDownloadUrl(): String {
         val artifactUrl =
-            "https://nightly.link/vossgraves/ArchiveTune/workflows/build/dev/${workflowArtifactName()}"
+            "https://nightly.link/vossgraves/ArchiveTune/workflows/nightly/dev/${workflowArtifactName()}"
         return if (canDownloadUpdatesDirectly) "$artifactUrl.zip" else artifactUrl
     }
 
@@ -464,18 +464,22 @@ object Updater {
         release.body?.let { canaryBuildMarkerRegex.find(it)?.groupValues?.get(1)?.toIntOrNull() }
             ?: parseSemVerOrNull(release.name)?.patch
 
-    suspend fun getLatestCanaryVersionName(): Result<String> =
-        getLatestCanaryReleaseInfo().map { latest ->
-            // Return the fixed display versionName with the build number as a readable suffix
-            // (e.g. "13.7.5 (build 4992)"). This shows cleanly in the update UI and is parsed back by
-            // buildNumberOrNull for comparison, so the popup only appears for a genuinely newer build.
-            val buildNumber = canaryBuildNumber(latest)
-            if (buildNumber != null) {
-                "${BuildConfig.VERSION_NAME} (build $buildNumber)"
-            } else {
-                latest.tagName.ifBlank { latest.name }
-            }
+    /**
+     * Converts a Canary release into the same build-number form used everywhere in the updater.
+     * Never compare a Canary release name as SemVer: names contain the commit count in the patch
+     * position, which makes an already-installed build look newer than its fixed display version.
+     */
+    internal fun getCanaryReleaseVersionName(release: ReleaseInfo): String {
+        val buildNumber = canaryBuildNumber(release)
+        return if (buildNumber != null) {
+            "${BuildConfig.VERSION_NAME} (build $buildNumber)"
+        } else {
+            release.tagName.ifBlank { release.name }
         }
+    }
+
+    suspend fun getLatestCanaryVersionName(): Result<String> =
+        getLatestCanaryReleaseInfo().map(::getCanaryReleaseVersionName)
 
     suspend fun getLatestCanaryReleaseNotes(): Result<String?> = getLatestCanaryReleaseInfo().map { it.body }
 
