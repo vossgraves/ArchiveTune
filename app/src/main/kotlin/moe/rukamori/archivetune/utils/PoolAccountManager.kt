@@ -47,7 +47,7 @@ import java.util.concurrent.TimeUnit
  */
 object PoolAccountManager {
     private const val TAG = "PoolAccounts"
-    private const val MIN_REFRESH_INTERVAL_MS = 6 * 60 * 60 * 1000L // 6h
+    private const val MIN_REFRESH_INTERVAL_MS = 30 * 60 * 1000L // 30 min
 
     private val CACHE_TIDAL_KEY = stringPreferencesKey("poolTidalAccounts")
     private val CACHE_QOBUZ_KEY = stringPreferencesKey("poolQobuzAccounts")
