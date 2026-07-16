@@ -21,18 +21,6 @@ sealed interface GatekeeperResult {
     ) : GatekeeperResult
 }
 
-/**
- * Fork override of upstream's network gatekeeper.
- *
- * Upstream ships this as a remote kill-switch: it phones home to the maintainer's admin server
- * (`DATA_SERVER_URL`/`API_BEARER_TOKEN`) on startup and blocks ALL network access unless that
- * server approves the specific package/version. This is a self-hosted, community-pool fork with no
- * such server, so the check is neutralised — it always returns [GatekeeperResult.Allowed] and
- * unblocks the [NetworkGatekeeper] interceptor.
- *
- * GPL-3.0 (§2/§4/§5) grants the right to modify and run modified versions; the © Rukamori notice
- * above is preserved unaltered as required.
- */
 @Singleton
 class GatekeeperRepository
     @Inject
