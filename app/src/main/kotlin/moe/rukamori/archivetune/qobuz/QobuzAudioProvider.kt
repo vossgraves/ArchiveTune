@@ -125,8 +125,14 @@ object QobuzAudioProvider {
 
     private data class CachedSearch(val match: Match?, val expiresAt: Long)
 
-    /** A scored search hit: the track id to stream plus the title that was matched. */
-    private data class Match(val id: String, val title: String)
+    /** Search metadata carried through to the final cross-provider safety gate. */
+    private data class Match(
+        val id: String,
+        val title: String,
+        val artist: String?,
+        val album: String?,
+        val durationMs: Long?,
+    )
 
     private data class CachedStream(val stream: DirectStream, val expiresAt: Long)
 
@@ -391,6 +397,9 @@ object QobuzAudioProvider {
                     label = "Qobuz ${qualityLabel(formatId)}",
                     source = AudioSourceType.QOBUZ,
                     matchedTitle = match.title,
+                    matchedArtist = match.artist,
+                    matchedAlbum = match.album,
+                    matchedDurationMs = match.durationMs,
                 )
             streamCache[cacheKey] = CachedStream(stream, now + STREAM_CACHE_MS)
             Timber.tag("Qobuz").i("resolved \"%s\" via %s [%s]", query.title, backend.label, stream.label)
@@ -469,6 +478,9 @@ object QobuzAudioProvider {
         val wantedArtists = query.artists.map { it.normalized() }.filter { it.isNotBlank() }
         var bestId: String? = null
         var bestTitle = ""
+        var bestArtist: String? = null
+        var bestAlbum: String? = null
+        var bestDurationMs: Long? = null
         var bestScore = Int.MIN_VALUE
         for (index in 0 until items.length()) {
             val item = items.optJSONObject(index) ?: continue
@@ -481,6 +493,7 @@ object QobuzAudioProvider {
                     ?: item.optJSONObject("album")?.optJSONObject("artist")?.stringOrNull("name")
                     ?: ""
             val candidateDurationMs = item.longOrNull("duration")?.times(1000L)
+            val candidateAlbum = item.optJSONObject("album")?.stringOrNull("title")
             val score =
                 scoreMatch(
                     wantedTitle = wantedTitle,
@@ -494,10 +507,17 @@ object QobuzAudioProvider {
                 bestScore = score
                 bestId = id
                 bestTitle = rawTitle
+                bestArtist = candidateArtist.takeIf { it.isNotBlank() }
+                bestAlbum = candidateAlbum
+                bestDurationMs = candidateDurationMs
             }
         }
         val id = bestId
-        return if (bestScore >= MIN_MATCH_SCORE && id != null) Match(id, bestTitle) else null
+        return if (bestScore >= MIN_MATCH_SCORE && id != null) {
+            Match(id, bestTitle, bestArtist, bestAlbum, bestDurationMs)
+        } else {
+            null
+        }
     }
 
     /** Health-only search helper: returns any track id for a canned query (or null). */

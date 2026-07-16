@@ -7156,7 +7156,7 @@ class MusicService :
         return SourceQuery(mediaId, title, artists, album, durationMs)
     }
 
-    // mediaId -> set of sources known to have this track (passed the title-match gate during a recent
+    // mediaId -> set of sources known to have this track (passed the metadata match gate during a recent
     // resolution). Used by the player's Source chooser to only offer sources that actually have the
     // song. Process-lived only; YouTube is always available as the fallback and is added implicitly.
     private val resolvedSourcesByMediaId = ConcurrentHashMap<String, MutableSet<AudioSourceType>>()
@@ -7225,7 +7225,7 @@ class MusicService :
         }
         // A per-song "play from" override (set via the player's Source chooser) takes precedence over
         // the global order. YOUTUBE means "always use YouTube for this song" (skip lossless entirely);
-        // a lossless override forces just that source (still subject to the 95% title-match gate).
+        // a lossless override forces just that source (still subject to the metadata match gate).
         val override = SongSourceOverride.get(dataStore.get(SongSourceOverrideKey, ""), mediaId)
         val chain =
             when (override) {
@@ -7259,15 +7259,12 @@ class MusicService :
         }
         Timber.tag("MusicService").d("Source query built: title=\"%s\" artists=%s durationMs=%s", query.title, query.artists.joinToString("/"), query.durationMs?.toString() ?: "?")
 
-        // Resolve each enabled lossless source and only accept one whose *title* matches the
-        // requested title with high accuracy (>= TitleMatch.ACCEPT_THRESHOLD, i.e. 95%). Artist and
-        // album are intentionally ignored for the gate. When more than one source qualifies, the one
-        // with the highest title-match ratio wins (ties keep the user's preferred chain order), so
-        // e.g. Tidal is used over Qobuz only when its match is at least as accurate. If no source
-        // clears the threshold, playback silently falls through to YouTube.
+        // Resolve each enabled lossless source and apply the shared metadata-aware safety gate.
+        // Title, artist, duration, album and version markers are evaluated together; title-only
+        // results must clear a stricter fallback threshold. The strongest accepted candidate wins.
         var best: DirectStream? = null
         var bestSource: AudioSourceType? = null
-        var bestRatio = 0.0
+        var bestScore = 0.0
         for (source in chain) {
             Timber.tag("MusicService").d("Trying source: %s for \"%s\"", source.name, query.title)
             val stream: DirectStream? =
@@ -7280,39 +7277,49 @@ class MusicService :
                 Timber.tag("MusicService").d("Source %s did not resolve \"%s\"", source.name, query.title)
                 continue
             }
-            // A null matchedTitle means the provider streamed a trusted direct id without scoring a
-            // candidate title; treat that as an exact match so explicit id playback is not blocked.
-            val ratio =
-                if (stream.matchedTitle == null) 1.0 else TitleMatch.ratio(query.title, stream.matchedTitle)
-            if (ratio < TitleMatch.ACCEPT_THRESHOLD) {
+            val match =
+                TitleMatch.evaluate(
+                    wantedTitle = query.title,
+                    wantedArtists = query.artists,
+                    wantedAlbum = query.album,
+                    wantedDurationMs = query.durationMs,
+                    stream = stream,
+                )
+            if (!match.accepted) {
                 Timber.tag("MusicService").i(
-                    "Source %s rejected for \"%s\": title match %.1f%% (< %.0f%%) matched=\"%s\"",
-                    source.name, query.title, ratio * 100, TitleMatch.ACCEPT_THRESHOLD * 100, stream.matchedTitle ?: "?",
+                    "Source %s rejected for \"%s\": %s score=%.1f%% title=%.1f%% artist=%s duration=%s matched=\"%s\"",
+                    source.name,
+                    query.title,
+                    match.reason,
+                    match.score * 100,
+                    match.title * 100,
+                    match.artist?.let { "%.1f%%".format(it * 100) } ?: "?",
+                    match.duration?.let { "%.1f%%".format(it * 100) } ?: "?",
+                    stream.matchedTitle ?: "?",
                 )
                 continue
             }
             Timber.tag("MusicService").d(
-                "Source %s candidate for \"%s\": title match %.1f%% [%s]",
-                source.name, query.title, ratio * 100, stream.label,
+                "Source %s candidate for \"%s\": match %.1f%% (%s) [%s]",
+                source.name, query.title, match.score * 100, match.reason, stream.label,
             )
             // Remember that this source has this song (title-gate passed) so the player's Source
             // chooser can list only the sources that actually have the track.
             recordResolvedSource(mediaId, source)
-            if (ratio > bestRatio) {
+            if (match.score > bestScore) {
                 best = stream
                 bestSource = source
-                bestRatio = ratio
+                bestScore = match.score
             }
-            // A near-exact match cannot be beaten; stop probing further sources.
-            if (bestRatio >= 0.999) break
+            if (bestScore >= 0.999) break
         }
 
         val winningStream = best
         val winningSource = bestSource
         if (winningStream != null && winningSource != null) {
             Timber.tag("MusicService").i(
-                "Source WIN: %s resolved \"%s\" [%s] title match %.1f%% (%s)",
-                winningSource.name, query.title, winningStream.label, bestRatio * 100, winningStream.uri.take(80),
+                "Source WIN: %s resolved \"%s\" [%s] metadata match %.1f%% (%s)",
+                winningSource.name, query.title, winningStream.label, bestScore * 100, winningStream.uri.take(80),
             )
             // Persist the winning source's track id as a future health-probe track.
             if (winningSource == AudioSourceType.TIDAL) {
@@ -7334,7 +7341,7 @@ class MusicService :
         // A non-YouTube source was requested but none matched the title accurately enough; silently
         // fall back to YouTube (no user-facing notice — the track just plays from YouTube). Kept as a
         // debug log only.
-        Timber.tag("MusicService").w("No lossless source cleared the 95%% title match for \"%s\"; falling back to YouTube", query.title)
+        Timber.tag("MusicService").w("No lossless source cleared the metadata match gate for \"%s\"; falling back to YouTube", query.title)
         tidalActiveMediaIds.remove(mediaId)
         return null
     }
@@ -7606,6 +7613,9 @@ class MusicService :
             label = "Tidal ${resolved.label}",
             source = AudioSourceType.TIDAL,
             matchedTitle = resolved.matchedTitle,
+            matchedArtist = resolved.matchedArtist,
+            matchedAlbum = resolved.matchedAlbum,
+            matchedDurationMs = resolved.matchedDurationMs,
         )
     }
 

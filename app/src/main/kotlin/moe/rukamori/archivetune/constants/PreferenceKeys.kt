@@ -887,7 +887,7 @@ enum class AudioSourceType {
 val AudioSourceOrderKey = stringPreferencesKey("audioSourceOrder")
 
 // Per-song "play from" overrides, encoded as "songId=SOURCE" entries joined by ';'. The chosen
-// source is forced for that specific song (subject to the 95% title-match gate), overriding the
+// source is forced for that specific song (subject to the metadata match gate), overriding the
 // global source order. Persisted here so it is included in Settings backups.
 val SongSourceOverrideKey = stringPreferencesKey("songSourceOverride")
 

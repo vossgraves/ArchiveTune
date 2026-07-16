@@ -8,6 +8,9 @@ package moe.rukamori.archivetune.audiosource
 
 import java.text.Normalizer
 import moe.rukamori.archivetune.constants.AudioSourceType
+import kotlin.math.abs
+import kotlin.math.max
+import kotlin.math.min
 
 /**
  * A resolved direct-playable stream from any audio source. All providers normalize their result
@@ -22,35 +25,50 @@ data class DirectStream(
     val label: String,
     val source: AudioSourceType,
     /**
-     * The title of the track the provider actually matched, used by the playback layer to gate on
-     * title-match accuracy (see [TitleMatch]). Null when the provider resolved a stream by a trusted
-     * direct id and no candidate title was scored, in which case the match is treated as exact.
+     * The title of the track the provider actually matched, used by the playback layer's [TitleMatch]
+     * safety gate. A null value is rejected unless [trustedDirectId] is explicitly true.
      */
     val matchedTitle: String? = null,
+    val matchedArtist: String? = null,
+    val matchedAlbum: String? = null,
+    val matchedDurationMs: Long? = null,
+    /** True only when the provider resolved a catalog id that is already authoritative. */
+    val trustedDirectId: Boolean = false,
 )
 
 /**
- * Title-only fuzzy match scoring used to gate lossless source playback. The playback layer only
- * switches away from YouTube to a lossless source (Tidal/Qobuz) when the resolved track's title
- * matches the requested title with a high similarity ratio, and — when several sources qualify —
- * the source with the highest title similarity wins. Artist/album are deliberately ignored here so
- * that a correct recording is not rejected because of differing artist credit formatting.
+ * Metadata-aware track matching used to gate lossless source playback. Inspired by Stash's matcher,
+ * this combines title, artist, duration and album signals while applying hard gates for a different
+ * version or implausible duration. This prevents a same-title recording by another artist from
+ * passing merely because its normalized title is identical.
  */
 object TitleMatch {
-    /** Similarity ratio (0.0..1.0) required to accept a lossless source over YouTube. */
-    const val ACCEPT_THRESHOLD = 0.95
+    const val ACCEPT_THRESHOLD = 0.78
+    private const val TITLE_ONLY_THRESHOLD = 0.95
+    private const val MIN_TITLE_WITH_METADATA = 0.84
+    private const val MIN_ARTIST = 0.72
+    private const val DURATION_HARD_GATE_MS = 15_000L
+
+    data class Result(
+        val accepted: Boolean,
+        val score: Double,
+        val title: Double,
+        val artist: Double?,
+        val duration: Double?,
+        val reason: String,
+    )
 
     /**
      * Normalizes a title for comparison: lowercased, diacritics stripped, feat/version qualifiers
-     * removed, and reduced to a compact `a-z0-9 ` token string. Mirrors the per-provider title
-     * normalization so the gate agrees with each provider's own candidate scoring.
+     * removed, and reduced to letter/digit tokens. Unicode letters are retained so CJK and other
+     * non-Latin titles do not collapse to an empty string.
      */
     fun normalize(value: String?): String =
         (value ?: "")
             .lowercase()
             .let { Normalizer.normalize(it, Normalizer.Form.NFD) }
             .replace(Regex("\\p{Mn}+"), "")
-            .replace(Regex("[^a-z0-9]+"), " ")
+            .replace(Regex("[^\\p{L}\\p{N}]+"), " ")
             .replace(Regex("""\b(feat|ft|featuring)\b.*$"""), "")
             .replace(Regex("""\b(explicit|clean|remaster|remastered|version|audio|official)\b"""), " ")
             .replace(Regex("\\s+"), " ")
@@ -58,8 +76,8 @@ object TitleMatch {
 
     /**
      * Returns the title-match ratio in 0.0..1.0 between [wanted] and [candidate] after
-     * normalization, using a Levenshtein-based similarity (1 - distance / longestLength). Two blank
-     * titles are treated as a non-match (0.0) so missing metadata never passes the gate.
+     * normalization, using Jaro-Winkler similarity. Two blank titles are treated as a non-match
+     * (0.0) so missing metadata never passes the gate.
      */
     fun ratio(
         wanted: String?,
@@ -69,41 +87,148 @@ object TitleMatch {
         val b = normalize(candidate)
         if (a.isEmpty() || b.isEmpty()) return 0.0
         if (a == b) return 1.0
-        val distance = levenshtein(a, b)
-        val longest = maxOf(a.length, b.length)
-        if (longest == 0) return 0.0
-        return 1.0 - distance.toDouble() / longest.toDouble()
+        return jaroWinkler(a, b)
     }
 
-    private fun levenshtein(
-        a: String,
-        b: String,
-    ): Int {
-        val m = a.length
-        val n = b.length
-        if (m == 0) return n
-        if (n == 0) return m
-        var previous = IntArray(n + 1) { it }
-        var current = IntArray(n + 1)
-        for (i in 1..m) {
-            current[0] = i
-            for (j in 1..n) {
-                val cost = if (a[i - 1] == b[j - 1]) 0 else 1
-                current[j] =
-                    minOf(
-                        current[j - 1] + 1,
-                        previous[j] + 1,
-                        previous[j - 1] + cost,
-                    )
-            }
-            val tmp = previous
-            previous = current
-            current = tmp
+    fun evaluate(
+        wantedTitle: String,
+        wantedArtists: List<String>,
+        wantedAlbum: String?,
+        wantedDurationMs: Long?,
+        stream: DirectStream,
+    ): Result {
+        if (stream.trustedDirectId) return Result(true, 1.0, 1.0, 1.0, 1.0, "trusted catalog id")
+        val candidateTitle = stream.matchedTitle
+            ?: return Result(false, 0.0, 0.0, null, null, "provider returned no matched metadata")
+        if (hasVersionMismatch(wantedTitle, candidateTitle)) {
+            return Result(false, 0.0, ratio(wantedTitle, candidateTitle), null, null, "version mismatch")
         }
-        return previous[n]
-    }
-}
 
+        val titleScore = ratio(wantedTitle, candidateTitle)
+        val durationScore = durationScore(wantedDurationMs, stream.matchedDurationMs)
+        if (durationScore == 0.0) {
+            return Result(false, 0.0, titleScore, null, durationScore, "duration differs by more than 15s")
+        }
+
+        val wantedArtist = wantedArtists.joinToString(", ").takeIf { it.isNotBlank() }
+        val candidateArtist = stream.matchedArtist?.takeIf { it.isNotBlank() }
+        val artistScore =
+            if (wantedArtist != null && candidateArtist != null) artistRatio(wantedArtist, candidateArtist) else null
+
+        if (artistScore == null) {
+            val accepted = titleScore >= TITLE_ONLY_THRESHOLD
+            val score = titleScore * 0.8 + (durationScore ?: 0.5) * 0.2
+            return Result(accepted, score, titleScore, null, durationScore, if (accepted) "strict title fallback" else "artist metadata unavailable")
+        }
+        if (artistScore < MIN_ARTIST) {
+            return Result(false, 0.0, titleScore, artistScore, durationScore, "artist mismatch")
+        }
+        if (titleScore < MIN_TITLE_WITH_METADATA && !containsTokenRun(candidateTitle, wantedTitle)) {
+            return Result(false, 0.0, titleScore, artistScore, durationScore, "title mismatch")
+        }
+
+        val albumScore = albumRatio(wantedAlbum, stream.matchedAlbum)
+        val score =
+            titleScore * 0.45 +
+                artistScore * 0.30 +
+                (durationScore ?: 0.5) * 0.20 +
+                (albumScore ?: 0.5) * 0.05
+        return Result(score >= ACCEPT_THRESHOLD, score, titleScore, artistScore, durationScore, if (score >= ACCEPT_THRESHOLD) "metadata match" else "composite score too low")
+    }
+
+    private fun durationScore(wantedMs: Long?, candidateMs: Long?): Double? {
+        if (wantedMs == null || wantedMs <= 0 || candidateMs == null || candidateMs <= 0) return null
+        val difference = abs(wantedMs - candidateMs)
+        return when {
+            difference > DURATION_HARD_GATE_MS -> 0.0
+            difference <= 3_000L -> 1.0
+            difference <= 10_000L -> 0.8
+            else -> 0.6
+        }
+    }
+
+    private fun albumRatio(wanted: String?, candidate: String?): Double? {
+        if (wanted.isNullOrBlank() || candidate.isNullOrBlank()) return null
+        return ratio(wanted, candidate)
+    }
+
+    private fun artistRatio(wanted: String, candidate: String): Double {
+        val wantedParts = artistParts(wanted)
+        val candidateParts = artistParts(candidate.replace(" - Topic", "", ignoreCase = true))
+        if (wantedParts.isEmpty() || candidateParts.isEmpty()) return 0.0
+        return wantedParts.maxOf { target ->
+            candidateParts.maxOf { option ->
+                if (target == option || (target.length >= 4 && option.length >= 4 && (target in option || option in target))) {
+                    1.0
+                } else {
+                    jaroWinkler(target, option)
+                }
+            }
+        }
+    }
+
+    private fun artistParts(value: String): List<String> =
+        value
+            .split(Regex("""\s*[,;&/]\s*|\s+(?:and|x)\s+""", RegexOption.IGNORE_CASE))
+            .map(::normalize)
+            .filter { it.isNotBlank() }
+
+    private fun containsTokenRun(haystack: String, needle: String): Boolean {
+        val target = normalize(needle)
+        val candidate = normalize(haystack)
+        return target.length >= 3 && (candidate == target || candidate.contains(target))
+    }
+
+    private val versionMarkers =
+        listOf(
+            "live", "concert", "remix", "rework", "acoustic", "instrumental", "karaoke",
+            "cover", "demo", "sped up", "nightcore", "slowed", "extended", "radio edit",
+        )
+
+    private fun hasVersionMismatch(wanted: String, candidate: String): Boolean {
+        val target = " ${normalize(wanted)} "
+        val option = " ${normalize(candidate)} "
+        return versionMarkers.any { marker ->
+            val token = " ${normalize(marker)} "
+            (token in target) != (token in option)
+        }
+    }
+
+    private fun jaroWinkler(a: String, b: String): Double {
+        if (a == b) return 1.0
+        if (a.isEmpty() || b.isEmpty()) return 0.0
+        val distance = max(a.length, b.length) / 2 - 1
+        if (distance < 0) return 0.0
+        val aMatches = BooleanArray(a.length)
+        val bMatches = BooleanArray(b.length)
+        var matches = 0
+        for (i in a.indices) {
+            for (j in max(0, i - distance) until min(i + distance + 1, b.length)) {
+                if (bMatches[j] || a[i] != b[j]) continue
+                aMatches[i] = true
+                bMatches[j] = true
+                matches++
+                break
+            }
+        }
+        if (matches == 0) return 0.0
+        var transpositions = 0
+        var j = 0
+        for (i in a.indices) {
+            if (!aMatches[i]) continue
+            while (!bMatches[j]) j++
+            if (a[i] != b[j]) transpositions++
+            j++
+        }
+        val jaro =
+            (matches.toDouble() / a.length +
+                matches.toDouble() / b.length +
+                (matches - transpositions / 2.0) / matches) / 3.0
+        val prefix = a.zip(b).takeWhile { (left, right) -> left == right }.size.coerceAtMost(4)
+        return jaro + prefix * 0.1 * (1.0 - jaro)
+    }
+
+}
 /**
  * Pure helpers for the multi-source framework. These operate on already-read preference values so
  * they stay free of any DataStore/Android dependencies and are trivially testable.
@@ -177,7 +302,7 @@ object AudioSourceConfig {
 /**
  * Codec for the per-song "play from" overrides. Stored as `songId=SOURCE` entries joined by `;` in a
  * single preference string so it is picked up by Settings backups. The playback layer forces the
- * chosen source for that song (still subject to the 95% title-match gate); YOUTUBE as an override
+ * chosen source for that song (still subject to the metadata match gate); YOUTUBE as an override
  * means "always use YouTube for this song".
  */
 object SongSourceOverride {
