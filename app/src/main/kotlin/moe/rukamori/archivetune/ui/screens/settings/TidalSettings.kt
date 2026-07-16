@@ -27,11 +27,23 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material3.AlertDialogDefaults
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.TextButton
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -213,7 +225,7 @@ fun TidalSettings(navController: NavController) {
                 }
             },
         ) {
-            Column(modifier = fillMaxWidth()) {
+            Column(modifier = Modifier.fillMaxWidth()) {
                 if (accountName.isNotBlank()) {
                     Text("Account", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(2.dp))
@@ -244,41 +256,76 @@ fun TidalSettings(navController: NavController) {
         }
     }
 
-    // Instance detail dialog — shows the full instance URL.
+    // Instance detail popup — same style as the lyrics search result dialog.
     detailInstance?.let { instance ->
-        DefaultDialog(
-            onDismiss = { detailInstance = null },
-            icon = { Icon(painterResource(R.drawable.link), null) },
-            title = { Text(stringResource(R.string.details)) },
-            contentScrollable = true,
-            buttons = {
-                TextButton(
-                    onClick = {
-                        copyToClipboard(context, "Tidal instance", listOf(instance))
-                        detailInstance = null
-                    },
-                    shapes = ButtonDefaults.shapes(),
-                ) {
-                    Text(context.getString(R.string.copy_link).replace("link", "URL"))
-                }
-                TextButton(
-                    onClick = { detailInstance = null },
-                    shapes = ButtonDefaults.shapes(),
-                ) {
-                    Text(stringResource(R.string.close_dialog))
-                }
-            },
+        Dialog(
+            onDismissRequest = { detailInstance = null },
+            properties = DialogProperties(usePlatformDefaultWidth = false),
         ) {
-            Column(modifier = fillMaxWidth()) {
-                Text("Instance URL", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Spacer(Modifier.height(4.dp))
-                Text(instance, style = MaterialTheme.typography.bodyMedium)
-                val status = healthStatus[instance]
-                if (status != null) {
-                    Spacer(Modifier.height(8.dp))
-                    Text("Status", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(Modifier.height(2.dp))
-                    Text(labelFor(status, healthLatency[instance]), style = MaterialTheme.typography.bodyMedium)
+            BoxWithConstraints(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(24.dp)
+                    .navigationBarsPadding(),
+                contentAlignment = Alignment.Center,
+            ) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .widthIn(max = 560.dp),
+                    shape = MaterialTheme.shapes.extraLarge,
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    tonalElevation = AlertDialogDefaults.TonalElevation,
+                ) {
+                    Column(modifier = Modifier
+                        .padding(24.dp)
+                        .verticalScroll(rememberScrollState())) {
+                        Icon(
+                            painter = painterResource(R.drawable.link),
+                            contentDescription = null,
+                            tint = AlertDialogDefaults.iconContentColor,
+                            modifier = Modifier.align(Alignment.CenterHorizontally),
+                        )
+                        Spacer(Modifier.height(16.dp))
+                        Text(
+                            text = stringResource(R.string.details),
+                            style = MaterialTheme.typography.headlineSmall,
+                            color = AlertDialogDefaults.titleContentColor,
+                            modifier = Modifier.align(Alignment.CenterHorizontally),
+                        )
+                        Spacer(Modifier.height(16.dp))
+                        Text("Instance URL", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(Modifier.height(4.dp))
+                        Text(instance, style = MaterialTheme.typography.bodyMedium)
+                        val status = healthStatus[instance]
+                        if (status != null) {
+                            Spacer(Modifier.height(12.dp))
+                            Text("Status", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Spacer(Modifier.height(2.dp))
+                            Text(labelFor(status, healthLatency[instance]), style = MaterialTheme.typography.bodyMedium)
+                        }
+                        Spacer(Modifier.height(24.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End,
+                        ) {
+                            TextButton(
+                                onClick = {
+                                    copyToClipboard(context, "Tidal instance", listOf(instance))
+                                    detailInstance = null
+                                },
+                                shapes = ButtonDefaults.shapes(),
+                            ) {
+                                Text(context.getString(R.string.copy_link).replace("link", "URL"))
+                            }
+                            TextButton(
+                                onClick = { detailInstance = null },
+                                shapes = ButtonDefaults.shapes(),
+                            ) {
+                                Text(stringResource(R.string.close_dialog))
+                            }
+                        }
+                    }
                 }
             }
         }
