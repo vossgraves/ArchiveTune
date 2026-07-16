@@ -878,6 +878,11 @@ enum class AudioSourceType {
 // CSV of AudioSourceType names, highest priority first. Empty = built-in default order.
 val AudioSourceOrderKey = stringPreferencesKey("audioSourceOrder")
 
+// Per-song "play from" overrides, encoded as "songId=SOURCE" entries joined by ';'. The chosen
+// source is forced for that specific song (subject to the 95% title-match gate), overriding the
+// global source order. Persisted here so it is included in Settings backups.
+val SongSourceOverrideKey = stringPreferencesKey("songSourceOverride")
+
 // The primary audio source the user prefers to search/resolve first (AudioSourceType name).
 // Named distinctly from the unrelated SearchSourceKey (LOCAL/ONLINE search scope) above.
 val AudioSearchSourceKey = stringPreferencesKey("audioSearchSource")

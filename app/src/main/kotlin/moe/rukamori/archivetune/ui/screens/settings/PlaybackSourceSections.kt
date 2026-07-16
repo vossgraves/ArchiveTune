@@ -363,7 +363,7 @@ fun PlaybackSourceSections(navController: NavController) {
 }
 
 @Composable
-internal fun SourceOrderDialog(
+private fun SourceOrderDialog(
     initialOrder: List<AudioSourceType>,
     isEnabled: (AudioSourceType) -> Boolean,
     onDismiss: () -> Unit,

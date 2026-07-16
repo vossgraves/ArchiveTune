@@ -173,3 +173,45 @@ object AudioSourceConfig {
             isEnabled(source, enabledSet, defaults[source] ?: false)
         }
 }
+
+/**
+ * Codec for the per-song "play from" overrides. Stored as `songId=SOURCE` entries joined by `;` in a
+ * single preference string so it is picked up by Settings backups. The playback layer forces the
+ * chosen source for that song (still subject to the 95% title-match gate); YOUTUBE as an override
+ * means "always use YouTube for this song".
+ */
+object SongSourceOverride {
+    fun parse(raw: String?): Map<String, AudioSourceType> {
+        if (raw.isNullOrBlank()) return emptyMap()
+        val out = LinkedHashMap<String, AudioSourceType>()
+        raw.split(';').forEach { entry ->
+            val idx = entry.indexOf('=')
+            if (idx <= 0) return@forEach
+            val id = entry.substring(0, idx).trim()
+            val source =
+                runCatching { AudioSourceType.valueOf(entry.substring(idx + 1).trim().uppercase()) }
+                    .getOrNull()
+            if (id.isNotEmpty() && source != null) out[id] = source
+        }
+        return out
+    }
+
+    fun serialize(map: Map<String, AudioSourceType>): String =
+        map.entries.joinToString(";") { "${it.key}=${it.value.name}" }
+
+    fun get(
+        raw: String?,
+        songId: String,
+    ): AudioSourceType? = parse(raw)[songId]
+
+    /** Returns the updated raw string with [songId] set to [source], or cleared when [source] is null. */
+    fun withOverride(
+        raw: String?,
+        songId: String,
+        source: AudioSourceType?,
+    ): String {
+        val map = LinkedHashMap(parse(raw))
+        if (source == null) map.remove(songId) else map[songId] = source
+        return serialize(map)
+    }
+}

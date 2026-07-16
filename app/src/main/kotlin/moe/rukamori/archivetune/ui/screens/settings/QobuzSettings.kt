@@ -87,6 +87,20 @@ import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
 
+/**
+ * Process-lived cache of the last on-demand health-check results so that the checked status (and
+ * measured ping) survives leaving and returning to the screen. It is intentionally NOT persisted to
+ * disk — it is cleared only when the process dies or the user runs another check (which overwrites
+ * the entries) or removes/reset the instance/token. Snapshot state maps so Compose recomposes when
+ * a check updates them.
+ */
+private object QobuzHealthUiCache {
+    val instanceHealth = mutableStateMapOf<String, TidalAudioProvider.InstanceHealth>()
+    val instanceLatency = mutableStateMapOf<String, Long>()
+    val tokenHealth = mutableStateMapOf<String, TidalAudioProvider.InstanceHealth>()
+    val tokenLatency = mutableStateMapOf<String, Long>()
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun QobuzSettings(navController: NavController) {
@@ -112,9 +126,10 @@ fun QobuzSettings(navController: NavController) {
         onStoredInstancesChange(list.distinct().joinToString("\n"))
     }
 
-    // baseUrl -> scan status (null while untested) and last measured latency (ms).
-    val healthStatus = remember { mutableStateMapOf<String, TidalAudioProvider.InstanceHealth>() }
-    val healthLatency = remember { mutableStateMapOf<String, Long>() }
+    // baseUrl -> scan status (null while untested) and last measured latency (ms). Backed by a
+    // process-lived cache so a completed check persists when navigating away and back.
+    val healthStatus = QobuzHealthUiCache.instanceHealth
+    val healthLatency = QobuzHealthUiCache.instanceLatency
     var testingInstances by remember { mutableStateOf(false) }
     var showAddDialog by remember { mutableStateOf(false) }
     var showBulkDialog by remember { mutableStateOf(false) }
@@ -127,11 +142,14 @@ fun QobuzSettings(navController: NavController) {
         val deduped = list.distinctBy { it.token }
         onStoredTokensChange(QobuzToken.listToJson(deduped))
     }
-    // token id -> health status.
-    val tokenHealth = remember { mutableStateMapOf<String, TidalAudioProvider.InstanceHealth>() }
+    // token id -> health status + last measured ping (ms), process-lived so it survives navigation.
+    val tokenHealth = QobuzHealthUiCache.tokenHealth
+    val tokenLatency = QobuzHealthUiCache.tokenLatency
     var testingTokens by remember { mutableStateOf(false) }
     var showAddTokensDialog by remember { mutableStateOf(false) }
     var detailToken by remember { mutableStateOf<QobuzToken?>(null) }
+    // Token id whose "deprecated" info popup is open (preview-only / no premium explanation).
+    var previewInfoTokenId by remember { mutableStateOf<String?>(null) }
 
     fun toast(message: String) {
         Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
@@ -187,8 +205,17 @@ fun QobuzSettings(navController: NavController) {
         coroutineScope.launch {
             withContext(Dispatchers.IO) {
                 tokens.forEach { token ->
+                    val start = System.currentTimeMillis()
                     val status = QobuzAudioProvider.verifyToken(token, probe, formatId)
-                    withContext(Dispatchers.Main) { tokenHealth[token.id] = status }
+                    val latency = System.currentTimeMillis() - start
+                    withContext(Dispatchers.Main) {
+                        tokenHealth[token.id] = status
+                        if (status != TidalAudioProvider.InstanceHealth.UNREACHABLE) {
+                            tokenLatency[token.id] = latency
+                        } else {
+                            tokenLatency.remove(token.id)
+                        }
+                    }
                 }
             }
             testingTokens = false
@@ -220,6 +247,29 @@ fun QobuzSettings(navController: NavController) {
         copyToClipboard(context, "Qobuz instances", online)
     }
 
+    // "Deprecated" explanation popup: why a reachable token is limited (preview-only / no premium).
+    previewInfoTokenId?.let {
+        DefaultDialog(
+            onDismiss = { previewInfoTokenId = null },
+            icon = { Icon(painterResource(R.drawable.info), null) },
+            title = { Text(stringResource(R.string.qobuz_status_deprecated_info_title)) },
+            buttons = {
+                TextButton(
+                    onClick = { previewInfoTokenId = null },
+                    shapes = ButtonDefaults.shapes(),
+                ) {
+                    Text(stringResource(R.string.close_dialog))
+                }
+            },
+        ) {
+            Text(
+                text = stringResource(R.string.qobuz_status_deprecated_info),
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+    }
+
     // Token detail dialog — manually entered credentials are shown in full and editable.
     detailToken?.let { token ->
         var editLabel by remember(token) { mutableStateOf(token.label) }
@@ -237,11 +287,10 @@ fun QobuzSettings(navController: NavController) {
                 null -> MaterialTheme.colorScheme.onSurfaceVariant
             }
         val statusLabel =
-            when (status) {
-                TidalAudioProvider.InstanceHealth.HEALTHY -> stringResource(R.string.qobuz_token_status_ok)
-                TidalAudioProvider.InstanceHealth.PREVIEW_ONLY -> stringResource(R.string.qobuz_token_status_preview)
-                TidalAudioProvider.InstanceHealth.UNREACHABLE -> stringResource(R.string.qobuz_token_status_invalid)
-                null -> stringResource(R.string.qobuz_token_status_unknown)
+            if (status != null) {
+                labelFor(status, tokenLatency[token.id])
+            } else {
+                stringResource(R.string.qobuz_token_status_unknown)
             }
 
         DefaultDialog(
@@ -570,15 +619,13 @@ fun QobuzSettings(navController: NavController) {
                                     MaterialTheme.colorScheme.error
                                 null -> MaterialTheme.colorScheme.onSurfaceVariant
                             }
+                        // Same "online — Xms / deprecated — Xms / not reachable" wording as the
+                        // instance rows; "deprecated" gets an info icon explaining preview-only.
                         val statusLabel =
-                            when (status) {
-                                TidalAudioProvider.InstanceHealth.HEALTHY ->
-                                    stringResource(R.string.qobuz_token_status_ok)
-                                TidalAudioProvider.InstanceHealth.PREVIEW_ONLY ->
-                                    stringResource(R.string.qobuz_token_status_preview)
-                                TidalAudioProvider.InstanceHealth.UNREACHABLE ->
-                                    stringResource(R.string.qobuz_token_status_invalid)
-                                null -> stringResource(R.string.qobuz_token_status_unknown)
+                            if (status != null) {
+                                labelFor(status, tokenLatency[token.id])
+                            } else {
+                                stringResource(R.string.qobuz_token_status_unknown)
                             }
                         val displayName = token.label.ifBlank { token.userId.ifBlank { "Qobuz account" } }
                         PreferenceEntry(
@@ -595,14 +642,29 @@ fun QobuzSettings(navController: NavController) {
                             icon = { Icon(painterResource(R.drawable.token), null) },
                             onClick = { detailToken = token },
                             trailingContent = {
-                                IconButton(
-                                    onClick = {
-                                        tokenHealth.remove(token.id)
-                                        persistTokens(tokens - token)
-                                    },
-                                    onLongClick = {},
-                                ) {
-                                    Icon(painterResource(R.drawable.delete), null)
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    if (status == TidalAudioProvider.InstanceHealth.PREVIEW_ONLY) {
+                                        IconButton(
+                                            onClick = { previewInfoTokenId = token.id },
+                                            onLongClick = {},
+                                        ) {
+                                            Icon(
+                                                painterResource(R.drawable.info),
+                                                contentDescription = stringResource(R.string.qobuz_status_deprecated_info_title),
+                                                tint = Color(0xFFB388FF),
+                                            )
+                                        }
+                                    }
+                                    IconButton(
+                                        onClick = {
+                                            tokenHealth.remove(token.id)
+                                            tokenLatency.remove(token.id)
+                                            persistTokens(tokens - token)
+                                        },
+                                        onLongClick = {},
+                                    ) {
+                                        Icon(painterResource(R.drawable.delete), null)
+                                    }
                                 }
                             },
                         )
@@ -633,6 +695,7 @@ fun QobuzSettings(navController: NavController) {
                             icon = { Icon(painterResource(R.drawable.close), null) },
                             onClick = {
                                 tokenHealth.clear()
+                                tokenLatency.clear()
                                 onStoredTokensChange("")
                             },
                         )

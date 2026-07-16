@@ -680,6 +680,8 @@
     <string name="audio_source_youtube_fallback">YouTube is always tried last if no other source can resolve a track.</string>
     <string name="source_tidal">Tidal</string>
     <string name="source_youtube">YouTube</string>
+    <string name="play_from">Play from</string>
+    <string name="play_from_automatic">Automatic (preferred order)</string>
     <string name="playback_sources">Sources</string>
     <string name="preferred_sources">Preferred sources</string>
     <string name="preferred_sources_summary">Top of the list is tried first</string>
@@ -727,7 +729,7 @@
     <string name="tidal_check_instances">Test instances</string>
     <string name="tidal_checking_instances">Testing…</string>
     <string name="tidal_instance_healthy">online — %1$d ms</string>
-    <string name="tidal_instance_unreachable">connection failed</string>
+    <string name="tidal_instance_unreachable">not reachable</string>
     <string name="tidal_instance_preview_only">deprecated — %1$d ms</string>
     <string name="tidal_instance_unknown">Not tested — tap Test instances</string>
 
@@ -769,6 +771,8 @@
     <string name="qobuz_token_status_preview">no lossless — check subscription</string>
     <string name="qobuz_token_status_invalid">invalid or expired — sign in again</string>
     <string name="qobuz_token_status_unknown">not checked</string>
+    <string name="qobuz_status_deprecated_info_title">Why deprecated?</string>
+    <string name="qobuz_status_deprecated_info">This account is reachable but can only stream 30-second previews or lower-quality audio — it most likely has no active premium subscription, so lossless playback is unavailable.</string>
 
     <!-- Shared source settings -->
     <string name="source_manage_instances">Manage instances</string>

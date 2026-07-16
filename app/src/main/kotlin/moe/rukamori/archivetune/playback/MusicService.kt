@@ -200,7 +200,9 @@ import moe.rukamori.archivetune.qobuz.QobuzAudioProvider
 import moe.rukamori.archivetune.qobuz.QobuzToken
 import moe.rukamori.archivetune.audiosource.AudioSourceConfig
 import moe.rukamori.archivetune.audiosource.DirectStream
+import moe.rukamori.archivetune.audiosource.SongSourceOverride
 import moe.rukamori.archivetune.audiosource.TitleMatch
+import moe.rukamori.archivetune.constants.SongSourceOverrideKey
 import moe.rukamori.archivetune.tidal.TidalAccountManager
 import moe.rukamori.archivetune.tidal.TidalAudioProvider
 import moe.rukamori.archivetune.utils.PoolAccountManager
@@ -7102,6 +7104,57 @@ class MusicService :
         return SourceQuery(mediaId, title, artists, album, durationMs)
     }
 
+    // mediaId -> set of sources known to have this track (passed the title-match gate during a recent
+    // resolution). Used by the player's Source chooser to only offer sources that actually have the
+    // song. Process-lived only; YouTube is always available as the fallback and is added implicitly.
+    private val resolvedSourcesByMediaId = ConcurrentHashMap<String, MutableSet<AudioSourceType>>()
+
+    private fun recordResolvedSource(
+        mediaId: String,
+        source: AudioSourceType,
+    ) {
+        resolvedSourcesByMediaId.getOrPut(mediaId) { java.util.concurrent.ConcurrentHashMap.newKeySet() }.add(source)
+    }
+
+    /**
+     * Sources the player's "Play from" chooser should offer for [mediaId], based on the last
+     * resolution result: any lossless source that matched the track, plus YouTube (always available
+     * as the fallback). Returned in the canonical Tidal, Qobuz, YouTube order.
+     */
+    fun availableSourcesForSong(mediaId: String): List<AudioSourceType> {
+        val resolved = resolvedSourcesByMediaId[mediaId].orEmpty()
+        return AudioSourceConfig.DEFAULT_ORDER.filter {
+            it == AudioSourceType.YOUTUBE || it in resolved
+        }
+    }
+
+    /**
+     * Applies a per-song "play from" override and, if [mediaId] is the current item, re-resolves it
+     * immediately so the change takes effect without the user having to skip the track. Passing a
+     * null [source] clears the override for that song.
+     */
+    fun setSongSourceOverride(
+        mediaId: String,
+        source: AudioSourceType?,
+    ) {
+        runCatching {
+            runBlocking {
+                dataStore.edit { prefs ->
+                    prefs[SongSourceOverrideKey] =
+                        SongSourceOverride.withOverride(prefs[SongSourceOverrideKey], mediaId, source)
+                }
+            }
+        }
+        if (player.currentMediaItem?.mediaId == mediaId) {
+            // Drop any cached resolved stream for this song and re-prepare so the new source is used.
+            playbackUrlCache.remove(mediaId)
+            extractorPlaybackUrlCache.remove(mediaId)
+            YTPlayerUtils.invalidateCachedStreamUrls(mediaId)
+            tidalActiveMediaIds.remove(mediaId)
+            player.prepare()
+        }
+    }
+
     /**
      * Attempts to resolve the current media item through the configured audio sources, in the
      * user's chosen priority order. Returns a [DataSpec] pointing at the first source that
@@ -7118,10 +7171,25 @@ class MusicService :
             Timber.tag("MusicService").d("Multi-source skip: %s is a local media id", mediaId)
             return null
         }
-        val chain = sourceResolutionChain()
+        // A per-song "play from" override (set via the player's Source chooser) takes precedence over
+        // the global order. YOUTUBE means "always use YouTube for this song" (skip lossless entirely);
+        // a lossless override forces just that source (still subject to the 95% title-match gate).
+        val override = SongSourceOverride.get(dataStore.get(SongSourceOverrideKey, ""), mediaId)
+        val chain =
+            when (override) {
+                null -> sourceResolutionChain()
+                AudioSourceType.YOUTUBE -> {
+                    Timber.tag("MusicService").d("Per-song override: %s pinned to YouTube; skipping lossless", mediaId)
+                    emptyList()
+                }
+                else -> {
+                    Timber.tag("MusicService").d("Per-song override: %s pinned to %s", mediaId, override.name)
+                    listOf(override)
+                }
+            }
         Timber.tag("MusicService").d("Multi-source resolve for %s | chain=%s", mediaId, chain.joinToString(",") { it.name })
         if (chain.isEmpty()) {
-            Timber.tag("MusicService").d("Multi-source skip: no sources enabled (chain empty)")
+            Timber.tag("MusicService").d("Multi-source skip: no sources to try (chain empty)")
             return null
         }
 
@@ -7175,6 +7243,9 @@ class MusicService :
                 "Source %s candidate for \"%s\": title match %.1f%% [%s]",
                 source.name, query.title, ratio * 100, stream.label,
             )
+            // Remember that this source has this song (title-gate passed) so the player's Source
+            // chooser can list only the sources that actually have the track.
+            recordResolvedSource(mediaId, source)
             if (ratio > bestRatio) {
                 best = stream
                 bestSource = source

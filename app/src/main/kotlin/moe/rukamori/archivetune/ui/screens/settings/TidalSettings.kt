@@ -87,6 +87,16 @@ import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.dataStore
 import moe.rukamori.archivetune.utils.rememberPreference
 
+/**
+ * Process-lived cache of the last instance health-check results so the checked status (and ping)
+ * survives leaving and returning to the screen, until another check overwrites it. Not persisted to
+ * disk.
+ */
+private object TidalHealthUiCache {
+    val instanceHealth = mutableStateMapOf<String, TidalAudioProvider.InstanceHealth>()
+    val instanceLatency = mutableStateMapOf<String, Long>()
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TidalSettings(navController: NavController) {
@@ -126,10 +136,10 @@ fun TidalSettings(navController: NavController) {
         onStoredInstancesChange(if (distinct == defaults) "" else distinct.joinToString("\n"))
     }
 
-    // baseUrl -> scan status (null while untested). Nothing is probed until the user taps Test.
-    val healthStatus = remember { mutableStateMapOf<String, TidalAudioProvider.InstanceHealth>() }
-    // baseUrl -> last measured latency (ms), used for the "— <ping> ms" suffix.
-    val healthLatency = remember { mutableStateMapOf<String, Long>() }
+    // baseUrl -> scan status (null while untested) + last latency, backed by a process-lived cache so
+    // a completed check persists when navigating away and back. Nothing is probed until Test is tapped.
+    val healthStatus = TidalHealthUiCache.instanceHealth
+    val healthLatency = TidalHealthUiCache.instanceLatency
     var testingInstances by remember { mutableStateOf(false) }
     var showAddDialog by remember { mutableStateOf(false) }
     var showBulkDialog by remember { mutableStateOf(false) }
