@@ -557,7 +557,18 @@ jobs:
           MOBILE_UNIVERSAL_APK=$(find downloaded_artifacts/app-gms-mobile-universal-release -name "*.apk" | head -n 1)
           OTHER_APKS=$(find downloaded_artifacts -path "*/app-*-release/*.apk" ! -path "*/app-gms-mobile-universal-release/*")
 
-          cat > release_notes.md <<EOF
+          cat > release_notes.md <<'NOTES'
+          ## What's new 🎵
+
+          - 🎧 **Qobuz & Tidal integration** — the app now auto-discovers and connects to community-shared streaming accounts so you can play music right away
+          - 🖼️ **Fixed app icon on home screen** — the icon now displays correctly on all launchers
+          - ✨ **Smoother animations** — transitions and UI interactions feel noticeably more fluid throughout the app
+          - 🔧 **Various bug fixes and stability improvements** from the latest upstream updates
+
+          ---
+          NOTES
+
+          cat >> release_notes.md <<EOF
           ${{ steps.build_changelog.outputs.changelog }}
           EOF
 
