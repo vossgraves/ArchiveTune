@@ -53,6 +53,7 @@ import moe.rukamori.archivetune.ui.screens.settings.ThemePalettes
 import moe.rukamori.archivetune.ui.theme.ThemeSeedPalette
 import moe.rukamori.archivetune.ui.theme.ThemeSeedPaletteCodec
 import moe.rukamori.archivetune.utils.MoriCipherUpdateScheduler
+import moe.rukamori.archivetune.utils.PoolAccountManager
 import moe.rukamori.archivetune.utils.PreferenceStore
 import moe.rukamori.archivetune.utils.ProxyUtils
 import moe.rukamori.archivetune.utils.YTPlayerUtils
@@ -239,6 +240,21 @@ class App :
                 }
             } catch (e: Exception) {
                 Timber.w(e, "Tidal instance startup health scan failed")
+            }
+        }
+
+        // Pull shared premium ACCOUNTS (real subscriber tokens) from the community Source Pool so the
+        // resolvers can stream full-quality FLAC directly against the official Tidal/Qobuz APIs — no
+        // self-hosted restream instance required. Loads the persisted cache first (instant), then
+        // refreshes over the network. Disabled automatically when no Source Pool URL is baked in.
+        applicationScope.launch(Dispatchers.IO) {
+            try {
+                if (PoolAccountManager.isEnabled) {
+                    PoolAccountManager.loadCached(this@App)
+                    PoolAccountManager.refresh(this@App)
+                }
+            } catch (e: Exception) {
+                Timber.w(e, "Pool account startup refresh failed")
             }
         }
 

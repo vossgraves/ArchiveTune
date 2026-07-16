@@ -9,10 +9,8 @@ package moe.rukamori.archivetune
 
 import moe.rukamori.archivetune.constants.UpdateChannel
 
-private val CanaryVersionRegex = Regex("""^N\d{8}$""")
-
 internal val isCanaryBuild: Boolean
-    get() = CanaryVersionRegex.matches(BuildConfig.VERSION_NAME)
+    get() = BuildConfig.IS_NIGHTLY
 
 internal val defaultUpdateChannel: UpdateChannel
     get() = if (isCanaryBuild) UpdateChannel.CANARY else UpdateChannel.STABLE

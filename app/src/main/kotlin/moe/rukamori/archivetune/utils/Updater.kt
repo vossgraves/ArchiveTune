@@ -177,10 +177,21 @@ object Updater {
     private fun parseReleaseSemVerOrNull(release: ReleaseInfo): SemVer? =
         parseSemVerOrNull(release.tagName) ?: parseSemVerOrNull(release.name)
 
+    // Canary builds share a single fixed display versionName (e.g. "13.7.5"), so the version *name*
+    // can't distinguish two canary builds. Instead each canary build number is carried as semver
+    // build-metadata: "13.7.5+build.<versionCode>". When a version string carries that metadata we
+    // compare the monotonic build number against the running app's BuildConfig.VERSION_CODE, which
+    // is what makes "update available" true only for a genuinely newer canary build.
+    private val buildMetadataRegex = Regex("""\+build\.(\d+)""")
+
+    internal fun buildNumberOrNull(version: String): Int? = buildMetadataRegex.find(version)?.groupValues?.get(1)?.toIntOrNull()
+
     internal fun isSameVersion(
         a: String,
         b: String,
     ): Boolean {
+        buildNumberOrNull(a)?.let { return it == BuildConfig.VERSION_CODE }
+        buildNumberOrNull(b)?.let { return it == BuildConfig.VERSION_CODE }
         val aSemVer = parseSemVerOrNull(a)
         val bSemVer = parseSemVerOrNull(b)
         return if (aSemVer != null && bSemVer != null) {
@@ -197,6 +208,9 @@ object Updater {
         latestVersion: String,
         currentVersion: String,
     ): Boolean {
+        // Canary build-number comparison takes priority: a newer build number means an update is
+        // available even though the display versionName is unchanged.
+        buildNumberOrNull(latestVersion)?.let { return it > BuildConfig.VERSION_CODE }
         val latestSemVer = parseSemVerOrNull(latestVersion)
         val currentSemVer = parseSemVerOrNull(currentVersion)
         return if (latestSemVer != null && currentSemVer != null) {
@@ -378,9 +392,26 @@ object Updater {
         return "$StableReleaseBaseUrl/latest/download/$artifactName"
     }
 
+    // The nightly workflow embeds the build's monotonic versionCode in the release notes as
+    // "at-build:<n>". Fall back to the numeric patch segment of the release name ("Canary 13.7.<n>")
+    // for older releases that predate the marker.
+    private val canaryBuildMarkerRegex = Regex("""at-build:(\d+)""")
+
+    internal fun canaryBuildNumber(release: ReleaseInfo): Int? =
+        release.body?.let { canaryBuildMarkerRegex.find(it)?.groupValues?.get(1)?.toIntOrNull() }
+            ?: parseSemVerOrNull(release.name)?.patch
+
     suspend fun getLatestCanaryVersionName(): Result<String> =
         getLatestCanaryReleaseInfo().map { latest ->
-            latest.tagName.ifBlank { latest.name }
+            // Return the fixed display versionName carrying the build number as semver build-metadata
+            // (e.g. "13.7.5+build.4992") so downstream comparisons detect genuinely newer builds while
+            // the UI still shows a clean, fixed version string.
+            val buildNumber = canaryBuildNumber(latest)
+            if (buildNumber != null) {
+                "${BuildConfig.VERSION_NAME}+build.$buildNumber"
+            } else {
+                latest.tagName.ifBlank { latest.name }
+            }
         }
 
     suspend fun getLatestCanaryReleaseNotes(): Result<String?> = getLatestCanaryReleaseInfo().map { it.body }

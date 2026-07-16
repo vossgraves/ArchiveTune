@@ -201,6 +201,7 @@ import moe.rukamori.archivetune.audiosource.AudioSourceConfig
 import moe.rukamori.archivetune.audiosource.DirectStream
 import moe.rukamori.archivetune.tidal.TidalAccountManager
 import moe.rukamori.archivetune.tidal.TidalAudioProvider
+import moe.rukamori.archivetune.utils.PoolAccountManager
 import moe.rukamori.archivetune.tidal.TidalInstanceHealthManager
 import moe.rukamori.archivetune.constants.PlayerVolumeKey
 import moe.rukamori.archivetune.constants.RepeatModeKey
@@ -7302,36 +7303,40 @@ class MusicService :
         val quality = parseTidalAudioQuality()
         Timber.tag("MusicService").d("Tidal resolve start | quality=%s accountFirst=%s", quality.name, dataStore.get(TidalAccountFirstKey, true))
 
-        // Account-first: use the user's own Tidal token via the official API when available.
+        // Account-first: use a real Tidal subscriber token via the official API when available —
+        // first the user's own signed-in account, then shared premium accounts from the community
+        // Source Pool. Both paths yield full-quality FLAC directly, so a proxy instance is only a
+        // last resort.
         if (dataStore.get(TidalAccountFirstKey, true)) {
+            val apiQuality =
+                when (quality) {
+                    TidalAudioQuality.HI_RES_LOSSLESS -> "HI_RES_LOSSLESS"
+                    TidalAudioQuality.FLAC -> "LOSSLESS"
+                    TidalAudioQuality.AAC_320 -> "HIGH"
+                }
+            fun attempt(accessToken: String, countryCode: String): DirectStream? =
+                runBlocking(Dispatchers.IO) {
+                    TidalAccountManager.resolveDirectStream(
+                        accessToken = accessToken,
+                        title = query.title,
+                        artists = query.artists,
+                        durationMs = query.durationMs,
+                        audioQuality = apiQuality,
+                        cacheDir = cacheDir,
+                        countryCode = countryCode,
+                    )
+                }
+
+            // 1) The user's own token. Resolve, transparently refreshing and retrying once if the
+            //    API rejects it (401) — the stored token may have been invalidated server-side even
+            //    though it has not expired by our clock.
             var token = ensureValidTidalToken()
             Timber.tag("MusicService").d("Tidal account token available=%s", token != null)
             if (token != null) {
-                val apiQuality =
-                    when (quality) {
-                        TidalAudioQuality.HI_RES_LOSSLESS -> "HI_RES_LOSSLESS"
-                        TidalAudioQuality.FLAC -> "LOSSLESS"
-                        TidalAudioQuality.AAC_320 -> "HIGH"
-                    }
-                // Resolve, transparently refreshing and retrying once if the API rejects the token
-                // (401) — the stored token may have been invalidated server-side even though it has
-                // not expired by our clock.
                 val accountCountry = dataStore.get(TidalCountryCodeKey, "").ifBlank { "US" }
-                fun attempt(accessToken: String): DirectStream? =
-                    runBlocking(Dispatchers.IO) {
-                        TidalAccountManager.resolveDirectStream(
-                            accessToken = accessToken,
-                            title = query.title,
-                            artists = query.artists,
-                            durationMs = query.durationMs,
-                            audioQuality = apiQuality,
-                            cacheDir = cacheDir,
-                            countryCode = accountCountry,
-                        )
-                    }
                 val accountStream =
                     try {
-                        attempt(token)
+                        attempt(token, accountCountry)
                     } catch (e: Throwable) {
                         // A 401 may surface directly, or wrapped as a *suppressed*/cause exception
                         // inside an InterruptedException when ExoPlayer interrupts the loader thread
@@ -7344,7 +7349,7 @@ class MusicService :
                             val refreshed = refreshTidalToken(rejectedToken = token)
                             if (refreshed != null && refreshed != token) {
                                 token = refreshed
-                                runCatching { attempt(refreshed) }
+                                runCatching { attempt(refreshed, accountCountry) }
                                     .onFailure { Timber.tag("MusicService").w(it, "Tidal account retry failed for %s", query.mediaId) }
                                     .getOrNull()
                             } else {
@@ -7356,6 +7361,21 @@ class MusicService :
                         }
                     }
                 if (accountStream != null) return accountStream
+            }
+
+            // 2) Shared premium Tidal accounts contributed to the community Source Pool (premium
+            //    first). These are genuine subscriber tokens, so they stream full-quality FLAC via
+            //    the official API without anyone hosting a restream instance.
+            for (poolAccount in PoolAccountManager.tidalAccounts()) {
+                val poolCountry = poolAccount.countryCode?.trim()?.ifBlank { null } ?: "US"
+                val poolStream =
+                    runCatching { attempt(poolAccount.token, poolCountry) }
+                        .onFailure { Timber.tag("MusicService").w(it, "Tidal pool account resolve failed for %s", query.mediaId) }
+                        .getOrNull()
+                if (poolStream != null) {
+                    Timber.tag("MusicService").d("Tidal resolved via pool account (premium=%s)", poolAccount.premium)
+                    return poolStream
+                }
             }
         }
 
@@ -7419,7 +7439,23 @@ class MusicService :
                 addAll(userInstances)
                 addAll(discoveredInstances)
             }.toList()
-        val configuredTokens = QobuzToken.listFromJson(dataStore.get(QobuzTokensKey, ""))
+        // Union the user's own Qobuz tokens with shared premium accounts from the community Source
+        // Pool. Pool accounts carry the app_secret needed to sign stream URLs, so they resolve FLAC
+        // directly against www.qobuz.com. User entries stay first; pool accounts are appended and
+        // deduped by auth token.
+        val poolTokens =
+            PoolAccountManager.qobuzAccounts().map {
+                QobuzToken(
+                    token = it.token,
+                    appId = it.appId,
+                    appSecret = it.appSecret,
+                    label = "Source Pool",
+                    subscription = if (it.premium) "premium" else "",
+                )
+            }
+        val configuredTokens =
+            (QobuzToken.listFromJson(dataStore.get(QobuzTokensKey, "")) + poolTokens)
+                .distinctBy { it.token }
         if (configuredInstances.isEmpty() && configuredTokens.isEmpty()) {
             Timber.tag("MusicService").d("Qobuz skip: no tokens or instances configured")
             return null

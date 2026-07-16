@@ -52,14 +52,14 @@ jobs:
           SHORT_SHA="$(git rev-parse --short HEAD)"
           COMMIT_COUNT="$(git rev-list --count HEAD)"
 
-          # Derive a monotonic canary version from the commit count (same scheme as stable) so
-          # each dev build installs over the previous one. The versionName carries a -canary
-          # prerelease tag so it never outranks a stable release with the same numbers.
-          CANARY_VERSION_NAME="${MAJOR_MINOR}.${COMMIT_COUNT}-canary.${SHORT_SHA}"
-
+          # Canary builds all share the fixed display versionName from build.gradle.kts (e.g.
+          # "13.7.5"); they are told apart internally by the monotonic versionCode (the commit
+          # count). The in-app updater embeds that versionCode in the release notes ("at-build:<n>")
+          # and compares build numbers, so the fixed versionName never triggers a false "update
+          # available" while genuinely newer builds still do.
           echo "nightly_tag=${NIGHTLY_TAG}" >> "$GITHUB_OUTPUT"
           echo "nightly_name=Canary ${MAJOR_MINOR}.${COMMIT_COUNT}-${SHORT_SHA} (${TS})" >> "$GITHUB_OUTPUT"
-          echo "version_name=${CANARY_VERSION_NAME}" >> "$GITHUB_OUTPUT"
+          echo "version_name=${BASE_VERSION}" >> "$GITHUB_OUTPUT"
           echo "version_code=${COMMIT_COUNT}" >> "$GITHUB_OUTPUT"
 
           if [ "${FORCE:-false}" = "true" ]; then
@@ -101,6 +101,9 @@ jobs:
     env:
       VERSION_NAME_OVERRIDE: ${{ needs.check.outputs.version_name }}
       VERSION_CODE_OVERRIDE: ${{ needs.check.outputs.version_code }}
+      # Marks the APK as a canary/nightly build (BuildConfig.IS_NIGHTLY). Drives the default update
+      # channel and the build-number-based canary update comparison.
+      IS_NIGHTLY_BUILD: 'true'
     strategy:
       matrix:
         include:
@@ -357,6 +360,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}
+          VERSION_CODE: ${{ needs.check.outputs.version_code }}
         run: |
           set -euo pipefail
           LAST_TAG="$(gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName,createdAt \
@@ -365,6 +369,10 @@ jobs:
             echo "# Nightly build"
             echo ""
             echo "Automated canary build. Not intended for production use."
+            echo ""
+            # Machine-readable monotonic build number read by the in-app updater to compare canary
+            # builds (the display versionName is fixed, so the updater compares this instead).
+            echo "<!-- at-build:${VERSION_CODE} -->"
             echo ""
             echo "## Changes"
           } > nightly_notes.md
