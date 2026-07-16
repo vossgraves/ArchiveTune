@@ -2625,6 +2625,14 @@ class MusicService :
                     incomingPlayer.playWhenReady = crossfadePlaybackRequested
                     if (crossfadePlaybackRequested) {
                         incomingPlayer.play()
+                        // MetroList keeps the outgoing player fully audible until the incoming
+                        // player is genuinely rendering. STATE_READY alone can still precede the
+                        // audio sink starting, which otherwise creates a brief dip at fade-in.
+                        if (!awaitPlayerActuallyPlaying(incomingPlayer, CROSSFADE_PLAYING_TIMEOUT_MS)) {
+                            cancelCrossfade(resetVolume = true, resetPauseAtEnd = true)
+                            scheduleCrossfade()
+                            return@launch
+                        }
                     }
 
                     var elapsedMs = 0L
@@ -2713,10 +2721,10 @@ class MusicService :
             player.seekTo(targetIndex, incomingPosition)
             player.playWhenReady = shouldContinuePlayback
             if (shouldContinuePlayback) {
-                if (awaitPrimaryCrossfadeHandoffReady(incomingPlayer)) {
-                    val syncedIncomingPosition = incomingPlayer.currentPosition.coerceAtLeast(0L)
-                    player.seekTo(targetIndex, syncedIncomingPosition)
-                }
+                // Do not seek a second time after the primary becomes ready. That reset its
+                // renderer at the exact moment the audible secondary was released. Keep the
+                // secondary carrying audio until the once-seeked primary is actually playing.
+                awaitPrimaryCrossfadeHandoffReady(incomingPlayer)
             }
             currentMediaMetadata.value = player.getMediaItemAt(targetIndex).metadata
             handoffCompleted = true
@@ -2745,7 +2753,10 @@ class MusicService :
     private suspend fun awaitPrimaryCrossfadeHandoffReady(incomingPlayer: ExoPlayer): Boolean {
         val deadlineMs = android.os.SystemClock.elapsedRealtime() + CROSSFADE_HANDOFF_READY_TIMEOUT_MS
         while (kotlinx.coroutines.currentCoroutineContext().isActive && android.os.SystemClock.elapsedRealtime() < deadlineMs) {
-            if (player.playbackState == Player.STATE_READY && canHandoffWithoutRebuffer(incomingPlayer)) {
+            if (player.playbackState == Player.STATE_READY &&
+                player.isPlaying &&
+                canHandoffWithoutRebuffer(incomingPlayer)
+            ) {
                 return true
             }
             if (player.playbackState == Player.STATE_IDLE || player.playbackState == Player.STATE_ENDED) {
@@ -2753,7 +2764,24 @@ class MusicService :
             }
             delay(25L)
         }
-        return player.playbackState == Player.STATE_READY && canHandoffWithoutRebuffer(incomingPlayer)
+        return player.playbackState == Player.STATE_READY &&
+            player.isPlaying &&
+            canHandoffWithoutRebuffer(incomingPlayer)
+    }
+
+    private suspend fun awaitPlayerActuallyPlaying(
+        targetPlayer: Player,
+        timeoutMs: Long,
+    ): Boolean {
+        val deadlineMs = android.os.SystemClock.elapsedRealtime() + timeoutMs
+        while (kotlinx.coroutines.currentCoroutineContext().isActive && android.os.SystemClock.elapsedRealtime() < deadlineMs) {
+            if (targetPlayer.playbackState == Player.STATE_READY && targetPlayer.isPlaying) return true
+            if (targetPlayer.playbackState == Player.STATE_IDLE || targetPlayer.playbackState == Player.STATE_ENDED) {
+                return false
+            }
+            delay(16L)
+        }
+        return targetPlayer.playbackState == Player.STATE_READY && targetPlayer.isPlaying
     }
 
     private fun canHandoffWithoutRebuffer(incomingPlayer: ExoPlayer): Boolean {
@@ -9087,6 +9115,7 @@ class MusicService :
         const val CROSSFADE_END_GUARD_MS = 150L
         const val CROSSFADE_PREPARE_AHEAD_MS = 30_000L
         const val CROSSFADE_READY_TIMEOUT_MS = 5_000L
+        const val CROSSFADE_PLAYING_TIMEOUT_MS = 2_000L
         const val CROSSFADE_HANDOFF_READY_TIMEOUT_MS = 5_000L
         const val CROSSFADE_HANDOFF_BUFFER_MS = 5_000L
         const val CROSSFADE_HANDOFF_SEEK_GUARD_MS = 750L

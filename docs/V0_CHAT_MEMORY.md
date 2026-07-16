@@ -102,7 +102,11 @@ future sessions (or contributors) can pick up with full context.
 - **Crossfade:** the aggressive "handoff" rework was REVERTED (it caused
   crashes/instability). Current state uses the original stable crossfade path
   plus a "Crossfading" indicator using a solid theme color (the rainbow/RGB
-  shimmer was dropped).
+  shimmer was dropped). A later narrow MetroList-inspired fix keeps that stable
+  lifecycle: the fade waits until the secondary is actually playing, and the
+  final handoff performs only one primary seek, waits for real playback, then
+  releases the secondary. It deliberately does not restore the previously
+  reverted player-swap/micro-fade rewrite.
 - Removed the broken splash/opening animation (dropped `installSplashScreen()`
   and core-splashscreen); adaptive window background prevents white flash.
 
