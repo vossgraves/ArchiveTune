@@ -35,6 +35,7 @@ sealed interface GatekeeperResult {
 
     data class Blocked(
         val message: String,
+        val retryable: Boolean,
     ) : GatekeeperResult
 }
 
@@ -56,13 +57,17 @@ class GatekeeperRepository
             }
 
         @Volatile
-        private var cachedResult: GatekeeperResult? = null
+        private var accessGranted = false
 
         suspend fun checkAccess(): GatekeeperResult {
-            cachedResult?.let { return it }
+            if (accessGranted) return GatekeeperResult.Allowed
             return checkMutex.withLock {
-                cachedResult?.let { return@withLock it }
-                performCheck().also { cachedResult = it }
+                if (accessGranted) return@withLock GatekeeperResult.Allowed
+                performCheck().also { result ->
+                    if (result is GatekeeperResult.Allowed) {
+                        accessGranted = true
+                    }
+                }
             }
         }
 
@@ -71,7 +76,7 @@ class GatekeeperRepository
             val bearerToken = BuildConfig.API_BEARER_TOKEN.trim()
             if (bearerToken.isEmpty()) {
                 Timber.w("Gatekeeper bearer token is not configured")
-                return blocked(fallbackMessage)
+                return blocked(fallbackMessage, retryable = false)
             }
 
             return try {
@@ -89,13 +94,16 @@ class GatekeeperRepository
                     GatekeeperResult.Allowed
                 } else {
                     Timber.w("Gatekeeper denied network access with HTTP ${response.status.value}")
-                    blocked(resolveWarningMessage(response.bodyAsText(), fallbackMessage))
+                    blocked(
+                        message = resolveWarningMessage(response.bodyAsText(), fallbackMessage),
+                        retryable = response.status.value >= HTTP_SERVER_ERROR_MINIMUM,
+                    )
                 }
             } catch (exception: CancellationException) {
                 throw exception
             } catch (exception: Exception) {
                 Timber.w(exception, "Gatekeeper request failed")
-                blocked(fallbackMessage)
+                blocked(fallbackMessage, retryable = true)
             }
         }
 
@@ -119,9 +127,15 @@ class GatekeeperRepository
             }
         }
 
-        private fun blocked(message: String): GatekeeperResult.Blocked {
+        private fun blocked(
+            message: String,
+            retryable: Boolean,
+        ): GatekeeperResult.Blocked {
             NetworkGatekeeper.setConnectionBlocked(true)
-            return GatekeeperResult.Blocked(message)
+            return GatekeeperResult.Blocked(
+                message = message,
+                retryable = retryable,
+            )
         }
 
         private fun resolveWarningMessage(
@@ -131,15 +145,14 @@ class GatekeeperRepository
             val body = responseBody.trim()
             if (body.isEmpty()) return fallbackMessage
 
-            val jsonMessage =
+            val parsedJson =
                 runCatching {
                     val json = JSONObject(body)
-                    MESSAGE_KEYS
-                        .asSequence()
-                        .map { json.optString(it).trim() }
-                        .firstOrNull { it.isNotEmpty() }
+                    json.firstStringValue(TOP_LEVEL_MESSAGE_KEYS)
+                        ?: json.optJSONObject(ERROR_KEY)?.firstStringValue(NESTED_ERROR_MESSAGE_KEYS)
                 }.getOrNull()
-            if (!jsonMessage.isNullOrEmpty()) return jsonMessage
+            if (!parsedJson.isNullOrEmpty()) return parsedJson
+            if (body.startsWith('{') || body.startsWith('[')) return fallbackMessage
 
             return body.takeIf {
                 it.length <= MAX_PLAIN_TEXT_MESSAGE_LENGTH &&
@@ -148,12 +161,24 @@ class GatekeeperRepository
             } ?: fallbackMessage
         }
 
+        private fun JSONObject.firstStringValue(keys: List<String>): String? =
+            keys
+                .asSequence()
+                .mapNotNull { key -> opt(key) as? String }
+                .map { value -> value.trim() }
+                .firstOrNull { value ->
+                    value.isNotEmpty() && value.length <= MAX_PLAIN_TEXT_MESSAGE_LENGTH
+                }
+
         private companion object {
             const val HEADER_PACKAGE_NAME = "x-client-package-name"
             const val HEADER_VERSION_CODE = "x-client-version-code"
+            const val HTTP_SERVER_ERROR_MINIMUM = 500
             const val CONNECT_TIMEOUT_MILLIS = 10_000L
             const val REQUEST_TIMEOUT_MILLIS = 15_000L
             const val MAX_PLAIN_TEXT_MESSAGE_LENGTH = 500
-            val MESSAGE_KEYS = listOf("message", "error", "detail")
+            const val ERROR_KEY = "error"
+            val TOP_LEVEL_MESSAGE_KEYS = listOf("message", "detail", ERROR_KEY)
+            val NESTED_ERROR_MESSAGE_KEYS = listOf("message", "detail")
         }
     }
