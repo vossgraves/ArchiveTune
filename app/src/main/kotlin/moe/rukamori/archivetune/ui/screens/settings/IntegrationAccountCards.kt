@@ -8,7 +8,6 @@
 package moe.rukamori.archivetune.ui.screens.settings
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -45,37 +44,27 @@ import moe.rukamori.archivetune.constants.DiscordUsernameKey
 import moe.rukamori.archivetune.constants.InnerTubeCookieKey
 import moe.rukamori.archivetune.constants.LastFMSessionKey
 import moe.rukamori.archivetune.constants.LastFMUsernameKey
-import moe.rukamori.archivetune.constants.PinDiscordCardKey
-import moe.rukamori.archivetune.constants.PinLastFmCardKey
-import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.utils.rememberPreference
 
 /**
  * "Accounts" section for the Integration screen.
  *
- * Shows a card per connected service. The YouTube Music card is ALWAYS shown first.
- * The Last.fm and Discord cards can be pinned by the user; pinned cards float to the
- * top (just under the always-on YouTube card) so the user's preferred integrations
- * stay within easy reach.
+ * Shows a card per connected service. YouTube Music is always first;
+ * Last.fm and Discord appear below it when connected.
  */
 @Composable
 fun IntegrationAccountCards(navController: NavController) {
-    // YouTube Music — always shown.
     val (innerTubeCookie) = rememberPreference(InnerTubeCookieKey, "")
     val (accountName) = rememberPreference(AccountNameKey, "")
     val (accountHandle) = rememberPreference(AccountChannelHandleKey, "")
 
-    // Last.fm.
     val (lastFmSession) = rememberPreference(LastFMSessionKey, "")
     val (lastFmUsername) = rememberPreference(LastFMUsernameKey, "")
-    val (pinLastFm, setPinLastFm) = rememberPreference(PinLastFmCardKey, false)
 
-    // Discord.
     val (discordToken) = rememberPreference(DiscordTokenKey, "")
     val (discordName) = rememberPreference(DiscordNameKey, "")
     val (discordUsername) = rememberPreference(DiscordUsernameKey, "")
     val (discordAvatarUrl) = rememberPreference(DiscordAvatarUrlKey, "")
-    val (pinDiscord, setPinDiscord) = rememberPreference(PinDiscordCardKey, false)
 
     val youtubeConnected = innerTubeCookie.isNotBlank()
     val lastFmConnected = lastFmSession.isNotBlank()
@@ -85,7 +74,6 @@ fun IntegrationAccountCards(navController: NavController) {
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        // YouTube Music is always first and cannot be pinned/unpinned.
         AccountCard(
             iconRes = R.drawable.music_note,
             title = stringResource(R.string.youtube_music_account),
@@ -100,73 +88,38 @@ fun IntegrationAccountCards(navController: NavController) {
             onClick = { navController.navigate("settings/account") },
         )
 
-        // Pinnable cards. Unlike the always-on YouTube card, the Last.fm and Discord cards only
-        // appear once the user has actually signed in — an empty "Not connected" card adds noise,
-        // and login for these services is initiated from their own Integration entries, not here.
-        // Sorted so pinned ones come first.
-        val pinnables =
-            listOf(
-                PinnableCard(
-                    order = if (pinLastFm) 0 else 1,
-                    iconRes = R.drawable.token,
-                    title = stringResource(R.string.lastfm_integration),
-                    connected = lastFmConnected,
-                    detail =
-                        if (lastFmConnected && lastFmUsername.isNotBlank()) {
-                            stringResource(R.string.account_signed_in_as, lastFmUsername)
-                        } else {
-                            null
-                        },
-                    pinned = pinLastFm,
-                    onTogglePin = { setPinLastFm(!pinLastFm) },
-                    onClick = { navController.navigate("settings/lastfm") },
-                ),
-                PinnableCard(
-                    order = if (pinDiscord) 0 else 1,
-                    iconRes = R.drawable.discord,
-                    avatarUrl = discordAvatarUrl.takeIf { discordConnected && it.isNotBlank() },
-                    title = stringResource(R.string.discord_integration),
-                    connected = discordConnected,
-                    detail =
-                        when {
-                            !discordConnected -> null
-                            discordName.isNotBlank() -> stringResource(R.string.account_signed_in_as, discordName)
-                            discordUsername.isNotBlank() -> stringResource(R.string.account_signed_in_as, discordUsername)
-                            else -> null
-                        },
-                    pinned = pinDiscord,
-                    onTogglePin = { setPinDiscord(!pinDiscord) },
-                    onClick = { navController.navigate("settings/discord") },
-                ),
-            ).filter { it.connected }
-                .sortedBy { it.order }
-
-        pinnables.forEach { card ->
+        if (lastFmConnected) {
             AccountCard(
-                iconRes = card.iconRes,
-                avatarUrl = card.avatarUrl,
-                title = card.title,
-                connected = card.connected,
-                detail = card.detail,
-                pinned = card.pinned,
-                onTogglePin = card.onTogglePin,
-                onClick = card.onClick,
+                iconRes = R.drawable.token,
+                title = stringResource(R.string.lastfm_integration),
+                connected = true,
+                detail =
+                    if (lastFmUsername.isNotBlank()) {
+                        stringResource(R.string.account_signed_in_as, lastFmUsername)
+                    } else {
+                        null
+                    },
+                onClick = { navController.navigate("settings/lastfm") },
+            )
+        }
+
+        if (discordConnected) {
+            AccountCard(
+                iconRes = R.drawable.discord,
+                avatarUrl = discordAvatarUrl.takeIf { it.isNotBlank() },
+                title = stringResource(R.string.discord_integration),
+                connected = true,
+                detail =
+                    when {
+                        discordName.isNotBlank() -> stringResource(R.string.account_signed_in_as, discordName)
+                        discordUsername.isNotBlank() -> stringResource(R.string.account_signed_in_as, discordUsername)
+                        else -> null
+                    },
+                onClick = { navController.navigate("settings/discord") },
             )
         }
     }
 }
-
-private data class PinnableCard(
-    val order: Int,
-    val iconRes: Int,
-    val avatarUrl: String? = null,
-    val title: String,
-    val connected: Boolean,
-    val detail: String?,
-    val pinned: Boolean,
-    val onTogglePin: () -> Unit,
-    val onClick: () -> Unit,
-)
 
 @Composable
 private fun AccountCard(
@@ -176,8 +129,6 @@ private fun AccountCard(
     detail: String?,
     modifier: Modifier = Modifier,
     avatarUrl: String? = null,
-    pinned: Boolean? = null,
-    onTogglePin: (() -> Unit)? = null,
     onClick: () -> Unit,
 ) {
     Card(
@@ -195,7 +146,6 @@ private fun AccountCard(
                     .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            // Leading avatar (if available) or service icon.
             if (avatarUrl != null) {
                 AsyncImage(
                     model = avatarUrl,
@@ -249,31 +199,6 @@ private fun AccountCard(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-            }
-
-            // Pin toggle for pinnable cards.
-            if (pinned != null && onTogglePin != null) {
-                IconButton(
-                    onClick = onTogglePin,
-                    onLongClick = {},
-                ) {
-                    Icon(
-                        painter =
-                            painterResource(
-                                if (pinned) R.drawable.bookmark_filled else R.drawable.bookmark,
-                            ),
-                        contentDescription =
-                            stringResource(
-                                if (pinned) R.string.account_card_unpin else R.string.account_card_pin,
-                            ),
-                        tint =
-                            if (pinned) {
-                                MaterialTheme.colorScheme.primary
-                            } else {
-                                MaterialTheme.colorScheme.onSurfaceVariant
-                            },
-                    )
-                }
             }
         }
     }

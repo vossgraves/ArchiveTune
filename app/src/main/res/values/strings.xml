@@ -684,7 +684,7 @@
     <string name="preferred_sources">Preferred sources</string>
     <string name="preferred_sources_summary">Top of the list is tried first</string>
     <string name="set_source_priority">Drag to set source priority</string>
-    <string name="source_priority_description">The topmost enabled source is used first. Sources listed after YouTube are ignored, since YouTube resolves every track.</string>
+    <string name="source_priority_description"></string>
     <string name="youtube_source_note">YouTube always works and needs no setup. Place a lossless source above it to override YouTube playback.</string>
     <string name="tidal_specific">Tidal</string>
     <string name="qobuz_specific">Qobuz</string>
@@ -716,7 +716,7 @@
     <string name="tidal_disconnect">Disconnect Tidal account</string>
     <!-- Tidal HiFi instances -->
     <string name="tidal_instances">HiFi instances</string>
-    <string name="tidal_instances_description">Tidal streams are resolved through public HiFi/QQDL instances. None are bundled — add your own, then tap Test instances to check which ones work. If the list is empty, Tidal streaming is disabled.</string>
+    <string name="tidal_instances_description"></string>
     <string name="tidal_add_instance">Add instance</string>
     <string name="tidal_instance_url_hint">https://instance.example.com</string>
     <string name="tidal_instance_invalid_url">Enter a valid http(s) URL</string>
@@ -751,7 +751,7 @@
 
     <!-- Qobuz account tokens (direct API) -->
     <string name="qobuz_tokens">Qobuz account tokens</string>
-    <string name="qobuz_tokens_description">Sign in with a Qobuz web session, or paste one or more token blocks. Direct tokens stream from Qobuz at full fidelity and are tried before proxy instances.</string>
+    <string name="qobuz_tokens_description"></string>
     <string name="qobuz_login_web">Sign in with Qobuz (web)</string>
     <string name="qobuz_login">Sign in to Qobuz</string>
     <string name="qobuz_login_success">Added Qobuz account</string>
@@ -954,7 +954,7 @@
     <string name="pool_refresh_failed">Couldn\'t reach the source pool. Check your connection and try again.</string>
     <string name="manual_source_login">Manual source sign-in</string>
     <string name="description_manual_source_login">Show the advanced Tidal/Qobuz instance &amp; account fields. Off by default — the app uses the community source pool automatically.</string>
-    <string name="manual_source_login_active_note">Advanced: add your own private Tidal/Qobuz instances or account tokens. The community source pool is already used automatically without any setup.</string>
+    <string name="manual_source_login_active_note"></string>
     <string name="nerd_stats">Nerd Stats</string>
     <string name="track_label">Track</string>
     <string name="no_track_playing">No track playing</string>
