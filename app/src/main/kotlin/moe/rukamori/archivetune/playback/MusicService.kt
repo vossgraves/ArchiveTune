@@ -6110,11 +6110,9 @@ class MusicService :
 
         beginHistorySession(mediaItem?.mediaId, forceNew = true)
 
-        // Pre-load lyrics for upcoming songs in queue
         val currentIndex = player.currentMediaItemIndex
-        // Convert media items to MediaMetadata for lyrics pre-loading
-        val queue = player.mediaItems.mapNotNull { it.metadata }
-        if (queue.isNotEmpty()) {
+        val queue = player.mediaItems.map { it.metadata }
+        if (queue.any { it != null }) {
             lyricsPreloadManager?.onSongChanged(currentIndex, queue)
         }
 
@@ -7964,6 +7962,8 @@ class MusicService :
             connectivityObserver.unregister()
         } catch (_: Exception) {
         }
+        lyricsPreloadManager?.destroy()
+        lyricsPreloadManager = null
         abandonAudioFocus()
         try {
             releaseAudioEffects()

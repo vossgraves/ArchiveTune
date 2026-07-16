@@ -1907,6 +1907,48 @@ interface DatabaseDao {
         )
     }
 
+    @Query(
+        """
+        UPDATE lyrics
+        SET lyrics = :lyrics, source = :source, updatedAt = :updatedAt
+        WHERE id = :id AND lyrics = :notFoundLyrics
+        """,
+    )
+    fun replaceLyricsIfNotFound(
+        id: String,
+        lyrics: String,
+        source: String,
+        updatedAt: Long,
+        notFoundLyrics: String,
+    ): Int
+
+    @Transaction
+    fun replaceLyricsIfAbsentOrNotFound(
+        id: String,
+        lyrics: String,
+        source: String = LyricsEntity.Source.REMOTE.value,
+        updatedAt: Long = System.currentTimeMillis(),
+    ) {
+        val insertedRowId =
+            insert(
+                LyricsEntity(
+                    id = id,
+                    lyrics = lyrics,
+                    source = source,
+                    updatedAt = updatedAt,
+                ),
+            )
+        if (insertedRowId == -1L) {
+            replaceLyricsIfNotFound(
+                id = id,
+                lyrics = lyrics,
+                source = source,
+                updatedAt = updatedAt,
+                notFoundLyrics = LyricsEntity.LYRICS_NOT_FOUND,
+            )
+        }
+    }
+
     @Transaction
     fun replaceLyrics(
         id: String,
