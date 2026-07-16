@@ -672,7 +672,7 @@ private fun AboutSuccessContent(
     contentPadding: PaddingValues,
     listState: LazyListState,
 ) {
-    val leadDevelopers = remember(model.leadDeveloper) { TeamMemberCollection.of(model.leadDeveloper) }
+    val leadDevelopers = model.leadDevelopers
 
     LazyColumn(
         state = listState,

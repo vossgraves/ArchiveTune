@@ -57,7 +57,7 @@ data class AboutUiModel(
     val buildHash: String?,
     val buildVariant: String,
     val primaryLinks: AboutLinkCollection,
-    val leadDeveloper: TeamMember,
+    val leadDevelopers: TeamMemberCollection,
     val collaborators: TeamMemberCollection,
     val respecters: TeamMemberCollection,
     val contributorsState: AboutContributorsUiState,
@@ -448,33 +448,50 @@ class AboutViewModel
                             url = "https://archivetune.koiiverse.cloud/privacy",
                         ),
                     ),
-                leadDeveloper =
-                    TeamMember(
-                        avatarUrl = "https://avatars.githubusercontent.com/u/107134739?v=4",
-                        name = "morie",
-                        positionResId = R.string.about_position_lead_dev,
-                        profileUrl = "https://github.com/rukamori",
-                        links =
-                            AboutLinkCollection.of(
-                                AboutLinkUiModel(
-                                    id = "github",
-                                    iconResId = R.drawable.github,
-                                    labelResId = R.string.about_content_desc_github,
-                                    url = "https://github.com/rukamori",
+                leadDevelopers =
+                    TeamMemberCollection.of(
+                        TeamMember(
+                            avatarUrl = "https://avatars.githubusercontent.com/u/107134739?v=4",
+                            name = "morie",
+                            positionResId = R.string.about_position_lead_dev,
+                            profileUrl = "https://github.com/rukamori",
+                            links =
+                                AboutLinkCollection.of(
+                                    AboutLinkUiModel(
+                                        id = "github",
+                                        iconResId = R.drawable.github,
+                                        labelResId = R.string.about_content_desc_github,
+                                        url = "https://github.com/rukamori",
+                                    ),
+                                    AboutLinkUiModel(
+                                        id = "website",
+                                        iconResId = R.drawable.website,
+                                        labelResId = R.string.about_content_desc_website,
+                                        url = "https://koiiverse.cloud",
+                                    ),
+                                    AboutLinkUiModel(
+                                        id = "discord",
+                                        iconResId = R.drawable.alternate_email,
+                                        labelResId = R.string.about_content_desc_discord,
+                                        url = "https://discord.com/users/886971572668219392",
+                                    ),
                                 ),
-                                AboutLinkUiModel(
-                                    id = "website",
-                                    iconResId = R.drawable.website,
-                                    labelResId = R.string.about_content_desc_website,
-                                    url = "https://koiiverse.cloud",
+                        ),
+                        TeamMember(
+                            avatarUrl = "https://avatars.githubusercontent.com/vossgraves",
+                            name = "VossGraves",
+                            positionResId = R.string.about_position_vossgraves,
+                            profileUrl = "https://github.com/vossgraves",
+                            links =
+                                AboutLinkCollection.of(
+                                    AboutLinkUiModel(
+                                        id = "github",
+                                        iconResId = R.drawable.github,
+                                        labelResId = R.string.about_content_desc_github,
+                                        url = "https://github.com/vossgraves",
+                                    ),
                                 ),
-                                AboutLinkUiModel(
-                                    id = "discord",
-                                    iconResId = R.drawable.alternate_email,
-                                    labelResId = R.string.about_content_desc_discord,
-                                    url = "https://discord.com/users/886971572668219392",
-                                ),
-                            ),
+                        ),
                     ),
                 collaborators =
                     TeamMemberCollection.of(

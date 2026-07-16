@@ -13,7 +13,6 @@ import android.content.res.Configuration
 import android.view.HapticFeedbackConstants
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -53,7 +52,6 @@ import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -66,8 +64,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -102,7 +98,6 @@ import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalDatabase
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
-import moe.rukamori.archivetune.constants.AutoHideLyricsPlayerControlsKey
 import moe.rukamori.archivetune.constants.EnableHapticFeedbackKey
 import moe.rukamori.archivetune.constants.LyricsMode
 import moe.rukamori.archivetune.constants.LyricsModeKey
@@ -128,9 +123,6 @@ private val AppleMusicFallbackGradient =
     )
 
 private val AppleMusicForeground = Color.White
-
-// How long the full controls stay on screen after the last touch before collapsing to the mini bar.
-private const val AUTO_HIDE_DELAY_MS = 5000L
 
 @Suppress("UNUSED_PARAMETER")
 @Composable
@@ -173,26 +165,6 @@ fun LyricsScreen(
                 showPlayerControlsState.value = showControls
             }
         }
-    val (autoHidePlayerControls) = rememberPreference(AutoHideLyricsPlayerControlsKey, false)
-    // Auto-hide only kicks in when the full controls are enabled in the first place.
-    val autoHideActive = showPlayerControls && autoHidePlayerControls
-    // Bumped on every touch on the screen; each bump restarts the 5s countdown below.
-    var interactionTick by remember { mutableIntStateOf(0) }
-    var controlsExpanded by remember { mutableStateOf(true) }
-
-    LaunchedEffect(autoHideActive, interactionTick) {
-        if (!autoHideActive) {
-            controlsExpanded = true
-            return@LaunchedEffect
-        }
-        controlsExpanded = true
-        delay(AUTO_HIDE_DELAY_MS)
-        controlsExpanded = false
-    }
-    // When the user turns auto-hide off (or hides controls entirely), make sure we don't stay stuck
-    // in the collapsed state.
-    val showFullControls = showPlayerControls && (!autoHideActive || controlsExpanded)
-    val showMiniSeekBar = autoHideActive && !controlsExpanded
 
     val hapticClick =
         remember(enableHapticFeedback, view) {
@@ -340,20 +312,7 @@ fun LyricsScreen(
     Box(
         modifier =
             modifier
-                .fillMaxSize()
-                .pointerInput(autoHideActive) {
-                    if (!autoHideActive) return@pointerInput
-                    // Observe touches in the Initial pass so we count every interaction (taps,
-                    // scrolls, seeks) without consuming them, restarting the auto-hide countdown.
-                    awaitPointerEventScope {
-                        while (true) {
-                            val event = awaitPointerEvent(PointerEventPass.Initial)
-                            if (event.changes.any { it.pressed }) {
-                                interactionTick++
-                            }
-                        }
-                    }
-                },
+                .fillMaxSize(),
     ) {
         AppleMusicBackground(
             mediaMetadata = mediaMetadata,
@@ -384,7 +343,7 @@ fun LyricsScreen(
                         .padding(horizontal = 24.dp),
             )
 
-            if (orientation == Configuration.ORIENTATION_LANDSCAPE && showFullControls) {
+            if (orientation == Configuration.ORIENTATION_LANDSCAPE && showPlayerControls) {
                 Row(
                     modifier =
                         Modifier
@@ -454,11 +413,7 @@ fun LyricsScreen(
                             .fillMaxWidth(),
                 )
 
-                AnimatedVisibility(
-                    visible = showFullControls,
-                    enter = fadeIn(tween(200)),
-                    exit = fadeOut(tween(200)),
-                ) {
+                if (showPlayerControls) {
                     AppleMusicControls(
                         positionProvider = { positionState.longValue },
                         durationProvider = { durationState.longValue },
@@ -491,30 +446,6 @@ fun LyricsScreen(
                             Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = 40.dp),
-                    )
-                }
-
-                AnimatedVisibility(
-                    visible = showMiniSeekBar,
-                    enter = fadeIn(tween(200)),
-                    exit = fadeOut(tween(200)),
-                ) {
-                    AppleMusicMiniSeekBar(
-                        positionProvider = { positionState.longValue },
-                        durationProvider = { durationState.longValue },
-                        sliderPosition = sliderPosition,
-                        onPositionChange = { sliderPosition = it },
-                        onPositionChangeFinished = {
-                            sliderPosition?.let {
-                                player.seekTo(it)
-                                positionState.longValue = it
-                            }
-                            sliderPosition = null
-                        },
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 24.dp, vertical = 12.dp),
                     )
                 }
             }
@@ -887,52 +818,6 @@ private fun AppleMusicControls(
                 modifier = Modifier.size(19.dp),
             )
         }
-    }
-}
-
-@Composable
-private fun AppleMusicMiniSeekBar(
-    positionProvider: () -> Long,
-    durationProvider: () -> Long,
-    sliderPosition: Long?,
-    onPositionChange: (Long) -> Unit,
-    onPositionChangeFinished: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val position = positionProvider()
-    val duration = durationProvider()
-    val hasDuration = duration != C.TIME_UNSET && duration > 0L
-    val safeDuration = if (hasDuration) duration else 1L
-    val currentPosition = (sliderPosition ?: position).coerceIn(0L, safeDuration)
-    val remainingPosition = (safeDuration - currentPosition).coerceAtLeast(0L)
-
-    Row(
-        modifier = modifier,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = makeTimeString(currentPosition),
-            style = MaterialTheme.typography.labelMedium,
-            color = AppleMusicForeground.copy(alpha = 0.54f),
-        )
-        AppleMusicSlider(
-            value = currentPosition.toFloat(),
-            valueRange = 0f..safeDuration.toFloat(),
-            activeColor = AppleMusicForeground.copy(alpha = 0.94f),
-            inactiveColor = AppleMusicForeground.copy(alpha = 0.28f),
-            trackHeight = 6.dp,
-            onValueChange = { onPositionChange(it.toLong()) },
-            onValueChangeFinished = onPositionChangeFinished,
-            modifier =
-                Modifier
-                    .weight(1f)
-                    .padding(horizontal = 12.dp),
-        )
-        Text(
-            text = if (hasDuration) "-${makeTimeString(remainingPosition)}" else "",
-            style = MaterialTheme.typography.labelMedium,
-            color = AppleMusicForeground.copy(alpha = 0.54f),
-        )
     }
 }
 

@@ -630,6 +630,7 @@
     <string name="about_license">LICENSE</string>
     <string name="about_license_unknown">Unknown license</string>
     <string name="about_position_lead_dev">Eh?</string>
+    <string name="about_position_vossgraves">merely added tidal and qobuz integration</string>
     <string name="about_position_developers">Developer | Team</string>
     <string name="about_position_yuki">dummy reze | Admin</string>
     <string name="about_position_mo_agamy">Base Framework | Metrolist</string>

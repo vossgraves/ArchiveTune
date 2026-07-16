@@ -96,7 +96,6 @@ class PlayerConnection(
     private var dismissedPlaybackError: PlaybackException? = null
     val waitingForNetworkConnection = service.waitingForNetworkConnection
     val queueRestoreCompleted = service.queueRestoreCompleted
-    val isCrossfading = service.isCrossfadingFlow
 
     private var metadataExtractionJob: Job? = null
 
@@ -258,7 +257,6 @@ class PlayerConnection(
             service.requestTogetherControl(moe.rukamori.archivetune.together.ControlAction.SkipNext)
             return
         }
-        service.prepareForManualSkip()
         player.seekToNext()
         player.prepare()
         player.playWhenReady = true
@@ -270,7 +268,6 @@ class PlayerConnection(
             service.requestTogetherControl(moe.rukamori.archivetune.together.ControlAction.SkipPrevious)
             return
         }
-        service.prepareForManualSkip()
         player.seekToPrevious()
         player.prepare()
         player.playWhenReady = true
