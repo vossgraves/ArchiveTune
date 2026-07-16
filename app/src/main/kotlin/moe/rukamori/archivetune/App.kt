@@ -40,6 +40,7 @@ import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.innertube.models.YouTubeLocale
 import moe.rukamori.archivetune.kugou.KuGou
 import moe.rukamori.archivetune.lastfm.LastFM
+import moe.rukamori.archivetune.lyrics.JapaneseLanguagePackManager
 import moe.rukamori.archivetune.morideobfuscator.MoriCipherConfig
 import moe.rukamori.archivetune.morideobfuscator.MoriCipherRuntime
 import moe.rukamori.archivetune.paxsenix.PaxsenixLyrics
@@ -110,6 +111,7 @@ class App :
         }
         BotGuardTokenGenerator.initialize(this)
         PreferenceStore.start(this)
+        JapaneseLanguagePackManager.initialize(this)
         Timber.plant(Timber.DebugTree())
         try {
             Timber.plant(

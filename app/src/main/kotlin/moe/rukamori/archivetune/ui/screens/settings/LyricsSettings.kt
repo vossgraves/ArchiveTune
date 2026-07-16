@@ -30,6 +30,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.HorizontalDivider
@@ -48,6 +49,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -63,6 +65,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
+import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.EnableBetterLyricsKey
@@ -94,6 +97,8 @@ import moe.rukamori.archivetune.constants.PreferredLyricsProvider
 import moe.rukamori.archivetune.constants.PreloadQueueLyricsEnabledKey
 import moe.rukamori.archivetune.constants.QueueLyricsPreloadCountKey
 import moe.rukamori.archivetune.constants.deserializeLyricsProviderOrder
+import moe.rukamori.archivetune.lyrics.JapaneseLanguagePackManager
+import moe.rukamori.archivetune.lyrics.JapaneseLanguagePackState
 import moe.rukamori.archivetune.paxsenix.models.PaxsenixStats
 import moe.rukamori.archivetune.paxsenix.models.ProviderStats
 import moe.rukamori.archivetune.ui.component.ActionPromptDialog
@@ -105,6 +110,7 @@ import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.SwitchPreference
 import moe.rukamori.archivetune.ui.utils.backToMain
+import moe.rukamori.archivetune.ui.utils.formatFileSize
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.ContentSettingsViewModel
@@ -197,7 +203,7 @@ fun LyricsSettings(
             deserializeLyricsProviderOrder(providerOrderStr)
         }
     val (lyricsLineBlur, onLyricsLineBlurChange) = rememberPreference(LyricsLineBlurKey, defaultValue = true)
-    val (lyricsRomanizeJapanese, onLyricsRomanizeJapaneseChange) = rememberPreference(LyricsRomanizeJapaneseKey, defaultValue = true)
+    val (lyricsRomanizeJapanese, onLyricsRomanizeJapaneseChange) = rememberPreference(LyricsRomanizeJapaneseKey, defaultValue = false)
     val (lyricsRomanizeKorean, onLyricsRomanizeKoreanChange) = rememberPreference(LyricsRomanizeKoreanKey, defaultValue = true)
     val (lyricsRomanizeChinese, onLyricsRomanizeChineseChange) = rememberPreference(LyricsRomanizeChineseKey, defaultValue = true)
     val (lyricsRomanizeHindi, onLyricsRomanizeHindiChange) = rememberPreference(LyricsRomanizeHindiKey, defaultValue = true)
@@ -212,6 +218,8 @@ fun LyricsSettings(
             defaultValue = true,
         )
     val (queueLyricsPreloadCount, onQueueLyricsPreloadCountChange) = rememberPreference(QueueLyricsPreloadCountKey, defaultValue = 1)
+    val japaneseLanguagePackState by JapaneseLanguagePackManager.state.collectAsStateWithLifecycle()
+    val languagePackScope = rememberCoroutineScope()
 
     var showProviderOrderDialog by rememberSaveable { mutableStateOf(false) }
 
@@ -567,13 +575,86 @@ fun LyricsSettings(
             }
         }
 
+        PreferenceGroup(title = stringResource(R.string.language_packs)) {
+            item {
+                PreferenceEntry(
+                    title = { Text(stringResource(R.string.language_pack_english)) },
+                    description = stringResource(R.string.language_pack_built_in),
+                    icon = { Icon(painterResource(R.drawable.language), null) },
+                )
+            }
+
+            item {
+                PreferenceEntry(
+                    title = { Text(stringResource(R.string.language_pack_spanish)) },
+                    description = stringResource(R.string.language_pack_built_in),
+                    icon = { Icon(painterResource(R.drawable.language), null) },
+                )
+            }
+
+            item {
+                val packState = japaneseLanguagePackState
+                val isDownloading = packState is JapaneseLanguagePackState.Downloading
+                val description =
+                    when (packState) {
+                        JapaneseLanguagePackState.NotInstalled -> stringResource(R.string.language_pack_japanese_download_description)
+                        is JapaneseLanguagePackState.Downloading ->
+                            stringResource(R.string.language_pack_downloading, packState.progressPercent)
+                        is JapaneseLanguagePackState.Installed ->
+                            stringResource(R.string.language_pack_installed_size, formatFileSize(packState.sizeBytes))
+                        is JapaneseLanguagePackState.Failed -> packState.message
+                    }
+                PreferenceEntry(
+                    title = { Text(stringResource(R.string.language_pack_japanese)) },
+                    description = description,
+                    icon = { Icon(painterResource(R.drawable.language), null) },
+                    trailingContent = {
+                        when (packState) {
+                            is JapaneseLanguagePackState.Downloading ->
+                                CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
+                            is JapaneseLanguagePackState.Installed ->
+                                TextButton(
+                                    onClick = {
+                                        languagePackScope.launch {
+                                            if (JapaneseLanguagePackManager.remove()) {
+                                                onLyricsRomanizeJapaneseChange(false)
+                                            }
+                                        }
+                                    },
+                                ) { Text(stringResource(R.string.language_pack_remove)) }
+                            JapaneseLanguagePackState.NotInstalled,
+                            is JapaneseLanguagePackState.Failed,
+                            ->
+                                TextButton(
+                                    onClick = {
+                                        languagePackScope.launch {
+                                            JapaneseLanguagePackManager.install().onSuccess {
+                                                onLyricsRomanizeJapaneseChange(true)
+                                            }
+                                        }
+                                    },
+                                ) { Text(stringResource(R.string.download)) }
+                        }
+                    },
+                    isEnabled = !isDownloading,
+                )
+            }
+        }
+
         PreferenceGroup(title = stringResource(R.string.romanization)) {
             item {
                 SwitchPreference(
                     title = { Text(stringResource(R.string.lyrics_romanize_japanese)) },
+                    description =
+                        if (japaneseLanguagePackState is JapaneseLanguagePackState.Installed) {
+                            null
+                        } else {
+                            stringResource(R.string.language_pack_required)
+                        },
                     icon = { Icon(painterResource(R.drawable.lyrics), null) },
                     checked = lyricsRomanizeJapanese,
                     onCheckedChange = onLyricsRomanizeJapaneseChange,
+                    isEnabled = japaneseLanguagePackState is JapaneseLanguagePackState.Installed,
                 )
             }
 

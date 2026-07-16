@@ -100,6 +100,18 @@ future sessions (or contributors) can pick up with full context.
 
 ## Lyrics
 
+- **Downloadable Japanese romanization pack / APK size:** Kuromoji IPADIC's eight
+  dictionary binaries were the dominant APK payload (13,324,082 compressed
+  bytes in release 13.7.5020). Release packaging now excludes those `.bin`
+  files while retaining the tokenizer engine. Lyrics settings expose a
+  Japanese romanization pack that downloads the immutable Kuromoji 0.9.0 jar
+  from Maven Central, verifies its pinned SHA-256, stores it under app-private
+  `language_packs`, loads dictionary streams from the archive, and supports
+  progress/removal/retry. Japanese romanization defaults off and is enabled
+  only after installation. English and Spanish UI resources remain built in;
+  Korean/Chinese/Hindi/other romanization already uses code or Android ICU and
+  has no comparable downloadable data payload.
+
 - **LyricsPlus dedup:** the app-local `LyricsPlusLyricsProvider` was a redundant,
   inferior reimplementation of the same service already provided by the
   `:lyrics:youlyplus` submodule (`YouLyPlusLyricsProvider`, richer TTML

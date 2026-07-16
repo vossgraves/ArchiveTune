@@ -851,4 +851,14 @@
     <string name="app_icon_subtitle">Personaliza tu lanzador</string>
     <string name="app_icon_default">Por defecto</string>
     <string name="app_icon_description">Elige el icono del lanzador</string>
+    <string name="language_packs">Paquetes de idiomas</string>
+    <string name="language_pack_english">Inglés</string>
+    <string name="language_pack_spanish">Español</string>
+    <string name="language_pack_japanese">Romanización del japonés</string>
+    <string name="language_pack_built_in">Incluido</string>
+    <string name="language_pack_japanese_download_description">Diccionario opcional · aproximadamente 13 MB</string>
+    <string name="language_pack_downloading">Descargando… %1$d%%</string>
+    <string name="language_pack_installed_size">Instalado · %1$s</string>
+    <string name="language_pack_remove">Eliminar</string>
+    <string name="language_pack_required">Descarga primero el paquete de japonés</string>
 </resources>

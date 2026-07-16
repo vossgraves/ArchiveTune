@@ -1239,4 +1239,14 @@
     <string name="scheduled_backup_load_failed">Scheduled backup settings could not be loaded</string>
     <string name="scheduled_backup_update_failed">Scheduled backup settings could not be saved</string>
     <string name="gatekeeper_connection_blocked">ArchiveTune could not verify network access. Connections are blocked.</string>
+    <string name="language_packs">Language packs</string>
+    <string name="language_pack_english">English</string>
+    <string name="language_pack_spanish">Spanish</string>
+    <string name="language_pack_japanese">Japanese romanization</string>
+    <string name="language_pack_built_in">Built in</string>
+    <string name="language_pack_japanese_download_description">Optional dictionary · about 13 MB</string>
+    <string name="language_pack_downloading">Downloading… %1$d%%</string>
+    <string name="language_pack_installed_size">Installed · %1$s</string>
+    <string name="language_pack_remove">Remove</string>
+    <string name="language_pack_required">Download the Japanese language pack first</string>
 </resources>
