@@ -91,6 +91,15 @@ fun buildSettingsGroups(
             accentColor = MaterialTheme.colorScheme.primary,
             onClick = { navController.navigate("settings/content") },
         )
+    val languagePacks =
+        SettingsItem(
+            key = "language_packs",
+            icon = painterResource(R.drawable.translate),
+            title = stringResource(R.string.language_packs),
+            subtitle = stringResource(R.string.settings_language_packs_subtitle),
+            accentColor = MaterialTheme.colorScheme.secondary,
+            onClick = { navController.navigate("settings/language_packs") },
+        )
     val behavior =
         SettingsItem(
             key = "behavior",
@@ -251,7 +260,7 @@ fun buildSettingsGroups(
         ),
         SettingsGroup(
             title = stringResource(R.string.settings_section_player_content),
-            items = listOf(appearance, playback, sources, lyrics, content, behavior),
+            items = listOf(appearance, playback, sources, lyrics, languagePacks, content, behavior),
         ),
         SettingsGroup(
             title = stringResource(R.string.integration),

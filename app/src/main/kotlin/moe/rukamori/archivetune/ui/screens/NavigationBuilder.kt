@@ -69,6 +69,7 @@ import moe.rukamori.archivetune.ui.screens.settings.TIDAL_LOGIN_ROUTE
 import moe.rukamori.archivetune.ui.screens.settings.QobuzLoginScreen
 import moe.rukamori.archivetune.ui.screens.settings.QOBUZ_LOGIN_ROUTE
 import moe.rukamori.archivetune.ui.screens.settings.LastFMSettings
+import moe.rukamori.archivetune.ui.screens.settings.LanguagePackSettings
 import moe.rukamori.archivetune.ui.screens.settings.LogcatScreen
 import moe.rukamori.archivetune.ui.screens.settings.LyricsAnimationSettings
 import moe.rukamori.archivetune.ui.screens.settings.LyricsSettings
@@ -409,6 +410,9 @@ fun NavGraphBuilder.navigationBuilder(
     }
     composable("settings/lyrics") {
         LyricsSettings(navController)
+    }
+    composable("settings/language_packs") {
+        LanguagePackSettings(navController)
     }
     composable("settings/internet") {
         InternetSettings(navController)

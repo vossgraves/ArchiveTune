@@ -1241,7 +1241,6 @@
     <string name="gatekeeper_connection_blocked">ArchiveTune could not verify network access. Connections are blocked.</string>
     <string name="language_packs">Language packs</string>
     <string name="language_pack_english">English</string>
-    <string name="language_pack_spanish">Spanish</string>
     <string name="language_pack_japanese">Japanese romanization</string>
     <string name="language_pack_built_in">Built in</string>
     <string name="language_pack_japanese_download_description">Optional dictionary · about 13 MB</string>
@@ -1249,4 +1248,9 @@
     <string name="language_pack_installed_size">Installed · %1$s</string>
     <string name="language_pack_remove">Remove</string>
     <string name="language_pack_required">Download the Japanese language pack first</string>
+    <string name="settings_language_packs_subtitle">Optional language data and downloads</string>
+    <string name="language_pack_base_language">Base language</string>
+    <string name="language_pack_optional_data">Optional language data</string>
+    <string name="language_pack_other_romanization">Korean, Chinese, Hindi, and other romanization</string>
+    <string name="language_pack_other_romanization_description">Built in · no additional data or download required</string>
 </resources>
