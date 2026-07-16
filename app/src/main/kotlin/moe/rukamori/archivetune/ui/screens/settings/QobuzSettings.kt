@@ -148,6 +148,8 @@ fun QobuzSettings(navController: NavController) {
     var testingTokens by remember { mutableStateOf(false) }
     var showAddTokensDialog by remember { mutableStateOf(false) }
     var detailToken by remember { mutableStateOf<QobuzToken?>(null) }
+    var showTokenManagement by remember { mutableStateOf(false) }
+    var showInstanceManagement by remember { mutableStateOf(false) }
     // Token id whose "deprecated" info popup is open (preview-only / no premium explanation).
     var previewInfoTokenId by remember { mutableStateOf<String?>(null) }
 
@@ -600,7 +602,7 @@ fun QobuzSettings(navController: NavController) {
                     )
                 }
 
-                item {
+                item(visible = showTokenManagement) {
                     PreferenceEntry(
                         title = { Text(stringResource(R.string.qobuz_add_tokens)) },
                         icon = { Icon(painterResource(R.drawable.token), null) },
@@ -608,8 +610,60 @@ fun QobuzSettings(navController: NavController) {
                     )
                 }
 
-                tokens.forEach { token ->
+                if (tokens.isNotEmpty()) {
                     item {
+                        PreferenceEntry(
+                            title = {
+                                Text(
+                                    if (testingTokens) {
+                                        stringResource(R.string.qobuz_checking_tokens)
+                                    } else {
+                                        stringResource(R.string.qobuz_check_tokens)
+                                    },
+                                )
+                            },
+                            icon = { Icon(painterResource(R.drawable.sync), null) },
+                            isEnabled = !testingTokens,
+                            onClick = { runTokenTest() },
+                        )
+                    }
+                }
+
+                item {
+                    val onlineCount = tokens.count {
+                        tokenHealth[it.id] == TidalAudioProvider.InstanceHealth.HEALTHY
+                    }
+                    val deprecatedCount = tokens.count {
+                        tokenHealth[it.id] == TidalAudioProvider.InstanceHealth.PREVIEW_ONLY
+                    }
+                    val failedCount = tokens.count {
+                        tokenHealth[it.id] == TidalAudioProvider.InstanceHealth.UNREACHABLE
+                    }
+                    PreferenceEntry(
+                        title = { Text(stringResource(R.string.qobuz_manage_accounts)) },
+                        description = stringResource(
+                            R.string.source_health_summary,
+                            tokens.size,
+                            onlineCount,
+                            deprecatedCount,
+                            failedCount,
+                        ),
+                        icon = { Icon(painterResource(R.drawable.tune), null) },
+                        onClick = { showTokenManagement = !showTokenManagement },
+                        trailingContent = {
+                            Icon(
+                                painterResource(
+                                    if (showTokenManagement) R.drawable.expand_less
+                                    else R.drawable.expand_more,
+                                ),
+                                contentDescription = null,
+                            )
+                        },
+                    )
+                }
+
+                tokens.forEach { token ->
+                    item(visible = showTokenManagement) {
                         val status = tokenHealth[token.id]
                         val statusColor =
                             when (status) {
@@ -671,24 +725,7 @@ fun QobuzSettings(navController: NavController) {
                 }
 
                 if (tokens.isNotEmpty()) {
-                    item {
-                        PreferenceEntry(
-                            title = {
-                                Text(
-                                    if (testingTokens) {
-                                        stringResource(R.string.qobuz_checking_tokens)
-                                    } else {
-                                        stringResource(R.string.qobuz_check_tokens)
-                                    },
-                                )
-                            },
-                            icon = { Icon(painterResource(R.drawable.sync), null) },
-                            isEnabled = !testingTokens,
-                            onClick = { runTokenTest() },
-                        )
-                    }
-
-                    item {
+                    item(visible = showTokenManagement) {
                         PreferenceEntry(
                             title = { Text(stringResource(R.string.qobuz_reset_tokens)) },
                             icon = { Icon(painterResource(R.drawable.close), null) },
@@ -703,8 +740,58 @@ fun QobuzSettings(navController: NavController) {
             }
 
             PreferenceGroup(title = stringResource(R.string.qobuz_instances)) {
+                item {
+                    PreferenceEntry(
+                        title = {
+                            Text(
+                                if (testingInstances) {
+                                    stringResource(R.string.qobuz_checking_instances)
+                                } else {
+                                    stringResource(R.string.qobuz_check_instances)
+                                },
+                            )
+                        },
+                        icon = { Icon(painterResource(R.drawable.sync), null) },
+                        isEnabled = !testingInstances && effectiveInstances.isNotEmpty(),
+                        onClick = { runInstanceTest() },
+                    )
+                }
+
+                item {
+                    val onlineCount = effectiveInstances.count {
+                        healthStatus[it] == TidalAudioProvider.InstanceHealth.HEALTHY
+                    }
+                    val deprecatedCount = effectiveInstances.count {
+                        healthStatus[it] == TidalAudioProvider.InstanceHealth.PREVIEW_ONLY
+                    }
+                    val failedCount = effectiveInstances.count {
+                        healthStatus[it] == TidalAudioProvider.InstanceHealth.UNREACHABLE
+                    }
+                    PreferenceEntry(
+                        title = { Text(stringResource(R.string.source_manage_instances)) },
+                        description = stringResource(
+                            R.string.source_health_summary,
+                            effectiveInstances.size,
+                            onlineCount,
+                            deprecatedCount,
+                            failedCount,
+                        ),
+                        icon = { Icon(painterResource(R.drawable.tune), null) },
+                        onClick = { showInstanceManagement = !showInstanceManagement },
+                        trailingContent = {
+                            Icon(
+                                painterResource(
+                                    if (showInstanceManagement) R.drawable.expand_less
+                                    else R.drawable.expand_more,
+                                ),
+                                contentDescription = null,
+                            )
+                        },
+                    )
+                }
+
                 effectiveInstances.forEach { instance ->
-                    item {
+                    item(visible = showInstanceManagement) {
                         val status = healthStatus[instance]
                         // online = light blue, deprecated/preview-only = purple, failed = grey.
                         val statusColor =
@@ -750,7 +837,7 @@ fun QobuzSettings(navController: NavController) {
                     }
                 }
 
-                item {
+                item(visible = showInstanceManagement) {
                     PreferenceEntry(
                         title = { Text(stringResource(R.string.qobuz_add_instance)) },
                         icon = { Icon(painterResource(R.drawable.add), null) },
@@ -758,7 +845,7 @@ fun QobuzSettings(navController: NavController) {
                     )
                 }
 
-                item {
+                item(visible = showInstanceManagement) {
                     PreferenceEntry(
                         title = { Text(stringResource(R.string.source_bulk_add)) },
                         description = stringResource(R.string.source_bulk_hint),
@@ -767,25 +854,8 @@ fun QobuzSettings(navController: NavController) {
                     )
                 }
 
-                item {
-                    PreferenceEntry(
-                        title = {
-                            Text(
-                                if (testingInstances) {
-                                    stringResource(R.string.qobuz_checking_instances)
-                                } else {
-                                    stringResource(R.string.qobuz_check_instances)
-                                },
-                            )
-                        },
-                        icon = { Icon(painterResource(R.drawable.sync), null) },
-                        isEnabled = !testingInstances && effectiveInstances.isNotEmpty(),
-                        onClick = { runInstanceTest() },
-                    )
-                }
-
                 if (effectiveInstances.isNotEmpty()) {
-                    item {
+                    item(visible = showInstanceManagement) {
                         PreferenceEntry(
                             title = { Text(stringResource(R.string.source_copy_online)) },
                             icon = { Icon(painterResource(R.drawable.copy), null) },
@@ -793,7 +863,7 @@ fun QobuzSettings(navController: NavController) {
                         )
                     }
 
-                    item {
+                    item(visible = showInstanceManagement) {
                         PreferenceEntry(
                             title = { Text(stringResource(R.string.source_remove_dead)) },
                             icon = { Icon(painterResource(R.drawable.delete), null) },
@@ -803,7 +873,7 @@ fun QobuzSettings(navController: NavController) {
                         )
                     }
 
-                    item {
+                    item(visible = showInstanceManagement) {
                         PreferenceEntry(
                             title = { Text(stringResource(R.string.source_remove_deprecated)) },
                             icon = { Icon(painterResource(R.drawable.delete), null) },
@@ -814,7 +884,7 @@ fun QobuzSettings(navController: NavController) {
                     }
                 }
 
-                item {
+                item(visible = showInstanceManagement) {
                     PreferenceEntry(
                         title = { Text(stringResource(R.string.qobuz_reset_instances)) },
                         icon = { Icon(painterResource(R.drawable.close), null) },

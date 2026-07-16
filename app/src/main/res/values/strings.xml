@@ -766,6 +766,7 @@
     <string name="qobuz_check_tokens">Test tokens</string>
     <string name="qobuz_checking_tokens">Testing tokens…</string>
     <string name="qobuz_reset_tokens">Clear all tokens</string>
+    <string name="qobuz_manage_accounts">Manage accounts</string>
     <string name="qobuz_token_subtitle">%1$s · id %2$s</string>
     <string name="qobuz_token_status_ok">Online</string>
     <string name="qobuz_token_status_preview">Deprecated</string>
@@ -777,6 +778,7 @@
     <!-- Shared source settings -->
     <string name="source_manage_instances">Manage instances</string>
     <string name="tidal_manage_instances">Manage Tidal instances</string>
+    <string name="source_health_summary">%1$d configured · %2$d online · %3$d deprecated · %4$d failed</string>
     <string name="source_bulk_add">Add many (paste)</string>
     <string name="source_bulk_hint">Paste one or more URLs separated by new lines, spaces, or commas.</string>
     <string name="source_bulk_added">Added %1$d</string>

@@ -145,6 +145,7 @@ fun TidalSettings(navController: NavController) {
     var showBulkDialog by remember { mutableStateOf(false) }
     var detailInstance by remember { mutableStateOf<String?>(null) }
     var showAccountDetail by remember { mutableStateOf(false) }
+    var showInstanceManagement by remember { mutableStateOf(false) }
 
     fun toast(message: String) {
         Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
@@ -504,8 +505,58 @@ fun TidalSettings(navController: NavController) {
             }
 
             PreferenceGroup(title = stringResource(R.string.tidal_instances)) {
+                item {
+                    val onlineCount = effectiveInstances.count {
+                        healthStatus[it] == TidalAudioProvider.InstanceHealth.HEALTHY
+                    }
+                    val deprecatedCount = effectiveInstances.count {
+                        healthStatus[it] == TidalAudioProvider.InstanceHealth.PREVIEW_ONLY
+                    }
+                    val failedCount = effectiveInstances.count {
+                        healthStatus[it] == TidalAudioProvider.InstanceHealth.UNREACHABLE
+                    }
+                    PreferenceEntry(
+                        title = { Text(stringResource(R.string.source_manage_instances)) },
+                        description = stringResource(
+                            R.string.source_health_summary,
+                            effectiveInstances.size,
+                            onlineCount,
+                            deprecatedCount,
+                            failedCount,
+                        ),
+                        icon = { Icon(painterResource(R.drawable.tune), null) },
+                        onClick = { showInstanceManagement = !showInstanceManagement },
+                        trailingContent = {
+                            Icon(
+                                painterResource(
+                                    if (showInstanceManagement) R.drawable.expand_less
+                                    else R.drawable.expand_more,
+                                ),
+                                contentDescription = null,
+                            )
+                        },
+                    )
+                }
+
+                item {
+                    PreferenceEntry(
+                        title = {
+                            Text(
+                                if (testingInstances) {
+                                    stringResource(R.string.tidal_checking_instances)
+                                } else {
+                                    stringResource(R.string.tidal_check_instances)
+                                },
+                            )
+                        },
+                        icon = { Icon(painterResource(R.drawable.sync), null) },
+                        isEnabled = !testingInstances,
+                        onClick = { runInstanceTest() },
+                    )
+                }
+
                 effectiveInstances.forEach { instance ->
-                    item {
+                    item(visible = showInstanceManagement) {
                         val status = healthStatus[instance]
                         // Status colors: online = light blue, deprecated/preview-only = purple,
                         // failed = grey. Untested falls back to the muted default.
@@ -552,7 +603,7 @@ fun TidalSettings(navController: NavController) {
                     }
                 }
 
-                item {
+                item(visible = showInstanceManagement) {
                     PreferenceEntry(
                         title = { Text(stringResource(R.string.tidal_add_instance)) },
                         icon = { Icon(painterResource(R.drawable.add), null) },
@@ -560,7 +611,7 @@ fun TidalSettings(navController: NavController) {
                     )
                 }
 
-                item {
+                item(visible = showInstanceManagement) {
                     PreferenceEntry(
                         title = { Text(stringResource(R.string.source_bulk_add)) },
                         description = stringResource(R.string.source_bulk_hint),
@@ -569,24 +620,7 @@ fun TidalSettings(navController: NavController) {
                     )
                 }
 
-                item {
-                    PreferenceEntry(
-                        title = {
-                            Text(
-                                if (testingInstances) {
-                                    stringResource(R.string.tidal_checking_instances)
-                                } else {
-                                    stringResource(R.string.tidal_check_instances)
-                                },
-                            )
-                        },
-                        icon = { Icon(painterResource(R.drawable.sync), null) },
-                        isEnabled = !testingInstances,
-                        onClick = { runInstanceTest() },
-                    )
-                }
-
-                item {
+                item(visible = showInstanceManagement) {
                     PreferenceEntry(
                         title = { Text(stringResource(R.string.source_copy_online)) },
                         icon = { Icon(painterResource(R.drawable.copy), null) },
@@ -594,7 +628,7 @@ fun TidalSettings(navController: NavController) {
                     )
                 }
 
-                item {
+                item(visible = showInstanceManagement) {
                     PreferenceEntry(
                         title = { Text(stringResource(R.string.source_remove_dead)) },
                         icon = { Icon(painterResource(R.drawable.delete), null) },
@@ -604,7 +638,7 @@ fun TidalSettings(navController: NavController) {
                     )
                 }
 
-                item {
+                item(visible = showInstanceManagement) {
                     PreferenceEntry(
                         title = { Text(stringResource(R.string.source_remove_deprecated)) },
                         icon = { Icon(painterResource(R.drawable.delete), null) },
@@ -614,7 +648,7 @@ fun TidalSettings(navController: NavController) {
                     )
                 }
 
-                item {
+                item(visible = showInstanceManagement) {
                     PreferenceEntry(
                         title = { Text(stringResource(R.string.tidal_reset_instances)) },
                         icon = { Icon(painterResource(R.drawable.close), null) },

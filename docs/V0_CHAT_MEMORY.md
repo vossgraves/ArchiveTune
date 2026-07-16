@@ -194,6 +194,16 @@ future sessions (or contributors) can pick up with full context.
   `SettingsComponents.kt`) were reset to be byte-identical to upstream. The
   playback-source picker/reorder logic still lives in the fork.
 
+## Tidal / Qobuz integration layout
+
+- The integration pages use progressive disclosure to avoid rendering every
+  account, proxy URL, import tool, and destructive cleanup action at once.
+- Account sign-in and the primary token/instance health checks stay visible.
+  Compact “Manage accounts” / “Manage instances” rows show configured, online,
+  deprecated, and failed counts; expanding them reveals individual entries and
+  maintenance controls. Existing health colors, ping labels, dialogs, and all
+  management capabilities are unchanged.
+
 ## PR status
 
 - PR `rukamori/ArchiveTune#1024` (contributing the fork's features upstream) was
