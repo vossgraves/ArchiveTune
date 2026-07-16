@@ -23,6 +23,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -78,7 +79,6 @@ import moe.rukamori.archivetune.tidal.TidalAudioProvider
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.EnumListPreference
 import moe.rukamori.archivetune.ui.component.IconButton
-import moe.rukamori.archivetune.ui.component.InfoLabel
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.SwitchPreference
@@ -220,14 +220,60 @@ fun QobuzSettings(navController: NavController) {
         copyToClipboard(context, "Qobuz instances", online)
     }
 
-    // Token detail dialog — shows masked token, appId, appSecret, userId, subscription.
+    // Token detail dialog — manually entered credentials are shown in full and editable.
     detailToken?.let { token ->
+        var editLabel by remember(token) { mutableStateOf(token.label) }
+        var editUserId by remember(token) { mutableStateOf(token.userId) }
+        var editToken by remember(token) { mutableStateOf(token.token) }
+        var editAppId by remember(token) { mutableStateOf(token.appId) }
+        var editAppSecret by remember(token) { mutableStateOf(token.appSecret) }
+
+        val status = tokenHealth[token.id]
+        val statusColor =
+            when (status) {
+                TidalAudioProvider.InstanceHealth.HEALTHY -> Color(0xFF4FC3F7)
+                TidalAudioProvider.InstanceHealth.PREVIEW_ONLY -> Color(0xFFB388FF)
+                TidalAudioProvider.InstanceHealth.UNREACHABLE -> MaterialTheme.colorScheme.error
+                null -> MaterialTheme.colorScheme.onSurfaceVariant
+            }
+        val statusLabel =
+            when (status) {
+                TidalAudioProvider.InstanceHealth.HEALTHY -> stringResource(R.string.qobuz_token_status_ok)
+                TidalAudioProvider.InstanceHealth.PREVIEW_ONLY -> stringResource(R.string.qobuz_token_status_preview)
+                TidalAudioProvider.InstanceHealth.UNREACHABLE -> stringResource(R.string.qobuz_token_status_invalid)
+                null -> stringResource(R.string.qobuz_token_status_unknown)
+            }
+
         DefaultDialog(
             onDismiss = { detailToken = null },
             icon = { Icon(painterResource(R.drawable.token), null) },
             title = { Text(stringResource(R.string.details)) },
             contentScrollable = true,
             buttons = {
+                TextButton(
+                    onClick = {
+                        val updated =
+                            token.copy(
+                                label = editLabel.trim(),
+                                userId = editUserId.trim(),
+                                token = editToken.trim(),
+                                appId = editAppId.trim(),
+                                appSecret = editAppSecret.trim(),
+                            )
+                        if (updated.token.isBlank() || updated.appId.isBlank() || updated.appSecret.isBlank()) {
+                            toast(context.getString(R.string.qobuz_tokens_none_parsed))
+                        } else {
+                            persistTokens(tokens.map { if (it == token) updated else it })
+                            if (updated.id != token.id) {
+                                tokenHealth.remove(token.id)
+                            }
+                            detailToken = null
+                        }
+                    },
+                    shapes = ButtonDefaults.shapes(),
+                ) {
+                    Text(stringResource(android.R.string.ok))
+                }
                 TextButton(
                     onClick = {
                         copyToClipboard(context, "Qobuz token", listOf(token.token))
@@ -246,38 +292,57 @@ fun QobuzSettings(navController: NavController) {
             },
         ) {
             Column(modifier = Modifier.fillMaxWidth()) {
-                val displayName = token.label.ifBlank { token.userId.ifBlank { null } }
-                if (displayName != null) {
-                    Text("Account", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(Modifier.height(2.dp))
-                    Text(displayName, style = MaterialTheme.typography.bodyMedium)
-                    Spacer(Modifier.height(10.dp))
-                }
-                if (token.userId.isNotBlank()) {
-                    Text("User ID", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(Modifier.height(2.dp))
-                    Text(token.userId, style = MaterialTheme.typography.bodyMedium)
-                    Spacer(Modifier.height(10.dp))
-                }
-                Text("Token (auth)", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                OutlinedTextField(
+                    value = editLabel,
+                    onValueChange = { editLabel = it },
+                    label = { Text("Account") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = editUserId,
+                    onValueChange = { editUserId = it },
+                    label = { Text("User ID") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = editToken,
+                    onValueChange = { editToken = it },
+                    label = { Text("Token (auth)") },
+                    textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = editAppId,
+                    onValueChange = { editAppId = it },
+                    label = { Text("App ID") },
+                    singleLine = true,
+                    textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = editAppSecret,
+                    onValueChange = { editAppSecret = it },
+                    label = { Text("App Secret") },
+                    textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(12.dp))
+                Text("Status", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(2.dp))
-                val maskedToken = if (token.token.length > 8) "****${token.token.takeLast(6)}" else token.token
-                Text(maskedToken, style = MaterialTheme.typography.bodyMedium, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                Text(statusLabel, style = MaterialTheme.typography.bodyMedium, color = statusColor)
                 Spacer(Modifier.height(10.dp))
-                Text("App ID", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Subscription", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(2.dp))
-                Text(token.appId, style = MaterialTheme.typography.bodyMedium, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
-                Spacer(Modifier.height(10.dp))
-                Text("App Secret", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Spacer(Modifier.height(2.dp))
-                val maskedSecret = if (token.appSecret.length > 6) "****${token.appSecret.takeLast(4)}" else "****"
-                Text(maskedSecret, style = MaterialTheme.typography.bodyMedium, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
-                if (token.subscription.isNotBlank()) {
-                    Spacer(Modifier.height(10.dp))
-                    Text("Subscription", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(Modifier.height(2.dp))
-                    Text(token.subscription, style = MaterialTheme.typography.bodyMedium)
-                }
+                Text(
+                    text = token.subscription.ifBlank { stringResource(R.string.qobuz_token_status_unknown) },
+                    style = MaterialTheme.typography.bodyMedium,
+                )
             }
         }
     }
@@ -479,10 +544,6 @@ fun QobuzSettings(navController: NavController) {
 
             PreferenceGroup(title = stringResource(R.string.qobuz_tokens)) {
                 item {
-                    InfoLabel(text = stringResource(R.string.qobuz_tokens_description))
-                }
-
-                item {
                     PreferenceEntry(
                         title = { Text(stringResource(R.string.qobuz_login_web)) },
                         icon = { Icon(painterResource(R.drawable.provider_qobuz), null) },
@@ -580,10 +641,6 @@ fun QobuzSettings(navController: NavController) {
             }
 
             PreferenceGroup(title = stringResource(R.string.qobuz_instances)) {
-                item {
-                    InfoLabel(text = stringResource(R.string.qobuz_instances_description))
-                }
-
                 effectiveInstances.forEach { instance ->
                     item {
                         val status = healthStatus[instance]

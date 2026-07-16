@@ -806,6 +806,8 @@
     <string name="tidal_login_webplayer_fallback">Couldn\'t complete the standard sign-in; opening the Tidal web player instead. Just log in and playback will connect automatically.</string>
     <string name="tidal_login_code">Sign in with a device code</string>
     <string name="tidal_reconnect">Reconnect Tidal account</string>
+    <string name="tidal_account_active">Active</string>
+    <string name="tidal_account_relogin_required">Re-login required</string>
     <string name="discord_integration">Discord Integration</string>
     <string name="account_integrations_summary">Discord, Last.fm, Libre.fm, ListenBrainz</string>
     <string name="discord_login_description">Connect your Discord account with OAuth so ArchiveTune can publish Rich Presence.</string>

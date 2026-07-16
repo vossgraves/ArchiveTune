@@ -100,10 +100,6 @@ fun IntegrationScreen(navController: NavController) {
             if (manualSourceLogin) {
                 PreferenceGroup(title = stringResource(R.string.music_sources)) {
                     item {
-                        InfoLabel(text = stringResource(R.string.manual_source_login_active_note))
-                    }
-
-                    item {
                         PreferenceEntry(
                             title = { Text(stringResource(R.string.tidal_integration)) },
                             description = stringResource(R.string.tidal_integration_description),

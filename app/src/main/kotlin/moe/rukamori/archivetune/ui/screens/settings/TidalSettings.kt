@@ -80,7 +80,6 @@ import moe.rukamori.archivetune.tidal.TidalAudioProvider
 import moe.rukamori.archivetune.tidal.TidalInstanceHealthManager
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.IconButton
-import moe.rukamori.archivetune.ui.component.InfoLabel
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.TextFieldDialog
@@ -247,8 +246,25 @@ fun TidalSettings(navController: NavController) {
                 }
                 Text("Access token", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(2.dp))
-                val maskedToken = if (accessToken.length > 8) "****${accessToken.takeLast(6)}" else accessToken
-                Text(maskedToken, style = MaterialTheme.typography.bodyMedium, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                Text(accessToken, style = MaterialTheme.typography.bodyMedium, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                Spacer(Modifier.height(10.dp))
+                Text("Status", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text =
+                        when {
+                            needsRelogin -> stringResource(R.string.tidal_account_relogin_required)
+                            accountConfigured -> stringResource(R.string.tidal_account_active)
+                            else -> stringResource(R.string.tidal_instance_unknown)
+                        },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color =
+                        when {
+                            needsRelogin -> MaterialTheme.colorScheme.error
+                            accountConfigured -> Color(0xFF4FC3F7)
+                            else -> MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                )
                 Spacer(Modifier.height(10.dp))
                 Text("Subscription", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(2.dp))
@@ -435,12 +451,6 @@ fun TidalSettings(navController: NavController) {
                         )
                     }
 
-                    if (subscription == TidalSubscriptionStatus.FREE) {
-                        item {
-                            InfoLabel(text = stringResource(R.string.tidal_account_free_warning))
-                        }
-                    }
-
                     if (needsRelogin) {
                         item {
                             PreferenceEntry(
@@ -484,10 +494,6 @@ fun TidalSettings(navController: NavController) {
             }
 
             PreferenceGroup(title = stringResource(R.string.tidal_instances)) {
-                item {
-                    InfoLabel(text = stringResource(R.string.tidal_instances_description))
-                }
-
                 effectiveInstances.forEach { instance ->
                     item {
                         val status = healthStatus[instance]
