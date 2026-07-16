@@ -26,6 +26,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -55,6 +60,7 @@ import moe.rukamori.archivetune.qobuz.QobuzAudioProvider
 import moe.rukamori.archivetune.qobuz.QobuzToken
 import moe.rukamori.archivetune.qobuz.SourceInputParsing
 import moe.rukamori.archivetune.tidal.TidalAudioProvider
+import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.EnumListPreference
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.InfoLabel
@@ -97,6 +103,7 @@ fun QobuzSettings(navController: NavController) {
     var testingInstances by remember { mutableStateOf(false) }
     var showAddDialog by remember { mutableStateOf(false) }
     var showBulkDialog by remember { mutableStateOf(false) }
+    var detailInstance by remember { mutableStateOf<String?>(null) }
 
     // Direct-API tokens, stored as a JSON list. Tried before proxy instances during resolution.
     val (storedTokens, onStoredTokensChange) = rememberPreference(QobuzTokensKey, "")
@@ -109,6 +116,7 @@ fun QobuzSettings(navController: NavController) {
     val tokenHealth = remember { mutableStateMapOf<String, TidalAudioProvider.InstanceHealth>() }
     var testingTokens by remember { mutableStateOf(false) }
     var showAddTokensDialog by remember { mutableStateOf(false) }
+    var detailToken by remember { mutableStateOf<QobuzToken?>(null) }
 
     fun toast(message: String) {
         Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
@@ -195,6 +203,108 @@ fun QobuzSettings(navController: NavController) {
             return
         }
         copyToClipboard(context, "Qobuz instances", online)
+    }
+
+    // Token detail dialog — shows masked token, appId, appSecret, userId, subscription.
+    detailToken?.let { token ->
+        DefaultDialog(
+            onDismiss = { detailToken = null },
+            icon = { Icon(painterResource(R.drawable.token), null) },
+            title = { Text(stringResource(R.string.details)) },
+            contentScrollable = true,
+            buttons = {
+                TextButton(
+                    onClick = {
+                        copyToClipboard(context, "Qobuz token", listOf(token.token))
+                        detailToken = null
+                    },
+                    shapes = ButtonDefaults.shapes(),
+                ) {
+                    Text(context.getString(R.string.copy_link).replace("link", "token"))
+                }
+                TextButton(
+                    onClick = { detailToken = null },
+                    shapes = ButtonDefaults.shapes(),
+                ) {
+                    Text(stringResource(R.string.close_dialog))
+                }
+            },
+        ) {
+            Column(modifier = fillMaxWidth()) {
+                val displayName = token.label.ifBlank { token.userId.ifBlank { null } }
+                if (displayName != null) {
+                    Text("Account", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(2.dp))
+                    Text(displayName, style = MaterialTheme.typography.bodyMedium)
+                    Spacer(Modifier.height(10.dp))
+                }
+                if (token.userId.isNotBlank()) {
+                    Text("User ID", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(2.dp))
+                    Text(token.userId, style = MaterialTheme.typography.bodyMedium)
+                    Spacer(Modifier.height(10.dp))
+                }
+                Text("Token (auth)", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(2.dp))
+                val maskedToken = if (token.token.length > 8) "****${token.token.takeLast(6)}" else token.token
+                Text(maskedToken, style = MaterialTheme.typography.bodyMedium, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                Spacer(Modifier.height(10.dp))
+                Text("App ID", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(2.dp))
+                Text(token.appId, style = MaterialTheme.typography.bodyMedium, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                Spacer(Modifier.height(10.dp))
+                Text("App Secret", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(2.dp))
+                val maskedSecret = if (token.appSecret.length > 6) "****${token.appSecret.takeLast(4)}" else "****"
+                Text(maskedSecret, style = MaterialTheme.typography.bodyMedium, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                if (token.subscription.isNotBlank()) {
+                    Spacer(Modifier.height(10.dp))
+                    Text("Subscription", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(2.dp))
+                    Text(token.subscription, style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+        }
+    }
+
+    // Instance detail dialog — shows the full instance URL.
+    detailInstance?.let { instance ->
+        DefaultDialog(
+            onDismiss = { detailInstance = null },
+            icon = { Icon(painterResource(R.drawable.link), null) },
+            title = { Text(stringResource(R.string.details)) },
+            contentScrollable = true,
+            buttons = {
+                TextButton(
+                    onClick = {
+                        copyToClipboard(context, "Qobuz instance", listOf(instance))
+                        detailInstance = null
+                    },
+                    shapes = ButtonDefaults.shapes(),
+                ) {
+                    Text(context.getString(R.string.copy_link).replace("link", "URL"))
+                }
+                TextButton(
+                    onClick = { detailInstance = null },
+                    shapes = ButtonDefaults.shapes(),
+                ) {
+                    Text(stringResource(R.string.close_dialog))
+                }
+            },
+        ) {
+            Column(modifier = fillMaxWidth()) {
+                Text("Instance URL", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(4.dp))
+                Text(instance, style = MaterialTheme.typography.bodyMedium)
+                val status = healthStatus[instance]
+                if (status != null) {
+                    Spacer(Modifier.height(8.dp))
+                    Text("Status", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(2.dp))
+                    Text(labelFor(status, healthLatency[instance]), style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+        }
     }
 
     if (showBulkDialog) {
@@ -372,6 +482,7 @@ fun QobuzSettings(navController: NavController) {
                                 }
                             },
                             icon = { Icon(painterResource(R.drawable.token), null) },
+                            onClick = { detailToken = token },
                             trailingContent = {
                                 IconButton(
                                     onClick = {
@@ -453,6 +564,7 @@ fun QobuzSettings(navController: NavController) {
                                 }
                             },
                             icon = { Icon(painterResource(R.drawable.link), null) },
+                            onClick = { detailInstance = instance },
                             trailingContent = {
                                 IconButton(
                                     onClick = {

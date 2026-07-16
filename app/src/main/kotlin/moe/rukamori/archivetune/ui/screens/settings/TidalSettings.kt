@@ -27,6 +27,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -60,6 +65,7 @@ import moe.rukamori.archivetune.constants.TidalUserIdKey
 import moe.rukamori.archivetune.qobuz.SourceInputParsing
 import moe.rukamori.archivetune.tidal.TidalAudioProvider
 import moe.rukamori.archivetune.tidal.TidalInstanceHealthManager
+import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.InfoLabel
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
@@ -79,6 +85,8 @@ fun TidalSettings(navController: NavController) {
     val accountName by rememberPreference(TidalAccountNameKey, "")
     val subscriptionRaw by rememberPreference(TidalSubscriptionKey, TidalSubscriptionStatus.UNKNOWN.name)
     val needsRelogin by rememberPreference(TidalNeedsReloginKey, false)
+    val countryCode by rememberPreference(TidalCountryCodeKey, "")
+    val userId by rememberPreference(TidalUserIdKey, 0L)
 
     val subscription =
         remember(subscriptionRaw) {
@@ -113,6 +121,8 @@ fun TidalSettings(navController: NavController) {
     var testingInstances by remember { mutableStateOf(false) }
     var showAddDialog by remember { mutableStateOf(false) }
     var showBulkDialog by remember { mutableStateOf(false) }
+    var detailInstance by remember { mutableStateOf<String?>(null) }
+    var showAccountDetail by remember { mutableStateOf(false) }
 
     fun toast(message: String) {
         Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
@@ -175,6 +185,102 @@ fun TidalSettings(navController: NavController) {
                 }
             applyRecords(records)
             testingInstances = false
+        }
+    }
+
+    // Account detail dialog — shows the logged-in account's token info.
+    if (showAccountDetail) {
+        DefaultDialog(
+            onDismiss = { showAccountDetail = false },
+            icon = { Icon(painterResource(R.drawable.token), null) },
+            title = { Text(stringResource(R.string.details)) },
+            contentScrollable = true,
+            buttons = {
+                TextButton(
+                    onClick = {
+                        copyToClipboard(context, "Tidal token", listOf(accessToken))
+                        showAccountDetail = false
+                    },
+                    shapes = ButtonDefaults.shapes(),
+                ) {
+                    Text(context.getString(R.string.copy_link).replace("link", "token"))
+                }
+                TextButton(
+                    onClick = { showAccountDetail = false },
+                    shapes = ButtonDefaults.shapes(),
+                ) {
+                    Text(stringResource(R.string.close_dialog))
+                }
+            },
+        ) {
+            Column(modifier = fillMaxWidth()) {
+                if (accountName.isNotBlank()) {
+                    Text("Account", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(2.dp))
+                    Text(accountName, style = MaterialTheme.typography.bodyMedium)
+                    Spacer(Modifier.height(10.dp))
+                }
+                if (userId != 0L) {
+                    Text("User ID", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(2.dp))
+                    Text(userId.toString(), style = MaterialTheme.typography.bodyMedium)
+                    Spacer(Modifier.height(10.dp))
+                }
+                if (countryCode.isNotBlank()) {
+                    Text("Country", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(2.dp))
+                    Text(countryCode, style = MaterialTheme.typography.bodyMedium)
+                    Spacer(Modifier.height(10.dp))
+                }
+                Text("Access token", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(2.dp))
+                val maskedToken = if (accessToken.length > 8) "****${accessToken.takeLast(6)}" else accessToken
+                Text(maskedToken, style = MaterialTheme.typography.bodyMedium, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                Spacer(Modifier.height(10.dp))
+                Text("Subscription", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(2.dp))
+                Text(subscription.name.lowercase(), style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+    }
+
+    // Instance detail dialog — shows the full instance URL.
+    detailInstance?.let { instance ->
+        DefaultDialog(
+            onDismiss = { detailInstance = null },
+            icon = { Icon(painterResource(R.drawable.link), null) },
+            title = { Text(stringResource(R.string.details)) },
+            contentScrollable = true,
+            buttons = {
+                TextButton(
+                    onClick = {
+                        copyToClipboard(context, "Tidal instance", listOf(instance))
+                        detailInstance = null
+                    },
+                    shapes = ButtonDefaults.shapes(),
+                ) {
+                    Text(context.getString(R.string.copy_link).replace("link", "URL"))
+                }
+                TextButton(
+                    onClick = { detailInstance = null },
+                    shapes = ButtonDefaults.shapes(),
+                ) {
+                    Text(stringResource(R.string.close_dialog))
+                }
+            },
+        ) {
+            Column(modifier = fillMaxWidth()) {
+                Text("Instance URL", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(4.dp))
+                Text(instance, style = MaterialTheme.typography.bodyMedium)
+                val status = healthStatus[instance]
+                if (status != null) {
+                    Spacer(Modifier.height(8.dp))
+                    Text("Status", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(2.dp))
+                    Text(labelFor(status, healthLatency[instance]), style = MaterialTheme.typography.bodyMedium)
+                }
+            }
         }
     }
 
@@ -277,6 +383,7 @@ fun TidalSettings(navController: NavController) {
                                     null,
                                 )
                             },
+                            onClick = { showAccountDetail = true },
                         )
                     }
 
@@ -364,6 +471,7 @@ fun TidalSettings(navController: NavController) {
                                 }
                             },
                             icon = { Icon(painterResource(R.drawable.link), null) },
+                            onClick = { detailInstance = instance },
                             trailingContent = {
                                 IconButton(
                                     onClick = {
