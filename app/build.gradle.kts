@@ -44,8 +44,30 @@ if (localPropertiesFile.exists()) {
 // per-commit patch/versionCode from the git commit count and injects them via the
 // VERSION_NAME_OVERRIDE / VERSION_CODE_OVERRIDE env vars. Keep each on a single line so the
 // release/canary workflows can grep the base value reliably.
-val baseVersionName = "13.7.1"
-val baseVersionCode = 139
+val baseVersionName = "13.7.5"
+val baseVersionCode = 1375
+
+fun String.asBuildConfigString(): String =
+    "\"${
+        replace("\\", "\\\\")
+            .replace("\"", "\\\"")
+            .replace("\n", "\\n")
+            .replace("\r", "\\r")
+            .replace("\t", "\\t")
+    }\""
+
+val fallbackDataServerUrl = "archive-tune-admin-remote.vercel.app"
+val dataServerUrl =
+    rootProject
+        .file("DataServer.txt")
+        .takeIf { it.isFile }
+        ?.readText()
+        ?.trim()
+        ?.takeIf { it.startsWith("https://") || it.startsWith("http://") }
+        ?: fallbackDataServerUrl
+val apiBearerToken = System.getenv("API_BEARER_TOKEN")?.trim()
+    ?: localProperties.getProperty("API_BEARER_TOKEN")?.trim()
+    ?: ""
 
 val discordApplicationId =
     (
@@ -147,14 +169,44 @@ android {
         buildConfigField("String", "EXTRACTOR_BEARER", "\"$extractorBearer\"")
 
         // Base URL of the community Source Pool website (Next.js). When set, the app auto-discovers
-        // health-checked Tidal/Qobuz instances from it. Optional: blank disables remote discovery.
+        // health-checked Tidal/Qobuz instances from it. Precedence: local.properties override, then
+        // the SOURCE_PROVIDER_URL env/CI variable, then the baked-in default below. Set to "" in
+        // local.properties to disable remote discovery for a build.
+        // Use .takeIf { it.isNotBlank() } on each source so an explicitly-empty env var or
+        // local.properties entry doesn't shadow the hardcoded fallback (a plain `?: fallback`
+        // chain would leave the URL blank when the env var is set to "" rather than unset).
         val sourceProviderUrl =
             (
-                localProperties.getProperty("SOURCE_PROVIDER_URL")
-                    ?: System.getenv("SOURCE_PROVIDER_URL")
-                    ?: ""
+                localProperties.getProperty("SOURCE_PROVIDER_URL")?.takeIf { it.isNotBlank() }
+                    ?: System.getenv("SOURCE_PROVIDER_URL")?.takeIf { it.isNotBlank() }
+                    ?: "https://archivepool.up.railway.app"
                 ).trim().trimEnd('/')
         buildConfigField("String", "SOURCE_PROVIDER_URL", "\"$sourceProviderUrl\"")
+
+        // Per-app read key for the Source Pool. Sent as a Bearer token on discovery requests so the
+        // pool can gate access. Optional: blank works fine while the pool runs unenforced.
+        val sourceProviderKey =
+            (
+                localProperties.getProperty("SOURCE_PROVIDER_KEY")
+                    ?: System.getenv("SOURCE_PROVIDER_KEY")
+                    ?: ""
+                ).trim()
+        buildConfigField("String", "SOURCE_PROVIDER_KEY", "\"$sourceProviderKey\"")
+
+        // End-to-end decryption key for sensitive Source Pool credentials (base64 32-byte AES-256
+        // key, matching the site's POOL_CLIENT_KEY). When the pool returns encrypted account tokens
+        // the app decrypts them locally with this. Optional: blank means the pool is unencrypted.
+        val poolClientKey =
+            (
+                localProperties.getProperty("POOL_CLIENT_KEY")
+                    ?: System.getenv("POOL_CLIENT_KEY")
+                    ?: ""
+                ).trim()
+        buildConfigField("String", "POOL_CLIENT_KEY", "\"$poolClientKey\"")
+
+        // Upstream data server (admin remote) config.
+        buildConfigField("String", "DATA_SERVER_URL", dataServerUrl.asBuildConfigString())
+        buildConfigField("String", "API_BEARER_TOKEN", apiBearerToken.asBuildConfigString())
 
         val nightlyBuildHash =
             (
@@ -163,6 +215,14 @@ android {
                     ?: ""
                 ).trim()
         buildConfigField("String", "NIGHTLY_BUILD_HASH", "\"$nightlyBuildHash\"")
+        // True only for builds produced by the canary/nightly workflow (it sets IS_NIGHTLY_BUILD).
+        // Used to default the in-app updater to the CANARY channel and to compare canary builds by
+        // their monotonic versionCode rather than the fixed display versionName.
+        val isNightlyBuild =
+            (System.getenv("IS_NIGHTLY_BUILD") ?: localProperties.getProperty("IS_NIGHTLY_BUILD") ?: "")
+                .trim()
+                .equals("true", ignoreCase = true)
+        buildConfigField("boolean", "IS_NIGHTLY", "$isNightlyBuild")
         buildConfigField("String", "DISTRIBUTION", "\"gms\"")
         buildConfigField("boolean", "UPDATER_AVAILABLE", "true")
     }

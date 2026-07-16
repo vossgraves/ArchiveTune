@@ -93,6 +93,7 @@ import moe.rukamori.archivetune.LocalDownloadUtil
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.constants.AppBarHeight
 import moe.rukamori.archivetune.constants.HideExplicitKey
 import moe.rukamori.archivetune.db.entities.PlaylistEntity
 import moe.rukamori.archivetune.db.entities.PlaylistSongMap
@@ -107,8 +108,8 @@ import moe.rukamori.archivetune.ui.component.DraggableScrollbar
 import moe.rukamori.archivetune.ui.component.ExpressivePullToRefreshBox
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.LocalMenuState
-import moe.rukamori.archivetune.ui.component.MediaDetailHero
 import moe.rukamori.archivetune.ui.component.MediaDetailAction
+import moe.rukamori.archivetune.ui.component.MediaDetailHero
 import moe.rukamori.archivetune.ui.component.MediaDetailIconAction
 import moe.rukamori.archivetune.ui.component.YouTubeListItem
 import moe.rukamori.archivetune.ui.component.shimmer.ButtonPlaceholder
@@ -259,6 +260,12 @@ fun OnlinePlaylistScreen(
     ) {
         LazyColumn(
             state = lazyListState,
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(
+                        top = if (isSearching) systemBarsTopPadding + AppBarHeight else 0.dp,
+                    ),
             contentPadding =
                 PaddingValues(
                     bottom =
@@ -560,7 +567,6 @@ fun OnlinePlaylistScreen(
                                             },
                                         )
                                     }
-
                                 },
                                 modifier = Modifier.animateItem(),
                             )

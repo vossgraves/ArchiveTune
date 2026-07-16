@@ -76,7 +76,6 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import androidx.palette.graphics.Palette
-import coil3.compose.AsyncImage
 import coil3.imageLoader
 import coil3.request.ImageRequest
 import coil3.request.allowHardware
@@ -102,6 +101,7 @@ import moe.rukamori.archivetune.innertube.models.WatchEndpoint
 import moe.rukamori.archivetune.playback.queues.ListQueue
 import moe.rukamori.archivetune.ui.component.CreatePlaylistDialog
 import moe.rukamori.archivetune.ui.component.ExpressivePullToRefreshBox
+import moe.rukamori.archivetune.ui.component.ItemThumbnail
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.menu.PlaylistMenu
 import moe.rukamori.archivetune.ui.menu.YouTubePlaylistMenu
@@ -740,15 +740,16 @@ fun PlaylistListCard(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // Thumbnail
-        AsyncImage(
-            model = playlist.thumbnails.getOrNull(0),
-            contentDescription = null,
+        ItemThumbnail(
+            thumbnailUrl = playlist.thumbnails.getOrNull(0),
+            isActive = false,
+            isPlaying = false,
+            shape = RoundedCornerShape(24.dp),
             contentScale = ContentScale.Crop,
+            showPlaceholder = true,
             modifier =
                 Modifier
-                    .size(72.dp)
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                    .size(72.dp),
         )
 
         Spacer(modifier = Modifier.width(16.dp))
@@ -902,9 +903,11 @@ fun PlaylistGridCard(
                     .aspectRatio(1f)
                     .clip(RoundedCornerShape(26.dp)),
         ) {
-            AsyncImage(
-                model = playlist.thumbnails.getOrNull(0),
-                contentDescription = null,
+            ItemThumbnail(
+                thumbnailUrl = playlist.thumbnails.getOrNull(0),
+                isActive = false,
+                isPlaying = false,
+                shape = RoundedCornerShape(26.dp),
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
             )

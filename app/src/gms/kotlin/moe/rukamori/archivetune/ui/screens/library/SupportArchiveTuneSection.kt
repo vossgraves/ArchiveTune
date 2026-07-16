@@ -1,3 +1,10 @@
+/*
+ * ArchiveTune (2026)
+ * © Rukamori — github.com/rukamori
+ * GPL-3.0 License | Contributors: see git history
+ * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
+ */
+
 package moe.rukamori.archivetune.ui.screens.library
 
 import androidx.compose.foundation.background
@@ -32,10 +39,10 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.ads.presentation.StartIoConsentDialog
 import moe.rukamori.archivetune.ads.presentation.SupportArchiveTuneScreenState
 import moe.rukamori.archivetune.ads.presentation.SupportArchiveTuneUiEvent
 import moe.rukamori.archivetune.ads.presentation.SupportArchiveTuneViewModel
-import moe.rukamori.archivetune.ads.presentation.StartIoConsentDialog
 
 internal const val supportArchiveTuneAvailable = true
 
@@ -103,14 +110,21 @@ private fun SupportArchiveTuneCard(
         }
     val description =
         when (state) {
-            is SupportArchiveTuneScreenState.Loading ->
+            is SupportArchiveTuneScreenState.Loading -> {
                 stringResource(R.string.support_archivetune_preparing)
-            is SupportArchiveTuneScreenState.Success ->
+            }
+
+            is SupportArchiveTuneScreenState.Success -> {
                 stringResource(R.string.support_archivetune_description)
-            is SupportArchiveTuneScreenState.Empty ->
+            }
+
+            is SupportArchiveTuneScreenState.Empty -> {
                 stringResource(R.string.support_archivetune_unavailable)
-            is SupportArchiveTuneScreenState.Error ->
+            }
+
+            is SupportArchiveTuneScreenState.Error -> {
                 stringResource(R.string.support_archivetune_retry)
+            }
         }
 
     Card(

@@ -35,6 +35,7 @@ import moe.rukamori.archivetune.ads.SupportAdsInitializer
 import moe.rukamori.archivetune.canvas.ArchiveTuneCanvas
 import moe.rukamori.archivetune.constants.*
 import moe.rukamori.archivetune.extensions.*
+import moe.rukamori.archivetune.gatekeeper.RunGatekeeperCheckUseCase
 import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.innertube.models.YouTubeLocale
 import moe.rukamori.archivetune.kugou.KuGou
@@ -53,6 +54,7 @@ import moe.rukamori.archivetune.ui.screens.settings.ThemePalettes
 import moe.rukamori.archivetune.ui.theme.ThemeSeedPalette
 import moe.rukamori.archivetune.ui.theme.ThemeSeedPaletteCodec
 import moe.rukamori.archivetune.utils.MoriCipherUpdateScheduler
+import moe.rukamori.archivetune.utils.PoolAccountManager
 import moe.rukamori.archivetune.utils.PreferenceStore
 import moe.rukamori.archivetune.utils.ProxyUtils
 import moe.rukamori.archivetune.utils.YTPlayerUtils
@@ -71,12 +73,16 @@ import java.io.StringWriter
 import java.net.Proxy
 import java.util.*
 import java.util.concurrent.atomic.AtomicBoolean
+import javax.inject.Inject
 import kotlin.system.exitProcess
 
 @HiltAndroidApp
 class App :
     Application(),
     SingletonImageLoader.Factory {
+    @Inject
+    lateinit var runGatekeeperCheckUseCase: RunGatekeeperCheckUseCase
+
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     @Volatile private var isInitialized = false
@@ -113,6 +119,9 @@ class App :
         } catch (_: Exception) {
         }
 
+        applicationScope.launch(Dispatchers.IO) {
+            runGatekeeperCheckUseCase()
+        }
         initializeCriticalSync()
         SupportAdsInitializer.initialize(this)
         initializeDeferredAsync()
@@ -239,6 +248,21 @@ class App :
                 }
             } catch (e: Exception) {
                 Timber.w(e, "Tidal instance startup health scan failed")
+            }
+        }
+
+        // Pull shared premium ACCOUNTS (real subscriber tokens) from the community Source Pool so the
+        // resolvers can stream full-quality FLAC directly against the official Tidal/Qobuz APIs — no
+        // self-hosted restream instance required. Loads the persisted cache first (instant), then
+        // refreshes over the network. Disabled automatically when no Source Pool URL is baked in.
+        applicationScope.launch(Dispatchers.IO) {
+            try {
+                if (PoolAccountManager.isEnabled) {
+                    PoolAccountManager.loadCached(this@App)
+                    PoolAccountManager.refresh(this@App)
+                }
+            } catch (e: Exception) {
+                Timber.w(e, "Pool account startup refresh failed")
             }
         }
 
