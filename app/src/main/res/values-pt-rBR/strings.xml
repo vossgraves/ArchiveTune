@@ -43,12 +43,6 @@
     <string name="filter_featured_playlists">Playlists em destaque</string>
     <string name="no_results_found">Nenhum resultado encontrado</string>
     <string name="top_results">Principais resultados</string>
-    <string name="library_title">Sua biblioteca</string>
-    <string name="library_subtitle">Sua música, organizada por você</string>
-    <string name="library_playlists_subtitle">Todas as suas playlists, organizadas por você</string>
-    <string name="library_songs_subtitle">Todas as suas músicas, organizadas por você</string>
-    <string name="library_artists_subtitle">Todos os seus artistas, em um só lugar</string>
-    <string name="library_albums_subtitle">Todos os seus álbuns, lindamente organizados</string>
     <string name="most_played_badge">MAIS TOCADAS</string>
     <string name="play_all">Tocar tudo</string>
     <string name="offline_shortcut">Offline</string>
@@ -120,7 +114,6 @@
     <string name="delete_playlist_confirm">Deseja realmente excluir a playlist \"%s\"?</string>
     <string name="change_playlist_cover">Alterar capa da playlist</string>
     <string name="retry">Tentar novamente</string>
-    <string name="radio">Rádio</string>
     <string name="cast">Transmitir</string>
     <string name="cast_devices">Dispositivos Cast</string>
     <string name="cast_sheet_subtitle">Escolha onde o ArchiveTune toca</string>
@@ -470,7 +463,6 @@
     <string name="playback_requires_youtube_music_confirmation">Confirme a reprodução no YouTube Music e volte ao ArchiveTune.</string>
     <string name="playback_login_refresh_required">Atualizar login do YouTube Music</string>
     <string name="playback_requires_youtube_music_login_refresh">Atualize seu login do YouTube Music e volte ao ArchiveTune.</string>
-    <string name="could_not_open_youtube_music">Não foi possível abrir o YouTube Music</string>
     <string name="playback_error_code">Código</string>
     <string name="playback_error_http">HTTP</string>
     <string name="playback_error_message">Mensagem</string>
@@ -549,17 +541,12 @@
     <string name="add_symbol">Adicionar símbolo</string>
     <string name="enter_symbol">Inserir símbolo</string>
     <string name="equalizer">Equalizador</string>
-    <string name="tap_to_activate_equalizer">Toque para ativar o equalizador</string>
     <string name="eq_waiting_for_audio_session">Aguardando sessão de áudio</string>
     <string name="eq_open_system_equalizer">Abrir equalizador do sistema</string>
     <string name="eq_presets">Predefinições</string>
     <string name="eq_flat">Plano</string>
     <string name="eq_profiles">Perfis</string>
     <string name="eq_manage">Gerenciar</string>
-    <string name="eq_system_preset">Predefinição do sistema</string>
-    <string name="eq_manual">Manual</string>
-    <string name="eq_profile_hint">Aplique um perfil ou salve suas configurações atuais</string>
-    <string name="eq_save">Salvar</string>
     <string name="eq_save_profile">Salvar perfil</string>
     <string name="eq_profile_name">Nome do perfil</string>
     <string name="eq_custom_profile">Perfil personalizado</string>
@@ -802,7 +789,6 @@
     <string name="playback_state_unknown">DESCONHECIDO</string>
     <string name="share_logs">Compartilhar logs</string>
     <string name="about">Sobre</string>
-    <string name="open_youtube_music">Abrir YouTube Music</string>
     <string name="new_version_available">Nova versão disponível</string>
     <string name="updates">Atualizações</string>
     <string name="updates_subtitle_stable">Versões estáveis e notas de versão</string>
@@ -899,8 +885,6 @@
     <string name="session_code">Código da sessão</string>
     <string name="add_current_song">Adicionar música atual</string>
     <string name="dismiss">Dispensar</string>
-    <string name="enabled">Ativado</string>
-    <string name="disabled">Desativado</string>
     <string name="invalid_link">Link inválido</string>
     <string name="invalid_code">Código inválido</string>
     <string name="not_allowed">Não permitido</string>

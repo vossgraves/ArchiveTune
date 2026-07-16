@@ -39,12 +39,6 @@
     <string name="filter_community_playlists">Danh sách phát từ cộng đồng</string>
     <string name="filter_featured_playlists">Danh sách phát nổi bật</string>
     <string name="no_results_found">Không tìm thấy kết quả</string>
-    <string name="library_title">Thư viện của bạn</string>
-    <string name="library_subtitle">Nhạc của bạn, được sắp xếp gọn gàng</string>
-    <string name="library_playlists_subtitle">Tất cả danh sách phát của bạn, được sắp xếp gọn gàng</string>
-    <string name="library_songs_subtitle">Tất cả bài hát của bạn, được sắp xếp gọn gàng</string>
-    <string name="library_artists_subtitle">Tất cả nghệ sĩ của bạn, tập trung một chỗ</string>
-    <string name="library_albums_subtitle">Tất cả album của bạn, được sắp xếp đẹp mắt</string>
     <string name="most_played_badge">NGHE NHIỀU NHẤT</string>
     <string name="play_all">Phát tất cả</string>
     <string name="offline_shortcut">Ngoại tuyến</string>
@@ -107,7 +101,6 @@
     <string name="delete_playlist_confirm">Bạn có muốn xóa danh sách phát \"%s\" không?</string>
     <string name="change_playlist_cover">Thay đổi ảnh bìa danh sách phát</string>
     <string name="retry">Thử lại</string>
-    <string name="radio">Radio</string>
     <string name="shuffle">Xáo trộn</string>
     <string name="reset">Đặt lại</string>
     <string name="details">Chi tiết</string>
@@ -391,10 +384,6 @@
     <string name="eq_flat">Phẳng</string>
     <string name="eq_profiles">Hồ sơ</string>
     <string name="eq_manage">Quản lý</string>
-    <string name="eq_system_preset">Cài đặt sẵn hệ thống</string>
-    <string name="eq_manual">Thủ công</string>
-    <string name="eq_profile_hint">Áp dụng hồ sơ hoặc lưu cài đặt hiện tại của bạn</string>
-    <string name="eq_save">Lưu</string>
     <string name="eq_save_profile">Lưu hồ sơ</string>
     <string name="eq_profile_name">Tên hồ sơ</string>
     <string name="eq_custom_profile">Hồ sơ tùy chỉnh</string>
@@ -615,8 +604,6 @@
     <string name="session_link">Liên kết phiên</string>
     <string name="session_code">Mã phiên</string>
     <string name="add_current_song">Thêm bài hát hiện tại</string>
-    <string name="enabled">Đã bật</string>
-    <string name="disabled">Đã tắt</string>
     <string name="invalid_link">Liên kết không hợp lệ</string>
     <string name="invalid_code">Mã không hợp lệ</string>
     <string name="not_allowed">Không được phép</string>
@@ -686,7 +673,6 @@
     <string name="open_with_downloader">Mở bằng Downloader</string>
     <string name="external_downloader_not_installed">Ứng dụng tải xuống bên ngoài chưa được cài đặt</string>
     <string name="external_downloader_not_configured">Chưa cấu hình trình tải xuống bên ngoài. Hãy thiết lập một trình tải xuống trong Cài đặt → Trình phát.</string>
-    <string name="open_youtube_music">Mở Youtube Music</string>
     <string name="po_token_generation">Tạo PO Token</string>
     <string name="web_client_po_token">Web Client PO Token</string>
     <string name="web_client_po_token_desc">Cho phép tạo PO Token cho các ứng dụng khách trình phát dựa trên web</string>
@@ -710,7 +696,6 @@
     <string name="sort_order_descending">Giảm dần</string>
     <string name="disable_animations">Vô hiệu hóa hoạt ảnh</string>
     <string name="disable_animations_desc">Vô hiệu hóa hầu hết các hoạt ảnh ứng dụng. Được đề xuất cho các thiết bị cấu hình thấp</string>
-    <string name="tap_to_activate_equalizer">Nhấn để kích hoạt bộ cân bằng</string>
     <string name="updates_subtitle_stable">Phát hành ổn định và ghi chú phát hành</string>
     <string name="updates_status_checking">Kiểm tra bản phát hành mới nhất</string>
     <string name="updates_status_current">Bạn đang ở trên phiên bản mới nhất có sẵn</string>
@@ -732,7 +717,6 @@
     <string name="later">Để sau</string>
     <string name="album_name">Tên album</string>
     <string name="app_icon">Biểu tượng ứng dụng</string>
-    <string name="could_not_open_youtube_music">Không thể mở YouTube Music</string>
     <string name="discord_account_ready">ArchiveTune đã sẵn sàng để xuất bản Rich Presence cho phiên nghe nhạc của bạn.</string>
     <string name="discord_activity_content">Nội dung Hoạt động</string>
     <string name="discord_activity_type_competing_label">Đang cạnh tranh</string>

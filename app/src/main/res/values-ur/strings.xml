@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version='1.0' encoding='utf-8'?>
 <resources>
     <string name="home">گھر</string>
     <string name="songs">گیت</string>
@@ -42,12 +42,6 @@
     <string name="filter_featured_playlists">نمایاں مجموعہ گیت</string>
     <string name="no_results_found">کوئ نتیجہ میسر نہیں</string>
     <string name="top_results">اہم نتائج</string>
-    <string name="library_title">آپکی فہرست</string>
-    <string name="library_subtitle">آپکی موسیقی، آپکے لئے منظم کردہ</string>
-    <string name="library_playlists_subtitle">آپکے سارے مجموعہ گیت، آپکے لئے منظم کردہ</string>
-    <string name="library_songs_subtitle">آپکے سارے گیت، آپکے لئے منظم کردہ</string>
-    <string name="library_artists_subtitle">آپکے سارے کلاکار، اک مرکز پر</string>
-    <string name="library_albums_subtitle">آپکے سارے مجموعہ گیت،خوبصورتی سے منظم کردہ</string>
     <string name="most_played_badge">سب سے زیادہ سنا گیا</string>
     <string name="play_all">سب سنیں</string>
     <string name="offline_shortcut">غیر منسلک</string>
@@ -119,7 +113,6 @@
     <string name="delete_playlist_confirm">کیا آپ سہی میں مجموعہ گیت \"%s\" کو ختم کرنا چاہتے ہیں؟</string>
     <string name="change_playlist_cover">مجموعہ گیت کی تصویر تبدیل کریں</string>
     <string name="retry">دوبارہ کوشش کریں</string>
-    <string name="radio">ریڈیو</string>
     <string name="cast">براہ راست</string>
     <string name="cast_devices">اختراع آلہ پر براہ راست کریں</string>
     <string name="cast_sheet_subtitle">طے کریں کہ آرکائوٹیون کہاں چلے</string>
@@ -462,7 +455,6 @@
     <string name="playback_requires_youtube_music_confirmation">یوٹیوب میوسک میں نشر کی تصدیق کریں، پھر آرکائوٹیون پر واپس آئیں۔</string>
     <string name="playback_login_refresh_required">یوٹیوب میوسک کے لاگن کوتازہ کریں</string>
     <string name="playback_requires_youtube_music_login_refresh">اپنے یوٹیوب میوسک کے لاگن کوتازہ کریں، پھر آرکائوٹیون پر واپس آئیں۔</string>
-    <string name="could_not_open_youtube_music">یوٹیوب میوسک کھول نہیں سکا</string>
     <string name="playback_error_code">کوڈ</string>
     <string name="playback_error_http">HTTP</string>
     <string name="playback_error_message">پیغام</string>
@@ -542,17 +534,12 @@
     <string name="add_symbol">علامت شامل کریں</string>
     <string name="enter_symbol">علامت داخل کریں</string>
     <string name="equalizer">ایکولائزر</string>
-    <string name="tap_to_activate_equalizer">ادھر ضرب لگا کر ایکولائزر کو فعال کریں</string>
     <string name="eq_waiting_for_audio_session">سمعی سِشَن کا انتظار کر رہا ہے</string>
     <string name="eq_open_system_equalizer">سسٹم ایکولائزر کو کھولیں</string>
     <string name="eq_presets">پریسیٹز</string>
     <string name="eq_flat">چپٹا</string>
     <string name="eq_profiles">پروفائلیں</string>
     <string name="eq_manage">انتظام کریں</string>
-    <string name="eq_system_preset">سسٹم پریسیٹ</string>
-    <string name="eq_manual">دستی</string>
-    <string name="eq_profile_hint">کوئ پروفائل لگائیں یا اپنی موجودہ تنظیمات کو حفظ کرین</string>
-    <string name="eq_save">حفظ</string>
     <string name="eq_save_profile">پروفائل کو حفظ کریں</string>
     <string name="eq_profile_name">پروفائل کا نام</string>
     <string name="eq_custom_profile">حسب ضرورت پروفائل</string>

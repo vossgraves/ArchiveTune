@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version='1.0' encoding='utf-8'?>
 <resources>
     <string name="explore">استكشف</string>
     <string name="music_recognition_tap_to_listen">دوس عشان تسمع</string>
@@ -395,8 +395,6 @@
     <string name="crossfade_gapless_description">عدم استخدام التداخل الصوتي للأغاني المتتالية من نفس الألبوم.</string>
     <string name="player_stream_client">عميل التشغيل</string>
     <string name="player_stream_client_desc">يتحكم في مصدر التشغيل المستخدم لجلب البث</string>
-    <string name="player_stream_client_android_vr">أندرويد VR</string>
-    <string name="player_stream_client_android_vr_desc">بث مباشر بدون فك تشفير التوقيع، بيوفر أقصى سرعة. مناسب لمعظم المستخدمين.</string>
     <string name="player_stream_client_web_remix">ويب ريمكس</string>
     <string name="player_stream_client_web_remix_desc">دعم تنسيقات ممتدة على حساب السرعة. فك تشفير توقيع JavaScript بيسبب تأخير في بدء التشغيل من 5 لـ 10 ثوانٍ.</string>
     <string name="player_stream_client_archivetune_extractor">مستخرج ArchiveTune</string>

@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version='1.0' encoding='utf-8'?>
 <resources>
     <string name="home">Home</string>
     <string name="songs">Lieder</string>
@@ -47,7 +47,6 @@
     <string name="remove_download_playlist_confirm">Möchten Sie wirklich alle \"%s\" Playlist-Lieder aus dem Speicher für heruntergeladene Songs entfernen?</string>
     <string name="delete_playlist_confirm">Möchtest du die Playlist \"%s\" wirklich löschen?</string>
     <string name="retry">Wiederholen</string>
-    <string name="radio">Radio</string>
     <string name="shuffle">Shuffle</string>
     <string name="reset">Zurücksetzen</string>
     <string name="details">Details</string>
@@ -455,9 +454,7 @@
     <string name="low_data_mode_description">Reduziert den mobilen Datenverbrauch, indem in Netzwerken mit Datenvolumenbegrenzung Streams in niedriger Qualität verwendet und die Wiedergabecache-Funktion, Canvas sowie das Vorladen von Songtexten im Hintergrund deaktiviert werden</string>
     <string name="permanent_shuffle">Permanenter Shuffle-Modus</string>
     <string name="permanent_shuffle_desc">Lässt Schuffle aktiviert, wenn du einen neuen Song startest</string>
-    <string name="library_title">Deine Bibliothek</string>
     <string name="library_top_mixes_configure_ai">Konfiguriere KI</string>
-    <string name="library_albums_subtitle">Alle Alben, wundervoll organisiert</string>
     <string name="your_artists">Deine Künstler</string>
     <string name="all_songs">Alle Songs</string>
     <string name="newest_first">Neuste zuerst</string>
@@ -494,10 +491,6 @@
     <string name="blur_intensity">Unschärfeintensität</string>
     <string name="blur_intensity_value">%1$d dp</string>
     <string name="slider_style_standard">Standard</string>
-    <string name="library_subtitle">Deine Musik, für dich organisiert</string>
-    <string name="library_playlists_subtitle">All deine Playlisten, für dich organisiert</string>
-    <string name="library_songs_subtitle">All deine Songs, für dich organisiert</string>
-    <string name="library_artists_subtitle">All deine Künstler an einem Platz</string>
     <string name="onboarding_permission_audio_settings_title">Audioeinstellungen und Vibration</string>
     <string name="instant_playback">Sofortige Wiedergabe</string>
     <string name="internet_warning_doh">DNS über HTTPS funktioniert nur, wenn dein Land YouTube blockiert. Sollte YouTube aktiv deine Region blockieren, nutze bitte einen Proxy oder VPN.</string>
@@ -545,7 +538,6 @@
     <string name="playback_requires_youtube_music_confirmation">Wiedergabe in YouTube Music bestätigten, dann zu ArchiveTune zurückkehren.</string>
     <string name="playback_login_refresh_required">Erneuere YouTube Music Anmeldung</string>
     <string name="playback_requires_youtube_music_login_refresh">Erneuere YouTube Music Anmeldung, dann zu ArchiveTune zurückkehren.</string>
-    <string name="could_not_open_youtube_music">Konnte YouTube Music nicht öffnen</string>
     <string name="internet">Internet</string>
     <string name="internet_warning_title">Sicherheits- und Nutzungswarnung</string>
     <string name="dns_over_https">DNS über HTTPS</string>
@@ -570,16 +562,11 @@
     <string name="external_downloader_package_desc">Paketname der externen Downloader-App (z.B. com.deniscerri.ytdl)</string>
     <string name="open_with_downloader">Mit Downloader öffnen</string>
     <string name="external_downloader_not_installed">Externe Downloader-App ist nicht installiert</string>
-    <string name="tap_to_activate_equalizer">Tippen, um den Equalizer zu aktivieren</string>
     <string name="eq_open_system_equalizer">System-Equalizer öffnen</string>
     <string name="eq_presets">Voreinstellungen</string>
     <string name="eq_flat">Flach</string>
     <string name="eq_profiles">Profile</string>
     <string name="eq_manage">Verwalten</string>
-    <string name="eq_system_preset">Systemvoreinstellung</string>
-    <string name="eq_manual">Manuell</string>
-    <string name="eq_profile_hint">Wende ein Profil an oder speichere deine aktuellen Einstellungen</string>
-    <string name="eq_save">Speichern</string>
     <string name="eq_save_profile">Profil speichern</string>
     <string name="eq_profile_name">Profilname</string>
     <string name="eq_custom_profile">Benutzerdefiniertes Profil</string>
@@ -659,7 +646,6 @@
     <string name="playback_state_ended">BEENDET</string>
     <string name="playback_state_unknown">UNBEKANNT</string>
     <string name="share_logs">Protokolle teilen</string>
-    <string name="open_youtube_music">YouTube Music öffnen</string>
     <string name="updates">Updates</string>
     <string name="updates_status_checking">Überprüfe auf die aktuellste Version</string>
     <string name="updates_status_current">Du bist auf der aktuellsten verfügbaren Version</string>
@@ -708,8 +694,6 @@
     <string name="session_link">Sitzungslink</string>
     <string name="session_code">Sitzungscode</string>
     <string name="add_current_song">Aktuelles Lied hinzufügen</string>
-    <string name="enabled">Aktiviert</string>
-    <string name="disabled">Deaktiviert</string>
     <string name="invalid_link">Ungültiger Link</string>
     <string name="invalid_code">Ungültiger Code</string>
     <string name="not_allowed">Nicht erlaubt</string>

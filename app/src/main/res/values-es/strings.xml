@@ -49,7 +49,6 @@
     <string name="delete_playlist_confirm">¿Realmente quieres eliminar la lista de reproducción \"%s\"?</string>
     <string name="change_playlist_cover">Cambiar caratula de lista de reproducción</string>
     <string name="retry">Re-intentar</string>
-    <string name="radio">Radio</string>
     <string name="shuffle">Aleatorio</string>
     <string name="reset">Reiniciar</string>
     <string name="details">Detalles</string>
@@ -337,10 +336,6 @@
     <string name="eq_flat">Plano</string>
     <string name="eq_profiles">Perfiles</string>
     <string name="eq_manage">Administrar</string>
-    <string name="eq_system_preset">Preajuste del sistema</string>
-    <string name="eq_manual">Manual</string>
-    <string name="eq_profile_hint">Aplica un perfil o guarda tus ajustes actuales</string>
-    <string name="eq_save">Guardar</string>
     <string name="eq_save_profile">Guardar perfil</string>
     <string name="eq_profile_name">Nombre del perfil</string>
     <string name="eq_custom_profile">Perfil personalizado</string>
@@ -548,8 +543,6 @@
     <string name="session_code">Código de sesión</string>
     <string name="add_current_song">Añadir canción actual</string>
     <string name="dismiss">Descartar</string>
-    <string name="enabled">Habilitado</string>
-    <string name="disabled">Deshabilitado</string>
     <string name="invalid_link">Enlace invalido</string>
     <string name="invalid_code">Código invalido</string>
     <string name="not_allowed">No permitido</string>
@@ -615,7 +608,6 @@
     <string name="external_downloader_not_configured">No hay ningún programa de descarga externo configurado. Configura uno en Ajustes → Reproductor.</string>
     <string name="preload_queue_lyrics">Cargar previamente la letra de la canción</string>
     <string name="queue_lyrics_preload_count">Número de canciones que se van a precargar</string>
-    <string name="open_youtube_music">Abrir YouTube Music</string>
     <string name="po_token_generation">Generación de tokens de autenticación</string>
     <string name="web_client_po_token">Token de verificación basado en web</string>
     <string name="web_client_po_token_desc">Habilitar la generación de tokens de verificación para el reproductor multimedia basado en la web</string>
@@ -639,7 +631,6 @@
     <string name="sort_order_descending">Descendente</string>
     <string name="disable_animations">Desactivar animaciones</string>
     <string name="disable_animations_desc">Desactiva la mayoría de las animaciones de las aplicaciones. Recomendado para dispositivos de gama baja</string>
-    <string name="tap_to_activate_equalizer">Toca para activar el ecualizador</string>
     <string name="updates_subtitle_stable">Versiones estables y notas de la versión</string>
     <string name="updates_status_checking">Comprobar si hay una nueva versión</string>
     <string name="updates_status_current">Tienes la última versión disponible</string>
@@ -693,12 +684,6 @@
     <string name="album_backdrop_desc">Mostrar la obra de arte como fondo borroso en el reproductor</string>
     <string name="backdrop_blur_amount">Cantidad de desenfoque de fondo</string>
     <string name="backdrop_blur_amount_value">%1$d%%</string>
-    <string name="library_title">Tu biblioteca</string>
-    <string name="library_subtitle">Tu música, organizada para ti</string>
-    <string name="library_playlists_subtitle">Todas tus listas de reproducción, organizadas para ti</string>
-    <string name="library_songs_subtitle">Todas tus canciones, perfectamente organizadas</string>
-    <string name="library_artists_subtitle">Todos tus artistas, en un solo lugar</string>
-    <string name="library_albums_subtitle">Todos tus álbumes, perfectamente organizados</string>
     <string name="most_played_badge">MÁS REPRODUCIDOS</string>
     <string name="play_all">Reproducir todo</string>
     <string name="offline_shortcut">Sin conexión</string>
@@ -771,7 +756,6 @@
     <string name="lyrics_mode_v2">Versión 2 heredada/obsoleta</string>
     <string name="lyrics_mode_enhanced">Mejorado</string>
     <string name="lyrics_animation_style_v2_only">Solo disponible en modo letra V2</string>
-    <string name="could_not_open_youtube_music">No se pudo abrir YouTube Music</string>
     <string name="proxy_connection_invalid_configuration">Host o puerto de proxy no válido</string>
     <string name="ip_rotation">Rotación de direcciones IP</string>
     <string name="ip_rotation_desc">Si experimenta problemas de reproducción o de contenido, cambie su dirección IP actual.</string>

@@ -395,6 +395,10 @@
     <string name="album_not_found">Album not found</string>
     <string name="album_not_found_desc">The requested album could not be loaded</string>
     <string name="new_releases">New releases</string>
+    <string name="latest_release">Latest Release</string>
+    <string name="release_type_album">Album</string>
+    <string name="release_type_single">Single</string>
+    <string name="release_metadata">%1$s • %2$d</string>
     <string name="total_releases">Total releases</string>
     <string name="singles">Singles</string>
     <string name="ep">EP</string>
@@ -421,8 +425,6 @@
     <string name="crossfade_gapless_description">Do not crossfade consecutive songs from the same album.</string>
     <string name="player_stream_client">Playback client</string>
     <string name="player_stream_client_desc">Controls which playback source is used to fetch streams</string>
-    <string name="player_stream_client_android_vr">Android VR</string>
-    <string name="player_stream_client_android_vr_desc">Streams directly without signature decryption, providing maximum speed. Suitable for the majority of users.</string>
     <string name="player_stream_client_web_remix">Web Remix</string>
     <string name="player_stream_client_web_remix_desc">Extended format support at the cost of speed. JavaScript signature decryption introduces a ~5–10 second startup delay.</string>
     <string name="player_stream_client_archivetune_extractor">ArchiveTune Extractor</string>

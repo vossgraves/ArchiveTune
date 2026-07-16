@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version='1.0' encoding='utf-8'?>
 <resources>
     <string name="home">الرئيسية</string>
     <string name="songs">الأغاني</string>
@@ -46,7 +46,6 @@
     <string name="music_recognition">التعرف على المزيكا</string>
     <string name="liked_songs">أغاني عجبتك</string>
     <string name="downloaded_songs">الأغاني المتنزلة</string>
-    <string name="radio">راديو</string>
     <string name="play">شغل</string>
     <string name="action_download">نزل</string>
     <string name="view_artist">شوف المغني</string>
@@ -129,12 +128,6 @@
     <string name="album_backdrop_desc">عرض العمل الفني كخلفية ضبابية على المشغل</string>
     <string name="backdrop_blur_amount">مقدار طمس الخلفية</string>
     <string name="backdrop_blur_amount_value">%1$d%%</string>
-    <string name="library_title">مكتبتك</string>
-    <string name="library_subtitle">مزيكتك، متنظمة عشانك</string>
-    <string name="library_playlists_subtitle">كل البلاي ليستات بتاعتك، متنظمة عشانك</string>
-    <string name="library_songs_subtitle">كل أغانيك، متنظمة عشانك</string>
-    <string name="library_artists_subtitle">كل الفنانين بتوعك، في مكان واحد</string>
-    <string name="library_albums_subtitle">كل ألبوماتك، متنظمة بشكل جميل</string>
     <string name="most_played_badge">الأكثر تشغيلاً</string>
     <string name="play_all">تشغيل الكل</string>
     <string name="offline_shortcut">بدون إنترنت</string>
@@ -496,7 +489,6 @@
     <string name="playback_requires_youtube_music_confirmation">أكد التشغيل في يوتيوب ميوزك، ثم ارجع لـ ArchiveTune.</string>
     <string name="playback_login_refresh_required">تحديث تسجيل دخول يوتيوب ميوزك</string>
     <string name="playback_requires_youtube_music_login_refresh">حدث تسجيل دخول يوتيوب ميوزك، ثم ارجع لـ ArchiveTune.</string>
-    <string name="could_not_open_youtube_music">مقدرناش نفتح يوتيوب ميوزك</string>
     <string name="playback_error_code">الرمز</string>
     <string name="playback_error_http">HTTP</string>
     <string name="playback_error_message">الرسالة</string>
@@ -576,17 +568,12 @@
     <string name="add_symbol">إضافة رمز</string>
     <string name="enter_symbol">ادخل الرمز</string>
     <string name="equalizer">الإيكولايزر</string>
-    <string name="tap_to_activate_equalizer">دوس هنا عشان تفعل الإيكولايزر</string>
     <string name="eq_waiting_for_audio_session">في انتظار جلسة الصوت</string>
     <string name="eq_open_system_equalizer">فتح إيكولايزر النظام</string>
     <string name="eq_presets">الإعدادات المسبقة</string>
     <string name="eq_flat">مسطح</string>
     <string name="eq_profiles">الملفات الشخصية</string>
     <string name="eq_manage">إدارة</string>
-    <string name="eq_system_preset">افتراضي النظام</string>
-    <string name="eq_manual">يدوي</string>
-    <string name="eq_profile_hint">طبق ملف تعريفي أو احفظ إعداداتك الحالية</string>
-    <string name="eq_save">حفظ</string>
     <string name="eq_save_profile">حفظ الملف التعريفي</string>
     <string name="eq_profile_name">اسم الملف التعريفي</string>
     <string name="eq_custom_profile">ملف تعريفي مخصص</string>
@@ -822,7 +809,6 @@
     <string name="playback_state_unknown">غير معروف</string>
     <string name="share_logs">مشاركة السجلات</string>
     <string name="about">حول التطبيق</string>
-    <string name="open_youtube_music">فتح يوتيوب ميوزك</string>
     <string name="update_channel">قناة التحديثات</string>
     <string name="update_channel_desc">اختار بين الإصدارات المستقرة المختبرة أو النسخ التجريبية التطويرية.</string>
     <string name="channel_stable">مستقرة</string>
@@ -911,8 +897,6 @@
     <string name="session_code">رمز الجلسة</string>
     <string name="add_current_song">إضافة الأغنية الحالية</string>
     <string name="dismiss">تجاهل</string>
-    <string name="enabled">مفعل</string>
-    <string name="disabled">معطل</string>
     <string name="invalid_link">رابط غير صالح</string>
     <string name="invalid_code">رمز غير صالح</string>
     <string name="not_allowed">غير مسموح به</string>

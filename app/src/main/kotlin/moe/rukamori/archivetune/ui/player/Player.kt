@@ -137,6 +137,7 @@ import androidx.media3.common.Player.STATE_BUFFERING
 import androidx.media3.common.Player.STATE_READY
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.navigation.NavController
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.palette.graphics.Palette
 import coil3.compose.AsyncImage
 import coil3.imageLoader
@@ -161,6 +162,7 @@ import moe.rukamori.archivetune.constants.BlurRadiusKey
 import moe.rukamori.archivetune.constants.DarkModeKey
 import moe.rukamori.archivetune.constants.DisableBlurKey
 import moe.rukamori.archivetune.constants.EnableHapticFeedbackKey
+import moe.rukamori.archivetune.constants.InnerTubeCookieKey
 import moe.rukamori.archivetune.constants.MaxCanvasCacheSizeKey
 import moe.rukamori.archivetune.constants.PlayerBackgroundStyle
 import moe.rukamori.archivetune.constants.PlayerBackgroundStyleKey
@@ -172,6 +174,8 @@ import moe.rukamori.archivetune.constants.PlayerCustomContrastKey
 import moe.rukamori.archivetune.constants.PlayerCustomImageUriKey
 import moe.rukamori.archivetune.constants.PlayerDesignStyle
 import moe.rukamori.archivetune.constants.PlayerDesignStyleKey
+import moe.rukamori.archivetune.constants.PoTokenGvsKey
+import moe.rukamori.archivetune.constants.PoTokenPlayerKey
 import moe.rukamori.archivetune.constants.QueuePeekHeight
 import moe.rukamori.archivetune.constants.ShowPlayerVolumeBarKey
 import moe.rukamori.archivetune.constants.SliderStyle
@@ -179,6 +183,7 @@ import moe.rukamori.archivetune.constants.SliderStyleKey
 import moe.rukamori.archivetune.constants.ThumbnailCornerRadiusKey
 import moe.rukamori.archivetune.extensions.metadata
 import moe.rukamori.archivetune.extensions.togglePlayPause
+import moe.rukamori.archivetune.innertube.utils.hasYouTubeLoginCookie
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.ui.component.BottomSheet
 import moe.rukamori.archivetune.ui.component.BottomSheetState
@@ -186,9 +191,14 @@ import moe.rukamori.archivetune.ui.component.LocalBottomSheetPageState
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.rememberBottomSheetState
 import moe.rukamori.archivetune.ui.menu.PlayerMenu
+import moe.rukamori.archivetune.ui.screens.LOGIN_ROUTE
+import moe.rukamori.archivetune.ui.screens.buildLoginRoute
 import moe.rukamori.archivetune.ui.screens.settings.DarkMode
+import moe.rukamori.archivetune.ui.screens.settings.PO_TOKEN_ROUTE
 import moe.rukamori.archivetune.ui.theme.PlayerColorExtractor
 import moe.rukamori.archivetune.ui.utils.ShowMediaInfo
+import moe.rukamori.archivetune.ui.utils.YtimgResizePolicy
+import moe.rukamori.archivetune.ui.utils.getNextFallbackUrl
 import moe.rukamori.archivetune.ui.utils.resize
 import moe.rukamori.archivetune.utils.ImageBlurUtils
 import moe.rukamori.archivetune.utils.makeTimeString
@@ -298,6 +308,7 @@ fun BottomSheetPlayer(
     navController: NavController,
     modifier: Modifier = Modifier,
     pureBlack: Boolean,
+    isMiniPlayerPairedWithNavigation: Boolean = false,
 ) {
     val context = LocalContext.current
     val menuState = LocalMenuState.current
@@ -305,6 +316,47 @@ fun BottomSheetPlayer(
     val bottomSheetPageState = LocalBottomSheetPageState.current
 
     val playerConnection = LocalPlayerConnection.current ?: return
+    val playbackError by playerConnection.error.collectAsStateWithLifecycle()
+    val (innerTubeCookie) = rememberPreference(InnerTubeCookieKey, defaultValue = "")
+    val (poTokenGvs) = rememberPreference(PoTokenGvsKey, defaultValue = "")
+    val (poTokenPlayer) = rememberPreference(PoTokenPlayerKey, defaultValue = "")
+    val isYouTubeLoggedIn =
+        remember(innerTubeCookie) {
+            hasYouTubeLoginCookie(innerTubeCookie)
+        }
+    val isPoTokenLoggedIn =
+        remember(poTokenGvs, poTokenPlayer) {
+            poTokenGvs.isNotBlank() && poTokenPlayer.isNotBlank()
+        }
+    val navBackStackEntry by navController.currentBackStackEntryAsState()
+    val currentRoute = navBackStackEntry?.destination?.route
+    val retryPlayback =
+        remember(playerConnection) {
+            {
+                playerConnection.player.prepare()
+                playerConnection.player.play()
+            }
+        }
+    val dismissPlaybackError =
+        remember(playerConnection) {
+            playerConnection::dismissPlaybackError
+        }
+    val navigateToLogin: (String?) -> Unit =
+        remember(navController) {
+            { recoveryUrl ->
+                navController.navigate(buildLoginRoute(recoveryUrl)) {
+                    launchSingleTop = true
+                }
+            }
+        }
+    val navigateToPoTokenLogin =
+        remember(navController) {
+            {
+                navController.navigate(PO_TOKEN_ROUTE) {
+                    launchSingleTop = true
+                }
+            }
+        }
 
     val playerDesignStyle by rememberEnumPreference(
         key = PlayerDesignStyleKey,
@@ -948,6 +1000,7 @@ fun BottomSheetPlayer(
                 position = position,
                 duration = duration,
                 pureBlack = pureBlack,
+                isPairedWithNavigation = isMiniPlayerPairedWithNavigation,
             )
         },
     ) {
@@ -1060,8 +1113,6 @@ fun BottomSheetPlayer(
                         mediaId = metadata.id,
                         songTitleRaw = metadata.title,
                         artistNameRaw = artistNameRaw,
-                        albumId = metadata.album?.id,
-                        albumTitleRaw = metadata.album?.title,
                         storefront = storefront,
                         requireVertical = true,
                         allowNetwork = shouldFetchV7Canvas,
@@ -1095,8 +1146,6 @@ fun BottomSheetPlayer(
                         mediaId = metadata.id,
                         songTitleRaw = metadata.title,
                         artistNameRaw = artistNameRaw,
-                        albumId = metadata.album?.id,
-                        albumTitleRaw = metadata.album?.title,
                         storefront = storefront,
                         requireVertical = false,
                         allowNetwork = shouldFetchArtworkCanvas,
@@ -1777,6 +1826,27 @@ fun BottomSheetPlayer(
             }
         }
     }
+
+    val activePlaybackError = playbackError
+    val isRecoveryDestination =
+        currentRoute?.startsWith(LOGIN_ROUTE) == true || currentRoute == PO_TOKEN_ROUTE
+    if (activePlaybackError != null && !isRecoveryDestination) {
+        val errorInfo = remember(activePlaybackError) { activePlaybackError.toPlaybackErrorInfo() }
+        val loginClick =
+            remember(errorInfo.loginRecoveryUrl, navigateToLogin) {
+                { navigateToLogin(errorInfo.loginRecoveryUrl) }
+            }
+
+        PlaybackErrorDialog(
+            error = activePlaybackError,
+            showLoginAction = !isYouTubeLoggedIn,
+            showPoTokenLoginAction = !isPoTokenLoggedIn,
+            onRetry = retryPlayback,
+            onClose = dismissPlaybackError,
+            onLogin = loginClick,
+            onPoTokenLogin = navigateToPoTokenLogin,
+        )
+    }
 }
 
 @Composable
@@ -1849,11 +1919,17 @@ private fun V8PlayerBackdrop(
     backdropBlurAmount: Int,
     modifier: Modifier = Modifier,
 ) {
-    val backdropModel =
-        remember(thumbnailUrl) {
-            thumbnailUrl?.resize(V8BackdropArtworkSizePx, V8BackdropArtworkSizePx)
-        }
-    val backdropRequest = rememberOfflineArtworkImageRequest(backdropModel)
+    var currentUrl by remember(thumbnailUrl) {
+        mutableStateOf(
+            thumbnailUrl?.resize(
+                width = V8BackdropArtworkSizePx,
+                height = V8BackdropArtworkSizePx,
+                maxresAllowed = true,
+                ytimgResizePolicy = YtimgResizePolicy.AllowAnyAspect,
+            ),
+        )
+    }
+    val backdropRequest = rememberOfflineArtworkImageRequest(currentUrl)
     val blurRadiusDp = 44.dp * (backdropBlurAmount.toFloat() / 100f)
 
     Box(
@@ -1862,7 +1938,7 @@ private fun V8PlayerBackdrop(
                 .fillMaxSize()
                 .background(Color.Black),
     ) {
-        if (backdropModel != null) {
+        if (currentUrl != null) {
             val backdropHasBlur = backdropBlurAmount > 0
             if (backdropHasBlur && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 AsyncImage(
@@ -1878,10 +1954,15 @@ private fun V8PlayerBackdrop(
                                 scaleY = 1.16f
                                 alpha = 0.66f
                             },
+                    onState = { state ->
+                        if (state is coil3.compose.AsyncImagePainter.State.Error) {
+                            getNextFallbackUrl(currentUrl)?.let { currentUrl = it }
+                        }
+                    },
                 )
             } else if (backdropHasBlur) {
                 BackdropBlurApi30(
-                    model = backdropModel,
+                    model = currentUrl,
                     blurAmount = backdropBlurAmount,
                     modifier =
                         Modifier
@@ -1891,6 +1972,9 @@ private fun V8PlayerBackdrop(
                                 scaleY = 1.16f
                                 alpha = 0.66f
                             },
+                    onError = { failedUrl ->
+                        getNextFallbackUrl(failedUrl)?.let { currentUrl = it }
+                    },
                 )
             } else {
                 AsyncImage(
@@ -1905,6 +1989,11 @@ private fun V8PlayerBackdrop(
                                 scaleY = 1.16f
                                 alpha = 0.66f
                             },
+                    onState = { state ->
+                        if (state is coil3.compose.AsyncImagePainter.State.Error) {
+                            getNextFallbackUrl(currentUrl)?.let { currentUrl = it }
+                        }
+                    },
                 )
             }
         }
@@ -1923,6 +2012,7 @@ private fun BackdropBlurApi30(
     model: String?,
     blurAmount: Int,
     modifier: Modifier = Modifier,
+    onError: ((String) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val imageLoader = context.imageLoader
@@ -1952,10 +2042,22 @@ private fun BackdropBlurApi30(
                         }
 
                         else -> {
+                            if (onError != null) {
+                                withContext(Dispatchers.Main) {
+                                    onError(model)
+                                }
+                            }
                             null
                         }
                     }
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (_: Exception) {
+                    if (onError != null) {
+                        withContext(Dispatchers.Main) {
+                            onError(model)
+                        }
+                    }
                     null
                 }
             }
@@ -1975,6 +2077,11 @@ private fun BackdropBlurApi30(
             contentDescription = null,
             contentScale = ContentScale.Crop,
             modifier = modifier,
+            onState = { state ->
+                if (state is coil3.compose.AsyncImagePainter.State.Error && model != null) {
+                    onError?.invoke(model)
+                }
+            },
         )
     }
 }
@@ -2093,10 +2200,16 @@ private fun V7PlayerBackdrop(
                 canvasFallbackUrl = canvasFallback,
             )
         }
-    val backdropArtworkModel =
-        remember(backdropArtworkUrl, backdropArtworkSizePx) {
-            backdropArtworkUrl?.resize(backdropArtworkSizePx, backdropArtworkSizePx)
-        }
+    var backdropArtworkModel by remember(backdropArtworkUrl, backdropArtworkSizePx) {
+        mutableStateOf(
+            backdropArtworkUrl?.resize(
+                width = backdropArtworkSizePx,
+                height = backdropArtworkSizePx,
+                maxresAllowed = true,
+                ytimgResizePolicy = YtimgResizePolicy.AllowAnyAspect,
+            ),
+        )
+    }
     val backdropArtworkRequest = rememberOfflineArtworkImageRequest(backdropArtworkModel)
     val sharpStageBottomScrim =
         remember(backdropPalette) {
@@ -2176,6 +2289,11 @@ private fun V7PlayerBackdrop(
                         contentDescription = null,
                         contentScale = ContentScale.Crop,
                         modifier = backdropImageModifier.blur(backdropBlurRadius),
+                        onState = { state ->
+                            if (state is coil3.compose.AsyncImagePainter.State.Error) {
+                                getNextFallbackUrl(backdropArtworkModel)?.let { backdropArtworkModel = it }
+                            }
+                        },
                     )
                 } else if (needsBlur) {
                     BackdropBlurApi30(
@@ -2189,6 +2307,9 @@ private fun V7PlayerBackdrop(
                                     scaleY = V7BackdropBlurScale
                                     alpha = 0.58f
                                 },
+                        onError = { failedUrl ->
+                            getNextFallbackUrl(failedUrl)?.let { backdropArtworkModel = it }
+                        },
                     )
                 } else {
                     AsyncImage(
@@ -2196,6 +2317,11 @@ private fun V7PlayerBackdrop(
                         contentDescription = null,
                         contentScale = ContentScale.Crop,
                         modifier = backdropImageModifier,
+                        onState = { state ->
+                            if (state is coil3.compose.AsyncImagePainter.State.Error) {
+                                getNextFallbackUrl(backdropArtworkModel)?.let { backdropArtworkModel = it }
+                            }
+                        },
                     )
                 }
             }
@@ -2221,10 +2347,16 @@ private fun V7PlayerBackdrop(
                     .height(sharpStageHeight)
                     .clipToBounds(),
         ) { backdrop ->
-            val sharpArtworkModel =
-                remember(backdrop.artworkUrl, backdropArtworkSizePx) {
-                    backdrop.artworkUrl?.resize(backdropArtworkSizePx, backdropArtworkSizePx)
-                }
+            var sharpArtworkModel by remember(backdrop.artworkUrl, backdropArtworkSizePx) {
+                mutableStateOf(
+                    backdrop.artworkUrl?.resize(
+                        width = backdropArtworkSizePx,
+                        height = backdropArtworkSizePx,
+                        maxresAllowed = true,
+                        ytimgResizePolicy = YtimgResizePolicy.AllowAnyAspect,
+                    ),
+                )
+            }
             val sharpArtworkRequest = rememberOfflineArtworkImageRequest(sharpArtworkModel)
 
             Box(
@@ -2240,6 +2372,11 @@ private fun V7PlayerBackdrop(
                         contentDescription = null,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize(),
+                        onState = { state ->
+                            if (state is coil3.compose.AsyncImagePainter.State.Error) {
+                                getNextFallbackUrl(sharpArtworkModel)?.let { sharpArtworkModel = it }
+                            }
+                        },
                     )
                 }
 

@@ -65,6 +65,7 @@ import moe.rukamori.archivetune.innertube.pages.AlbumPage
 import moe.rukamori.archivetune.innertube.pages.ArtistPage
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.models.toMediaMetadata
+import moe.rukamori.archivetune.ui.utils.YtimgResizePolicy
 import moe.rukamori.archivetune.ui.utils.resize
 import java.text.Collator
 import java.time.LocalDateTime
@@ -700,6 +701,20 @@ interface DatabaseDao {
     @Transaction
     @Query("SELECT * FROM song")
     fun allSongs(): Flow<List<Song>>
+
+    @Transaction
+    @SuppressWarnings(RoomWarnings.QUERY_MISMATCH)
+    @Query("SELECT * FROM album ORDER BY rowId")
+    fun allAlbumsForDownloads(): Flow<List<Album>>
+
+    @Transaction
+    @Query(
+        "SELECT *, (SELECT COUNT(*) FROM playlist_song_map WHERE playlistId = playlist.id) AS songCount FROM playlist ORDER BY rowId",
+    )
+    fun allPlaylistsForDownloads(): Flow<List<Playlist>>
+
+    @Query("SELECT * FROM playlist_song_map ORDER BY playlistId, position")
+    fun allPlaylistSongMapsForDownloads(): Flow<List<PlaylistSongMap>>
 
     @Transaction
     @Query("SELECT * FROM song WHERE isLocal = 1 ORDER BY title COLLATE NOCASE, id")
@@ -1383,8 +1398,11 @@ interface DatabaseDao {
     suspend fun searchPlaylistsCount(query: String): Int
 
     @Transaction
-    @Query("SELECT * FROM event ORDER BY rowId DESC")
-    fun events(): Flow<List<EventWithSong>>
+    @Query("SELECT * FROM event ORDER BY rowId DESC LIMIT :limit OFFSET :offset")
+    suspend fun events(
+        limit: Int,
+        offset: Int,
+    ): List<EventWithSong>
 
     @Transaction
     @Query(
@@ -1774,7 +1792,12 @@ interface DatabaseDao {
         update(
             artist.copy(
                 name = artistPage.artist.title,
-                thumbnailUrl = artistPage.artist.thumbnail?.resize(1080, 1080),
+                thumbnailUrl =
+                    artistPage.artist.thumbnail?.resize(
+                        width = 1080,
+                        height = 1080,
+                        ytimgResizePolicy = YtimgResizePolicy.PreserveOriginal,
+                    ),
                 lastUpdateTime = LocalDateTime.now(),
             ),
         )
@@ -1903,6 +1926,16 @@ interface DatabaseDao {
 
     @Upsert
     fun upsert(format: FormatEntity)
+
+    @Query("UPDATE format SET bitrate = :bitrate, sampleRate = :sampleRate WHERE id = :id")
+    suspend fun updateLocalAudioMetadata(
+        id: String,
+        bitrate: Int,
+        sampleRate: Int?,
+    )
+
+    @Query("SELECT * FROM format WHERE id IN (:ids)")
+    suspend fun getFormatsByIds(ids: List<String>): List<FormatEntity>
 
     @Upsert
     fun upsert(artist: ArtistEntity)
