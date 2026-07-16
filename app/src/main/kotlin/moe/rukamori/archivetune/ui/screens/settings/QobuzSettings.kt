@@ -108,6 +108,7 @@ fun QobuzSettings(navController: NavController) {
     }
     // token id -> health status.
     val tokenHealth = remember { mutableStateMapOf<String, TidalAudioProvider.InstanceHealth>() }
+    val tokenLatency = remember { mutableStateMapOf<String, Long>() }
     var testingTokens by remember { mutableStateOf(false) }
     var showAddTokensDialog by remember { mutableStateOf(false) }
 
@@ -165,8 +166,17 @@ fun QobuzSettings(navController: NavController) {
         coroutineScope.launch {
             withContext(Dispatchers.IO) {
                 tokens.forEach { token ->
+                    val start = System.currentTimeMillis()
                     val status = QobuzAudioProvider.verifyToken(token, probe, formatId)
-                    withContext(Dispatchers.Main) { tokenHealth[token.id] = status }
+                    val latency = System.currentTimeMillis() - start
+                    withContext(Dispatchers.Main) {
+                        tokenHealth[token.id] = status
+                        if (status == TidalAudioProvider.InstanceHealth.UNREACHABLE) {
+                            tokenLatency.remove(token.id)
+                        } else {
+                            tokenLatency[token.id] = latency
+                        }
+                    }
                 }
             }
             testingTokens = false
@@ -356,7 +366,7 @@ fun QobuzSettings(navController: NavController) {
                         val status = tokenHealth[token.id]
                         val onlineColor = Color(0xFF4FC3F7)
                         val degradedColor = Color(0xFFB388FF)
-                        val deadColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        val deadColor = Color(0xFF9E9E9E)
                         val statusColor =
                             when (status) {
                                 TidalAudioProvider.InstanceHealth.HEALTHY -> onlineColor
@@ -367,9 +377,15 @@ fun QobuzSettings(navController: NavController) {
                         val statusLabel =
                             when (status) {
                                 TidalAudioProvider.InstanceHealth.HEALTHY ->
-                                    stringResource(R.string.qobuz_token_status_ok)
+                                    stringResource(
+                                        R.string.tidal_instance_healthy,
+                                        (tokenLatency[token.id] ?: 0L).toInt(),
+                                    )
                                 TidalAudioProvider.InstanceHealth.PREVIEW_ONLY ->
-                                    stringResource(R.string.qobuz_token_status_preview)
+                                    stringResource(
+                                        R.string.tidal_instance_preview_only,
+                                        (tokenLatency[token.id] ?: 0L).toInt(),
+                                    )
                                 TidalAudioProvider.InstanceHealth.UNREACHABLE ->
                                     stringResource(R.string.qobuz_token_status_invalid)
                                 null -> stringResource(R.string.qobuz_token_status_unknown)
@@ -414,6 +430,7 @@ fun QobuzSettings(navController: NavController) {
                                     IconButton(
                                         onClick = {
                                             tokenHealth.remove(token.id)
+                                            tokenLatency.remove(token.id)
                                             persistTokens(tokens - token)
                                         },
                                         onLongClick = {},
@@ -450,6 +467,7 @@ fun QobuzSettings(navController: NavController) {
                             icon = { Icon(painterResource(R.drawable.close), null) },
                             onClick = {
                                 tokenHealth.clear()
+                                tokenLatency.clear()
                                 onStoredTokensChange("")
                             },
                         )
@@ -467,7 +485,7 @@ fun QobuzSettings(navController: NavController) {
                         val status = healthStatus[instance]
                         val onlineColor = Color(0xFF4FC3F7)
                         val degradedColor = Color(0xFFB388FF)
-                        val deadColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        val deadColor = Color(0xFF9E9E9E)
                         val statusColor =
                             when (status) {
                                 TidalAudioProvider.InstanceHealth.HEALTHY -> onlineColor

@@ -351,7 +351,7 @@ fun TidalSettings(navController: NavController) {
                         val status = healthStatus[instance]
                         val onlineColor = Color(0xFF4FC3F7)
                         val degradedColor = Color(0xFFB388FF)
-                        val deadColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        val deadColor = Color(0xFF9E9E9E)
                         val untestedColor = MaterialTheme.colorScheme.onSurfaceVariant
                         val statusColor =
                             when (status) {

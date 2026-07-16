@@ -190,6 +190,15 @@ object TidalAudioProvider {
         }
     }
 
+    /** Finds a real catalog track for a first-run health check when no successful stream is cached. */
+    fun findHealthProbeTrackId(): String? =
+        runCatching {
+            val items = searchTracks("adele hello") ?: return@runCatching null
+            (0 until items.length())
+                .firstNotNullOfOrNull { items.optJSONObject(it)?.toMatchedTrack()?.trackId }
+                ?.also { lastResolvedTrackId = it }
+        }.getOrNull()
+
     /**
      * Deep health probe for a single instance. Unlike [checkInstance] (reachability only), this
      * resolves an actual [probeTrackId] manifest and inspects whether the instance serves a FULL
@@ -203,10 +212,8 @@ object TidalAudioProvider {
         quality: TidalAudioQuality = TidalAudioQuality.FLAC,
     ): InstanceHealth {
         val normalized = normalizeInstanceUrl(baseUrl) ?: return InstanceHealth.UNREACHABLE
-        val trackId = probeTrackId?.trim().orEmpty()
-        if (trackId.isEmpty()) {
-            return if (checkInstance(normalized) != null) InstanceHealth.HEALTHY else InstanceHealth.UNREACHABLE
-        }
+        val trackId = probeTrackId?.trim().orEmpty().ifBlank { findHealthProbeTrackId().orEmpty() }
+        if (trackId.isEmpty()) return InstanceHealth.UNREACHABLE
         val qualityString =
             when (quality) {
                 TidalAudioQuality.HI_RES_LOSSLESS -> "HI_RES_LOSSLESS"
