@@ -47,6 +47,28 @@ if (localPropertiesFile.exists()) {
 val baseVersionName = "13.7.5"
 val baseVersionCode = 1375
 
+fun String.asBuildConfigString(): String =
+    "\"${
+        replace("\\", "\\\\")
+            .replace("\"", "\\\"")
+            .replace("\n", "\\n")
+            .replace("\r", "\\r")
+            .replace("\t", "\\t")
+    }\""
+
+val fallbackDataServerUrl = "archive-tune-admin-remote.vercel.app"
+val dataServerUrl =
+    rootProject
+        .file("DataServer.txt")
+        .takeIf { it.isFile }
+        ?.readText()
+        ?.trim()
+        ?.takeIf { it.startsWith("https://") || it.startsWith("http://") }
+        ?: fallbackDataServerUrl
+val apiBearerToken = System.getenv("API_BEARER_TOKEN")?.trim()
+    ?: localProperties.getProperty("API_BEARER_TOKEN")?.trim()
+    ?: ""
+
 val discordApplicationId =
     (
         localProperties.getProperty("DISCORD_APPLICATION_ID")
@@ -178,6 +200,10 @@ android {
                     ?: ""
                 ).trim()
         buildConfigField("String", "POOL_CLIENT_KEY", "\"$poolClientKey\"")
+
+        // Upstream data server (admin remote) config.
+        buildConfigField("String", "DATA_SERVER_URL", dataServerUrl.asBuildConfigString())
+        buildConfigField("String", "API_BEARER_TOKEN", apiBearerToken.asBuildConfigString())
 
         val nightlyBuildHash =
             (

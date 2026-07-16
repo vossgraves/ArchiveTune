@@ -1,3 +1,10 @@
+/*
+ * ArchiveTune (2026)
+ * © Rukamori — github.com/rukamori
+ * GPL-3.0 License | Contributors: see git history
+ * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
+ */
+
 package moe.rukamori.archivetune.ads.presentation
 
 import androidx.compose.runtime.Immutable
@@ -83,10 +90,13 @@ internal class SupportArchiveTuneViewModel
                     )
                 when (availability) {
                     SupportAdAvailability.Preparing -> SupportArchiveTuneScreenState.Loading(model)
+
                     SupportAdAvailability.Ready,
                     SupportAdAvailability.ConsentRequired,
                     -> SupportArchiveTuneScreenState.Success(model)
+
                     SupportAdAvailability.Unavailable -> SupportArchiveTuneScreenState.Empty(model)
+
                     SupportAdAvailability.Failed -> SupportArchiveTuneScreenState.Error(model)
                 }
             }.stateIn(
@@ -137,15 +147,23 @@ internal class SupportArchiveTuneViewModel
 
         private fun handleRequestResult(result: SupportAdRequestResult) {
             when (result) {
-                SupportAdRequestResult.ConsentRequired ->
+                SupportAdRequestResult.ConsentRequired -> {
                     consentDialogPurpose.value = ConsentDialogPurpose.SupportAd
-                SupportAdRequestResult.ActivityUnavailable ->
+                }
+
+                SupportAdRequestResult.ActivityUnavailable -> {
                     eventChannel.trySend(SupportArchiveTuneUiEvent.ActivityUnavailable)
-                SupportAdRequestResult.ConfigurationMissing ->
+                }
+
+                SupportAdRequestResult.ConfigurationMissing -> {
                     eventChannel.trySend(SupportArchiveTuneUiEvent.AdFailed)
+                }
+
                 SupportAdRequestResult.Accepted,
                 SupportAdRequestResult.AlreadyPending,
-                -> Unit
+                -> {
+                    Unit
+                }
             }
         }
 

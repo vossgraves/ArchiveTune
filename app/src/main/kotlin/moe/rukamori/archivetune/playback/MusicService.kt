@@ -142,6 +142,7 @@ import moe.rukamori.archivetune.constants.DiscordShowWhenPausedKey
 import moe.rukamori.archivetune.constants.DiscordTokenKey
 import moe.rukamori.archivetune.constants.EnableDiscordRPCKey
 import moe.rukamori.archivetune.constants.EnableLastFMScrobblingKey
+import moe.rukamori.archivetune.constants.EqualizerAutoHeadroomEnabledKey
 import moe.rukamori.archivetune.constants.EqualizerBandLevelsMbKey
 import moe.rukamori.archivetune.constants.EqualizerBassBoostEnabledKey
 import moe.rukamori.archivetune.constants.EqualizerBassBoostStrengthKey
@@ -325,6 +326,9 @@ class MusicService :
 
     @Inject
     internal lateinit var loadWidgetInsightsUseCase: LoadWidgetInsightsUseCase
+
+    @Inject
+    lateinit var equalizerPlaybackController: EqualizerPlaybackController
 
     private lateinit var audioManager: AudioManager
     private var audioFocusRequest: AudioFocusRequest? = null
@@ -693,6 +697,7 @@ class MusicService :
                 bassBoostStrength = 0,
                 virtualizerEnabled = false,
                 virtualizerStrength = 0,
+                autoHeadroomEnabled = false,
             ),
         )
 
@@ -1065,6 +1070,7 @@ class MusicService :
 
     override fun onCreate() {
         super.onCreate()
+        equalizerPlaybackController.attach(this)
         ensureScopesActive()
 
         try {
@@ -5552,6 +5558,7 @@ class MusicService :
             bassBoostStrength = (prefs[EqualizerBassBoostStrengthKey] ?: 0).coerceIn(0, 1000),
             virtualizerEnabled = prefs[EqualizerVirtualizerEnabledKey] ?: false,
             virtualizerStrength = (prefs[EqualizerVirtualizerStrengthKey] ?: 0).coerceIn(0, 1000),
+            autoHeadroomEnabled = prefs[EqualizerAutoHeadroomEnabledKey] ?: false,
         )
     }
 
@@ -5657,7 +5664,7 @@ class MusicService :
                     eq.getPresetName(idx.toShort()).toString()
                 } ?: "Preset ${idx + 1}"
             }
-        eqCapabilities.value =
+        val capabilities =
             EqCapabilities(
                 bandCount = bandCount,
                 minBandLevelMb = minMb,
@@ -5665,6 +5672,8 @@ class MusicService :
                 centerFreqHz = center,
                 systemPresets = presets,
             )
+        eqCapabilities.value = capabilities
+        equalizerPlaybackController.updateCapabilities(capabilities)
     }
 
     private fun releaseAudioEffectInstances() {
@@ -5690,6 +5699,7 @@ class MusicService :
         virtualizer = null
         loudnessEnhancer = null
         eqCapabilities.value = null
+        equalizerPlaybackController.updateCapabilities(null)
     }
 
     private fun releaseAudioEffects() {
@@ -5761,19 +5771,25 @@ class MusicService :
         }
 
         bassBoost?.let { bb ->
-            runCatching { bb.enabled = settings.bassBoostEnabled }
+            runCatching { bb.enabled = settings.enabled && settings.bassBoostEnabled }
             runCatching { bb.setStrength(settings.bassBoostStrength.toShort()) }
         }
 
         virtualizer?.let { v ->
-            runCatching { v.enabled = settings.virtualizerEnabled }
+            runCatching { v.enabled = settings.enabled && settings.virtualizerEnabled }
             runCatching { v.setStrength(settings.virtualizerStrength.toShort()) }
         }
 
         loudnessEnhancer?.let { le ->
-            val gainMb = if (settings.outputGainEnabled) settings.outputGainMb.coerceIn(-1500, 1500) else 0
+            val automaticHeadroomMb = -(levels.maxOrNull()?.coerceAtLeast(0) ?: 0)
+            val gainMb =
+                when {
+                    settings.autoHeadroomEnabled -> automaticHeadroomMb
+                    settings.outputGainEnabled -> settings.outputGainMb.coerceIn(-1500, 1500)
+                    else -> 0
+                }
             runCatching { le.setTargetGain(gainMb) }
-            runCatching { le.enabled = settings.outputGainEnabled }
+            runCatching { le.enabled = settings.enabled && (settings.autoHeadroomEnabled || settings.outputGainEnabled) }
         }
     }
 
@@ -8629,6 +8645,7 @@ class MusicService :
     }
 
     override fun onDestroy() {
+        equalizerPlaybackController.detach(this)
         discordServiceStopping = true
         requestDiscordSync(
             reason = "service_destroy",
