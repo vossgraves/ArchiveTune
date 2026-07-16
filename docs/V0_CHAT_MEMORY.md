@@ -31,6 +31,15 @@ future sessions (or contributors) can pick up with full context.
 - **Multi-source resolver:** preferred-source order is authoritative in the
   resolver (sources after YouTube are ignored). Opt-out toggle for reporting
   non-YouTube plays to YouTube listen history.
+- **Per-song "Play from" override:** the resolver honors a per-song source
+  override (`SongSourceOverrideKey`, `songId=SOURCE;…`, a Settings-backup key,
+  encoded/decoded by `SongSourceOverride` in `AudioSourceConfig.kt`). An override
+  forces just that one source (still subject to the 95% title-match gate);
+  `YOUTUBE` means "always play this song from YouTube" (skip lossless entirely);
+  no override = follow the global order. `MusicService` records which sources
+  passed the gate per media id (`resolvedSourcesByMediaId`) and exposes
+  `availableSourcesForSong()` / `setSongSourceOverride()`; the latter clears the
+  cached stream and re-`prepare()`s the current item so the change is immediate.
 - **Integration account cards:** YouTube Music always shown; Last.fm and Discord
   cards are pinnable, float to top, and show live connection status + identity.
 - **Backup classification:** Tidal login/session and Qobuz direct-API tokens are
@@ -38,6 +47,31 @@ future sessions (or contributors) can pick up with full context.
   exports); instance URL lists stay portable under Settings.
 
 ## Player / UI / motion
+
+- **Infinite-queue single-song race fix:** playing one track (e.g. from search)
+  used to show infinity-queue "on" while Next just repeated the song, because
+  the transition-driven radio bootstrap in `onMediaItemTransition` started mid
+  `playQueue` load and got invalidated by the settling transitions (bumping
+  `infiniteQueueGeneration`), leaving `infiniteQueueLoading` stuck true with no
+  songs queued. Fix (`MusicService.kt`): a `@Volatile initialQueueLoadInProgress`
+  flag is set in `playQueue`, guards the transition bootstrap, and is cleared in
+  a `finally`; after the queue settles `playQueue` deterministically calls
+  `onInfiniteQueueEnabled()` for a single-item, no-next-page, REPEAT_OFF queue —
+  mirroring the working manual toggle. Also reset in `cancelInfiniteQueueBootstrap`.
+- **Player "Play from" chooser (per song):** the player menu's Source item no
+  longer opens the global preferred-order reorder editor. It now opens a
+  `SongSourceDialog` (`ui/menu/PlayerMenu.kt`) — a radio list of "Automatic
+  (preferred order)" plus the sources known to have THIS track (from the last
+  resolution result via `service.availableSourcesForSong`) plus YouTube. Picking
+  one writes the per-song override and calls `service.setSongSourceOverride`,
+  which re-resolves the current item immediately. The global reorder dialog
+  (`SourceOrderDialog`) stays private to `PlaybackSourceSections.kt` for Settings.
+- **Streaming-source token status parity:** the Qobuz direct-API token status
+  now uses the same ping-based labels as instances — online / deprecated
+  (with an info icon explaining preview-only, no premium) / not reachable —
+  instead of a bare connected/expired flag. Instance + token health/ping
+  results are cached at process level so the status a user saw survives leaving
+  and returning to the Integration screen until they explicitly re-check.
 
 - **Bottom-nav pill:** custom sliding pill indicator that springs between
   Home/Search/Library, wrapping ONLY the icon (56x32dp), with text labels kept
