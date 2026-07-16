@@ -39,12 +39,6 @@
     <string name="filter_community_playlists">Danh sách phát từ cộng đồng</string>
     <string name="filter_featured_playlists">Danh sách phát nổi bật</string>
     <string name="no_results_found">Không tìm thấy kết quả</string>
-    <string name="library_title">Thư viện của bạn</string>
-    <string name="library_subtitle">Nhạc của bạn, được sắp xếp gọn gàng</string>
-    <string name="library_playlists_subtitle">Tất cả danh sách phát của bạn, được sắp xếp gọn gàng</string>
-    <string name="library_songs_subtitle">Tất cả bài hát của bạn, được sắp xếp gọn gàng</string>
-    <string name="library_artists_subtitle">Tất cả nghệ sĩ của bạn, tập trung một chỗ</string>
-    <string name="library_albums_subtitle">Tất cả album của bạn, được sắp xếp đẹp mắt</string>
     <string name="most_played_badge">NGHE NHIỀU NHẤT</string>
     <string name="play_all">Phát tất cả</string>
     <string name="offline_shortcut">Ngoại tuyến</string>

@@ -536,12 +536,6 @@
     <string name="album_backdrop_desc">Mostra l’opera d’arte come sfondo sfocato sul lettore</string>
     <string name="backdrop_blur_amount">Quantità di sfocatura dello sfondo</string>
     <string name="backdrop_blur_amount_value">%1$d%%</string>
-    <string name="library_title">La tua Libreria</string>
-    <string name="library_subtitle">La tua musica, organizzata per te</string>
-    <string name="library_playlists_subtitle">Le tue playlist, organizzate per te</string>
-    <string name="library_songs_subtitle">Tutte le tue canzoni, organizzate per te</string>
-    <string name="library_artists_subtitle">Tutti i tuoi artisti preferiti, in un unico posto</string>
-    <string name="library_albums_subtitle">Tutti i tuoi album, perfettamente organizzati</string>
     <string name="most_played_badge">PIÙ ASCOLTATO</string>
     <string name="play_all">Riproduci tutto</string>
     <string name="offline_shortcut">Offline</string>

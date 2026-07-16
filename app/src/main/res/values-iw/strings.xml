@@ -40,12 +40,6 @@
     <string name="filter_featured_playlists">פלייליסטים נבחרים</string>
     <string name="no_results_found">לא נמצאו תוצאות</string>
     <string name="top_results">תוצאות מובילות</string>
-    <string name="library_title">הספרייה שלך</string>
-    <string name="library_subtitle">המוזיקה שלך, מאורגנת בשבילך</string>
-    <string name="library_playlists_subtitle">כל הפלייליסטים שלך, מאורגנים בשבילך</string>
-    <string name="library_songs_subtitle">כל השירים שלך, מאורגנים בשבילך</string>
-    <string name="library_artists_subtitle">כל האמנים שלך, במקום אחד</string>
-    <string name="library_albums_subtitle">כל האלבומים שלך, מאורגנים פיקס</string>
     <string name="most_played_badge">המושמע ביותר</string>
     <string name="play_all">נגן הכל</string>
     <string name="offline_shortcut">לא מקוון</string>

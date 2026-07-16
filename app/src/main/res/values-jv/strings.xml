@@ -729,12 +729,6 @@
     <string name="album_backdrop_desc">Tampilake karya seni sebagai latar belakang buram di pemutar</string>
     <string name="backdrop_blur_amount">Jumlah buram latar belakang</string>
     <string name="backdrop_blur_amount_value">%1$d%%</string>
-    <string name="library_title">Pustaka Kowe</string>
-    <string name="library_subtitle">Musik Kowe, diatur untuk Kowe</string>
-    <string name="library_playlists_subtitle">Kabeh playlist Kowe, diatur untuk Kowe</string>
-    <string name="library_songs_subtitle">Kabeh lagu Kowe, diatur untuk Kowe</string>
-    <string name="library_artists_subtitle">Kabeh artis Kowe, di satu tempat</string>
-    <string name="library_albums_subtitle">Kabeh album Kowe, tersusun rapi</string>
     <string name="most_played_badge">PALING SERING DIPUTAR</string>
     <string name="play_all">Puter semua</string>
 </resources>

@@ -680,12 +680,6 @@
     <string name="album_backdrop_desc">Afficher l’illustration comme arrière-plan flou sur le lecteur</string>
     <string name="backdrop_blur_amount">Quantité de flou d’arrière-plan</string>
     <string name="backdrop_blur_amount_value">%1$d%%</string>
-    <string name="library_title">Votre Bibliothèque</string>
-    <string name="library_subtitle">Votre musique, classée pour vous</string>
-    <string name="library_playlists_subtitle">Toutes vos playlists, classées pour vous</string>
-    <string name="library_songs_subtitle">Tous vos titres, classés pour vous</string>
-    <string name="library_artists_subtitle">Tous vos artistes, réunis au même endroit</string>
-    <string name="library_albums_subtitle">Tous vos albums, parfaitement classés</string>
     <string name="most_played_badge">LES PLUS JOUÉS</string>
     <string name="play_all">Tout lire</string>
     <string name="offline_shortcut">Hors Ligne</string>

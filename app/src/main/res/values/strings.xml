@@ -41,12 +41,6 @@
     <string name="filter_featured_playlists">Featured playlists</string>
     <string name="no_results_found">No results found</string>
     <string name="top_results">Top Results</string>
-    <string name="library_title">Your Library</string>
-    <string name="library_subtitle">Your music, organized for you</string>
-    <string name="library_playlists_subtitle">All your playlists, organized for you</string>
-    <string name="library_songs_subtitle">All your songs, organized for you</string>
-    <string name="library_artists_subtitle">All your artists, in one place</string>
-    <string name="library_albums_subtitle">All your albums, beautifully organized</string>
     <string name="most_played_badge">MOST PLAYED</string>
     <string name="play_all">Play all</string>
     <string name="offline_shortcut">Offline</string>

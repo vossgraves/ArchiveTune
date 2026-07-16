@@ -511,12 +511,6 @@
     <string name="playback_login_refresh_required">تحديث تسجيل الدخول إلى YouTube Music</string>
     <string name="playback_requires_youtube_music_login_refresh">قم بتحديث بيانات تسجيل الدخول الخاصة بك على YouTube Music، ثم عد إلى ArchiveTune</string>
     <string name="top_results">أفضل النتائج</string>
-    <string name="library_title">المكتبة</string>
-    <string name="library_subtitle">الموسيقى الخاصة بك ، مرتبة لأجلك</string>
-    <string name="library_playlists_subtitle">كل قوائم التشغيل الخاصة بك ، مرتبة لأجلك</string>
-    <string name="library_songs_subtitle">كل الأغاني الخاصة بك ، مرتبة لأجلك</string>
-    <string name="library_artists_subtitle">كل فنانيك المفضلين ، في مكان واحد</string>
-    <string name="library_albums_subtitle">كل ألبوماتك ، مرتبة لأجلك</string>
     <string name="most_played_badge">الأكثر تشغيلًا</string>
     <string name="play_all">تشغيل الكل</string>
     <string name="offline_shortcut">غير متصل بالإنترنت</string>

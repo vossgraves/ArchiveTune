@@ -454,9 +454,7 @@
     <string name="low_data_mode_description">Reduziert den mobilen Datenverbrauch, indem in Netzwerken mit Datenvolumenbegrenzung Streams in niedriger Qualität verwendet und die Wiedergabecache-Funktion, Canvas sowie das Vorladen von Songtexten im Hintergrund deaktiviert werden</string>
     <string name="permanent_shuffle">Permanenter Shuffle-Modus</string>
     <string name="permanent_shuffle_desc">Lässt Schuffle aktiviert, wenn du einen neuen Song startest</string>
-    <string name="library_title">Deine Bibliothek</string>
     <string name="library_top_mixes_configure_ai">Konfiguriere KI</string>
-    <string name="library_albums_subtitle">Alle Alben, wundervoll organisiert</string>
     <string name="your_artists">Deine Künstler</string>
     <string name="all_songs">Alle Songs</string>
     <string name="newest_first">Neuste zuerst</string>
@@ -493,10 +491,6 @@
     <string name="blur_intensity">Intensität der Unschärfe</string>
     <string name="blur_intensity_value">%1$d dp</string>
     <string name="slider_style_standard">Standard</string>
-    <string name="library_subtitle">Deine Musik, für dich organisiert</string>
-    <string name="library_playlists_subtitle">All deine Playlisten, für dich organisiert</string>
-    <string name="library_songs_subtitle">All deine Songs, für dich organisiert</string>
-    <string name="library_artists_subtitle">All deine Künstler an einem Platz</string>
     <string name="onboarding_permission_audio_settings_title">Audioeinstellungen und Vibration</string>
     <string name="instant_playback">Sofortige Wiedergabe</string>
     <string name="internet_warning_doh">DNS über HTTPS funktioniert nur, wenn dein Land YouTube blockiert. Sollte YouTube aktiv deine Region blockieren, nutze bitte einen Proxy oder VPN.</string>

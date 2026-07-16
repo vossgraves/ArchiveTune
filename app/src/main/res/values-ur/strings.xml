@@ -42,12 +42,6 @@
     <string name="filter_featured_playlists">نمایاں مجموعہ گیت</string>
     <string name="no_results_found">کوئ نتیجہ میسر نہیں</string>
     <string name="top_results">اہم نتائج</string>
-    <string name="library_title">آپکی فہرست</string>
-    <string name="library_subtitle">آپکی موسیقی، آپکے لئے منظم کردہ</string>
-    <string name="library_playlists_subtitle">آپکے سارے مجموعہ گیت، آپکے لئے منظم کردہ</string>
-    <string name="library_songs_subtitle">آپکے سارے گیت، آپکے لئے منظم کردہ</string>
-    <string name="library_artists_subtitle">آپکے سارے کلاکار، اک مرکز پر</string>
-    <string name="library_albums_subtitle">آپکے سارے مجموعہ گیت،خوبصورتی سے منظم کردہ</string>
     <string name="most_played_badge">سب سے زیادہ سنا گیا</string>
     <string name="play_all">سب سنیں</string>
     <string name="offline_shortcut">غیر منسلک</string>

@@ -41,12 +41,6 @@
     <string name="filter_featured_playlists">注目のプレイリスト</string>
     <string name="no_results_found">結果が見つからない</string>
     <string name="top_results">上位の結果</string>
-    <string name="library_title">ライブラリ</string>
-    <string name="library_subtitle">音楽を見やすく整理</string>
-    <string name="library_playlists_subtitle">プレイリストをまとめて整理</string>
-    <string name="library_songs_subtitle">すべての曲をまとめて整理</string>
-    <string name="library_artists_subtitle">すべてのアーティストをここにまとめる</string>
-    <string name="library_albums_subtitle">すべてのアルバムをきれいに整理</string>
     <string name="most_played_badge">よく再生</string>
     <string name="play_all">すべて再生</string>
     <string name="offline_shortcut">オフライン</string>

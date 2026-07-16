@@ -684,12 +684,6 @@
     <string name="album_backdrop_desc">Mostrar la obra de arte como fondo borroso en el reproductor</string>
     <string name="backdrop_blur_amount">Cantidad de desenfoque de fondo</string>
     <string name="backdrop_blur_amount_value">%1$d%%</string>
-    <string name="library_title">Tu biblioteca</string>
-    <string name="library_subtitle">Tu música, organizada para ti</string>
-    <string name="library_playlists_subtitle">Todas tus listas de reproducción, organizadas para ti</string>
-    <string name="library_songs_subtitle">Todas tus canciones, perfectamente organizadas</string>
-    <string name="library_artists_subtitle">Todos tus artistas, en un solo lugar</string>
-    <string name="library_albums_subtitle">Todos tus álbumes, perfectamente organizados</string>
     <string name="most_played_badge">MÁS REPRODUCIDOS</string>
     <string name="play_all">Reproducir todo</string>
     <string name="offline_shortcut">Sin conexión</string>
