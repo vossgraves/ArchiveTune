@@ -53,16 +53,25 @@ import moe.rukamori.archivetune.constants.AudioSourceType
 import moe.rukamori.archivetune.constants.QobuzAudioQuality
 import moe.rukamori.archivetune.constants.QobuzAudioQualityKey
 import moe.rukamori.archivetune.constants.QobuzEnabledKey
-import moe.rukamori.archivetune.constants.SyncPlaybackToYouTubeHistoryKey
 import moe.rukamori.archivetune.constants.TidalAccountFirstKey
 import moe.rukamori.archivetune.constants.TidalAnimatedCoversEnabledKey
 import moe.rukamori.archivetune.constants.TidalArtworkFallbackEnabledKey
 import moe.rukamori.archivetune.constants.TidalAudioQuality
 import moe.rukamori.archivetune.constants.TidalAudioQualityKey
 import moe.rukamori.archivetune.constants.TidalEnabledKey
+import androidx.compose.runtime.LaunchedEffect
+import moe.rukamori.archivetune.constants.AudioQuality
+import moe.rukamori.archivetune.constants.AudioQualityKey
+import moe.rukamori.archivetune.constants.InnerTubeCookieKey
+import moe.rukamori.archivetune.constants.PlayerStreamClient
+import moe.rukamori.archivetune.constants.PlayerStreamClientKey
+import moe.rukamori.archivetune.constants.PoTokenGvsKey
+import moe.rukamori.archivetune.constants.PoTokenPlayerKey
+import moe.rukamori.archivetune.innertube.utils.hasYouTubeLoginCookie
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.EnumListPreference
 import moe.rukamori.archivetune.ui.component.InfoLabel
+import moe.rukamori.archivetune.ui.component.ListPreference
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.SwitchPreference
@@ -97,12 +106,46 @@ fun PlaybackSourceSections(navController: NavController) {
     val (sourceOrderRaw, onSourceOrderChange) = rememberPreference(AudioSourceOrderKey, "")
     val (tidalEnabled, onTidalEnabledChange) = rememberPreference(TidalEnabledKey, true)
     val (qobuzEnabled, onQobuzEnabledChange) = rememberPreference(QobuzEnabledKey, false)
-    val (syncYouTubeHistory, onSyncYouTubeHistoryChange) =
-        rememberPreference(SyncPlaybackToYouTubeHistoryKey, true)
 
     val (tidalAccountFirst, onTidalAccountFirstChange) = rememberPreference(TidalAccountFirstKey, true)
     val (audioQuality, onAudioQualityChange) =
         rememberEnumPreference(TidalAudioQualityKey, TidalAudioQuality.FLAC)
+
+    // YouTube-specific playback state
+    val (ytAudioQuality, onYtAudioQualityChange) =
+        rememberEnumPreference(AudioQualityKey, defaultValue = AudioQuality.AUTO)
+    val (playerStreamClient, onPlayerStreamClientChange) =
+        rememberEnumPreference(PlayerStreamClientKey, defaultValue = PlayerStreamClient.WEB_REMIX)
+    val (innerTubeCookie, _) = rememberPreference(InnerTubeCookieKey, defaultValue = "")
+    val (poTokenGvs, _) = rememberPreference(PoTokenGvsKey, defaultValue = "")
+    val (poTokenPlayer, _) = rememberPreference(PoTokenPlayerKey, defaultValue = "")
+    val isArchiveTuneExtractorEnabled =
+        remember(innerTubeCookie, poTokenGvs, poTokenPlayer) {
+            hasYouTubeLoginCookie(innerTubeCookie) &&
+                poTokenGvs.isNotBlank() &&
+                poTokenPlayer.isNotBlank()
+        }
+    val playerStreamClients =
+        remember { listOf(PlayerStreamClient.WEB_REMIX, PlayerStreamClient.ARCHIVETUNE_EXTRACTOR) }
+    val selectedPlayerStreamClient =
+        if (playerStreamClient in playerStreamClients) playerStreamClient
+        else PlayerStreamClient.WEB_REMIX
+    val ytAudioQualityEnabled = selectedPlayerStreamClient != PlayerStreamClient.ARCHIVETUNE_EXTRACTOR
+    val isPlayerStreamClientEnabled =
+        remember(isArchiveTuneExtractorEnabled) {
+            { client: PlayerStreamClient ->
+                client != PlayerStreamClient.ARCHIVETUNE_EXTRACTOR || isArchiveTuneExtractorEnabled
+            }
+        }
+
+    LaunchedEffect(playerStreamClient, isArchiveTuneExtractorEnabled) {
+        if (
+            playerStreamClient !in playerStreamClients ||
+            (playerStreamClient == PlayerStreamClient.ARCHIVETUNE_EXTRACTOR && !isArchiveTuneExtractorEnabled)
+        ) {
+            onPlayerStreamClientChange(PlayerStreamClient.WEB_REMIX)
+        }
+    }
     val (qobuzQuality, onQobuzQualityChange) =
         rememberEnumPreference(QobuzAudioQualityKey, QobuzAudioQuality.FLAC)
     val (artworkFallback, onArtworkFallbackChange) =
@@ -142,30 +185,72 @@ fun PlaybackSourceSections(navController: NavController) {
         item {
             PreferenceEntry(
                 title = { Text(stringResource(R.string.preferred_sources)) },
-                description = "${preferred.displayName(context)} · ${stringResource(R.string.preferred_sources_summary)}",
+                description = preferred.displayName(context),
                 icon = { Icon(painterResource(preferred.iconRes()), null) },
                 onClick = { showOrderDialog = true },
-            )
-        }
-
-        item {
-            InfoLabel(text = stringResource(R.string.source_priority_description))
-        }
-
-        item {
-            SwitchPreference(
-                title = { Text(stringResource(R.string.sync_youtube_history)) },
-                description = stringResource(R.string.sync_youtube_history_description),
-                icon = { Icon(painterResource(R.drawable.history), null) },
-                checked = syncYouTubeHistory,
-                onCheckedChange = onSyncYouTubeHistoryChange,
             )
         }
     }
 
     PreferenceGroup(title = stringResource(R.string.source_youtube)) {
         item {
-            InfoLabel(text = stringResource(R.string.youtube_source_note))
+            EnumListPreference(
+                title = { Text(stringResource(R.string.audio_quality)) },
+                icon = { Icon(painterResource(R.drawable.graphic_eq), null) },
+                selectedValue = ytAudioQuality,
+                onValueSelected = onYtAudioQualityChange,
+                isEnabled = ytAudioQualityEnabled,
+                valueText = {
+                    when (it) {
+                        AudioQuality.HIGHEST -> stringResource(R.string.audio_quality_max)
+                        AudioQuality.HIGH -> stringResource(R.string.audio_quality_high)
+                        AudioQuality.AUTO -> stringResource(R.string.audio_quality_auto)
+                        AudioQuality.LOW -> stringResource(R.string.audio_quality_low)
+                    }
+                },
+            )
+        }
+
+        item {
+            ListPreference(
+                title = { Text(stringResource(R.string.player_stream_client)) },
+                description = stringResource(R.string.player_stream_client_desc),
+                icon = { Icon(painterResource(R.drawable.integration), null) },
+                selectedValue = selectedPlayerStreamClient,
+                values = playerStreamClients,
+                onValueSelected = onPlayerStreamClientChange,
+                isValueEnabled = isPlayerStreamClientEnabled,
+                valueText = {
+                    when (it) {
+                        PlayerStreamClient.WEB_REMIX ->
+                            stringResource(R.string.player_stream_client_web_remix)
+                        PlayerStreamClient.ARCHIVETUNE_EXTRACTOR ->
+                            stringResource(R.string.player_stream_client_archivetune_extractor)
+                        else -> stringResource(R.string.player_stream_client_web_remix)
+                    }
+                },
+                valueDescription = {
+                    when (it) {
+                        PlayerStreamClient.WEB_REMIX ->
+                            stringResource(R.string.player_stream_client_web_remix_desc)
+                        PlayerStreamClient.ARCHIVETUNE_EXTRACTOR ->
+                            if (isArchiveTuneExtractorEnabled)
+                                stringResource(R.string.player_stream_client_archivetune_extractor_desc)
+                            else
+                                stringResource(R.string.player_stream_client_archivetune_extractor_login_required)
+                        else -> stringResource(R.string.player_stream_client_web_remix_desc)
+                    }
+                },
+            )
+        }
+
+        item {
+            PreferenceEntry(
+                title = { Text(stringResource(R.string.mori_cipher_settings_title)) },
+                description = stringResource(R.string.mori_cipher_settings_description),
+                icon = { Icon(painterResource(R.drawable.security), null) },
+                onClick = { navController.navigate("settings/player/chiper") },
+            )
         }
     }
 
