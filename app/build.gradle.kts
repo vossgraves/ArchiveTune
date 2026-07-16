@@ -172,10 +172,13 @@ android {
         // health-checked Tidal/Qobuz instances from it. Precedence: local.properties override, then
         // the SOURCE_PROVIDER_URL env/CI variable, then the baked-in default below. Set to "" in
         // local.properties to disable remote discovery for a build.
+        // Use .takeIf { it.isNotBlank() } on each source so an explicitly-empty env var or
+        // local.properties entry doesn't shadow the hardcoded fallback (a plain `?: fallback`
+        // chain would leave the URL blank when the env var is set to "" rather than unset).
         val sourceProviderUrl =
             (
-                localProperties.getProperty("SOURCE_PROVIDER_URL")
-                    ?: System.getenv("SOURCE_PROVIDER_URL")
+                localProperties.getProperty("SOURCE_PROVIDER_URL")?.takeIf { it.isNotBlank() }
+                    ?: System.getenv("SOURCE_PROVIDER_URL")?.takeIf { it.isNotBlank() }
                     ?: "https://archivepool.up.railway.app"
                 ).trim().trimEnd('/')
         buildConfigField("String", "SOURCE_PROVIDER_URL", "\"$sourceProviderUrl\"")
