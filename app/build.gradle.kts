@@ -52,7 +52,9 @@ val dataServerUrl =
         ?.trim()
         ?.takeIf { it.startsWith("https://") || it.startsWith("http://") }
         ?: fallbackDataServerUrl
-val apiBearerToken = System.getenv("API_BEARER_TOKEN")?.trim().orEmpty()
+val apiBearerToken = System.getenv("API_BEARER_TOKEN")?.trim()
+    ?: localProperties.getProperty("API_BEARER_TOKEN")?.trim()
+    ?: ""
 
 val discordApplicationId =
     (
