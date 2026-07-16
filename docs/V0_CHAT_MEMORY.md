@@ -234,6 +234,10 @@ future sessions (or contributors) can pick up with full context.
   retaining the fork's neutralized official-build network gatekeeper. Fork
   update URLs and all fork-specific playback, Source Pool, Android Auto, and
   Language Packs features were preserved.
+- Canary update detection uses a 15-minute release cache and 30-minute
+  background worker instead of Stable's six-hour cadence. Manual checks always
+  force a refresh. Canary selection accepts both `NyyyyMMdd` and the fork's
+  `NyyyyMMddHHmm` tags and explicitly excludes stable releases.
 
 ## PR status
 

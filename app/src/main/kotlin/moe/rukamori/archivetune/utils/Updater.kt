@@ -55,6 +55,7 @@ private data class ReleasesNetworkResult(
 object Updater {
     private val client = HttpClient()
     private const val ReleaseCacheCheckIntervalMs: Long = 6 * 60 * 60 * 1000L
+    private const val CanaryCacheCheckIntervalMs: Long = 15 * 60 * 1000L
     private const val StableReleaseBaseUrl = "https://github.com/vossgraves/ArchiveTune/releases"
     private const val CanaryReleaseBaseUrl =
         "https://github.com/vossgraves/ArchiveTune/releases"
@@ -164,7 +165,9 @@ object Updater {
 
     private val semVerRegex =
         Regex("""(?i)\bv?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?\b""")
-    private val canaryTagRegex = Regex("""N\d{8}""")
+    // Fork Canary tags include a date and usually an HHmm suffix (NyyyyMMddHHmm).
+    // Accept the older date-only form too so workflow fallback remains compatible.
+    private val canaryTagRegex = Regex("""N\d{8}(?:\d{4})?""")
 
     private fun parseSemVerOrNull(text: String): SemVer? {
         val match = semVerRegex.find(text) ?: return null
@@ -255,11 +258,12 @@ object Updater {
     }
 
     internal fun findLatestCanaryRelease(releases: List<ReleaseInfo>): ReleaseInfo? {
-        if (releases.isEmpty()) return null
-        return releases.maxByOrNull { release ->
-            val dateTag = release.tagName.removePrefix("N").takeWhile { it.isDigit() }
-            dateTag.toLongOrNull() ?: 0L
-        }
+        return releases
+            .filter { canaryTagRegex.matches(it.tagName) }
+            .maxByOrNull { release ->
+                val dateTag = release.tagName.removePrefix("N").takeWhile { it.isDigit() }
+                dateTag.toLongOrNull() ?: 0L
+            }
     }
 
     private fun preferredReleaseVersionNameOrNull(release: ReleaseInfo): String? =
@@ -524,7 +528,7 @@ object Updater {
                     ?.let { runCatching { parseReleasesJson(it, canaryReleaseArtifactName()) }.getOrNull() }
 
             val shouldCheckNetwork =
-                forceRefresh || cachedJson.isNullOrBlank() || (now - lastCheckedAt) >= ReleaseCacheCheckIntervalMs
+                forceRefresh || cachedJson.isNullOrBlank() || (now - lastCheckedAt) >= CanaryCacheCheckIntervalMs
 
             if (!shouldCheckNetwork) {
                 return@runCatchingCancellable cachedReleases ?: emptyList()
