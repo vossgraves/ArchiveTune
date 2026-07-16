@@ -98,6 +98,7 @@ object TidalInstanceHealthManager {
                     val probeTrackId =
                         TidalAudioProvider.lastResolvedTrackId
                             ?: context.dataStore.get(TidalLastProbeTrackKey)
+                            ?: TidalAudioProvider.findHealthProbeTrackId()
                     // Without a probe track we can only test reachability, which cannot tell a
                     // fully-working instance from a preview-only (unsubscribed) one. In that case we
                     // must NOT promote "reachable" instances as healthy in the resolver, or dead-end

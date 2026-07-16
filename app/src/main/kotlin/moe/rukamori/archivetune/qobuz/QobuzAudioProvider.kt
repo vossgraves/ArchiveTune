@@ -50,6 +50,8 @@ object QobuzAudioProvider {
     private const val INSTANCE_SOFT_COOLDOWN_MS = 60_000L
     private const val INSTANCE_HARD_COOLDOWN_MS = 600_000L
     private const val AUDIO_FLAC_MIME_TYPE = "audio/flac"
+    private const val HEALTH_PROBE_TRACK_ID = "5966783"
+    private const val HEALTH_PROBE_FORMAT_ID = 5
 
     private val STOP_WORDS =
         setOf("the", "a", "an", "of", "and", "feat", "ft", "featuring", "with")
@@ -289,17 +291,16 @@ object QobuzAudioProvider {
         formatId: Int,
     ): TidalAudioProvider.InstanceHealth {
         val normalized = normalizeInstanceUrl(baseUrl) ?: return TidalAudioProvider.InstanceHealth.UNREACHABLE
-        val trackId = probeTrackId?.trim().orEmpty()
-        if (trackId.isEmpty()) {
-            // No probe track yet: fall back to reachability + a search sanity check.
-            if (checkInstance(normalized) == null) return TidalAudioProvider.InstanceHealth.UNREACHABLE
-            val sample = runCatching { searchTrackId(normalized, "adele hello") }.getOrNull()
-            return if (sample != null) {
-                TidalAudioProvider.InstanceHealth.HEALTHY
-            } else {
-                TidalAudioProvider.InstanceHealth.UNREACHABLE
-            }
-        }
+        val trackId =
+            probeTrackId
+                ?.trim()
+                .orEmpty()
+                .ifBlank {
+                    // A search response only proves that the API is reachable. Resolve a real sample
+                    // id so the download call below can also verify the backing account entitlement.
+                    runCatching { searchTrackId(normalized, "adele hello") }.getOrNull().orEmpty()
+                }
+        if (trackId.isEmpty()) return TidalAudioProvider.InstanceHealth.UNREACHABLE
         return runCatching {
             when (val result = fetchDownload(normalized, trackId, formatId)) {
                 null -> TidalAudioProvider.InstanceHealth.UNREACHABLE
@@ -624,6 +625,19 @@ object QobuzAudioProvider {
         trackId: String,
         formatId: Int,
     ): DownloadResult? {
+        client.newCall(directDownloadRequest(token, trackId, formatId)).execute().use { response ->
+            if (!response.isSuccessful) return null
+            val body = response.body?.string().orEmpty()
+            if (body.isBlank()) return null
+            return parseDirectDownload(body)
+        }
+    }
+
+    private fun directDownloadRequest(
+        token: QobuzToken,
+        trackId: String,
+        formatId: Int,
+    ): Request {
         val ts = System.currentTimeMillis() / 1000L
         val sig = md5("trackgetFileUrlformat_id${formatId}intentstreamtrack_id$trackId$ts${token.appSecret}")
         val url =
@@ -637,29 +651,28 @@ object QobuzAudioProvider {
                 .addQueryParameter("intent", "stream")
                 .addQueryParameter("app_id", token.appId)
                 .build()
-        client.newCall(directRequest(url.toString(), token)).execute().use { response ->
-            if (!response.isSuccessful) return null
-            val body = response.body?.string().orEmpty()
-            if (body.isBlank()) return null
-            val root = runCatching { JSONObject(body) }.getOrNull() ?: return null
-            val streamUrl =
-                root.stringOrNull("url")?.takeIf { it.startsWith("http") }
-                    ?: root.findStreamUrl()
-                    ?: return null
-            // Qobuz sets "sample":true for 30s previews (unsubscribed, or track unavailable at quality).
-            val isPreview = root.optBoolean("sample", false) || root.looksLikePreview()
-            val apiMime = root.stringOrNull("mime_type")
-            val mime =
-                when {
-                    apiMime?.contains("flac", true) == true -> AUDIO_FLAC_MIME_TYPE
-                    apiMime?.contains("mpeg", true) == true || apiMime?.contains("mp3", true) == true -> "audio/mpeg"
-                    streamUrl.contains(".flac", true) -> AUDIO_FLAC_MIME_TYPE
-                    streamUrl.contains(".mp3", true) -> "audio/mpeg"
-                    else -> AUDIO_FLAC_MIME_TYPE
-                }
-            val codecs = if (mime == AUDIO_FLAC_MIME_TYPE) "flac" else "mp4a.40.2"
-            return DownloadResult(streamUrl, mime, codecs, isPreview)
-        }
+        return directRequest(url.toString(), token)
+    }
+
+    private fun parseDirectDownload(body: String): DownloadResult? {
+        val root = runCatching { JSONObject(body) }.getOrNull() ?: return null
+        val streamUrl =
+            root.stringOrNull("url")?.takeIf { it.startsWith("http") }
+                ?: root.findStreamUrl()
+                ?: return null
+        // Qobuz sets "sample":true for 30s previews (unsubscribed, or track unavailable at quality).
+        val isPreview = root.optBoolean("sample", false) || root.looksLikePreview()
+        val apiMime = root.stringOrNull("mime_type")
+        val mime =
+            when {
+                apiMime?.contains("flac", true) == true -> AUDIO_FLAC_MIME_TYPE
+                apiMime?.contains("mpeg", true) == true || apiMime?.contains("mp3", true) == true -> "audio/mpeg"
+                streamUrl.contains(".flac", true) -> AUDIO_FLAC_MIME_TYPE
+                streamUrl.contains(".mp3", true) -> "audio/mpeg"
+                else -> AUDIO_FLAC_MIME_TYPE
+            }
+        val codecs = if (mime == AUDIO_FLAC_MIME_TYPE) "flac" else "mp4a.40.2"
+        return DownloadResult(streamUrl, mime, codecs, isPreview)
     }
 
     private fun directRequest(
@@ -682,32 +695,64 @@ object QobuzAudioProvider {
     }
 
     /**
-     * Deep health probe for a direct-API token: searches + calls getFileUrl for [probeTrackId] and
-     * classifies HEALTHY / PREVIEW_ONLY (auth OK but no lossless entitlement) / UNREACHABLE (expired,
-     * invalid, or network error). Runs blocking network I/O — call off the main thread.
+     * Deep health probe for a direct-API token. This mirrors ArchivePool's account validation:
+     * user/get proves the token and reports subscription capabilities, then a subscription-neutral
+     * MP3 request proves the app secret can sign stream URLs. Runs blocking I/O off the main thread.
      */
+    @Suppress("UNUSED_PARAMETER")
     fun verifyToken(
         token: QobuzToken,
         probeTrackId: String?,
         formatId: Int,
-    ): TidalAudioProvider.InstanceHealth {
-        val trackId = probeTrackId?.trim().orEmpty()
-        return runCatching {
-            val resolvedId =
-                trackId.ifBlank {
-                    val items = searchItemsDirect(token, "adele hello") ?: return@runCatching TidalAudioProvider.InstanceHealth.UNREACHABLE
-                    (0 until items.length()).firstNotNullOfOrNull { items.optJSONObject(it)?.trackId() }
-                        ?: return@runCatching TidalAudioProvider.InstanceHealth.UNREACHABLE
-                }
-            when (val result = fetchDownloadDirect(token, resolvedId, formatId)) {
-                null -> TidalAudioProvider.InstanceHealth.UNREACHABLE
-                else -> if (result.isPreview) {
-                    TidalAudioProvider.InstanceHealth.PREVIEW_ONLY
-                } else {
-                    TidalAudioProvider.InstanceHealth.HEALTHY
-                }
+    ): TidalAudioProvider.InstanceHealth =
+        runCatching {
+            val account = fetchTokenAccountHealth(token)
+                ?: return@runCatching TidalAudioProvider.InstanceHealth.UNREACHABLE
+            if (!hasValidAppSecret(token)) {
+                return@runCatching TidalAudioProvider.InstanceHealth.UNREACHABLE
+            }
+            if (account.premium) {
+                TidalAudioProvider.InstanceHealth.HEALTHY
+            } else {
+                TidalAudioProvider.InstanceHealth.PREVIEW_ONLY
             }
         }.getOrElse { TidalAudioProvider.InstanceHealth.UNREACHABLE }
+
+    private data class TokenAccountHealth(
+        val premium: Boolean,
+    )
+
+    private fun fetchTokenAccountHealth(token: QobuzToken): TokenAccountHealth? {
+        val url =
+            "$QOBUZ_API_BASE/user/get"
+                .toHttpUrl()
+                .newBuilder()
+                .addQueryParameter("app_id", token.appId)
+                .addQueryParameter("user_auth_token", token.token)
+                .build()
+        client.newCall(directRequest(url.toString(), token)).execute().use { response ->
+            if (!response.isSuccessful) return null
+            val body = response.body?.string().orEmpty()
+            if (body.isBlank()) return null
+            val normalized = body.lowercase(Locale.US)
+            val valid = normalized.contains("\"id\"") || normalized.contains("credential")
+            if (!valid) return null
+            val premium =
+                Regex("""lossless|hi-res|hires|studio|sublime|"format_id"\s*:\s*(6|7|27)""")
+                    .containsMatchIn(normalized)
+            return TokenAccountHealth(premium = premium)
+        }
+    }
+
+    private fun hasValidAppSecret(token: QobuzToken): Boolean {
+        client
+            .newCall(directDownloadRequest(token, HEALTH_PROBE_TRACK_ID, HEALTH_PROBE_FORMAT_ID))
+            .execute()
+            .use { response ->
+                val body = response.body?.string().orEmpty().lowercase(Locale.US)
+                return !body.contains("invalid request signature") &&
+                    !body.contains("invalidrequestsignature")
+            }
     }
 
     // -------------------------------------------------------------------------

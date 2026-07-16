@@ -728,9 +728,9 @@
     <string name="tidal_no_instances">No instances configured. Add one or reset to defaults.</string>
     <string name="tidal_check_instances">Test instances</string>
     <string name="tidal_checking_instances">Testing…</string>
-    <string name="tidal_instance_healthy">online — %1$d ms</string>
-    <string name="tidal_instance_unreachable">not reachable</string>
-    <string name="tidal_instance_preview_only">deprecated — %1$d ms</string>
+    <string name="tidal_instance_healthy">Online — %1$d ms</string>
+    <string name="tidal_instance_unreachable">Failed</string>
+    <string name="tidal_instance_preview_only">Deprecated — %1$d ms</string>
     <string name="tidal_instance_unknown">Not tested — tap Test instances</string>
 
     <!-- Qobuz music source integration -->
@@ -767,10 +767,10 @@
     <string name="qobuz_checking_tokens">Testing tokens…</string>
     <string name="qobuz_reset_tokens">Clear all tokens</string>
     <string name="qobuz_token_subtitle">%1$s · id %2$s</string>
-    <string name="qobuz_token_status_ok">signed in — full quality</string>
-    <string name="qobuz_token_status_preview">no lossless — check subscription</string>
-    <string name="qobuz_token_status_invalid">invalid or expired — sign in again</string>
-    <string name="qobuz_token_status_unknown">not checked</string>
+    <string name="qobuz_token_status_ok">Online</string>
+    <string name="qobuz_token_status_preview">Deprecated</string>
+    <string name="qobuz_token_status_invalid">Failed</string>
+    <string name="qobuz_token_status_unknown">Not tested</string>
     <string name="qobuz_status_deprecated_info_title">Why deprecated?</string>
     <string name="qobuz_status_deprecated_info">This account is reachable but can only stream 30-second previews or lower-quality audio — it most likely has no active premium subscription, so lossless playback is unavailable.</string>
 

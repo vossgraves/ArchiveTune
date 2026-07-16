@@ -14,16 +14,22 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onStart
 import moe.rukamori.archivetune.BuildConfig
+import moe.rukamori.archivetune.constants.CustomScrobbleApiKeyOverrideKey
+import moe.rukamori.archivetune.constants.CustomScrobbleSecretOverrideKey
 import moe.rukamori.archivetune.constants.EnableLastFMScrobblingKey
 import moe.rukamori.archivetune.constants.LastFMApiKeyOverrideKey
 import moe.rukamori.archivetune.constants.LastFMCustomEndpointKey
+import moe.rukamori.archivetune.constants.LastFMCredentialsMigratedKey
 import moe.rukamori.archivetune.constants.LastFMProviderKey
 import moe.rukamori.archivetune.constants.LastFMSecretOverrideKey
 import moe.rukamori.archivetune.constants.LastFMSessionKey
 import moe.rukamori.archivetune.constants.LastFMUseNowPlaying
 import moe.rukamori.archivetune.constants.LastFMUsernameKey
 import moe.rukamori.archivetune.constants.LastFmProvider
+import moe.rukamori.archivetune.constants.LibreFMApiKeyOverrideKey
+import moe.rukamori.archivetune.constants.LibreFMSecretOverrideKey
 import moe.rukamori.archivetune.constants.ScrobbleDelayPercentKey
 import moe.rukamori.archivetune.constants.ScrobbleDelaySecondsKey
 import moe.rukamori.archivetune.constants.ScrobbleMinSongDurationKey
@@ -36,6 +42,7 @@ import javax.inject.Singleton
 
 data class LastFmSettingsData(
     val serviceConfig: LastFmServiceConfig,
+    val credentialsByProvider: Map<LastFmProvider, LastFmApiCredentials>,
     val username: String,
     val sessionKey: String,
     val scrobblingEnabled: Boolean,
@@ -47,6 +54,11 @@ data class LastFmSettingsData(
     val isLoggedIn: Boolean
         get() = sessionKey.isNotBlank()
 }
+
+data class LastFmApiCredentials(
+    val apiKey: String = "",
+    val secret: String = "",
+)
 
 data class LastFmServiceConfig(
     val provider: LastFmProvider,
@@ -78,17 +90,53 @@ data class LastFmServiceConfig(
         ): LastFmServiceConfig {
             val provider = preferences[LastFMProviderKey].toEnum(LastFmProvider.LASTFM)
             val customEndpoint = preferences[LastFMCustomEndpointKey].orEmpty()
-            val apiKeyOverride = preferences[LastFMApiKeyOverrideKey].orEmpty()
-            val secretOverride = preferences[LastFMSecretOverrideKey].orEmpty()
+            val credentials = credentialsForProvider(preferences, provider)
 
             return fromValues(
                 provider = provider,
                 customEndpoint = customEndpoint,
-                apiKeyOverride = apiKeyOverride,
-                secretOverride = secretOverride,
+                apiKeyOverride = credentials.apiKey,
+                secretOverride = credentials.secret,
                 defaultApiKey = defaultApiKey,
                 defaultSecret = defaultSecret,
             )
+        }
+
+        fun credentialsForProvider(
+            preferences: Preferences,
+            provider: LastFmProvider,
+        ): LastFmApiCredentials {
+            val providerCredentials =
+                when (provider) {
+                    LastFmProvider.LASTFM ->
+                        LastFmApiCredentials(
+                            apiKey = preferences[LastFMApiKeyOverrideKey].orEmpty(),
+                            secret = preferences[LastFMSecretOverrideKey].orEmpty(),
+                        )
+                    LastFmProvider.LIBREFM ->
+                        LastFmApiCredentials(
+                            apiKey = preferences[LibreFMApiKeyOverrideKey].orEmpty(),
+                            secret = preferences[LibreFMSecretOverrideKey].orEmpty(),
+                        )
+                    LastFmProvider.CUSTOM ->
+                        LastFmApiCredentials(
+                            apiKey = preferences[CustomScrobbleApiKeyOverrideKey].orEmpty(),
+                            secret = preferences[CustomScrobbleSecretOverrideKey].orEmpty(),
+                        )
+                }
+
+            // Before migration, the old shared pair belongs to the currently selected provider.
+            // This keeps startup compatible until the repository moves it to the scoped keys.
+            val migrationComplete = preferences[LastFMCredentialsMigratedKey] ?: false
+            val selectedProvider = preferences[LastFMProviderKey].toEnum(LastFmProvider.LASTFM)
+            return if (!migrationComplete && provider == selectedProvider && provider != LastFmProvider.LASTFM) {
+                LastFmApiCredentials(
+                    apiKey = preferences[LastFMApiKeyOverrideKey].orEmpty(),
+                    secret = preferences[LastFMSecretOverrideKey].orEmpty(),
+                )
+            } else {
+                providerCredentials
+            }
         }
 
         fun fromValues(
@@ -150,7 +198,36 @@ class LastFmSettingsRepository
     constructor(
         @ApplicationContext private val context: Context,
     ) {
-        fun observeSettings(): Flow<LastFmSettingsData> = context.dataStore.data.map(::settingsFromPreferences)
+        fun observeSettings(): Flow<LastFmSettingsData> =
+            context.dataStore.data
+                .onStart { migrateSharedCredentials() }
+                .map(::settingsFromPreferences)
+
+        private suspend fun migrateSharedCredentials() {
+            context.dataStore.edit { preferences ->
+                if (preferences[LastFMCredentialsMigratedKey] == true) return@edit
+
+                val provider = preferences[LastFMProviderKey].toEnum(LastFmProvider.LASTFM)
+                val apiKey = preferences[LastFMApiKeyOverrideKey].orEmpty()
+                val secret = preferences[LastFMSecretOverrideKey].orEmpty()
+                when (provider) {
+                    LastFmProvider.LASTFM -> Unit
+                    LastFmProvider.LIBREFM -> {
+                        preferences[LibreFMApiKeyOverrideKey] = apiKey
+                        preferences[LibreFMSecretOverrideKey] = secret
+                        preferences.remove(LastFMApiKeyOverrideKey)
+                        preferences.remove(LastFMSecretOverrideKey)
+                    }
+                    LastFmProvider.CUSTOM -> {
+                        preferences[CustomScrobbleApiKeyOverrideKey] = apiKey
+                        preferences[CustomScrobbleSecretOverrideKey] = secret
+                        preferences.remove(LastFMApiKeyOverrideKey)
+                        preferences.remove(LastFMSecretOverrideKey)
+                    }
+                }
+                preferences[LastFMCredentialsMigratedKey] = true
+            }
+        }
 
         suspend fun login(
             username: String,
@@ -207,8 +284,21 @@ class LastFmSettingsRepository
 
                 preferences[LastFMProviderKey] = provider.name
                 preferences[LastFMCustomEndpointKey] = normalizedEndpoint
-                preferences[LastFMApiKeyOverrideKey] = nextApiKey
-                preferences[LastFMSecretOverrideKey] = nextSecret
+                when (provider) {
+                    LastFmProvider.LASTFM -> {
+                        preferences[LastFMApiKeyOverrideKey] = nextApiKey
+                        preferences[LastFMSecretOverrideKey] = nextSecret
+                    }
+                    LastFmProvider.LIBREFM -> {
+                        preferences[LibreFMApiKeyOverrideKey] = nextApiKey
+                        preferences[LibreFMSecretOverrideKey] = nextSecret
+                    }
+                    LastFmProvider.CUSTOM -> {
+                        preferences[CustomScrobbleApiKeyOverrideKey] = nextApiKey
+                        preferences[CustomScrobbleSecretOverrideKey] = nextSecret
+                    }
+                }
+                preferences[LastFMCredentialsMigratedKey] = true
 
                 if (changed) {
                     clearSession(preferences)
@@ -260,6 +350,9 @@ class LastFmSettingsRepository
             val serviceConfig = LastFmServiceConfig.fromPreferences(preferences)
             return LastFmSettingsData(
                 serviceConfig = serviceConfig,
+                credentialsByProvider = LastFmProvider.entries.associateWith {
+                    LastFmServiceConfig.credentialsForProvider(preferences, it)
+                },
                 username = preferences[LastFMUsernameKey].orEmpty(),
                 sessionKey = preferences[LastFMSessionKey].orEmpty(),
                 scrobblingEnabled = preferences[EnableLastFMScrobblingKey] ?: false,

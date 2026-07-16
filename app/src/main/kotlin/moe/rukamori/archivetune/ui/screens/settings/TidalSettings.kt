@@ -508,13 +508,12 @@ fun TidalSettings(navController: NavController) {
                     item {
                         val status = healthStatus[instance]
                         // Status colors: online = light blue, deprecated/preview-only = purple,
-                        // connection failed = error red. Untested falls back to the muted default.
+                        // failed = grey. Untested falls back to the muted default.
                         val statusColor =
                             when (status) {
                                 TidalAudioProvider.InstanceHealth.HEALTHY -> Color(0xFF4FC3F7)
                                 TidalAudioProvider.InstanceHealth.PREVIEW_ONLY -> Color(0xFFB388FF)
-                                TidalAudioProvider.InstanceHealth.UNREACHABLE ->
-                                    MaterialTheme.colorScheme.error
+                                TidalAudioProvider.InstanceHealth.UNREACHABLE -> Color(0xFF9E9E9E)
                                 null -> MaterialTheme.colorScheme.onSurfaceVariant
                             }
                         val statusLabel =
