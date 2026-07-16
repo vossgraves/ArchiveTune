@@ -48,6 +48,14 @@ future sessions (or contributors) can pick up with full context.
 
 ## Player / UI / motion
 
+- **Android Auto Spotify playlists:** the media-library browse tree now restores
+  the Spotify playlist cache even when Android Auto launches the service before
+  the phone UI. When the existing "Show Spotify playlists" preference is on,
+  the Playlists screen contains a Spotify folder with account playlists,
+  artwork, track counts, browsable songs, and playable whole-playlist queues.
+  Spotify tracks are resolved to ArchiveTune/YouTube media items in bounded
+  batches and cached for subsequent browse/play requests.
+
 - **Infinite-queue single-song race fix:** playing one track (e.g. from search)
   used to show infinity-queue "on" while Next just repeated the song, because
   the transition-driven radio bootstrap in `onMediaItemTransition` started mid
