@@ -18,6 +18,7 @@ sealed interface GatekeeperResult {
 
     data class Blocked(
         val message: String,
+        val retryable: Boolean,
     ) : GatekeeperResult
 }
 

@@ -204,6 +204,37 @@ future sessions (or contributors) can pick up with full context.
   maintenance controls. Existing health colors, ping labels, dialogs, and all
   management capabilities are unchanged.
 
+## ArchivePool security audit (2026-07-17)
+
+- ArchivePool implements AES-256-GCM field encryption, hashed read keys, admin
+  bearer checks, HTTPS upstream calls, and no-store response caching, but the
+  controls are optional/fail-open when environment variables are missing.
+- A live unauthenticated check of `archivepool.up.railway.app` returned HTTP 200
+  for `/api/sources` with `"encrypted": false`; both discovery feeds also
+  returned 200 without a read key. No returned credential values were printed
+  or inspected. The Railway deployment must set independent 32-byte
+  `POOL_ENCRYPTION_KEY` and `POOL_CLIENT_KEY` values, provision an app read key,
+  set `READ_KEYS_ENFORCED=true`, and build ArchiveTune with matching
+  `POOL_CLIENT_KEY` / `SOURCE_PROVIDER_KEY` values.
+- ArchiveTune stores user and downloaded pool tokens in ordinary Preferences
+  DataStore, and its current Android backup rules do not exclude that settings
+  file. A key embedded in `BuildConfig` is extractable from the APK, so the pool
+  client-key layer protects accidental JSON disclosure but is not true
+  per-user end-to-end secrecy. A future hardening pass should move credentials
+  to Android Keystore-backed storage and exclude them from cloud backup.
+- The database URL and GitHub token pasted into chat must be treated as
+  compromised and rotated; they are not recorded in this memory file.
+
+## Upstream sync (2026-07-17)
+
+- Merged the current `rukamori/ArchiveTune` `dev` into fork `dev`, including AI
+  content filtering, playlist-cover synchronization, pull-to-refresh/library
+  improvements, updater improvements, translations, and metadata updates.
+- Merged the matching `rukamori/core` changes into `vossgraves/core` while
+  retaining the fork's neutralized official-build network gatekeeper. Fork
+  update URLs and all fork-specific playback, Source Pool, Android Auto, and
+  Language Packs features were preserved.
+
 ## PR status
 
 - PR `rukamori/ArchiveTune#1024` (contributing the fork's features upstream) was
