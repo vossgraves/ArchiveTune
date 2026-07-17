@@ -27,6 +27,23 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material3.AlertDialogDefaults
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Surface
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -39,6 +56,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import androidx.datastore.preferences.core.edit
 import androidx.navigation.NavController
 import kotlinx.coroutines.Dispatchers
@@ -60,14 +78,24 @@ import moe.rukamori.archivetune.constants.TidalUserIdKey
 import moe.rukamori.archivetune.qobuz.SourceInputParsing
 import moe.rukamori.archivetune.tidal.TidalAudioProvider
 import moe.rukamori.archivetune.tidal.TidalInstanceHealthManager
+import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.IconButton
-import moe.rukamori.archivetune.ui.component.InfoLabel
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.TextFieldDialog
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.dataStore
 import moe.rukamori.archivetune.utils.rememberPreference
+
+/**
+ * Process-lived cache of the last instance health-check results so the checked status (and ping)
+ * survives leaving and returning to the screen, until another check overwrites it. Not persisted to
+ * disk.
+ */
+private object TidalHealthUiCache {
+    val instanceHealth = mutableStateMapOf<String, TidalAudioProvider.InstanceHealth>()
+    val instanceLatency = mutableStateMapOf<String, Long>()
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -79,6 +107,8 @@ fun TidalSettings(navController: NavController) {
     val accountName by rememberPreference(TidalAccountNameKey, "")
     val subscriptionRaw by rememberPreference(TidalSubscriptionKey, TidalSubscriptionStatus.UNKNOWN.name)
     val needsRelogin by rememberPreference(TidalNeedsReloginKey, false)
+    val countryCode by rememberPreference(TidalCountryCodeKey, "")
+    val userId by rememberPreference(TidalUserIdKey, 0L)
 
     val subscription =
         remember(subscriptionRaw) {
@@ -106,14 +136,16 @@ fun TidalSettings(navController: NavController) {
         onStoredInstancesChange(if (distinct == defaults) "" else distinct.joinToString("\n"))
     }
 
-    // baseUrl -> scan status (null while untested). Nothing is probed until the user taps Test.
-    val healthStatus = remember { mutableStateMapOf<String, TidalAudioProvider.InstanceHealth>() }
-    // baseUrl -> last measured latency (ms), used for the "— <ping> ms" suffix.
-    val healthLatency = remember { mutableStateMapOf<String, Long>() }
+    // baseUrl -> scan status (null while untested) + last latency, backed by a process-lived cache so
+    // a completed check persists when navigating away and back. Nothing is probed until Test is tapped.
+    val healthStatus = TidalHealthUiCache.instanceHealth
+    val healthLatency = TidalHealthUiCache.instanceLatency
     var testingInstances by remember { mutableStateOf(false) }
     var showAddDialog by remember { mutableStateOf(false) }
     var showBulkDialog by remember { mutableStateOf(false) }
-    var infoDialogMessage by remember { mutableStateOf<String?>(null) }
+    var detailInstance by remember { mutableStateOf<String?>(null) }
+    var showAccountDetail by remember { mutableStateOf(false) }
+    var showInstanceManagement by remember { mutableStateOf(false) }
 
     fun toast(message: String) {
         Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
@@ -179,16 +211,152 @@ fun TidalSettings(navController: NavController) {
         }
     }
 
-    infoDialogMessage?.let { message ->
-        androidx.compose.material3.AlertDialog(
-            onDismissRequest = { infoDialogMessage = null },
-            confirmButton = {
-                androidx.compose.material3.TextButton(onClick = { infoDialogMessage = null }) {
-                    Text(stringResource(android.R.string.ok))
+    // Account detail dialog — shows the logged-in account's token info.
+    if (showAccountDetail) {
+        DefaultDialog(
+            onDismiss = { showAccountDetail = false },
+            icon = { Icon(painterResource(R.drawable.token), null) },
+            title = { Text(stringResource(R.string.details)) },
+            contentScrollable = true,
+            buttons = {
+                TextButton(
+                    onClick = {
+                        copyToClipboard(context, "Tidal token", listOf(accessToken))
+                        showAccountDetail = false
+                    },
+                    shapes = ButtonDefaults.shapes(),
+                ) {
+                    Text(context.getString(R.string.copy_link).replace("link", "token"))
+                }
+                TextButton(
+                    onClick = { showAccountDetail = false },
+                    shapes = ButtonDefaults.shapes(),
+                ) {
+                    Text(stringResource(R.string.close_dialog))
                 }
             },
-            text = { Text(message) },
-        )
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                if (accountName.isNotBlank()) {
+                    Text("Account", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(2.dp))
+                    Text(accountName, style = MaterialTheme.typography.bodyMedium)
+                    Spacer(Modifier.height(10.dp))
+                }
+                if (userId != 0L) {
+                    Text("User ID", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(2.dp))
+                    Text(userId.toString(), style = MaterialTheme.typography.bodyMedium)
+                    Spacer(Modifier.height(10.dp))
+                }
+                if (countryCode.isNotBlank()) {
+                    Text("Country", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(2.dp))
+                    Text(countryCode, style = MaterialTheme.typography.bodyMedium)
+                    Spacer(Modifier.height(10.dp))
+                }
+                Text("Access token", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(2.dp))
+                Text(accessToken, style = MaterialTheme.typography.bodyMedium, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                Spacer(Modifier.height(10.dp))
+                Text("Status", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text =
+                        when {
+                            needsRelogin -> stringResource(R.string.tidal_account_relogin_required)
+                            accountConfigured -> stringResource(R.string.tidal_account_active)
+                            else -> stringResource(R.string.tidal_instance_unknown)
+                        },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color =
+                        when {
+                            needsRelogin -> MaterialTheme.colorScheme.error
+                            accountConfigured -> Color(0xFF4FC3F7)
+                            else -> MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                )
+                Spacer(Modifier.height(10.dp))
+                Text("Subscription", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(2.dp))
+                Text(subscription.name.lowercase(), style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+    }
+
+    // Instance detail popup — same style as the lyrics search result dialog.
+    detailInstance?.let { instance ->
+        Dialog(
+            onDismissRequest = { detailInstance = null },
+            properties = DialogProperties(usePlatformDefaultWidth = false),
+        ) {
+            BoxWithConstraints(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(24.dp)
+                    .navigationBarsPadding(),
+                contentAlignment = Alignment.Center,
+            ) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .widthIn(max = 560.dp),
+                    shape = MaterialTheme.shapes.extraLarge,
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    tonalElevation = AlertDialogDefaults.TonalElevation,
+                ) {
+                    Column(modifier = Modifier
+                        .padding(24.dp)
+                        .verticalScroll(rememberScrollState())) {
+                        Icon(
+                            painter = painterResource(R.drawable.link),
+                            contentDescription = null,
+                            tint = AlertDialogDefaults.iconContentColor,
+                            modifier = Modifier.align(Alignment.CenterHorizontally),
+                        )
+                        Spacer(Modifier.height(16.dp))
+                        Text(
+                            text = stringResource(R.string.details),
+                            style = MaterialTheme.typography.headlineSmall,
+                            color = AlertDialogDefaults.titleContentColor,
+                            modifier = Modifier.align(Alignment.CenterHorizontally),
+                        )
+                        Spacer(Modifier.height(16.dp))
+                        Text("Instance URL", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(Modifier.height(4.dp))
+                        Text(instance, style = MaterialTheme.typography.bodyMedium)
+                        val status = healthStatus[instance]
+                        if (status != null) {
+                            Spacer(Modifier.height(12.dp))
+                            Text("Status", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Spacer(Modifier.height(2.dp))
+                            Text(labelFor(status, healthLatency[instance]), style = MaterialTheme.typography.bodyMedium)
+                        }
+                        Spacer(Modifier.height(24.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End,
+                        ) {
+                            TextButton(
+                                onClick = {
+                                    copyToClipboard(context, "Tidal instance", listOf(instance))
+                                    detailInstance = null
+                                },
+                                shapes = ButtonDefaults.shapes(),
+                            ) {
+                                Text(context.getString(R.string.copy_link).replace("link", "URL"))
+                            }
+                            TextButton(
+                                onClick = { detailInstance = null },
+                                shapes = ButtonDefaults.shapes(),
+                            ) {
+                                Text(stringResource(R.string.close_dialog))
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     if (showAddDialog) {
@@ -290,13 +458,8 @@ fun TidalSettings(navController: NavController) {
                                     null,
                                 )
                             },
+                            onClick = { showAccountDetail = true },
                         )
-                    }
-
-                    if (subscription == TidalSubscriptionStatus.FREE) {
-                        item {
-                            InfoLabel(text = stringResource(R.string.tidal_account_free_warning))
-                        }
                     }
 
                     if (needsRelogin) {
@@ -343,96 +506,35 @@ fun TidalSettings(navController: NavController) {
 
             PreferenceGroup(title = stringResource(R.string.tidal_instances)) {
                 item {
-                    InfoLabel(text = stringResource(R.string.tidal_instances_description))
-                }
-
-                effectiveInstances.forEach { instance ->
-                    item {
-                        val status = healthStatus[instance]
-                        val onlineColor = Color(0xFF4FC3F7)
-                        val degradedColor = Color(0xFFB388FF)
-                        val deadColor = Color(0xFF9E9E9E)
-                        val untestedColor = MaterialTheme.colorScheme.onSurfaceVariant
-                        val statusColor =
-                            when (status) {
-                                TidalAudioProvider.InstanceHealth.HEALTHY -> onlineColor
-                                TidalAudioProvider.InstanceHealth.PREVIEW_ONLY -> degradedColor
-                                TidalAudioProvider.InstanceHealth.UNREACHABLE -> deadColor
-                                null -> untestedColor
-                            }
-                        val statusLabel =
-                            if (status != null) {
-                                labelFor(status, healthLatency[instance])
-                            } else {
-                                stringResource(R.string.tidal_instance_unknown)
-                            }
-                        val infoMessage =
-                            when (status) {
-                                TidalAudioProvider.InstanceHealth.HEALTHY ->
-                                    stringResource(R.string.instance_info_online)
-                                TidalAudioProvider.InstanceHealth.PREVIEW_ONLY ->
-                                    stringResource(R.string.instance_info_degraded)
-                                TidalAudioProvider.InstanceHealth.UNREACHABLE ->
-                                    stringResource(R.string.instance_info_dead)
-                                null -> null
-                            }
-                        PreferenceEntry(
-                            title = {
-                                Column {
-                                    Text(instance)
-                                    Text(
-                                        text = statusLabel,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = statusColor,
-                                    )
-                                }
-                            },
-                            icon = { Icon(painterResource(R.drawable.link), null) },
-                            trailingContent = {
-                                androidx.compose.foundation.layout.Row {
-                                    if (infoMessage != null) {
-                                        IconButton(
-                                            onClick = { infoDialogMessage = infoMessage },
-                                            onLongClick = {},
-                                        ) {
-                                            Icon(
-                                                painterResource(R.drawable.info),
-                                                contentDescription = null,
-                                                tint = statusColor,
-                                            )
-                                        }
-                                    }
-                                    IconButton(
-                                        onClick = {
-                                            val remaining = effectiveInstances - instance
-                                            healthStatus.remove(instance)
-                                            healthLatency.remove(instance)
-                                            persistInstances(remaining)
-                                        },
-                                        onLongClick = {},
-                                    ) {
-                                        Icon(painterResource(R.drawable.delete), null)
-                                    }
-                                }
-                            },
-                        )
+                    val onlineCount = effectiveInstances.count {
+                        healthStatus[it] == TidalAudioProvider.InstanceHealth.HEALTHY
                     }
-                }
-
-                item {
+                    val deprecatedCount = effectiveInstances.count {
+                        healthStatus[it] == TidalAudioProvider.InstanceHealth.PREVIEW_ONLY
+                    }
+                    val failedCount = effectiveInstances.count {
+                        healthStatus[it] == TidalAudioProvider.InstanceHealth.UNREACHABLE
+                    }
                     PreferenceEntry(
-                        title = { Text(stringResource(R.string.tidal_add_instance)) },
-                        icon = { Icon(painterResource(R.drawable.add), null) },
-                        onClick = { showAddDialog = true },
-                    )
-                }
-
-                item {
-                    PreferenceEntry(
-                        title = { Text(stringResource(R.string.source_bulk_add)) },
-                        description = stringResource(R.string.source_bulk_hint),
-                        icon = { Icon(painterResource(R.drawable.playlist_add), null) },
-                        onClick = { showBulkDialog = true },
+                        title = { Text(stringResource(R.string.source_manage_instances)) },
+                        description = stringResource(
+                            R.string.source_health_summary,
+                            effectiveInstances.size,
+                            onlineCount,
+                            deprecatedCount,
+                            failedCount,
+                        ),
+                        icon = { Icon(painterResource(R.drawable.tune), null) },
+                        onClick = { showInstanceManagement = !showInstanceManagement },
+                        trailingContent = {
+                            Icon(
+                                painterResource(
+                                    if (showInstanceManagement) R.drawable.expand_less
+                                    else R.drawable.expand_more,
+                                ),
+                                contentDescription = null,
+                            )
+                        },
                     )
                 }
 
@@ -453,7 +555,72 @@ fun TidalSettings(navController: NavController) {
                     )
                 }
 
-                item {
+                effectiveInstances.forEach { instance ->
+                    item(visible = showInstanceManagement) {
+                        val status = healthStatus[instance]
+                        // Status colors: online = light blue, deprecated/preview-only = purple,
+                        // failed = grey. Untested falls back to the muted default.
+                        val statusColor =
+                            when (status) {
+                                TidalAudioProvider.InstanceHealth.HEALTHY -> Color(0xFF4FC3F7)
+                                TidalAudioProvider.InstanceHealth.PREVIEW_ONLY -> Color(0xFFB388FF)
+                                TidalAudioProvider.InstanceHealth.UNREACHABLE -> Color(0xFF9E9E9E)
+                                null -> MaterialTheme.colorScheme.onSurfaceVariant
+                            }
+                        val statusLabel =
+                            if (status != null) {
+                                labelFor(status, healthLatency[instance])
+                            } else {
+                                stringResource(R.string.tidal_instance_unknown)
+                            }
+                        PreferenceEntry(
+                            title = {
+                                Column {
+                                    Text(instance)
+                                    Text(
+                                        text = statusLabel,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = statusColor,
+                                    )
+                                }
+                            },
+                            icon = { Icon(painterResource(R.drawable.link), null) },
+                            onClick = { detailInstance = instance },
+                            trailingContent = {
+                                IconButton(
+                                    onClick = {
+                                        val remaining = effectiveInstances - instance
+                                        healthStatus.remove(instance)
+                                        healthLatency.remove(instance)
+                                        persistInstances(remaining)
+                                    },
+                                    onLongClick = {},
+                                ) {
+                                    Icon(painterResource(R.drawable.delete), null)
+                                }
+                            },
+                        )
+                    }
+                }
+
+                item(visible = showInstanceManagement) {
+                    PreferenceEntry(
+                        title = { Text(stringResource(R.string.tidal_add_instance)) },
+                        icon = { Icon(painterResource(R.drawable.add), null) },
+                        onClick = { showAddDialog = true },
+                    )
+                }
+
+                item(visible = showInstanceManagement) {
+                    PreferenceEntry(
+                        title = { Text(stringResource(R.string.source_bulk_add)) },
+                        description = stringResource(R.string.source_bulk_hint),
+                        icon = { Icon(painterResource(R.drawable.playlist_add), null) },
+                        onClick = { showBulkDialog = true },
+                    )
+                }
+
+                item(visible = showInstanceManagement) {
                     PreferenceEntry(
                         title = { Text(stringResource(R.string.source_copy_online)) },
                         icon = { Icon(painterResource(R.drawable.copy), null) },
@@ -461,7 +628,7 @@ fun TidalSettings(navController: NavController) {
                     )
                 }
 
-                item {
+                item(visible = showInstanceManagement) {
                     PreferenceEntry(
                         title = { Text(stringResource(R.string.source_remove_dead)) },
                         icon = { Icon(painterResource(R.drawable.delete), null) },
@@ -471,7 +638,7 @@ fun TidalSettings(navController: NavController) {
                     )
                 }
 
-                item {
+                item(visible = showInstanceManagement) {
                     PreferenceEntry(
                         title = { Text(stringResource(R.string.source_remove_deprecated)) },
                         icon = { Icon(painterResource(R.drawable.delete), null) },
@@ -481,7 +648,7 @@ fun TidalSettings(navController: NavController) {
                     )
                 }
 
-                item {
+                item(visible = showInstanceManagement) {
                     PreferenceEntry(
                         title = { Text(stringResource(R.string.tidal_reset_instances)) },
                         icon = { Icon(painterResource(R.drawable.close), null) },

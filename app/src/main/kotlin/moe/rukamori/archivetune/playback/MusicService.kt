@@ -200,6 +200,9 @@ import moe.rukamori.archivetune.qobuz.QobuzAudioProvider
 import moe.rukamori.archivetune.qobuz.QobuzToken
 import moe.rukamori.archivetune.audiosource.AudioSourceConfig
 import moe.rukamori.archivetune.audiosource.DirectStream
+import moe.rukamori.archivetune.audiosource.SongSourceOverride
+import moe.rukamori.archivetune.audiosource.TitleMatch
+import moe.rukamori.archivetune.constants.SongSourceOverrideKey
 import moe.rukamori.archivetune.tidal.TidalAccountManager
 import moe.rukamori.archivetune.tidal.TidalAudioProvider
 import moe.rukamori.archivetune.utils.PoolAccountManager
@@ -454,9 +457,11 @@ class MusicService :
     var queueTitle: String? = null
     private var infiniteQueueJob: Job? = null
     private var infiniteQueueGeneration = 0L
-    // Suppress transition-driven radio bootstrapping until playQueue has finished assembling the
-    // initial timeline. Otherwise the preload transition can start a bootstrap that is invalidated
-    // by the rest of the queue load, leaving the toggle on without any related songs queued.
+    private var initialQueueLoadGeneration = 0L
+    // True while playQueue's initial async load is still assembling the queue. While set, the
+    // transition-driven infinite-radio bootstrap is suppressed so it isn't started prematurely and
+    // then invalidated by the settling transitions (which previously left infiniteQueueLoading stuck
+    // "on" with no songs actually queued when playing a single track from search).
     @Volatile
     private var initialQueueLoadInProgress = false
     private val persistentStateLock = Any()
@@ -547,15 +552,7 @@ class MusicService :
     private var crossfadeJob: Job? = null
     private var secondaryCrossfadePlayer: ExoPlayer? = null
     private var secondaryCrossfadeTarget: CrossfadeTarget? = null
-    // Observable crossfade state so the UI (player progress bar) can react while a
-    // track-to-track crossfade is in progress. Backed by a StateFlow; all existing
-    // boolean reads/writes of isCrossfading continue to work through the accessors.
-    val isCrossfadingFlow = MutableStateFlow(false)
-    private var isCrossfading: Boolean
-        get() = isCrossfadingFlow.value
-        set(value) {
-            isCrossfadingFlow.value = value
-        }
+    private var isCrossfading = false
     private var crossfadeHandoffInProgress = false
     private var crossfadeBaseVolume = 1f
     private var crossfadeIncomingBaseVolume = 1f
@@ -2621,11 +2618,30 @@ class MusicService :
                     incomingPlayer.playWhenReady = crossfadePlaybackRequested
                     if (crossfadePlaybackRequested) {
                         incomingPlayer.play()
+                        // MetroList keeps the outgoing player fully audible until the incoming
+                        // player is genuinely rendering. STATE_READY alone can still precede the
+                        // audio sink starting, which otherwise creates a brief dip at fade-in.
+                        if (!awaitPlayerActuallyPlaying(incomingPlayer, CROSSFADE_PLAYING_TIMEOUT_MS)) {
+                            cancelCrossfade(resetVolume = true, resetPauseAtEnd = true)
+                            scheduleCrossfade()
+                            return@launch
+                        }
+                    }
+
+                    // Read the outgoing clock again after the incoming renderer starts. Startup
+                    // can consume seconds; using the pre-wait duration makes the fade overrun the
+                    // outgoing item and causes a stutter/pause immediately before its end.
+                    val actualFadeDurationMs =
+                        (player.duration - player.currentPosition - CROSSFADE_END_GUARD_MS)
+                            .coerceAtMost(durationMs)
+                    if (actualFadeDurationMs < MIN_CROSSFADE_DURATION_MS) {
+                        cancelCrossfade(resetVolume = true, resetPauseAtEnd = true)
+                        return@launch
                     }
 
                     var elapsedMs = 0L
                     var lastTickMs = android.os.SystemClock.elapsedRealtime()
-                    while (isActive && elapsedMs < durationMs) {
+                    while (isActive && elapsedMs < actualFadeDurationMs) {
                         if (player.currentMediaItem?.mediaId != outgoingMediaId) {
                             cancelCrossfade(resetVolume = true, resetPauseAtEnd = true)
                             return@launch
@@ -2634,8 +2650,9 @@ class MusicService :
                         val nowMs = android.os.SystemClock.elapsedRealtime()
                         if (crossfadePlaybackRequested) {
                             incomingPlayer.playWhenReady = true
-                            elapsedMs = (elapsedMs + (nowMs - lastTickMs)).coerceAtMost(durationMs)
-                            crossfadeProgress = (elapsedMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
+                            elapsedMs = (elapsedMs + (nowMs - lastTickMs)).coerceAtMost(actualFadeDurationMs)
+                            crossfadeProgress =
+                                (elapsedMs.toFloat() / actualFadeDurationMs.toFloat()).coerceIn(0f, 1f)
                             applyCrossfadeVolumes(
                                 crossfadeProgress,
                                 crossfadeBaseVolume,
@@ -2709,9 +2726,15 @@ class MusicService :
             player.seekTo(targetIndex, incomingPosition)
             player.playWhenReady = shouldContinuePlayback
             if (shouldContinuePlayback) {
-                if (awaitPrimaryCrossfadeHandoffReady(incomingPlayer)) {
-                    val syncedIncomingPosition = incomingPlayer.currentPosition.coerceAtLeast(0L)
-                    player.seekTo(targetIndex, syncedIncomingPosition)
+                // The secondary keeps advancing while the primary prepares the handoff seek. Keep
+                // it audible until the primary is both rendering and aligned to the live secondary
+                // clock; otherwise the primary resumes seconds behind and repeats part of song two.
+                if (!awaitPrimaryCrossfadeHandoffReady(incomingPlayer)) {
+                    Timber.tag(TAG).w(
+                        "Crossfade handoff alignment timed out: primary=%d secondary=%d",
+                        player.currentPosition,
+                        incomingPlayer.currentPosition,
+                    )
                 }
             }
             currentMediaMetadata.value = player.getMediaItemAt(targetIndex).metadata
@@ -2740,16 +2763,59 @@ class MusicService :
 
     private suspend fun awaitPrimaryCrossfadeHandoffReady(incomingPlayer: ExoPlayer): Boolean {
         val deadlineMs = android.os.SystemClock.elapsedRealtime() + CROSSFADE_HANDOFF_READY_TIMEOUT_MS
+        var alignmentSeeks = 0
         while (kotlinx.coroutines.currentCoroutineContext().isActive && android.os.SystemClock.elapsedRealtime() < deadlineMs) {
-            if (player.playbackState == Player.STATE_READY && canHandoffWithoutRebuffer(incomingPlayer)) {
-                return true
+            if (player.playbackState == Player.STATE_READY && player.isPlaying) {
+                val driftMs = incomingPlayer.currentPosition - player.currentPosition
+                if (abs(driftMs) <= CROSSFADE_HANDOFF_ALIGNMENT_TOLERANCE_MS &&
+                    canHandoffWithoutRebuffer(incomingPlayer)
+                ) {
+                    return true
+                }
+                if (abs(driftMs) > CROSSFADE_HANDOFF_ALIGNMENT_TOLERANCE_MS &&
+                    alignmentSeeks < CROSSFADE_HANDOFF_MAX_ALIGNMENT_SEEKS
+                ) {
+                    // Seek slightly ahead of the secondary to compensate for the small renderer
+                    // restart delay. The secondary remains audible throughout this muted resync.
+                    val targetDuration = player.duration
+                    val maximumTarget =
+                        if (targetDuration != C.TIME_UNSET && targetDuration > CROSSFADE_END_GUARD_MS) {
+                            targetDuration - CROSSFADE_END_GUARD_MS
+                        } else {
+                            Long.MAX_VALUE
+                        }
+                    val alignedPosition =
+                        (incomingPlayer.currentPosition + CROSSFADE_HANDOFF_SEEK_LEAD_MS)
+                            .coerceAtMost(maximumTarget)
+                    player.seekTo(alignedPosition)
+                    alignmentSeeks++
+                }
             }
             if (player.playbackState == Player.STATE_IDLE || player.playbackState == Player.STATE_ENDED) {
                 return false
             }
             delay(25L)
         }
-        return player.playbackState == Player.STATE_READY && canHandoffWithoutRebuffer(incomingPlayer)
+        val driftMs = abs(incomingPlayer.currentPosition - player.currentPosition)
+        return player.playbackState == Player.STATE_READY &&
+            player.isPlaying &&
+            driftMs <= CROSSFADE_HANDOFF_SEEK_GUARD_MS &&
+            canHandoffWithoutRebuffer(incomingPlayer)
+    }
+
+    private suspend fun awaitPlayerActuallyPlaying(
+        targetPlayer: Player,
+        timeoutMs: Long,
+    ): Boolean {
+        val deadlineMs = android.os.SystemClock.elapsedRealtime() + timeoutMs
+        while (kotlinx.coroutines.currentCoroutineContext().isActive && android.os.SystemClock.elapsedRealtime() < deadlineMs) {
+            if (targetPlayer.playbackState == Player.STATE_READY && targetPlayer.isPlaying) return true
+            if (targetPlayer.playbackState == Player.STATE_IDLE || targetPlayer.playbackState == Player.STATE_ENDED) {
+                return false
+            }
+            delay(16L)
+        }
+        return targetPlayer.playbackState == Player.STATE_READY && targetPlayer.isPlaying
     }
 
     private fun canHandoffWithoutRebuffer(incomingPlayer: ExoPlayer): Boolean {
@@ -3602,6 +3668,7 @@ class MusicService :
         cancelCrossfade(resetVolume = true, resetPauseAtEnd = true)
         cancelInfiniteQueueBootstrap()
         suppressAutoPlayback = false
+        val initialLoadGeneration = ++initialQueueLoadGeneration
         initialQueueLoadInProgress = true
         currentQueue = queue
         queueTitle = null
@@ -3617,9 +3684,10 @@ class MusicService :
             player.prepare()
             player.playWhenReady = playWhenReady
         }
-        val autoLoadMoreEnabled = dataStore.get(AutoLoadMoreKey, true)
         scope.launch(SilentHandler) {
+            var autoLoadMoreEnabled = true
             try {
+                autoLoadMoreEnabled = dataStore.getAsync(AutoLoadMoreKey, true)
                 val hideExplicit = dataStore.get(HideExplicitKey, false)
                 val hideVideo = dataStore.get(HideVideoKey, false)
                 var initialStatus =
@@ -3647,6 +3715,7 @@ class MusicService :
                     }
                     initialStatus = initialStatus.copy(items = expandedItems)
                 }
+                if (initialLoadGeneration != initialQueueLoadGeneration) return@launch
                 if (initialStatus.title != null) {
                     queueTitle = initialStatus.title
                 }
@@ -3681,15 +3750,22 @@ class MusicService :
                     }
                 }
             } finally {
-                initialQueueLoadInProgress = false
+                // A superseded load must not clear the guard belonging to the newer queue.
+                if (initialLoadGeneration == initialQueueLoadGeneration) {
+                    initialQueueLoadInProgress = false
+                }
             }
 
-            // A search result can settle as a one-song queue. When infinite queue is already enabled,
-            // seed its radio now instead of waiting for a transition that cannot happen.
+            if (initialLoadGeneration != initialQueueLoadGeneration) return@launch
+
+            // Infinite Queue is a global, persisted choice. Once any online queue has settled and
+            // has no provider pages left, attach its radio regardless of whether it came from
+            // search, the library, a playlist, or another playback entry point. Previously this
+            // only happened for a one-item queue, so library ListQueues could show the switch as on
+            // without actually becoming infinite.
             if (autoLoadMoreEnabled &&
                 player.repeatMode == REPEAT_MODE_OFF &&
-                player.mediaItemCount <= 1 &&
-                !currentQueue.hasNextPage()
+                !queue.hasNextPage()
             ) {
                 onInfiniteQueueEnabled()
             }
@@ -3769,6 +3845,8 @@ class MusicService :
             return
         }
         cancelInfiniteQueueBootstrap()
+        initialQueueLoadGeneration++
+        initialQueueLoadInProgress = false
         suppressAutoPlayback = false
         val currentMediaMetadata = player.currentMetadata ?: return
 
@@ -3915,12 +3993,13 @@ class MusicService :
         infiniteQueueJob?.cancel()
         infiniteQueueJob = null
         infiniteQueueLoading.value = false
-        initialQueueLoadInProgress = false
     }
 
     fun stopAndClearPlayback(clearPersistentState: Boolean = false) {
         cancelRestoredQueueHydration()
         cancelInfiniteQueueBootstrap()
+        initialQueueLoadGeneration++
+        initialQueueLoadInProgress = false
         suppressAutoPlayback = true
         cancelCrossfade(resetVolume = true, resetPauseAtEnd = true)
         clearAutomix()
@@ -6216,11 +6295,9 @@ class MusicService :
 
         beginHistorySession(mediaItem?.mediaId, forceNew = true)
 
-        // Pre-load lyrics for upcoming songs in queue
         val currentIndex = player.currentMediaItemIndex
-        // Convert media items to MediaMetadata for lyrics pre-loading
-        val queue = player.mediaItems.mapNotNull { it.metadata }
-        if (queue.isNotEmpty()) {
+        val queue = player.mediaItems.map { it.metadata }
+        if (queue.any { it != null }) {
             lyricsPreloadManager?.onSongChanged(currentIndex, queue)
         }
 
@@ -7123,6 +7200,57 @@ class MusicService :
         return SourceQuery(mediaId, title, artists, album, durationMs)
     }
 
+    // mediaId -> set of sources known to have this track (passed the metadata match gate during a recent
+    // resolution). Used by the player's Source chooser to only offer sources that actually have the
+    // song. Process-lived only; YouTube is always available as the fallback and is added implicitly.
+    private val resolvedSourcesByMediaId = ConcurrentHashMap<String, MutableSet<AudioSourceType>>()
+
+    private fun recordResolvedSource(
+        mediaId: String,
+        source: AudioSourceType,
+    ) {
+        resolvedSourcesByMediaId.getOrPut(mediaId) { java.util.concurrent.ConcurrentHashMap.newKeySet() }.add(source)
+    }
+
+    /**
+     * Sources the player's "Play from" chooser should offer for [mediaId], based on the last
+     * resolution result: any lossless source that matched the track, plus YouTube (always available
+     * as the fallback). Returned in the canonical Tidal, Qobuz, YouTube order.
+     */
+    fun availableSourcesForSong(mediaId: String): List<AudioSourceType> {
+        val resolved = resolvedSourcesByMediaId[mediaId].orEmpty()
+        return AudioSourceConfig.DEFAULT_ORDER.filter {
+            it == AudioSourceType.YOUTUBE || it in resolved
+        }
+    }
+
+    /**
+     * Applies a per-song "play from" override and, if [mediaId] is the current item, re-resolves it
+     * immediately so the change takes effect without the user having to skip the track. Passing a
+     * null [source] clears the override for that song.
+     */
+    fun setSongSourceOverride(
+        mediaId: String,
+        source: AudioSourceType?,
+    ) {
+        runCatching {
+            runBlocking {
+                dataStore.edit { prefs ->
+                    prefs[SongSourceOverrideKey] =
+                        SongSourceOverride.withOverride(prefs[SongSourceOverrideKey], mediaId, source)
+                }
+            }
+        }
+        if (player.currentMediaItem?.mediaId == mediaId) {
+            // Drop any cached resolved stream for this song and re-prepare so the new source is used.
+            playbackUrlCache.remove(mediaId)
+            extractorPlaybackUrlCache.remove(mediaId)
+            YTPlayerUtils.invalidateCachedStreamUrls(mediaId)
+            tidalActiveMediaIds.remove(mediaId)
+            player.prepare()
+        }
+    }
+
     /**
      * Attempts to resolve the current media item through the configured audio sources, in the
      * user's chosen priority order. Returns a [DataSpec] pointing at the first source that
@@ -7134,23 +7262,41 @@ class MusicService :
     private fun resolveMultiSourceDataSpec(
         dataSpec: DataSpec,
         mediaId: String,
+        lowDataModeActive: Boolean,
     ): DataSpec? {
         if (mediaId.isLocalMediaId()) {
             Timber.tag("MusicService").d("Multi-source skip: %s is a local media id", mediaId)
             return null
         }
-        val chain = sourceResolutionChain()
+        // A per-song "play from" override (set via the player's Source chooser) takes precedence over
+        // the global order. YOUTUBE means "always use YouTube for this song" (skip lossless entirely);
+        // a lossless override forces just that source (still subject to the metadata match gate).
+        val override = SongSourceOverride.get(dataStore.get(SongSourceOverrideKey, ""), mediaId)
+        val chain =
+            when (override) {
+                null -> sourceResolutionChain()
+                AudioSourceType.YOUTUBE -> {
+                    Timber.tag("MusicService").d("Per-song override: %s pinned to YouTube; skipping lossless", mediaId)
+                    emptyList()
+                }
+                else -> {
+                    Timber.tag("MusicService").d("Per-song override: %s pinned to %s", mediaId, override.name)
+                    listOf(override)
+                }
+            }
         Timber.tag("MusicService").d("Multi-source resolve for %s | chain=%s", mediaId, chain.joinToString(",") { it.name })
         if (chain.isEmpty()) {
-            Timber.tag("MusicService").d("Multi-source skip: no sources enabled (chain empty)")
+            Timber.tag("MusicService").d("Multi-source skip: no sources to try (chain empty)")
             return null
         }
 
-        // Low-data mode used to hard-disable lossless sources. Since Tidal is now
-        // explicitly opt-in per the source chain, we honor the user's choice and only log when a
-        // metered/low-data connection is detected instead of silently falling back to YouTube.
-        if (isLowDataModeActive()) {
-            Timber.tag("MusicService").d("Low-data mode active (metered network) but attempting lossless sources anyway")
+        // Low Data Mode is an effective network policy, not a rewrite of the user's saved source
+        // order. On cellular/metered connections, bypass Tidal and Qobuz (including a per-song
+        // override) and let the normal YouTube resolver select its low-data stream.
+        if (lowDataModeActive) {
+            tidalActiveMediaIds.remove(mediaId)
+            Timber.tag("MusicService").i("Low-data mode active; skipping Tidal/Qobuz for %s", mediaId)
+            return null
         }
 
         val query = buildSourceQuery(mediaId)
@@ -7160,6 +7306,12 @@ class MusicService :
         }
         Timber.tag("MusicService").d("Source query built: title=\"%s\" artists=%s durationMs=%s", query.title, query.artists.joinToString("/"), query.durationMs?.toString() ?: "?")
 
+        // Resolve each enabled lossless source and apply the shared metadata-aware safety gate.
+        // Title, artist, duration, album and version markers are evaluated together; title-only
+        // results must clear a stricter fallback threshold. The strongest accepted candidate wins.
+        var best: DirectStream? = null
+        var bestSource: AudioSourceType? = null
+        var bestScore = 0.0
         for (source in chain) {
             Timber.tag("MusicService").d("Trying source: %s for \"%s\"", source.name, query.title)
             val stream: DirectStream? =
@@ -7168,31 +7320,75 @@ class MusicService :
                     AudioSourceType.QOBUZ -> resolveQobuzStream(query)
                     AudioSourceType.YOUTUBE -> null
                 }
-            if (stream != null) {
-                Timber.tag("MusicService").i("Source WIN: %s resolved \"%s\" [%s] (%s)", source.name, query.title, stream.label, stream.uri.take(80))
-                // Persist the winning source's track id as a future health-probe track.
-                if (source == AudioSourceType.TIDAL) {
-                    TidalAudioProvider.lastResolvedTrackId?.takeIf { it.isNotBlank() }?.let { probe ->
-                        runCatching {
-                            runBlocking { dataStore.edit { prefs -> prefs[TidalLastProbeTrackKey] = probe } }
-                        }
-                    }
-                } else if (source == AudioSourceType.QOBUZ) {
-                    QobuzAudioProvider.lastResolvedTrackId?.takeIf { it.isNotBlank() }?.let { probe ->
-                        runCatching {
-                            runBlocking { dataStore.edit { prefs -> prefs[QobuzLastProbeTrackKey] = probe } }
-                        }
-                    }
-                }
-                return applyDirectStream(dataSpec, mediaId, stream)
+            if (stream == null) {
+                Timber.tag("MusicService").d("Source %s did not resolve \"%s\"", source.name, query.title)
+                continue
             }
-            Timber.tag("MusicService").d("Source %s did not resolve \"%s\"", source.name, query.title)
+            val match =
+                TitleMatch.evaluate(
+                    wantedTitle = query.title,
+                    wantedArtists = query.artists,
+                    wantedAlbum = query.album,
+                    wantedDurationMs = query.durationMs,
+                    stream = stream,
+                )
+            if (!match.accepted) {
+                Timber.tag("MusicService").i(
+                    "Source %s rejected for \"%s\": %s score=%.1f%% title=%.1f%% artist=%s duration=%s matched=\"%s\"",
+                    source.name,
+                    query.title,
+                    match.reason,
+                    match.score * 100,
+                    match.title * 100,
+                    match.artist?.let { "%.1f%%".format(it * 100) } ?: "?",
+                    match.duration?.let { "%.1f%%".format(it * 100) } ?: "?",
+                    stream.matchedTitle ?: "?",
+                )
+                continue
+            }
+            Timber.tag("MusicService").d(
+                "Source %s candidate for \"%s\": match %.1f%% (%s) [%s]",
+                source.name, query.title, match.score * 100, match.reason, stream.label,
+            )
+            // Remember that this source has this song (title-gate passed) so the player's Source
+            // chooser can list only the sources that actually have the track.
+            recordResolvedSource(mediaId, source)
+            if (match.score > bestScore) {
+                best = stream
+                bestSource = source
+                bestScore = match.score
+            }
+            if (bestScore >= 0.999) break
         }
 
-        // A non-YouTube source was requested but none could resolve this track; silently fall back
-        // to YouTube (no user-facing notice — the track just plays from YouTube). Kept as a debug
-        // log only.
-        Timber.tag("MusicService").w("All lossless sources failed for \"%s\"; falling back to YouTube", query.title)
+        val winningStream = best
+        val winningSource = bestSource
+        if (winningStream != null && winningSource != null) {
+            Timber.tag("MusicService").i(
+                "Source WIN: %s resolved \"%s\" [%s] metadata match %.1f%% (%s)",
+                winningSource.name, query.title, winningStream.label, bestScore * 100, winningStream.uri.take(80),
+            )
+            // Persist the winning source's track id as a future health-probe track.
+            if (winningSource == AudioSourceType.TIDAL) {
+                TidalAudioProvider.lastResolvedTrackId?.takeIf { it.isNotBlank() }?.let { probe ->
+                    runCatching {
+                        runBlocking { dataStore.edit { prefs -> prefs[TidalLastProbeTrackKey] = probe } }
+                    }
+                }
+            } else if (winningSource == AudioSourceType.QOBUZ) {
+                QobuzAudioProvider.lastResolvedTrackId?.takeIf { it.isNotBlank() }?.let { probe ->
+                    runCatching {
+                        runBlocking { dataStore.edit { prefs -> prefs[QobuzLastProbeTrackKey] = probe } }
+                    }
+                }
+            }
+            return applyDirectStream(dataSpec, mediaId, winningStream)
+        }
+
+        // A non-YouTube source was requested but none matched the title accurately enough; silently
+        // fall back to YouTube (no user-facing notice — the track just plays from YouTube). Kept as a
+        // debug log only.
+        Timber.tag("MusicService").w("No lossless source cleared the metadata match gate for \"%s\"; falling back to YouTube", query.title)
         tidalActiveMediaIds.remove(mediaId)
         return null
     }
@@ -7463,6 +7659,10 @@ class MusicService :
             contentLength = resolved.contentLength,
             label = "Tidal ${resolved.label}",
             source = AudioSourceType.TIDAL,
+            matchedTitle = resolved.matchedTitle,
+            matchedArtist = resolved.matchedArtist,
+            matchedAlbum = resolved.matchedAlbum,
+            matchedDurationMs = resolved.matchedDurationMs,
         )
     }
 
@@ -7643,6 +7843,7 @@ class MusicService :
             return dataSpec
         }
         val mediaId = dataSpec.key ?: return dataSpec
+        val lowDataModeActive = isLowDataModeActive()
         val storedFormat =
             runBlocking(Dispatchers.IO) {
                 database.format(mediaId).first()
@@ -7667,7 +7868,7 @@ class MusicService :
         // must not short-circuit playback (otherwise toggling Tidal on would keep replaying the
         // previously cached YouTube bytes). Persistent downloads still win so offline playback
         // and explicit downloads are unaffected.
-        val tidalApplies = tidalSourceApplies(mediaId)
+        val tidalApplies = !lowDataModeActive && tidalSourceApplies(mediaId)
         val allowPlayerCacheShortCircuit = !tidalApplies
 
         if (allowCacheShortCircuit) {
@@ -7705,12 +7906,11 @@ class MusicService :
         }
 
         // Multi-source: attempt to resolve a lossless stream (Tidal) before YouTube.
-        resolveMultiSourceDataSpec(dataSpec, mediaId)?.let { sourceDataSpec ->
+        resolveMultiSourceDataSpec(dataSpec, mediaId, lowDataModeActive)?.let { sourceDataSpec ->
             scope.launch(Dispatchers.IO) { recoverSong(mediaId) }
             return sourceDataSpec
         }
 
-        val lowDataModeActive = isLowDataModeActive()
         if (preferredStreamClient == PlayerStreamClient.ARCHIVETUNE_EXTRACTOR) {
             return resolveArchiveTuneExtractorDataSpec(
                 dataSpec = dataSpec,
@@ -8692,6 +8892,8 @@ class MusicService :
             connectivityObserver.unregister()
         } catch (_: Exception) {
         }
+        lyricsPreloadManager?.destroy()
+        lyricsPreloadManager = null
         abandonAudioFocus()
         try {
             releaseAudioEffects()
@@ -8928,6 +9130,7 @@ class MusicService :
         const val ARTIST = "artist"
         const val ALBUM = "album"
         const val PLAYLIST = "playlist"
+        const val SPOTIFY_PLAYLIST = "spotify_playlist"
         const val ONLINE_PLAYLIST = "online_playlist"
 
         private const val TAG = "MusicService"
@@ -8969,9 +9172,13 @@ class MusicService :
         const val CROSSFADE_END_GUARD_MS = 150L
         const val CROSSFADE_PREPARE_AHEAD_MS = 30_000L
         const val CROSSFADE_READY_TIMEOUT_MS = 5_000L
+        const val CROSSFADE_PLAYING_TIMEOUT_MS = 2_000L
         const val CROSSFADE_HANDOFF_READY_TIMEOUT_MS = 5_000L
         const val CROSSFADE_HANDOFF_BUFFER_MS = 5_000L
         const val CROSSFADE_HANDOFF_SEEK_GUARD_MS = 750L
+        const val CROSSFADE_HANDOFF_ALIGNMENT_TOLERANCE_MS = 180L
+        const val CROSSFADE_HANDOFF_SEEK_LEAD_MS = 90L
+        const val CROSSFADE_HANDOFF_MAX_ALIGNMENT_SEEKS = 3
         const val CROSSFADE_MIN_BUFFER_BEFORE_START_MS = 5_000L
         const val CROSSFADE_MAX_BUFFER_BEFORE_START_MS = 12_500L
         const val PRIMARY_MIN_BUFFER_MS = 20_000

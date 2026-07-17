@@ -161,6 +161,9 @@ val EnablePaxsenixYouTubeLyricsKey = booleanPreferencesKey("enablePaxsenixYouTub
 val EnableUnisonLyricsKey = booleanPreferencesKey("enableUnisonLyrics")
 val HideExplicitKey = booleanPreferencesKey("hideExplicit")
 val HideVideoKey = booleanPreferencesKey("hideVideo")
+val AiContentFilterEnabledKey = booleanPreferencesKey("aiContentFilterEnabled")
+val AiContentFilterIncludeModerateKey = booleanPreferencesKey("aiContentFilterIncludeModerate")
+val AiContentFilterLastUpdatedKey = longPreferencesKey("aiContentFilterLastUpdated")
 val ProxyEnabledKey = booleanPreferencesKey("proxyEnabled")
 val ProxyHostKey = stringPreferencesKey("proxyHost")
 val ProxyPortKey = intPreferencesKey("proxyPort")
@@ -882,6 +885,11 @@ enum class AudioSourceType {
 
 // CSV of AudioSourceType names, highest priority first. Empty = built-in default order.
 val AudioSourceOrderKey = stringPreferencesKey("audioSourceOrder")
+
+// Per-song "play from" overrides, encoded as "songId=SOURCE" entries joined by ';'. The chosen
+// source is forced for that specific song (subject to the metadata match gate), overriding the
+// global source order. Persisted here so it is included in Settings backups.
+val SongSourceOverrideKey = stringPreferencesKey("songSourceOverride")
 
 // The primary audio source the user prefers to search/resolve first (AudioSourceType name).
 // Named distinctly from the unrelated SearchSourceKey (LOCAL/ONLINE search scope) above.

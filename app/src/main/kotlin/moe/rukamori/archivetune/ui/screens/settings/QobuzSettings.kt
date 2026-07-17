@@ -23,9 +23,29 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialogDefaults
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Surface
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -38,6 +58,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -55,9 +76,9 @@ import moe.rukamori.archivetune.qobuz.QobuzAudioProvider
 import moe.rukamori.archivetune.qobuz.QobuzToken
 import moe.rukamori.archivetune.qobuz.SourceInputParsing
 import moe.rukamori.archivetune.tidal.TidalAudioProvider
+import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.EnumListPreference
 import moe.rukamori.archivetune.ui.component.IconButton
-import moe.rukamori.archivetune.ui.component.InfoLabel
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.SwitchPreference
@@ -65,6 +86,20 @@ import moe.rukamori.archivetune.ui.component.TextFieldDialog
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
+
+/**
+ * Process-lived cache of the last on-demand health-check results so that the checked status (and
+ * measured ping) survives leaving and returning to the screen. It is intentionally NOT persisted to
+ * disk — it is cleared only when the process dies or the user runs another check (which overwrites
+ * the entries) or removes/reset the instance/token. Snapshot state maps so Compose recomposes when
+ * a check updates them.
+ */
+private object QobuzHealthUiCache {
+    val instanceHealth = mutableStateMapOf<String, TidalAudioProvider.InstanceHealth>()
+    val instanceLatency = mutableStateMapOf<String, Long>()
+    val tokenHealth = mutableStateMapOf<String, TidalAudioProvider.InstanceHealth>()
+    val tokenLatency = mutableStateMapOf<String, Long>()
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -91,13 +126,14 @@ fun QobuzSettings(navController: NavController) {
         onStoredInstancesChange(list.distinct().joinToString("\n"))
     }
 
-    // baseUrl -> scan status (null while untested) and last measured latency (ms).
-    val healthStatus = remember { mutableStateMapOf<String, TidalAudioProvider.InstanceHealth>() }
-    val healthLatency = remember { mutableStateMapOf<String, Long>() }
+    // baseUrl -> scan status (null while untested) and last measured latency (ms). Backed by a
+    // process-lived cache so a completed check persists when navigating away and back.
+    val healthStatus = QobuzHealthUiCache.instanceHealth
+    val healthLatency = QobuzHealthUiCache.instanceLatency
     var testingInstances by remember { mutableStateOf(false) }
     var showAddDialog by remember { mutableStateOf(false) }
     var showBulkDialog by remember { mutableStateOf(false) }
-    var infoDialogMessage by remember { mutableStateOf<String?>(null) }
+    var detailInstance by remember { mutableStateOf<String?>(null) }
 
     // Direct-API tokens, stored as a JSON list. Tried before proxy instances during resolution.
     val (storedTokens, onStoredTokensChange) = rememberPreference(QobuzTokensKey, "")
@@ -106,11 +142,16 @@ fun QobuzSettings(navController: NavController) {
         val deduped = list.distinctBy { it.token }
         onStoredTokensChange(QobuzToken.listToJson(deduped))
     }
-    // token id -> health status.
-    val tokenHealth = remember { mutableStateMapOf<String, TidalAudioProvider.InstanceHealth>() }
-    val tokenLatency = remember { mutableStateMapOf<String, Long>() }
+    // token id -> health status + last measured ping (ms), process-lived so it survives navigation.
+    val tokenHealth = QobuzHealthUiCache.tokenHealth
+    val tokenLatency = QobuzHealthUiCache.tokenLatency
     var testingTokens by remember { mutableStateOf(false) }
     var showAddTokensDialog by remember { mutableStateOf(false) }
+    var detailToken by remember { mutableStateOf<QobuzToken?>(null) }
+    var showTokenManagement by remember { mutableStateOf(false) }
+    var showInstanceManagement by remember { mutableStateOf(false) }
+    // Token id whose "deprecated" info popup is open (preview-only / no premium explanation).
+    var previewInfoTokenId by remember { mutableStateOf<String?>(null) }
 
     fun toast(message: String) {
         Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
@@ -171,10 +212,10 @@ fun QobuzSettings(navController: NavController) {
                     val latency = System.currentTimeMillis() - start
                     withContext(Dispatchers.Main) {
                         tokenHealth[token.id] = status
-                        if (status == TidalAudioProvider.InstanceHealth.UNREACHABLE) {
-                            tokenLatency.remove(token.id)
-                        } else {
+                        if (status != TidalAudioProvider.InstanceHealth.UNREACHABLE) {
                             tokenLatency[token.id] = latency
+                        } else {
+                            tokenLatency.remove(token.id)
                         }
                     }
                 }
@@ -208,16 +249,228 @@ fun QobuzSettings(navController: NavController) {
         copyToClipboard(context, "Qobuz instances", online)
     }
 
-    infoDialogMessage?.let { message ->
-        androidx.compose.material3.AlertDialog(
-            onDismissRequest = { infoDialogMessage = null },
-            confirmButton = {
-                androidx.compose.material3.TextButton(onClick = { infoDialogMessage = null }) {
-                    Text(stringResource(android.R.string.ok))
+    // "Deprecated" explanation popup: why a reachable token is limited (preview-only / no premium).
+    previewInfoTokenId?.let {
+        DefaultDialog(
+            onDismiss = { previewInfoTokenId = null },
+            icon = { Icon(painterResource(R.drawable.info), null) },
+            title = { Text(stringResource(R.string.qobuz_status_deprecated_info_title)) },
+            buttons = {
+                TextButton(
+                    onClick = { previewInfoTokenId = null },
+                    shapes = ButtonDefaults.shapes(),
+                ) {
+                    Text(stringResource(R.string.close_dialog))
                 }
             },
-            text = { Text(message) },
-        )
+        ) {
+            Text(
+                text = stringResource(R.string.qobuz_status_deprecated_info),
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+    }
+
+    // Token detail dialog — manually entered credentials are shown in full and editable.
+    detailToken?.let { token ->
+        var editLabel by remember(token) { mutableStateOf(token.label) }
+        var editUserId by remember(token) { mutableStateOf(token.userId) }
+        var editToken by remember(token) { mutableStateOf(token.token) }
+        var editAppId by remember(token) { mutableStateOf(token.appId) }
+        var editAppSecret by remember(token) { mutableStateOf(token.appSecret) }
+
+        val status = tokenHealth[token.id]
+        val statusColor =
+            when (status) {
+                TidalAudioProvider.InstanceHealth.HEALTHY -> Color(0xFF4FC3F7)
+                TidalAudioProvider.InstanceHealth.PREVIEW_ONLY -> Color(0xFFB388FF)
+                TidalAudioProvider.InstanceHealth.UNREACHABLE -> MaterialTheme.colorScheme.error
+                null -> MaterialTheme.colorScheme.onSurfaceVariant
+            }
+        val statusLabel =
+            if (status != null) {
+                labelFor(status, tokenLatency[token.id])
+            } else {
+                stringResource(R.string.qobuz_token_status_unknown)
+            }
+
+        DefaultDialog(
+            onDismiss = { detailToken = null },
+            icon = { Icon(painterResource(R.drawable.token), null) },
+            title = { Text(stringResource(R.string.details)) },
+            contentScrollable = true,
+            buttons = {
+                TextButton(
+                    onClick = {
+                        val updated =
+                            token.copy(
+                                label = editLabel.trim(),
+                                userId = editUserId.trim(),
+                                token = editToken.trim(),
+                                appId = editAppId.trim(),
+                                appSecret = editAppSecret.trim(),
+                            )
+                        if (updated.token.isBlank() || updated.appId.isBlank() || updated.appSecret.isBlank()) {
+                            toast(context.getString(R.string.qobuz_tokens_none_parsed))
+                        } else {
+                            persistTokens(tokens.map { if (it == token) updated else it })
+                            if (updated.id != token.id) {
+                                tokenHealth.remove(token.id)
+                            }
+                            detailToken = null
+                        }
+                    },
+                    shapes = ButtonDefaults.shapes(),
+                ) {
+                    Text(stringResource(android.R.string.ok))
+                }
+                TextButton(
+                    onClick = {
+                        copyToClipboard(context, "Qobuz token", listOf(token.token))
+                        detailToken = null
+                    },
+                    shapes = ButtonDefaults.shapes(),
+                ) {
+                    Text(context.getString(R.string.copy_link).replace("link", "token"))
+                }
+                TextButton(
+                    onClick = { detailToken = null },
+                    shapes = ButtonDefaults.shapes(),
+                ) {
+                    Text(stringResource(R.string.close_dialog))
+                }
+            },
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                OutlinedTextField(
+                    value = editLabel,
+                    onValueChange = { editLabel = it },
+                    label = { Text("Account") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = editUserId,
+                    onValueChange = { editUserId = it },
+                    label = { Text("User ID") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = editToken,
+                    onValueChange = { editToken = it },
+                    label = { Text("Token (auth)") },
+                    textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = editAppId,
+                    onValueChange = { editAppId = it },
+                    label = { Text("App ID") },
+                    singleLine = true,
+                    textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = editAppSecret,
+                    onValueChange = { editAppSecret = it },
+                    label = { Text("App Secret") },
+                    textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(12.dp))
+                Text("Status", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(2.dp))
+                Text(statusLabel, style = MaterialTheme.typography.bodyMedium, color = statusColor)
+                Spacer(Modifier.height(10.dp))
+                Text("Subscription", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = token.subscription.ifBlank { stringResource(R.string.qobuz_token_status_unknown) },
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+        }
+    }
+
+    // Instance detail popup — same style as the lyrics search result dialog.
+    detailInstance?.let { instance ->
+        Dialog(
+            onDismissRequest = { detailInstance = null },
+            properties = DialogProperties(usePlatformDefaultWidth = false),
+        ) {
+            BoxWithConstraints(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(24.dp)
+                    .navigationBarsPadding(),
+                contentAlignment = Alignment.Center,
+            ) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .widthIn(max = 560.dp),
+                    shape = MaterialTheme.shapes.extraLarge,
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    tonalElevation = AlertDialogDefaults.TonalElevation,
+                ) {
+                    Column(modifier = Modifier
+                        .padding(24.dp)
+                        .verticalScroll(rememberScrollState())) {
+                        Icon(
+                            painter = painterResource(R.drawable.link),
+                            contentDescription = null,
+                            tint = AlertDialogDefaults.iconContentColor,
+                            modifier = Modifier.align(Alignment.CenterHorizontally),
+                        )
+                        Spacer(Modifier.height(16.dp))
+                        Text(
+                            text = stringResource(R.string.details),
+                            style = MaterialTheme.typography.headlineSmall,
+                            color = AlertDialogDefaults.titleContentColor,
+                            modifier = Modifier.align(Alignment.CenterHorizontally),
+                        )
+                        Spacer(Modifier.height(16.dp))
+                        Text("Instance URL", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(Modifier.height(4.dp))
+                        Text(instance, style = MaterialTheme.typography.bodyMedium)
+                        val status = healthStatus[instance]
+                        if (status != null) {
+                            Spacer(Modifier.height(12.dp))
+                            Text("Status", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Spacer(Modifier.height(2.dp))
+                            Text(labelFor(status, healthLatency[instance]), style = MaterialTheme.typography.bodyMedium)
+                        }
+                        Spacer(Modifier.height(24.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End,
+                        ) {
+                            TextButton(
+                                onClick = {
+                                    copyToClipboard(context, "Qobuz instance", listOf(instance))
+                                    detailInstance = null
+                                },
+                                shapes = ButtonDefaults.shapes(),
+                            ) {
+                                Text(context.getString(R.string.copy_link).replace("link", "URL"))
+                            }
+                            TextButton(
+                                onClick = { detailInstance = null },
+                                shapes = ButtonDefaults.shapes(),
+                            ) {
+                                Text(stringResource(R.string.close_dialog))
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     if (showBulkDialog) {
@@ -342,10 +595,6 @@ fun QobuzSettings(navController: NavController) {
 
             PreferenceGroup(title = stringResource(R.string.qobuz_tokens)) {
                 item {
-                    InfoLabel(text = stringResource(R.string.qobuz_tokens_description))
-                }
-
-                item {
                     PreferenceEntry(
                         title = { Text(stringResource(R.string.qobuz_login_web)) },
                         icon = { Icon(painterResource(R.drawable.provider_qobuz), null) },
@@ -353,7 +602,7 @@ fun QobuzSettings(navController: NavController) {
                     )
                 }
 
-                item {
+                item(visible = showTokenManagement) {
                     PreferenceEntry(
                         title = { Text(stringResource(R.string.qobuz_add_tokens)) },
                         icon = { Icon(painterResource(R.drawable.token), null) },
@@ -361,44 +610,75 @@ fun QobuzSettings(navController: NavController) {
                     )
                 }
 
-                tokens.forEach { token ->
+                if (tokens.isNotEmpty()) {
                     item {
+                        PreferenceEntry(
+                            title = {
+                                Text(
+                                    if (testingTokens) {
+                                        stringResource(R.string.qobuz_checking_tokens)
+                                    } else {
+                                        stringResource(R.string.qobuz_check_tokens)
+                                    },
+                                )
+                            },
+                            icon = { Icon(painterResource(R.drawable.sync), null) },
+                            isEnabled = !testingTokens,
+                            onClick = { runTokenTest() },
+                        )
+                    }
+                }
+
+                item {
+                    val onlineCount = tokens.count {
+                        tokenHealth[it.id] == TidalAudioProvider.InstanceHealth.HEALTHY
+                    }
+                    val deprecatedCount = tokens.count {
+                        tokenHealth[it.id] == TidalAudioProvider.InstanceHealth.PREVIEW_ONLY
+                    }
+                    val failedCount = tokens.count {
+                        tokenHealth[it.id] == TidalAudioProvider.InstanceHealth.UNREACHABLE
+                    }
+                    PreferenceEntry(
+                        title = { Text(stringResource(R.string.qobuz_manage_accounts)) },
+                        description = stringResource(
+                            R.string.source_health_summary,
+                            tokens.size,
+                            onlineCount,
+                            deprecatedCount,
+                            failedCount,
+                        ),
+                        icon = { Icon(painterResource(R.drawable.tune), null) },
+                        onClick = { showTokenManagement = !showTokenManagement },
+                        trailingContent = {
+                            Icon(
+                                painterResource(
+                                    if (showTokenManagement) R.drawable.expand_less
+                                    else R.drawable.expand_more,
+                                ),
+                                contentDescription = null,
+                            )
+                        },
+                    )
+                }
+
+                tokens.forEach { token ->
+                    item(visible = showTokenManagement) {
                         val status = tokenHealth[token.id]
-                        val onlineColor = Color(0xFF4FC3F7)
-                        val degradedColor = Color(0xFFB388FF)
-                        val deadColor = Color(0xFF9E9E9E)
                         val statusColor =
                             when (status) {
-                                TidalAudioProvider.InstanceHealth.HEALTHY -> onlineColor
-                                TidalAudioProvider.InstanceHealth.PREVIEW_ONLY -> degradedColor
-                                TidalAudioProvider.InstanceHealth.UNREACHABLE -> deadColor
+                                TidalAudioProvider.InstanceHealth.HEALTHY -> Color(0xFF4FC3F7)
+                                TidalAudioProvider.InstanceHealth.PREVIEW_ONLY -> Color(0xFFB388FF)
+                                TidalAudioProvider.InstanceHealth.UNREACHABLE -> Color(0xFF9E9E9E)
                                 null -> MaterialTheme.colorScheme.onSurfaceVariant
                             }
+                        // Same "online — Xms / deprecated — Xms / not reachable" wording as the
+                        // instance rows; "deprecated" gets an info icon explaining preview-only.
                         val statusLabel =
-                            when (status) {
-                                TidalAudioProvider.InstanceHealth.HEALTHY ->
-                                    stringResource(
-                                        R.string.tidal_instance_healthy,
-                                        (tokenLatency[token.id] ?: 0L).toInt(),
-                                    )
-                                TidalAudioProvider.InstanceHealth.PREVIEW_ONLY ->
-                                    stringResource(
-                                        R.string.tidal_instance_preview_only,
-                                        (tokenLatency[token.id] ?: 0L).toInt(),
-                                    )
-                                TidalAudioProvider.InstanceHealth.UNREACHABLE ->
-                                    stringResource(R.string.qobuz_token_status_invalid)
-                                null -> stringResource(R.string.qobuz_token_status_unknown)
-                            }
-                        val tokenInfoMessage =
-                            when (status) {
-                                TidalAudioProvider.InstanceHealth.HEALTHY ->
-                                    stringResource(R.string.token_info_online)
-                                TidalAudioProvider.InstanceHealth.PREVIEW_ONLY ->
-                                    stringResource(R.string.token_info_degraded)
-                                TidalAudioProvider.InstanceHealth.UNREACHABLE ->
-                                    stringResource(R.string.token_info_dead)
-                                null -> null
+                            if (status != null) {
+                                labelFor(status, tokenLatency[token.id])
+                            } else {
+                                stringResource(R.string.qobuz_token_status_unknown)
                             }
                         val displayName = token.label.ifBlank { token.userId.ifBlank { "Qobuz account" } }
                         PreferenceEntry(
@@ -413,17 +693,18 @@ fun QobuzSettings(navController: NavController) {
                                 }
                             },
                             icon = { Icon(painterResource(R.drawable.token), null) },
+                            onClick = { detailToken = token },
                             trailingContent = {
-                                androidx.compose.foundation.layout.Row {
-                                    if (tokenInfoMessage != null) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    if (status == TidalAudioProvider.InstanceHealth.PREVIEW_ONLY) {
                                         IconButton(
-                                            onClick = { infoDialogMessage = tokenInfoMessage },
+                                            onClick = { previewInfoTokenId = token.id },
                                             onLongClick = {},
                                         ) {
                                             Icon(
                                                 painterResource(R.drawable.info),
-                                                contentDescription = null,
-                                                tint = statusColor,
+                                                contentDescription = stringResource(R.string.qobuz_status_deprecated_info_title),
+                                                tint = Color(0xFFB388FF),
                                             )
                                         }
                                     }
@@ -444,24 +725,7 @@ fun QobuzSettings(navController: NavController) {
                 }
 
                 if (tokens.isNotEmpty()) {
-                    item {
-                        PreferenceEntry(
-                            title = {
-                                Text(
-                                    if (testingTokens) {
-                                        stringResource(R.string.qobuz_checking_tokens)
-                                    } else {
-                                        stringResource(R.string.qobuz_check_tokens)
-                                    },
-                                )
-                            },
-                            icon = { Icon(painterResource(R.drawable.sync), null) },
-                            isEnabled = !testingTokens,
-                            onClick = { runTokenTest() },
-                        )
-                    }
-
-                    item {
+                    item(visible = showTokenManagement) {
                         PreferenceEntry(
                             title = { Text(stringResource(R.string.qobuz_reset_tokens)) },
                             icon = { Icon(painterResource(R.drawable.close), null) },
@@ -476,133 +740,6 @@ fun QobuzSettings(navController: NavController) {
             }
 
             PreferenceGroup(title = stringResource(R.string.qobuz_instances)) {
-                item {
-                    InfoLabel(text = stringResource(R.string.qobuz_instances_description))
-                }
-
-                effectiveInstances.forEach { instance ->
-                    item {
-                        val status = healthStatus[instance]
-                        val onlineColor = Color(0xFF4FC3F7)
-                        val degradedColor = Color(0xFFB388FF)
-                        val deadColor = Color(0xFF9E9E9E)
-                        val statusColor =
-                            when (status) {
-                                TidalAudioProvider.InstanceHealth.HEALTHY -> onlineColor
-                                TidalAudioProvider.InstanceHealth.PREVIEW_ONLY -> degradedColor
-                                TidalAudioProvider.InstanceHealth.UNREACHABLE -> deadColor
-                                null -> MaterialTheme.colorScheme.onSurfaceVariant
-                            }
-                        val statusLabel =
-                            if (status != null) {
-                                labelFor(status, healthLatency[instance])
-                            } else {
-                                stringResource(R.string.tidal_instance_unknown)
-                            }
-                        val instanceInfoMessage =
-                            when (status) {
-                                TidalAudioProvider.InstanceHealth.HEALTHY ->
-                                    stringResource(R.string.instance_info_online)
-                                TidalAudioProvider.InstanceHealth.PREVIEW_ONLY ->
-                                    stringResource(R.string.instance_info_degraded)
-                                TidalAudioProvider.InstanceHealth.UNREACHABLE ->
-                                    stringResource(R.string.instance_info_dead)
-                                null -> null
-                            }
-                        PreferenceEntry(
-                            title = {
-                                Column {
-                                    Text(instance)
-                                    Text(
-                                        text = statusLabel,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = statusColor,
-                                    )
-                                }
-                            },
-                            icon = { Icon(painterResource(R.drawable.link), null) },
-                            trailingContent = {
-                                androidx.compose.foundation.layout.Row {
-                                    if (instanceInfoMessage != null) {
-                                        IconButton(
-                                            onClick = { infoDialogMessage = instanceInfoMessage },
-                                            onLongClick = {},
-                                        ) {
-                                            Icon(
-                                                painterResource(R.drawable.info),
-                                                contentDescription = null,
-                                                tint = statusColor,
-                                            )
-                                        }
-                                    }
-                                    IconButton(
-                                        onClick = {
-                                            val remaining = effectiveInstances - instance
-                                            healthStatus.remove(instance)
-                                            healthLatency.remove(instance)
-                                            persistInstances(remaining)
-                                        },
-                                        onLongClick = {},
-                                    ) {
-                                        Icon(painterResource(R.drawable.delete), null)
-                                    }
-                                }
-                            },
-                        )
-                    }
-                }
-                        val statusLabel =
-                            if (status != null) {
-                                labelFor(status, healthLatency[instance])
-                            } else {
-                                stringResource(R.string.tidal_instance_unknown)
-                            }
-                        PreferenceEntry(
-                            title = {
-                                Column {
-                                    Text(instance)
-                                    Text(
-                                        text = statusLabel,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = statusColor,
-                                    )
-                                }
-                            },
-                            icon = { Icon(painterResource(R.drawable.link), null) },
-                            trailingContent = {
-                                IconButton(
-                                    onClick = {
-                                        val remaining = effectiveInstances - instance
-                                        healthStatus.remove(instance)
-                                        healthLatency.remove(instance)
-                                        persistInstances(remaining)
-                                    },
-                                    onLongClick = {},
-                                ) {
-                                    Icon(painterResource(R.drawable.delete), null)
-                                }
-                            },
-                        )
-                    }
-                }
-
-                item {
-                    PreferenceEntry(
-                        title = { Text(stringResource(R.string.qobuz_add_instance)) },
-                        icon = { Icon(painterResource(R.drawable.add), null) },
-                        onClick = { showAddDialog = true },
-                    )
-                }
-
-                item {
-                    PreferenceEntry(
-                        title = { Text(stringResource(R.string.source_bulk_add)) },
-                        description = stringResource(R.string.source_bulk_hint),
-                        icon = { Icon(painterResource(R.drawable.playlist_add), null) },
-                        onClick = { showBulkDialog = true },
-                    )
-                }
-
                 item {
                     PreferenceEntry(
                         title = {
@@ -620,8 +757,105 @@ fun QobuzSettings(navController: NavController) {
                     )
                 }
 
+                item {
+                    val onlineCount = effectiveInstances.count {
+                        healthStatus[it] == TidalAudioProvider.InstanceHealth.HEALTHY
+                    }
+                    val deprecatedCount = effectiveInstances.count {
+                        healthStatus[it] == TidalAudioProvider.InstanceHealth.PREVIEW_ONLY
+                    }
+                    val failedCount = effectiveInstances.count {
+                        healthStatus[it] == TidalAudioProvider.InstanceHealth.UNREACHABLE
+                    }
+                    PreferenceEntry(
+                        title = { Text(stringResource(R.string.source_manage_instances)) },
+                        description = stringResource(
+                            R.string.source_health_summary,
+                            effectiveInstances.size,
+                            onlineCount,
+                            deprecatedCount,
+                            failedCount,
+                        ),
+                        icon = { Icon(painterResource(R.drawable.tune), null) },
+                        onClick = { showInstanceManagement = !showInstanceManagement },
+                        trailingContent = {
+                            Icon(
+                                painterResource(
+                                    if (showInstanceManagement) R.drawable.expand_less
+                                    else R.drawable.expand_more,
+                                ),
+                                contentDescription = null,
+                            )
+                        },
+                    )
+                }
+
+                effectiveInstances.forEach { instance ->
+                    item(visible = showInstanceManagement) {
+                        val status = healthStatus[instance]
+                        // online = light blue, deprecated/preview-only = purple, failed = grey.
+                        val statusColor =
+                            when (status) {
+                                TidalAudioProvider.InstanceHealth.HEALTHY -> Color(0xFF4FC3F7)
+                                TidalAudioProvider.InstanceHealth.PREVIEW_ONLY -> Color(0xFFB388FF)
+                                TidalAudioProvider.InstanceHealth.UNREACHABLE -> Color(0xFF9E9E9E)
+                                null -> MaterialTheme.colorScheme.onSurfaceVariant
+                            }
+                        val statusLabel =
+                            if (status != null) {
+                                labelFor(status, healthLatency[instance])
+                            } else {
+                                stringResource(R.string.tidal_instance_unknown)
+                            }
+                        PreferenceEntry(
+                            title = {
+                                Column {
+                                    Text(instance)
+                                    Text(
+                                        text = statusLabel,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = statusColor,
+                                    )
+                                }
+                            },
+                            icon = { Icon(painterResource(R.drawable.link), null) },
+                            onClick = { detailInstance = instance },
+                            trailingContent = {
+                                IconButton(
+                                    onClick = {
+                                        val remaining = effectiveInstances - instance
+                                        healthStatus.remove(instance)
+                                        healthLatency.remove(instance)
+                                        persistInstances(remaining)
+                                    },
+                                    onLongClick = {},
+                                ) {
+                                    Icon(painterResource(R.drawable.delete), null)
+                                }
+                            },
+                        )
+                    }
+                }
+
+                item(visible = showInstanceManagement) {
+                    PreferenceEntry(
+                        title = { Text(stringResource(R.string.qobuz_add_instance)) },
+                        icon = { Icon(painterResource(R.drawable.add), null) },
+                        onClick = { showAddDialog = true },
+                    )
+                }
+
+                item(visible = showInstanceManagement) {
+                    PreferenceEntry(
+                        title = { Text(stringResource(R.string.source_bulk_add)) },
+                        description = stringResource(R.string.source_bulk_hint),
+                        icon = { Icon(painterResource(R.drawable.playlist_add), null) },
+                        onClick = { showBulkDialog = true },
+                    )
+                }
+
                 if (effectiveInstances.isNotEmpty()) {
-                    item {
+                    item(visible = showInstanceManagement) {
                         PreferenceEntry(
                             title = { Text(stringResource(R.string.source_copy_online)) },
                             icon = { Icon(painterResource(R.drawable.copy), null) },
@@ -629,7 +863,7 @@ fun QobuzSettings(navController: NavController) {
                         )
                     }
 
-                    item {
+                    item(visible = showInstanceManagement) {
                         PreferenceEntry(
                             title = { Text(stringResource(R.string.source_remove_dead)) },
                             icon = { Icon(painterResource(R.drawable.delete), null) },
@@ -639,7 +873,7 @@ fun QobuzSettings(navController: NavController) {
                         )
                     }
 
-                    item {
+                    item(visible = showInstanceManagement) {
                         PreferenceEntry(
                             title = { Text(stringResource(R.string.source_remove_deprecated)) },
                             icon = { Icon(painterResource(R.drawable.delete), null) },
@@ -650,7 +884,7 @@ fun QobuzSettings(navController: NavController) {
                     }
                 }
 
-                item {
+                item(visible = showInstanceManagement) {
                     PreferenceEntry(
                         title = { Text(stringResource(R.string.qobuz_reset_instances)) },
                         icon = { Icon(painterResource(R.drawable.close), null) },

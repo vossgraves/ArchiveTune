@@ -121,6 +121,9 @@
     <string name="remove_download_playlist_confirm">Do you really want to remove all \"%s\" playlist songs from the Downloaded Songs storage?</string>
     <string name="delete_playlist_confirm">Do you really want to delete the playlist \"%s\"?</string>
     <string name="change_playlist_cover">Change playlist cover</string>
+    <string name="remove_playlist_cover">Remove custom cover</string>
+    <string name="playlist_cover_updated">Playlist cover updated</string>
+    <string name="playlist_cover_update_failed">Couldn’t update playlist cover</string>
     <string name="retry">Retry</string>
     <string name="cast">Cast</string>
     <string name="cast_devices">Cast devices</string>
@@ -533,7 +536,7 @@
     <string name="audio_quality_high">High</string>
     <string name="audio_quality_low">Low</string>
     <string name="low_data_mode_title">Low Data Mode</string>
-    <string name="low_data_mode_description">Reduces mobile data usage by using low-quality streams and disabling playback cache, canvas, and background lyrics preloading on metered networks</string>
+    <string name="low_data_mode_description">On mobile or metered networks, uses low-quality YouTube streams and disables Tidal, Qobuz, playback caching, canvas, and background lyrics preloading</string>
     <string name="queue">Queue</string>
     <string name="persistent_queue">Persistent queue</string>
     <string name="persistent_queue_desc">Restore your last queue when the app starts</string>
@@ -664,6 +667,17 @@
     <string name="romanization">Romanization</string>
     <string name="hide_explicit">Hide explicit content</string>
     <string name="hide_video">Hide music videos</string>
+    <string name="ai_content_filter">AI content filter</string>
+    <string name="ai_content_filter_hide">Hide AI-generated content</string>
+    <string name="ai_content_filter_hide_summary">Filter songs, videos, albums, artists, and playlists from high-confidence AI channels in Home and Search</string>
+    <string name="ai_content_filter_moderate">Include moderate-confidence channels</string>
+    <string name="ai_content_filter_moderate_summary">Also hide channels that are likely, but not confirmed, to use AI-generated content</string>
+    <string name="ai_content_filter_update">Update channel lists</string>
+    <string name="ai_content_filter_list_counts">High confidence: %1$d · Moderate confidence: %2$d</string>
+    <string name="ai_content_filter_source">About AiSList</string>
+    <string name="ai_content_filter_source_summary">Community-maintained channel data from AiSlopList.com</string>
+    <string name="ai_content_filter_updated">AI channel lists updated</string>
+    <string name="ai_content_filter_update_failed">Couldn’t update AI channel lists. The previous lists will remain active.</string>
     <string name="backup_restore">Backup and restore</string>
     <string name="action_backup">Backup</string>
     <string name="action_restore">Restore</string>
@@ -680,12 +694,14 @@
     <string name="audio_source_youtube_fallback">YouTube is always tried last if no other source can resolve a track.</string>
     <string name="source_tidal">Tidal</string>
     <string name="source_youtube">YouTube</string>
+    <string name="play_from">Play from</string>
+    <string name="play_from_automatic">Automatic (preferred order)</string>
     <string name="playback_sources">Sources</string>
     <string name="preferred_sources">Preferred sources</string>
-    <string name="preferred_sources_summary"></string>
+    <string name="preferred_sources_summary">Top of the list is tried first</string>
     <string name="set_source_priority">Drag to set source priority</string>
-    <string name="source_priority_description"></string>
-    <string name="youtube_source_note"></string>
+    <string name="source_priority_description">The topmost enabled source is used first. Sources listed after YouTube are ignored, since YouTube resolves every track.</string>
+    <string name="youtube_source_note">YouTube always works and needs no setup. Place a lossless source above it to override YouTube playback.</string>
     <string name="tidal_specific">Tidal</string>
     <string name="qobuz_specific">Qobuz</string>
     <string name="manage_in_integration">Log in, tokens &amp; instances — in Integration</string>
@@ -716,7 +732,7 @@
     <string name="tidal_disconnect">Disconnect Tidal account</string>
     <!-- Tidal HiFi instances -->
     <string name="tidal_instances">HiFi instances</string>
-    <string name="tidal_instances_description"></string>
+    <string name="tidal_instances_description">Tidal streams are resolved through public HiFi/QQDL instances. None are bundled — add your own, then tap Test instances to check which ones work. If the list is empty, Tidal streaming is disabled.</string>
     <string name="tidal_add_instance">Add instance</string>
     <string name="tidal_instance_url_hint">https://instance.example.com</string>
     <string name="tidal_instance_invalid_url">Enter a valid http(s) URL</string>
@@ -729,10 +745,7 @@
     <string name="tidal_instance_healthy">Online — %1$d ms</string>
     <string name="tidal_instance_unreachable">Failed</string>
     <string name="tidal_instance_preview_only">Deprecated — %1$d ms</string>
-    <string name="tidal_instance_unknown">Not tested</string>
-    <string name="instance_info_online">Working — full quality, premium account confirmed.</string>
-    <string name="instance_info_degraded">No premium account or lossless quality unavailable. Instance is reachable but returned a 30-second preview.</string>
-    <string name="instance_info_dead">Connection failed — instance unreachable.</string>
+    <string name="tidal_instance_unknown">Not tested — tap Test instances</string>
 
     <!-- Qobuz music source integration -->
     <string name="source_qobuz">Qobuz</string>
@@ -754,7 +767,7 @@
 
     <!-- Qobuz account tokens (direct API) -->
     <string name="qobuz_tokens">Qobuz account tokens</string>
-    <string name="qobuz_tokens_description"></string>
+    <string name="qobuz_tokens_description">Sign in with a Qobuz web session, or paste one or more token blocks. Direct tokens stream from Qobuz at full fidelity and are tried before proxy instances.</string>
     <string name="qobuz_login_web">Sign in with Qobuz (web)</string>
     <string name="qobuz_login">Sign in to Qobuz</string>
     <string name="qobuz_login_success">Added Qobuz account</string>
@@ -767,18 +780,19 @@
     <string name="qobuz_check_tokens">Test tokens</string>
     <string name="qobuz_checking_tokens">Testing tokens…</string>
     <string name="qobuz_reset_tokens">Clear all tokens</string>
+    <string name="qobuz_manage_accounts">Manage accounts</string>
     <string name="qobuz_token_subtitle">%1$s · id %2$s</string>
     <string name="qobuz_token_status_ok">Online</string>
     <string name="qobuz_token_status_preview">Deprecated</string>
     <string name="qobuz_token_status_invalid">Failed</string>
     <string name="qobuz_token_status_unknown">Not tested</string>
-    <string name="token_info_online">Signed in — full lossless quality confirmed.</string>
-    <string name="token_info_degraded">Account does not have lossless quality. Check your Qobuz subscription.</string>
-    <string name="token_info_dead">Invalid or expired token — sign in again.</string>
+    <string name="qobuz_status_deprecated_info_title">Why deprecated?</string>
+    <string name="qobuz_status_deprecated_info">This account is reachable but can only stream 30-second previews or lower-quality audio — it most likely has no active premium subscription, so lossless playback is unavailable.</string>
 
     <!-- Shared source settings -->
     <string name="source_manage_instances">Manage instances</string>
     <string name="tidal_manage_instances">Manage Tidal instances</string>
+    <string name="source_health_summary">%1$d configured · %2$d online · %3$d deprecated · %4$d failed</string>
     <string name="source_bulk_add">Add many (paste)</string>
     <string name="source_bulk_hint">Paste one or more URLs separated by new lines, spaces, or commas.</string>
     <string name="source_bulk_added">Added %1$d</string>
@@ -812,6 +826,8 @@
     <string name="tidal_login_webplayer_fallback">Couldn\'t complete the standard sign-in; opening the Tidal web player instead. Just log in and playback will connect automatically.</string>
     <string name="tidal_login_code">Sign in with a device code</string>
     <string name="tidal_reconnect">Reconnect Tidal account</string>
+    <string name="tidal_account_active">Active</string>
+    <string name="tidal_account_relogin_required">Re-login required</string>
     <string name="discord_integration">Discord Integration</string>
     <string name="account_integrations_summary">Discord, Last.fm, Libre.fm, ListenBrainz</string>
     <string name="discord_login_description">Connect your Discord account with OAuth so ArchiveTune can publish Rich Presence.</string>
@@ -960,7 +976,7 @@
     <string name="pool_refresh_failed">Couldn\'t reach the source pool. Check your connection and try again.</string>
     <string name="manual_source_login">Manual source sign-in</string>
     <string name="description_manual_source_login">Show the advanced Tidal/Qobuz instance &amp; account fields. Off by default — the app uses the community source pool automatically.</string>
-    <string name="manual_source_login_active_note"></string>
+    <string name="manual_source_login_active_note">Advanced: add your own private Tidal/Qobuz instances or account tokens. The community source pool is already used automatically without any setup.</string>
     <string name="nerd_stats">Nerd Stats</string>
     <string name="track_label">Track</string>
     <string name="no_track_playing">No track playing</string>
@@ -1239,4 +1255,18 @@
     <string name="scheduled_backup_load_failed">Scheduled backup settings could not be loaded</string>
     <string name="scheduled_backup_update_failed">Scheduled backup settings could not be saved</string>
     <string name="gatekeeper_connection_blocked">ArchiveTune could not verify network access. Connections are blocked.</string>
+    <string name="language_packs">Language packs</string>
+    <string name="language_pack_english">English</string>
+    <string name="language_pack_japanese">Japanese romanization</string>
+    <string name="language_pack_built_in">Built in</string>
+    <string name="language_pack_japanese_download_description">Optional dictionary · about 13 MB</string>
+    <string name="language_pack_downloading">Downloading… %1$d%%</string>
+    <string name="language_pack_installed_size">Installed · %1$s</string>
+    <string name="language_pack_remove">Remove</string>
+    <string name="language_pack_required">Download the Japanese language pack first</string>
+    <string name="settings_language_packs_subtitle">Optional language data and downloads</string>
+    <string name="language_pack_base_language">Base language</string>
+    <string name="language_pack_optional_data">Optional language data</string>
+    <string name="language_pack_other_romanization">Korean, Chinese, Hindi, and other romanization</string>
+    <string name="language_pack_other_romanization_description">Built in · no additional data or download required</string>
 </resources>

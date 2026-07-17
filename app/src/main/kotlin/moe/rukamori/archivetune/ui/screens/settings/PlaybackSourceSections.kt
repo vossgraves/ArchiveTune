@@ -46,18 +46,10 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
-import androidx.compose.runtime.LaunchedEffect
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.audiosource.AudioSourceConfig
-import moe.rukamori.archivetune.constants.AudioQuality
-import moe.rukamori.archivetune.constants.AudioQualityKey
 import moe.rukamori.archivetune.constants.AudioSourceOrderKey
 import moe.rukamori.archivetune.constants.AudioSourceType
-import moe.rukamori.archivetune.constants.InnerTubeCookieKey
-import moe.rukamori.archivetune.constants.PlayerStreamClient
-import moe.rukamori.archivetune.constants.PlayerStreamClientKey
-import moe.rukamori.archivetune.constants.PoTokenGvsKey
-import moe.rukamori.archivetune.constants.PoTokenPlayerKey
 import moe.rukamori.archivetune.constants.QobuzAudioQuality
 import moe.rukamori.archivetune.constants.QobuzAudioQualityKey
 import moe.rukamori.archivetune.constants.QobuzEnabledKey
@@ -67,6 +59,14 @@ import moe.rukamori.archivetune.constants.TidalArtworkFallbackEnabledKey
 import moe.rukamori.archivetune.constants.TidalAudioQuality
 import moe.rukamori.archivetune.constants.TidalAudioQualityKey
 import moe.rukamori.archivetune.constants.TidalEnabledKey
+import androidx.compose.runtime.LaunchedEffect
+import moe.rukamori.archivetune.constants.AudioQuality
+import moe.rukamori.archivetune.constants.AudioQualityKey
+import moe.rukamori.archivetune.constants.InnerTubeCookieKey
+import moe.rukamori.archivetune.constants.PlayerStreamClient
+import moe.rukamori.archivetune.constants.PlayerStreamClientKey
+import moe.rukamori.archivetune.constants.PoTokenGvsKey
+import moe.rukamori.archivetune.constants.PoTokenPlayerKey
 import moe.rukamori.archivetune.innertube.utils.hasYouTubeLoginCookie
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.EnumListPreference
@@ -107,8 +107,12 @@ fun PlaybackSourceSections(navController: NavController) {
     val (tidalEnabled, onTidalEnabledChange) = rememberPreference(TidalEnabledKey, true)
     val (qobuzEnabled, onQobuzEnabledChange) = rememberPreference(QobuzEnabledKey, false)
 
-    // YouTube-specific playback state (moved here from PlayerSettings)
+    val (tidalAccountFirst, onTidalAccountFirstChange) = rememberPreference(TidalAccountFirstKey, true)
     val (audioQuality, onAudioQualityChange) =
+        rememberEnumPreference(TidalAudioQualityKey, TidalAudioQuality.FLAC)
+
+    // YouTube-specific playback state
+    val (ytAudioQuality, onYtAudioQualityChange) =
         rememberEnumPreference(AudioQualityKey, defaultValue = AudioQuality.AUTO)
     val (playerStreamClient, onPlayerStreamClientChange) =
         rememberEnumPreference(PlayerStreamClientKey, defaultValue = PlayerStreamClient.WEB_REMIX)
@@ -126,7 +130,7 @@ fun PlaybackSourceSections(navController: NavController) {
     val selectedPlayerStreamClient =
         if (playerStreamClient in playerStreamClients) playerStreamClient
         else PlayerStreamClient.WEB_REMIX
-    val audioQualityEnabled = selectedPlayerStreamClient != PlayerStreamClient.ARCHIVETUNE_EXTRACTOR
+    val ytAudioQualityEnabled = selectedPlayerStreamClient != PlayerStreamClient.ARCHIVETUNE_EXTRACTOR
     val isPlayerStreamClientEnabled =
         remember(isArchiveTuneExtractorEnabled) {
             { client: PlayerStreamClient ->
@@ -142,10 +146,6 @@ fun PlaybackSourceSections(navController: NavController) {
             onPlayerStreamClientChange(PlayerStreamClient.WEB_REMIX)
         }
     }
-
-    val (tidalAccountFirst, onTidalAccountFirstChange) = rememberPreference(TidalAccountFirstKey, true)
-    val (audioQuality, onAudioQualityChange) =
-        rememberEnumPreference(TidalAudioQualityKey, TidalAudioQuality.FLAC)
     val (qobuzQuality, onQobuzQualityChange) =
         rememberEnumPreference(QobuzAudioQualityKey, QobuzAudioQuality.FLAC)
     val (artworkFallback, onArtworkFallbackChange) =
@@ -190,10 +190,6 @@ fun PlaybackSourceSections(navController: NavController) {
                 onClick = { showOrderDialog = true },
             )
         }
-
-        item {
-            InfoLabel(text = stringResource(R.string.source_priority_description))
-        }
     }
 
     PreferenceGroup(title = stringResource(R.string.source_youtube)) {
@@ -201,9 +197,9 @@ fun PlaybackSourceSections(navController: NavController) {
             EnumListPreference(
                 title = { Text(stringResource(R.string.audio_quality)) },
                 icon = { Icon(painterResource(R.drawable.graphic_eq), null) },
-                selectedValue = audioQuality,
-                onValueSelected = onAudioQualityChange,
-                isEnabled = audioQualityEnabled,
+                selectedValue = ytAudioQuality,
+                onValueSelected = onYtAudioQualityChange,
+                isEnabled = ytAudioQualityEnabled,
                 valueText = {
                     when (it) {
                         AudioQuality.HIGHEST -> stringResource(R.string.audio_quality_max)
@@ -238,11 +234,10 @@ fun PlaybackSourceSections(navController: NavController) {
                         PlayerStreamClient.WEB_REMIX ->
                             stringResource(R.string.player_stream_client_web_remix_desc)
                         PlayerStreamClient.ARCHIVETUNE_EXTRACTOR ->
-                            if (isArchiveTuneExtractorEnabled) {
+                            if (isArchiveTuneExtractorEnabled)
                                 stringResource(R.string.player_stream_client_archivetune_extractor_desc)
-                            } else {
+                            else
                                 stringResource(R.string.player_stream_client_archivetune_extractor_login_required)
-                            }
                         else -> stringResource(R.string.player_stream_client_web_remix_desc)
                     }
                 },

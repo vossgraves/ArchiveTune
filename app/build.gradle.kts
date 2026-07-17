@@ -371,6 +371,8 @@ android {
             excludes += "META-INF/NOTICE.md"
             excludes += "META-INF/CONTRIBUTORS.md"
             excludes += "META-INF/LICENSE.md"
+            // Installed on demand from Lyrics settings; saves roughly 13 MiB per APK.
+            excludes += "com/atilika/kuromoji/ipadic/*.bin"
         }
     }
 

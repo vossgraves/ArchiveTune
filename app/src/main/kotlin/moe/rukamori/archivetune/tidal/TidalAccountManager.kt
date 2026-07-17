@@ -28,6 +28,14 @@ import java.util.concurrent.TimeUnit
 import kotlin.math.abs
 
 object TidalAccountManager {
+    private data class SearchMatch(
+        val id: String,
+        val title: String,
+        val artist: String?,
+        val album: String?,
+        val durationMs: Long?,
+    )
+
     // Well-known public Tidal "TV/device" OAuth client used by open-source Tidal tooling for the
     // device authorization grant. These are not secret user credentials.
     private const val CLIENT_ID = "zU4XHVVkc2tDPo4t"
@@ -370,18 +378,23 @@ object TidalAccountManager {
     ): DirectStream? =
         withContext(Dispatchers.IO) {
             val country = countryCode.ifBlank { COUNTRY_CODE }
-            val trackId = searchTrackId(accessToken, title, artists, durationMs, country) ?: return@withContext null
-            resolvePlaybackInfo(accessToken, trackId, audioQuality, durationMs, cacheDir)
+            val match = searchTrack(accessToken, title, artists, durationMs, country) ?: return@withContext null
+            resolvePlaybackInfo(accessToken, match.id, audioQuality, durationMs, cacheDir)?.copy(
+                matchedTitle = match.title,
+                matchedArtist = match.artist,
+                matchedAlbum = match.album,
+                matchedDurationMs = match.durationMs,
+            )
         }
 
     /** Searches the official API for the best-matching track id. */
-    private fun searchTrackId(
+    private fun searchTrack(
         accessToken: String,
         title: String,
         artists: List<String>,
         durationMs: Long?,
         countryCode: String = COUNTRY_CODE,
-    ): String? {
+    ): SearchMatch? {
         val primaryArtist = artists.firstOrNull().orEmpty()
         val query = URLEncoder.encode("$title $primaryArtist".trim(), "UTF-8")
         val request =
@@ -398,7 +411,7 @@ object TidalAccountManager {
                 if (!response.isSuccessful || payload.isBlank()) return@use null
                 val items = JSONObject(payload).optJSONArray("items") ?: return@use null
 
-                var bestId: String? = null
+                var bestMatch: SearchMatch? = null
                 var bestScore = Int.MIN_VALUE
                 for (i in 0 until items.length()) {
                     val item = items.optJSONObject(i) ?: continue
@@ -429,11 +442,18 @@ object TidalAccountManager {
                     }
                     if (score > bestScore) {
                         bestScore = score
-                        bestId = id
+                        bestMatch =
+                            SearchMatch(
+                                id = id,
+                                title = candTitle,
+                                artist = candArtists.joinToString(", ").takeIf { it.isNotBlank() },
+                                album = item.optJSONObject("album")?.optString("title")?.takeIf { it.isNotBlank() },
+                                durationMs = candDurationMs,
+                            )
                     }
                 }
                 // Require at least a title or artist hit to avoid false matches.
-                if (bestScore >= 40) bestId else null
+                if (bestScore >= 40) bestMatch else null
             }
         }.getOrElse {
             if (it is TidalUnauthorizedException) throw it

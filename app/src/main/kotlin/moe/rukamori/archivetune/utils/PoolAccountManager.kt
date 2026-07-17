@@ -218,7 +218,11 @@ object PoolAccountManager {
     /** Decrypts a sensitive field. Empty/blank blobs and decrypt failures yield null. */
     private fun field(obj: JSONObject, key: String): String? {
         val raw = obj.optString(key, "").takeIf { it.isNotBlank() } ?: return null
-        return PoolCrypto.maybeDecrypt(raw)?.takeIf { it.isNotBlank() }
+        val decoded = PoolCrypto.maybeDecrypt(raw)?.takeIf { it.isNotBlank() }
+        if (decoded == null && PoolCrypto.isEncrypted(raw)) {
+            Timber.tag(TAG).w("Dropped encrypted pool field %s because the client key could not decrypt it", key)
+        }
+        return decoded
     }
 
     private fun parseTidal(arr: JSONArray?): List<TidalPoolAccount> {

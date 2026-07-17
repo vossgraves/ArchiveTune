@@ -94,6 +94,8 @@ import moe.rukamori.archivetune.constants.PreferredLyricsProvider
 import moe.rukamori.archivetune.constants.PreloadQueueLyricsEnabledKey
 import moe.rukamori.archivetune.constants.QueueLyricsPreloadCountKey
 import moe.rukamori.archivetune.constants.deserializeLyricsProviderOrder
+import moe.rukamori.archivetune.lyrics.JapaneseLanguagePackManager
+import moe.rukamori.archivetune.lyrics.JapaneseLanguagePackState
 import moe.rukamori.archivetune.paxsenix.models.PaxsenixStats
 import moe.rukamori.archivetune.paxsenix.models.ProviderStats
 import moe.rukamori.archivetune.ui.component.ActionPromptDialog
@@ -197,7 +199,7 @@ fun LyricsSettings(
             deserializeLyricsProviderOrder(providerOrderStr)
         }
     val (lyricsLineBlur, onLyricsLineBlurChange) = rememberPreference(LyricsLineBlurKey, defaultValue = true)
-    val (lyricsRomanizeJapanese, onLyricsRomanizeJapaneseChange) = rememberPreference(LyricsRomanizeJapaneseKey, defaultValue = true)
+    val (lyricsRomanizeJapanese, onLyricsRomanizeJapaneseChange) = rememberPreference(LyricsRomanizeJapaneseKey, defaultValue = false)
     val (lyricsRomanizeKorean, onLyricsRomanizeKoreanChange) = rememberPreference(LyricsRomanizeKoreanKey, defaultValue = true)
     val (lyricsRomanizeChinese, onLyricsRomanizeChineseChange) = rememberPreference(LyricsRomanizeChineseKey, defaultValue = true)
     val (lyricsRomanizeHindi, onLyricsRomanizeHindiChange) = rememberPreference(LyricsRomanizeHindiKey, defaultValue = true)
@@ -212,6 +214,7 @@ fun LyricsSettings(
             defaultValue = true,
         )
     val (queueLyricsPreloadCount, onQueueLyricsPreloadCountChange) = rememberPreference(QueueLyricsPreloadCountKey, defaultValue = 1)
+    val japaneseLanguagePackState by JapaneseLanguagePackManager.state.collectAsStateWithLifecycle()
 
     var showProviderOrderDialog by rememberSaveable { mutableStateOf(false) }
 
@@ -571,9 +574,16 @@ fun LyricsSettings(
             item {
                 SwitchPreference(
                     title = { Text(stringResource(R.string.lyrics_romanize_japanese)) },
+                    description =
+                        if (japaneseLanguagePackState is JapaneseLanguagePackState.Installed) {
+                            null
+                        } else {
+                            stringResource(R.string.language_pack_required)
+                        },
                     icon = { Icon(painterResource(R.drawable.lyrics), null) },
                     checked = lyricsRomanizeJapanese,
                     onCheckedChange = onLyricsRomanizeJapaneseChange,
+                    isEnabled = japaneseLanguagePackState is JapaneseLanguagePackState.Installed,
                 )
             }
 

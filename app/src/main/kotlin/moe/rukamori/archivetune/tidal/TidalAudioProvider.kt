@@ -388,6 +388,11 @@ object TidalAudioProvider {
         val expiresAtMs: Long,
         val losslessDowngradedBitrateKbps: Int? = null,
         val isLiveManifest: Boolean = false,
+        /** Title of the matched track, used by the playback layer to gate on title-match accuracy. */
+        val matchedTitle: String? = null,
+        val matchedArtist: String? = null,
+        val matchedAlbum: String? = null,
+        val matchedDurationMs: Long? = null,
     )
 
     data class CandidateMetadata(
@@ -657,7 +662,15 @@ object TidalAudioProvider {
                     cacheStreamFailure(now, error, streamCacheKey, trackFailureCacheKey)
                 }
 
-                streamAttempt.getOrNull()?.let { resolved ->
+                streamAttempt.getOrNull()?.let { rawResolved ->
+                    // Carry catalog metadata into the cross-provider playback safety gate.
+                    val resolved =
+                        rawResolved.copy(
+                            matchedTitle = track.title,
+                            matchedArtist = track.artistNames.joinToString(", ").takeIf { it.isNotBlank() },
+                            matchedAlbum = track.album,
+                            matchedDurationMs = track.durationMs,
+                        )
                     streamCache[streamCacheKey] = resolved
                     if (directTrackId == null) {
                         trackCache[trackCacheKey] = CachedTrack(track, now + TRACK_CACHE_MS)

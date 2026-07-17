@@ -123,7 +123,6 @@ private fun PoolRefreshSection() {
                         },
                     )
                 },
-                description = stringResource(R.string.pool_refresh_description),
                 icon = { Icon(painterResource(R.drawable.sync), null) },
                 trailingContent =
                     if (refreshing) {

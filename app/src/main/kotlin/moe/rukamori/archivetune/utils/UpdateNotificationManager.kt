@@ -43,7 +43,8 @@ object UpdateNotificationManager {
     private const val CHANNEL_ID = "update_notification_channel"
     private const val NOTIFICATION_ID = 9999
     private const val WORK_NAME = "update_check_work"
-    private const val CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000L
+    private const val STABLE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000L
+    private const val CANARY_CHECK_INTERVAL_MS = 15 * 60 * 1000L
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -78,16 +79,17 @@ object UpdateNotificationManager {
 
         val updateCheckRequest =
             PeriodicWorkRequestBuilder<UpdateCheckWorker>(
-                6,
-                TimeUnit.HOURS,
                 30,
+                TimeUnit.MINUTES,
+                10,
                 TimeUnit.MINUTES,
             ).setConstraints(constraints)
                 .build()
 
         WorkManager.getInstance(context).enqueueUniquePeriodicWork(
             WORK_NAME,
-            ExistingPeriodicWorkPolicy.KEEP,
+            // Replace the old six-hour schedule after an app update.
+            ExistingPeriodicWorkPolicy.UPDATE,
             updateCheckRequest,
         )
     }
@@ -122,8 +124,13 @@ object UpdateNotificationManager {
 
                 val lastCheck = dataStore.data.map { it[LastUpdateCheckKey] ?: 0L }.first()
                 val now = System.currentTimeMillis()
+                val checkInterval =
+                    when (updateChannel) {
+                        UpdateChannel.CANARY -> CANARY_CHECK_INTERVAL_MS
+                        UpdateChannel.STABLE -> STABLE_CHECK_INTERVAL_MS
+                    }
 
-                if (now - lastCheck < CHECK_INTERVAL_MS) return@launch
+                if (now - lastCheck < checkInterval) return@launch
 
                 dataStore.edit { it[LastUpdateCheckKey] = now }
 

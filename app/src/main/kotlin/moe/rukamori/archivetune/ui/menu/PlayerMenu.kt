@@ -48,6 +48,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
@@ -96,6 +97,7 @@ import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.playback.ExoDownloadService
 import moe.rukamori.archivetune.playback.queues.YouTubeQueue
 import moe.rukamori.archivetune.ui.component.BottomSheetState
+import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.ListDialog
 import moe.rukamori.archivetune.ui.component.MenuSurfaceSection
 import moe.rukamori.archivetune.ui.component.NewAction
@@ -105,6 +107,9 @@ import moe.rukamori.archivetune.utils.SpeedDialPin
 import moe.rukamori.archivetune.utils.SpeedDialPinType
 import moe.rukamori.archivetune.utils.isLocalMediaId
 import moe.rukamori.archivetune.utils.parseSpeedDialPins
+import moe.rukamori.archivetune.audiosource.SongSourceOverride
+import moe.rukamori.archivetune.constants.AudioSourceType
+import moe.rukamori.archivetune.constants.SongSourceOverrideKey
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.utils.serializeSpeedDialPins
 import moe.rukamori.archivetune.utils.shareLocalAudio
@@ -218,6 +223,34 @@ fun PlayerMenu(
             Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
         },
     )
+
+    // Per-song "Play from" chooser: pick which source THIS song plays from. Only sources known to
+    // have the track (from the last resolution) are offered, plus YouTube (always available). The
+    // choice is remembered per song via SongSourceOverrideKey (included in backups).
+    val (songSourceRaw, onSongSourceChange) = rememberPreference(SongSourceOverrideKey, "")
+    val currentSongSource =
+        remember(songSourceRaw, mediaMetadata.id) {
+            SongSourceOverride.get(songSourceRaw.ifBlank { null }, mediaMetadata.id)
+        }
+    var showSourceDialog by rememberSaveable { mutableStateOf(false) }
+    // Recomputed each time the dialog opens so it reflects the latest resolution result.
+    val availableSources =
+        remember(mediaMetadata.id, showSourceDialog) {
+            playerConnection.service.availableSourcesForSong(mediaMetadata.id)
+        }
+
+    if (showSourceDialog) {
+        SongSourceDialog(
+            sources = availableSources,
+            selected = currentSongSource,
+            onDismiss = { showSourceDialog = false },
+            onSelect = { source ->
+                onSongSourceChange(SongSourceOverride.withOverride(songSourceRaw, mediaMetadata.id, source))
+                playerConnection.service.setSongSourceOverride(mediaMetadata.id, source)
+                showSourceDialog = false
+            },
+        )
+    }
 
     var showSelectArtistDialog by rememberSaveable {
         mutableStateOf(false)
@@ -551,6 +584,20 @@ fun PlayerMenu(
                                             playerBottomSheetState.snapTo(playerBottomSheetState.collapsedBound)
                                             navController.navigate("settings/music_together")
                                         },
+                                    ),
+                                )
+                                add(
+                                    NewAction(
+                                        icon = {
+                                            Icon(
+                                                painter = painterResource(R.drawable.tune),
+                                                contentDescription = null,
+                                                modifier = Modifier.size(28.dp),
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        },
+                                        text = stringResource(R.string.source),
+                                        onClick = { showSourceDialog = true },
                                     ),
                                 )
                             }
@@ -1385,4 +1432,88 @@ private fun multiplierToSlider(multiplier: Float): Float {
             else -> 0f
         }
     return (0.5f + y / 2f).coerceIn(0f, 1f)
+}
+
+private fun AudioSourceType.sourceLabelRes(): Int =
+    when (this) {
+        AudioSourceType.TIDAL -> R.string.source_tidal
+        AudioSourceType.QOBUZ -> R.string.source_qobuz
+        AudioSourceType.YOUTUBE -> R.string.source_youtube
+    }
+
+private fun AudioSourceType.sourceIconRes(): Int =
+    when (this) {
+        AudioSourceType.TIDAL -> R.drawable.provider_tidal
+        AudioSourceType.QOBUZ -> R.drawable.provider_qobuz
+        AudioSourceType.YOUTUBE -> R.drawable.play
+    }
+
+/**
+ * Per-song "Play from" chooser. Lists the [sources] that have the current track (from the last
+ * resolution) plus YouTube, and lets the user force which one this song plays from. [selected] is
+ * the current override (null = automatic / follow the global order).
+ */
+@Composable
+private fun SongSourceDialog(
+    sources: List<AudioSourceType>,
+    selected: AudioSourceType?,
+    onDismiss: () -> Unit,
+    onSelect: (AudioSourceType?) -> Unit,
+) {
+    DefaultDialog(
+        onDismiss = onDismiss,
+        buttons = {
+            TextButton(onClick = onDismiss, shapes = ButtonDefaults.shapes()) {
+                Text(stringResource(android.R.string.cancel))
+            }
+        },
+    ) {
+        Column(modifier = Modifier.padding(top = 4.dp)) {
+            Text(
+                text = stringResource(R.string.play_from),
+                style = MaterialTheme.typography.headlineSmall,
+                modifier = Modifier.padding(bottom = 12.dp),
+            )
+            // "Automatic" clears the override so the song follows the global preferred-source order.
+            SongSourceRow(
+                iconRes = R.drawable.tune,
+                label = stringResource(R.string.play_from_automatic),
+                checked = selected == null,
+                onClick = { onSelect(null) },
+            )
+            sources.forEach { source ->
+                SongSourceRow(
+                    iconRes = source.sourceIconRes(),
+                    label = stringResource(source.sourceLabelRes()),
+                    checked = selected == source,
+                    onClick = { onSelect(source) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SongSourceRow(
+    iconRes: Int,
+    label: String,
+    checked: Boolean,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+                .padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        RadioButton(selected = checked, onClick = onClick)
+        Icon(
+            painter = painterResource(iconRes),
+            contentDescription = null,
+            modifier = Modifier.padding(horizontal = 12.dp).size(24.dp),
+        )
+        Text(text = label, style = MaterialTheme.typography.bodyLarge)
+    }
 }

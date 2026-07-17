@@ -31,6 +31,15 @@ future sessions (or contributors) can pick up with full context.
 - **Multi-source resolver:** preferred-source order is authoritative in the
   resolver (sources after YouTube are ignored). Opt-out toggle for reporting
   non-YouTube plays to YouTube listen history.
+- **Per-song "Play from" override:** the resolver honors a per-song source
+  override (`SongSourceOverrideKey`, `songId=SOURCE;…`, a Settings-backup key,
+  encoded/decoded by `SongSourceOverride` in `AudioSourceConfig.kt`). An override
+  forces just that one source (still subject to the 95% title-match gate);
+  `YOUTUBE` means "always play this song from YouTube" (skip lossless entirely);
+  no override = follow the global order. `MusicService` records which sources
+  passed the gate per media id (`resolvedSourcesByMediaId`) and exposes
+  `availableSourcesForSong()` / `setSongSourceOverride()`; the latter clears the
+  cached stream and re-`prepare()`s the current item so the change is immediate.
 - **Integration account cards:** YouTube Music always shown; Last.fm and Discord
   cards are pinnable, float to top, and show live connection status + identity.
 - **Backup classification:** Tidal login/session and Qobuz direct-API tokens are
@@ -38,6 +47,39 @@ future sessions (or contributors) can pick up with full context.
   exports); instance URL lists stay portable under Settings.
 
 ## Player / UI / motion
+
+- **Android Auto Spotify playlists:** the media-library browse tree now restores
+  the Spotify playlist cache even when Android Auto launches the service before
+  the phone UI. When the existing "Show Spotify playlists" preference is on,
+  the Playlists screen contains a Spotify folder with account playlists,
+  artwork, track counts, browsable songs, and playable whole-playlist queues.
+  Spotify tracks are resolved to ArchiveTune/YouTube media items in bounded
+  batches and cached for subsequent browse/play requests.
+
+- **Infinite-queue single-song race fix:** playing one track (e.g. from search)
+  used to show infinity-queue "on" while Next just repeated the song, because
+  the transition-driven radio bootstrap in `onMediaItemTransition` started mid
+  `playQueue` load and got invalidated by the settling transitions (bumping
+  `infiniteQueueGeneration`), leaving `infiniteQueueLoading` stuck true with no
+  songs queued. Fix (`MusicService.kt`): a `@Volatile initialQueueLoadInProgress`
+  flag is set in `playQueue`, guards the transition bootstrap, and is cleared in
+  a `finally`; after the queue settles `playQueue` deterministically calls
+  `onInfiniteQueueEnabled()` for a single-item, no-next-page, REPEAT_OFF queue —
+  mirroring the working manual toggle. Also reset in `cancelInfiniteQueueBootstrap`.
+- **Player "Play from" chooser (per song):** the player menu's Source item no
+  longer opens the global preferred-order reorder editor. It now opens a
+  `SongSourceDialog` (`ui/menu/PlayerMenu.kt`) — a radio list of "Automatic
+  (preferred order)" plus the sources known to have THIS track (from the last
+  resolution result via `service.availableSourcesForSong`) plus YouTube. Picking
+  one writes the per-song override and calls `service.setSongSourceOverride`,
+  which re-resolves the current item immediately. The global reorder dialog
+  (`SourceOrderDialog`) stays private to `PlaybackSourceSections.kt` for Settings.
+- **Streaming-source token status parity:** the Qobuz direct-API token status
+  now uses the same ping-based labels as instances — online / deprecated
+  (with an info icon explaining preview-only, no premium) / not reachable —
+  instead of a bare connected/expired flag. Instance + token health/ping
+  results are cached at process level so the status a user saw survives leaving
+  and returning to the Integration screen until they explicitly re-check.
 
 - **Bottom-nav pill:** custom sliding pill indicator that springs between
   Home/Search/Library, wrapping ONLY the icon (56x32dp), with text labels kept
@@ -60,11 +102,28 @@ future sessions (or contributors) can pick up with full context.
 - **Crossfade:** the aggressive "handoff" rework was REVERTED (it caused
   crashes/instability). Current state uses the original stable crossfade path
   plus a "Crossfading" indicator using a solid theme color (the rainbow/RGB
-  shimmer was dropped).
+  shimmer was dropped). A later narrow MetroList-inspired fix keeps that stable
+  lifecycle: the fade waits until the secondary is actually playing, and the
+  final handoff performs only one primary seek, waits for real playback, then
+  releases the secondary. It deliberately does not restore the previously
+  reverted player-swap/micro-fade rewrite.
 - Removed the broken splash/opening animation (dropped `installSplashScreen()`
   and core-splashscreen); adaptive window background prevents white flash.
 
 ## Lyrics
+
+- **Downloadable Japanese romanization pack / APK size:** Kuromoji IPADIC's eight
+  dictionary binaries were the dominant APK payload (13,324,082 compressed
+  bytes in release 13.7.5020). Release packaging now excludes those `.bin`
+  files while retaining the tokenizer engine. A dedicated top-level Language
+  Packs settings screen exposes a Japanese romanization pack that downloads the immutable Kuromoji 0.9.0 jar
+  from Maven Central, verifies its pinned SHA-256, stores it under app-private
+  `language_packs`, loads dictionary streams from the archive, and supports
+  progress/removal/retry. Japanese romanization defaults off and is enabled
+  only after installation. English is shown as the base language; existing UI
+  translation resources remain because their total footprint is small.
+  Korean/Chinese/Hindi/other romanization already uses code or Android ICU and
+  has no comparable downloadable data payload.
 
 - **LyricsPlus dedup:** the app-local `LyricsPlusLyricsProvider` was a redundant,
   inferior reimplementation of the same service already provided by the
@@ -138,6 +197,51 @@ future sessions (or contributors) can pick up with full context.
   files (`SettingsScreen.kt`, `SettingsDataBuilders.kt`, `SettingsModels.kt`,
   `SettingsComponents.kt`) were reset to be byte-identical to upstream. The
   playback-source picker/reorder logic still lives in the fork.
+
+## Tidal / Qobuz integration layout
+
+- The integration pages use progressive disclosure to avoid rendering every
+  account, proxy URL, import tool, and destructive cleanup action at once.
+- Account sign-in and the primary token/instance health checks stay visible.
+  Compact “Manage accounts” / “Manage instances” rows show configured, online,
+  deprecated, and failed counts; expanding them reveals individual entries and
+  maintenance controls. Existing health colors, ping labels, dialogs, and all
+  management capabilities are unchanged.
+
+## ArchivePool security audit (2026-07-17)
+
+- ArchivePool implements AES-256-GCM field encryption, hashed read keys, admin
+  bearer checks, HTTPS upstream calls, and no-store response caching, but the
+  controls are optional/fail-open when environment variables are missing.
+- A live unauthenticated check of `archivepool.up.railway.app` returned HTTP 200
+  for `/api/sources` with `"encrypted": false`; both discovery feeds also
+  returned 200 without a read key. No returned credential values were printed
+  or inspected. The Railway deployment must set independent 32-byte
+  `POOL_ENCRYPTION_KEY` and `POOL_CLIENT_KEY` values, provision an app read key,
+  set `READ_KEYS_ENFORCED=true`, and build ArchiveTune with matching
+  `POOL_CLIENT_KEY` / `SOURCE_PROVIDER_KEY` values.
+- ArchiveTune stores user and downloaded pool tokens in ordinary Preferences
+  DataStore, and its current Android backup rules do not exclude that settings
+  file. A key embedded in `BuildConfig` is extractable from the APK, so the pool
+  client-key layer protects accidental JSON disclosure but is not true
+  per-user end-to-end secrecy. A future hardening pass should move credentials
+  to Android Keystore-backed storage and exclude them from cloud backup.
+- The database URL and GitHub token pasted into chat must be treated as
+  compromised and rotated; they are not recorded in this memory file.
+
+## Upstream sync (2026-07-17)
+
+- Merged the current `rukamori/ArchiveTune` `dev` into fork `dev`, including AI
+  content filtering, playlist-cover synchronization, pull-to-refresh/library
+  improvements, updater improvements, translations, and metadata updates.
+- Merged the matching `rukamori/core` changes into `vossgraves/core` while
+  retaining the fork's neutralized official-build network gatekeeper. Fork
+  update URLs and all fork-specific playback, Source Pool, Android Auto, and
+  Language Packs features were preserved.
+- Canary update detection uses a 15-minute release cache and 30-minute
+  background worker instead of Stable's six-hour cadence. Manual checks always
+  force a refresh. Canary selection accepts both `NyyyyMMdd` and the fork's
+  `NyyyyMMddHHmm` tags and explicitly excludes stable releases.
 
 ## PR status
 

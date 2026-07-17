@@ -1871,7 +1871,12 @@ interface DatabaseDao {
             playlistEntity.copy(
                 name = playlistItem.title,
                 browseId = playlistItem.id,
-                thumbnailUrl = playlistItem.thumbnail,
+                thumbnailUrl =
+                    if (playlistEntity.hasLocalCustomCover) {
+                        playlistEntity.thumbnailUrl
+                    } else {
+                        playlistItem.thumbnail
+                    },
                 isEditable = playlistItem.isEditable,
                 remoteSongCount = playlistItem.songCountText?.let { Regex("""\d+""").find(it)?.value?.toIntOrNull() },
                 playEndpointParams = playlistItem.playEndpoint?.params,
@@ -1905,6 +1910,48 @@ interface DatabaseDao {
                 updatedAt = updatedAt,
             ),
         )
+    }
+
+    @Query(
+        """
+        UPDATE lyrics
+        SET lyrics = :lyrics, source = :source, updatedAt = :updatedAt
+        WHERE id = :id AND lyrics = :notFoundLyrics
+        """,
+    )
+    fun replaceLyricsIfNotFound(
+        id: String,
+        lyrics: String,
+        source: String,
+        updatedAt: Long,
+        notFoundLyrics: String,
+    ): Int
+
+    @Transaction
+    fun replaceLyricsIfAbsentOrNotFound(
+        id: String,
+        lyrics: String,
+        source: String = LyricsEntity.Source.REMOTE.value,
+        updatedAt: Long = System.currentTimeMillis(),
+    ) {
+        val insertedRowId =
+            insert(
+                LyricsEntity(
+                    id = id,
+                    lyrics = lyrics,
+                    source = source,
+                    updatedAt = updatedAt,
+                ),
+            )
+        if (insertedRowId == -1L) {
+            replaceLyricsIfNotFound(
+                id = id,
+                lyrics = lyrics,
+                source = source,
+                updatedAt = updatedAt,
+                notFoundLyrics = LyricsEntity.LYRICS_NOT_FOUND,
+            )
+        }
     }
 
     @Transaction

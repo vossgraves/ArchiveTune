@@ -50,6 +50,8 @@ object QobuzAudioProvider {
     private const val INSTANCE_SOFT_COOLDOWN_MS = 60_000L
     private const val INSTANCE_HARD_COOLDOWN_MS = 600_000L
     private const val AUDIO_FLAC_MIME_TYPE = "audio/flac"
+    private const val HEALTH_PROBE_TRACK_ID = "5966783"
+    private const val HEALTH_PROBE_FORMAT_ID = 5
 
     private val STOP_WORDS =
         setOf("the", "a", "an", "of", "and", "feat", "ft", "featuring", "with")
@@ -121,7 +123,16 @@ object QobuzAudioProvider {
             .callTimeout(8, TimeUnit.SECONDS)
             .build()
 
-    private data class CachedSearch(val trackId: String?, val expiresAt: Long)
+    private data class CachedSearch(val match: Match?, val expiresAt: Long)
+
+    /** Search metadata carried through to the final cross-provider safety gate. */
+    private data class Match(
+        val id: String,
+        val title: String,
+        val artist: String?,
+        val album: String?,
+        val durationMs: Long?,
+    )
 
     private data class CachedStream(val stream: DirectStream, val expiresAt: Long)
 
@@ -356,10 +367,11 @@ object QobuzAudioProvider {
 
         val available = backends.filterNot { isInstanceCoolingDown(it.id, now) }.ifEmpty { backends }
         for (backend in available) {
-            val trackId =
+            val match =
                 runCatching { resolveTrackId(backend, query) }
                     .onFailure { markInstanceFailed(backend.id, hardFailure = it is java.io.IOException) }
                     .getOrNull() ?: continue
+            val trackId = match.id
             val download =
                 runCatching { backend.download(trackId, formatId) }
                     .onFailure { markInstanceFailed(backend.id, hardFailure = it is java.io.IOException) }
@@ -384,6 +396,10 @@ object QobuzAudioProvider {
                     contentLength = null,
                     label = "Qobuz ${qualityLabel(formatId)}",
                     source = AudioSourceType.QOBUZ,
+                    matchedTitle = match.title,
+                    matchedArtist = match.artist,
+                    matchedAlbum = match.album,
+                    matchedDurationMs = match.durationMs,
                 )
             streamCache[cacheKey] = CachedStream(stream, now + STREAM_CACHE_MS)
             Timber.tag("Qobuz").i("resolved \"%s\" via %s [%s]", query.title, backend.label, stream.label)
@@ -434,11 +450,11 @@ object QobuzAudioProvider {
     private fun resolveTrackId(
         backend: Backend,
         query: Query,
-    ): String? {
+    ): Match? {
         val now = System.currentTimeMillis()
         val key = backend.id + "|" + query.cacheKey()
         searchCache[key]?.let { cached ->
-            if (cached.expiresAt > now) return cached.trackId
+            if (cached.expiresAt > now) return cached.match
             searchCache.remove(key)
         }
         val searchQuery =
@@ -446,32 +462,38 @@ object QobuzAudioProvider {
                 .filter { it.isNotBlank() }
                 .joinToString(" ")
                 .ifBlank { query.title }
-        val trackId = bestMatch(backend, searchQuery, query)
-        searchCache[key] = CachedSearch(trackId, now + SEARCH_CACHE_MS)
-        return trackId
+        val match = bestMatch(backend, searchQuery, query)
+        searchCache[key] = CachedSearch(match, now + SEARCH_CACHE_MS)
+        return match
     }
 
-    /** Runs search and scores results against [query], returning the best track id above threshold. */
+    /** Runs search and scores results against [query], returning the best match above threshold. */
     private fun bestMatch(
         backend: Backend,
         searchQuery: String,
         query: Query,
-    ): String? {
+    ): Match? {
         val items = backend.search(searchQuery) ?: return null
         val wantedTitle = query.title.titleMatchNormalized()
         val wantedArtists = query.artists.map { it.normalized() }.filter { it.isNotBlank() }
         var bestId: String? = null
+        var bestTitle = ""
+        var bestArtist: String? = null
+        var bestAlbum: String? = null
+        var bestDurationMs: Long? = null
         var bestScore = Int.MIN_VALUE
         for (index in 0 until items.length()) {
             val item = items.optJSONObject(index) ?: continue
             val id = item.trackId() ?: continue
-            val candidateTitle = (item.stringOrNull("title") ?: continue).titleMatchNormalized()
+            val rawTitle = item.stringOrNull("title") ?: continue
+            val candidateTitle = rawTitle.titleMatchNormalized()
             val candidateArtist =
                 item.optJSONObject("performer")?.stringOrNull("name")
                     ?: item.stringOrNull("artist")
                     ?: item.optJSONObject("album")?.optJSONObject("artist")?.stringOrNull("name")
                     ?: ""
             val candidateDurationMs = item.longOrNull("duration")?.times(1000L)
+            val candidateAlbum = item.optJSONObject("album")?.stringOrNull("title")
             val score =
                 scoreMatch(
                     wantedTitle = wantedTitle,
@@ -484,9 +506,18 @@ object QobuzAudioProvider {
             if (score > bestScore) {
                 bestScore = score
                 bestId = id
+                bestTitle = rawTitle
+                bestArtist = candidateArtist.takeIf { it.isNotBlank() }
+                bestAlbum = candidateAlbum
+                bestDurationMs = candidateDurationMs
             }
         }
-        return if (bestScore >= MIN_MATCH_SCORE) bestId else null
+        val id = bestId
+        return if (bestScore >= MIN_MATCH_SCORE && id != null) {
+            Match(id, bestTitle, bestArtist, bestAlbum, bestDurationMs)
+        } else {
+            null
+        }
     }
 
     /** Health-only search helper: returns any track id for a canned query (or null). */
@@ -684,61 +715,64 @@ object QobuzAudioProvider {
     }
 
     /**
-     * Deep health probe for a direct-API token: searches + calls getFileUrl for [probeTrackId] and
-     * classifies HEALTHY / PREVIEW_ONLY (auth OK but no lossless entitlement) / UNREACHABLE (expired,
-     * invalid, or network error). Runs blocking network I/O — call off the main thread.
+     * Deep health probe for a direct-API token. This mirrors ArchivePool's account validation:
+     * user/get proves the token and reports subscription capabilities, then a subscription-neutral
+     * MP3 request proves the app secret can sign stream URLs. Runs blocking I/O off the main thread.
      */
+    @Suppress("UNUSED_PARAMETER")
     fun verifyToken(
         token: QobuzToken,
         probeTrackId: String?,
         formatId: Int,
-    ): TidalAudioProvider.InstanceHealth {
-        val trackId = probeTrackId?.trim().orEmpty()
-        return runCatching {
-            val resolvedId =
-                trackId.ifBlank {
-                    val items = searchItemsDirect(token, "adele hello") ?: return@runCatching TidalAudioProvider.InstanceHealth.UNREACHABLE
-                    (0 until items.length()).firstNotNullOfOrNull { items.optJSONObject(it)?.trackId() }
-                        ?: return@runCatching TidalAudioProvider.InstanceHealth.UNREACHABLE
-                }
-            verifyDirectDownloadEntitlement(token, resolvedId, formatId)
-        }.getOrElse { TidalAudioProvider.InstanceHealth.UNREACHABLE }
-    }
-
-    private fun verifyDirectDownloadEntitlement(
-        token: QobuzToken,
-        trackId: String,
-        formatId: Int,
-    ): TidalAudioProvider.InstanceHealth {
-        client.newCall(directDownloadRequest(token, trackId, formatId)).execute().use { response ->
-            val body = response.body?.string().orEmpty()
-            if (response.isSuccessful) {
-                val result = parseDirectDownload(body)
-                return when {
-                    result == null -> classifyDirectDownloadRejection(body)
-                    result.isPreview -> TidalAudioProvider.InstanceHealth.PREVIEW_ONLY
-                    else -> TidalAudioProvider.InstanceHealth.HEALTHY
-                }
+    ): TidalAudioProvider.InstanceHealth =
+        runCatching {
+            val account = fetchTokenAccountHealth(token)
+                ?: return@runCatching TidalAudioProvider.InstanceHealth.UNREACHABLE
+            if (!hasValidAppSecret(token)) {
+                return@runCatching TidalAudioProvider.InstanceHealth.UNREACHABLE
             }
-            return classifyDirectDownloadRejection(body)
+            if (account.premium) {
+                TidalAudioProvider.InstanceHealth.HEALTHY
+            } else {
+                TidalAudioProvider.InstanceHealth.PREVIEW_ONLY
+            }
+        }.getOrElse { TidalAudioProvider.InstanceHealth.UNREACHABLE }
+
+    private data class TokenAccountHealth(
+        val premium: Boolean,
+    )
+
+    private fun fetchTokenAccountHealth(token: QobuzToken): TokenAccountHealth? {
+        val url =
+            "$QOBUZ_API_BASE/user/get"
+                .toHttpUrl()
+                .newBuilder()
+                .addQueryParameter("app_id", token.appId)
+                .addQueryParameter("user_auth_token", token.token)
+                .build()
+        client.newCall(directRequest(url.toString(), token)).execute().use { response ->
+            if (!response.isSuccessful) return null
+            val body = response.body?.string().orEmpty()
+            if (body.isBlank()) return null
+            val normalized = body.lowercase(Locale.US)
+            val valid = normalized.contains("\"id\"") || normalized.contains("credential")
+            if (!valid) return null
+            val premium =
+                Regex("""lossless|hi-res|hires|studio|sublime|"format_id"\s*:\s*(6|7|27)""")
+                    .containsMatchIn(normalized)
+            return TokenAccountHealth(premium = premium)
         }
     }
 
-    private fun classifyDirectDownloadRejection(body: String): TidalAudioProvider.InstanceHealth {
-        val reason = body.lowercase()
-        val invalidCredentials =
-            listOf("signature", "app_secret", "app secret", "invalid app", "invalid token", "expired token")
-                .any(reason::contains)
-        if (invalidCredentials) return TidalAudioProvider.InstanceHealth.UNREACHABLE
-
-        val missingEntitlement =
-            listOf("subscription", "subscribe", "not allowed", "not authorized", "not eligible", "preview")
-                .any(reason::contains)
-        return if (missingEntitlement) {
-            TidalAudioProvider.InstanceHealth.PREVIEW_ONLY
-        } else {
-            TidalAudioProvider.InstanceHealth.UNREACHABLE
-        }
+    private fun hasValidAppSecret(token: QobuzToken): Boolean {
+        client
+            .newCall(directDownloadRequest(token, HEALTH_PROBE_TRACK_ID, HEALTH_PROBE_FORMAT_ID))
+            .execute()
+            .use { response ->
+                val body = response.body?.string().orEmpty().lowercase(Locale.US)
+                return !body.contains("invalid request signature") &&
+                    !body.contains("invalidrequestsignature")
+            }
     }
 
     // -------------------------------------------------------------------------
