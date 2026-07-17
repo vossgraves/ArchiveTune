@@ -172,7 +172,7 @@ fun LyricsScreen(
     val showPlayerControlsEnabled by showPlayerControlsState
     val (autoHidePlayerControls, onAutoHidePlayerControlsChange) =
         rememberPreference(AutoHideLyricsPlayerControlsKey, false)
-    var playerControlsVisible by remember(mediaMetadata.id, showPlayerControlsEnabled) {
+    var playerControlsExpanded by remember(mediaMetadata.id, showPlayerControlsEnabled) {
         mutableStateOf(showPlayerControlsEnabled)
     }
     var playerControlsVisibilityTick by remember(mediaMetadata.id) {
@@ -183,34 +183,34 @@ fun LyricsScreen(
         remember(showPlayerControlsState) {
             { showControls: Boolean ->
                 showPlayerControlsState.value = showControls
-                playerControlsVisible = showControls
+                playerControlsExpanded = showControls
             }
         }
     val onAutoHidePlayerControlsToggle: (Boolean) -> Unit = { enabled ->
         onAutoHidePlayerControlsChange(enabled)
         if (showPlayerControlsEnabled) {
-            playerControlsVisible = true
+            playerControlsExpanded = true
             playerControlsVisibilityTick++
         }
     }
 
     fun pokePlayerControlsVisibility() {
         if (!showPlayerControlsEnabled) return
-        playerControlsVisible = true
+        playerControlsExpanded = true
         if (autoHidePlayerControls) {
             playerControlsVisibilityTick++
         }
     }
 
     LaunchedEffect(showPlayerControlsEnabled) {
-        playerControlsVisible = showPlayerControlsEnabled
+        playerControlsExpanded = showPlayerControlsEnabled
     }
 
     LaunchedEffect(autoHidePlayerControls, showPlayerControlsEnabled, playerControlsVisibilityTick, mediaMetadata.id) {
         if (!showPlayerControlsEnabled || !autoHidePlayerControls) return@LaunchedEffect
-        playerControlsVisible = true
+        playerControlsExpanded = true
         kotlinx.coroutines.delay(autoHideDelayMs)
-        playerControlsVisible = false
+        playerControlsExpanded = false
     }
 
     val hapticClick =
@@ -354,7 +354,8 @@ fun LyricsScreen(
 
     val isLoading = playbackState == STATE_BUFFERING || sliderPosition != null
     val orientation = LocalConfiguration.current.orientation
-    val controlsVisible = showPlayerControlsEnabled && playerControlsVisible
+    val controlsVisible = showPlayerControlsEnabled
+    val controlsExpanded = showPlayerControlsEnabled && (!autoHidePlayerControls || playerControlsExpanded)
     val onControlsPositionChange: (Long) -> Unit = {
         pokePlayerControlsVisibility()
         sliderPosition = it
@@ -472,6 +473,7 @@ fun LyricsScreen(
                                     positionProvider = { positionState.longValue },
                                     durationProvider = { durationState.longValue },
                                     sliderPosition = sliderPosition,
+                                    controlsExpanded = controlsExpanded,
                                     isPlaying = isPlaying,
                                     isLoading = isLoading,
                                     volume = deviceMusicVolumeController.volumeFraction,
@@ -481,6 +483,7 @@ fun LyricsScreen(
                                     onPreviousClick = onControlsPreviousClick,
                                     onPlayPauseClick = onControlsPlayPauseClick,
                                     onNextClick = onControlsNextClick,
+                                    onControlsInteraction = { pokePlayerControlsVisibility() },
                                     modifier = Modifier.fillMaxWidth(),
                                 )
                             }
@@ -524,6 +527,7 @@ fun LyricsScreen(
                         positionProvider = { positionState.longValue },
                         durationProvider = { durationState.longValue },
                         sliderPosition = sliderPosition,
+                        controlsExpanded = controlsExpanded,
                         isPlaying = isPlaying,
                         isLoading = isLoading,
                         volume = deviceMusicVolumeController.volumeFraction,
@@ -533,6 +537,7 @@ fun LyricsScreen(
                         onPreviousClick = onControlsPreviousClick,
                         onPlayPauseClick = onControlsPlayPauseClick,
                         onNextClick = onControlsNextClick,
+                        onControlsInteraction = { pokePlayerControlsVisibility() },
                         modifier =
                             Modifier
                                 .fillMaxWidth()
@@ -777,6 +782,7 @@ private fun AppleMusicControls(
     positionProvider: () -> Long,
     durationProvider: () -> Long,
     sliderPosition: Long?,
+    controlsExpanded: Boolean,
     isPlaying: Boolean,
     isLoading: Boolean,
     volume: Float,
@@ -786,6 +792,7 @@ private fun AppleMusicControls(
     onPreviousClick: () -> Unit,
     onPlayPauseClick: () -> Unit,
     onNextClick: () -> Unit,
+    onControlsInteraction: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val position = positionProvider()
@@ -796,7 +803,16 @@ private fun AppleMusicControls(
     val remainingPosition = (safeDuration - currentPosition).coerceAtLeast(0L)
 
     Column(
-        modifier = modifier.offset(y = (-6).dp),
+        modifier =
+            modifier
+                .offset(y = (-6).dp)
+                .pointerInput(controlsExpanded) {
+                    if (controlsExpanded) return@pointerInput
+                    awaitEachGesture {
+                        awaitFirstDown(requireUnconsumed = false)
+                        onControlsInteraction()
+                    }
+                },
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         AppleMusicSlider(
@@ -829,85 +845,100 @@ private fun AppleMusicControls(
             )
         }
 
-        Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .padding(top = 26.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically,
+        AnimatedVisibility(
+            visible = controlsExpanded,
+            enter = fadeIn(tween(180)) + expandVertically(tween(220)),
+            exit = fadeOut(tween(120)) + shrinkVertically(tween(180)),
+            label = "lyrics-expanded-player-controls",
         ) {
-            AppleMusicTransportButton(
-                iconRes = R.drawable.skip_previous,
-                contentDescription = stringResource(R.string.widget_previous),
-                iconSize = 44.dp,
-                touchSize = 68.dp,
-                onClick = onPreviousClick,
-            )
-            IconButton(
-                onClick = onPlayPauseClick,
-                modifier = Modifier.size(74.dp),
+            Column(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 15.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                if (isLoading) {
-                    CircularWavyProgressIndicator(
-                        modifier = Modifier.size(42.dp),
-                        color = AppleMusicForeground,
+                Row(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(top = 26.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    AppleMusicTransportButton(
+                        iconRes = R.drawable.skip_previous,
+                        contentDescription = stringResource(R.string.widget_previous),
+                        iconSize = 44.dp,
+                        touchSize = 68.dp,
+                        onClick = onPreviousClick,
                     )
-                } else {
+                    IconButton(
+                        onClick = onPlayPauseClick,
+                        modifier = Modifier.size(74.dp),
+                    ) {
+                        if (isLoading) {
+                            CircularWavyProgressIndicator(
+                                modifier = Modifier.size(42.dp),
+                                color = AppleMusicForeground,
+                            )
+                        } else {
+                            Icon(
+                                painter = painterResource(if (isPlaying) R.drawable.pause else R.drawable.play),
+                                contentDescription =
+                                    if (isPlaying) {
+                                        stringResource(R.string.widget_pause)
+                                    } else {
+                                        stringResource(R.string.play)
+                                    },
+                                tint = AppleMusicForeground,
+                                modifier = Modifier.size(54.dp),
+                            )
+                        }
+                    }
+                    AppleMusicTransportButton(
+                        iconRes = R.drawable.skip_next,
+                        contentDescription = stringResource(R.string.next),
+                        iconSize = 44.dp,
+                        touchSize = 68.dp,
+                        onClick = onNextClick,
+                    )
+                }
+
+                Row(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(top = 26.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
                     Icon(
-                        painter = painterResource(if (isPlaying) R.drawable.pause else R.drawable.play),
-                        contentDescription =
-                            if (isPlaying) {
-                                stringResource(R.string.widget_pause)
-                            } else {
-                                stringResource(R.string.play)
-                            },
-                        tint = AppleMusicForeground,
-                        modifier = Modifier.size(54.dp),
+                        painter = painterResource(R.drawable.volume_off),
+                        contentDescription = stringResource(R.string.minimum_volume),
+                        tint = AppleMusicForeground.copy(alpha = 0.66f),
+                        modifier = Modifier.size(17.dp),
+                    )
+                    AppleMusicSlider(
+                        value = volume.coerceIn(0f, 1f),
+                        valueRange = 0f..1f,
+                        activeColor = AppleMusicForeground.copy(alpha = 0.88f),
+                        inactiveColor = AppleMusicForeground.copy(alpha = 0.24f),
+                        trackHeight = 8.dp,
+                        onValueChange = onVolumeChange,
+                        onValueChangeFinished = {},
+                        modifier =
+                            Modifier
+                                .weight(1f)
+                                .padding(horizontal = 16.dp),
+                    )
+                    Icon(
+                        painter = painterResource(R.drawable.volume_up),
+                        contentDescription = stringResource(R.string.maximum_volume),
+                        tint = AppleMusicForeground.copy(alpha = 0.66f),
+                        modifier = Modifier.size(19.dp),
                     )
                 }
             }
-            AppleMusicTransportButton(
-                iconRes = R.drawable.skip_next,
-                contentDescription = stringResource(R.string.next),
-                iconSize = 44.dp,
-                touchSize = 68.dp,
-                onClick = onNextClick,
-            )
-        }
-
-        Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .padding(top = 26.dp, bottom = 15.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(
-                painter = painterResource(R.drawable.volume_off),
-                contentDescription = stringResource(R.string.minimum_volume),
-                tint = AppleMusicForeground.copy(alpha = 0.66f),
-                modifier = Modifier.size(17.dp),
-            )
-            AppleMusicSlider(
-                value = volume.coerceIn(0f, 1f),
-                valueRange = 0f..1f,
-                activeColor = AppleMusicForeground.copy(alpha = 0.88f),
-                inactiveColor = AppleMusicForeground.copy(alpha = 0.24f),
-                trackHeight = 8.dp,
-                onValueChange = onVolumeChange,
-                onValueChangeFinished = {},
-                modifier =
-                    Modifier
-                        .weight(1f)
-                        .padding(horizontal = 16.dp),
-            )
-            Icon(
-                painter = painterResource(R.drawable.volume_up),
-                contentDescription = stringResource(R.string.maximum_volume),
-                tint = AppleMusicForeground.copy(alpha = 0.66f),
-                modifier = Modifier.size(19.dp),
-            )
         }
     }
 }
