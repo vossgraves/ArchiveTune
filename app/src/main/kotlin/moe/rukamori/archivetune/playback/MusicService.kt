@@ -2605,6 +2605,13 @@ class MusicService :
                 crossfadeIncomingBaseVolume = currentEffectivePlayerVolumeForMediaId(target.mediaId)
                 crossfadePlaybackRequested = player.playWhenReady
                 localPlayer.pauseAtEndOfMediaItems = true
+                // Open the secondary player immediately so buffering starts inside the crossfade
+                // window instead of after the primary has already run into the end guard.
+                incomingPlayer.playbackParameters = player.playbackParameters
+                incomingPlayer.playWhenReady = crossfadePlaybackRequested
+                if (crossfadePlaybackRequested) {
+                    incomingPlayer.play()
+                }
 
                 try {
                     val requiredBufferedMs = requiredCrossfadeStartBufferMs(durationMs)
@@ -2614,18 +2621,15 @@ class MusicService :
                         return@launch
                     }
 
-                    incomingPlayer.playbackParameters = player.playbackParameters
-                    incomingPlayer.playWhenReady = crossfadePlaybackRequested
-                    if (crossfadePlaybackRequested) {
-                        incomingPlayer.play()
-                        // MetroList keeps the outgoing player fully audible until the incoming
-                        // player is genuinely rendering. STATE_READY alone can still precede the
-                        // audio sink starting, which otherwise creates a brief dip at fade-in.
-                        if (!awaitPlayerActuallyPlaying(incomingPlayer, CROSSFADE_PLAYING_TIMEOUT_MS)) {
-                            cancelCrossfade(resetVolume = true, resetPauseAtEnd = true)
-                            scheduleCrossfade()
-                            return@launch
-                        }
+                    // MetroList keeps the outgoing player fully audible until the incoming player
+                    // is genuinely rendering. STATE_READY alone can still precede the audio sink
+                    // starting, which otherwise creates a brief dip at fade-in.
+                    if (crossfadePlaybackRequested &&
+                        !awaitPlayerActuallyPlaying(incomingPlayer, CROSSFADE_PLAYING_TIMEOUT_MS)
+                    ) {
+                        cancelCrossfade(resetVolume = true, resetPauseAtEnd = true)
+                        scheduleCrossfade()
+                        return@launch
                     }
 
                     // Read the outgoing clock again after the incoming renderer starts. Startup
@@ -3758,16 +3762,14 @@ class MusicService :
 
             if (initialLoadGeneration != initialQueueLoadGeneration) return@launch
 
-            // Infinite Queue is a global, persisted choice. Once any online queue has settled and
-            // has no provider pages left, attach its radio regardless of whether it came from
-            // search, the library, a playlist, or another playback entry point. Previously this
-            // only happened for a one-item queue, so library ListQueues could show the switch as on
-            // without actually becoming infinite.
+            // Infinite Queue is a global, persisted choice. Song-start queues should seed radio
+            // immediately so the toggle behaves consistently across search/library entry points.
+            // For longer queues we still wait until the queue itself runs out of pages.
             if (autoLoadMoreEnabled &&
                 player.repeatMode == REPEAT_MODE_OFF &&
-                !queue.hasNextPage()
+                queue.shouldBootstrapInfiniteQueue()
             ) {
-                onInfiniteQueueEnabled()
+                onInfiniteQueueEnabled(queue.infiniteQueueSeedMediaId())
             }
         }
     }
@@ -3916,12 +3918,14 @@ class MusicService :
         currentQueue = EmptyQueue
     }
 
-    fun onInfiniteQueueEnabled() {
-        val currentMeta = player.currentMetadata ?: return
-        if (isCurrentPlaybackItemLocal(currentMeta)) return
+    fun onInfiniteQueueEnabled(seedMediaId: String? = null) {
+        val currentMeta = player.currentMetadata
+        val resolvedSeedMediaId =
+            seedMediaId?.trim()?.takeIf { it.isNotBlank() }
+                ?: currentMeta?.id?.trim()?.takeIf { it.isNotBlank() }
+                ?: return
+        if (currentMeta != null && isCurrentPlaybackItemLocal(currentMeta)) return
         if (infiniteQueueJob?.isActive == true) return
-
-        val seedMediaId = currentMeta.id.trim().ifBlank { return }
         val generation = ++infiniteQueueGeneration
         infiniteQueueLoading.value = true
 
@@ -3930,7 +3934,11 @@ class MusicService :
                 try {
                     val hideExplicit = dataStore.get(HideExplicitKey, false)
                     val hideVideo = dataStore.get(HideVideoKey, false)
-                    val radioQueue = YouTubeQueue(WatchEndpoint(videoId = seedMediaId), followAutomixPreview = true)
+                    val radioQueue =
+                        YouTubeQueue(
+                            WatchEndpoint(videoId = resolvedSeedMediaId),
+                            followAutomixPreview = true,
+                        )
                     val status =
                         withContext(Dispatchers.IO) {
                             radioQueue
@@ -6381,9 +6389,9 @@ class MusicService :
             reason != Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT &&
             player.repeatMode == REPEAT_MODE_OFF &&
             player.mediaItemCount - player.currentMediaItemIndex <= 3 &&
-            !currentQueue.hasNextPage()
+            currentQueue.shouldBootstrapInfiniteQueue()
         ) {
-            onInfiniteQueueEnabled()
+            onInfiniteQueueEnabled(currentQueue.infiniteQueueSeedMediaId())
         }
 
         if (player.playWhenReady && player.playbackState == Player.STATE_READY) {
@@ -6410,6 +6418,12 @@ class MusicService :
                 ?.uri
                 ?.shouldBypassPlayerCache() == true
 
+    private fun Queue.shouldBootstrapInfiniteQueue(): Boolean =
+        preloadItem != null || !hasNextPage()
+
+    private fun Queue.infiniteQueueSeedMediaId(): String? =
+        preloadItem?.id?.trim()?.takeIf { it.isNotBlank() }
+
     override fun onPlaybackStateChanged(
         @Player.State playbackState: Int,
     ) {
@@ -6425,9 +6439,10 @@ class MusicService :
                 !suppressAutoPlayback &&
                 dataStore.get(AutoLoadMoreKey, true) &&
                 player.repeatMode == REPEAT_MODE_OFF &&
-                player.currentMediaItem != null
+                player.currentMediaItem != null &&
+                currentQueue.shouldBootstrapInfiniteQueue()
             ) {
-                onInfiniteQueueEnabled()
+                onInfiniteQueueEnabled(currentQueue.infiniteQueueSeedMediaId())
             }
         } else if (playbackState == Player.STATE_READY) {
             scheduleCrossfade()

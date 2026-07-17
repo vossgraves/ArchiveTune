@@ -13,9 +13,14 @@ import android.content.res.Configuration
 import android.view.HapticFeedbackConstants
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -25,6 +30,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -343,62 +349,85 @@ fun LyricsScreen(
                         .padding(horizontal = 24.dp),
             )
 
-            if (orientation == Configuration.ORIENTATION_LANDSCAPE && showPlayerControls) {
-                Row(
+            if (orientation == Configuration.ORIENTATION_LANDSCAPE) {
+                AnimatedContent(
+                    targetState = showPlayerControls,
+                    transitionSpec = {
+                        fadeIn(tween(180)) togetherWith fadeOut(tween(140))
+                    },
+                    label = "lyrics-landscape-controls",
                     modifier =
                         Modifier
                             .weight(1f)
-                            .fillMaxWidth()
-                            .padding(horizontal = 36.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    AppleMusicLyricsPane(
-                        lyricsMode = lyricsMode,
-                        sliderPositionProvider = { sliderPosition },
-                        lyricsSyncOffset = lyricsSyncOffset,
-                        modifier =
-                            Modifier
-                                .weight(1.15f)
-                                .fillMaxHeight()
-                                .padding(end = 32.dp),
-                    )
+                            .fillMaxWidth(),
+                ) { controlsVisible ->
+                    if (controlsVisible) {
+                        Row(
+                            modifier =
+                                Modifier
+                                    .fillMaxSize()
+                                    .padding(horizontal = 36.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            AppleMusicLyricsPane(
+                                lyricsMode = lyricsMode,
+                                sliderPositionProvider = { sliderPosition },
+                                lyricsSyncOffset = lyricsSyncOffset,
+                                modifier =
+                                    Modifier
+                                        .weight(1.15f)
+                                        .fillMaxHeight()
+                                        .padding(end = 32.dp),
+                            )
 
-                    Column(
-                        modifier =
-                            Modifier
-                                .weight(0.85f)
-                                .widthIn(max = 420.dp),
-                        verticalArrangement = Arrangement.Center,
-                    ) {
-                        AppleMusicControls(
-                            positionProvider = { positionState.longValue },
-                            durationProvider = { durationState.longValue },
-                            sliderPosition = sliderPosition,
-                            isPlaying = isPlaying,
-                            isLoading = isLoading,
-                            volume = deviceMusicVolumeController.volumeFraction,
-                            onPositionChange = { sliderPosition = it },
-                            onPositionChangeFinished = {
-                                sliderPosition?.let {
-                                    player.seekTo(it)
-                                    positionState.longValue = it
-                                }
-                                sliderPosition = null
-                            },
-                            onVolumeChange = onVolumeChange,
-                            onPreviousClick = {
-                                hapticClick()
-                                playerConnection.seekToPrevious()
-                            },
-                            onPlayPauseClick = {
-                                hapticClick()
-                                player.togglePlayPause()
-                            },
-                            onNextClick = {
-                                hapticClick()
-                                playerConnection.seekToNext()
-                            },
-                            modifier = Modifier.fillMaxWidth(),
+                            Column(
+                                modifier =
+                                    Modifier
+                                        .weight(0.85f)
+                                        .widthIn(max = 420.dp),
+                                verticalArrangement = Arrangement.Center,
+                            ) {
+                                AppleMusicControls(
+                                    positionProvider = { positionState.longValue },
+                                    durationProvider = { durationState.longValue },
+                                    sliderPosition = sliderPosition,
+                                    isPlaying = isPlaying,
+                                    isLoading = isLoading,
+                                    volume = deviceMusicVolumeController.volumeFraction,
+                                    onPositionChange = { sliderPosition = it },
+                                    onPositionChangeFinished = {
+                                        sliderPosition?.let {
+                                            player.seekTo(it)
+                                            positionState.longValue = it
+                                        }
+                                        sliderPosition = null
+                                    },
+                                    onVolumeChange = onVolumeChange,
+                                    onPreviousClick = {
+                                        hapticClick()
+                                        playerConnection.seekToPrevious()
+                                    },
+                                    onPlayPauseClick = {
+                                        hapticClick()
+                                        player.togglePlayPause()
+                                    },
+                                    onNextClick = {
+                                        hapticClick()
+                                        playerConnection.seekToNext()
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            }
+                        }
+                    } else {
+                        AppleMusicLyricsPane(
+                            lyricsMode = lyricsMode,
+                            sliderPositionProvider = { sliderPosition },
+                            lyricsSyncOffset = lyricsSyncOffset,
+                            modifier =
+                                Modifier
+                                    .fillMaxSize()
+                                    .padding(horizontal = 36.dp, vertical = 8.dp),
                         )
                     }
                 }
@@ -413,7 +442,18 @@ fun LyricsScreen(
                             .fillMaxWidth(),
                 )
 
-                if (showPlayerControls) {
+                AnimatedVisibility(
+                    visible = showPlayerControls,
+                    enter =
+                        fadeIn(tween(180)) +
+                            slideInVertically(tween(240)) { fullHeight -> fullHeight / 6 } +
+                            expandVertically(tween(240)),
+                    exit =
+                        fadeOut(tween(120)) +
+                            slideOutVertically(tween(180)) { fullHeight -> fullHeight / 8 } +
+                            shrinkVertically(tween(180)),
+                    label = "lyrics-player-controls",
+                ) {
                     AppleMusicControls(
                         positionProvider = { positionState.longValue },
                         durationProvider = { durationState.longValue },
@@ -705,7 +745,7 @@ private fun AppleMusicControls(
     val remainingPosition = (safeDuration - currentPosition).coerceAtLeast(0L)
 
     Column(
-        modifier = modifier,
+        modifier = modifier.offset(y = (-6).dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         AppleMusicSlider(
