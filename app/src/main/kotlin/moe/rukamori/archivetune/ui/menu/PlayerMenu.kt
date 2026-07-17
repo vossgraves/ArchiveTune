@@ -77,6 +77,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.net.toUri
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.exoplayer.offline.Download
 import androidx.media3.exoplayer.offline.DownloadRequest
@@ -88,11 +89,15 @@ import moe.rukamori.archivetune.LocalDatabase
 import moe.rukamori.archivetune.LocalDownloadUtil
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.constants.ArchiveTuneCanvasKey
 import moe.rukamori.archivetune.constants.ArtistSeparatorsKey
 import moe.rukamori.archivetune.constants.ExternalDownloaderEnabledKey
 import moe.rukamori.archivetune.constants.ExternalDownloaderPackageKey
+import moe.rukamori.archivetune.constants.PlayerDesignStyle
+import moe.rukamori.archivetune.constants.PlayerDesignStyleKey
 import moe.rukamori.archivetune.constants.SpeedDialSongIdsKey
 import moe.rukamori.archivetune.models.MediaMetadata
+import moe.rukamori.archivetune.playback.CanvasArtworkRefetchResult
 import moe.rukamori.archivetune.playback.ExoDownloadService
 import moe.rukamori.archivetune.ui.component.BottomSheetState
 import moe.rukamori.archivetune.ui.component.ListDialog
@@ -104,6 +109,8 @@ import moe.rukamori.archivetune.utils.SpeedDialPin
 import moe.rukamori.archivetune.utils.SpeedDialPinType
 import moe.rukamori.archivetune.utils.isLocalMediaId
 import moe.rukamori.archivetune.utils.parseSpeedDialPins
+import moe.rukamori.archivetune.utils.rememberEnumPreference
+import moe.rukamori.archivetune.utils.rememberLowDataModeActive
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.utils.serializeSpeedDialPins
 import moe.rukamori.archivetune.utils.shareLocalAudio
@@ -151,6 +158,14 @@ fun PlayerMenu(
     val (artistSeparators) = rememberPreference(ArtistSeparatorsKey, defaultValue = ",;/&")
     val (externalDownloaderEnabled) = rememberPreference(ExternalDownloaderEnabledKey, defaultValue = false)
     val (externalDownloaderPackage) = rememberPreference(ExternalDownloaderPackageKey, defaultValue = "")
+    val (archiveTuneCanvasEnabled) = rememberPreference(ArchiveTuneCanvasKey, defaultValue = false)
+    val playerDesignStyle by rememberEnumPreference(PlayerDesignStyleKey, defaultValue = PlayerDesignStyle.V4)
+    val lowDataModeActive = rememberLowDataModeActive()
+    val supportsAnimatedCanvas =
+        playerDesignStyle == PlayerDesignStyle.V7 ||
+            playerDesignStyle == PlayerDesignStyle.V8 ||
+            playerDesignStyle == PlayerDesignStyle.V9
+    val isCanvasArtworkRefetching by playerConnection.isCanvasArtworkRefetching.collectAsStateWithLifecycle()
     val (speedDialSongIds, onSpeedDialSongIdsChange) = rememberPreference(SpeedDialSongIdsKey, "")
     val speedDialPins = remember(speedDialSongIds) { parseSpeedDialPins(speedDialSongIds) }
     val songPin = remember(mediaMetadata.id) { SpeedDialPin(type = SpeedDialPinType.SONG, id = mediaMetadata.id) }
@@ -438,6 +453,54 @@ fun PlayerMenu(
                                             playerConnection.startRadioSeamlessly()
                                             onDismiss()
                                         },
+                                    ),
+                                )
+                            }
+                            if (
+                                !isLocalMedia &&
+                                isQueueTrigger != true &&
+                                archiveTuneCanvasEnabled &&
+                                !lowDataModeActive &&
+                                supportsAnimatedCanvas
+                            ) {
+                                add(
+                                    NewAction(
+                                        icon = {
+                                            if (isCanvasArtworkRefetching) {
+                                                CircularWavyProgressIndicator(modifier = Modifier.size(28.dp))
+                                            } else {
+                                                Icon(
+                                                    painter = painterResource(R.drawable.sync),
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(28.dp),
+                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                )
+                                            }
+                                        },
+                                        text = stringResource(R.string.refetch_canvas),
+                                        onClick = {
+                                            coroutineScope.launch {
+                                                when (
+                                                    playerConnection.refetchCanvasArtwork(
+                                                        metadata = mediaMetadata,
+                                                        requireVertical = playerDesignStyle == PlayerDesignStyle.V7,
+                                                    )
+                                                ) {
+                                                    CanvasArtworkRefetchResult.Success -> onDismiss()
+                                                    CanvasArtworkRefetchResult.Failure -> {
+                                                        Toast
+                                                            .makeText(
+                                                                context,
+                                                                R.string.canvas_refetch_failed,
+                                                                Toast.LENGTH_SHORT,
+                                                            ).show()
+                                                    }
+
+                                                    CanvasArtworkRefetchResult.AlreadyRunning -> Unit
+                                                }
+                                            }
+                                        },
+                                        enabled = !isCanvasArtworkRefetching,
                                     ),
                                 )
                             }

@@ -174,6 +174,8 @@
     <string name="view_all">View all</string>
     <string name="more">more</string>
     <string name="refetch">Refetch</string>
+    <string name="refetch_canvas">Refetch canvas</string>
+    <string name="canvas_refetch_failed">Couldn\'t refresh animated canvas</string>
     <string name="share">Share</string>
     <string name="delete">Delete</string>
     <string name="hide_playlist">Hide playlist</string>
