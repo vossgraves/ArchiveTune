@@ -7262,6 +7262,7 @@ class MusicService :
     private fun resolveMultiSourceDataSpec(
         dataSpec: DataSpec,
         mediaId: String,
+        lowDataModeActive: Boolean,
     ): DataSpec? {
         if (mediaId.isLocalMediaId()) {
             Timber.tag("MusicService").d("Multi-source skip: %s is a local media id", mediaId)
@@ -7289,11 +7290,13 @@ class MusicService :
             return null
         }
 
-        // Low-data mode used to hard-disable lossless sources. Since Tidal is now
-        // explicitly opt-in per the source chain, we honor the user's choice and only log when a
-        // metered/low-data connection is detected instead of silently falling back to YouTube.
-        if (isLowDataModeActive()) {
-            Timber.tag("MusicService").d("Low-data mode active (metered network) but attempting lossless sources anyway")
+        // Low Data Mode is an effective network policy, not a rewrite of the user's saved source
+        // order. On cellular/metered connections, bypass Tidal and Qobuz (including a per-song
+        // override) and let the normal YouTube resolver select its low-data stream.
+        if (lowDataModeActive) {
+            tidalActiveMediaIds.remove(mediaId)
+            Timber.tag("MusicService").i("Low-data mode active; skipping Tidal/Qobuz for %s", mediaId)
+            return null
         }
 
         val query = buildSourceQuery(mediaId)
@@ -7840,6 +7843,7 @@ class MusicService :
             return dataSpec
         }
         val mediaId = dataSpec.key ?: return dataSpec
+        val lowDataModeActive = isLowDataModeActive()
         val storedFormat =
             runBlocking(Dispatchers.IO) {
                 database.format(mediaId).first()
@@ -7864,7 +7868,7 @@ class MusicService :
         // must not short-circuit playback (otherwise toggling Tidal on would keep replaying the
         // previously cached YouTube bytes). Persistent downloads still win so offline playback
         // and explicit downloads are unaffected.
-        val tidalApplies = tidalSourceApplies(mediaId)
+        val tidalApplies = !lowDataModeActive && tidalSourceApplies(mediaId)
         val allowPlayerCacheShortCircuit = !tidalApplies
 
         if (allowCacheShortCircuit) {
@@ -7902,12 +7906,11 @@ class MusicService :
         }
 
         // Multi-source: attempt to resolve a lossless stream (Tidal) before YouTube.
-        resolveMultiSourceDataSpec(dataSpec, mediaId)?.let { sourceDataSpec ->
+        resolveMultiSourceDataSpec(dataSpec, mediaId, lowDataModeActive)?.let { sourceDataSpec ->
             scope.launch(Dispatchers.IO) { recoverSong(mediaId) }
             return sourceDataSpec
         }
 
-        val lowDataModeActive = isLowDataModeActive()
         if (preferredStreamClient == PlayerStreamClient.ARCHIVETUNE_EXTRACTOR) {
             return resolveArchiveTuneExtractorDataSpec(
                 dataSpec = dataSpec,

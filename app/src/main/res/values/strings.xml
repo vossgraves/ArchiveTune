@@ -536,7 +536,7 @@
     <string name="audio_quality_high">High</string>
     <string name="audio_quality_low">Low</string>
     <string name="low_data_mode_title">Low Data Mode</string>
-    <string name="low_data_mode_description">Reduces mobile data usage by using low-quality streams and disabling playback cache, canvas, and background lyrics preloading on metered networks</string>
+    <string name="low_data_mode_description">On mobile or metered networks, uses low-quality YouTube streams and disables Tidal, Qobuz, playback caching, canvas, and background lyrics preloading</string>
     <string name="queue">Queue</string>
     <string name="persistent_queue">Persistent queue</string>
     <string name="persistent_queue_desc">Restore your last queue when the app starts</string>
