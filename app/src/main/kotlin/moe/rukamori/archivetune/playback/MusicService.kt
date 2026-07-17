@@ -2605,13 +2605,6 @@ class MusicService :
                 crossfadeIncomingBaseVolume = currentEffectivePlayerVolumeForMediaId(target.mediaId)
                 crossfadePlaybackRequested = player.playWhenReady
                 localPlayer.pauseAtEndOfMediaItems = true
-                // Open the secondary player immediately so buffering starts inside the crossfade
-                // window instead of after the primary has already run into the end guard.
-                incomingPlayer.playbackParameters = player.playbackParameters
-                incomingPlayer.playWhenReady = crossfadePlaybackRequested
-                if (crossfadePlaybackRequested) {
-                    incomingPlayer.play()
-                }
 
                 try {
                     val requiredBufferedMs = requiredCrossfadeStartBufferMs(durationMs)
@@ -2621,31 +2614,15 @@ class MusicService :
                         return@launch
                     }
 
-                    // MetroList keeps the outgoing player fully audible until the incoming player
-                    // is genuinely rendering. STATE_READY alone can still precede the audio sink
-                    // starting, which otherwise creates a brief dip at fade-in.
-                    if (crossfadePlaybackRequested &&
-                        !awaitPlayerActuallyPlaying(incomingPlayer, CROSSFADE_PLAYING_TIMEOUT_MS)
-                    ) {
-                        cancelCrossfade(resetVolume = true, resetPauseAtEnd = true)
-                        scheduleCrossfade()
-                        return@launch
-                    }
-
-                    // Read the outgoing clock again after the incoming renderer starts. Startup
-                    // can consume seconds; using the pre-wait duration makes the fade overrun the
-                    // outgoing item and causes a stutter/pause immediately before its end.
-                    val actualFadeDurationMs =
-                        (player.duration - player.currentPosition - CROSSFADE_END_GUARD_MS)
-                            .coerceAtMost(durationMs)
-                    if (actualFadeDurationMs < MIN_CROSSFADE_DURATION_MS) {
-                        cancelCrossfade(resetVolume = true, resetPauseAtEnd = true)
-                        return@launch
+                    incomingPlayer.playbackParameters = player.playbackParameters
+                    incomingPlayer.playWhenReady = crossfadePlaybackRequested
+                    if (crossfadePlaybackRequested) {
+                        incomingPlayer.play()
                     }
 
                     var elapsedMs = 0L
                     var lastTickMs = android.os.SystemClock.elapsedRealtime()
-                    while (isActive && elapsedMs < actualFadeDurationMs) {
+                    while (isActive && elapsedMs < durationMs) {
                         if (player.currentMediaItem?.mediaId != outgoingMediaId) {
                             cancelCrossfade(resetVolume = true, resetPauseAtEnd = true)
                             return@launch
@@ -2654,9 +2631,8 @@ class MusicService :
                         val nowMs = android.os.SystemClock.elapsedRealtime()
                         if (crossfadePlaybackRequested) {
                             incomingPlayer.playWhenReady = true
-                            elapsedMs = (elapsedMs + (nowMs - lastTickMs)).coerceAtMost(actualFadeDurationMs)
-                            crossfadeProgress =
-                                (elapsedMs.toFloat() / actualFadeDurationMs.toFloat()).coerceIn(0f, 1f)
+                            elapsedMs = (elapsedMs + (nowMs - lastTickMs)).coerceAtMost(durationMs)
+                            crossfadeProgress = (elapsedMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
                             applyCrossfadeVolumes(
                                 crossfadeProgress,
                                 crossfadeBaseVolume,
@@ -2730,15 +2706,9 @@ class MusicService :
             player.seekTo(targetIndex, incomingPosition)
             player.playWhenReady = shouldContinuePlayback
             if (shouldContinuePlayback) {
-                // The secondary keeps advancing while the primary prepares the handoff seek. Keep
-                // it audible until the primary is both rendering and aligned to the live secondary
-                // clock; otherwise the primary resumes seconds behind and repeats part of song two.
-                if (!awaitPrimaryCrossfadeHandoffReady(incomingPlayer)) {
-                    Timber.tag(TAG).w(
-                        "Crossfade handoff alignment timed out: primary=%d secondary=%d",
-                        player.currentPosition,
-                        incomingPlayer.currentPosition,
-                    )
+                if (awaitPrimaryCrossfadeHandoffReady(incomingPlayer)) {
+                    val syncedIncomingPosition = incomingPlayer.currentPosition.coerceAtLeast(0L)
+                    player.seekTo(targetIndex, syncedIncomingPosition)
                 }
             }
             currentMediaMetadata.value = player.getMediaItemAt(targetIndex).metadata
@@ -2767,59 +2737,16 @@ class MusicService :
 
     private suspend fun awaitPrimaryCrossfadeHandoffReady(incomingPlayer: ExoPlayer): Boolean {
         val deadlineMs = android.os.SystemClock.elapsedRealtime() + CROSSFADE_HANDOFF_READY_TIMEOUT_MS
-        var alignmentSeeks = 0
         while (kotlinx.coroutines.currentCoroutineContext().isActive && android.os.SystemClock.elapsedRealtime() < deadlineMs) {
-            if (player.playbackState == Player.STATE_READY && player.isPlaying) {
-                val driftMs = incomingPlayer.currentPosition - player.currentPosition
-                if (abs(driftMs) <= CROSSFADE_HANDOFF_ALIGNMENT_TOLERANCE_MS &&
-                    canHandoffWithoutRebuffer(incomingPlayer)
-                ) {
-                    return true
-                }
-                if (abs(driftMs) > CROSSFADE_HANDOFF_ALIGNMENT_TOLERANCE_MS &&
-                    alignmentSeeks < CROSSFADE_HANDOFF_MAX_ALIGNMENT_SEEKS
-                ) {
-                    // Seek slightly ahead of the secondary to compensate for the small renderer
-                    // restart delay. The secondary remains audible throughout this muted resync.
-                    val targetDuration = player.duration
-                    val maximumTarget =
-                        if (targetDuration != C.TIME_UNSET && targetDuration > CROSSFADE_END_GUARD_MS) {
-                            targetDuration - CROSSFADE_END_GUARD_MS
-                        } else {
-                            Long.MAX_VALUE
-                        }
-                    val alignedPosition =
-                        (incomingPlayer.currentPosition + CROSSFADE_HANDOFF_SEEK_LEAD_MS)
-                            .coerceAtMost(maximumTarget)
-                    player.seekTo(alignedPosition)
-                    alignmentSeeks++
-                }
+            if (player.playbackState == Player.STATE_READY && canHandoffWithoutRebuffer(incomingPlayer)) {
+                return true
             }
             if (player.playbackState == Player.STATE_IDLE || player.playbackState == Player.STATE_ENDED) {
                 return false
             }
             delay(25L)
         }
-        val driftMs = abs(incomingPlayer.currentPosition - player.currentPosition)
-        return player.playbackState == Player.STATE_READY &&
-            player.isPlaying &&
-            driftMs <= CROSSFADE_HANDOFF_SEEK_GUARD_MS &&
-            canHandoffWithoutRebuffer(incomingPlayer)
-    }
-
-    private suspend fun awaitPlayerActuallyPlaying(
-        targetPlayer: Player,
-        timeoutMs: Long,
-    ): Boolean {
-        val deadlineMs = android.os.SystemClock.elapsedRealtime() + timeoutMs
-        while (kotlinx.coroutines.currentCoroutineContext().isActive && android.os.SystemClock.elapsedRealtime() < deadlineMs) {
-            if (targetPlayer.playbackState == Player.STATE_READY && targetPlayer.isPlaying) return true
-            if (targetPlayer.playbackState == Player.STATE_IDLE || targetPlayer.playbackState == Player.STATE_ENDED) {
-                return false
-            }
-            delay(16L)
-        }
-        return targetPlayer.playbackState == Player.STATE_READY && targetPlayer.isPlaying
+        return player.playbackState == Player.STATE_READY && canHandoffWithoutRebuffer(incomingPlayer)
     }
 
     private fun canHandoffWithoutRebuffer(incomingPlayer: ExoPlayer): Boolean {
@@ -9187,13 +9114,9 @@ class MusicService :
         const val CROSSFADE_END_GUARD_MS = 150L
         const val CROSSFADE_PREPARE_AHEAD_MS = 30_000L
         const val CROSSFADE_READY_TIMEOUT_MS = 5_000L
-        const val CROSSFADE_PLAYING_TIMEOUT_MS = 2_000L
         const val CROSSFADE_HANDOFF_READY_TIMEOUT_MS = 5_000L
         const val CROSSFADE_HANDOFF_BUFFER_MS = 5_000L
         const val CROSSFADE_HANDOFF_SEEK_GUARD_MS = 750L
-        const val CROSSFADE_HANDOFF_ALIGNMENT_TOLERANCE_MS = 180L
-        const val CROSSFADE_HANDOFF_SEEK_LEAD_MS = 90L
-        const val CROSSFADE_HANDOFF_MAX_ALIGNMENT_SEEKS = 3
         const val CROSSFADE_MIN_BUFFER_BEFORE_START_MS = 5_000L
         const val CROSSFADE_MAX_BUFFER_BEFORE_START_MS = 12_500L
         const val PRIMARY_MIN_BUFFER_MS = 20_000
