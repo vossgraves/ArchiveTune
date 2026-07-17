@@ -457,6 +457,7 @@ class MusicService :
     var queueTitle: String? = null
     private var infiniteQueueJob: Job? = null
     private var infiniteQueueGeneration = 0L
+    private var initialQueueLoadGeneration = 0L
     // True while playQueue's initial async load is still assembling the queue. While set, the
     // transition-driven infinite-radio bootstrap is suppressed so it isn't started prematurely and
     // then invalidated by the settling transitions (which previously left infiniteQueueLoading stuck
@@ -3667,6 +3668,7 @@ class MusicService :
         cancelCrossfade(resetVolume = true, resetPauseAtEnd = true)
         cancelInfiniteQueueBootstrap()
         suppressAutoPlayback = false
+        val initialLoadGeneration = ++initialQueueLoadGeneration
         initialQueueLoadInProgress = true
         currentQueue = queue
         queueTitle = null
@@ -3682,9 +3684,10 @@ class MusicService :
             player.prepare()
             player.playWhenReady = playWhenReady
         }
-        val autoLoadMoreEnabled = dataStore.get(AutoLoadMoreKey, true)
         scope.launch(SilentHandler) {
+            var autoLoadMoreEnabled = true
             try {
+                autoLoadMoreEnabled = dataStore.getAsync(AutoLoadMoreKey, true)
                 val hideExplicit = dataStore.get(HideExplicitKey, false)
                 val hideVideo = dataStore.get(HideVideoKey, false)
                 var initialStatus =
@@ -3712,6 +3715,7 @@ class MusicService :
                     }
                     initialStatus = initialStatus.copy(items = expandedItems)
                 }
+                if (initialLoadGeneration != initialQueueLoadGeneration) return@launch
                 if (initialStatus.title != null) {
                     queueTitle = initialStatus.title
                 }
@@ -3746,18 +3750,22 @@ class MusicService :
                     }
                 }
             } finally {
-                // The queue has settled (or failed): re-allow the transition-driven bootstrap.
-                initialQueueLoadInProgress = false
+                // A superseded load must not clear the guard belonging to the newer queue.
+                if (initialLoadGeneration == initialQueueLoadGeneration) {
+                    initialQueueLoadInProgress = false
+                }
             }
 
-            // For a single-track context with no further pages (e.g. a song opened from search),
-            // start the infinite radio here, deterministically, now that the queue has settled. This
-            // mirrors the working "toggle infinity queue on" path and avoids the earlier race where
-            // the bootstrap started mid-load and was invalidated before any songs were added.
+            if (initialLoadGeneration != initialQueueLoadGeneration) return@launch
+
+            // Infinite Queue is a global, persisted choice. Once any online queue has settled and
+            // has no provider pages left, attach its radio regardless of whether it came from
+            // search, the library, a playlist, or another playback entry point. Previously this
+            // only happened for a one-item queue, so library ListQueues could show the switch as on
+            // without actually becoming infinite.
             if (autoLoadMoreEnabled &&
                 player.repeatMode == REPEAT_MODE_OFF &&
-                player.mediaItemCount <= 1 &&
-                !currentQueue.hasNextPage()
+                !queue.hasNextPage()
             ) {
                 onInfiniteQueueEnabled()
             }
@@ -3837,6 +3845,8 @@ class MusicService :
             return
         }
         cancelInfiniteQueueBootstrap()
+        initialQueueLoadGeneration++
+        initialQueueLoadInProgress = false
         suppressAutoPlayback = false
         val currentMediaMetadata = player.currentMetadata ?: return
 
@@ -3983,12 +3993,13 @@ class MusicService :
         infiniteQueueJob?.cancel()
         infiniteQueueJob = null
         infiniteQueueLoading.value = false
-        initialQueueLoadInProgress = false
     }
 
     fun stopAndClearPlayback(clearPersistentState: Boolean = false) {
         cancelRestoredQueueHydration()
         cancelInfiniteQueueBootstrap()
+        initialQueueLoadGeneration++
+        initialQueueLoadInProgress = false
         suppressAutoPlayback = true
         cancelCrossfade(resetVolume = true, resetPauseAtEnd = true)
         clearAutomix()

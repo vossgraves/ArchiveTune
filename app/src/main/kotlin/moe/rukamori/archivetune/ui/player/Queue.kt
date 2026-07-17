@@ -859,7 +859,9 @@ fun Queue(
                         }
 
                         if (infiniteQueueEnabled) {
-                            infiniteQueueEnabled = false
+                            // Clear the current auto-generated items without changing the user's
+                            // persisted global Infinite Queue choice. The next queue will respect
+                            // the same saved setting.
                             playerConnection.service.onInfiniteQueueDisabled()
                         }
                     },
