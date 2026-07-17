@@ -24,6 +24,8 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -58,6 +60,7 @@ import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -67,6 +70,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
@@ -105,6 +109,7 @@ import moe.rukamori.archivetune.LocalDatabase
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.EnableHapticFeedbackKey
+import moe.rukamori.archivetune.constants.AutoHideLyricsPlayerControlsKey
 import moe.rukamori.archivetune.constants.LyricsMode
 import moe.rukamori.archivetune.constants.LyricsModeKey
 import moe.rukamori.archivetune.constants.ShowLyricsPlayerControlsKey
@@ -164,13 +169,49 @@ fun LyricsScreen(
     val lyricsMode by rememberEnumPreference(LyricsModeKey, LyricsMode.ENHANCED)
     val showPlayerControlsState =
         rememberPreference(ShowLyricsPlayerControlsKey, true)
-    val showPlayerControls by showPlayerControlsState
+    val showPlayerControlsEnabled by showPlayerControlsState
+    val (autoHidePlayerControls, onAutoHidePlayerControlsChange) =
+        rememberPreference(AutoHideLyricsPlayerControlsKey, false)
+    var playerControlsVisible by remember(mediaMetadata.id, showPlayerControlsEnabled) {
+        mutableStateOf(showPlayerControlsEnabled)
+    }
+    var playerControlsVisibilityTick by remember(mediaMetadata.id) {
+        mutableIntStateOf(0)
+    }
+    val autoHideDelayMs = 5_000L
     val onShowPlayerControlsChange =
         remember(showPlayerControlsState) {
             { showControls: Boolean ->
                 showPlayerControlsState.value = showControls
+                playerControlsVisible = showControls
             }
         }
+    val onAutoHidePlayerControlsToggle: (Boolean) -> Unit = { enabled ->
+        onAutoHidePlayerControlsChange(enabled)
+        if (showPlayerControlsEnabled) {
+            playerControlsVisible = true
+            playerControlsVisibilityTick++
+        }
+    }
+
+    fun pokePlayerControlsVisibility() {
+        if (!showPlayerControlsEnabled) return
+        playerControlsVisible = true
+        if (autoHidePlayerControls) {
+            playerControlsVisibilityTick++
+        }
+    }
+
+    LaunchedEffect(showPlayerControlsEnabled) {
+        playerControlsVisible = showPlayerControlsEnabled
+    }
+
+    LaunchedEffect(autoHidePlayerControls, showPlayerControlsEnabled, playerControlsVisibilityTick, mediaMetadata.id) {
+        if (!showPlayerControlsEnabled || !autoHidePlayerControls) return@LaunchedEffect
+        playerControlsVisible = true
+        kotlinx.coroutines.delay(autoHideDelayMs)
+        playerControlsVisible = false
+    }
 
     val hapticClick =
         remember(enableHapticFeedback, view) {
@@ -305,6 +346,7 @@ fun LyricsScreen(
                 onLyricsSyncOffsetChange = onLyricsSyncOffsetChange,
                 showPlayerControlsState = showPlayerControlsState,
                 onShowPlayerControlsChange = onShowPlayerControlsChange,
+                onAutoHidePlayerControlsChange = onAutoHidePlayerControlsToggle,
                 onDismiss = menuState::dismiss,
             )
         }
@@ -312,6 +354,38 @@ fun LyricsScreen(
 
     val isLoading = playbackState == STATE_BUFFERING || sliderPosition != null
     val orientation = LocalConfiguration.current.orientation
+    val controlsVisible = showPlayerControlsEnabled && playerControlsVisible
+    val onControlsPositionChange: (Long) -> Unit = {
+        pokePlayerControlsVisibility()
+        sliderPosition = it
+    }
+    val onControlsPositionChangeFinished: () -> Unit = {
+        pokePlayerControlsVisibility()
+        sliderPosition?.let { targetPosition ->
+            player.seekTo(targetPosition)
+            positionState.longValue = targetPosition
+        }
+        sliderPosition = null
+    }
+    val onControlsVolumeChange: (Float) -> Unit = {
+        pokePlayerControlsVisibility()
+        onVolumeChange(it)
+    }
+    val onControlsPreviousClick = {
+        pokePlayerControlsVisibility()
+        hapticClick()
+        playerConnection.seekToPrevious()
+    }
+    val onControlsPlayPauseClick = {
+        pokePlayerControlsVisibility()
+        hapticClick()
+        player.togglePlayPause()
+    }
+    val onControlsNextClick = {
+        pokePlayerControlsVisibility()
+        hapticClick()
+        playerConnection.seekToNext()
+    }
 
     BackHandler(enabled = backHandlerEnabled, onBack = onBackClick)
 
@@ -329,7 +403,14 @@ fun LyricsScreen(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .consumeUnhandledPointerInput(),
+                    .consumeUnhandledPointerInput()
+                    .pointerInput(showPlayerControlsEnabled, autoHidePlayerControls) {
+                        if (!showPlayerControlsEnabled || !autoHidePlayerControls) return@pointerInput
+                        awaitEachGesture {
+                            awaitFirstDown(requireUnconsumed = false)
+                            pokePlayerControlsVisibility()
+                        }
+                    },
         )
 
         Column(
@@ -351,7 +432,7 @@ fun LyricsScreen(
 
             if (orientation == Configuration.ORIENTATION_LANDSCAPE) {
                 AnimatedContent(
-                    targetState = showPlayerControls,
+                    targetState = controlsVisible,
                     transitionSpec = {
                         fadeIn(tween(180)) togetherWith fadeOut(tween(140))
                     },
@@ -394,27 +475,12 @@ fun LyricsScreen(
                                     isPlaying = isPlaying,
                                     isLoading = isLoading,
                                     volume = deviceMusicVolumeController.volumeFraction,
-                                    onPositionChange = { sliderPosition = it },
-                                    onPositionChangeFinished = {
-                                        sliderPosition?.let {
-                                            player.seekTo(it)
-                                            positionState.longValue = it
-                                        }
-                                        sliderPosition = null
-                                    },
-                                    onVolumeChange = onVolumeChange,
-                                    onPreviousClick = {
-                                        hapticClick()
-                                        playerConnection.seekToPrevious()
-                                    },
-                                    onPlayPauseClick = {
-                                        hapticClick()
-                                        player.togglePlayPause()
-                                    },
-                                    onNextClick = {
-                                        hapticClick()
-                                        playerConnection.seekToNext()
-                                    },
+                                    onPositionChange = onControlsPositionChange,
+                                    onPositionChangeFinished = onControlsPositionChangeFinished,
+                                    onVolumeChange = onControlsVolumeChange,
+                                    onPreviousClick = onControlsPreviousClick,
+                                    onPlayPauseClick = onControlsPlayPauseClick,
+                                    onNextClick = onControlsNextClick,
                                     modifier = Modifier.fillMaxWidth(),
                                 )
                             }
@@ -443,7 +509,7 @@ fun LyricsScreen(
                 )
 
                 AnimatedVisibility(
-                    visible = showPlayerControls,
+                    visible = controlsVisible,
                     enter =
                         fadeIn(tween(180)) +
                             slideInVertically(tween(240)) { fullHeight -> fullHeight / 6 } +
@@ -461,27 +527,12 @@ fun LyricsScreen(
                         isPlaying = isPlaying,
                         isLoading = isLoading,
                         volume = deviceMusicVolumeController.volumeFraction,
-                        onPositionChange = { sliderPosition = it },
-                        onPositionChangeFinished = {
-                            sliderPosition?.let {
-                                player.seekTo(it)
-                                positionState.longValue = it
-                            }
-                            sliderPosition = null
-                        },
-                        onVolumeChange = onVolumeChange,
-                        onPreviousClick = {
-                            hapticClick()
-                            playerConnection.seekToPrevious()
-                        },
-                        onPlayPauseClick = {
-                            hapticClick()
-                            player.togglePlayPause()
-                        },
-                        onNextClick = {
-                            hapticClick()
-                            playerConnection.seekToNext()
-                        },
+                        onPositionChange = onControlsPositionChange,
+                        onPositionChangeFinished = onControlsPositionChangeFinished,
+                        onVolumeChange = onControlsVolumeChange,
+                        onPreviousClick = onControlsPreviousClick,
+                        onPlayPauseClick = onControlsPlayPauseClick,
+                        onNextClick = onControlsNextClick,
                         modifier =
                             Modifier
                                 .fillMaxWidth()
