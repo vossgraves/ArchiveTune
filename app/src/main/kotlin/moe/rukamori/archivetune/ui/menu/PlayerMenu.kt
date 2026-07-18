@@ -457,7 +457,7 @@ fun PlayerMenu(
                                 isQueueTrigger != true &&
                                 archiveTuneCanvasEnabled &&
                                 !lowDataModeActive &&
-                                playerDesignStyle == PlayerDesignStyle.V5
+                                playerDesignStyle != PlayerDesignStyle.V5
                             ) {
                                 add(
                                     NewAction(
@@ -479,7 +479,7 @@ fun PlayerMenu(
                                                 when (
                                                     playerConnection.refetchCanvasArtwork(
                                                         metadata = mediaMetadata,
-                                                        requireVertical = false,
+                                                        requireVertical = playerDesignStyle == PlayerDesignStyle.V7,
                                                     )
                                                 ) {
                                                     CanvasArtworkRefetchResult.Success -> onDismiss()
