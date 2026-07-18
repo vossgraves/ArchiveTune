@@ -61,7 +61,7 @@ import moe.rukamori.archivetune.ui.utils.YtimgResizePolicy
 import moe.rukamori.archivetune.ui.utils.resize
 
 @Composable
-fun MediaDetailHero(
+public fun MediaDetailHero(
     title: String,
     thumbnailUrl: String?,
     @DrawableRes fallbackIcon: Int,
@@ -279,7 +279,7 @@ private fun MediaDetailRemovalConfirmationDialog(
 }
 
 @Composable
-fun MediaDetailPrimaryActions(
+public fun MediaDetailPrimaryActions(
     isAdded: Boolean,
     contentColor: Color,
     contrastingColor: Color,
@@ -445,9 +445,15 @@ private fun MediaDetailBalancedActionLayout(
             if (constraints.hasBoundedWidth) {
                 constraints.maxWidth
             } else {
-                constraints.constrainWidth(balancedContentWidth)
+                balancedContentWidth.coerceAtLeast(constraints.minWidth)
             }
-        val layoutHeight = constraints.constrainHeight(placeables.maxOfOrNull { it.height } ?: 0)
+        val contentHeight = placeables.maxOfOrNull { it.height } ?: 0
+        val layoutHeight =
+            if (constraints.hasBoundedHeight) {
+                contentHeight.coerceIn(constraints.minHeight, constraints.maxHeight)
+            } else {
+                contentHeight.coerceAtLeast(constraints.minHeight)
+            }
 
         layout(layoutWidth, layoutHeight) {
             if (playAction == null) {
@@ -489,7 +495,7 @@ private fun MediaDetailBalancedActionLayout(
 }
 
 @Composable
-fun MediaDetailAction(
+public fun MediaDetailAction(
     @StringRes contentDescription: Int,
     contentColor: Color,
     onClick: () -> Unit,
@@ -531,7 +537,7 @@ fun MediaDetailAction(
 }
 
 @Composable
-fun MediaDetailIconAction(
+public fun MediaDetailIconAction(
     @DrawableRes icon: Int,
     @StringRes contentDescription: Int,
     contentColor: Color,
