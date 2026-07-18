@@ -39,6 +39,8 @@ import java.util.Collections
 import java.util.LinkedHashMap
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 /**
  * Generates cryptographically valid PoTokens by running YouTube's BotGuard
@@ -484,7 +486,7 @@ object BotGuardTokenGenerator {
                 pendingMints
                     .remove(identifier)
                     ?.let { continuation ->
-                        continuation.tryResume(base64)?.let(continuation::completeResume)
+                        continuation.resume(base64)
                     }
             }
         }
@@ -499,9 +501,7 @@ object BotGuardTokenGenerator {
                 pendingMints
                     .remove(identifier)
                     ?.let { continuation ->
-                        continuation
-                            .tryResumeWithException(classifyJsError(error))
-                            ?.let(continuation::completeResume)
+                        continuation.resumeWithException(classifyJsError(error))
                     }
             }
         }
@@ -525,12 +525,12 @@ object BotGuardTokenGenerator {
 
         private fun resumeReady(engine: BotGuardEngine) {
             if (!readyCompleted.compareAndSet(false, true)) return
-            readySignal.tryResume(engine)?.let(readySignal::completeResume)
+            readySignal.resume(engine)
         }
 
         private fun resumeReadyWithException(error: Throwable) {
             if (!readyCompleted.compareAndSet(false, true)) return
-            readySignal.tryResumeWithException(error)?.let(readySignal::completeResume)
+            readySignal.resumeWithException(error)
         }
 
         private fun postToBotGuard(
