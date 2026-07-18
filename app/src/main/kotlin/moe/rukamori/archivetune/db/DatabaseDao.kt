@@ -1818,6 +1818,7 @@ interface DatabaseDao {
         if (artists?.size != albumPage.album.artists?.size) {
             artists?.forEach(::delete)
         }
+        clearAlbumSongs(album.id)
         albumPage.songs
             .map(SongItem::toMediaMetadata)
             .onEach(::insert)
@@ -1998,6 +1999,9 @@ interface DatabaseDao {
 
     @Query("DELETE FROM song_album_map WHERE songId = :songId")
     fun deleteSongAlbumMaps(songId: String)
+
+    @Query("DELETE FROM song_album_map WHERE albumId = :albumId")
+    fun clearAlbumSongs(albumId: String)
 
     @Query("DELETE FROM album_artist_map WHERE albumId IN (:albumIds)")
     fun deleteAlbumArtistMapsByAlbumIds(albumIds: List<String>)
