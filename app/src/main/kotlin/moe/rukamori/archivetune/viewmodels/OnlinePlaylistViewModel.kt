@@ -33,6 +33,7 @@ import moe.rukamori.archivetune.extensions.filterBlockedArtists
 import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.innertube.models.PlaylistItem
 import moe.rukamori.archivetune.innertube.models.SongItem
+import moe.rukamori.archivetune.innertube.models.distinctByPlaylistEntry
 import moe.rukamori.archivetune.innertube.models.filterVideo
 import moe.rukamori.archivetune.utils.dataStore
 import moe.rukamori.archivetune.utils.get
@@ -91,28 +92,28 @@ class OnlinePlaylistViewModel
         }
 
         fun loadMoreSongs() {
-            if (_isLoadingMore.value) return // Prevent multiple concurrent requests
+            val nextContinuation = continuation ?: return
+            if (!_isLoadingMore.compareAndSet(expect = false, update = true)) return
 
-            continuation?.let {
-                viewModelScope.launch(Dispatchers.IO) {
-                    _isLoadingMore.value = true
+            viewModelScope.launch(Dispatchers.IO) {
+                try {
                     YouTube
-                        .playlistContinuation(it, playlistId)
+                        .playlistContinuation(nextContinuation, playlistId)
                         .onSuccess { playlistContinuationPage ->
                             val visibleSongs =
                                 playlistContinuationPage.songs
                                     .filterVideo(context.dataStore.get(HideVideoKey, false))
                                     .filterBlockedArtists(database.getBlockedArtistIds().toSet())
-                            val currentSongs = _playlistSongs.value.toMutableList()
-                            currentSongs.addAll(visibleSongs)
-                            _playlistSongs.value = currentSongs
+                            _playlistSongs.update { currentSongs ->
+                                (currentSongs + visibleSongs).distinctByPlaylistEntry()
+                            }
                             continuation = playlistContinuationPage.continuation
                             prefetchViewCounts(visibleSongs.map { song -> song.id })
-                            _isLoadingMore.value = false
                         }.onFailure { throwable ->
-                            _isLoadingMore.value = false
                             reportException(throwable)
                         }
+                } finally {
+                    _isLoadingMore.value = false
                 }
             }
         }
@@ -140,6 +141,7 @@ class OnlinePlaylistViewModel
                             playlistPage.songs
                                 .filterVideo(context.dataStore.get(HideVideoKey, false))
                                 .filterBlockedArtists(database.getBlockedArtistIds().toSet())
+                                .distinctByPlaylistEntry()
                         _playlist.value = playlistPage.playlist
                         _playlistSongs.value = visibleSongs
                         continuation = playlistPage.songsContinuation ?: playlistPage.continuation
