@@ -161,10 +161,6 @@ fun PlayerMenu(
     val (archiveTuneCanvasEnabled) = rememberPreference(ArchiveTuneCanvasKey, defaultValue = false)
     val playerDesignStyle by rememberEnumPreference(PlayerDesignStyleKey, defaultValue = PlayerDesignStyle.V4)
     val lowDataModeActive = rememberLowDataModeActive()
-    val supportsAnimatedCanvas =
-        playerDesignStyle == PlayerDesignStyle.V7 ||
-            playerDesignStyle == PlayerDesignStyle.V8 ||
-            playerDesignStyle == PlayerDesignStyle.V9
     val isCanvasArtworkRefetching by playerConnection.isCanvasArtworkRefetching.collectAsStateWithLifecycle()
     val (speedDialSongIds, onSpeedDialSongIdsChange) = rememberPreference(SpeedDialSongIdsKey, "")
     val speedDialPins = remember(speedDialSongIds) { parseSpeedDialPins(speedDialSongIds) }
@@ -461,7 +457,7 @@ fun PlayerMenu(
                                 isQueueTrigger != true &&
                                 archiveTuneCanvasEnabled &&
                                 !lowDataModeActive &&
-                                supportsAnimatedCanvas
+                                playerDesignStyle == PlayerDesignStyle.V5
                             ) {
                                 add(
                                     NewAction(
@@ -483,7 +479,7 @@ fun PlayerMenu(
                                                 when (
                                                     playerConnection.refetchCanvasArtwork(
                                                         metadata = mediaMetadata,
-                                                        requireVertical = playerDesignStyle == PlayerDesignStyle.V7,
+                                                        requireVertical = false,
                                                     )
                                                 ) {
                                                     CanvasArtworkRefetchResult.Success -> onDismiss()
