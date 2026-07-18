@@ -102,8 +102,10 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -220,6 +222,7 @@ import moe.rukamori.archivetune.models.PersistPlayerState
 import moe.rukamori.archivetune.models.PersistQueue
 import moe.rukamori.archivetune.models.toMediaMetadata
 import moe.rukamori.archivetune.moriextractor.ArchiveTuneExtractorException
+import moe.rukamori.archivetune.moriextractor.InMemoryBearerTokenRepository
 import moe.rukamori.archivetune.moriextractor.StreamingExtractionManager
 import moe.rukamori.archivetune.playback.queues.EmptyQueue
 import moe.rukamori.archivetune.playback.queues.ListQueue
@@ -364,11 +367,19 @@ class MusicService :
     private val extractorPlaybackUrlCache = ConcurrentHashMap<String, AuthScopedCacheValue>()
     private val remotePlaybackTrackingUrlCache = ConcurrentHashMap<String, String>()
     private val contentLengthCache = ConcurrentHashMap<String, Long>()
-    private val streamingExtractionManager by lazy {
-        StreamingExtractionManager(
-            bearerToken = moe.rukamori.archivetune.BuildConfig.EXTRACTOR_BEARER,
-        )
+    private val extractorTokenRepository by lazy {
+        InMemoryBearerTokenRepository(moe.rukamori.archivetune.BuildConfig.EXTRACTOR_BEARER)
     }
+    private val _extractorAuthenticationEvents = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val extractorAuthenticationEvents = _extractorAuthenticationEvents.asSharedFlow()
+    private val streamingExtractionManagerDelegate =
+        lazy {
+            StreamingExtractionManager(
+                tokenRepository = extractorTokenRepository,
+                authenticationCallback = { notifyExtractorAuthenticationRequired() },
+            )
+        }
+    private val streamingExtractionManager by streamingExtractionManagerDelegate
     private val mediaOkHttpClient: OkHttpClient by lazy {
         OkHttpClient
             .Builder()
@@ -407,18 +418,7 @@ class MusicService :
             .followSslRedirects(true)
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
-            .addInterceptor { chain ->
-                val request =
-                    chain
-                        .request()
-                        .newBuilder()
-                        .header(
-                            "User-Agent",
-                            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
-                        ).header("Accept", "*/*")
-                        .build()
-                chain.proceed(request)
-            }.build()
+            .build()
     }
 
     private var currentQueue: Queue = EmptyQueue
@@ -3289,14 +3289,12 @@ class MusicService :
         player.pause()
     }
 
-    private fun findRetryableStreamFailure(
+    private fun findStreamHttpFailure(
         error: PlaybackException,
     ): androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException? {
         var throwable: Throwable? = error.cause
         while (throwable != null) {
-            if (throwable is androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException &&
-                throwable.responseCode in RETRYABLE_STREAM_RESPONSE_CODES
-            ) {
+            if (throwable is androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException) {
                 return throwable
             }
             throwable = throwable.cause
@@ -3423,6 +3421,52 @@ class MusicService :
         )
         player.prepare()
         return true
+    }
+
+    private fun handleExtractorStreamHttpFailure(
+        mediaId: String,
+        isFullyDownloadedMedia: Boolean,
+        responseException: HttpDataSource.InvalidResponseCodeException,
+    ): Boolean {
+        if (isFullyDownloadedMedia || !isExtractorPlaybackUri(responseException.dataSpec.uri)) return false
+
+        return when (responseException.responseCode) {
+            401 -> {
+                Timber.tag(TAG).w("Extractor bearer token was rejected during playback")
+                notifyExtractorAuthenticationRequired()
+                stopOnError()
+                true
+            }
+
+            403 -> {
+                Timber.tag(TAG).w("Extractor rejected a tampered or invalid signed playback URL")
+                stopOnError()
+                true
+            }
+
+            410 -> {
+                val retryStarted = retryPlaybackAfterStreamFailure(
+                    mediaId = mediaId,
+                    isFullyDownloadedMedia = false,
+                    responseException = responseException,
+                )
+                if (!retryStarted) stopOnError()
+                true
+            }
+
+            else -> false
+        }
+    }
+
+    private fun notifyExtractorAuthenticationRequired() {
+        extractorTokenRepository.clearToken()
+        extractorPlaybackUrlCache.clear()
+        _extractorAuthenticationEvents.tryEmit(Unit)
+    }
+
+    fun updateExtractorBearerToken(token: String) {
+        extractorTokenRepository.updateToken(token)
+        extractorPlaybackUrlCache.clear()
     }
 
     private fun updateNotification() {
@@ -6766,9 +6810,14 @@ class MusicService :
             }
         }
 
-        val retryableStreamFailure = findRetryableStreamFailure(error)
-        if (retryableStreamFailure != null) {
-            if (retryPlaybackAfterStreamFailure(currentMediaId, isFullyDownloadedMedia, retryableStreamFailure)) {
+        val streamHttpFailure = findStreamHttpFailure(error)
+        if (streamHttpFailure != null) {
+            if (handleExtractorStreamHttpFailure(currentMediaId, isFullyDownloadedMedia, streamHttpFailure)) {
+                return
+            }
+            if (streamHttpFailure.responseCode in RETRYABLE_STREAM_RESPONSE_CODES &&
+                retryPlaybackAfterStreamFailure(currentMediaId, isFullyDownloadedMedia, streamHttpFailure)
+            ) {
                 return
             }
         }
@@ -7292,29 +7341,25 @@ class MusicService :
     ): DataSpec {
         val authState = YouTube.currentPlaybackAuthState()
         val authFingerprint = ArchiveTuneExtractorCacheFingerprintPrefix + authState.fingerprint
-        val userPoToken = authState.resolveExtractorPoToken()
-        val userGvsToken = authState.resolveExtractorGvsToken()
-        val userCookies = authState.resolveExtractorCookies()
-
         extractorPlaybackUrlCache[mediaId]
             ?.takeIf {
                 it.isValidFor(
                     authFingerprint = authFingerprint,
-                    minimumRemainingMs = 0L,
+                    minimumRemainingMs = ArchiveTuneExtractorExpirySafetyMs,
                 )
             }?.let { cached ->
                 scope.launch(Dispatchers.IO) { recoverSong(mediaId) }
                 return dataSpec.withUri(cached.url.toUri())
             }
 
-        val streamUrl =
+        val extraction =
             runCatching {
                 runBlocking(Dispatchers.IO) {
-                    streamingExtractionManager.extractAudioUrl(
+                    streamingExtractionManager.extractAudio(
                         videoUrl = mediaId.toYouTubeWatchUrl(),
-                        userPoToken = userPoToken,
-                        cookies = userCookies,
-                        userGvsToken = userGvsToken,
+                        userPoToken = authState.resolveExtractorPoToken(),
+                        cookies = authState.resolveExtractorCookies(),
+                        userGvsToken = authState.resolveExtractorGvsToken(),
                     )
                 }
             }.getOrElse { throwable ->
@@ -7357,10 +7402,11 @@ class MusicService :
                 }
             }
 
+        val streamUrl = extraction.streamUrl
         extractorPlaybackUrlCache[mediaId] =
             AuthScopedCacheValue(
                 url = streamUrl,
-                expiresAtMs = System.currentTimeMillis() + ArchiveTuneExtractorCacheTtlMs,
+                expiresAtMs = extraction.streamExpiresAt.coerceAtMost(Long.MAX_VALUE / 1_000L) * 1_000L,
                 authFingerprint = authFingerprint,
             )
         scope.launch(Dispatchers.IO) { recoverSong(mediaId) }
@@ -7386,7 +7432,11 @@ class MusicService :
     private fun isExtractorPlaybackUri(uri: Uri): Boolean {
         val url = uri.toString()
         return extractorPlaybackUrlCache.values.any { it.url == url } ||
-            uri.path?.startsWith("/api/play/") == true
+            (
+                uri.scheme.equals("https", ignoreCase = true) &&
+                    uri.host.equals(ArchiveTuneExtractorHost, ignoreCase = true) &&
+                    uri.path?.startsWith("/api/play/") == true
+            )
     }
 
     private fun resolveCachedDataSpec(
@@ -8091,6 +8141,9 @@ class MusicService :
             player.release()
         } catch (_: Exception) {
         }
+        if (streamingExtractionManagerDelegate.isInitialized()) {
+            runCatching { streamingExtractionManagerDelegate.value.close() }
+        }
         scopeJob.cancel()
     }
 
@@ -8349,7 +8402,8 @@ class MusicService :
         const val MIN_AUDIBLE_EFFECTIVE_VOLUME = 0.01f
         const val STUCK_MUTED_VOLUME_EPSILON = 0.001f
         const val AUDIBLE_PLAYBACK_VOLUME_CHECK_MS = 2_000L
+        private const val ArchiveTuneExtractorHost = "moriextractor.koyeb.app"
         private const val ArchiveTuneExtractorCacheFingerprintPrefix = "archivetune_extractor:"
-        private const val ArchiveTuneExtractorCacheTtlMs = 5 * 60 * 1000L
+        private const val ArchiveTuneExtractorExpirySafetyMs = 30_000L
     }
 }
