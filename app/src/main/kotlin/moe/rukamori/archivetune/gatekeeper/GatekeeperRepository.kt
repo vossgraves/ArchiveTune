@@ -9,7 +9,6 @@ package moe.rukamori.archivetune.gatekeeper
 
 import android.content.Context
 import dagger.hilt.android.qualifiers.ApplicationContext
-import moe.rukamori.archivetune.innertube.NetworkGatekeeper
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -28,8 +27,5 @@ class GatekeeperRepository
     constructor(
         @Suppress("unused") @ApplicationContext private val context: Context,
     ) {
-        suspend fun checkAccess(): GatekeeperResult {
-            NetworkGatekeeper.setConnectionBlocked(false)
-            return GatekeeperResult.Allowed
-        }
+        suspend fun checkAccess(): GatekeeperResult = GatekeeperResult.Allowed
     }
