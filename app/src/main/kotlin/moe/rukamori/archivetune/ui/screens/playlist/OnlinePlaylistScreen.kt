@@ -369,6 +369,7 @@ fun OnlinePlaylistScreen(
                                     }
                                 }
                             val isBookmarked = dbPlaylist?.playlist?.bookmarkedAt != null
+                            val fallbackPlaySong = songs.firstOrNull()
 
                             MediaDetailHero(
                                 title = playlist.title,
@@ -394,6 +395,19 @@ fun OnlinePlaylistScreen(
                                         {
                                             playerConnection.playQueue(
                                                 YouTubeQueue.playlist(playEndpoint),
+                                            )
+                                        }
+                                    } ?: fallbackPlaySong?.let { firstSong ->
+                                        {
+                                            playerConnection.playQueue(
+                                                YouTubeQueue.playlist(
+                                                    endpoint =
+                                                        firstSong.toPlaylistPlaybackEndpoint(
+                                                            playlistId = playlist.id,
+                                                            playlistPlayParams = null,
+                                                        ),
+                                                    preloadItem = firstSong.toMediaMetadata(),
+                                                ),
                                             )
                                         }
                                     },

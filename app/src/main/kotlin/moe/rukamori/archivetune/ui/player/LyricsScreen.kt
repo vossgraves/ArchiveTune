@@ -108,10 +108,20 @@ import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalDatabase
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.constants.BlurRadiusKey
+import moe.rukamori.archivetune.constants.DisableBlurKey
 import moe.rukamori.archivetune.constants.EnableHapticFeedbackKey
 import moe.rukamori.archivetune.constants.AutoHideLyricsPlayerControlsKey
+import moe.rukamori.archivetune.constants.LyricsBackgroundStyle
+import moe.rukamori.archivetune.constants.LyricsBackgroundStyleKey
 import moe.rukamori.archivetune.constants.LyricsMode
 import moe.rukamori.archivetune.constants.LyricsModeKey
+import moe.rukamori.archivetune.constants.PlayerBackgroundStyle
+import moe.rukamori.archivetune.constants.PlayerBackgroundStyleKey
+import moe.rukamori.archivetune.constants.PlayerCustomBlurKey
+import moe.rukamori.archivetune.constants.PlayerCustomBrightnessKey
+import moe.rukamori.archivetune.constants.PlayerCustomContrastKey
+import moe.rukamori.archivetune.constants.PlayerCustomImageUriKey
 import moe.rukamori.archivetune.constants.ShowLyricsPlayerControlsKey
 import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.models.MediaMetadata
@@ -132,8 +142,6 @@ private val AppleMusicFallbackGradient =
         Color(0xFF141414),
         Color(0xFF050505),
     )
-
-private val AppleMusicForeground = Color.White
 
 @Suppress("UNUSED_PARAMETER")
 @Composable
@@ -167,6 +175,21 @@ fun LyricsScreen(
 
     val (enableHapticFeedback) = rememberPreference(EnableHapticFeedbackKey, true)
     val lyricsMode by rememberEnumPreference(LyricsModeKey, LyricsMode.ENHANCED)
+    val playerBackground by rememberEnumPreference(PlayerBackgroundStyleKey, PlayerBackgroundStyle.DEFAULT)
+    val configuredLyricsBackground by rememberEnumPreference(LyricsBackgroundStyleKey, LyricsBackgroundStyle.DEFAULT)
+    val lyricsBackground = configuredLyricsBackground.resolveFor(playerBackground)
+    val disableBlur by rememberPreference(DisableBlurKey, false)
+    val blurRadius by rememberPreference(BlurRadiusKey, 48f)
+    val playerCustomImageUri by rememberPreference(PlayerCustomImageUriKey, "")
+    val playerCustomBlur by rememberPreference(PlayerCustomBlurKey, 0f)
+    val playerCustomContrast by rememberPreference(PlayerCustomContrastKey, 1f)
+    val playerCustomBrightness by rememberPreference(PlayerCustomBrightnessKey, 1f)
+    val foregroundColor =
+        if (lyricsBackground == LyricsBackgroundStyle.FOLLOW_THEME) {
+            MaterialTheme.colorScheme.onSurface
+        } else {
+            Color.White
+        }
     val showPlayerControlsState =
         rememberPreference(ShowLyricsPlayerControlsKey, true)
     val showPlayerControlsEnabled by showPlayerControlsState
@@ -273,7 +296,11 @@ fun LyricsScreen(
         }
     val fallbackColor = remember { Color.Black.toArgb() }
 
-    LaunchedEffect(mediaMetadata.id, mediaMetadata.thumbnailUrl) {
+    LaunchedEffect(mediaMetadata.id, mediaMetadata.thumbnailUrl, lyricsBackground) {
+        if (lyricsBackground != LyricsBackgroundStyle.DEFAULT && lyricsBackground != LyricsBackgroundStyle.COLORING) {
+            gradientColors = AppleMusicFallbackGradient
+            return@LaunchedEffect
+        }
         val thumbnailUrl = mediaMetadata.thumbnailUrl
         if (thumbnailUrl == null) {
             gradientColors = AppleMusicFallbackGradient
@@ -395,9 +422,16 @@ fun LyricsScreen(
             modifier
                 .fillMaxSize(),
     ) {
-        AppleMusicBackground(
+        LyricsScreenBackground(
+            style = lyricsBackground,
             mediaMetadata = mediaMetadata,
             gradientColors = gradientColors,
+            disableBlur = disableBlur,
+            blurRadius = blurRadius,
+            playerCustomImageUri = playerCustomImageUri,
+            playerCustomBlur = playerCustomBlur,
+            playerCustomContrast = playerCustomContrast,
+            playerCustomBrightness = playerCustomBrightness,
         )
 
         Box(
@@ -423,6 +457,7 @@ fun LyricsScreen(
             AppleMusicGrabber(onClick = onBackClick)
             AppleMusicTrackHeader(
                 mediaMetadata = mediaMetadata,
+                foregroundColor = foregroundColor,
                 onMoreClick = showLyricsMenu,
                 onDismissClick = onBackClick,
                 modifier =
@@ -453,6 +488,7 @@ fun LyricsScreen(
                         ) {
                             AppleMusicLyricsPane(
                                 lyricsMode = lyricsMode,
+                                foregroundColor = foregroundColor,
                                 sliderPositionProvider = { sliderPosition },
                                 lyricsSyncOffset = lyricsSyncOffset,
                                 modifier =
@@ -484,6 +520,7 @@ fun LyricsScreen(
                                     onPlayPauseClick = onControlsPlayPauseClick,
                                     onNextClick = onControlsNextClick,
                                     onControlsInteraction = { pokePlayerControlsVisibility() },
+                                    foregroundColor = foregroundColor,
                                     modifier = Modifier.fillMaxWidth(),
                                 )
                             }
@@ -491,6 +528,7 @@ fun LyricsScreen(
                     } else {
                         AppleMusicLyricsPane(
                             lyricsMode = lyricsMode,
+                            foregroundColor = foregroundColor,
                             sliderPositionProvider = { sliderPosition },
                             lyricsSyncOffset = lyricsSyncOffset,
                             modifier =
@@ -503,6 +541,7 @@ fun LyricsScreen(
             } else {
                 AppleMusicLyricsPane(
                     lyricsMode = lyricsMode,
+                    foregroundColor = foregroundColor,
                     sliderPositionProvider = { sliderPosition },
                     lyricsSyncOffset = lyricsSyncOffset,
                     modifier =
@@ -538,12 +577,72 @@ fun LyricsScreen(
                         onPlayPauseClick = onControlsPlayPauseClick,
                         onNextClick = onControlsNextClick,
                         onControlsInteraction = { pokePlayerControlsVisibility() },
+                        foregroundColor = foregroundColor,
                         modifier =
                             Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = 40.dp),
                     )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LyricsScreenBackground(
+    style: LyricsBackgroundStyle,
+    mediaMetadata: MediaMetadata,
+    gradientColors: List<Color>,
+    disableBlur: Boolean,
+    blurRadius: Float,
+    playerCustomImageUri: String,
+    playerCustomBlur: Float,
+    playerCustomContrast: Float,
+    playerCustomBrightness: Float,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier =
+            modifier
+                .fillMaxSize()
+                .background(
+                    if (style == LyricsBackgroundStyle.FOLLOW_THEME) {
+                        MaterialTheme.colorScheme.surface
+                    } else {
+                        Color.Black
+                    },
+                ),
+    ) {
+        when (style) {
+            LyricsBackgroundStyle.DEFAULT -> {
+                AppleMusicBackground(
+                    mediaMetadata = mediaMetadata,
+                    gradientColors = gradientColors,
+                )
+            }
+
+            LyricsBackgroundStyle.FOLLOW_THEME -> Unit
+
+            LyricsBackgroundStyle.COLORING,
+            LyricsBackgroundStyle.CUSTOM,
+            -> {
+                PlayerBackground(
+                    playerBackground =
+                        if (style == LyricsBackgroundStyle.CUSTOM) {
+                            PlayerBackgroundStyle.CUSTOM
+                        } else {
+                            PlayerBackgroundStyle.COLORING
+                        },
+                    mediaMetadata = mediaMetadata,
+                    gradientColors = gradientColors,
+                    disableBlur = disableBlur,
+                    blurRadius = blurRadius,
+                    playerCustomImageUri = playerCustomImageUri,
+                    playerCustomBlur = playerCustomBlur,
+                    playerCustomContrast = playerCustomContrast,
+                    playerCustomBrightness = playerCustomBrightness,
+                )
             }
         }
     }
@@ -645,6 +744,7 @@ private fun AppleMusicGrabber(
 @Composable
 private fun AppleMusicTrackHeader(
     mediaMetadata: MediaMetadata,
+    foregroundColor: Color,
     onMoreClick: () -> Unit,
     onDismissClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -663,7 +763,7 @@ private fun AppleMusicTrackHeader(
                 Modifier
                     .size(58.dp)
                     .clip(RoundedCornerShape(7.dp))
-                    .background(AppleMusicForeground.copy(alpha = 0.18f)),
+                    .background(foregroundColor.copy(alpha = 0.18f)),
             contentAlignment = Alignment.Center,
         ) {
             AsyncImage(
@@ -676,7 +776,7 @@ private fun AppleMusicTrackHeader(
                 Icon(
                     painter = painterResource(R.drawable.music_note),
                     contentDescription = null,
-                    tint = AppleMusicForeground.copy(alpha = 0.72f),
+                    tint = foregroundColor.copy(alpha = 0.72f),
                     modifier = Modifier.size(26.dp),
                 )
             }
@@ -691,14 +791,14 @@ private fun AppleMusicTrackHeader(
             Text(
                 text = mediaMetadata.title,
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                color = AppleMusicForeground,
+                color = foregroundColor,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
                 text = artistText,
                 style = MaterialTheme.typography.bodyLarge,
-                color = AppleMusicForeground.copy(alpha = 0.72f),
+                color = foregroundColor.copy(alpha = 0.72f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -709,6 +809,7 @@ private fun AppleMusicTrackHeader(
         AppleMusicHeaderIconButton(
             iconRes = R.drawable.close,
             contentDescription = stringResource(R.string.close),
+            foregroundColor = foregroundColor,
             onClick = onDismissClick,
         )
 
@@ -717,6 +818,7 @@ private fun AppleMusicTrackHeader(
         AppleMusicHeaderIconButton(
             iconRes = R.drawable.more_horiz,
             contentDescription = stringResource(R.string.more_options),
+            foregroundColor = foregroundColor,
             onClick = onMoreClick,
         )
     }
@@ -726,6 +828,7 @@ private fun AppleMusicTrackHeader(
 private fun AppleMusicHeaderIconButton(
     iconRes: Int,
     contentDescription: String,
+    foregroundColor: Color,
     onClick: () -> Unit,
 ) {
     Box(
@@ -745,13 +848,13 @@ private fun AppleMusicHeaderIconButton(
                 Modifier
                     .size(36.dp)
                     .clip(CircleShape)
-                    .background(AppleMusicForeground.copy(alpha = 0.18f)),
+                    .background(foregroundColor.copy(alpha = 0.18f)),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
                 painter = painterResource(iconRes),
                 contentDescription = contentDescription,
-                tint = AppleMusicForeground,
+                tint = foregroundColor,
                 modifier = Modifier.size(22.dp),
             )
         }
@@ -761,6 +864,7 @@ private fun AppleMusicHeaderIconButton(
 @Composable
 private fun AppleMusicLyricsPane(
     lyricsMode: LyricsMode,
+    foregroundColor: Color,
     sliderPositionProvider: () -> Long?,
     lyricsSyncOffset: Int,
     modifier: Modifier = Modifier,
@@ -773,7 +877,7 @@ private fun AppleMusicLyricsPane(
             modifier
                 .fillMaxSize()
                 .padding(horizontal = 24.dp),
-        textColor = AppleMusicForeground,
+        textColor = foregroundColor,
     )
 }
 
@@ -793,6 +897,7 @@ private fun AppleMusicControls(
     onPlayPauseClick: () -> Unit,
     onNextClick: () -> Unit,
     onControlsInteraction: () -> Unit,
+    foregroundColor: Color,
     modifier: Modifier = Modifier,
 ) {
     val position = positionProvider()
@@ -818,8 +923,8 @@ private fun AppleMusicControls(
         AppleMusicSlider(
             value = currentPosition.toFloat(),
             valueRange = 0f..safeDuration.toFloat(),
-            activeColor = AppleMusicForeground.copy(alpha = 0.94f),
-            inactiveColor = AppleMusicForeground.copy(alpha = 0.28f),
+            activeColor = foregroundColor.copy(alpha = 0.94f),
+            inactiveColor = foregroundColor.copy(alpha = 0.28f),
             trackHeight = 8.dp,
             onValueChange = { onPositionChange(it.toLong()) },
             onValueChangeFinished = onPositionChangeFinished,
@@ -836,12 +941,12 @@ private fun AppleMusicControls(
             Text(
                 text = makeTimeString(currentPosition),
                 style = MaterialTheme.typography.labelMedium,
-                color = AppleMusicForeground.copy(alpha = 0.54f),
+                color = foregroundColor.copy(alpha = 0.54f),
             )
             Text(
                 text = if (hasDuration) "-${makeTimeString(remainingPosition)}" else "",
                 style = MaterialTheme.typography.labelMedium,
-                color = AppleMusicForeground.copy(alpha = 0.54f),
+                color = foregroundColor.copy(alpha = 0.54f),
             )
         }
 
@@ -871,6 +976,7 @@ private fun AppleMusicControls(
                         contentDescription = stringResource(R.string.widget_previous),
                         iconSize = 44.dp,
                         touchSize = 68.dp,
+                        foregroundColor = foregroundColor,
                         onClick = onPreviousClick,
                     )
                     IconButton(
@@ -880,7 +986,7 @@ private fun AppleMusicControls(
                         if (isLoading) {
                             CircularWavyProgressIndicator(
                                 modifier = Modifier.size(42.dp),
-                                color = AppleMusicForeground,
+                                color = foregroundColor,
                             )
                         } else {
                             Icon(
@@ -891,7 +997,7 @@ private fun AppleMusicControls(
                                     } else {
                                         stringResource(R.string.play)
                                     },
-                                tint = AppleMusicForeground,
+                                tint = foregroundColor,
                                 modifier = Modifier.size(54.dp),
                             )
                         }
@@ -901,6 +1007,7 @@ private fun AppleMusicControls(
                         contentDescription = stringResource(R.string.next),
                         iconSize = 44.dp,
                         touchSize = 68.dp,
+                        foregroundColor = foregroundColor,
                         onClick = onNextClick,
                     )
                 }
@@ -915,14 +1022,14 @@ private fun AppleMusicControls(
                     Icon(
                         painter = painterResource(R.drawable.volume_off),
                         contentDescription = stringResource(R.string.minimum_volume),
-                        tint = AppleMusicForeground.copy(alpha = 0.66f),
+                        tint = foregroundColor.copy(alpha = 0.66f),
                         modifier = Modifier.size(17.dp),
                     )
                     AppleMusicSlider(
                         value = volume.coerceIn(0f, 1f),
                         valueRange = 0f..1f,
-                        activeColor = AppleMusicForeground.copy(alpha = 0.88f),
-                        inactiveColor = AppleMusicForeground.copy(alpha = 0.24f),
+                        activeColor = foregroundColor.copy(alpha = 0.88f),
+                        inactiveColor = foregroundColor.copy(alpha = 0.24f),
                         trackHeight = 8.dp,
                         onValueChange = onVolumeChange,
                         onValueChangeFinished = {},
@@ -934,7 +1041,7 @@ private fun AppleMusicControls(
                     Icon(
                         painter = painterResource(R.drawable.volume_up),
                         contentDescription = stringResource(R.string.maximum_volume),
-                        tint = AppleMusicForeground.copy(alpha = 0.66f),
+                        tint = foregroundColor.copy(alpha = 0.66f),
                         modifier = Modifier.size(19.dp),
                     )
                 }
@@ -949,6 +1056,7 @@ private fun AppleMusicTransportButton(
     contentDescription: String?,
     iconSize: Dp,
     touchSize: Dp,
+    foregroundColor: Color,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -959,7 +1067,7 @@ private fun AppleMusicTransportButton(
         Icon(
             painter = painterResource(iconRes),
             contentDescription = contentDescription,
-            tint = AppleMusicForeground,
+            tint = foregroundColor,
             modifier = Modifier.size(iconSize),
         )
     }

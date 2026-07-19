@@ -44,8 +44,8 @@ if (localPropertiesFile.exists()) {
 // per-commit patch/versionCode from the git commit count and injects them via the
 // VERSION_NAME_OVERRIDE / VERSION_CODE_OVERRIDE env vars. Keep each on a single line so the
 // release/canary workflows can grep the base value reliably.
-val baseVersionName = "13.7.5"
-val baseVersionCode = 1375
+val baseVersionName = "14.0.0"
+val baseVersionCode = 1400
 
 fun String.asBuildConfigString(): String =
     "\"${

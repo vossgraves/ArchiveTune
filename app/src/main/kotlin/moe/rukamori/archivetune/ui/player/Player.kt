@@ -149,6 +149,7 @@ import coil3.toBitmap
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalDownloadUtil
@@ -1088,6 +1089,23 @@ fun BottomSheetPlayer(
         var artworkCanvasFetchInFlight by remember(mediaMetadata?.id) {
             mutableStateOf(false)
         }
+        var canvasArtworkRevision by remember(mediaMetadata?.id) {
+            mutableIntStateOf(0)
+        }
+
+        LaunchedEffect(playerConnection, mediaMetadata?.id) {
+            playerConnection.canvasArtworkUpdates.collect { update ->
+                if (update.mediaId != mediaMetadata?.id) return@collect
+
+                canvasArtworkRevision += 1
+                if (!update.artwork.preferredVerticalAnimationUrl.isNullOrBlank()) {
+                    v7CanvasArtwork = update.artwork
+                }
+                if (!update.artwork.preferredAnimationUrl.isNullOrBlank()) {
+                    artworkCanvas = update.artwork
+                }
+            }
+        }
 
         LaunchedEffect(shouldUseV7Canvas, shouldFetchV7Canvas, mediaMetadata?.id) {
             val metadata = mediaMetadata
@@ -1108,7 +1126,8 @@ fun BottomSheetPlayer(
 
             v7CanvasFetchInFlight = true
             try {
-                v7CanvasArtwork =
+                val requestRevision = canvasArtworkRevision
+                val resolvedArtwork =
                     resolveCanvasArtworkForPlayback(
                         mediaId = metadata.id,
                         songTitleRaw = metadata.title,
@@ -1117,6 +1136,9 @@ fun BottomSheetPlayer(
                         requireVertical = true,
                         allowNetwork = shouldFetchV7Canvas,
                     )
+                if (requestRevision == canvasArtworkRevision) {
+                    v7CanvasArtwork = resolvedArtwork
+                }
             } finally {
                 v7CanvasFetchInFlight = false
             }
@@ -1141,7 +1163,8 @@ fun BottomSheetPlayer(
 
             artworkCanvasFetchInFlight = true
             try {
-                artworkCanvas =
+                val requestRevision = canvasArtworkRevision
+                val resolvedArtwork =
                     resolveCanvasArtworkForPlayback(
                         mediaId = metadata.id,
                         songTitleRaw = metadata.title,
@@ -1150,6 +1173,9 @@ fun BottomSheetPlayer(
                         requireVertical = false,
                         allowNetwork = shouldFetchArtworkCanvas,
                     )
+                if (requestRevision == canvasArtworkRevision) {
+                    artworkCanvas = resolvedArtwork
+                }
             } finally {
                 artworkCanvasFetchInFlight = false
             }

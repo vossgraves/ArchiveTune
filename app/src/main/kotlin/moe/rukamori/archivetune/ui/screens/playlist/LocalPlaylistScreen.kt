@@ -258,6 +258,18 @@ fun LocalPlaylistScreen(
     var downloadState by remember { mutableStateOf<HeaderDownloadState>(HeaderDownloadState.None) }
 
     val editable: Boolean = playlist?.playlist?.isEditable == true
+    val isReorderingEnabled =
+        editable &&
+            sortType == PlaylistSongSortType.CUSTOM &&
+            !locked &&
+            !selection &&
+            !isSearching
+    val isSwipeToDeleteEnabled =
+        editable &&
+            !locked &&
+            !selection &&
+            !swipeToSongEnabled &&
+            !isReorderingEnabled
 
     LaunchedEffect(songs) {
         mutableSongs.apply {
@@ -843,7 +855,7 @@ fun LocalPlaylistScreen(
                                         )
                                     }
 
-                                    if (sortType == PlaylistSongSortType.CUSTOM && !locked && !selection && !isSearching && editable) {
+                                    if (isReorderingEnabled) {
                                         IconButton(
                                             onClick = { },
                                             onLongClick = {},
@@ -887,15 +899,15 @@ fun LocalPlaylistScreen(
                             )
                         }
 
-                        if (locked || selection || swipeToSongEnabled) {
-                            content()
-                        } else {
+                        if (isSwipeToDeleteEnabled) {
                             SwipeToDismissBox(
                                 state = dismissBoxState,
                                 backgroundContent = {},
                             ) {
                                 content()
                             }
+                        } else {
+                            content()
                         }
                     }
                 }
@@ -912,41 +924,6 @@ fun LocalPlaylistScreen(
                                 compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen
                             },
                     ) {
-                        val currentItem by rememberUpdatedState(song)
-
-                        fun deleteFromPlaylist() {
-                            val map = currentItem.map
-                            coroutineScope.launch(Dispatchers.IO) {
-                                database.withTransaction {
-                                    move(map.playlistId, map.position, Int.MAX_VALUE)
-                                    delete(map.copy(position = Int.MAX_VALUE))
-                                }
-                            }
-                        }
-
-                        val dismissBoxState =
-                            rememberSwipeToDismissBoxState(
-                                positionalThreshold = { totalDistance -> totalDistance },
-                                confirmValueChange = { targetValue ->
-                                    targetValue == SwipeToDismissBoxValue.Settled || !lazyListState.isScrollInProgress
-                                },
-                            )
-                        var processedDismiss2 by remember { mutableStateOf(false) }
-                        LaunchedEffect(dismissBoxState.currentValue) {
-                            val dv = dismissBoxState.currentValue
-                            if (!processedDismiss2 && (
-                                    dv == SwipeToDismissBoxValue.StartToEnd ||
-                                        dv == SwipeToDismissBoxValue.EndToStart
-                                )
-                            ) {
-                                processedDismiss2 = true
-                                deleteFromPlaylist()
-                            }
-                            if (dv == SwipeToDismissBoxValue.Settled) {
-                                processedDismiss2 = false
-                            }
-                        }
-
                         val content: @Composable () -> Unit = {
                             SongListItem(
                                 song = song.song,
@@ -973,21 +950,6 @@ fun LocalPlaylistScreen(
                                             painter = painterResource(R.drawable.more_vert),
                                             contentDescription = null,
                                         )
-                                    }
-                                    if (sortType == PlaylistSongSortType.CUSTOM && !locked && !selection && !isSearching && editable) {
-                                        IconButton(
-                                            onClick = { },
-                                            onLongClick = {},
-                                            modifier =
-                                                Modifier
-                                                    .draggableHandle()
-                                                    .graphicsLayer { alpha = 0.99f },
-                                        ) {
-                                            Icon(
-                                                painter = painterResource(R.drawable.drag_handle),
-                                                contentDescription = null,
-                                            )
-                                        }
                                     }
                                 },
                                 isSelected = song.map.id in selectedSongMapIds,
@@ -1028,16 +990,7 @@ fun LocalPlaylistScreen(
                             )
                         }
 
-                        if (locked || !editable || swipeToSongEnabled) {
-                            content()
-                        } else {
-                            SwipeToDismissBox(
-                                state = dismissBoxState,
-                                backgroundContent = {},
-                            ) {
-                                content()
-                            }
-                        }
+                        content()
                     }
                 }
             }
