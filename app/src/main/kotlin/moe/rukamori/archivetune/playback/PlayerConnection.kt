@@ -16,6 +16,7 @@ import androidx.media3.common.Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM
 import androidx.media3.common.Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM
 import androidx.media3.common.Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM
 import androidx.media3.common.Player.REPEAT_MODE_OFF
+import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.common.Player.STATE_ENDED
 import androidx.media3.common.Timeline
 import kotlinx.coroutines.CancellationException
@@ -70,8 +71,17 @@ class PlayerConnection(
     scope: CoroutineScope,
 ) : Player.Listener {
     val service = binder.service
-    val player = service.player
-    val localPlayer = service.localPlayer
+
+    /**
+     * Always the CURRENT active player. The service may promote a new player instance
+     * (crossfade promotion), so this must be a live getter, not a captured reference.
+     */
+    val player: Player
+        get() = service.player
+    val localPlayer: ExoPlayer
+        get() = service.localPlayer
+
+    private var attachedPlayer: Player? = null
 
     val playbackState = MutableStateFlow(player.playbackState)
     private val playWhenReady = MutableStateFlow(player.playWhenReady)
@@ -126,19 +136,20 @@ class PlayerConnection(
     private var metadataExtractionJob: Job? = null
 
     init {
-        player.addListener(this)
+        attachToPlayer(service.player)
 
-        playbackState.value = player.playbackState
-        playWhenReady.value = player.playWhenReady
-        playbackParameters.value = player.playbackParameters
         queueTitle.value = service.queueTitle
-        queueWindows.value = player.getQueueWindows()
-        currentWindowIndex.value = player.getCurrentQueueIndex()
-        currentMediaItemIndex.value = player.currentMediaItemIndex
-        shuffleModeEnabled.value = player.shuffleModeEnabled
-        repeatMode.value = player.repeatMode
         if (player.mediaItemCount > 0 && service.currentMediaMetadata.value == null) {
             service.currentMediaMetadata.value = player.currentMetadata
+        }
+
+        // Follow player promotions (e.g. crossfade) and re-attach to the new active player.
+        scope.launch {
+            service.playerFlow.collect { newPlayer ->
+                if (newPlayer != null && newPlayer !== attachedPlayer) {
+                    attachToPlayer(newPlayer)
+                }
+            }
         }
 
         metadataExtractionJob =
@@ -243,6 +254,22 @@ class PlayerConnection(
                 runCatching { extractor.release() }
             }
         }
+
+    private fun attachToPlayer(newPlayer: Player) {
+        attachedPlayer?.removeListener(this)
+        attachedPlayer = newPlayer
+        newPlayer.addListener(this)
+
+        playbackState.value = newPlayer.playbackState
+        playWhenReady.value = newPlayer.playWhenReady
+        playbackParameters.value = newPlayer.playbackParameters
+        queueWindows.value = newPlayer.getQueueWindows()
+        currentWindowIndex.value = newPlayer.getCurrentQueueIndex()
+        currentMediaItemIndex.value = newPlayer.currentMediaItemIndex
+        shuffleModeEnabled.value = newPlayer.shuffleModeEnabled
+        repeatMode.value = newPlayer.repeatMode
+        updateCanSkipPreviousAndNext()
+    }
 
     fun playQueue(queue: Queue) {
         service.playQueue(queue)
@@ -428,7 +455,8 @@ class PlayerConnection(
     }
 
     fun dispose() {
-        player.removeListener(this)
+        attachedPlayer?.removeListener(this)
+        attachedPlayer = null
         metadataExtractionJob?.cancel()
         metadataExtractionJob = null
     }

@@ -25,6 +25,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -96,6 +97,7 @@ import androidx.palette.graphics.Palette
 import coil3.compose.AsyncImage
 import coil3.imageLoader
 import coil3.request.ImageRequest
+import coil3.request.SuccessResult
 import coil3.request.allowHardware
 import coil3.size.Size
 import coil3.toBitmap
@@ -131,6 +133,9 @@ import moe.rukamori.archivetune.ui.component.LyricsV2
 import moe.rukamori.archivetune.ui.component.PlayerSliderTrack
 import moe.rukamori.archivetune.ui.menu.LyricsMenu
 import moe.rukamori.archivetune.ui.theme.PlayerColorExtractor
+import moe.rukamori.archivetune.ui.theme.PlayerPaletteCache
+import moe.rukamori.archivetune.playback.artwork.PlayerPaletteCacheKey
+import moe.rukamori.archivetune.playback.artwork.guessArtworkProvider
 import moe.rukamori.archivetune.utils.makeTimeString
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
@@ -286,33 +291,39 @@ fun LyricsScreen(
     val positionState = remember(mediaMetadata.id) { mutableLongStateOf(0L) }
     val durationState = remember(mediaMetadata.id) { mutableLongStateOf(C.TIME_UNSET) }
     var sliderPosition by remember(mediaMetadata.id) { mutableStateOf<Long?>(null) }
-    var gradientColors by remember(mediaMetadata.thumbnailUrl) { mutableStateOf(AppleMusicFallbackGradient) }
+    // Keep the previous valid palette while the next artwork loads; the grey fallback is
+    // only the initial state, not the response to every track change or transient failure.
+    var gradientColors by remember { mutableStateOf(AppleMusicFallbackGradient) }
+    var hasValidPalette by remember { mutableStateOf(false) }
 
-    val gradientColorsCache =
-        remember {
-            object : LinkedHashMap<String, List<Color>>(20, 0.75f, true) {
-                override fun removeEldestEntry(eldest: Map.Entry<String, List<Color>>) = size > 20
-            }
-        }
     val fallbackColor = remember { Color.Black.toArgb() }
+    val darkTheme = isSystemInDarkTheme()
 
-    LaunchedEffect(mediaMetadata.id, mediaMetadata.thumbnailUrl, lyricsBackground) {
+    LaunchedEffect(mediaMetadata.id, mediaMetadata.thumbnailUrl, lyricsBackground, darkTheme) {
         if (lyricsBackground != LyricsBackgroundStyle.DEFAULT && lyricsBackground != LyricsBackgroundStyle.COLORING) {
             gradientColors = AppleMusicFallbackGradient
+            hasValidPalette = false
             return@LaunchedEffect
         }
         val thumbnailUrl = mediaMetadata.thumbnailUrl
         if (thumbnailUrl == null) {
-            gradientColors = AppleMusicFallbackGradient
+            if (!hasValidPalette) gradientColors = AppleMusicFallbackGradient
             return@LaunchedEffect
         }
 
-        gradientColorsCache[thumbnailUrl]?.let {
+        val cacheKey =
+            PlayerPaletteCacheKey(
+                mediaId = mediaMetadata.id,
+                provider = guessArtworkProvider(thumbnailUrl),
+                artworkIdentity = thumbnailUrl,
+                backgroundMode = lyricsBackground.name,
+                darkTheme = darkTheme,
+            )
+        PlayerPaletteCache.get(cacheKey)?.let {
             gradientColors = it
+            hasValidPalette = true
             return@LaunchedEffect
         }
-
-        gradientColors = AppleMusicFallbackGradient
 
         val request =
             ImageRequest
@@ -324,25 +335,29 @@ fun LyricsScreen(
 
         val extractedColors =
             try {
-                val image =
+                val result =
                     withContext(Dispatchers.IO) {
                         context.imageLoader.execute(request)
-                    }.image
-                if (image == null) {
+                    }
+                if (result !is SuccessResult) {
                     null
                 } else {
-                    val bitmap = image.toBitmap()
-                    withContext(Dispatchers.Default) {
-                        val palette =
-                            Palette
-                                .from(bitmap)
-                                .maximumColorCount(PlayerColorExtractor.Config.MAX_COLOR_COUNT)
-                                .resizeBitmapArea(PlayerColorExtractor.Config.BITMAP_AREA)
-                                .generate()
-                        PlayerColorExtractor.extractGradientColors(
-                            palette = palette,
-                            fallbackColor = fallbackColor,
-                        )
+                    val bitmap = result.image?.toBitmap()
+                    if (bitmap == null) {
+                        null
+                    } else {
+                        withContext(Dispatchers.Default) {
+                            val palette =
+                                Palette
+                                    .from(bitmap)
+                                    .maximumColorCount(PlayerColorExtractor.Config.MAX_COLOR_COUNT)
+                                    .resizeBitmapArea(PlayerColorExtractor.Config.BITMAP_AREA)
+                                    .generate()
+                            PlayerColorExtractor.extractGradientColors(
+                                palette = palette,
+                                fallbackColor = fallbackColor,
+                            )
+                        }
                     }
                 }
             } catch (e: CancellationException) {
@@ -351,8 +366,19 @@ fun LyricsScreen(
                 null
             }
 
-        gradientColors = extractedColors ?: AppleMusicFallbackGradient
-        gradientColorsCache[thumbnailUrl] = gradientColors
+        // On failure keep the previous valid palette; only a never-successful state falls
+        // back to the neutral gradient.
+        if (extractedColors != null) {
+            val stillCurrent =
+                mediaMetadata.thumbnailUrl == thumbnailUrl
+            if (stillCurrent) {
+                PlayerPaletteCache.put(cacheKey, extractedColors)
+                gradientColors = extractedColors
+                hasValidPalette = true
+            }
+        } else if (!hasValidPalette) {
+            gradientColors = AppleMusicFallbackGradient
+        }
     }
 
     LaunchedEffect(player, playbackState, mediaMetadata.id) {

@@ -175,10 +175,12 @@ import androidx.navigation.compose.rememberNavController
 import androidx.window.core.layout.WindowSizeClass
 import coil3.imageLoader
 import coil3.request.ImageRequest
+import coil3.request.SuccessResult
 import coil3.request.allowHardware
 import coil3.toBitmap
 import com.valentinilk.shimmer.LocalShimmerTheme
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -782,10 +784,13 @@ class MainActivity : ComponentActivity() {
                                             .allowHardware(false)
                                             .build(),
                                     )
-                                val extractedColor = result.image?.toBitmap()?.extractThemeColor()
+                                val extractedColor =
+                                    (result as? SuccessResult)?.image?.toBitmap()?.extractThemeColor()
                                 withContext(Dispatchers.Main) {
                                     themeColor = extractedColor ?: DefaultThemeColor
                                 }
+                            } catch (e: CancellationException) {
+                                throw e
                             } catch (e: Exception) {
                                 withContext(Dispatchers.Main) {
                                     themeColor = DefaultThemeColor

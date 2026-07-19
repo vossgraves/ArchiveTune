@@ -68,7 +68,6 @@ import androidx.navigation.NavController
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.AppFontPreference
-import moe.rukamori.archivetune.constants.ArchiveTuneCanvasKey
 import moe.rukamori.archivetune.constants.BackdropBlurAmountKey
 import moe.rukamori.archivetune.constants.BackdropEnabledKey
 import moe.rukamori.archivetune.constants.BlurRadiusKey
@@ -161,11 +160,7 @@ fun AppearanceSettings(navController: NavController) {
             HidePlayerThumbnailKey,
             defaultValue = false,
         )
-    val (archiveTuneCanvasEnabled, onArchiveTuneCanvasEnabledChange) =
-        rememberPreference(
-            ArchiveTuneCanvasKey,
-            defaultValue = false,
-        )
+    // The ArchiveTune Canvas artwork toggle lives in Player Settings → Artwork.
     val (thumbnailCornerRadius, onThumbnailCornerRadiusChange) =
         rememberPreference(
             key = ThumbnailCornerRadiusKey,
@@ -759,16 +754,6 @@ fun AppearanceSettings(navController: NavController) {
                         icon = { Icon(painterResource(R.drawable.hide_image), null) },
                         checked = hidePlayerThumbnail,
                         onCheckedChange = onHidePlayerThumbnailChange,
-                    )
-                }
-
-                item {
-                    SwitchPreference(
-                        title = { Text(stringResource(R.string.archivetune_canvas)) },
-                        description = stringResource(R.string.archivetune_canvas_desc),
-                        icon = { Icon(painterResource(R.drawable.motion_photos_on), null) },
-                        checked = archiveTuneCanvasEnabled,
-                        onCheckedChange = onArchiveTuneCanvasEnabledChange,
                     )
                 }
 

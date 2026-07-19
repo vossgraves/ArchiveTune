@@ -55,7 +55,6 @@ import moe.rukamori.archivetune.constants.QobuzAudioQualityKey
 import moe.rukamori.archivetune.constants.QobuzEnabledKey
 import moe.rukamori.archivetune.constants.TidalAccountFirstKey
 import moe.rukamori.archivetune.constants.TidalAnimatedCoversEnabledKey
-import moe.rukamori.archivetune.constants.TidalArtworkFallbackEnabledKey
 import moe.rukamori.archivetune.constants.TidalAudioQuality
 import moe.rukamori.archivetune.constants.TidalAudioQualityKey
 import moe.rukamori.archivetune.constants.TidalEnabledKey
@@ -148,8 +147,7 @@ fun PlaybackSourceSections(navController: NavController) {
     }
     val (qobuzQuality, onQobuzQualityChange) =
         rememberEnumPreference(QobuzAudioQualityKey, QobuzAudioQuality.FLAC)
-    val (artworkFallback, onArtworkFallbackChange) =
-        rememberPreference(TidalArtworkFallbackEnabledKey, true)
+    // The Tidal artwork-fetching toggle lives in Player Settings → Artwork (same key).
     val (animatedCovers, onAnimatedCoversChange) =
         rememberPreference(TidalAnimatedCoversEnabledKey, false)
 
@@ -290,16 +288,6 @@ fun PlaybackSourceSections(navController: NavController) {
                         TidalAudioQuality.HI_RES_LOSSLESS -> stringResource(R.string.tidal_quality_hires)
                     }
                 },
-            )
-        }
-
-        item {
-            SwitchPreference(
-                title = { Text(stringResource(R.string.tidal_artwork_fallback)) },
-                description = stringResource(R.string.tidal_artwork_fallback_description),
-                checked = artworkFallback,
-                onCheckedChange = onArtworkFallbackChange,
-                isEnabled = tidalEnabled,
             )
         }
 

@@ -32,6 +32,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.navigation.NavController
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.constants.ArchiveTuneCanvasKey
 import moe.rukamori.archivetune.constants.ArtistSeparatorsKey
 import moe.rukamori.archivetune.constants.AudioNormalizationKey
 import moe.rukamori.archivetune.constants.AudioOffload
@@ -53,6 +54,8 @@ import moe.rukamori.archivetune.constants.PersistentQueueKey
 import moe.rukamori.archivetune.constants.SeekExtraSeconds
 import moe.rukamori.archivetune.constants.SkipSilenceKey
 import moe.rukamori.archivetune.constants.StopMusicOnTaskClearKey
+import moe.rukamori.archivetune.constants.TidalArtworkFallbackEnabledKey
+import moe.rukamori.archivetune.constants.TidalEnabledKey
 import moe.rukamori.archivetune.constants.WakelockKey
 import moe.rukamori.archivetune.ui.component.ArtistSeparatorsDialog
 import moe.rukamori.archivetune.ui.component.CrossfadeSliderPreference
@@ -161,6 +164,25 @@ fun PlayerSettings(navController: NavController) {
         rememberPreference(
             CrossfadeGaplessKey,
             defaultValue = true,
+        )
+
+    // Artwork sources. The Tidal toggle used to default to true as an inert stub; the code
+    // default is now false so updating users do not get unexpected Tidal network traffic.
+    // DataStore only stores values the user explicitly changed, so explicit choices are kept.
+    val (archiveTuneCanvasEnabled, onArchiveTuneCanvasEnabledChange) =
+        rememberPreference(
+            ArchiveTuneCanvasKey,
+            defaultValue = false,
+        )
+    val (tidalEnabled, _) =
+        rememberPreference(
+            TidalEnabledKey,
+            defaultValue = true,
+        )
+    val (tidalArtworkEnabled, onTidalArtworkEnabledChange) =
+        rememberPreference(
+            TidalArtworkFallbackEnabledKey,
+            defaultValue = false,
         )
 
     val (artistSeparators, onArtistSeparatorsChange) =
@@ -388,6 +410,36 @@ fun PlayerSettings(navController: NavController) {
                         icon = { Icon(painterResource(R.drawable.bluetooth), null) },
                         checked = autoStartOnBluetooth,
                         onCheckedChange = onAutoStartOnBluetoothChange,
+                    )
+                }
+            }
+
+            PreferenceGroup(title = stringResource(R.string.tidal_artwork)) {
+                item {
+                    SwitchPreference(
+                        title = { Text(stringResource(R.string.archivetune_canvas)) },
+                        description = stringResource(R.string.archivetune_canvas_desc),
+                        icon = { Icon(painterResource(R.drawable.motion_photos_on), null) },
+                        checked = archiveTuneCanvasEnabled,
+                        onCheckedChange = onArchiveTuneCanvasEnabledChange,
+                    )
+                }
+
+                item {
+                    SwitchPreference(
+                        title = { Text(stringResource(R.string.tidal_artwork_fallback)) },
+                        description =
+                            stringResource(
+                                if (tidalEnabled) {
+                                    R.string.tidal_artwork_fallback_description
+                                } else {
+                                    R.string.tidal_artwork_fallback_unavailable
+                                },
+                            ),
+                        icon = { Icon(painterResource(R.drawable.image), null) },
+                        checked = tidalArtworkEnabled,
+                        onCheckedChange = onTidalArtworkEnabledChange,
+                        isEnabled = tidalEnabled,
                     )
                 }
             }

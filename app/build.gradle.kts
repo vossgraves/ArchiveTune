@@ -491,6 +491,7 @@ dependencies {
     implementation(libs.timber)
     testImplementation(libs.junit)
     testImplementation(libs.turbine)
+    testImplementation(libs.coroutines.test)
     implementation(libs.translator)
     implementation("androidx.lifecycle:lifecycle-process:2.11.0")
     implementation("androidx.compose.material3.adaptive:adaptive:1.3.0-rc01")

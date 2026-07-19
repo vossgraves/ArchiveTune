@@ -26,6 +26,13 @@ interface CastPlaybackRepository {
         mediaItemResolver: CastMediaItemResolver,
     ): Player
 
+    /**
+     * Releases a session-facing player previously returned by [createPlayer] after it has been
+     * replaced (e.g. crossfade promotion swapped the active local player). No-op for
+     * implementations whose player IS the local player.
+     */
+    fun releasePlayer(player: Player) {}
+
     fun disconnect()
 
     fun setVolume(volume: Float)

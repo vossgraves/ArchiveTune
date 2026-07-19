@@ -737,7 +737,8 @@
     <string name="tidal_quality_hires">Hi-Res Lossless</string>
     <string name="tidal_artwork">Artwork</string>
     <string name="tidal_artwork_fallback">Use Tidal artwork</string>
-    <string name="tidal_artwork_fallback_description">Fall back to Tidal cover art when none is available</string>
+    <string name="tidal_artwork_fallback_description">Fall back to Tidal cover art when no artwork is available. May make network requests.</string>
+    <string name="tidal_artwork_fallback_unavailable">Requires Tidal to be enabled under Streaming sources. May make network requests.</string>
     <string name="tidal_animated_covers">Animated covers</string>
     <string name="tidal_animated_covers_description">Show Tidal video/canvas covers when available</string>
     <string name="tidal_account">Account (optional)</string>
