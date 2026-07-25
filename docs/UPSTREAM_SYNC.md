@@ -5,7 +5,10 @@ This fork keeps its `dev` branch automatically in sync with
 via `.github/workflows/upstream-sync.yml`.
 
 - **Runs:** hourly (`cron: 17 * * * *`, best-effort) + manually via
-  **Actions → Upstream Sync → Run workflow**.
+  **Actions → Upstream Sync → Run workflow**. A run with **no upstream
+  changes is a cheap no-op** (~30s: checkout + fetch + compare) — it does
+  NOT back up, merge, build, or open issues. Real work only happens when
+  rukamori has pushed new commits.
 - **Clean merge + green build** → pushed straight to `dev`.
 - **Conflicts** → resolved by AI (`scripts/ai_resolve.py`), gated on a green
   debug-APK build, delivered as a **PR that merges itself** — the companion
@@ -43,9 +46,12 @@ via `.github/workflows/upstream-sync.yml`.
    `AI_API_KEY`. Optional: override endpoint/model with repo variables
    `AI_BASE_URL` / `AI_MODEL`. If the key is missing or the gateway fails,
    the workflow falls back to the free GitHub Models chain automatically.
-3. **Actions enabled.** If the Actions tab shows the "scheduled workflows are
-   disabled for forks" banner, enable them. (No auto-merge setting is needed —
-   `upstream-sync-merge.yml` merges sync PRs after CI passes.)
+3. **Issues enabled.** Forks often have Issues disabled — the workflow uses
+   them for sync reports and failure alerts: repo → Settings → General →
+   Features → ☑ **Issues**. Also enable Actions if the Actions tab shows the
+   "scheduled workflows are disabled for forks" banner. (No auto-merge
+   setting is needed — `upstream-sync-merge.yml` merges sync PRs after CI
+   passes.)
 4. This workflow file must exist on the **default branch** (`main`) for the
    schedule to fire, and the `scripts/` files must exist on `dev` (the
    workflow checks out `dev` and runs them from there).

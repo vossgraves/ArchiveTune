@@ -119,6 +119,7 @@ if [ "$MERGE_RC" -ne 0 ]; then
   log "Merge conflicts in ${#CONFLICTS[@]} file(s): ${CONFLICTS[*]}"
 
   AI_FILES=()
+  SUBMODULE_PATHS=$(git config --file .gitmodules --get-regexp path 2>/dev/null | awk '{print $2}')
   for f in "${CONFLICTS[@]}"; do
     SKIP=false
     for p in "${NEVER_TOUCH[@]}"; do
@@ -129,6 +130,10 @@ if [ "$MERGE_RC" -ne 0 ]; then
       git checkout --ours -- "$f" && git add "$f"
       PROTECTED_RESTORED+=("$f")
       warn "protected file conflict — kept fork version: $f"
+    elif echo "$SUBMODULE_PATHS" | grep -qx "$f"; then
+      # Submodule pointer conflicts are resolved deterministically by the
+      # pinning step below — never send them to the AI.
+      log "submodule pointer conflict: $f — will be pinned deterministically"
     else
       AI_FILES+=("$f")
     fi
