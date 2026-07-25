@@ -8,8 +8,9 @@ via `.github/workflows/upstream-sync.yml`.
   **Actions → Upstream Sync → Run workflow**.
 - **Clean merge + green build** → pushed straight to `dev`.
 - **Conflicts** → resolved by AI (`scripts/ai_resolve.py`), gated on a green
-  debug-APK build, delivered as a **self-merging PR** (auto-merges when the
-  PR build CI passes).
+  debug-APK build, delivered as a **PR that merges itself** — the companion
+  `upstream-sync-merge.yml` workflow merges it once the PR build CI passes
+  (no "auto-merge" repo setting needed).
 - **Every run** pushes a `backup/dev-auto-*` branch before touching anything
   and opens a GitHub issue with a full report (commits pulled, AI-resolved
   files, submodule actions, rollback command).
@@ -42,12 +43,12 @@ via `.github/workflows/upstream-sync.yml`.
    `AI_API_KEY`. Optional: override endpoint/model with repo variables
    `AI_BASE_URL` / `AI_MODEL`. If the key is missing or the gateway fails,
    the workflow falls back to the free GitHub Models chain automatically.
-3. **Repo settings.** Settings → General → Pull Requests → enable
-   **Allow auto-merge** (required for self-merging PRs). If the Actions tab
-   shows the "scheduled workflows are disabled for forks" banner, enable them.
+3. **Actions enabled.** If the Actions tab shows the "scheduled workflows are
+   disabled for forks" banner, enable them. (No auto-merge setting is needed —
+   `upstream-sync-merge.yml` merges sync PRs after CI passes.)
 4. This workflow file must exist on the **default branch** (`main`) for the
    schedule to fire, and the `scripts/` files must exist on `dev` (the
-   workflow checks out `dev` and runs them from there). The setup PRs handle both.
+   workflow checks out `dev` and runs them from there).
 
 ## Rollback
 
@@ -62,8 +63,10 @@ git push --force-with-lease origin dev
 ## Troubleshooting
 
 - **"SYNC_PAT secret is not set"** → do setup step 1.
-- **PR opened but never merges** → enable *Allow auto-merge* (step 3), or
-  merge the PR manually after its build CI passes.
+- **Sync PR opened but never merges** → check the PR's Build Pull Request CI:
+  if it failed, the merge is intentionally skipped (a comment explains why).
+  If CI passed but the PR is still open, look at the latest *Upstream Sync
+  Merge* run — or just merge the PR manually.
 - **Sync issue says build failed** → read the linked run log; upstream likely
   needs a fix or the merge broke something. `dev` was not modified; the next
   hourly run will retry from the same state.

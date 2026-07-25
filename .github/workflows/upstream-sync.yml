@@ -91,7 +91,7 @@ jobs:
           CANVAS_BEARER_TOKEN: ${{ secrets.CANVAS_BEARER_TOKEN }}
           EXTRACTOR_BEARER: ${{ secrets.EXTRACTOR_BEARER }}
 
-      - name: Open self-merging PR (AI-resolved sync)
+      - name: Open sync PR (AI-resolved sync)
         if: steps.sync.outputs.result == 'ai'
         env:
           GH_TOKEN: ${{ secrets.SYNC_PAT }}
@@ -104,9 +104,7 @@ jobs:
             --title "chore(sync): merge upstream/dev ($BEHIND commits, AI-resolved)" \
             --body-file /tmp/sync_report.md)
           echo "Opened PR: $PR_URL"
-          gh pr merge --auto --merge "$PR_URL" || \
-            gh pr comment "$PR_URL" --body "Could not enable auto-merge. Enable 'Allow auto-merge' in repo settings, or merge manually once CI is green."
-          echo "pr_url=$PR_URL" >> "$GITHUB_OUTPUT"
+          gh pr comment "$PR_URL" --body "This PR will be merged automatically by the 'Upstream Sync Merge' workflow once the Build Pull Request CI passes. No action needed unless CI fails."
 
       - name: Report successful sync
         if: steps.sync.outputs.result == 'clean' || steps.sync.outputs.result == 'ai'
