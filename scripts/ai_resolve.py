@@ -32,7 +32,8 @@ Resolution rules, in priority order:
 1. FORK FEATURES MUST SURVIVE. The fork adds: Tidal music source (package `tidal`, TidalAudioProvider, TidalInstanceHealthManager, TidalAccountManager, TidalSettings, TidalCookieUtils), a multi-source audio framework (package `audiosource`: Deezer/Amazon providers, IsrcResolver, AudioSourceConfig, and `resolveMultiSourceDataSpec` wired in MusicService.kt), and fork CI patches (persistent-debug.keystore signing fallback in workflow files). Never produce a resolution that deletes, disables, or unwires these.
 2. UNION-MERGE integration seams. In shared files (MusicService.kt, PreferenceKeys.kt, NavigationBuilder, settings screens, build files), keep BOTH sides' changes: upstream's new code AND the fork's hooks. Do not pick one side wholesale unless the other side is clearly a strict subset.
 3. Prefer upstream for everything else: upstream refactors, dependency bumps, UI changes unrelated to fork features.
-4. The result must be syntactically valid for the file's language (Kotlin/Gradle/XML/YAML/Markdown): balanced braces/parens, consistent imports, no duplicate declarations, no leftover conflict artifacts.
+4. THE RESULT MUST COMPILE. Only reference classes/symbols that are (a) imported in this file, (b) defined in this file, or (c) clearly part of the file's own framework. If one side references a symbol the other side deleted (e.g. upstream removed a class from another module), DO NOT reintroduce that reference — adapt the code to the removal instead. A syntactically valid merge that references a deleted class is a FAILURE.
+5. The result must be syntactically valid for the file's language (Kotlin/Gradle/XML/YAML/Markdown): balanced braces/parens, consistent imports, no duplicate declarations, no leftover conflict artifacts.
 
 Output contract (strict):
 - Output ONLY the resolved code for this one conflict hunk — nothing else.
@@ -131,6 +132,13 @@ def resolve_file(path):
         return True
 
     print(f"[ai] {path}: {len(hunks)} conflict hunk(s)", file=sys.stderr)
+    # Whole-file context the model needs to keep the result compilable:
+    # the import block (symbols that actually exist) plus any removed-symbol
+    # hints from OUR side (lines only in OURS are often fork patches).
+    imports = [ln for ln in content.splitlines()
+               if ln.lstrip().startswith(("import ", "package "))]
+    import_block = "\n".join(imports)
+
     resolved = content
     # Replace from the end so earlier offsets stay valid.
     for match in reversed(hunks):
@@ -139,6 +147,8 @@ def resolve_file(path):
         after = resolved[end:].splitlines(keepends=True)[:CONTEXT_LINES]
         user = (
             f"File: {path}\n\n"
+            f"--- file imports / package (only these symbols are guaranteed to exist) ---\n"
+            f"{import_block}\n"
             f"--- context BEFORE the conflict ---\n{''.join(before)}\n"
             f"--- OURS (fork dev) ---\n{match.group('ours')}"
             f"--- THEIRS (upstream dev) ---\n{match.group('theirs')}"
