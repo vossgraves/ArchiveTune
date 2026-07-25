@@ -202,9 +202,15 @@ done
 log "verification passed"
 
 # =============================================================================
-log "Phase 5: build gate (assembleGmsMobileUniversalDebug)"
+log "Phase 5: build gate (fork contract tests + assembleGmsMobileUniversalDebug)"
 # =============================================================================
 chmod +x gradlew
+# 5a. Fork contract tests FIRST (palette, crossfade, artwork, multi-source,
+#     presence) — they fail in minutes and prove no fork feature was broken.
+./gradlew --console=plain :app:testGmsMobileUniversalDebugUnitTest \
+  || die "fork contract tests failed — the merge broke a fork feature; nothing pushed to dev (backup: $BACKUP_BRANCH)"
+log "contract tests OK"
+# 5b. Full APK build.
 ./gradlew --console=plain assembleGmsMobileUniversalDebug --warning-mode summary \
   || die "build failed — nothing pushed to dev (backup: $BACKUP_BRANCH)"
 log "build OK"

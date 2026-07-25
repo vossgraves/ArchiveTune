@@ -30,7 +30,9 @@ via `.github/workflows/upstream-sync.yml`.
    changes them (the change is dropped and flagged in the report):
    `Koiverse.jks`, `Koiverse.jks.base64`, `ArchiveTuneKoiverseServer.txt`,
    `DataServer.txt`, plus the `applicationId` in `app/build.gradle.kts`.
-4. A merge is only delivered if `assembleGmsMobileUniversalDebug` builds.
+4. A merge is only delivered if (a) the fork contract tests pass
+   (`:app:testGmsMobileUniversalDebugUnitTest` — palette, crossfade, artwork,
+   multi-source, presence) and (b) `assembleGmsMobileUniversalDebug` builds.
 
 ## One-time setup
 

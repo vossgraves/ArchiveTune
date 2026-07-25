@@ -48,3 +48,7 @@ the verification section of `scripts/upstream_sync.sh`.
 
 JDK 21, Android SDK. Debug build check:
 `./gradlew assembleGmsMobileUniversalDebug`
+
+Fork contract tests (palette/crossfade/artwork/multi-source/presence — run
+after any upstream merge or feature change):
+`./gradlew :app:testGmsMobileUniversalDebugUnitTest`
