@@ -15,16 +15,17 @@ import android.graphics.Color as AndroidColor
 object PlayerBackgroundColorUtils {
     private const val DEFAULT_MIN_BRIGHTNESS = 0.15f
     private const val DEFAULT_MAX_BRIGHTNESS = 0.58f
-    private const val DEFAULT_MIN_SATURATION = 0.32f
 
+    /**
+     * Constrains brightness for readability. Saturation is intentionally NOT clamped:
+     * genuinely neutral artwork colours must stay neutral instead of being tinted.
+     */
     fun ensureComfortableColor(
         color: Color,
         minBrightness: Float = DEFAULT_MIN_BRIGHTNESS,
         maxBrightness: Float = DEFAULT_MAX_BRIGHTNESS,
-        minSaturation: Float = DEFAULT_MIN_SATURATION,
     ): Color {
         val hsv = color.toHsv()
-        hsv[1] = hsv[1].coerceAtLeast(minSaturation)
         hsv[2] = hsv[2].coerceIn(minBrightness, maxBrightness)
         return hsv.toColor()
     }

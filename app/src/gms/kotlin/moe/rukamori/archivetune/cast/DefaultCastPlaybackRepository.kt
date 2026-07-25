@@ -77,6 +77,7 @@ class DefaultCastPlaybackRepository(
         )
     private var castContext: CastContext? = null
     private var listenerRegistered = false
+    private val remotePlayersBySessionPlayer = ConcurrentHashMap<Player, RemoteCastPlayer>()
 
     override val screenState: StateFlow<CastScreenState> = mutableScreenState
 
@@ -107,6 +108,14 @@ class DefaultCastPlaybackRepository(
             .setRemotePlayer(remotePlayer)
             .setTransferCallback(SafeCastTransferCallback(localPlayer))
             .build()
+            .also { castPlayer -> remotePlayersBySessionPlayer[castPlayer] = remotePlayer }
+    }
+
+    override fun releasePlayer(player: Player) {
+        remotePlayersBySessionPlayer.remove(player)?.let { remotePlayer ->
+            runCatching { remotePlayer.release() }
+                .onFailure { Timber.tag("Cast").w(it, "Unable to release remote Cast player") }
+        }
     }
 
     override fun disconnect() {

@@ -68,7 +68,6 @@ import androidx.navigation.NavController
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.AppFontPreference
-import moe.rukamori.archivetune.constants.ArchiveTuneCanvasKey
 import moe.rukamori.archivetune.constants.BackdropBlurAmountKey
 import moe.rukamori.archivetune.constants.BackdropEnabledKey
 import moe.rukamori.archivetune.constants.BlurRadiusKey
@@ -87,6 +86,8 @@ import moe.rukamori.archivetune.constants.GridItemSize
 import moe.rukamori.archivetune.constants.GridItemsSizeKey
 import moe.rukamori.archivetune.constants.HidePlayerThumbnailKey
 import moe.rukamori.archivetune.constants.LibraryFilter
+import moe.rukamori.archivetune.constants.LyricsBackgroundStyle
+import moe.rukamori.archivetune.constants.LyricsBackgroundStyleKey
 import moe.rukamori.archivetune.constants.MiniPlayerBackgroundStyle
 import moe.rukamori.archivetune.constants.MiniPlayerBackgroundStyleKey
 import moe.rukamori.archivetune.constants.PlayerBackgroundStyle
@@ -159,11 +160,7 @@ fun AppearanceSettings(navController: NavController) {
             HidePlayerThumbnailKey,
             defaultValue = false,
         )
-    val (archiveTuneCanvasEnabled, onArchiveTuneCanvasEnabledChange) =
-        rememberPreference(
-            ArchiveTuneCanvasKey,
-            defaultValue = false,
-        )
+    // The ArchiveTune Canvas artwork toggle lives in Player Settings → Artwork.
     val (thumbnailCornerRadius, onThumbnailCornerRadiusChange) =
         rememberPreference(
             key = ThumbnailCornerRadiusKey,
@@ -178,6 +175,11 @@ fun AppearanceSettings(navController: NavController) {
         rememberEnumPreference(
             PlayerBackgroundStyleKey,
             defaultValue = PlayerBackgroundStyle.DEFAULT,
+        )
+    val (configuredLyricsBackground, onLyricsBackgroundChange) =
+        rememberEnumPreference(
+            LyricsBackgroundStyleKey,
+            defaultValue = LyricsBackgroundStyle.DEFAULT,
         )
     val (miniPlayerBackground, onMiniPlayerBackgroundChange) =
         rememberEnumPreference(
@@ -306,6 +308,15 @@ fun AppearanceSettings(navController: NavController) {
         PlayerBackgroundStyle.entries.filter {
             it != PlayerBackgroundStyle.BLUR || Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
         }
+    val availableLyricsBackgroundStyles =
+        remember {
+            listOf(
+                LyricsBackgroundStyle.DEFAULT,
+                LyricsBackgroundStyle.FOLLOW_THEME,
+                LyricsBackgroundStyle.COLORING,
+            )
+        }
+    val lyricsBackground = configuredLyricsBackground.resolveFor(playerBackground)
     val isPlayerStyleCustomizationEnabled =
         when (playerDesignStyle) {
             PlayerDesignStyle.V7,
@@ -665,7 +676,18 @@ fun AppearanceSettings(navController: NavController) {
                             },
                         icon = { Icon(painterResource(R.drawable.gradient), null) },
                         selectedValue = playerBackground,
-                        onValueSelected = onPlayerBackgroundChange,
+                        onValueSelected = { selectedBackground ->
+                            onPlayerBackgroundChange(selectedBackground)
+                            when {
+                                selectedBackground == PlayerBackgroundStyle.CUSTOM -> {
+                                    onLyricsBackgroundChange(LyricsBackgroundStyle.CUSTOM)
+                                }
+
+                                configuredLyricsBackground == LyricsBackgroundStyle.CUSTOM -> {
+                                    onLyricsBackgroundChange(LyricsBackgroundStyle.DEFAULT)
+                                }
+                            }
+                        },
                         isEnabled = isPlayerStyleCustomizationEnabled,
                         valueText = {
                             when (it) {
@@ -677,6 +699,25 @@ fun AppearanceSettings(navController: NavController) {
                                 PlayerBackgroundStyle.BLUR_GRADIENT -> stringResource(R.string.blur_gradient)
                                 PlayerBackgroundStyle.GLOW -> stringResource(R.string.glow)
                                 PlayerBackgroundStyle.GLOW_ANIMATED -> "Glow Animated"
+                            }
+                        },
+                    )
+                }
+
+                item {
+                    ListPreference(
+                        title = { Text(stringResource(R.string.lyrics_background_style)) },
+                        icon = { Icon(painterResource(R.drawable.lyrics), null) },
+                        selectedValue = lyricsBackground,
+                        values = availableLyricsBackgroundStyles,
+                        onValueSelected = onLyricsBackgroundChange,
+                        isEnabled = playerBackground != PlayerBackgroundStyle.CUSTOM,
+                        valueText = {
+                            when (it) {
+                                LyricsBackgroundStyle.DEFAULT -> stringResource(R.string.lyrics_background_default)
+                                LyricsBackgroundStyle.FOLLOW_THEME -> stringResource(R.string.follow_theme)
+                                LyricsBackgroundStyle.COLORING -> stringResource(R.string.coloring)
+                                LyricsBackgroundStyle.CUSTOM -> stringResource(R.string.custom)
                             }
                         },
                     )
@@ -713,16 +754,6 @@ fun AppearanceSettings(navController: NavController) {
                         icon = { Icon(painterResource(R.drawable.hide_image), null) },
                         checked = hidePlayerThumbnail,
                         onCheckedChange = onHidePlayerThumbnailChange,
-                    )
-                }
-
-                item {
-                    SwitchPreference(
-                        title = { Text(stringResource(R.string.archivetune_canvas)) },
-                        description = stringResource(R.string.archivetune_canvas_desc),
-                        icon = { Icon(painterResource(R.drawable.motion_photos_on), null) },
-                        checked = archiveTuneCanvasEnabled,
-                        onCheckedChange = onArchiveTuneCanvasEnabledChange,
                     )
                 }
 

@@ -8,6 +8,7 @@
 package moe.rukamori.archivetune.ui.player
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -38,8 +39,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.palette.graphics.Palette
 import coil3.imageLoader
 import coil3.request.ImageRequest
+import coil3.request.SuccessResult
 import coil3.request.allowHardware
 import coil3.toBitmap
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalPlayerConnection
@@ -48,12 +51,13 @@ import moe.rukamori.archivetune.constants.MiniPlayerBackgroundStyleKey
 import moe.rukamori.archivetune.constants.MiniPlayerHeight
 import moe.rukamori.archivetune.constants.NavigationBarMaxWidth
 import moe.rukamori.archivetune.constants.SwipeSensitivityKey
+import moe.rukamori.archivetune.playback.artwork.PlayerPaletteCacheKey
+import moe.rukamori.archivetune.playback.artwork.guessArtworkProvider
 import moe.rukamori.archivetune.ui.theme.PlayerColorExtractor
+import moe.rukamori.archivetune.ui.theme.PlayerPaletteCache
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
 import kotlin.math.roundToInt
-
-private const val MiniPlayerPaletteCacheSize = 24
 
 @Composable
 fun MiniPlayer(
@@ -91,40 +95,46 @@ private fun NewMiniPlayer(
         defaultValue = MiniPlayerBackgroundStyle.THEME,
     )
     val mediaMetadata by playerConnection.mediaMetadata.collectAsStateWithLifecycle()
+    // Keep the previous valid palette while the next artwork loads; replace only on success.
     var gradientColors by remember {
         mutableStateOf<List<Color>>(emptyList())
     }
-    val gradientColorsCache =
-        remember {
-            object : LinkedHashMap<String, List<Color>>(MiniPlayerPaletteCacheSize, 0.75f, true) {
-                override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, List<Color>>?): Boolean =
-                    size > MiniPlayerPaletteCacheSize
-            }
-        }
+    var hasValidPalette by remember { mutableStateOf(false) }
     val fallbackColor = MaterialTheme.colorScheme.surface.toArgb()
     val shouldUseArtworkBackground = miniPlayerBackgroundStyle != MiniPlayerBackgroundStyle.THEME
+    val darkTheme = isSystemInDarkTheme()
 
     LaunchedEffect(
         mediaMetadata?.id,
         mediaMetadata?.thumbnailUrl,
         shouldUseArtworkBackground,
         fallbackColor,
+        darkTheme,
     ) {
         if (!shouldUseArtworkBackground) {
             gradientColors = emptyList()
+            hasValidPalette = false
             return@LaunchedEffect
         }
 
         val currentMetadata = mediaMetadata
         val thumbnailUrl = currentMetadata?.thumbnailUrl
         if (currentMetadata == null || thumbnailUrl.isNullOrBlank()) {
-            gradientColors = emptyList()
+            if (!hasValidPalette) gradientColors = emptyList()
             return@LaunchedEffect
         }
 
-        val cachedColors = gradientColorsCache[currentMetadata.id]
-        if (cachedColors != null) {
+        val cacheKey =
+            PlayerPaletteCacheKey(
+                mediaId = currentMetadata.id,
+                provider = guessArtworkProvider(thumbnailUrl),
+                artworkIdentity = thumbnailUrl,
+                backgroundMode = miniPlayerBackgroundStyle.name,
+                darkTheme = darkTheme,
+            )
+        PlayerPaletteCache.get(cacheKey)?.let { cachedColors ->
             gradientColors = cachedColors
+            hasValidPalette = true
             return@LaunchedEffect
         }
 
@@ -137,30 +147,51 @@ private fun NewMiniPlayer(
                 .build()
 
         val extractedColors =
-            runCatching {
+            try {
                 val result =
                     withContext(Dispatchers.IO) {
                         context.imageLoader.execute(request)
                     }
-                val bitmap = result.image?.toBitmap() ?: return@runCatching emptyList()
-                val palette =
-                    withContext(Dispatchers.Default) {
-                        Palette
-                            .from(bitmap)
-                            .maximumColorCount(PlayerColorExtractor.Config.MAX_COLOR_COUNT)
-                            .resizeBitmapArea(PlayerColorExtractor.Config.BITMAP_AREA)
-                            .generate()
+                if (result !is SuccessResult) {
+                    null
+                } else {
+                    val bitmap = result.image?.toBitmap()
+                    if (bitmap == null) {
+                        null
+                    } else {
+                        val palette =
+                            withContext(Dispatchers.Default) {
+                                Palette
+                                    .from(bitmap)
+                                    .maximumColorCount(PlayerColorExtractor.Config.MAX_COLOR_COUNT)
+                                    .resizeBitmapArea(PlayerColorExtractor.Config.BITMAP_AREA)
+                                    .generate()
+                            }
+                        PlayerColorExtractor.extractGradientColors(
+                            palette = palette,
+                            fallbackColor = fallbackColor,
+                        )
                     }
-                PlayerColorExtractor.extractGradientColors(
-                    palette = palette,
-                    fallbackColor = fallbackColor,
-                )
-            }.getOrDefault(emptyList())
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                null
+            }
 
-        if (extractedColors.isNotEmpty()) {
-            gradientColorsCache[currentMetadata.id] = extractedColors
+        // On failure/cancellation keep the previous valid palette; never force a grey fallback.
+        if (extractedColors != null) {
+            val stillCurrent =
+                mediaMetadata?.id == currentMetadata.id &&
+                    mediaMetadata?.thumbnailUrl == thumbnailUrl
+            if (stillCurrent) {
+                PlayerPaletteCache.put(cacheKey, extractedColors)
+                gradientColors = extractedColors
+                hasValidPalette = true
+            }
+        } else if (!hasValidPalette) {
+            gradientColors = emptyList()
         }
-        gradientColors = extractedColors
     }
 
     val backgroundPalette =

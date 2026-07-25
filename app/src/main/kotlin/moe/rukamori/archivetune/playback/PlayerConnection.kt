@@ -16,6 +16,7 @@ import androidx.media3.common.Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM
 import androidx.media3.common.Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM
 import androidx.media3.common.Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM
 import androidx.media3.common.Player.REPEAT_MODE_OFF
+import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.common.Player.STATE_ENDED
 import androidx.media3.common.Timeline
 import kotlinx.coroutines.CancellationException
@@ -24,8 +25,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChangedBy
@@ -33,15 +37,31 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withContext
+import moe.rukamori.archivetune.canvas.models.CanvasArtwork
 import moe.rukamori.archivetune.db.MusicDatabase
 import moe.rukamori.archivetune.extensions.currentMetadata
 import moe.rukamori.archivetune.extensions.getCurrentQueueIndex
 import moe.rukamori.archivetune.extensions.getQueueWindows
+import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.playback.MusicService.MusicBinder
 import moe.rukamori.archivetune.playback.queues.Queue
+import moe.rukamori.archivetune.ui.player.refetchCanvasArtworkForPlayback
 import moe.rukamori.archivetune.utils.isLocalMediaId
 import moe.rukamori.archivetune.utils.reportException
+import java.util.Locale
+
+internal data class CanvasArtworkUpdate(
+    val mediaId: String,
+    val artwork: CanvasArtwork,
+)
+
+internal enum class CanvasArtworkRefetchResult {
+    Success,
+    Failure,
+    AlreadyRunning,
+}
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class PlayerConnection(
@@ -51,8 +71,17 @@ class PlayerConnection(
     scope: CoroutineScope,
 ) : Player.Listener {
     val service = binder.service
-    val player = service.player
-    val localPlayer = service.localPlayer
+
+    /**
+     * Always the CURRENT active player. The service may promote a new player instance
+     * (crossfade promotion), so this must be a live getter, not a captured reference.
+     */
+    val player: Player
+        get() = service.player
+    val localPlayer: ExoPlayer
+        get() = service.localPlayer
+
+    private var attachedPlayer: Player? = null
 
     val playbackState = MutableStateFlow(player.playbackState)
     private val playWhenReady = MutableStateFlow(player.playWhenReady)
@@ -96,22 +125,31 @@ class PlayerConnection(
     private var dismissedPlaybackError: PlaybackException? = null
     val waitingForNetworkConnection = service.waitingForNetworkConnection
     val queueRestoreCompleted = service.queueRestoreCompleted
+    val extractorAuthenticationEvents = service.extractorAuthenticationEvents
+
+    private val canvasArtworkRefetchMutex = Mutex()
+    private val _isCanvasArtworkRefetching = MutableStateFlow(false)
+    internal val isCanvasArtworkRefetching = _isCanvasArtworkRefetching.asStateFlow()
+    private val _canvasArtworkUpdates = MutableSharedFlow<CanvasArtworkUpdate>(extraBufferCapacity = 1)
+    internal val canvasArtworkUpdates = _canvasArtworkUpdates.asSharedFlow()
+
     private var metadataExtractionJob: Job? = null
 
     init {
-        player.addListener(this)
+        attachToPlayer(service.player)
 
-        playbackState.value = player.playbackState
-        playWhenReady.value = player.playWhenReady
-        playbackParameters.value = player.playbackParameters
         queueTitle.value = service.queueTitle
-        queueWindows.value = player.getQueueWindows()
-        currentWindowIndex.value = player.getCurrentQueueIndex()
-        currentMediaItemIndex.value = player.currentMediaItemIndex
-        shuffleModeEnabled.value = player.shuffleModeEnabled
-        repeatMode.value = player.repeatMode
         if (player.mediaItemCount > 0 && service.currentMediaMetadata.value == null) {
             service.currentMediaMetadata.value = player.currentMetadata
+        }
+
+        // Follow player promotions (e.g. crossfade) and re-attach to the new active player.
+        scope.launch {
+            service.playerFlow.collect { newPlayer ->
+                if (newPlayer != null && newPlayer !== attachedPlayer) {
+                    attachToPlayer(newPlayer)
+                }
+            }
         }
 
         metadataExtractionJob =
@@ -217,6 +255,22 @@ class PlayerConnection(
             }
         }
 
+    private fun attachToPlayer(newPlayer: Player) {
+        attachedPlayer?.removeListener(this)
+        attachedPlayer = newPlayer
+        newPlayer.addListener(this)
+
+        playbackState.value = newPlayer.playbackState
+        playWhenReady.value = newPlayer.playWhenReady
+        playbackParameters.value = newPlayer.playbackParameters
+        queueWindows.value = newPlayer.getQueueWindows()
+        currentWindowIndex.value = newPlayer.getCurrentQueueIndex()
+        currentMediaItemIndex.value = newPlayer.currentMediaItemIndex
+        shuffleModeEnabled.value = newPlayer.shuffleModeEnabled
+        repeatMode.value = newPlayer.repeatMode
+        updateCanSkipPreviousAndNext()
+    }
+
     fun playQueue(queue: Queue) {
         service.playQueue(queue)
     }
@@ -245,9 +299,50 @@ class PlayerConnection(
         service.toggleLike()
     }
 
+    internal suspend fun refetchCanvasArtwork(
+        metadata: MediaMetadata,
+        requireVertical: Boolean,
+    ): CanvasArtworkRefetchResult {
+        if (!canvasArtworkRefetchMutex.tryLock()) return CanvasArtworkRefetchResult.AlreadyRunning
+
+        _isCanvasArtworkRefetching.value = true
+        return try {
+            val country = Locale.getDefault().country
+            val storefront = if (country.length == 2) country.lowercase(Locale.ROOT) else "us"
+            val artwork =
+                refetchCanvasArtworkForPlayback(
+                    mediaId = metadata.id,
+                    songTitleRaw = metadata.title,
+                    artistNameRaw = metadata.artists.firstOrNull()?.name.orEmpty(),
+                    storefront = storefront,
+                    requireVertical = requireVertical,
+                ) ?: return CanvasArtworkRefetchResult.Failure
+
+            _canvasArtworkUpdates.emit(
+                CanvasArtworkUpdate(
+                    mediaId = metadata.id,
+                    artwork = artwork,
+                ),
+            )
+            CanvasArtworkRefetchResult.Success
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            timber.log.Timber.tag("CanvasArtwork").w(error, "Canvas refetch failed for %s", metadata.id)
+            CanvasArtworkRefetchResult.Failure
+        } finally {
+            _isCanvasArtworkRefetching.value = false
+            canvasArtworkRefetchMutex.unlock()
+        }
+    }
+
     fun dismissPlaybackError() {
         dismissedPlaybackError = error.value ?: player.playerError
         error.value = null
+    }
+
+    fun updateExtractorBearerToken(token: String) {
+        service.updateExtractorBearerToken(token)
     }
 
     fun seekToNext() {
@@ -360,7 +455,8 @@ class PlayerConnection(
     }
 
     fun dispose() {
-        player.removeListener(this)
+        attachedPlayer?.removeListener(this)
+        attachedPlayer = null
         metadataExtractionJob?.cancel()
         metadataExtractionJob = null
     }

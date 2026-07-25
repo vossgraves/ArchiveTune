@@ -165,6 +165,7 @@
     <string name="add_to_queue">Add to queue</string>
     <string name="add_to_library">Add to library</string>
     <string name="remove_from_library">Remove from library</string>
+    <string name="remove_from_library_confirm">Remove \u0022%1$s\u0022 from your library?</string>
     <string name="action_download">Download</string>
     <string name="downloading">Downloading</string>
     <string name="remove_download">Remove download</string>
@@ -183,6 +184,8 @@
     <string name="view_all">View all</string>
     <string name="more">more</string>
     <string name="refetch">Refetch</string>
+    <string name="refetch_canvas">Refetch canvas</string>
+    <string name="canvas_refetch_failed">Couldn\'t refresh animated canvas</string>
     <string name="share">Share</string>
     <string name="delete">Delete</string>
     <string name="hide_playlist">Hide playlist</string>
@@ -438,6 +441,18 @@
     <string name="custom">Custom</string>
     <string name="customized_background">Customized background</string>
     <string name="customize_background_title">Customize background</string>
+    <string name="custom_background_subtitle">Preview and adjust the player and lyrics background</string>
+    <string name="custom_background_preview_player">Player</string>
+    <string name="custom_background_preview_lyrics">Lyrics</string>
+    <string name="custom_background_preview_empty">Choose an image to see a live preview.</string>
+    <string name="custom_background_replace_image">Replace image</string>
+    <string name="custom_background_remove_image">Remove image</string>
+    <string name="custom_background_adjustments">Adjustments</string>
+    <string name="custom_background_adjustments_description">Adjust image in both previews.</string>
+    <string name="custom_background_blur_value">%1$d dp</string>
+    <string name="custom_background_scale_value">%1$d%%</string>
+    <string name="custom_background_permission_error">ArchiveTune could not keep access to this image.</string>
+    <string name="custom_background_permission_cleanup_error">The previous image access could not be released.</string>
     <string name="add_image">Add image</string>
     <string name="blur">Blur</string>
     <string name="contrast">Contrast</string>
@@ -526,9 +541,11 @@
     <string name="stream_bypass_proxy">Bypass proxy for streams</string>
     <string name="stream_bypass_proxy_desc">Use your direct IP for stream playback to avoid IP mismatch</string>
     <string name="enable_betterlyrics">Enable BetterLyrics</string>
+    <string name="enable_betterlyrics_portato">Enable BetterLyrics Portato</string>
     <string name="enable_youlyplus_lyrics">Enable YouLyPlus lyrics</string>
     <string name="enable_unison_lyrics">Enable Unison lyrics</string>
     <string name="enable_simpmusic_lyrics">Enable SimpMusic lyrics</string>
+    <string name="enable_megalobiz_lyrics">Enable Megalobiz lyrics</string>
     <string name="enable_paxsenix_lyrics">Enable Paxsenix lyrics</string>
     <string name="player_and_audio">Player and audio</string>
     <string name="audio_quality">Audio quality</string>
@@ -722,7 +739,8 @@
     <string name="tidal_quality_hires">Hi-Res Lossless</string>
     <string name="tidal_artwork">Artwork</string>
     <string name="tidal_artwork_fallback">Use Tidal artwork</string>
-    <string name="tidal_artwork_fallback_description">Fall back to Tidal cover art when none is available</string>
+    <string name="tidal_artwork_fallback_description">Fall back to Tidal cover art when no artwork is available. May make network requests.</string>
+    <string name="tidal_artwork_fallback_unavailable">Requires Tidal to be enabled under Streaming sources. May make network requests.</string>
     <string name="tidal_animated_covers">Animated covers</string>
     <string name="tidal_animated_covers_description">Show Tidal video/canvas covers when available</string>
     <string name="tidal_account">Account (optional)</string>

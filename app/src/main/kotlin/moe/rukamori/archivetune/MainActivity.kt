@@ -175,10 +175,12 @@ import androidx.navigation.compose.rememberNavController
 import androidx.window.core.layout.WindowSizeClass
 import coil3.imageLoader
 import coil3.request.ImageRequest
+import coil3.request.SuccessResult
 import coil3.request.allowHardware
 import coil3.toBitmap
 import com.valentinilk.shimmer.LocalShimmerTheme
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -782,10 +784,13 @@ class MainActivity : ComponentActivity() {
                                             .allowHardware(false)
                                             .build(),
                                     )
-                                val extractedColor = result.image?.toBitmap()?.extractThemeColor()
+                                val extractedColor =
+                                    (result as? SuccessResult)?.image?.toBitmap()?.extractThemeColor()
                                 withContext(Dispatchers.Main) {
                                     themeColor = extractedColor ?: DefaultThemeColor
                                 }
+                            } catch (e: CancellationException) {
+                                throw e
                             } catch (e: Exception) {
                                 withContext(Dispatchers.Main) {
                                     themeColor = DefaultThemeColor
@@ -1107,7 +1112,7 @@ class MainActivity : ComponentActivity() {
 
                     val shouldHideStatusBars =
                         isYearInMusicScreen ||
-                            (playerBottomSheetState.isExpanded && playerDesignStyle == PlayerDesignStyle.V7)
+                            (playerBottomSheetState.isExpandedOrExpanding && playerDesignStyle == PlayerDesignStyle.V7)
 
                     LaunchedEffect(shouldHideStatusBars, aodModeEnabled) {
                         if (aodModeEnabled) return@LaunchedEffect
@@ -1180,7 +1185,7 @@ class MainActivity : ComponentActivity() {
                             canScroll = {
                                 navBackStackEntry?.destination?.route?.startsWith(OnlineSearchResultRoutePrefix) == false &&
                                     navBackStackEntry?.destination?.route != Screens.Library.route &&
-                                    (playerBottomSheetState.isCollapsed || playerBottomSheetState.isDismissed)
+                                    !playerBottomSheetState.isExpandedOrExpanding
                             },
                         )
                     val searchScrollBehavior =
@@ -1188,7 +1193,7 @@ class MainActivity : ComponentActivity() {
                             canScroll = {
                                 navBackStackEntry?.destination?.route?.startsWith(OnlineSearchResultRoutePrefix) == false &&
                                     navBackStackEntry?.destination?.route != Screens.Library.route &&
-                                    (playerBottomSheetState.isCollapsed || playerBottomSheetState.isDismissed)
+                                    !playerBottomSheetState.isExpandedOrExpanding
                             },
                         )
                     val topAppBarScrollBehavior =
@@ -1196,7 +1201,7 @@ class MainActivity : ComponentActivity() {
                             canScroll = {
                                 navBackStackEntry?.destination?.route?.startsWith(OnlineSearchResultRoutePrefix) == false &&
                                     navBackStackEntry?.destination?.route != Screens.Library.route &&
-                                    (playerBottomSheetState.isCollapsed || playerBottomSheetState.isDismissed)
+                                    !playerBottomSheetState.isExpandedOrExpanding
                             },
                         )
 
@@ -1522,7 +1527,10 @@ class MainActivity : ComponentActivity() {
                     ) {
                         Row {
                             AnimatedVisibility(
-                                visible = useRail && shouldShowNavigationBar,
+                                visible =
+                                    useRail &&
+                                        shouldShowNavigationBar &&
+                                        (isTvDevice || !playerBottomSheetState.isExpandedOrExpanding),
                                 enter = fadeIn(animationSpec = tween(durationMillis = if (disableAnimations) 0 else 150)),
                                 exit = fadeOut(animationSpec = tween(durationMillis = if (disableAnimations) 0 else 100)),
                             ) {
@@ -2501,7 +2509,7 @@ class MainActivity : ComponentActivity() {
             return
         }
         if (intent.action == ACTION_MUSIC_RECOGNITION) {
-            navController.openMusicRecognition()
+            navController.openMusicRecognition(0L)
             return
         }
         if (intent.action == ACTION_AOD_MODE) {

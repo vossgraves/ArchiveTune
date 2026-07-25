@@ -1,8 +1,3 @@
-import org.gradle.api.DefaultTask
-import org.gradle.api.provider.Property
-import org.gradle.api.tasks.Input
-import org.gradle.api.tasks.TaskAction
-import org.gradle.work.DisableCachingByDefault
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.util.Properties
 
@@ -44,8 +39,8 @@ if (localPropertiesFile.exists()) {
 // per-commit patch/versionCode from the git commit count and injects them via the
 // VERSION_NAME_OVERRIDE / VERSION_CODE_OVERRIDE env vars. Keep each on a single line so the
 // release/canary workflows can grep the base value reliably.
-val baseVersionName = "13.7.5"
-val baseVersionCode = 1375
+val baseVersionName = "14.0.0"
+val baseVersionCode = 1400
 
 fun String.asBuildConfigString(): String =
     "\"${
@@ -238,11 +233,6 @@ android {
             buildConfigField("long", "DISCORD_APPLICATION_ID_LONG", "${discordApplicationIdLong}L")
             buildConfigField("String", "DISCORD_REDIRECT_SCHEME", "\"$discordRedirectScheme\"")
             manifestPlaceholders["discordRedirectScheme"] = discordRedirectScheme
-            buildConfigField(
-                "String",
-                "START_IO_APP_ID",
-                "\"$startIoAppId\"",
-            )
         }
         create("foss") {
             dimension = "distribution"
@@ -445,8 +435,8 @@ dependencies {
     implementation("androidx.media3:media3-ui-compose:${libs.versions.media3.get()}")
     add("gmsImplementation", libs.media3.cast)
     add("gmsImplementation", libs.mediarouter)
-    add("gmsImplementation", libs.startio.ads)
     implementation(libs.squigglyslider)
+
 
     implementation(libs.room.runtime)
     implementation(libs.kuromoji.ipadic)
@@ -491,6 +481,7 @@ dependencies {
     implementation(libs.timber)
     testImplementation(libs.junit)
     testImplementation(libs.turbine)
+    testImplementation(libs.coroutines.test)
     implementation(libs.translator)
     implementation("androidx.lifecycle:lifecycle-process:2.11.0")
     implementation("androidx.compose.material3.adaptive:adaptive:1.3.0-rc01")

@@ -1,4 +1,4 @@
-<?xml version='1.0' encoding='utf-8'?>
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="home">Ana sayfa</string>
     <string name="songs">Şarkılar</string>
@@ -495,4 +495,29 @@
     <string name="regenerate">Yeniden oluştur</string>
     <string name="source_url">Kaynak URL\'si</string>
     <string name="source_url_placeholder">https://youtube.com/account</string>
+    <string name="library_top_mixes_no_valid_mixes">YZ, Yakın Geçmişinizden herhangi oynatılabilir mixler oluşturamadı.</string>
+    <string name="library_top_mixes_failed">En Popüler mixler oluşturulamadı.</string>
+    <string name="your_playlists">Çalma Listeleriniz</string>
+    <string name="see_all">Hepsini gör</string>
+    <string name="your_artists">Sanatçılarınız</string>
+    <string name="all_songs">Tüm Şarkılar</string>
+    <string name="newest_first">Önce en yeniler</string>
+    <string name="oldest_first">Önce en eski</string>
+    <string name="sort_a_to_z">A → Z</string>
+    <string name="sort_z_to_a">Z → A</string>
+    <string name="sort_artist">Sanatçı</string>
+    <string name="most_played_sort">En çok oynatılan</string>
+    <string name="recently_added">Yakında eklenenler</string>
+    <string name="sort_descending">Azalana göre sırala</string>
+    <string name="sort_ascending">Artan sırayla sırala</string>
+    <string name="your_collection">Koleksiyonunuz</string>
+    <string name="playing_desc">Oynatılan</string>
+    <string name="tracks_label">Parçalar</string>
+    <string name="song_singular">Şarkı</string>
+    <string name="more_playlists_desc">Daha Fazla Oynatma Listesi</string>
+    <string name="more_label">Daha</string>
+    <string name="tracks_count_label">Parça sayısı</string>
+    <string name="recently_updated">Son Güncellenen</string>
+    <string name="custom_order">Özel Sıralama</string>
+    <string name="list_view">Liste Görünümü</string>
 </resources>

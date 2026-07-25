@@ -61,6 +61,7 @@ object TidalAudioProvider {
     private const val MAX_STREAM_CANDIDATES = 2
     private const val MAX_DIRECT_STREAM_CANDIDATES = 3
     private const val MIN_MATCH_SCORE = 90
+    private const val ARTWORK_MAX_SCORE = 220
 
     // How long a failing instance is skipped before it is retried again.
     private const val INSTANCE_SOFT_COOLDOWN_MS = 60_000L // transient errors (HTTP 5xx, timeouts)
@@ -436,6 +437,8 @@ object TidalAudioProvider {
         val mediaTags: Set<String>,
         val audioModes: Set<String>,
         val sampleRate: Int?,
+        val albumId: String? = null,
+        val albumCoverId: String? = null,
     ) {
         fun supportsLossless(): Boolean =
             qualitySignals().any { signal ->
@@ -769,6 +772,108 @@ object TidalAudioProvider {
                     durationMs = track.durationMs,
                 )
             }
+
+    // region Artwork search (cover art only; shares the audio matching heuristics)
+
+    data class ArtworkSearchResult(
+        val trackId: String,
+        val releaseId: String?,
+        val coverId: String,
+        val score: Int,
+        val exactIsrc: Boolean,
+    ) {
+        /** 0f..1f confidence derived from the content-only match score (quality boosts removed). */
+        val confidence: Float
+            get() =
+                ((score - MIN_MATCH_SCORE).toFloat() / (ARTWORK_MAX_SCORE - MIN_MATCH_SCORE))
+                    .coerceIn(0f, 1f)
+    }
+
+    /**
+     * Finds Tidal cover art for [query]. Match priority: exact ISRC, then a known Tidal track id,
+     * then normalized artist/album/title search. Only tracks with a usable album cover are
+     * returned; audio-quality boosts are stripped from the score so confidence reflects pure
+     * metadata agreement.
+     */
+    fun resolveArtwork(query: Query): ArtworkSearchResult? {
+        val wantedIsrc = normalizeIsrc(query.isrc)
+        if (wantedIsrc != null) {
+            searchTracks(wantedIsrc, exactIsrc = true)
+                ?.let { selectArtworkCandidates(it, query, exactIsrcOnly = true) }
+                ?.firstOrNull()
+                ?.let { return it }
+        }
+
+        query.mediaId.toTidalTrackIdOrNull()?.let { trackId ->
+            resolveTrackById(trackId)?.let { track ->
+                val coverId = track.albumCoverId ?: return@let
+                val score = contentArtworkScore(track, query)
+                if (score >= MIN_MATCH_SCORE) {
+                    return ArtworkSearchResult(
+                        trackId = track.trackId,
+                        releaseId = track.albumId,
+                        coverId = coverId,
+                        score = score,
+                        exactIsrc = wantedIsrc != null && normalizeIsrc(track.isrc) == wantedIsrc,
+                    )
+                }
+            }
+        }
+
+        var best: ArtworkSearchResult? = null
+        for (term in searchTerms(query)) {
+            val results = searchTracks(term) ?: continue
+            val top = selectArtworkCandidates(results, query).firstOrNull() ?: continue
+            if (top.score >= STRONG_MATCH_SCORE) return top
+            if (top.score > (best?.score ?: Int.MIN_VALUE)) best = top
+        }
+        return best
+    }
+
+    private fun contentArtworkScore(
+        track: MatchedTrack,
+        query: Query,
+    ): Int =
+        scoreTrack(
+            track,
+            query.title.titleMatchNormalized(),
+            query.artists.map { it.normalized() }.filter { it.isNotBlank() },
+            query.album.normalized(),
+            normalizeIsrc(query.isrc),
+            query.durationMs?.takeIf { it > 0L },
+        ) - track.qualityScoreBoost()
+
+    private fun selectArtworkCandidates(
+        results: JSONArray,
+        query: Query,
+        exactIsrcOnly: Boolean = false,
+    ): List<ArtworkSearchResult> {
+        val wantedTitle = query.title.titleMatchNormalized()
+        val wantedArtists = query.artists.map { it.normalized() }.filter { it.isNotBlank() }
+        val wantedAlbum = query.album.normalized()
+        val wantedIsrc = normalizeIsrc(query.isrc)
+        val wantedDurationMs = query.durationMs?.takeIf { it > 0L }
+        val candidates = mutableListOf<ArtworkSearchResult>()
+        for (index in 0 until results.length()) {
+            val obj = results.optJSONObject(index) ?: continue
+            val track = obj.toMatchedTrack() ?: continue
+            if (exactIsrcOnly && normalizeIsrc(track.isrc) != wantedIsrc) continue
+            val coverId = track.albumCoverId ?: continue
+            val score = contentArtworkScore(track, query)
+            if (score < MIN_MATCH_SCORE) continue
+            candidates +=
+                ArtworkSearchResult(
+                    trackId = track.trackId,
+                    releaseId = track.albumId,
+                    coverId = coverId,
+                    score = score,
+                    exactIsrc = wantedIsrc != null && normalizeIsrc(track.isrc) == wantedIsrc,
+                )
+        }
+        return candidates.sortedByDescending { it.score }
+    }
+
+    // endregion
 
     fun isLiveManifestUri(value: String?): Boolean =
         value
@@ -2250,7 +2355,8 @@ object TidalAudioProvider {
         val trackId = stringOrNull("id") ?: return null
         val title = stringOrNull("title") ?: stringOrNull("name") ?: return null
         val artists = collectArtistNames()
-        val album = optJSONObject("album")?.stringOrNull("title") ?: optJSONObject("album")?.stringOrNull("name")
+        val albumObj = optJSONObject("album")
+        val album = albumObj?.stringOrNull("title") ?: albumObj?.stringOrNull("name")
         return MatchedTrack(
             trackId = trackId,
             title = title,
@@ -2262,6 +2368,8 @@ object TidalAudioProvider {
             mediaTags = collectMediaTags(),
             audioModes = collectAudioModes(),
             sampleRate = normalizeSampleRate(doubleOrNull("sampleRate")),
+            albumId = albumObj?.stringOrNull("id"),
+            albumCoverId = albumObj?.stringOrNull("cover"),
         )
     }
 

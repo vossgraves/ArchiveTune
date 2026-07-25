@@ -149,6 +149,7 @@ import coil3.toBitmap
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalDownloadUtil
@@ -196,6 +197,9 @@ import moe.rukamori.archivetune.ui.screens.buildLoginRoute
 import moe.rukamori.archivetune.ui.screens.settings.DarkMode
 import moe.rukamori.archivetune.ui.screens.settings.PO_TOKEN_ROUTE
 import moe.rukamori.archivetune.ui.theme.PlayerColorExtractor
+import moe.rukamori.archivetune.ui.theme.PlayerPaletteCache
+import moe.rukamori.archivetune.playback.artwork.PlayerPaletteCacheKey
+import moe.rukamori.archivetune.playback.artwork.guessArtworkProvider
 import moe.rukamori.archivetune.ui.utils.ShowMediaInfo
 import moe.rukamori.archivetune.ui.utils.YtimgResizePolicy
 import moe.rukamori.archivetune.ui.utils.getNextFallbackUrl
@@ -492,95 +496,112 @@ fun BottomSheetPlayer(
     // Track loading state: when buffering or when user is seeking
     val isLoading = playbackState == STATE_BUFFERING || sliderPosition != null
 
+    // Palette state. The previous valid palette stays visible while the next track's artwork
+    // loads; it is only replaced by a successfully extracted palette (or kept on failure).
+    // A theme-grey fallback is used only when no valid palette has ever existed.
     var gradientColors by remember {
         mutableStateOf<List<Color>>(emptyList())
     }
+    var hasValidGradientPalette by remember { mutableStateOf(false) }
 
-    // Previous background states for smooth transitions
-    var previousThumbnailUrl by remember { mutableStateOf<String?>(null) }
-    var previousGradientColors by remember { mutableStateOf<List<Color>>(emptyList()) }
-
-    // Cache for gradient colors to prevent re-extraction for same songs
-    val gradientColorsCache = remember { mutableMapOf<String, List<Color>>() }
-
-    // Default gradient colors for fallback
+    // Default gradient colors for the initial fallback
     val defaultGradientColors = listOf(MaterialTheme.colorScheme.surface, MaterialTheme.colorScheme.surfaceVariant)
     val fallbackColor = MaterialTheme.colorScheme.surface.toArgb()
 
-    // Update previous states when media changes
-    LaunchedEffect(mediaMetadata?.id) {
-        val currentThumbnail = mediaMetadata?.thumbnailUrl
-        if (currentThumbnail != previousThumbnailUrl) {
-            previousThumbnailUrl = currentThumbnail
-            previousGradientColors = gradientColors
-        }
-    }
+    // The palette source is exactly the artwork the player displays: the metadata thumbnail
+    // (kept in sync with the authoritative artwork resolver, including Tidal fallback commits).
+    val paletteArtworkUrl = mediaMetadata?.thumbnailUrl
 
-    LaunchedEffect(mediaMetadata?.id, playerBackground) {
+    LaunchedEffect(mediaMetadata?.id, paletteArtworkUrl, playerBackground, useDarkTheme) {
         if (aodModeEnabled) return@LaunchedEffect
-        if (playerBackground == PlayerBackgroundStyle.GRADIENT || playerBackground == PlayerBackgroundStyle.COLORING ||
-            playerBackground == PlayerBackgroundStyle.BLUR_GRADIENT ||
-            playerBackground == PlayerBackgroundStyle.GLOW ||
-            playerBackground == PlayerBackgroundStyle.GLOW_ANIMATED
-        ) {
-            val currentMetadata = mediaMetadata
-            if (currentMetadata != null && currentMetadata.thumbnailUrl != null) {
-                // Check cache first
-                val cachedColors = gradientColorsCache[currentMetadata.id]
-                if (cachedColors != null) {
-                    gradientColors = cachedColors
-                } else {
-                    val request =
-                        ImageRequest
-                            .Builder(context)
-                            .data(currentMetadata.thumbnailUrl)
-                            .memoryCacheKey(currentMetadata.thumbnailUrl)
-                            .diskCacheKey(currentMetadata.thumbnailUrl)
-                            .diskCachePolicy(CachePolicy.ENABLED)
-                            .networkCachePolicy(CachePolicy.ENABLED)
-                            .size(PlayerColorExtractor.Config.IMAGE_SIZE, PlayerColorExtractor.Config.IMAGE_SIZE)
-                            .allowHardware(false)
-                            .build()
-
-                    val result =
-                        runCatching {
-                            withContext(Dispatchers.IO) {
-                                context.imageLoader.execute(request)
-                            }
-                        }.getOrNull()
-
-                    if (result != null) {
-                        val bitmap = result.image?.toBitmap()
-                        if (bitmap != null) {
-                            val palette =
-                                withContext(Dispatchers.Default) {
-                                    Palette
-                                        .from(bitmap)
-                                        .maximumColorCount(PlayerColorExtractor.Config.MAX_COLOR_COUNT)
-                                        .resizeBitmapArea(PlayerColorExtractor.Config.BITMAP_AREA)
-                                        .generate()
-                                }
-
-                            val extractedColors =
-                                PlayerColorExtractor.extractGradientColors(
-                                    palette = palette,
-                                    fallbackColor = fallbackColor,
-                                )
-
-                            gradientColorsCache[currentMetadata.id] = extractedColors
-                            gradientColors = extractedColors
-                        } else {
-                            gradientColors = defaultGradientColors
-                        }
-                    } else {
-                        gradientColors = defaultGradientColors
-                    }
-                }
-            } else {
-                gradientColors = emptyList()
-            }
-        } else {
+        val wantsPalette =
+            playerBackground == PlayerBackgroundStyle.GRADIENT || playerBackground == PlayerBackgroundStyle.COLORING ||
+                playerBackground == PlayerBackgroundStyle.BLUR ||
+                playerBackground == PlayerBackgroundStyle.BLUR_GRADIENT ||
+                playerBackground == PlayerBackgroundStyle.GLOW ||
+                playerBackground == PlayerBackgroundStyle.GLOW_ANIMATED
+        if (!wantsPalette) {
             gradientColors = emptyList()
+            hasValidGradientPalette = false
+            return@LaunchedEffect
+        }
+        val currentMetadata = mediaMetadata
+        val artworkUrl = currentMetadata?.thumbnailUrl
+        if (currentMetadata == null || artworkUrl.isNullOrBlank()) {
+            if (!hasValidGradientPalette) gradientColors = emptyList()
+            return@LaunchedEffect
+        }
+
+        val cacheKey =
+            PlayerPaletteCacheKey(
+                mediaId = currentMetadata.id,
+                provider = guessArtworkProvider(artworkUrl),
+                artworkIdentity = artworkUrl,
+                backgroundMode = playerBackground.name,
+                darkTheme = useDarkTheme,
+            )
+        PlayerPaletteCache.get(cacheKey)?.let { cachedColors ->
+            gradientColors = cachedColors
+            hasValidGradientPalette = true
+            return@LaunchedEffect
+        }
+
+        val request =
+            ImageRequest
+                .Builder(context)
+                .data(artworkUrl)
+                .memoryCacheKey(artworkUrl)
+                .diskCacheKey(artworkUrl)
+                .diskCachePolicy(CachePolicy.ENABLED)
+                .networkCachePolicy(CachePolicy.ENABLED)
+                .size(PlayerColorExtractor.Config.IMAGE_SIZE, PlayerColorExtractor.Config.IMAGE_SIZE)
+                .allowHardware(false)
+                .build()
+
+        val result =
+            try {
+                withContext(Dispatchers.IO) { context.imageLoader.execute(request) }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                null
+            }
+
+        // Only successful image results may feed the palette. On failure keep the previous
+        // valid palette; use the theme fallback only if no palette has ever succeeded.
+        if (result !is SuccessResult) {
+            if (!hasValidGradientPalette) gradientColors = defaultGradientColors
+            return@LaunchedEffect
+        }
+        val bitmap = result.image?.toBitmap()
+        if (bitmap == null) {
+            if (!hasValidGradientPalette) gradientColors = defaultGradientColors
+            return@LaunchedEffect
+        }
+
+        val palette =
+            withContext(Dispatchers.Default) {
+                Palette
+                    .from(bitmap)
+                    .maximumColorCount(PlayerColorExtractor.Config.MAX_COLOR_COUNT)
+                    .resizeBitmapArea(PlayerColorExtractor.Config.BITMAP_AREA)
+                    .generate()
+            }
+
+        val extractedColors =
+            PlayerColorExtractor.extractGradientColors(
+                palette = palette,
+                fallbackColor = fallbackColor,
+            )
+
+        // Stale-result guard: the artwork identity must still be what the player displays.
+        val stillCurrent =
+            mediaMetadata?.id == currentMetadata.id &&
+                mediaMetadata?.thumbnailUrl == artworkUrl
+        if (stillCurrent) {
+            PlayerPaletteCache.put(cacheKey, extractedColors)
+            gradientColors = extractedColors
+            hasValidGradientPalette = true
         }
     }
 
@@ -1088,6 +1109,23 @@ fun BottomSheetPlayer(
         var artworkCanvasFetchInFlight by remember(mediaMetadata?.id) {
             mutableStateOf(false)
         }
+        var canvasArtworkRevision by remember(mediaMetadata?.id) {
+            mutableIntStateOf(0)
+        }
+
+        LaunchedEffect(playerConnection, mediaMetadata?.id) {
+            playerConnection.canvasArtworkUpdates.collect { update ->
+                if (update.mediaId != mediaMetadata?.id) return@collect
+
+                canvasArtworkRevision += 1
+                if (!update.artwork.preferredVerticalAnimationUrl.isNullOrBlank()) {
+                    v7CanvasArtwork = update.artwork
+                }
+                if (!update.artwork.preferredAnimationUrl.isNullOrBlank()) {
+                    artworkCanvas = update.artwork
+                }
+            }
+        }
 
         LaunchedEffect(shouldUseV7Canvas, shouldFetchV7Canvas, mediaMetadata?.id) {
             val metadata = mediaMetadata
@@ -1108,7 +1146,8 @@ fun BottomSheetPlayer(
 
             v7CanvasFetchInFlight = true
             try {
-                v7CanvasArtwork =
+                val requestRevision = canvasArtworkRevision
+                val resolvedArtwork =
                     resolveCanvasArtworkForPlayback(
                         mediaId = metadata.id,
                         songTitleRaw = metadata.title,
@@ -1117,6 +1156,9 @@ fun BottomSheetPlayer(
                         requireVertical = true,
                         allowNetwork = shouldFetchV7Canvas,
                     )
+                if (requestRevision == canvasArtworkRevision) {
+                    v7CanvasArtwork = resolvedArtwork
+                }
             } finally {
                 v7CanvasFetchInFlight = false
             }
@@ -1141,7 +1183,8 @@ fun BottomSheetPlayer(
 
             artworkCanvasFetchInFlight = true
             try {
-                artworkCanvas =
+                val requestRevision = canvasArtworkRevision
+                val resolvedArtwork =
                     resolveCanvasArtworkForPlayback(
                         mediaId = metadata.id,
                         songTitleRaw = metadata.title,
@@ -1150,6 +1193,9 @@ fun BottomSheetPlayer(
                         requireVertical = false,
                         allowNetwork = shouldFetchArtworkCanvas,
                     )
+                if (requestRevision == canvasArtworkRevision) {
+                    artworkCanvas = resolvedArtwork
+                }
             } finally {
                 artworkCanvasFetchInFlight = false
             }
@@ -2129,13 +2175,19 @@ private fun V7PlayerBackdrop(
     // For palette extraction, use canvas static when canvas is active so the scrim
     // gradient is derived from the canvas colors rather than the YTM thumbnail.
     val paletteSourceUrl = if (hasCanvas && canvasStatic != null) canvasStatic else backdropArtworkUrl
-    var backdropPalette by remember(paletteSourceUrl, fallbackColor) {
+    // Keep the previous valid palette while the next artwork loads; only replace on success.
+    var backdropPalette by remember {
         mutableStateOf(V7BackdropPalette.fromColors(emptyList(), fallbackColor))
     }
+    var hasValidBackdropPalette by remember { mutableStateOf(false) }
 
     LaunchedEffect(paletteSourceUrl, hasCanvas, fallbackColor) {
-        backdropPalette = V7BackdropPalette.fromColors(emptyList(), fallbackColor)
-        if (paletteSourceUrl == null) return@LaunchedEffect
+        if (paletteSourceUrl == null) {
+            if (!hasValidBackdropPalette) {
+                backdropPalette = V7BackdropPalette.fromColors(emptyList(), fallbackColor)
+            }
+            return@LaunchedEffect
+        }
 
         val request =
             ImageRequest
@@ -2151,36 +2203,40 @@ private fun V7PlayerBackdrop(
 
         val extractedColors =
             try {
-                val image =
+                val result =
                     withContext(Dispatchers.IO) {
                         context.imageLoader.execute(request)
-                    }.image
-                if (image == null) {
+                    }
+                if (result !is SuccessResult) {
                     null
                 } else {
                     withContext(Dispatchers.Default) {
-                        val fullBitmap = image.toBitmap()
-                        // When canvas is active, extract from the bottom 30% of the static frame.
-                        // This gives us the actual colors at the canvas bottom edge, so the scrim
-                        // gradient blends seamlessly into the backdrop below.
-                        val bitmapForPalette =
-                            if (hasCanvas && fullBitmap.height > 4) {
-                                val startY = (fullBitmap.height * 0.70f).toInt().coerceAtLeast(0)
-                                val cropHeight = (fullBitmap.height - startY).coerceAtLeast(1)
-                                android.graphics.Bitmap.createBitmap(fullBitmap, 0, startY, fullBitmap.width, cropHeight)
-                            } else {
-                                fullBitmap
-                            }
-                        val palette =
-                            Palette
-                                .from(bitmapForPalette)
-                                .maximumColorCount(PlayerColorExtractor.Config.MAX_COLOR_COUNT)
-                                .resizeBitmapArea(PlayerColorExtractor.Config.BITMAP_AREA)
-                                .generate()
-                        PlayerColorExtractor.extractGradientColors(
-                            palette = palette,
-                            fallbackColor = fallbackColor,
-                        )
+                        val fullBitmap = result.image?.toBitmap()
+                        if (fullBitmap == null) {
+                            null
+                        } else {
+                            // When canvas is active, extract from the bottom 30% of the static frame.
+                            // This gives us the actual colors at the canvas bottom edge, so the scrim
+                            // gradient blends seamlessly into the backdrop below.
+                            val bitmapForPalette =
+                                if (hasCanvas && fullBitmap.height > 4) {
+                                    val startY = (fullBitmap.height * 0.70f).toInt().coerceAtLeast(0)
+                                    val cropHeight = (fullBitmap.height - startY).coerceAtLeast(1)
+                                    android.graphics.Bitmap.createBitmap(fullBitmap, 0, startY, fullBitmap.width, cropHeight)
+                                } else {
+                                    fullBitmap
+                                }
+                            val palette =
+                                Palette
+                                    .from(bitmapForPalette)
+                                    .maximumColorCount(PlayerColorExtractor.Config.MAX_COLOR_COUNT)
+                                    .resizeBitmapArea(PlayerColorExtractor.Config.BITMAP_AREA)
+                                    .generate()
+                            PlayerColorExtractor.extractGradientColors(
+                                palette = palette,
+                                fallbackColor = fallbackColor,
+                            )
+                        }
                     }
                 }
             } catch (e: CancellationException) {
@@ -2189,7 +2245,12 @@ private fun V7PlayerBackdrop(
                 null
             }
 
-        backdropPalette = V7BackdropPalette.fromColors(extractedColors.orEmpty(), fallbackColor)
+        if (extractedColors != null) {
+            backdropPalette = V7BackdropPalette.fromColors(extractedColors, fallbackColor)
+            hasValidBackdropPalette = true
+        } else if (!hasValidBackdropPalette) {
+            backdropPalette = V7BackdropPalette.fromColors(emptyList(), fallbackColor)
+        }
     }
 
     val backdropState =

@@ -8,6 +8,7 @@
 package moe.rukamori.archivetune.ui.player
 
 import android.content.Context
+import android.media.MediaCodecList
 import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.net.Uri
@@ -151,13 +152,45 @@ object CanvasArtworkPlaybackCache {
                         preferCachedOnly = false,
                     )
                 }
+            val artworkToCache = current ?: artwork
+            cacheArtworkInBackground(
+                directory = directory,
+                mediaId = mediaId,
+                artwork = artworkToCache,
+            )
+
+            artworkToCache
+        }
+
+    suspend fun replace(
+        mediaId: String,
+        artwork: CanvasArtwork,
+    ): CanvasArtwork =
+        withContext(Dispatchers.IO) {
+            if (maxSizeBytes == 0L || mediaId.isBlank()) return@withContext artwork
+            val directory = cacheDirectory ?: return@withContext artwork
+            directory.mkdirs()
+
+            val now = System.currentTimeMillis()
+            synchronized(this@CanvasArtworkPlaybackCache) {
+                remove(mediaId)
+                map[mediaId] =
+                    CanvasCacheEntry(
+                        mediaId = mediaId,
+                        artwork = artwork,
+                        regularFileName = null,
+                        verticalFileName = null,
+                        createdAtMs = now,
+                        lastAccessedAtMs = now,
+                    )
+                schedulePersist()
+            }
             cacheArtworkInBackground(
                 directory = directory,
                 mediaId = mediaId,
                 artwork = artwork,
             )
-
-            current ?: artwork
+            artwork
         }
 
     private fun cacheArtworkInBackground(
@@ -642,12 +675,13 @@ private fun File.isUsableFile(): Boolean = isFile && length() > 0L
 
 private fun File.isValidCanvasVideo(): Boolean {
     val extractor = MediaExtractor()
+    val codecList = MediaCodecList(MediaCodecList.REGULAR_CODECS)
     return try {
         extractor.setDataSource(absolutePath)
         (0 until extractor.trackCount).any { index ->
             val format = extractor.getTrackFormat(index)
             val mime = format.getString(MediaFormat.KEY_MIME).orEmpty()
-            mime.startsWith("video/")
+            mime.startsWith("video/") && codecList.findDecoderForFormat(format) != null
         }
     } catch (error: Throwable) {
         Timber.tag(CanvasCacheLogTag).w(error, "Failed to inspect cached canvas video")

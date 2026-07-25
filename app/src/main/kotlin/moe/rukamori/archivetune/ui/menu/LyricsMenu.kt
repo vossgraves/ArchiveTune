@@ -140,12 +140,13 @@ fun LyricsMenu(
     onLyricsSyncOffsetChange: (Int) -> Unit,
     showPlayerControlsState: State<Boolean>,
     onShowPlayerControlsChange: (Boolean) -> Unit,
+    onAutoHidePlayerControlsChange: (Boolean) -> Unit = {},
     onDismiss: () -> Unit,
     viewModel: LyricsMenuViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
     val showPlayerControls by showPlayerControlsState
-    val (autoHidePlayerControls, onAutoHidePlayerControlsChange) =
+    val (autoHidePlayerControls, onAutoHidePlayerControlsPreferenceChange) =
         rememberPreference(AutoHideLyricsPlayerControlsKey, false)
 
     var showEditDialog by rememberSaveable {
@@ -805,13 +806,18 @@ fun LyricsMenu(
                     trailingContent = {
                         Switch(
                             checked = autoHidePlayerControls,
-                            onCheckedChange = onAutoHidePlayerControlsChange,
+                            onCheckedChange = {
+                                onAutoHidePlayerControlsPreferenceChange(it)
+                                onAutoHidePlayerControlsChange(it)
+                            },
                             enabled = showPlayerControls,
                         )
                     },
                     enabled = showPlayerControls,
                     onClick = {
-                        onAutoHidePlayerControlsChange(!autoHidePlayerControls)
+                        val nextValue = !autoHidePlayerControls
+                        onAutoHidePlayerControlsPreferenceChange(nextValue)
+                        onAutoHidePlayerControlsChange(nextValue)
                     },
                     modifier =
                         Modifier.padding(
