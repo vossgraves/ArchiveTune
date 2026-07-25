@@ -1,0 +1,81 @@
+# Upstream Sync
+
+This fork keeps its `dev` branch automatically in sync with
+[`rukamori/ArchiveTune` @ `dev`](https://github.com/rukamori/ArchiveTune/tree/dev)
+via `.github/workflows/upstream-sync.yml`.
+
+- **Runs:** hourly (`cron: 17 * * * *`, best-effort) + manually via
+  **Actions → Upstream Sync → Run workflow**.
+- **Clean merge + green build** → pushed straight to `dev`.
+- **Conflicts** → resolved by AI (`scripts/ai_resolve.py`), gated on a green
+  debug-APK build, delivered as a **self-merging PR** (auto-merges when the
+  PR build CI passes).
+- **Every run** pushes a `backup/dev-auto-*` branch before touching anything
+  and opens a GitHub issue with a full report (commits pulled, AI-resolved
+  files, submodule actions, rollback command).
+- **Any failure** → nothing is pushed to `dev`; an issue is opened with logs.
+
+## What the AI is instructed to protect
+
+1. Fork features always survive: Tidal (`tidal/` package), the multi-source
+   audio framework (`audiosource/`, `resolveMultiSourceDataSpec` in
+   `MusicService.kt`), and the fork's `persistent-debug.keystore` CI signing
+   patch.
+2. Integration seams are union-merged (both sides kept).
+3. Never-touch files are always kept at the fork version, even if upstream
+   changes them (the change is dropped and flagged in the report):
+   `Koiverse.jks`, `Koiverse.jks.base64`, `ArchiveTuneKoiverseServer.txt`,
+   `DataServer.txt`, plus the `applicationId` in `app/build.gradle.kts`.
+4. A merge is only delivered if `assembleGmsMobileUniversalDebug` builds.
+
+## One-time setup
+
+1. **PAT secret (`SYNC_PAT`).** Create a fine-grained personal access token
+   (GitHub → Settings → Developer settings → Fine-grained tokens) with access
+   to `vossgraves/ArchiveTune` **and** `vossgraves/core`, permissions:
+   *Contents: write, Pull requests: write, Issues: write, Actions: write.*
+   Add it as repo secret `SYNC_PAT`. (The built-in `GITHUB_TOKEN` cannot push
+   to the `core` repo, cannot push workflow-file changes, and PRs created with
+   it would not trigger CI — hence the PAT.)
+2. **AI key (`AI_API_KEY`).** The OpenCode Go API key, used with
+   `https://opencode.ai/zen/go/v1` (model `kimi-k3`). Add as repo secret
+   `AI_API_KEY`. Optional: override endpoint/model with repo variables
+   `AI_BASE_URL` / `AI_MODEL`. If the key is missing or the gateway fails,
+   the workflow falls back to the free GitHub Models chain automatically.
+3. **Repo settings.** Settings → General → Pull Requests → enable
+   **Allow auto-merge** (required for self-merging PRs). If the Actions tab
+   shows the "scheduled workflows are disabled for forks" banner, enable them.
+4. This workflow file must exist on the **default branch** (`main`) for the
+   schedule to fire, and the `scripts/` files must exist on `dev` (the
+   workflow checks out `dev` and runs them from there). The setup PRs handle both.
+
+## Rollback
+
+Every run pushes `backup/dev-auto-<timestamp>` before merging. To undo a sync:
+
+```bash
+git checkout dev
+git reset --hard backup/dev-auto-<timestamp>
+git push --force-with-lease origin dev
+```
+
+## Troubleshooting
+
+- **"SYNC_PAT secret is not set"** → do setup step 1.
+- **PR opened but never merges** → enable *Allow auto-merge* (step 3), or
+  merge the PR manually after its build CI passes.
+- **Sync issue says build failed** → read the linked run log; upstream likely
+  needs a fix or the merge broke something. `dev` was not modified; the next
+  hourly run will retry from the same state.
+- **AI resolution failed** → the model chain was exhausted or a resolution was
+  rejected (leftover markers). `dev` untouched. Re-run manually, or resolve
+  locally: `git merge upstream/dev` in a clone and push a `sync/manual-*`
+  branch + PR.
+- **Rate limits (GitHub Models fallback)** → the free tier allows ~50
+  high-tier requests/day; conflicts use a handful. Chronic failures mean you
+  should set `AI_API_KEY` (step 2).
+
+## Running it manually
+
+**Actions → Upstream Sync → Run workflow** (branch `main`). Watch the log;
+the report issue appears within a minute of the run finishing.

@@ -1,0 +1,50 @@
+# AGENTS.md — vossgraves/ArchiveTune (fork)
+
+This is a fork of [rukamori/ArchiveTune](https://github.com/rukamori/ArchiveTune)
+with substantial custom features. Any agent working in this repo MUST preserve
+the fork invariants below — especially when merging upstream changes.
+
+## Fork invariants (never break these)
+
+1. **Tidal music source** — `app/src/main/kotlin/moe/rukamori/archivetune/tidal/`
+   (`TidalAudioProvider`, `TidalInstanceHealthManager`, `TidalAccountManager`,
+   `TidalDns`, `TidalArtworkProvider`), settings UI
+   `ui/screens/settings/TidalSettings.kt` + `TidalLoginScreen.kt`,
+   `utils/tidal/TidalCookieUtils.kt`. Concurrent instance racing documented in
+   `INSTANCE_RACING.md`.
+2. **Multi-source audio framework** —
+   `app/src/main/kotlin/moe/rukamori/archivetune/audiosource/` (Deezer/Amazon
+   providers, ISRC resolver, source priority config). Playback resolution goes
+   through `resolveMultiSourceDataSpec` in
+   `playback/MusicService.kt` — YouTube is the final fallback. Do not rewire
+   playback around this.
+3. **Fork CI signing patch** — workflows sign with the committed
+   `app/persistent-debug.keystore` when the `KEYSTORE` secret is absent
+   (forks have no release keystore). Upstream's workflows must not overwrite
+   this logic (see `build.yml`, `release.yml`).
+4. **Protected files** — `Koiverse.jks`, `Koiverse.jks.base64`,
+   `ArchiveTuneKoiverseServer.txt`, `DataServer.txt`, and the `applicationId`
+   (`moe.rukamori.archivetune`) in `app/build.gradle.kts` are fork-identity
+   files: do not adopt upstream changes to them without explicit instruction.
+
+## Submodules
+
+- `core` → **vossgraves/core** (our fork of rukamori/core). Sync strategy:
+  merge `rukamori/core` into `vossgraves/core` first, then pin the gitlink to
+  the merged commit — never blindly adopt upstream's gitlink.
+- `lyrics`, `moriextractor`, `IconPack`, `morideobfuscator` → rukamori-owned;
+  always adopt upstream's recorded pointers.
+
+## Automated upstream sync
+
+`.github/workflows/upstream-sync.yml` runs hourly and merges
+`rukamori/ArchiveTune@dev` into `dev`, using `scripts/upstream_sync.sh` +
+`scripts/ai_resolve.py` (LLM conflict resolution following the invariants
+above). Full documentation: `docs/UPSTREAM_SYNC.md`. If you modify fork
+features or protected files, update the invariants in **both** this file and
+the verification section of `scripts/upstream_sync.sh`.
+
+## Build
+
+JDK 21, Android SDK. Debug build check:
+`./gradlew assembleGmsMobileUniversalDebug`
