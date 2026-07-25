@@ -15,6 +15,8 @@ import javax.inject.Singleton
 sealed interface GatekeeperResult {
     data object Allowed : GatekeeperResult
 
+    data object Unavailable : GatekeeperResult
+
     data class Blocked(
         val message: String,
         val retryable: Boolean,

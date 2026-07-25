@@ -1,8 +1,3 @@
-import org.gradle.api.DefaultTask
-import org.gradle.api.provider.Property
-import org.gradle.api.tasks.Input
-import org.gradle.api.tasks.TaskAction
-import org.gradle.work.DisableCachingByDefault
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.util.Properties
 
@@ -238,11 +233,6 @@ android {
             buildConfigField("long", "DISCORD_APPLICATION_ID_LONG", "${discordApplicationIdLong}L")
             buildConfigField("String", "DISCORD_REDIRECT_SCHEME", "\"$discordRedirectScheme\"")
             manifestPlaceholders["discordRedirectScheme"] = discordRedirectScheme
-            buildConfigField(
-                "String",
-                "START_IO_APP_ID",
-                "\"$startIoAppId\"",
-            )
         }
         create("foss") {
             dimension = "distribution"
@@ -445,8 +435,8 @@ dependencies {
     implementation("androidx.media3:media3-ui-compose:${libs.versions.media3.get()}")
     add("gmsImplementation", libs.media3.cast)
     add("gmsImplementation", libs.mediarouter)
-    add("gmsImplementation", libs.startio.ads)
     implementation(libs.squigglyslider)
+
 
     implementation(libs.room.runtime)
     implementation(libs.kuromoji.ipadic)

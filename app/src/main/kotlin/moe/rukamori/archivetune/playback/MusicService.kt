@@ -1163,7 +1163,7 @@ class MusicService :
                     mediaItemResolver = CastMediaItemResolver(::resolveMediaItemForCast),
                 ).apply {
                     addListener(this@MusicService)
-                    sleepTimer = SleepTimer(scope, this)
+                    sleepTimer = SleepTimer(scope, this, this@MusicService)
                     addListener(sleepTimer)
                 }
         _playerFlow.value = player
@@ -2561,6 +2561,18 @@ class MusicService :
         return (state as? CastScreenState.Success)?.uiState?.isConnected == true
     }
 
+    fun pauseFromSleepTimer() {
+        sleepTimer.clear()
+        crossfadeTriggerJob?.cancel()
+        crossfadeTriggerJob = null
+        cancelCrossfade(resetVolume = true, resetPauseAtEnd = true)
+        releaseSecondaryCrossfadePlayer()
+        player.pause()
+        player.playWhenReady = false
+        localPlayer.pause()
+        localPlayer.playWhenReady = false
+    }
+
     private fun scheduleCrossfade() {
         if (!::player.isInitialized) return
         crossfadeTriggerJob?.cancel()
@@ -2572,7 +2584,7 @@ class MusicService :
             releaseSecondaryCrossfadePlayer()
             return
         }
-        if (!player.playWhenReady) {
+        if (!player.playWhenReady || sleepTimer.pauseWhenSongEnd) {
             localPlayer.pauseAtEndOfMediaItems = false
             releaseSecondaryCrossfadePlayer()
             return
@@ -6667,6 +6679,11 @@ class MusicService :
             !crossfadeHandoffInProgress
         ) {
             cancelCrossfade(resetVolume = true, resetPauseAtEnd = true)
+        }
+
+        if (sleepTimer.pauseWhenSongEnd) {
+            pauseFromSleepTimer()
+            return
         }
 
         beginHistorySession(mediaItem?.mediaId, forceNew = true)
