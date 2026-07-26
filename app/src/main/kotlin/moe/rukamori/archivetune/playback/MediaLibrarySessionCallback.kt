@@ -69,6 +69,7 @@ import moe.rukamori.archivetune.spotify.SpotifyMapper
 import moe.rukamori.archivetune.spotify.SpotifyPlaybackResolver
 import moe.rukamori.archivetune.utils.dataStore
 import moe.rukamori.archivetune.utils.get
+import moe.rukamori.archivetune.telegram.isTelegramMediaId
 import moe.rukamori.archivetune.utils.isLocalMediaId
 import java.io.ObjectInputStream
 import java.text.Collator
@@ -1391,7 +1392,10 @@ class MediaLibrarySessionCallback
                                     playlistEntity.isEditable &&
                                     currentSongId != null &&
                                     database.checkInPlaylist(playlistId, currentSongId) == 0 &&
-                                    (playlistEntity.browseId == null || !currentSongId.isLocalMediaId())
+                                    (
+                                        playlistEntity.browseId == null ||
+                                            !(currentSongId.isLocalMediaId() || currentSongId.isTelegramMediaId())
+                                    )
                             if (canAddCurrentSong) {
                                 add(
                                     queueMediaItem(
@@ -1827,7 +1831,7 @@ class MediaLibrarySessionCallback
                 val browseId = playlist.playlist.browseId
                 val setVideoId =
                     if (browseId != null) {
-                        if (songId.isLocalMediaId()) return@withContext false
+                        if (songId.isLocalMediaId() || songId.isTelegramMediaId()) return@withContext false
                         YouTube.addToPlaylist(browseId, songId).getOrNull() ?: return@withContext false
                     } else {
                         null

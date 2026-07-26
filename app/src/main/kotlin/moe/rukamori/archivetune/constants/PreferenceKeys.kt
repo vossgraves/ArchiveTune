@@ -890,6 +890,23 @@ fun QobuzAudioQuality.toFormatId(): Int =
     }
 
 // ---------------------------------------------------------------------------
+// Telegram channel streaming integration
+// ---------------------------------------------------------------------------
+// Streams audio files (lossless-first) directly from Telegram channels via TDLib. The user logs in
+// with their own Telegram account (phone + code + optional 2FA password) and their own API
+// credentials from https://my.telegram.org — the app never bundles Telegram API keys. Session
+// state itself lives in TDLib's encrypted database under filesDir; these keys only hold the API
+// credentials and display metadata.
+val TelegramApiIdKey = stringPreferencesKey("telegramApiId")
+val TelegramApiHashKey = stringPreferencesKey("telegramApiHash")
+val TelegramAccountNameKey = stringPreferencesKey("telegramAccountName")
+val TelegramAccountPhoneKey = stringPreferencesKey("telegramAccountPhone")
+
+// When ON (default) the channel browser only lists lossless files (FLAC/WAV/AIFF/APE/ALAC/…);
+// when OFF every audio message and audio-typed document in the channel is shown.
+val TelegramLosslessOnlyKey = booleanPreferencesKey("telegramLosslessOnly")
+
+// ---------------------------------------------------------------------------
 // Multi-source audio framework
 // ---------------------------------------------------------------------------
 // A configurable set of lossless/stream sources. The user can reorder them (priority for playback

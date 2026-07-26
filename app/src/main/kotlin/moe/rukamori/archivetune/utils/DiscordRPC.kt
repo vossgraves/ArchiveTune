@@ -37,6 +37,7 @@ import moe.rukamori.archivetune.constants.TranslatorContextsKey
 import moe.rukamori.archivetune.constants.TranslatorTargetLangKey
 import moe.rukamori.archivetune.db.entities.Song
 import moe.rukamori.archivetune.discord.DiscordActivityPlatform
+import moe.rukamori.archivetune.telegram.isTelegramMediaId
 import moe.rukamori.archivetune.discord.DiscordActivityType
 import moe.rukamori.archivetune.discord.DiscordOnlineStatus
 import moe.rukamori.archivetune.discord.DiscordPresenceActivity
@@ -439,11 +440,11 @@ class DiscordRPC(
 
     private fun Song.youtubeMusicUrl(): String? =
         song.id
-            .takeUnless { song.isLocal || it.isLocalMediaId() }
+            .takeUnless { song.isLocal || it.isLocalMediaId() || it.isTelegramMediaId() }
             ?.let { "https://music.youtube.com/watch?v=$it" }
 
     private fun Song.discordArtistMusicUrl(): String? {
-        if (song.isLocal || song.id.isLocalMediaId()) return null
+        if (song.isLocal || song.id.isLocalMediaId() || song.id.isTelegramMediaId()) return null
 
         return artists.firstNotNullOfOrNull { artist ->
             (artist.channelId ?: artist.id)

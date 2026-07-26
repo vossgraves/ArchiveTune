@@ -157,3 +157,7 @@
 
 # engine HTTP Android/OkHttp Ktor
 -dontwarn kotlinx.coroutines.**
+
+# TDLib (Telegram) — JNI bridges into these classes by reflection; must not be renamed/stripped
+-keep class org.drinkless.tdlib.** { *; }
+-dontwarn org.drinkless.tdlib.**

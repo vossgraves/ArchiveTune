@@ -70,6 +70,9 @@ import moe.rukamori.archivetune.ui.screens.settings.TidalLoginScreen
 import moe.rukamori.archivetune.ui.screens.settings.TIDAL_LOGIN_ROUTE
 import moe.rukamori.archivetune.ui.screens.settings.QobuzLoginScreen
 import moe.rukamori.archivetune.ui.screens.settings.QOBUZ_LOGIN_ROUTE
+import moe.rukamori.archivetune.ui.screens.settings.TELEGRAM_LOGIN_ROUTE
+import moe.rukamori.archivetune.ui.screens.settings.TelegramLoginScreen
+import moe.rukamori.archivetune.ui.screens.settings.TelegramSettings
 import moe.rukamori.archivetune.ui.screens.settings.LastFMSettings
 import moe.rukamori.archivetune.ui.screens.settings.LanguagePackSettings
 import moe.rukamori.archivetune.ui.screens.settings.LogcatScreen
@@ -458,6 +461,29 @@ fun NavGraphBuilder.navigationBuilder(
     }
     composable(QOBUZ_LOGIN_ROUTE) {
         QobuzLoginScreen(navController)
+    }
+    composable("settings/telegram") {
+        TelegramSettings(navController)
+    }
+    composable(TELEGRAM_LOGIN_ROUTE) {
+        TelegramLoginScreen(navController)
+    }
+    composable(TELEGRAM_BROWSE_ROUTE) {
+        TelegramBrowseScreen(navController)
+    }
+    composable(
+        route = TELEGRAM_CHANNEL_ROUTE,
+        arguments =
+            listOf(
+                navArgument("chatId") {
+                    type = NavType.LongType
+                },
+            ),
+    ) { backStackEntry ->
+        TelegramChannelScreen(
+            navController = navController,
+            chatId = backStackEntry.arguments?.getLong("chatId") ?: 0L,
+        )
     }
     composable("settings/ai_integration") {
         AiIntegrationSettings(navController)
