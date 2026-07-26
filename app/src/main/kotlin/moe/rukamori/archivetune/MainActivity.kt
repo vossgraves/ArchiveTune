@@ -1149,9 +1149,12 @@ class MainActivity : ComponentActivity() {
 
                     var yearInMusicSavedPlayerAnchor by rememberSaveable { mutableStateOf(-1) }
 
+                    var isPlayerLyricsFullScreen by remember { mutableStateOf(false) }
+
                     val shouldHideStatusBars =
                         isYearInMusicScreen ||
-                            (playerBottomSheetState.isExpandedOrExpanding && playerDesignStyle == PlayerDesignStyle.V7)
+                            (playerBottomSheetState.isExpandedOrExpanding && playerDesignStyle == PlayerDesignStyle.V7) ||
+                            (playerBottomSheetState.isExpandedOrExpanding && isPlayerLyricsFullScreen)
 
                     LaunchedEffect(shouldHideStatusBars, aodModeEnabled) {
                         if (aodModeEnabled) return@LaunchedEffect
@@ -2124,6 +2127,7 @@ class MainActivity : ComponentActivity() {
                                             navController = navController,
                                             pureBlack = pureBlack,
                                             isMiniPlayerPairedWithNavigation = areBottomBarsPaired,
+                                            onLyricsVisibilityChange = { isPlayerLyricsFullScreen = it },
                                         )
 
                                         if (useRail) return@Box

@@ -592,7 +592,12 @@ fun Queue(
                     )
                 }
 
-                PlayerDesignStyle.V9, PlayerDesignStyle.APPLE_MUSIC -> {
+                PlayerDesignStyle.APPLE_MUSIC -> {
+                    // The Apple Music style keeps its collapsed peek bar empty: the queue, lyrics and
+                    // output controls all live in the player's own bottom row, so no extra pills here.
+                }
+
+                PlayerDesignStyle.V9 -> {
                     val shuffleModeEnabled by playerConnection.shuffleModeEnabled.collectAsState()
                     QueueCollapsedContentV9(
                         showCodecOnPlayer = showCodecOnPlayer,

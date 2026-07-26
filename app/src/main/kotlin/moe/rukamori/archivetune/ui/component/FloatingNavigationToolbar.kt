@@ -149,8 +149,11 @@ fun FloatingNavigationToolbar(
         if (pureBlack) Color.Black else MaterialTheme.colorScheme.surfaceContainer
     val navigationContainerColor =
         when {
-            canBlurBackdrop -> opaqueContainerColor.copy(alpha = 0.55f)
-            frostedBlur -> opaqueContainerColor.copy(alpha = 0.85f)
+            // A lighter tint let bright pages (Home) bleed through and read far brighter than dark
+            // pages (Library). A heavier tint keeps the surface tone dominant so the bar looks the
+            // same over any content, while the blur underneath still shows as subtle frosted texture.
+            canBlurBackdrop -> opaqueContainerColor.copy(alpha = 0.78f)
+            frostedBlur -> opaqueContainerColor.copy(alpha = 0.9f)
             else -> opaqueContainerColor
         }
     val motionScheme = MaterialTheme.motionScheme
