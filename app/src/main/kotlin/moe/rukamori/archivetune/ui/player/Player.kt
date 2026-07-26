@@ -24,6 +24,7 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -154,6 +155,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
+import moe.rukamori.archivetune.LocalAnimationsDisabled
 import moe.rukamori.archivetune.LocalDownloadUtil
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
@@ -2001,15 +2003,23 @@ private fun MikoLyricsTransition(
     // interruptible spring, staying fully opaque the whole way (no cross-fade), while a dim scrim
     // fades in behind it. All derived transforms are read inside graphicsLayer/draw lambdas so the
     // animation runs entirely in the draw phase — zero recomposition per frame.
+    val animationsDisabled = LocalAnimationsDisabled.current
     val progressState =
         animateFloatAsState(
             targetValue = if (visible) 1f else 0f,
             animationSpec =
-                spring(
-                    dampingRatio = 0.9f,
-                    stiffness = 420f,
-                    visibilityThreshold = 0.001f,
-                ),
+                if (animationsDisabled) {
+                    snap()
+                } else {
+                    spring(
+                        // Critically damped and deliberately soft: the sheet glides up over roughly
+                        // half a second and eases into place with no overshoot, instead of snapping
+                        // open.
+                        dampingRatio = 1f,
+                        stiffness = 160f,
+                        visibilityThreshold = 0.001f,
+                    )
+                },
             label = "mikoLyricsTransition",
         )
     val showContent by remember {

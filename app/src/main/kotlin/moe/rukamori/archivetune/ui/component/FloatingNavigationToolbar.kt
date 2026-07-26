@@ -98,10 +98,21 @@ private val NavigationItemVerticalPadding = 8.dp
 // Frosted nav-bar backdrop blur radius, in px (RenderEffect works in raw pixels).
 private const val FrostedNavBarBlurRadiusPx = 60f
 
+// How much of the blurred backdrop shows through the opaque bar. The bar is always drawn on a
+// fully opaque surface and the blurred content is composited on top at this alpha, so page
+// brightness can only ever modulate the bar by this fraction — it reads the same over any screen,
+// and if the backdrop layer has nothing under the bar the result is simply a solid bar.
+private const val FrostedNavBarOverlayAlpha = 0.30f
+
 // The sliding pill wraps just the icon (like the stock indicator), so the label sits below it,
 // outside the bubble. These are the standard Material3 active-indicator dimensions.
 private val NavigationIndicatorWidth = 56.dp
 private val NavigationIndicatorHeight = 32.dp
+
+// The floating pill uses a larger, softer blob around the selected icon (label stays outside),
+// tinted with the accent color like the reference bar.
+private val FloatingNavigationIndicatorWidth = 64.dp
+private val FloatingNavigationIndicatorHeight = 42.dp
 
 /**
  * Forces the signature navigation-bar motion (the sliding pill + icon pop) to always run at its
@@ -142,41 +153,50 @@ fun FloatingNavigationToolbar(
                 else -> null
             }
         } ?: MaterialTheme.shapes.extraLarge
-    // True backdrop blur needs RenderEffect (Android 12+); otherwise a translucent surface still
-    // reads as frosted over scrolling content.
+    // True backdrop blur needs RenderEffect (Android 12+); on older devices the frosted setting
+    // simply keeps the solid bar.
     val canBlurBackdrop = frostedBlur && frostedBackdrop != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-    val opaqueContainerColor =
-        if (pureBlack) Color.Black else MaterialTheme.colorScheme.surfaceContainer
     val navigationContainerColor =
-        when {
-            // A lighter tint let bright pages (Home) bleed through and read far brighter than dark
-            // pages (Library). A heavier tint keeps the surface tone dominant so the bar looks the
-            // same over any content, while the blur underneath still shows as subtle frosted texture.
-            canBlurBackdrop -> opaqueContainerColor.copy(alpha = 0.78f)
-            frostedBlur -> opaqueContainerColor.copy(alpha = 0.9f)
-            else -> opaqueContainerColor
-        }
+        if (pureBlack) Color.Black else MaterialTheme.colorScheme.surfaceContainer
     val motionScheme = MaterialTheme.motionScheme
     val (disableAnimations) = rememberPreference(DisableAnimationsKey, defaultValue = false)
     val density = LocalDensity.current
 
-    // Color of the custom sliding pill that sits behind the selected item's icon.
+    // Color of the custom sliding pill that sits behind the selected item's icon. The floating
+    // pill uses a translucent accent blob with accent-tinted icon/label (reference-bar look); the
+    // docked bar keeps the stock secondary-container treatment.
     val indicatorColor =
-        if (pureBlack) Color.White.copy(alpha = 0.16f) else MaterialTheme.colorScheme.secondaryContainer
+        when {
+            isFloating -> MaterialTheme.colorScheme.primary.copy(alpha = 0.30f)
+            pureBlack -> Color.White.copy(alpha = 0.16f)
+            else -> MaterialTheme.colorScheme.secondaryContainer
+        }
+    val indicatorWidth = if (isFloating) FloatingNavigationIndicatorWidth else NavigationIndicatorWidth
+    val indicatorHeight = if (isFloating) FloatingNavigationIndicatorHeight else NavigationIndicatorHeight
 
     // The built-in per-item indicator just fades in place; hide it so our single pill can slide
     // between items instead. On pure-black we also pin the icon/label colors for contrast.
     val itemColors =
-        if (pureBlack) {
-            ShortNavigationBarItemDefaults.colors(
-                selectedIndicatorColor = Color.Transparent,
-                selectedIconColor = Color.White,
-                selectedTextColor = Color.White,
-                unselectedIconColor = Color.White.copy(alpha = 0.6f),
-                unselectedTextColor = Color.White.copy(alpha = 0.6f),
-            )
-        } else {
-            ShortNavigationBarItemDefaults.colors(selectedIndicatorColor = Color.Transparent)
+        when {
+            isFloating ->
+                ShortNavigationBarItemDefaults.colors(
+                    selectedIndicatorColor = Color.Transparent,
+                    selectedIconColor = MaterialTheme.colorScheme.primary,
+                    selectedTextColor = MaterialTheme.colorScheme.primary,
+                    unselectedIconColor =
+                        if (pureBlack) Color.White.copy(alpha = 0.6f) else MaterialTheme.colorScheme.onSurfaceVariant,
+                    unselectedTextColor =
+                        if (pureBlack) Color.White.copy(alpha = 0.6f) else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            pureBlack ->
+                ShortNavigationBarItemDefaults.colors(
+                    selectedIndicatorColor = Color.Transparent,
+                    selectedIconColor = Color.White,
+                    selectedTextColor = Color.White,
+                    unselectedIconColor = Color.White.copy(alpha = 0.6f),
+                    unselectedTextColor = Color.White.copy(alpha = 0.6f),
+                )
+            else -> ShortNavigationBarItemDefaults.colors(selectedIndicatorColor = Color.Transparent)
         }
 
     val selectedIndex = items.indexOfFirst { isSelected(it) }
@@ -192,10 +212,10 @@ fun FloatingNavigationToolbar(
     var indicatorPlaced by remember { mutableStateOf(false) }
 
     val selectedCenter = if (selectedIndex >= 0) iconCenters[selectedIndex] else null
-    LaunchedEffect(selectedIndex, selectedCenter, containerPos, disableAnimations) {
+    LaunchedEffect(selectedIndex, selectedCenter, containerPos, disableAnimations, indicatorWidth, indicatorHeight) {
         val center = selectedCenter ?: return@LaunchedEffect
-        val widthPx = with(density) { NavigationIndicatorWidth.toPx() }
-        val heightPx = with(density) { NavigationIndicatorHeight.toPx() }
+        val widthPx = with(density) { indicatorWidth.toPx() }
+        val heightPx = with(density) { indicatorHeight.toPx() }
         val targetX = (center.x - containerPos.x) - widthPx / 2f
         // All icons share a row, so Y is constant; compute it directly (no animation needed).
         indicatorY = (center.y - containerPos.y) - heightPx / 2f
@@ -230,14 +250,16 @@ fun FloatingNavigationToolbar(
                     .height(NavigationBarHeight)
                     .onGloballyPositioned { barPositionInRoot = it.positionInRoot() },
             shape = navigationShape,
-            color = if (canBlurBackdrop) Color.Transparent else navigationContainerColor,
-            tonalElevation = if (canBlurBackdrop) 0.dp else NavigationBarDefaults.Elevation,
+            color = navigationContainerColor,
+            tonalElevation = NavigationBarDefaults.Elevation,
             shadowElevation = if (isFloating) 8.dp else NavigationBarDefaults.Elevation,
         ) {
             if (canBlurBackdrop && frostedBackdrop != null) {
-                // Draw the app content captured this frame, shifted so the region underneath the
-                // bar lines up, inside a blurred layer — a real frosted-glass backdrop. A tint on
-                // top keeps icon contrast.
+                // Frosted glass on top of an always-opaque bar: the app content captured this frame
+                // is shifted so the region underneath lines up, blurred, and composited at a bounded
+                // alpha. Page brightness can only modulate the bar by that fraction, so the bar
+                // looks the same over every screen — and if the captured layer has nothing under
+                // the bar, the result is simply the solid bar (never see-through).
                 Box(
                     modifier =
                         Modifier
@@ -249,6 +271,7 @@ fun FloatingNavigationToolbar(
                                         radiusY = FrostedNavBarBlurRadiusPx,
                                         edgeTreatment = TileMode.Clamp,
                                     )
+                                alpha = FrostedNavBarOverlayAlpha
                                 clip = true
                             }.drawBehind {
                                 val offset = frostedBackdrop.contentOffsetInRoot - barPositionInRoot
@@ -256,12 +279,6 @@ fun FloatingNavigationToolbar(
                                     drawLayer(frostedBackdrop.layer)
                                 }
                             },
-                )
-                Box(
-                    modifier =
-                        Modifier
-                            .fillMaxSize()
-                            .background(navigationContainerColor),
                 )
             }
             ShortNavigationBar(
@@ -285,8 +302,8 @@ fun FloatingNavigationToolbar(
                                 Modifier
                                     .align(Alignment.TopStart)
                                     .offset { IntOffset(indicatorX.value.roundToInt(), indicatorY.roundToInt()) }
-                                    .width(NavigationIndicatorWidth)
-                                    .height(NavigationIndicatorHeight)
+                                    .width(indicatorWidth)
+                                    .height(indicatorHeight)
                                     .clip(RoundedCornerShape(percent = 50))
                                     .background(indicatorColor),
                         )
