@@ -693,6 +693,10 @@ class LibraryMixViewModel
                     context.getString(R.string.library_top_mixes_no_valid_mixes)
                 }
 
+                TopMixGenerationFailure.RATE_LIMITED -> {
+                    context.getString(R.string.library_top_mixes_rate_limited)
+                }
+
                 TopMixGenerationFailure.AI_REQUEST_FAILED -> {
                     buildString {
                         append(context.getString(R.string.library_top_mixes_failed))

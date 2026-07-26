@@ -1,9 +1,10 @@
+<!-- Solar Icons by 480 Design (CC BY 4.0) - solar-icons.vercel.app -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
-    android:viewportWidth="960"
-    android:viewportHeight="960">
+    android:viewportWidth="24"
+    android:viewportHeight="24">
   <path
-      android:fillColor="@android:color/white"
-      android:pathData="M660,680L660,280Q660,263 671.5,251.5Q683,240 700,240Q717,240 728.5,251.5Q740,263 740,280L740,680Q740,697 728.5,708.5Q717,720 700,720Q683,720 671.5,708.5Q660,697 660,680ZM220,645L220,315Q220,297 232,286Q244,275 260,275Q265,275 271,276Q277,277 282,281L530,447Q539,453 543.5,461.5Q548,470 548,480Q548,490 543.5,498.5Q539,507 530,513L282,679Q277,683 271,684Q265,685 260,685Q244,685 232,674Q220,663 220,645ZM300,480L300,480L300,480L300,480ZM300,570L436,480L300,390L300,570Z"/>
+      android:pathData="M16.66 14.647c1.787-1.154 1.787-4.14 0-5.294L5.87 2.385C4.135 1.264 2 2.724 2 5.033v13.934c0 2.31 2.134 3.769 3.87 2.648zM22.75 5a.75.75 0 0 0-1.5 0v14a.75.75 0 0 0 1.5 0z"
+      android:fillColor="@android:color/white"/>
 </vector>

@@ -166,6 +166,7 @@ val HideVideoKey = booleanPreferencesKey("hideVideo")
 val AiContentFilterEnabledKey = booleanPreferencesKey("aiContentFilterEnabled")
 val AiContentFilterIncludeModerateKey = booleanPreferencesKey("aiContentFilterIncludeModerate")
 val AiContentFilterLastUpdatedKey = longPreferencesKey("aiContentFilterLastUpdated")
+val AiMixLastGeneratedAtKey = longPreferencesKey("aiMixLastGeneratedAt")
 val ProxyEnabledKey = booleanPreferencesKey("proxyEnabled")
 val ProxyHostKey = stringPreferencesKey("proxyHost")
 val ProxyPortKey = intPreferencesKey("proxyPort")
@@ -677,6 +678,7 @@ enum class MiniPlayerBackgroundStyle {
     THEME,
     GRADIENT,
     GLOW,
+    FROSTED,
 }
 
 // Bottom navigation bar look: DEFAULT keeps the docked full-width bar; FLOATING detaches it into

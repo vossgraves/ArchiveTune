@@ -800,7 +800,7 @@ private fun AppleMusicTrackHeader(
             )
             if (mediaMetadata.thumbnailUrl == null) {
                 Icon(
-                    painter = painterResource(R.drawable.music_note),
+                    painter = painterResource(R.drawable.player_music_note),
                     contentDescription = null,
                     tint = foregroundColor.copy(alpha = 0.72f),
                     modifier = Modifier.size(26.dp),
@@ -833,7 +833,7 @@ private fun AppleMusicTrackHeader(
         Spacer(modifier = Modifier.width(12.dp))
 
         AppleMusicHeaderIconButton(
-            iconRes = R.drawable.close,
+            iconRes = R.drawable.player_close,
             contentDescription = stringResource(R.string.close),
             foregroundColor = foregroundColor,
             onClick = onDismissClick,
@@ -842,7 +842,7 @@ private fun AppleMusicTrackHeader(
         Spacer(modifier = Modifier.width(4.dp))
 
         AppleMusicHeaderIconButton(
-            iconRes = R.drawable.more_horiz,
+            iconRes = R.drawable.player_more_horiz,
             contentDescription = stringResource(R.string.more_options),
             foregroundColor = foregroundColor,
             onClick = onMoreClick,
@@ -998,7 +998,7 @@ private fun AppleMusicControls(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     AppleMusicTransportButton(
-                        iconRes = R.drawable.skip_previous,
+                        iconRes = R.drawable.player_skip_previous,
                         contentDescription = stringResource(R.string.widget_previous),
                         iconSize = 44.dp,
                         touchSize = 68.dp,
@@ -1016,7 +1016,7 @@ private fun AppleMusicControls(
                             )
                         } else {
                             Icon(
-                                painter = painterResource(if (isPlaying) R.drawable.pause else R.drawable.play),
+                                painter = painterResource(if (isPlaying) R.drawable.player_pause else R.drawable.player_play),
                                 contentDescription =
                                     if (isPlaying) {
                                         stringResource(R.string.widget_pause)
@@ -1029,7 +1029,7 @@ private fun AppleMusicControls(
                         }
                     }
                     AppleMusicTransportButton(
-                        iconRes = R.drawable.skip_next,
+                        iconRes = R.drawable.player_skip_next,
                         contentDescription = stringResource(R.string.next),
                         iconSize = 44.dp,
                         touchSize = 68.dp,
@@ -1046,7 +1046,7 @@ private fun AppleMusicControls(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Icon(
-                        painter = painterResource(R.drawable.volume_off),
+                        painter = painterResource(R.drawable.player_volume_off),
                         contentDescription = stringResource(R.string.minimum_volume),
                         tint = foregroundColor.copy(alpha = 0.66f),
                         modifier = Modifier.size(17.dp),
@@ -1065,7 +1065,7 @@ private fun AppleMusicControls(
                                 .padding(horizontal = 16.dp),
                     )
                     Icon(
-                        painter = painterResource(R.drawable.volume_up),
+                        painter = painterResource(R.drawable.player_volume_up),
                         contentDescription = stringResource(R.string.maximum_volume),
                         tint = foregroundColor.copy(alpha = 0.66f),
                         modifier = Modifier.size(19.dp),

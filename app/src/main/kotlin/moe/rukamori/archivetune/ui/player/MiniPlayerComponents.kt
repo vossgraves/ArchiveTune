@@ -270,7 +270,7 @@ fun SwipeableMiniPlayerBox(
                     Icon(
                         painter =
                             painterResource(
-                                if (offsetXAnimatable.value > 0) R.drawable.skip_previous else R.drawable.skip_next,
+                                if (offsetXAnimatable.value > 0) R.drawable.player_skip_previous else R.drawable.player_skip_next,
                             ),
                         contentDescription = null,
                         tint =
@@ -489,7 +489,7 @@ private fun MiniPlayerTransportControls(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         MiniPlayerTransportButton(
-            iconResId = R.drawable.skip_previous,
+            iconResId = R.drawable.player_skip_previous,
             contentDescription = stringResource(R.string.widget_previous),
             onClick = onPrevious,
             enabled = canSkipPrevious,
@@ -499,9 +499,9 @@ private fun MiniPlayerTransportControls(
         MiniPlayerTransportButton(
             iconResId =
                 when {
-                    playbackState == Player.STATE_ENDED -> R.drawable.replay
-                    isPlaying -> R.drawable.pause
-                    else -> R.drawable.play
+                    playbackState == Player.STATE_ENDED -> R.drawable.player_replay
+                    isPlaying -> R.drawable.player_pause
+                    else -> R.drawable.player_play
                 },
             contentDescription =
                 stringResource(
@@ -513,7 +513,7 @@ private fun MiniPlayerTransportControls(
         )
 
         MiniPlayerTransportButton(
-            iconResId = R.drawable.skip_next,
+            iconResId = R.drawable.player_skip_next,
             contentDescription = stringResource(R.string.next),
             onClick = onNext,
             enabled = canSkipNext,
@@ -569,7 +569,7 @@ fun NewMiniPlayerContent(
                 color = colors.togetherContainer,
             ) {
                 Icon(
-                    painter = painterResource(R.drawable.all_inclusive),
+                    painter = painterResource(R.drawable.player_all_inclusive),
                     contentDescription = stringResource(R.string.music_together),
                     tint = colors.togetherContent,
                     modifier =
