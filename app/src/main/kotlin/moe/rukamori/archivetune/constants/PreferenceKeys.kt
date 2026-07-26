@@ -206,6 +206,9 @@ val AiApiValidationStatusKey = stringPreferencesKey("ai_api_validation_status")
 val AiSelectedModelKey = stringPreferencesKey("ai_selected_model")
 val AiCustomModelKey = stringPreferencesKey("ai_custom_model")
 
+// Hides the AI-generated "Top mixes" section in the library Mix tab (and stops auto-generation).
+val HideAiMixKey = booleanPreferencesKey("hide_ai_mix")
+
 enum class AiProvider {
     CHATGPT,
     GEMINI,
@@ -642,6 +645,7 @@ enum class PlayerDesignStyle {
     V7,
     V8,
     V9,
+    APPLE_MUSIC,
 }
 
 enum class PlayerBackgroundStyle {
@@ -674,6 +678,19 @@ enum class MiniPlayerBackgroundStyle {
     GRADIENT,
     GLOW,
 }
+
+// Bottom navigation bar look: DEFAULT keeps the docked full-width bar; FLOATING detaches it into
+// a pill with larger margins that never pairs with the mini player.
+enum class NavigationBarStyle {
+    DEFAULT,
+    FLOATING,
+}
+
+val NavigationBarStyleKey = stringPreferencesKey("navigationBarStyle")
+
+// Draws a frosted (blurred app content) backdrop behind the navigation bar. True backdrop blur on
+// Android 12+; a translucent surface fallback below that.
+val NavigationBarFrostedBlurKey = booleanPreferencesKey("navigationBarFrostedBlur")
 
 // Keys for customized background
 val PlayerCustomImageUriKey = stringPreferencesKey("playerCustomImageUri")

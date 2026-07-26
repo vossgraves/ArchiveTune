@@ -370,7 +370,11 @@ android {
 
     packaging {
         jniLibs {
-            useLegacyPackaging = false
+            // Compress native libs inside the APK and extract only the device's ABI at install.
+            // TDLib ships ~87 MiB of libtdjni.so across four ABIs; stored uncompressed that alone
+            // made the universal APK ~142 MiB. Compressed packaging cuts the universal APK by
+            // ~51 MiB (and each per-ABI APK by ~12 MiB) at the cost of a slightly slower install.
+            useLegacyPackaging = true
             keepDebugSymbols += listOf(
                 "**/libandroidx.graphics.path.so",
                 "**/libdatastore_shared_counter.so"

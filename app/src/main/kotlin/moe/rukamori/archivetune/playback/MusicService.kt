@@ -229,6 +229,7 @@ import moe.rukamori.archivetune.db.entities.AlbumEntity
 import moe.rukamori.archivetune.db.entities.ArtistEntity
 import moe.rukamori.archivetune.db.entities.Event
 import moe.rukamori.archivetune.db.entities.FormatEntity
+import moe.rukamori.archivetune.db.entities.LyricsEntity
 import moe.rukamori.archivetune.db.entities.RelatedSongMap
 import moe.rukamori.archivetune.db.entities.Song
 import moe.rukamori.archivetune.db.entities.SongEntity
@@ -1340,13 +1341,19 @@ class MusicService :
         ) { mediaMetadata, showLyrics ->
             mediaMetadata to showLyrics
         }.collectLatest(ioScope) { (mediaMetadata, showLyrics) ->
-            if (showLyrics && mediaMetadata != null && database
-                    .lyrics(mediaMetadata.id)
-                    .first() == null
-            ) {
+            if (mediaMetadata == null) return@collectLatest
+            // Telegram tracks have no embedded lyrics, so fetch through the provider chain on
+            // every play (not only once the lyrics panel has been opened), and retry a stored
+            // LYRICS_NOT_FOUND — early plays can fail while metadata/network are still settling.
+            val isTelegram = mediaMetadata.id.isTelegramMediaId()
+            if (!showLyrics && !isTelegram) return@collectLatest
+            val stored = database.lyrics(mediaMetadata.id).first()
+            val shouldFetch =
+                stored == null || (isTelegram && stored.lyrics == LyricsEntity.LYRICS_NOT_FOUND)
+            if (shouldFetch) {
                 val lyrics = lyricsHelper.getLyrics(mediaMetadata)
                 database.query {
-                    insertLyricsIfAbsent(
+                    replaceLyricsIfAbsentOrNotFound(
                         id = mediaMetadata.id,
                         lyrics = lyrics,
                     )

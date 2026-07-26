@@ -83,6 +83,7 @@ import moe.rukamori.archivetune.LocalDatabase
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.constants.HideAiMixKey
 import moe.rukamori.archivetune.constants.LibraryFilter
 import moe.rukamori.archivetune.constants.ShowSpotifyPlaylistsKey
 import moe.rukamori.archivetune.extensions.toMediaItem
@@ -136,6 +137,7 @@ fun LibraryMixScreen(
     val topMixesUiState by viewModel.topMixesUiState.collectAsStateWithLifecycle()
     val spotifyPlaylists by spotifyLibraryViewModel.playlists.collectAsStateWithLifecycle()
     val (showSpotifyPlaylists) = rememberPreference(ShowSpotifyPlaylistsKey, false)
+    val (hideAiMix) = rememberPreference(HideAiMixKey, false)
 
     val filteredPlaylistIds by database
         .playlistIdsByTags(
@@ -387,19 +389,21 @@ fun LibraryMixScreen(
                     }
                 }
 
-                item(key = "top_mixes") {
-                    TopMixesForYouSection(
-                        state = topMixesUiState,
-                        onRefresh = viewModel::refreshTopMixes,
-                        onConfigureAi = { navController.navigate("settings/ai_integration") },
-                        onPlayMix = { mix ->
-                            playerConnection.playQueue(
-                                ListQueue(
-                                    items = mix.tracks.map { it.toMediaItem() },
-                                ),
-                            )
-                        },
-                    )
+                if (!hideAiMix) {
+                    item(key = "top_mixes") {
+                        TopMixesForYouSection(
+                            state = topMixesUiState,
+                            onRefresh = viewModel::refreshTopMixes,
+                            onConfigureAi = { navController.navigate("settings/ai_integration") },
+                            onPlayMix = { mix ->
+                                playerConnection.playQueue(
+                                    ListQueue(
+                                        items = mix.tracks.map { it.toMediaItem() },
+                                    ),
+                                )
+                            },
+                        )
+                    }
                 }
 
                 val playlistTagFilterContent = filterContent
