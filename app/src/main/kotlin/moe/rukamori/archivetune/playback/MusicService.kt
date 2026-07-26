@@ -292,6 +292,8 @@ import moe.rukamori.archivetune.utils.dataStore
 import moe.rukamori.archivetune.utils.enumPreference
 import moe.rukamori.archivetune.utils.get
 import moe.rukamori.archivetune.utils.getAsync
+import moe.rukamori.archivetune.telegram.TelegramDataSource
+import moe.rukamori.archivetune.telegram.isTelegramMediaId
 import moe.rukamori.archivetune.utils.isLocalMediaId
 import moe.rukamori.archivetune.utils.isLowDataModeActive
 import moe.rukamori.archivetune.utils.reportException
@@ -4146,7 +4148,10 @@ class MusicService :
 
         val currentIndex = player.currentMediaItemIndex
         val currentMediaId = currentMediaMetadata.id
-        if (currentSong.value?.song?.isLocal == true || currentMediaId.isLocalMediaId()) {
+        if (currentSong.value?.song?.isLocal == true ||
+            currentMediaId.isLocalMediaId() ||
+            currentMediaId.isTelegramMediaId()
+        ) {
             return
         }
 
@@ -7475,11 +7480,13 @@ class MusicService :
                 )
             }
         val directFactory = createResolvedUpstreamDataSourceFactory()
+        val telegramFactory = TelegramDataSource.Factory()
 
         return DataSource.Factory {
             SchemeRoutingDataSource(
                 cachedFactory = cachedFactory,
                 directFactory = directFactory,
+                telegramFactory = telegramFactory,
             )
         }
     }
@@ -7672,8 +7679,8 @@ class MusicService :
         mediaId: String,
         lowDataModeActive: Boolean,
     ): DataSpec? {
-        if (mediaId.isLocalMediaId()) {
-            Timber.tag("MusicService").d("Multi-source skip: %s is a local media id", mediaId)
+        if (mediaId.isLocalMediaId() || mediaId.isTelegramMediaId()) {
+            Timber.tag("MusicService").d("Multi-source skip: %s is a local/telegram media id", mediaId)
             return null
         }
         // A per-song "play from" override (set via the player's Source chooser) takes precedence over
@@ -8701,6 +8708,7 @@ class MusicService :
         return normalizedScheme == "content" ||
             normalizedScheme == "file" ||
             normalizedScheme == "android.resource" ||
+            normalizedScheme == "telegram" ||
             normalizedScheme == "http" ||
             normalizedScheme == "https"
     }
@@ -8709,7 +8717,8 @@ class MusicService :
         val normalizedScheme = scheme?.lowercase(Locale.US)
         return normalizedScheme == "content" ||
             normalizedScheme == "file" ||
-            normalizedScheme == "android.resource"
+            normalizedScheme == "android.resource" ||
+            normalizedScheme == "telegram"
     }
 
     private fun deviceSupportsMimeType(mimeType: String): Boolean =
@@ -8729,6 +8738,7 @@ class MusicService :
     private class SchemeRoutingDataSource(
         private val cachedFactory: DataSource.Factory,
         private val directFactory: DataSource.Factory,
+        private val telegramFactory: DataSource.Factory,
     ) : DataSource {
         private val transferListeners = mutableListOf<TransferListener>()
         private var delegate: DataSource? = null
@@ -8741,7 +8751,11 @@ class MusicService :
         override fun open(dataSpec: DataSpec): Long {
             val normalizedScheme = dataSpec.uri.scheme?.lowercase(Locale.US)
             val selectedFactory =
-                if (
+                if (normalizedScheme == "telegram") {
+                    // Telegram tracks stream through TDLib's own partial-file cache; Media3's
+                    // caches and the YouTube resolver chain must both stay out of the way.
+                    telegramFactory
+                } else if (
                     normalizedScheme == "content" ||
                     normalizedScheme == "file" ||
                     normalizedScheme == "android.resource"
@@ -9036,6 +9050,7 @@ class MusicService :
     private fun String?.isRemotePresenceId(): Boolean {
         val id = this?.trim()?.takeIf { it.isNotBlank() } ?: return false
         return !id.isLocalMediaId() &&
+            !id.isTelegramMediaId() &&
             !id.startsWith("LOCAL_ARTIST_") &&
             !id.startsWith("LA") &&
             !id.contains("privately_owned_artist", ignoreCase = true)

@@ -437,6 +437,10 @@ dependencies {
     add("gmsImplementation", libs.mediarouter)
     implementation(libs.squigglyslider)
 
+    // Prebuilt TDLib (Telegram MTProto client) with bundled JNI natives for all ABIs.
+    // Powers the Telegram channel lossless-streaming integration (telegram/ package).
+    implementation("com.github.tdlibx:td:1.8.56")
+
 
     implementation(libs.room.runtime)
     implementation(libs.kuromoji.ipadic)
