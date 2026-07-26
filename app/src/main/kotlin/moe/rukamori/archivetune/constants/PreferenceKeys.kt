@@ -904,6 +904,10 @@ val TelegramAccountPhoneKey = stringPreferencesKey("telegramAccountPhone")
 // when OFF every audio message and audio-typed document in the channel is shown.
 val TelegramLosslessOnlyKey = booleanPreferencesKey("telegramLosslessOnly")
 
+// JSON list of Telegram channels the user has opened, surfaced on the Library → Playlists screen
+// so a channel can be reopened without searching again. See telegram/SavedTelegramChannels.kt.
+val SavedTelegramChannelsKey = stringPreferencesKey("savedTelegramChannels")
+
 // ---------------------------------------------------------------------------
 // Multi-source audio framework
 // ---------------------------------------------------------------------------
