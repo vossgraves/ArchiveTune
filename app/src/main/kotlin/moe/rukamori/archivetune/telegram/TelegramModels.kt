@@ -20,6 +20,8 @@ data class TelegramChannel(
     val memberCount: Int,
     val isBroadcastChannel: Boolean,
     val photoMinithumbnail: ByteArray?,
+    /** TDLib file id of the full-size channel avatar (0 when the chat has no photo). */
+    val photoFileId: Int = 0,
 ) {
     override fun equals(other: Any?): Boolean = other is TelegramChannel && other.chatId == chatId
 
@@ -40,6 +42,8 @@ data class TelegramTrack(
     val sizeBytes: Long,
     val dateSeconds: Int,
     val albumCoverMinithumbnail: ByteArray?,
+    /** TDLib file id of the full album-cover thumbnail (0 when the file has none). */
+    val thumbnailFileId: Int = 0,
 ) {
     val mediaId: String
         get() =

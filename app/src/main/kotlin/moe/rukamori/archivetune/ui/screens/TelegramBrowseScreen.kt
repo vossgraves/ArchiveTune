@@ -63,22 +63,33 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.datastore.preferences.core.edit
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import moe.rukamori.archivetune.LocalDatabase
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.constants.SavedTelegramChannelsKey
 import moe.rukamori.archivetune.constants.TelegramLosslessOnlyKey
 import moe.rukamori.archivetune.extensions.toMediaItem
 import moe.rukamori.archivetune.playback.queues.ListQueue
+import moe.rukamori.archivetune.telegram.SavedTelegramChannel
 import moe.rukamori.archivetune.telegram.TelegramChannel
 import moe.rukamori.archivetune.telegram.TelegramClient
 import moe.rukamori.archivetune.telegram.TelegramTrack
+import moe.rukamori.archivetune.telegram.decodeSavedTelegramChannels
+import moe.rukamori.archivetune.telegram.encodeSavedTelegramChannels
 import moe.rukamori.archivetune.telegram.fileExtension
+import moe.rukamori.archivetune.telegram.toFormatEntity
 import moe.rukamori.archivetune.telegram.toMediaMetadata
+import moe.rukamori.archivetune.telegram.upsertSavedTelegramChannel
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.utils.backToMain
+import moe.rukamori.archivetune.utils.dataStore
 import moe.rukamori.archivetune.utils.rememberPreference
 import org.drinkless.tdlib.TdApi
 import java.util.Locale
@@ -280,6 +291,7 @@ fun TelegramChannelScreen(
     chatId: Long,
 ) {
     val context = LocalContext.current
+    val database = LocalDatabase.current
     val coroutineScope = rememberCoroutineScope()
     val playerConnection = LocalPlayerConnection.current ?: return
     val (losslessOnly) = rememberPreference(TelegramLosslessOnlyKey, true)
@@ -358,6 +370,13 @@ fun TelegramChannelScreen(
         if (queueTracks.isEmpty()) return
         val startIndex = track?.let(queueTracks::indexOf)?.coerceAtLeast(0) ?: 0
         coroutineScope.launch {
+            // Seed a format row per track so the details/Nerd Stats screen shows size + format
+            // immediately instead of hanging on "Loading format".
+            withContext(Dispatchers.IO) {
+                database.query {
+                    queueTracks.forEach { upsert(it.toFormatEntity()) }
+                }
+            }
             val items =
                 queueTracks.map { it.toMediaMetadata(channel?.title).toMediaItem() }
             playerConnection.playQueue(
@@ -371,7 +390,27 @@ fun TelegramChannelScreen(
     }
 
     LaunchedEffect(chatId) {
-        channel = TelegramClient.channelInfo(chatId)
+        val info = TelegramClient.channelInfo(chatId)
+        channel = info
+        // Remember this channel so it appears on the Library → Playlists screen.
+        if (info != null) {
+            withContext(Dispatchers.IO) {
+                context.dataStore.edit { prefs ->
+                    val existing = decodeSavedTelegramChannels(prefs[SavedTelegramChannelsKey].orEmpty())
+                    val updated =
+                        upsertSavedTelegramChannel(
+                            existing,
+                            SavedTelegramChannel(
+                                chatId = info.chatId,
+                                title = info.title,
+                                username = info.username,
+                                isBroadcastChannel = info.isBroadcastChannel,
+                            ),
+                        )
+                    prefs[SavedTelegramChannelsKey] = encodeSavedTelegramChannels(updated)
+                }
+            }
+        }
         if (tracks.isEmpty()) {
             loadMore()
         }

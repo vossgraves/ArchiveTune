@@ -449,6 +449,9 @@ fun LibraryPlaylistsScreen(
 
             Spacer(modifier = Modifier.height(8.dp))
 
+            // Telegram channels the user has opened, reachable straight from the library.
+            TelegramChannelsSection(navController)
+
             // Main Content
             if (isGridView) {
                 LazyVerticalGrid(

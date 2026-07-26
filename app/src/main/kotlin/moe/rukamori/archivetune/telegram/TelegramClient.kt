@@ -45,6 +45,12 @@ sealed interface TelegramAuthState {
 
     data class WaitCode(
         val phoneNumber: String,
+        /** Where the current code was delivered (Telegram app, SMS or a phone call). */
+        val codeType: TelegramCodeType,
+        /** True when TDLib offers a resend path (codeInfo.nextType != null). */
+        val canResend: Boolean,
+        /** Seconds the user must wait before a resend is accepted. */
+        val resendTimeoutSeconds: Int,
     ) : TelegramAuthState
 
     data class WaitPassword(
@@ -59,6 +65,14 @@ sealed interface TelegramAuthState {
     data class Unsupported(
         val stateName: String,
     ) : TelegramAuthState
+}
+
+/** Delivery channel of the current login code, for user-facing copy. */
+enum class TelegramCodeType {
+    TELEGRAM_APP,
+    SMS,
+    CALL,
+    OTHER,
 }
 
 class TelegramApiException(
@@ -126,6 +140,11 @@ object TelegramClient {
     // Auth flow
     // ------------------------------------------------------------------
 
+    /**
+     * Submits a phone number. TDLib accepts this both from the initial WaitPhoneNumber state and
+     * while already in WaitCode, so it doubles as the "edit phone number" action — passing a new
+     * number restarts the code flow.
+     */
     suspend fun submitPhoneNumber(phoneNumber: String) {
         send(TdApi.SetAuthenticationPhoneNumber(phoneNumber.trim(), null))
     }
@@ -138,8 +157,13 @@ object TelegramClient {
         send(TdApi.CheckAuthenticationPassword(password))
     }
 
+    /**
+     * Requests a new login code. TDLib only allows this once its resend timeout has elapsed and a
+     * next delivery method exists; callers should gate on [TelegramAuthState.WaitCode.canResend]
+     * and the countdown before invoking this.
+     */
     suspend fun resendCode() {
-        send(TdApi.ResendAuthenticationCode(null))
+        send(TdApi.ResendAuthenticationCode(TdApi.ResendCodeReasonUserRequest()))
     }
 
     suspend fun getMe(): TdApi.User = send(TdApi.GetMe())
@@ -223,6 +247,7 @@ object TelegramClient {
                     sizeBytes = audio.audio.size,
                     dateSeconds = message.date,
                     albumCoverMinithumbnail = audio.albumCoverMinithumbnail?.data,
+                    thumbnailFileId = audio.albumCoverThumbnail?.file?.id ?: 0,
                 )
             }
 
@@ -246,6 +271,7 @@ object TelegramClient {
                         sizeBytes = document.document.size,
                         dateSeconds = message.date,
                         albumCoverMinithumbnail = document.minithumbnail?.data,
+                        thumbnailFileId = document.thumbnail?.file?.id ?: 0,
                     )
                 }
             }
@@ -288,11 +314,47 @@ object TelegramClient {
         runCatching { send(TdApi.CancelDownloadFile(fileId, false)) }
     }
 
+    /**
+     * Returns the on-disk path of a file once at least its leading [minPrefixBytes] are present (or
+     * it is fully downloaded), else null. Used to extract audio properties (sample rate) from the
+     * header of a streamed track without waiting for the whole file.
+     */
+    suspend fun readyFilePath(
+        fileId: Int,
+        minPrefixBytes: Long = 64 * 1024,
+    ): String? {
+        val file = runCatching { getFile(fileId) }.getOrNull() ?: return null
+        val local = file.local
+        val path = local.path
+        if (path.isEmpty()) return null
+        val headerReady =
+            local.isDownloadingCompleted ||
+                (local.downloadOffset == 0L && local.downloadedPrefixSize >= minPrefixBytes)
+        return if (headerReady) path else null
+    }
+
     suspend fun readFilePart(
         fileId: Int,
         offset: Long,
         count: Long,
     ): ByteArray = send(TdApi.ReadFilePart(fileId, offset, count)).data
+
+    /**
+     * Downloads a small file (album-cover / channel-photo thumbnail) to completion and returns its
+     * on-disk path, or null when unavailable. Uses TDLib's synchronous download so the returned
+     * File is fully present; thumbnails are only a few KB, so this is quick. Cheap to call
+     * repeatedly — TDLib serves an already-downloaded file from its cache.
+     */
+    suspend fun downloadFileBlocking(fileId: Int): String? {
+        if (fileId <= 0) return null
+        val existing = runCatching { getFile(fileId) }.getOrNull()
+        existing?.local?.takeIf { it.isDownloadingCompleted && it.path.isNotEmpty() }?.let { return it.path }
+        val downloaded =
+            runCatching {
+                send(TdApi.DownloadFile(fileId, STREAM_DOWNLOAD_PRIORITY, 0L, 0L, true))
+            }.getOrNull() ?: return null
+        return downloaded.local.path.takeIf { it.isNotEmpty() }
+    }
 
     /**
      * Writes an inline album-cover minithumbnail to the cache dir and returns a file:// URI usable
@@ -353,9 +415,16 @@ object TelegramClient {
         when (state) {
             is TdApi.AuthorizationStateWaitTdlibParameters -> sendTdlibParameters()
             is TdApi.AuthorizationStateWaitPhoneNumber -> _authState.value = TelegramAuthState.WaitPhoneNumber
-            is TdApi.AuthorizationStateWaitCode ->
+            is TdApi.AuthorizationStateWaitCode -> {
+                val codeInfo = state.codeInfo
                 _authState.value =
-                    TelegramAuthState.WaitCode(state.codeInfo?.phoneNumber.orEmpty())
+                    TelegramAuthState.WaitCode(
+                        phoneNumber = codeInfo?.phoneNumber.orEmpty(),
+                        codeType = codeTypeOf(codeInfo?.type),
+                        canResend = codeInfo?.nextType != null,
+                        resendTimeoutSeconds = codeInfo?.timeout ?: 0,
+                    )
+            }
 
             is TdApi.AuthorizationStateWaitPassword ->
                 _authState.value =
@@ -372,6 +441,14 @@ object TelegramClient {
             else -> _authState.value = TelegramAuthState.Unsupported(state.javaClass.simpleName)
         }
     }
+
+    private fun codeTypeOf(type: TdApi.AuthenticationCodeType?): TelegramCodeType =
+        when (type) {
+            is TdApi.AuthenticationCodeTypeTelegramMessage -> TelegramCodeType.TELEGRAM_APP
+            is TdApi.AuthenticationCodeTypeSms -> TelegramCodeType.SMS
+            is TdApi.AuthenticationCodeTypeCall -> TelegramCodeType.CALL
+            else -> TelegramCodeType.OTHER
+        }
 
     private fun sendTdlibParameters() {
         val context = appContext ?: return
@@ -413,6 +490,7 @@ object TelegramClient {
             memberCount = supergroup?.memberCount ?: 0,
             isBroadcastChannel = type.isChannel,
             photoMinithumbnail = chat.photo?.minithumbnail?.data,
+            photoFileId = chat.photo?.small?.id ?: 0,
         )
     }
 
