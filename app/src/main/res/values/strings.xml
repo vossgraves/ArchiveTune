@@ -489,6 +489,11 @@
     <string name="haptics">Vibration</string>
     <string name="haptics_desc">Enable haptic feedback on interactive elements</string>
     <string name="default_open_tab">Default open tab</string>
+    <string name="navigation_bar_style">Navigation bar style</string>
+    <string name="navigation_bar_style_default">Default</string>
+    <string name="navigation_bar_style_floating">Floating</string>
+    <string name="navigation_bar_frosted_blur">Frosted navigation bar</string>
+    <string name="navigation_bar_frosted_blur_desc">Apply a frosted blur behind the navigation bar</string>
     <string name="lyrics_animation_style">Lyrics animation style</string>
     <string name="lyrics_mode">Lyrics mode</string>
     <string name="lyrics_mode_v2">V2 Legacy</string>

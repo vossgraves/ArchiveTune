@@ -292,6 +292,7 @@
     <string name="player_design_v7">Immersive</string>
     <string name="player_design_v8">Immersive Extended</string>
     <string name="player_design_v9">Material Extended</string>
+    <string name="player_design_apple_music">Apple Music</string>
     <string name="player_background_blur">Blur</string>
     <string name="coloring">Coloring</string>
     <string name="blur_gradient">Blur Gradient</string>
@@ -623,6 +624,8 @@
     <string name="ai_api_connected">API connected</string>
     <string name="ai_api_test_failed">API test failed</string>
     <string name="ai_translation_menu">AI Translation</string>
+    <string name="hide_ai_mix">Hide AI Mix</string>
+    <string name="hide_ai_mix_desc">Hide the AI-generated mixes section in your library and stop generating new mixes</string>
     <string name="about_lead_developer">Lead Developer</string>
     <string name="about_archive_tune_team">Team</string>
     <string name="about_respecter">Respecter</string>

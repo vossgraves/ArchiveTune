@@ -389,6 +389,7 @@ class PlayerConnection(
                     artistNameRaw = metadata.artists.firstOrNull()?.name.orEmpty(),
                     storefront = storefront,
                     requireVertical = requireVertical,
+                    albumTitle = metadata.album?.title,
                 ) ?: return CanvasArtworkRefetchResult.Failure
 
             _canvasArtworkUpdates.emit(

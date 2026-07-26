@@ -125,6 +125,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.graphics.rememberGraphicsLayer
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
@@ -210,6 +215,8 @@ import moe.rukamori.archivetune.constants.MiniPlayerBottomSpacing
 import moe.rukamori.archivetune.constants.MiniPlayerHeight
 import moe.rukamori.archivetune.constants.MiniPlayerLastAnchorKey
 import moe.rukamori.archivetune.constants.NavigationBarAnimationSpec
+import moe.rukamori.archivetune.constants.FloatingNavigationBarBottomPadding
+import moe.rukamori.archivetune.constants.FloatingNavigationBarHorizontalPadding
 import moe.rukamori.archivetune.constants.NavigationBarBottomPadding
 import moe.rukamori.archivetune.constants.NavigationBarHeight
 import moe.rukamori.archivetune.constants.NavigationBarHorizontalPadding
@@ -218,6 +225,9 @@ import moe.rukamori.archivetune.constants.PlayerBackgroundStyle
 import moe.rukamori.archivetune.constants.PlayerBackgroundStyleKey
 import moe.rukamori.archivetune.constants.PlayerDesignStyle
 import moe.rukamori.archivetune.constants.PlayerDesignStyleKey
+import moe.rukamori.archivetune.constants.NavigationBarFrostedBlurKey
+import moe.rukamori.archivetune.constants.NavigationBarStyle
+import moe.rukamori.archivetune.constants.NavigationBarStyleKey
 import moe.rukamori.archivetune.constants.PureBlackKey
 import moe.rukamori.archivetune.constants.RemindAfterKey
 import moe.rukamori.archivetune.constants.SYSTEM_DEFAULT
@@ -260,6 +270,7 @@ import moe.rukamori.archivetune.ui.component.COLLAPSED_ANCHOR
 import moe.rukamori.archivetune.ui.component.DISMISSED_ANCHOR
 import moe.rukamori.archivetune.ui.component.EXPANDED_ANCHOR
 import moe.rukamori.archivetune.ui.component.FloatingNavigationToolbar
+import moe.rukamori.archivetune.ui.component.NavigationBarBackdrop
 import moe.rukamori.archivetune.ui.component.AutoResizeText
 import moe.rukamori.archivetune.ui.component.FontSizeRange
 import moe.rukamori.archivetune.ui.component.IconButton
@@ -718,6 +729,14 @@ class MainActivity : ComponentActivity() {
                 }
             val pureBlackEnabled by rememberPreference(PureBlackKey, defaultValue = false)
             val pureBlack = pureBlackEnabled && useDarkTheme
+            val navigationBarStyle by rememberEnumPreference(
+                NavigationBarStyleKey,
+                defaultValue = NavigationBarStyle.DEFAULT,
+            )
+            val navigationBarFrostedBlur by rememberPreference(
+                NavigationBarFrostedBlurKey,
+                defaultValue = false,
+            )
 
             val customThemeSeedPalette =
                 remember(customThemeColorValue) {
@@ -1001,8 +1020,28 @@ class MainActivity : ComponentActivity() {
                             0.dp
                         }
 
-                    val floatingBarsBottomPadding = NavigationBarBottomPadding
+                    // FLOATING detaches the bar into a pill: bigger bottom margin, tighter width.
+                    // Every consumer below (collapsed player anchor, slide distance, insets, FAB
+                    // padding) derives from these two values so the styles stay in sync.
+                    val isFloatingNavBar = navigationBarStyle == NavigationBarStyle.FLOATING
+                    val floatingBarsBottomPadding =
+                        if (isFloatingNavBar) FloatingNavigationBarBottomPadding else NavigationBarBottomPadding
                     val navVisibleHeight = NavigationBarHeight
+                    val navBarHorizontalPadding =
+                        if (isFloatingNavBar) FloatingNavigationBarHorizontalPadding else NavigationBarHorizontalPadding
+
+                    // Frosted nav-bar backdrop: only allocated when the effect can actually run
+                    // (setting on, RenderEffect available, bottom bar in use).
+                    val navBarFrostedBackdrop =
+                        if (navigationBarFrostedBlur &&
+                            !useRail &&
+                            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+                        ) {
+                            val frostedLayer = rememberGraphicsLayer()
+                            remember(frostedLayer) { NavigationBarBackdrop(frostedLayer) }
+                        } else {
+                            null
+                        }
 
                     val bottomNavigationBarHeight by animateDpAsState(
                         targetValue = if (shouldShowNavigationBar && !useRail) navVisibleHeight else 0.dp,
@@ -1160,6 +1199,7 @@ class MainActivity : ComponentActivity() {
                             bottomInset,
                             shouldShowNavigationBar,
                             playerBottomSheetState.isDismissed,
+                            navigationBarStyle,
                         ) {
                             var bottom = bottomInset
                             if (shouldShowNavigationBar && !useRail) {
@@ -2072,9 +2112,11 @@ class MainActivity : ComponentActivity() {
                                 },
                                 bottomBar = {
                                     Box {
+                                        // A floating pill never docks with the mini player.
                                         val areBottomBarsPaired =
                                             shouldShowNavigationBar &&
                                                 !useRail &&
+                                                !isFloatingNavBar &&
                                                 playerBottomSheetState.isCollapsed
 
                                         BottomSheetPlayer(
@@ -2125,12 +2167,15 @@ class MainActivity : ComponentActivity() {
                                                 items = navigationItems,
                                                 pureBlack = pureBlack,
                                                 isPairedWithMiniPlayer = areBottomBarsPaired,
+                                                style = navigationBarStyle,
+                                                frostedBlur = navigationBarFrostedBlur,
+                                                frostedBackdrop = navBarFrostedBackdrop,
                                                 modifier =
                                                     Modifier
                                                         .align(Alignment.BottomCenter)
                                                         .padding(
-                                                            start = NavigationBarHorizontalPadding,
-                                                            end = NavigationBarHorizontalPadding,
+                                                            start = navBarHorizontalPadding,
+                                                            end = navBarHorizontalPadding,
                                                             bottom = bottomInset + floatingBarsBottomPadding,
                                                         ).height(navVisibleHeight),
                                                 isSelected = { screen ->
@@ -2369,6 +2414,23 @@ class MainActivity : ComponentActivity() {
                                                         .focusRequester(contentAreaFocusRequester)
                                                         .focusGroup()
                                                         .focusable()
+                                                } else {
+                                                    Modifier
+                                                },
+                                            ).then(
+                                                // Frosted nav bar: capture the app content into a
+                                                // layer each frame so the bar can draw it blurred.
+                                                if (navBarFrostedBackdrop != null) {
+                                                    Modifier
+                                                        .onGloballyPositioned { coordinates ->
+                                                            navBarFrostedBackdrop.contentOffsetInRoot =
+                                                                coordinates.positionInRoot()
+                                                        }.drawWithContent {
+                                                            navBarFrostedBackdrop.layer.record {
+                                                                this@drawWithContent.drawContent()
+                                                            }
+                                                            drawLayer(navBarFrostedBackdrop.layer)
+                                                        }
                                                 } else {
                                                     Modifier
                                                 },

@@ -24,6 +24,8 @@ import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.Json
 import moe.rukamori.archivetune.canvas.models.CanvasArtwork
+import moe.rukamori.archivetune.canvas.models.looselyMatchesSongIdentity
+import moe.rukamori.archivetune.canvas.models.matchesAlbumIdentity
 import moe.rukamori.archivetune.canvas.models.matchesSongIdentity
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
@@ -100,8 +102,12 @@ object ArchiveTuneCanvas {
         artist: String,
         storefront: String = "us",
         forceRefresh: Boolean = false,
+        // Fuzzy identity matching for sources with unreliable tags (e.g. Telegram files).
+        strict: Boolean = true,
+        // Optional album title enabling an album-level animated-artwork fallback.
+        album: String? = null,
     ): CanvasArtwork? {
-        val key = cacheKey("sa", song, artist, storefront)
+        val key = cacheKey("sa", song, artist, storefront, if (strict) "s" else "l", album.orEmpty())
         if (forceRefresh) {
             cache.remove(key)
         } else {
@@ -111,9 +117,51 @@ object ArchiveTuneCanvas {
             }
         }
 
+        fun CanvasArtwork.matchesIdentity(): Boolean =
+            if (strict) matchesSongIdentity(song, artist) else looselyMatchesSongIdentity(song, artist)
+
+        // BetterLyrics artwork API first (the richest animated-cover source), then the primary
+        // ArchiveTune artwork mirror, then the Apple Music catalogue.
+        val fromBetterLyrics =
+            fetchFromEndpoint(fallbackClient, song, artist, storefront, forceRefresh)
+                ?.takeIf { artwork -> artwork.matchesIdentity() }
+
+        val value =
+            fromBetterLyrics
+                ?: fetchFromEndpoint(client, song, artist, storefront, forceRefresh)
+                    ?.takeIf { artwork -> artwork.matchesIdentity() }
+                ?: AppleMusicProvider
+                    .getBySongArtist(song, artist, null, storefront, forceRefresh)
+                    ?.takeIf { artwork -> artwork.matchesIdentity() }
+                ?: album
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { albumTitle ->
+                        // Album-level animated cover (Apple-Music-style motion art) as a last
+                        // chance when no song-level canvas exists.
+                        AppleMusicProvider
+                            .getByAlbumArtist(albumTitle, artist, storefront)
+                            ?.takeIf { artwork -> artwork.matchesAlbumIdentity(albumTitle) }
+                    }
+
+        cache[key] =
+            CacheEntry(
+                value = value,
+                expiresAtMs = System.currentTimeMillis() + ttlMs,
+            )
+
+        return value
+    }
+
+    private suspend fun fetchFromEndpoint(
+        endpointClient: HttpClient,
+        song: String,
+        artist: String,
+        storefront: String,
+        forceRefresh: Boolean,
+    ): CanvasArtwork? {
         val response =
             try {
-                client.get {
+                endpointClient.get {
                     parameter("s", song)
                     parameter("a", artist)
                     parameter("storefront", storefront)
@@ -124,43 +172,10 @@ object ArchiveTuneCanvas {
             } catch (_: Exception) {
                 null
             }
-
-        val primary =
-            when (response?.status) {
-                HttpStatusCode.OK -> runCatching { response.body<CanvasArtwork>() }.getOrNull()
-                else -> null
-            }?.takeIf { artwork -> artwork.matchesSongIdentity(song, artist) }
-
-        val value =
-            primary ?: run {
-                val fallbackResponse =
-                    try {
-                        fallbackClient.get {
-                            parameter("s", song)
-                            parameter("a", artist)
-                            parameter("storefront", storefront)
-                            if (forceRefresh) header(HttpHeaders.CacheControl, "no-cache")
-                        }
-                    } catch (error: CancellationException) {
-                        throw error
-                    } catch (_: Exception) {
-                        null
-                    }
-                when (fallbackResponse?.status) {
-                    HttpStatusCode.OK -> runCatching { fallbackResponse.body<CanvasArtwork>() }.getOrNull()
-                    else -> null
-                }?.takeIf { artwork -> artwork.matchesSongIdentity(song, artist) }
-            } ?: AppleMusicProvider
-                .getBySongArtist(song, artist, null, storefront, forceRefresh)
-                ?.takeIf { artwork -> artwork.matchesSongIdentity(song, artist) }
-
-        cache[key] =
-            CacheEntry(
-                value = value,
-                expiresAtMs = System.currentTimeMillis() + ttlMs,
-            )
-
-        return value
+        return when (response?.status) {
+            HttpStatusCode.OK -> runCatching { response.body<CanvasArtwork>() }.getOrNull()
+            else -> null
+        }
     }
 
     suspend fun getByAlbumId(albumId: String): CanvasArtwork? {

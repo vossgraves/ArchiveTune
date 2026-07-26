@@ -97,12 +97,14 @@ import moe.rukamori.archivetune.constants.AiCustomModelKey
 import moe.rukamori.archivetune.constants.AiProvider
 import moe.rukamori.archivetune.constants.AiProviderKey
 import moe.rukamori.archivetune.constants.AiSelectedModelKey
+import moe.rukamori.archivetune.constants.HideAiMixKey
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.EditTextPreference
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.ListPreference
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
+import moe.rukamori.archivetune.ui.component.SwitchPreference
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
@@ -125,6 +127,7 @@ fun AiIntegrationSettings(
         rememberEnumPreference(AiApiValidationStatusKey, AiApiValidationStatus.UNKNOWN)
     val (selectedModel, setSelectedModel) = rememberPreference(AiSelectedModelKey, "")
     val (customModel, setCustomModel) = rememberPreference(AiCustomModelKey, "")
+    val (hideAiMix, onHideAiMixChange) = rememberPreference(HideAiMixKey, defaultValue = false)
     var showApiKeyDialog by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
@@ -338,6 +341,16 @@ fun AiIntegrationSettings(
                     },
                     onClick = viewModel::testApi,
                     isEnabled = canTestApi,
+                )
+            }
+
+            item {
+                SwitchPreference(
+                    title = { Text(stringResource(R.string.hide_ai_mix)) },
+                    description = stringResource(R.string.hide_ai_mix_desc),
+                    icon = { Icon(painterResource(R.drawable.auto_awesome), null) },
+                    checked = hideAiMix,
+                    onCheckedChange = onHideAiMixChange,
                 )
             }
         }

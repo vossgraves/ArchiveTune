@@ -64,6 +64,14 @@ data class TelegramTrack(
                 fileName.substringBeforeLast('.').ifBlank { fileName }
             }
 
+    /**
+     * Title/artist for metadata lookups (lyrics, canvas, cover art) and library rows. Prefers the
+     * audio tags; when the performer tag is missing, tries to split the file name as
+     * "Artist - Title" (with track numbers and noise stripped) so provider lookups can match.
+     */
+    val lookupMetadata: TelegramTrackMetadata
+        get() = deriveTrackMetadata(tagTitle = title, tagPerformer = performer, fileName = fileName)
+
     override fun equals(other: Any?): Boolean =
         other is TelegramTrack && other.chatId == chatId && other.messageId == messageId
 
@@ -139,4 +147,55 @@ fun isAudioDocument(
     val mime = mimeType.trim().lowercase(Locale.US)
     if (mime.startsWith("audio/")) return true
     return fileExtension(fileName) in AUDIO_EXTENSIONS
+}
+
+/** Cleaned-up title + optional artist derived from a track's tags/file name. */
+data class TelegramTrackMetadata(
+    val title: String,
+    val artist: String?,
+)
+
+private val NOISE_SUFFIX_REGEX =
+    Regex("\\((?:official|lyric|audio|video|hd|hq|visualizer)[^)]*\\)", RegexOption.IGNORE_CASE)
+private val BRACKET_TAG_REGEX = Regex("\\[[^\\]]*\\]")
+private val LEADING_TRACK_NUMBER_REGEX = Regex("^\\s*\\d{1,3}\\s*[.\\-]\\s*")
+private val WHITESPACE_REGEX = Regex("\\s+")
+
+/** Strips bracketed tags, "(official …)" noise and leading track numbers from a raw name. */
+fun cleanTrackName(raw: String): String =
+    raw
+        .replace(NOISE_SUFFIX_REGEX, " ")
+        .replace(BRACKET_TAG_REGEX, " ")
+        .replace(LEADING_TRACK_NUMBER_REGEX, "")
+        .replace(WHITESPACE_REGEX, " ")
+        .trim()
+
+/**
+ * Derives lookup metadata from tags + file name. When the performer tag is missing, a file name
+ * shaped like "Artist - Title.flac" is split so the artist isn't lost (many channels tag nothing).
+ */
+fun deriveTrackMetadata(
+    tagTitle: String,
+    tagPerformer: String?,
+    fileName: String,
+): TelegramTrackMetadata {
+    val performer = tagPerformer?.trim()?.takeIf(String::isNotEmpty)
+    if (tagTitle.isNotBlank()) {
+        return TelegramTrackMetadata(title = cleanTrackName(tagTitle).ifBlank { tagTitle.trim() }, artist = performer)
+    }
+    val base = cleanTrackName(fileName.substringBeforeLast('.').ifBlank { fileName })
+    if (performer == null) {
+        val separators = listOf(" - ", " – ", " — ")
+        for (separator in separators) {
+            val index = base.indexOf(separator)
+            if (index > 0 && index < base.length - separator.length) {
+                val artist = base.substring(0, index).trim()
+                val title = base.substring(index + separator.length).trim()
+                if (artist.isNotEmpty() && title.isNotEmpty()) {
+                    return TelegramTrackMetadata(title = title, artist = artist)
+                }
+            }
+        }
+    }
+    return TelegramTrackMetadata(title = base.ifBlank { fileName }, artist = performer)
 }

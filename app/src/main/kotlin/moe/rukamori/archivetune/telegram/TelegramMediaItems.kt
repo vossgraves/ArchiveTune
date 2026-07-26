@@ -14,15 +14,18 @@ import moe.rukamori.archivetune.models.MediaMetadata
  * Bridges a Telegram channel track into the app's playback model. The media id is the encoded
  * telegram:// URI, so the player's scheme router hands the item straight to [TelegramDataSource].
  */
-fun TelegramTrack.toMediaMetadata(channelTitle: String? = null): MediaMetadata =
-    MediaMetadata(
+fun TelegramTrack.toMediaMetadata(channelTitle: String? = null): MediaMetadata {
+    // Prefer tag metadata, fall back to "Artist - Title" parsed from the file name — this is what
+    // lyrics/canvas/cover lookups match against, so a real artist beats the channel name.
+    val metadata = lookupMetadata
+    return MediaMetadata(
         id = mediaId,
-        title = displayTitle,
+        title = metadata.title,
         artists =
             listOf(
                 MediaMetadata.Artist(
                     id = null,
-                    name = performer ?: channelTitle ?: "Telegram",
+                    name = metadata.artist ?: channelTitle ?: "Telegram",
                 ),
             ),
         duration = durationSeconds,
@@ -30,12 +33,13 @@ fun TelegramTrack.toMediaMetadata(channelTitle: String? = null): MediaMetadata =
         // up by title/artist online, falling back to the embedded Telegram cover, then the tiny
         // minithumbnail.
         thumbnailUrl =
-            telegramArtworkModel(thumbnailFileId, displayTitle, performer)
+            telegramArtworkModel(thumbnailFileId, metadata.title, metadata.artist)
                 ?: TelegramClient.cacheArtwork(
                     uniqueKey = fileUniqueId.ifEmpty { "$chatId-$messageId" },
                     data = albumCoverMinithumbnail,
                 ),
     )
+}
 
 /**
  * Seed a [FormatEntity] for a Telegram track so the player-details / Nerd Stats screen shows file

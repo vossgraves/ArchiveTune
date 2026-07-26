@@ -97,10 +97,12 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import moe.rukamori.archivetune.LocalAnimationsDisabled
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.LyricsClickKey
@@ -207,10 +209,17 @@ fun LyricsV2(
     val (lyricsTextSize) = rememberPreference(LyricsTextSizeKey, defaultValue = 26f)
     val (lyricsLineSpacing) = rememberPreference(LyricsLineSpacingKey, defaultValue = 1.3f)
     val (lyricsLineBlurPreference) = rememberPreference(LyricsLineBlurKey, defaultValue = true)
-    val (bounceFactor) = rememberPreference(LyricsV2BounceFactorKey, defaultValue = 1f)
-    val (glowFactor) = rememberPreference(LyricsV2GlowFactorKey, defaultValue = 1f)
+    val (bounceFactorPreference) = rememberPreference(LyricsV2BounceFactorKey, defaultValue = 1f)
+    val (glowFactorPreference) = rememberPreference(LyricsV2GlowFactorKey, defaultValue = 1f)
     val (fillTransitionWidth) = rememberPreference(LyricsV2FillTransitionWidthKey, defaultValue = 8f)
-    val (lrcBounceEnabled) = rememberPreference(LyricsV2LrcBounceEnabledKey, defaultValue = true)
+    val (lrcBounceEnabledPreference) = rememberPreference(LyricsV2LrcBounceEnabledKey, defaultValue = true)
+    // The V2 renderer never honored the reduce-animations setting: on low-RAM devices (where it
+    // defaults on) the per-word glow shadows, bounce springs and line blur are the difference
+    // between smooth and stuttering karaoke, so gate them all here.
+    val v2AnimationsDisabled = LocalAnimationsDisabled.current
+    val bounceFactor = if (v2AnimationsDisabled) 0f else bounceFactorPreference
+    val glowFactor = if (v2AnimationsDisabled) 0f else glowFactorPreference
+    val lrcBounceEnabled = lrcBounceEnabledPreference && !v2AnimationsDisabled
     val (romanizeChinese) = rememberPreference(LyricsRomanizeChineseKey, defaultValue = true)
     val (romanizeHindi) = rememberPreference(LyricsRomanizeHindiKey, defaultValue = true)
     val (romanizeJapanese) = rememberPreference(LyricsRomanizeJapaneseKey, defaultValue = true)
@@ -242,7 +251,7 @@ fun LyricsV2(
         } else {
             Color.White
         }
-    val lyricsLineBlur = lyricsLineBlurOverride ?: lyricsLineBlurPreference
+    val lyricsLineBlur = (lyricsLineBlurOverride ?: lyricsLineBlurPreference) && !v2AnimationsDisabled
 
     val inactiveAlpha = 0.35f
 
@@ -326,7 +335,9 @@ fun LyricsV2(
                 return@forEach
             }
 
-            launch {
+            // Off the UI thread: one romanization per line on Main used to queue dozens of
+            // dispatcher hops right as the karaoke animation started.
+            launch(Dispatchers.Default) {
                 val romanized =
                     try {
                         romanizeLyricsLine(entry.text, romanizationPreferences)
@@ -349,7 +360,14 @@ fun LyricsV2(
 
     LaunchedEffect(entriesWithWords, isSynced, leadMs, lyricsSyncOffset) {
         if (!isSynced || entriesWithWords.isEmpty()) return@LaunchedEffect
-        val pollIntervalMs = if (isTtmlFormat) 16L else 50L
+        // 16 ms recomposes every visible word ~60×/s; with animations disabled a coarser tick is
+        // indistinguishable (fills snap anyway) and much cheaper.
+        val pollIntervalMs =
+            when {
+                v2AnimationsDisabled -> 100L
+                isTtmlFormat -> 16L
+                else -> 50L
+            }
         while (isActive) {
             val sliderPos = sliderPositionProvider()
             val pos = sliderPos ?: player.currentPosition

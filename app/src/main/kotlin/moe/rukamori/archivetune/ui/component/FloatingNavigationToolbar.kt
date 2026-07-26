@@ -50,13 +50,20 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import android.os.Build
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.MotionDurationScale
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.BlurEffect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TileMode
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.layer.GraphicsLayer
+import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
@@ -66,14 +73,30 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.constants.DisableAnimationsKey
+import moe.rukamori.archivetune.constants.FloatingNavigationBarMaxWidth
 import moe.rukamori.archivetune.constants.NavigationBarHeight
 import moe.rukamori.archivetune.constants.NavigationBarMaxWidth
+import moe.rukamori.archivetune.constants.NavigationBarStyle
 import moe.rukamori.archivetune.ui.screens.Screens
 import moe.rukamori.archivetune.utils.rememberPreference
 import kotlin.math.roundToInt
 
+/**
+ * Shared handle for the frosted navigation bar: the app records its content into [layer] each
+ * frame, and the bar draws that layer (offset by the recorded content's root position) behind a
+ * blur so the pixels underneath show through frosted.
+ */
+class NavigationBarBackdrop(
+    val layer: GraphicsLayer,
+) {
+    var contentOffsetInRoot: Offset = Offset.Zero
+}
+
 private val NavigationItemsMaxWidth = 360.dp
 private val NavigationItemVerticalPadding = 8.dp
+
+// Frosted nav-bar backdrop blur radius, in px (RenderEffect works in raw pixels).
+private const val FrostedNavBarBlurRadiusPx = 60f
 
 // The sliding pill wraps just the icon (like the stock indicator), so the label sits below it,
 // outside the bubble. These are the standard Material3 active-indicator dimensions.
@@ -96,25 +119,40 @@ fun FloatingNavigationToolbar(
     pureBlack: Boolean,
     modifier: Modifier = Modifier,
     isPairedWithMiniPlayer: Boolean = false,
+    style: NavigationBarStyle = NavigationBarStyle.DEFAULT,
+    frostedBlur: Boolean = false,
+    frostedBackdrop: NavigationBarBackdrop? = null,
     isSelected: (Screens) -> Boolean,
     onItemClick: (Screens, Boolean) -> Unit,
     onSearchItemDoubleClick: (() -> Unit)? = null,
 ) {
+    val isFloating = style == NavigationBarStyle.FLOATING
     val navigationShape =
-        remember(isPairedWithMiniPlayer) {
-            if (isPairedWithMiniPlayer) {
-                RoundedCornerShape(
-                    topStart = 12.dp,
-                    topEnd = 12.dp,
-                    bottomStart = 28.dp,
-                    bottomEnd = 28.dp,
-                )
-            } else {
-                null
+        remember(isPairedWithMiniPlayer, isFloating) {
+            when {
+                // A detached pill keeps the full radius; it never docks with the mini player.
+                isFloating -> RoundedCornerShape(percent = 50)
+                isPairedWithMiniPlayer ->
+                    RoundedCornerShape(
+                        topStart = 12.dp,
+                        topEnd = 12.dp,
+                        bottomStart = 28.dp,
+                        bottomEnd = 28.dp,
+                    )
+                else -> null
             }
         } ?: MaterialTheme.shapes.extraLarge
-    val navigationContainerColor =
+    // True backdrop blur needs RenderEffect (Android 12+); otherwise a translucent surface still
+    // reads as frosted over scrolling content.
+    val canBlurBackdrop = frostedBlur && frostedBackdrop != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+    val opaqueContainerColor =
         if (pureBlack) Color.Black else MaterialTheme.colorScheme.surfaceContainer
+    val navigationContainerColor =
+        when {
+            canBlurBackdrop -> opaqueContainerColor.copy(alpha = 0.55f)
+            frostedBlur -> opaqueContainerColor.copy(alpha = 0.85f)
+            else -> opaqueContainerColor
+        }
     val motionScheme = MaterialTheme.motionScheme
     val (disableAnimations) = rememberPreference(DisableAnimationsKey, defaultValue = false)
     val density = LocalDensity.current
@@ -180,17 +218,49 @@ fun FloatingNavigationToolbar(
                 .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal)),
         contentAlignment = Alignment.Center,
     ) {
+        var barPositionInRoot by remember { mutableStateOf(Offset.Zero) }
         Surface(
             modifier =
                 Modifier
-                    .widthIn(max = NavigationBarMaxWidth)
+                    .widthIn(max = if (isFloating) FloatingNavigationBarMaxWidth else NavigationBarMaxWidth)
                     .fillMaxWidth()
-                    .height(NavigationBarHeight),
+                    .height(NavigationBarHeight)
+                    .onGloballyPositioned { barPositionInRoot = it.positionInRoot() },
             shape = navigationShape,
-            color = navigationContainerColor,
-            tonalElevation = NavigationBarDefaults.Elevation,
-            shadowElevation = NavigationBarDefaults.Elevation,
+            color = if (canBlurBackdrop) Color.Transparent else navigationContainerColor,
+            tonalElevation = if (canBlurBackdrop) 0.dp else NavigationBarDefaults.Elevation,
+            shadowElevation = if (isFloating) 8.dp else NavigationBarDefaults.Elevation,
         ) {
+            if (canBlurBackdrop && frostedBackdrop != null) {
+                // Draw the app content captured this frame, shifted so the region underneath the
+                // bar lines up, inside a blurred layer — a real frosted-glass backdrop. A tint on
+                // top keeps icon contrast.
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .graphicsLayer {
+                                renderEffect =
+                                    BlurEffect(
+                                        radiusX = FrostedNavBarBlurRadiusPx,
+                                        radiusY = FrostedNavBarBlurRadiusPx,
+                                        edgeTreatment = TileMode.Clamp,
+                                    )
+                                clip = true
+                            }.drawBehind {
+                                val offset = frostedBackdrop.contentOffsetInRoot - barPositionInRoot
+                                translate(offset.x, offset.y) {
+                                    drawLayer(frostedBackdrop.layer)
+                                }
+                            },
+                )
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .background(navigationContainerColor),
+                )
+            }
             ShortNavigationBar(
                 modifier = Modifier.fillMaxSize(),
                 containerColor = Color.Transparent,

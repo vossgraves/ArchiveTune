@@ -592,7 +592,7 @@ fun Queue(
                     )
                 }
 
-                PlayerDesignStyle.V9 -> {
+                PlayerDesignStyle.V9, PlayerDesignStyle.APPLE_MUSIC -> {
                     val shuffleModeEnabled by playerConnection.shuffleModeEnabled.collectAsState()
                     QueueCollapsedContentV9(
                         showCodecOnPlayer = showCodecOnPlayer,
