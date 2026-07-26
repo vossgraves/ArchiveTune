@@ -93,6 +93,7 @@ import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.models.toMediaMetadata
 import moe.rukamori.archivetune.playback.ExoDownloadService
 import moe.rukamori.archivetune.playback.queues.YouTubeQueue
+import moe.rukamori.archivetune.telegram.isTelegramMediaId
 import moe.rukamori.archivetune.ui.component.ListDialog
 import moe.rukamori.archivetune.ui.component.LocalBottomSheetPageState
 import moe.rukamori.archivetune.ui.component.MenuSurfaceSection
@@ -404,6 +405,9 @@ fun SongMenu(
 
     val bottomSheetPageState = LocalBottomSheetPageState.current
     val isLocalSong = song.song.isLocal
+    // Telegram tracks have no YouTube watch endpoint, so YouTube-only actions (e.g. Start radio)
+    // are hidden for them — they still support play next / add to queue / add to playlist.
+    val isTelegramSong = song.song.id.isTelegramMediaId()
 
     val startRadioText = stringResource(R.string.start_radio)
     val playNextText = stringResource(R.string.play_next)
@@ -426,7 +430,7 @@ fun SongMenu(
             playerConnection,
         ) {
             buildList {
-                if (!isLocalSong) {
+                if (!isLocalSong && !isTelegramSong) {
                     add(
                         NewAction(
                             icon = {

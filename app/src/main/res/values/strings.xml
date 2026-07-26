@@ -1326,7 +1326,6 @@
     <string name="telegram_password_step_description">Enter your Telegram two-step verification password.</string>
     <string name="telegram_login_success">Telegram connected</string>
     <string name="telegram_auth_unsupported">Unsupported login step: %1$s. Try signing in with the official Telegram app first.</string>
-    <string name="telegram_channels">Telegram channels</string>
     <string name="telegram_browse_channels">Browse channels</string>
     <string name="telegram_browse_channels_description">Search Telegram channels and stream their audio files</string>
     <string name="telegram_search_channels_hint">Channel name, @username or t.me link</string>
@@ -1336,11 +1335,8 @@
     <string name="telegram_lossless_only">Lossless files only</string>
     <string name="telegram_lossless_only_description">Only list FLAC, WAV, AIFF and other lossless files when browsing channels</string>
     <string name="telegram_no_results">No channels found</string>
-    <string name="telegram_no_tracks">No matching audio files found in this channel</string>
     <string name="telegram_login_required">Sign in with your Telegram account first</string>
     <string name="telegram_unavailable">Telegram support is unavailable in this build</string>
-    <string name="telegram_play_all">Play all</string>
-    <string name="telegram_load_more">Load more</string>
-    <string name="telegram_lossless_badge">Lossless</string>
     <string name="telegram_error">Telegram error: %1$s</string>
+    <string name="telegram_error_generic">Couldn\'t open this Telegram channel</string>
 </resources>

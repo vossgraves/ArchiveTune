@@ -900,13 +900,9 @@ fun QobuzAudioQuality.toFormatId(): Int =
 val TelegramAccountNameKey = stringPreferencesKey("telegramAccountName")
 val TelegramAccountPhoneKey = stringPreferencesKey("telegramAccountPhone")
 
-// When ON (default) the channel browser only lists lossless files (FLAC/WAV/AIFF/APE/ALAC/…);
-// when OFF every audio message and audio-typed document in the channel is shown.
+// When ON (default) the channel browser only materialises lossless files (FLAC/WAV/AIFF/APE/ALAC/…)
+// into the channel's playlist; when OFF every audio message and audio-typed document is included.
 val TelegramLosslessOnlyKey = booleanPreferencesKey("telegramLosslessOnly")
-
-// JSON list of Telegram channels the user has opened, surfaced on the Library → Playlists screen
-// so a channel can be reopened without searching again. See telegram/SavedTelegramChannels.kt.
-val SavedTelegramChannelsKey = stringPreferencesKey("savedTelegramChannels")
 
 // ---------------------------------------------------------------------------
 // Multi-source audio framework

@@ -11,8 +11,12 @@ import android.content.Context
 import android.net.ConnectivityManager
 import androidx.core.content.getSystemService
 import androidx.core.net.toUri
+import android.net.Uri
 import androidx.media3.database.DatabaseProvider
+import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.ResolvingDataSource
+import androidx.media3.datasource.TransferListener
 import androidx.media3.datasource.cache.Cache
 import androidx.media3.datasource.cache.CacheDataSink
 import androidx.media3.datasource.cache.CacheDataSource
@@ -116,7 +120,7 @@ class DownloadUtil
 
         val downloads = MutableStateFlow<Map<String, Download>>(emptyMap())
 
-        private val dataSourceFactory =
+        private val youtubeDataSourceFactory =
             ResolvingDataSource.Factory(
                 CacheDataSource
                     .Factory()
@@ -169,6 +173,18 @@ class DownloadUtil
                         authFingerprint = playbackData.authFingerprint,
                     )
                 dataSpec.withUri(streamUrl.toUri())
+            }
+
+        // Route downloads by scheme: telegram:// tracks stream through TDLib (same as playback),
+        // everything else through the YouTube-resolving factory above.
+        private val telegramDataSourceFactory = moe.rukamori.archivetune.telegram.TelegramDataSource.Factory()
+
+        private val dataSourceFactory =
+            DataSource.Factory {
+                DownloadSchemeRoutingDataSource(
+                    youtubeFactory = youtubeDataSourceFactory,
+                    telegramFactory = telegramDataSourceFactory,
+                )
             }
 
         val downloadNotificationHelper =
@@ -299,6 +315,47 @@ class DownloadUtil
                         upsert(updatedSong)
                     }
                 }
+            }
+        }
+
+        /**
+         * Picks the download upstream by URI scheme: `telegram://` tracks go through TDLib (mirroring
+         * playback's SchemeRoutingDataSource), everything else through the YouTube-resolving factory.
+         */
+        private class DownloadSchemeRoutingDataSource(
+            private val youtubeFactory: DataSource.Factory,
+            private val telegramFactory: DataSource.Factory,
+        ) : DataSource {
+            private val transferListeners = mutableListOf<TransferListener>()
+            private var delegate: DataSource? = null
+
+            override fun addTransferListener(transferListener: TransferListener) {
+                transferListeners += transferListener
+                delegate?.addTransferListener(transferListener)
+            }
+
+            override fun open(dataSpec: DataSpec): Long {
+                val scheme = dataSpec.uri.scheme?.lowercase(java.util.Locale.US)
+                val selected = if (scheme == "telegram") telegramFactory else youtubeFactory
+                val source = selected.createDataSource()
+                transferListeners.forEach(source::addTransferListener)
+                delegate = source
+                return source.open(dataSpec)
+            }
+
+            override fun read(
+                buffer: ByteArray,
+                offset: Int,
+                length: Int,
+            ): Int = checkNotNull(delegate).read(buffer, offset, length)
+
+            override fun getUri(): Uri? = delegate?.uri
+
+            override fun getResponseHeaders(): Map<String, List<String>> = delegate?.responseHeaders ?: emptyMap()
+
+            override fun close() {
+                delegate?.close()
+                delegate = null
             }
         }
 
