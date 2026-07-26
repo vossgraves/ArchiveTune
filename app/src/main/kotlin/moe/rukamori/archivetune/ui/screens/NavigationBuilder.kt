@@ -471,20 +471,6 @@ fun NavGraphBuilder.navigationBuilder(
     composable(TELEGRAM_BROWSE_ROUTE) {
         TelegramBrowseScreen(navController)
     }
-    composable(
-        route = TELEGRAM_CHANNEL_ROUTE,
-        arguments =
-            listOf(
-                navArgument("chatId") {
-                    type = NavType.LongType
-                },
-            ),
-    ) { backStackEntry ->
-        TelegramChannelScreen(
-            navController = navController,
-            chatId = backStackEntry.arguments?.getLong("chatId") ?: 0L,
-        )
-    }
     composable("settings/ai_integration") {
         AiIntegrationSettings(navController)
     }

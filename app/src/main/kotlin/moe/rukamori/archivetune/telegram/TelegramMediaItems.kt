@@ -26,10 +26,11 @@ fun TelegramTrack.toMediaMetadata(channelTitle: String? = null): MediaMetadata =
                 ),
             ),
         duration = durationSeconds,
-        // Prefer the full-resolution album cover (fetched lazily from TDLib via the Coil
-        // tgthumb:// fetcher); fall back to the tiny embedded minithumbnail when there is none.
+        // Artwork resolves lazily via the Coil tgart:// fetcher: a high-res catalogue cover looked
+        // up by title/artist online, falling back to the embedded Telegram cover, then the tiny
+        // minithumbnail.
         thumbnailUrl =
-            telegramThumbnailModel(thumbnailFileId)
+            telegramArtworkModel(thumbnailFileId, displayTitle, performer)
                 ?: TelegramClient.cacheArtwork(
                     uniqueKey = fileUniqueId.ifEmpty { "$chatId-$messageId" },
                     data = albumCoverMinithumbnail,
