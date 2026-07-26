@@ -315,6 +315,7 @@ fun BottomSheetPlayer(
     modifier: Modifier = Modifier,
     pureBlack: Boolean,
     isMiniPlayerPairedWithNavigation: Boolean = false,
+    onLyricsVisibilityChange: (Boolean) -> Unit = {},
 ) {
     val context = LocalContext.current
     val menuState = LocalMenuState.current
@@ -817,7 +818,7 @@ fun BottomSheetPlayer(
     }
 
     val dynamicQueuePeekHeight =
-        if (playerDesignStyle == PlayerDesignStyle.V5) {
+        if (playerDesignStyle == PlayerDesignStyle.V5 || playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC) {
             0.dp
         } else if (playerDesignStyle == PlayerDesignStyle.V9) {
             88.dp +
@@ -842,6 +843,17 @@ fun BottomSheetPlayer(
     var isLyricsScreenVisible by rememberSaveable {
         mutableStateOf(false)
     }
+
+    // Report full-screen lyrics visibility upward so the status bar can be hidden for every player
+    // style while the lyrics overlay is showing (previously only the Immersive style went edge-to-edge).
+    val lyricsFullScreenActive = isLyricsScreenVisible && state.isExpandedOrExpanding
+    LaunchedEffect(lyricsFullScreenActive) {
+        onLyricsVisibilityChange(lyricsFullScreenActive)
+    }
+    DisposableEffect(Unit) {
+        onDispose { onLyricsVisibilityChange(false) }
+    }
+
     val openQueue =
         remember(state, queueSheetState) {
             {
@@ -1985,10 +1997,10 @@ private fun MikoLyricsTransition(
     onQueueClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // Apple-Music-style sheet motion: an interruptible spring with a light settle. All derived
-    // transforms are read inside graphicsLayer/draw lambdas so the animation runs entirely in the
-    // draw phase — zero recomposition per frame (the old version recomposed the whole subtree and
-    // rebuilt a clip path every frame, which is what made opening feel janky).
+    // Apple-Music-style sheet motion: the lyrics sheet slides straight up from the bottom edge on an
+    // interruptible spring, staying fully opaque the whole way (no cross-fade), while a dim scrim
+    // fades in behind it. All derived transforms are read inside graphicsLayer/draw lambdas so the
+    // animation runs entirely in the draw phase — zero recomposition per frame.
     val progressState =
         animateFloatAsState(
             targetValue = if (visible) 1f else 0f,
@@ -2010,9 +2022,8 @@ private fun MikoLyricsTransition(
             modifier =
                 modifier
                     .fillMaxSize()
-                    .graphicsLayer { alpha = progressState.value.coerceIn(0f, 1f) }
                     .drawBehind {
-                        drawRect(Color.Black.copy(alpha = 0.24f * progressState.value.coerceIn(0f, 1f)))
+                        drawRect(Color.Black.copy(alpha = 0.32f * progressState.value.coerceIn(0f, 1f)))
                     },
         ) {
             Box(
@@ -2021,11 +2032,11 @@ private fun MikoLyricsTransition(
                         .fillMaxSize()
                         .graphicsLayer {
                             val p = progressState.value.coerceIn(0f, 1f)
-                            transformOrigin = TransformOrigin(0.5f, 1f)
-                            scaleX = 0.94f + (0.06f * p)
-                            scaleY = 0.82f + (0.18f * p)
-                            translationY = size.height * 0.14f * (1f - p)
-                            shape = RoundedCornerShape(36.dp * (1f - p))
+                            // Pure slide-up: the whole sheet travels from just below the screen to
+                            // its resting position, with a small rounded top lip while in transit.
+                            translationY = size.height * (1f - p)
+                            val corner = 28.dp.toPx() * (1f - p)
+                            shape = RoundedCornerShape(topStart = corner, topEnd = corner)
                             clip = true
                         }.background(surfaceColor),
             ) {

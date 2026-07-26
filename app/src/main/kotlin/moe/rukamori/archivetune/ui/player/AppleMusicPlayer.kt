@@ -15,7 +15,6 @@ package moe.rukamori.archivetune.ui.player
 
 import android.content.Intent
 import android.os.Build
-import android.provider.Settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -79,6 +78,7 @@ import moe.rukamori.archivetune.ui.component.BottomSheetPageState
 import moe.rukamori.archivetune.ui.component.BottomSheetState
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.menu.PlayerMenu
+import moe.rukamori.archivetune.ui.menu.rememberCastPlayerMenuAction
 import moe.rukamori.archivetune.ui.utils.ShowMediaInfo
 import moe.rukamori.archivetune.ui.utils.highRes
 import moe.rukamori.archivetune.utils.makeTimeString
@@ -157,17 +157,14 @@ fun AppleMusicPlayerContent(
             )
         }
     }
-    val onOutputClick = {
-        // Best-effort media output switcher (the "AirPlay" slot): the system output panel where
-        // available, else the volume panel.
-        val launched =
-            runCatching {
-                context.startActivity(Intent("com.android.settings.panel.action.MEDIA_OUTPUT"))
-            }.isSuccess
-        if (!launched) {
-            runCatching {
-                context.startActivity(Intent(Settings.Panel.ACTION_VOLUME))
-            }
+    // The "AirPlay" slot opens the Cast route picker on flavors that ship Cast (gms). This also
+    // renders the route-picker bottom sheet when it becomes visible. On flavors without Cast (foss)
+    // rememberCastPlayerMenuAction() returns null and we fall back to the system output switcher.
+    val castAction = rememberCastPlayerMenuAction()
+    val onOutputClick: () -> Unit = castAction?.onClick ?: {
+        // Cast-less flavors (foss): open the system media-output switcher panel.
+        runCatching {
+            context.startActivity(Intent("android.settings.panel.action.MEDIA_OUTPUT"))
         }
     }
 
@@ -194,16 +191,18 @@ fun AppleMusicPlayerContent(
                         scaleY = 1.2f
                     },
         )
-        // Contrast scrim over the blur, heavier at the bottom where the controls sit.
+        // Deep contrast scrim over the blur: the Apple Music sheet reads as a dark, artwork-tinted
+        // panel rather than a bright blur, so the whole surface is pulled well down in brightness
+        // and pushed darker still toward the bottom where the controls sit.
         Box(
             modifier =
                 Modifier
                     .matchParentSize()
                     .background(
                         Brush.verticalGradient(
-                            0f to Color.Black.copy(alpha = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) 0.10f else 0.35f),
-                            0.55f to Color.Black.copy(alpha = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) 0.28f else 0.55f),
-                            1f to Color.Black.copy(alpha = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) 0.45f else 0.7f),
+                            0f to Color.Black.copy(alpha = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) 0.42f else 0.52f),
+                            0.5f to Color.Black.copy(alpha = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) 0.60f else 0.68f),
+                            1f to Color.Black.copy(alpha = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) 0.82f else 0.86f),
                         ),
                     ),
         )
@@ -413,7 +412,7 @@ private fun AppleMusicControlsColumn(
             Spacer(Modifier.width(12.dp))
             AppleMusicChip(
                 iconRes = R.drawable.star,
-                tint = if (currentSongLiked) Color(0xFFFFD60A) else Color.White,
+                tint = Color.White,
                 contentDescription = null,
                 onClick = playerConnection::toggleLike,
             )
