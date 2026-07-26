@@ -163,6 +163,26 @@ android {
                 ?: ""
         buildConfigField("String", "EXTRACTOR_BEARER", "\"$extractorBearer\"")
 
+        // Telegram (TDLib) app credentials. Baked in at build time so users sign in with just
+        // their phone number + login code — no my.telegram.org api_id/api_hash entry. Override via
+        // local.properties or the TELEGRAM_API_ID / TELEGRAM_API_HASH env vars (e.g. in CI) to ship
+        // the fork's own registered app. The fallback is the public Telegram Desktop api_id/hash,
+        // which every TDLib client can use out of the box.
+        val telegramApiId =
+            (
+                localProperties.getProperty("TELEGRAM_API_ID")?.takeIf { it.isNotBlank() }
+                    ?: System.getenv("TELEGRAM_API_ID")?.takeIf { it.isNotBlank() }
+                    ?: "2040"
+            ).trim()
+        val telegramApiHash =
+            (
+                localProperties.getProperty("TELEGRAM_API_HASH")?.takeIf { it.isNotBlank() }
+                    ?: System.getenv("TELEGRAM_API_HASH")?.takeIf { it.isNotBlank() }
+                    ?: "b18441a1ff607e10a989891a5462e627"
+            ).trim()
+        buildConfigField("int", "TELEGRAM_API_ID", telegramApiId)
+        buildConfigField("String", "TELEGRAM_API_HASH", "\"$telegramApiHash\"")
+
         // Base URL of the community Source Pool website (Next.js). When set, the app auto-discovers
         // health-checked Tidal/Qobuz instances from it. Precedence: local.properties override, then
         // the SOURCE_PROVIDER_URL env/CI variable, then the baked-in default below. Set to "" in

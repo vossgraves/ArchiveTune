@@ -26,7 +26,11 @@ the fork invariants below — especially when merging upstream changes.
    Playback is routed by the `telegram://` scheme branch in `MusicService`'s
    `SchemeRoutingDataSource` (independent of the multi-source resolver chain).
    Depends on the prebuilt TDLib AAR `com.github.tdlibx:td` (JitPack group
-   allow-listed in `settings.gradle.kts`).
+   allow-listed in `settings.gradle.kts`). Login is phone + code only — the
+   app's api_id/api_hash are baked in via `BuildConfig.TELEGRAM_API_ID`/`_HASH`
+   (`buildConfigField` in `app/build.gradle.kts`, overridable through
+   local.properties / env, with the public Telegram Desktop credentials as the
+   fallback); users never enter developer credentials.
 4. **Fork CI signing patch** — workflows sign with the committed
    `app/persistent-debug.keystore` when the `KEYSTORE` secret is absent
    (forks have no release keystore). Upstream's workflows must not overwrite

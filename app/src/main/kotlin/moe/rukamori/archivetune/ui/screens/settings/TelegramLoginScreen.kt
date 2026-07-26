@@ -77,7 +77,7 @@ fun TelegramLoginScreen(navController: NavController) {
 
     LaunchedEffect(Unit) {
         if (!TelegramClient.ensureStarted(context)) {
-            Toast.makeText(context, R.string.telegram_credentials_required, Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, R.string.telegram_unavailable, Toast.LENGTH_SHORT).show()
             navController.navigateUp()
         }
     }

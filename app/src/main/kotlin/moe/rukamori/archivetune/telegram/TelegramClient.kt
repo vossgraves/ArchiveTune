@@ -23,10 +23,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.suspendCancellableCoroutine
 import moe.rukamori.archivetune.BuildConfig
-import moe.rukamori.archivetune.constants.TelegramApiHashKey
-import moe.rukamori.archivetune.constants.TelegramApiIdKey
-import moe.rukamori.archivetune.utils.dataStore
-import moe.rukamori.archivetune.utils.get
 import org.drinkless.tdlib.Client
 import org.drinkless.tdlib.TdApi
 import timber.log.Timber
@@ -93,22 +89,17 @@ object TelegramClient {
     val isReady: Boolean
         get() = _authState.value is TelegramAuthState.Ready
 
-    fun hasCredentials(context: Context): Boolean {
-        val store = context.applicationContext.dataStore
-        val apiId = store.get(TelegramApiIdKey, "").trim().toIntOrNull() ?: 0
-        val apiHash = store.get(TelegramApiHashKey, "").trim()
-        return apiId > 0 && apiHash.isNotEmpty()
-    }
-
     /**
-     * Starts the TDLib client if it isn't running yet. Safe to call from any thread; returns false
-     * when API credentials are missing. The authorization flow then advances via [authState].
+     * Starts the TDLib client if it isn't running yet. Safe to call from any thread. The app's
+     * Telegram api_id/api_hash are baked in at build time (BuildConfig), so no user credential
+     * entry is needed — the authorization flow advances straight to the phone-number step via
+     * [authState]. Returns false only when the build shipped without valid credentials.
      */
     fun ensureStarted(context: Context): Boolean {
         val ctx = context.applicationContext
         synchronized(lock) {
             if (client != null) return true
-            if (!hasCredentials(ctx)) return false
+            if (BuildConfig.TELEGRAM_API_ID <= 0 || BuildConfig.TELEGRAM_API_HASH.isBlank()) return false
             appContext = ctx
             runCatching { Client.execute(TdApi.SetLogVerbosityLevel(1)) }
             _authState.value = TelegramAuthState.Connecting
@@ -124,22 +115,11 @@ object TelegramClient {
 
     /**
      * Stops the client and wipes the on-device Telegram session (TDLib LogOut deletes its own
-     * database). API credentials in DataStore are left untouched.
+     * database).
      */
     suspend fun logOut() {
         runCatching { send(TdApi.LogOut()) }
             .onFailure { Timber.tag(TAG).w(it, "logOut failed") }
-    }
-
-    /** Restarts the client after API credentials change. */
-    fun restart(context: Context) {
-        val currentClient = synchronized(lock) { client }
-        if (currentClient != null) {
-            currentClient.send(TdApi.Close()) { }
-        }
-        // The Closed auth state resets `client`; ensureStarted picks the new credentials up
-        // lazily on the next call. Nothing else to do here.
-        ensureStarted(context)
     }
 
     // ------------------------------------------------------------------
@@ -395,9 +375,8 @@ object TelegramClient {
 
     private fun sendTdlibParameters() {
         val context = appContext ?: return
-        val store = context.dataStore
-        val apiId = store.get(TelegramApiIdKey, "").trim().toIntOrNull() ?: 0
-        val apiHash = store.get(TelegramApiHashKey, "").trim()
+        val apiId = BuildConfig.TELEGRAM_API_ID
+        val apiHash = BuildConfig.TELEGRAM_API_HASH
         val baseDir = File(context.filesDir, "telegram")
         val parameters =
             TdApi.SetTdlibParameters(

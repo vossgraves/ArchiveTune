@@ -893,12 +893,10 @@ fun QobuzAudioQuality.toFormatId(): Int =
 // Telegram channel streaming integration
 // ---------------------------------------------------------------------------
 // Streams audio files (lossless-first) directly from Telegram channels via TDLib. The user logs in
-// with their own Telegram account (phone + code + optional 2FA password) and their own API
-// credentials from https://my.telegram.org — the app never bundles Telegram API keys. Session
-// state itself lives in TDLib's encrypted database under filesDir; these keys only hold the API
-// credentials and display metadata.
-val TelegramApiIdKey = stringPreferencesKey("telegramApiId")
-val TelegramApiHashKey = stringPreferencesKey("telegramApiHash")
+// with their own Telegram account (phone + code + optional 2FA password); the app's api_id/api_hash
+// are baked in at build time (BuildConfig.TELEGRAM_API_ID/HASH), so no developer credentials are
+// entered in-app. The session lives in TDLib's encrypted database under filesDir; these keys only
+// hold display metadata for the settings screen.
 val TelegramAccountNameKey = stringPreferencesKey("telegramAccountName")
 val TelegramAccountPhoneKey = stringPreferencesKey("telegramAccountPhone")
 
