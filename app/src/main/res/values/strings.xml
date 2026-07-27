@@ -70,6 +70,7 @@
     <string name="library_top_mixes_no_recent_history">Listen to more songs, then refresh to build AI mixes from your recent history.</string>
     <string name="library_top_mixes_no_valid_mixes">AI did not return any playable mixes from your recent history.</string>
     <string name="library_top_mixes_failed">Failed to build top mixes</string>
+    <string name="library_top_mixes_rate_limited">Your mixes were generated recently — try again in a few minutes to save AI tokens.</string>
     <string name="your_playlists">Your Playlists</string>
     <string name="see_all">See all</string>
     <string name="your_artists">Your Artists</string>
@@ -494,6 +495,7 @@
     <string name="navigation_bar_style_floating">Floating</string>
     <string name="navigation_bar_frosted_blur">Frosted navigation bar</string>
     <string name="navigation_bar_frosted_blur_desc">Apply a frosted blur behind the navigation bar</string>
+    <string name="frosted_blur">Frosted blur</string>
     <string name="lyrics_animation_style">Lyrics animation style</string>
     <string name="lyrics_mode">Lyrics mode</string>
     <string name="lyrics_mode_v2">V2 Legacy</string>

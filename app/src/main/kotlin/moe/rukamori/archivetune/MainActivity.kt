@@ -270,6 +270,9 @@ import moe.rukamori.archivetune.ui.component.COLLAPSED_ANCHOR
 import moe.rukamori.archivetune.ui.component.DISMISSED_ANCHOR
 import moe.rukamori.archivetune.ui.component.EXPANDED_ANCHOR
 import moe.rukamori.archivetune.ui.component.FloatingNavigationToolbar
+import moe.rukamori.archivetune.constants.MiniPlayerBackgroundStyle
+import moe.rukamori.archivetune.constants.MiniPlayerBackgroundStyleKey
+import moe.rukamori.archivetune.ui.component.LocalNavigationBarBackdrop
 import moe.rukamori.archivetune.ui.component.NavigationBarBackdrop
 import moe.rukamori.archivetune.ui.component.AutoResizeText
 import moe.rukamori.archivetune.ui.component.FontSizeRange
@@ -1030,10 +1033,14 @@ class MainActivity : ComponentActivity() {
                     val navBarHorizontalPadding =
                         if (isFloatingNavBar) FloatingNavigationBarHorizontalPadding else NavigationBarHorizontalPadding
 
-                    // Frosted nav-bar backdrop: only allocated when the effect can actually run
-                    // (setting on, RenderEffect available, bottom bar in use).
+                    // Frosted backdrop (nav bar + mini player): only allocated when some frosted
+                    // surface can actually run (setting on, RenderEffect available, bottom bar in use).
+                    val miniPlayerBgStyle by rememberEnumPreference(
+                        MiniPlayerBackgroundStyleKey,
+                        defaultValue = MiniPlayerBackgroundStyle.THEME,
+                    )
                     val navBarFrostedBackdrop =
-                        if (navigationBarFrostedBlur &&
+                        if ((navigationBarFrostedBlur || miniPlayerBgStyle == MiniPlayerBackgroundStyle.FROSTED) &&
                             !useRail &&
                             Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
                         ) {
@@ -1567,6 +1574,7 @@ class MainActivity : ComponentActivity() {
                         LocalSyncUtils provides syncUtils,
                         moe.rukamori.archivetune.ui.component.LocalBottomSheetPageState provides bottomSheetPageState,
                         moe.rukamori.archivetune.ui.component.LocalMenuState provides menuState,
+                        LocalNavigationBarBackdrop provides navBarFrostedBackdrop,
                     ) {
                         Row {
                             AnimatedVisibility(

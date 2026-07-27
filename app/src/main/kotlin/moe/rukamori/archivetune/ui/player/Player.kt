@@ -709,7 +709,7 @@ fun BottomSheetPlayer(
             onDismissRequest = { showSleepTimerDialog = false },
             icon = {
                 Icon(
-                    painter = painterResource(R.drawable.bedtime),
+                    painter = painterResource(R.drawable.player_bedtime),
                     contentDescription = null,
                 )
             },
@@ -2755,7 +2755,7 @@ private fun LittlePlayerContent(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(
-                    painter = painterResource(R.drawable.expand_more),
+                    painter = painterResource(R.drawable.player_expand_more),
                     contentDescription = null,
                     tint = textColor.copy(alpha = 0.8f),
                     modifier =
@@ -2771,7 +2771,7 @@ private fun LittlePlayerContent(
                 Spacer(Modifier.weight(1f))
 
                 Icon(
-                    painter = painterResource(if (liked) R.drawable.favorite else R.drawable.favorite_border),
+                    painter = painterResource(if (liked) R.drawable.player_favorite else R.drawable.player_favorite_border),
                     contentDescription = null,
                     tint =
                         if (liked) {
@@ -2792,7 +2792,7 @@ private fun LittlePlayerContent(
                 Spacer(Modifier.width((18f * scale).dp))
 
                 Icon(
-                    painter = painterResource(R.drawable.queue_music),
+                    painter = painterResource(R.drawable.player_queue_music),
                     contentDescription = null,
                     tint = textColor.copy(alpha = 0.78f),
                     modifier =
@@ -2808,7 +2808,7 @@ private fun LittlePlayerContent(
                 Spacer(Modifier.width((18f * scale).dp))
 
                 Icon(
-                    painter = painterResource(R.drawable.more_vert),
+                    painter = painterResource(R.drawable.player_more_vert),
                     contentDescription = null,
                     tint = textColor.copy(alpha = 0.78f),
                     modifier =

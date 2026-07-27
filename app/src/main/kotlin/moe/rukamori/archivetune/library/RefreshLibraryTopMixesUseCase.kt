@@ -13,9 +13,12 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.first
+import androidx.datastore.preferences.core.edit
+import moe.rukamori.archivetune.ai.AiRateLimiter
 import moe.rukamori.archivetune.ai.AiServiceConfig
 import moe.rukamori.archivetune.ai.AiTextService
 import moe.rukamori.archivetune.constants.AiApiKeyKey
+import moe.rukamori.archivetune.constants.AiMixLastGeneratedAtKey
 import moe.rukamori.archivetune.constants.AiApiValidationStatus
 import moe.rukamori.archivetune.constants.AiApiValidationStatusKey
 import moe.rukamori.archivetune.constants.AiCustomEndpointKey
@@ -37,6 +40,7 @@ import java.util.Locale
 import javax.inject.Inject
 
 private const val TopMixCountLimit = 5
+private const val TopMixMinRefreshIntervalMs = 10L * 60_000L
 private const val TopMixCandidateLimit = 100
 private const val TopMixSongsPerMix = 50
 private const val TopMixPromptCandidateLimit = 80
@@ -51,6 +55,14 @@ class RefreshLibraryTopMixesUseCase
             val config = readAiConfig()
             if (!config.canCallApi || isAiValidationFailed()) {
                 return RefreshLibraryTopMixesResult.Failure(TopMixGenerationFailure.AI_NOT_CONFIGURED)
+            }
+
+            // Token-budget protector: mixes are regenerated from a large prompt, so refuse
+            // regeneration while the previous result is still fresh (survives app restarts).
+            val now = System.currentTimeMillis()
+            val lastGeneratedAt = context.dataStore.data.first()[AiMixLastGeneratedAtKey] ?: 0L
+            if (now - lastGeneratedAt in 0 until TopMixMinRefreshIntervalMs) {
+                return RefreshLibraryTopMixesResult.Failure(TopMixGenerationFailure.RATE_LIMITED)
             }
 
             val candidates =
@@ -68,6 +80,7 @@ class RefreshLibraryTopMixesUseCase
                     RefreshLibraryTopMixesResult.Failure(TopMixGenerationFailure.NO_VALID_MIXES)
                 } else {
                     repository.replaceTopMixes(mixes)
+                    context.dataStore.edit { it[AiMixLastGeneratedAtKey] = now }
                     RefreshLibraryTopMixesResult.Success
                 }
             }.getOrElse { throwable ->
@@ -118,8 +131,9 @@ class RefreshLibraryTopMixesUseCase
                     }
                 }
             val response =
-                AiTextService.complete(
-                    config = config,
+                AiRateLimiter.withLimit(AiRateLimiter.Feature.AI_MIX) {
+                    AiTextService.complete(
+                        config = config,
                     systemPrompt =
                         """
                         You are a music curator for ArchiveTune.
@@ -135,16 +149,17 @@ class RefreshLibraryTopMixesUseCase
                         Return JSON only matching this schema: {"mixes":[{"title":"Descriptive Mix Title","description":"Vibrant and appealing description of the vibe and genre","songIds":["id"],"recommendations":[{"title":"Song Title","artist":"Artist Name"}]}]}.
                         Every title must contain the word "Mix" (e.g. "90s Grunge Mix", "Late Night Vibes Mix", "Synthwave Drive Mix").
                         """.trimIndent(),
-                    userPrompt =
-                        JSONObject()
-                            .put("basis", "recent listening history")
-                            .put("maxMixes", TopMixCountLimit)
-                            .put("maxSongsPerMix", TopMixSongsPerMix)
-                            .put("candidates", candidatePayload)
-                            .toString(),
-                    temperature = 0.35,
-                    maxTokens = 4096,
-                )
+                        userPrompt =
+                            JSONObject()
+                                .put("basis", "recent listening history")
+                                .put("maxMixes", TopMixCountLimit)
+                                .put("maxSongsPerMix", TopMixSongsPerMix)
+                                .put("candidates", candidatePayload)
+                                .toString(),
+                        temperature = 0.35,
+                        maxTokens = 4096,
+                    )
+                }
             return parseGeneratedMixes(
                 response = response,
                 candidateById = candidateById,
@@ -264,6 +279,7 @@ enum class TopMixGenerationFailure {
     NO_RECENT_HISTORY,
     NO_VALID_MIXES,
     AI_REQUEST_FAILED,
+    RATE_LIMITED,
 }
 
 private data class ValidatedTopMixSong(

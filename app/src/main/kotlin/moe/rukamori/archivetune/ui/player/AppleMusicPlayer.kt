@@ -411,14 +411,14 @@ private fun AppleMusicControlsColumn(
             }
             Spacer(Modifier.width(12.dp))
             AppleMusicChip(
-                iconRes = R.drawable.star,
+                iconRes = R.drawable.player_star,
                 tint = Color.White,
                 contentDescription = null,
                 onClick = playerConnection::toggleLike,
             )
             Spacer(Modifier.width(10.dp))
             AppleMusicChip(
-                iconRes = R.drawable.more_horiz,
+                iconRes = R.drawable.player_more_horiz,
                 tint = Color.White,
                 contentDescription = null,
                 onClick = onMoreClick,
@@ -456,7 +456,7 @@ private fun AppleMusicControlsColumn(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             AppleMusicTransportButton(
-                iconRes = R.drawable.fast_forward,
+                iconRes = R.drawable.player_fast_forward,
                 enabled = canSkipPrevious,
                 mirrored = true,
                 iconSize = AppleMusicTransportIconSize,
@@ -471,7 +471,7 @@ private fun AppleMusicControlsColumn(
                     )
                 } else {
                     AppleMusicTransportButton(
-                        iconRes = if (isPlaying) R.drawable.pause else R.drawable.play,
+                        iconRes = if (isPlaying) R.drawable.player_pause else R.drawable.player_play,
                         enabled = true,
                         mirrored = false,
                         iconSize = AppleMusicPlayPauseIconSize,
@@ -480,7 +480,7 @@ private fun AppleMusicControlsColumn(
                 }
             }
             AppleMusicTransportButton(
-                iconRes = R.drawable.fast_forward,
+                iconRes = R.drawable.player_fast_forward,
                 enabled = canSkipNext,
                 mirrored = false,
                 iconSize = AppleMusicTransportIconSize,
@@ -494,7 +494,7 @@ private fun AppleMusicControlsColumn(
             modifier = Modifier.fillMaxWidth(),
         ) {
             Icon(
-                painter = painterResource(R.drawable.volume_off),
+                painter = painterResource(R.drawable.player_volume_off),
                 contentDescription = null,
                 tint = Color.White.copy(alpha = 0.55f),
                 modifier = Modifier.size(18.dp),
@@ -507,7 +507,7 @@ private fun AppleMusicControlsColumn(
             )
             Spacer(Modifier.width(12.dp))
             Icon(
-                painter = painterResource(R.drawable.volume_up),
+                painter = painterResource(R.drawable.player_volume_up),
                 contentDescription = null,
                 tint = Color.White.copy(alpha = 0.55f),
                 modifier = Modifier.size(18.dp),
@@ -521,17 +521,17 @@ private fun AppleMusicControlsColumn(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             AppleMusicBottomButton(
-                iconRes = R.drawable.lyrics,
+                iconRes = R.drawable.player_lyrics,
                 contentDescription = stringResource(R.string.lyrics),
                 onClick = onLyricsClick,
             )
             AppleMusicBottomButton(
-                iconRes = R.drawable.airplay,
+                iconRes = R.drawable.player_airplay,
                 contentDescription = null,
                 onClick = onOutputClick,
             )
             AppleMusicBottomButton(
-                iconRes = R.drawable.queue_music,
+                iconRes = R.drawable.player_queue_music,
                 contentDescription = stringResource(R.string.queue),
                 onClick = onQueueClick,
             )

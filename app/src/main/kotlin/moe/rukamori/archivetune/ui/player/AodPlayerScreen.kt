@@ -185,7 +185,7 @@ fun AodPlayerScreen(
                         .padding(8.dp),
             ) {
                 Icon(
-                    painter = painterResource(R.drawable.close),
+                    painter = painterResource(R.drawable.player_close),
                     contentDescription = stringResource(R.string.aod_mode_exit),
                     tint = White70,
                 )
@@ -408,7 +408,7 @@ private fun AodControls(
             modifier = Modifier.size(skipButtonSize),
         ) {
             Icon(
-                painter = painterResource(R.drawable.skip_previous),
+                painter = painterResource(R.drawable.player_skip_previous),
                 contentDescription = null,
                 tint = if (canSkipPrevious) Color.White else White35,
                 modifier = Modifier.size(skipIconSize),
@@ -434,7 +434,7 @@ private fun AodControls(
                     colors = playButtonColors,
                 ) {
                     Icon(
-                        painter = painterResource(if (isPlaying) R.drawable.pause else R.drawable.play),
+                        painter = painterResource(if (isPlaying) R.drawable.player_pause else R.drawable.player_play),
                         contentDescription = null,
                         modifier = Modifier.size(playIconSize),
                     )
@@ -459,7 +459,7 @@ private fun AodControls(
                     colors = tonalButtonColors,
                 ) {
                     Icon(
-                        painter = painterResource(if (isPlaying) R.drawable.pause else R.drawable.play),
+                        painter = painterResource(if (isPlaying) R.drawable.player_pause else R.drawable.player_play),
                         contentDescription = null,
                         modifier = Modifier.size(playIconSize),
                     )
@@ -480,7 +480,7 @@ private fun AodControls(
                     modifier = Modifier.size(playButtonSize),
                 ) {
                     Icon(
-                        painter = painterResource(if (isPlaying) R.drawable.pause else R.drawable.play),
+                        painter = painterResource(if (isPlaying) R.drawable.player_pause else R.drawable.player_play),
                         contentDescription = null,
                         tint = Color.White,
                         modifier = Modifier.size(playIconSize),
@@ -503,7 +503,7 @@ private fun AodControls(
             modifier = Modifier.size(skipButtonSize),
         ) {
             Icon(
-                painter = painterResource(R.drawable.skip_next),
+                painter = painterResource(R.drawable.player_skip_next),
                 contentDescription = null,
                 tint = if (canSkipNext) Color.White else White35,
                 modifier = Modifier.size(skipIconSize),

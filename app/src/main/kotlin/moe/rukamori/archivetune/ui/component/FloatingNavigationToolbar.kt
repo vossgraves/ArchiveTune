@@ -44,6 +44,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateMapOf
@@ -91,6 +92,12 @@ class NavigationBarBackdrop(
 ) {
     var contentOffsetInRoot: Offset = Offset.Zero
 }
+
+/**
+ * The app-content capture used for frosted-glass surfaces (navigation bar, mini player). Null when
+ * no frosted surface is enabled or the device cannot blur (below Android 12).
+ */
+val LocalNavigationBarBackdrop = compositionLocalOf<NavigationBarBackdrop?> { null }
 
 private val NavigationItemsMaxWidth = 360.dp
 private val NavigationItemVerticalPadding = 8.dp
