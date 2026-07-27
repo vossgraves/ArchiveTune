@@ -155,18 +155,12 @@ object LosslessDownloader {
     }
 
     /**
-     * Atomically claims [id], returning false when a download for it is already running.
-     *
-     * Uses an explicit compareAndSet loop rather than [update], because update re-invokes its lambda
-     * when it loses the CAS race, which would leave a captured "did I add it" flag set from an attempt
-     * that never took effect — and two concurrent writers on one file is exactly what this prevents.
-     */
-    /**
      * Atomically claims [id], returning false if a download for it is already running.
      *
      * Stops a double-tap on the menu item from starting two downloads that write the same file.
-     * Uses compareAndSet rather than [MutableStateFlow.update], because update's lambda can be
-     * re-run under contention and so cannot reliably report whether *this* caller won the race.
+     * Uses an explicit compareAndSet loop rather than [MutableStateFlow.update], because update's
+     * lambda can be re-run under contention and so cannot reliably report whether *this* caller
+     * won the race.
      */
     private fun markActive(id: String): Boolean {
         while (true) {

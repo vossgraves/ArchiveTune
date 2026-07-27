@@ -124,6 +124,48 @@ object QobuzAudioProvider {
             .callTimeout(8, TimeUnit.SECONDS)
             .build()
 
+    /**
+     * Asks the CDN how big the file is, since Qobuz's getFileUrl response never says.
+     *
+     * Without this the details sheet shows a blank file size, and more importantly the offline check
+     * in MusicService (`downloadCache.isCached(mediaId, 0, contentLength)`) is handed 0 and always
+     * reports "not cached", so Qobuz tracks re-download every play.
+     *
+     * Tries HEAD first and falls back to a one-byte ranged GET, because some CDN edges reject HEAD
+     * on signed URLs but still answer a Range request with a Content-Range total. Returns null on any
+     * failure: a missing size is recoverable, a resolve that throws is not.
+     */
+    private fun probeContentLength(url: String): Long? {
+        val builder =
+            Request
+                .Builder()
+                .url(url)
+                // Identity encoding, or a gzipping edge would report the compressed size.
+                .header("Accept-Encoding", "identity")
+
+        runCatching {
+            healthClient.newCall(builder.head().build()).execute().use { response ->
+                if (!response.isSuccessful) return@use null
+                response.header("Content-Length")?.toLongOrNull()?.takeIf { it > 0L }
+            }
+        }.getOrNull()?.let { return it }
+
+        return runCatching {
+            healthClient
+                .newCall(builder.get().header("Range", "bytes=0-0").build())
+                .execute()
+                .use { response ->
+                    // "bytes 0-0/12345678" - the total after the slash is what we want. A plain
+                    // Content-Length here would be 1, so only trust it on a 206 with no Content-Range.
+                    response
+                        .header("Content-Range")
+                        ?.substringAfterLast('/', missingDelimiterValue = "")
+                        ?.toLongOrNull()
+                        ?.takeIf { it > 0L }
+                }
+        }.getOrNull()
+    }
+
     private data class CachedSearch(val match: Match?, val expiresAt: Long)
 
     /** Search metadata carried through to the final cross-provider safety gate. */
