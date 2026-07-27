@@ -950,7 +950,7 @@ fun SongMenu(
                             }
                             // Lossless download. Hidden for Telegram tracks, which are already a
                             // direct file source and are not resolvable through the Qobuz proxies.
-                            if (!song.id.isTelegramMediaId()) {
+                            if (!isTelegramSong) {
                                 ListItem(
                                     headlineContent = {
                                         Text(text = stringResource(R.string.action_download_lossless))
