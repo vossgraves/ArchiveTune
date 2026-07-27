@@ -91,6 +91,7 @@ import moe.rukamori.archivetune.constants.LosslessDownloadFolderKey
 import moe.rukamori.archivetune.constants.LosslessDownloadTagKey
 import moe.rukamori.archivetune.constants.QobuzAudioQuality
 import moe.rukamori.archivetune.constants.QobuzAudioQualityKey
+import moe.rukamori.archivetune.constants.toFormatId
 import moe.rukamori.archivetune.constants.SpeedDialSongIdsKey
 import moe.rukamori.archivetune.db.entities.ArtistEntity
 import moe.rukamori.archivetune.db.entities.Event
@@ -949,7 +950,7 @@ fun SongMenu(
                             }
                             // Lossless download. Hidden for Telegram tracks, which are already a
                             // direct file source and are not resolvable through the Qobuz proxies.
-                            if (!isTelegramMediaId(song.id)) {
+                            if (!song.id.isTelegramMediaId()) {
                                 ListItem(
                                     headlineContent = {
                                         Text(text = stringResource(R.string.action_download_lossless))
