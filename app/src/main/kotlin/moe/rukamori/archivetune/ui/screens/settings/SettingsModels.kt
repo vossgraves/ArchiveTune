@@ -24,6 +24,7 @@ data class SettingsProfileState(
 data class SettingsGroup(
     val title: String,
     val items: List<SettingsItem>,
+    val showWhenFiltered: Boolean = true,
 )
 
 @Immutable
