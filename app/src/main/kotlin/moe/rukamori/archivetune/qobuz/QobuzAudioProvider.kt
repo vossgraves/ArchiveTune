@@ -136,6 +136,10 @@ object QobuzAudioProvider {
      * failure: a missing size is recoverable, a resolve that throws is not.
      */
     private fun probeContentLength(url: String): Long? {
+        // Sits directly on the path to first audio frame, and both probes can run back to back, so
+        // healthClient's 8s call timeout would allow a 16s stall before playback starts. A size we
+        // failed to learn only costs a blank row and a re-download; making the user wait is worse.
+        val probeClient = healthClient.newBuilder().callTimeout(3, TimeUnit.SECONDS).build()
         val builder =
             Request
                 .Builder()
@@ -144,14 +148,14 @@ object QobuzAudioProvider {
                 .header("Accept-Encoding", "identity")
 
         runCatching {
-            healthClient.newCall(builder.head().build()).execute().use { response ->
+            probeClient.newCall(builder.head().build()).execute().use { response ->
                 if (!response.isSuccessful) return@use null
                 response.header("Content-Length")?.toLongOrNull()?.takeIf { it > 0L }
             }
         }.getOrNull()?.let { return it }
 
         return runCatching {
-            healthClient
+            probeClient
                 .newCall(builder.get().header("Range", "bytes=0-0").build())
                 .execute()
                 .use { response ->
