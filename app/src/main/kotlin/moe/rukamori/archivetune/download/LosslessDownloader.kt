@@ -18,7 +18,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.audiosource.DirectStream
 import moe.rukamori.archivetune.audiosource.TitleMatch
-import moe.rukamori.archivetune.constants.AudioSourceType
 import moe.rukamori.archivetune.qobuz.QobuzAudioProvider
 import okhttp3.OkHttpClient
 // Aliased: this file's own public Request type would otherwise shadow OkHttp's.
