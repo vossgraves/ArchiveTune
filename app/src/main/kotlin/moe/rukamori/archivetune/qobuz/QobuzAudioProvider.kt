@@ -22,6 +22,7 @@ import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 /**
  * Streaming/playback provider for user-provided Qobuz-DL proxy instances (squid.wtf / kennyy /
@@ -619,7 +620,9 @@ object QobuzAudioProvider {
                 .takeIf { !it.isNaN() && it > 0 }
                 ?: optDouble("maximum_sampling_rate", Double.NaN).takeIf { !it.isNaN() && it > 0 }
                 ?: return null
-        return if (raw > 1000) raw.toInt() else (raw * 1000).toInt()
+        // Round rather than truncate: 44.1 and 88.2 have no exact binary representation, so scaling
+        // by 1000 can land just under the integer and toInt() would report 44099 Hz.
+        return if (raw > 1000) raw.roundToInt() else (raw * 1000).roundToInt()
     }
 
     private fun JSONObject.bitDepthOrNull(): Int? =
