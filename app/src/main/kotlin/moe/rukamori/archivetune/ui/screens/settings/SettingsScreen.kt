@@ -35,11 +35,13 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -52,6 +54,8 @@ import moe.rukamori.archivetune.BuildConfig
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.ui.component.IconButton
+import moe.rukamori.archivetune.ui.component.LocalSettingsDialogShowing
+import moe.rukamori.archivetune.ui.component.rememberSettingsDialogHostState
 import moe.rukamori.archivetune.ui.utils.appBarScrollBehavior
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.Updater
@@ -112,13 +116,32 @@ fun SettingsScreen(
     var isUpdateDismissed by remember { mutableStateOf(false) }
     val settingsGroups = buildSettingsGroups(navController, isAndroid12OrLater, hasUpdate, context)
 
-    Scaffold(
-        modifier =
-            Modifier
-                .fillMaxSize()
-                .nestedScroll(scrollBehavior.nestedScrollConnection),
-        containerColor = MaterialTheme.colorScheme.surface,
-        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+    // Material 3 Expressive: when any settings dialog (history duration,
+    // lyrics preload count, etc.) is showing, apply a backdrop blur to
+    // the entire settings screen for a "frosted glass" effect. The
+    // dialog composables signal show/dismiss via LocalSettingsDialogShowing.
+    val settingsDialogShowing = rememberSettingsDialogHostState()
+
+    CompositionLocalProvider(LocalSettingsDialogShowing provides settingsDialogShowing) {
+        Scaffold(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .then(
+                        // Only blur when a dialog is showing. We use
+                        // `then(if ...) instead of `Modifier.blur(...)`
+                        // directly so the modifier chain is stable when
+                        // no dialog is open (avoids unnecessary
+                        // RenderEffect allocation on every recomposition).
+                        if (settingsDialogShowing.value) {
+                            Modifier.blur(10.dp)
+                        } else {
+                            Modifier
+                        },
+                    )
+                    .nestedScroll(scrollBehavior.nestedScrollConnection),
+            containerColor = MaterialTheme.colorScheme.surface,
+            contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             LargeFlexibleTopAppBar(
                 title = {
@@ -233,6 +256,7 @@ fun SettingsScreen(
                     )
                 }
             }
+        }
         }
     }
 }
