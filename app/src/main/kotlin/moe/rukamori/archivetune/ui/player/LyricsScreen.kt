@@ -124,6 +124,7 @@ import moe.rukamori.archivetune.constants.PlayerCustomBrightnessKey
 import moe.rukamori.archivetune.constants.PlayerCustomContrastKey
 import moe.rukamori.archivetune.constants.PlayerCustomImageUriKey
 import moe.rukamori.archivetune.constants.ShowLyricsPlayerControlsKey
+import moe.rukamori.archivetune.db.entities.LyricsEntity
 import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.ui.component.LocalMenuState
@@ -261,13 +262,26 @@ fun LyricsScreen(
         }
 
     LaunchedEffect(mediaMetadata.id, currentLyrics?.lyrics) {
-        if (currentLyrics != null) return@LaunchedEffect
+        // Only fetch manually here if the background MusicService fetch hasn't
+        // populated anything yet, OR if it populated a LYRICS_NOT_FOUND (so the
+        // user gets an automatic retry when they open the lyrics panel instead
+        // of being forced to use the manual search menu).
+        val needsFetch =
+            currentLyrics == null ||
+                currentLyrics.lyrics == LyricsEntity.LYRICS_NOT_FOUND
+        if (!needsFetch) return@LaunchedEffect
         try {
             val existingLyrics =
                 withContext(Dispatchers.IO) {
                     database.lyrics(mediaMetadata.id).first()
                 }
-            if (existingLyrics != null) return@LaunchedEffect
+            // Skip only if we already have real lyrics. LYRICS_NOT_FOUND triggers
+            // a retry below (mirrors MusicService behavior).
+            if (existingLyrics != null &&
+                existingLyrics.lyrics != LyricsEntity.LYRICS_NOT_FOUND
+            ) {
+                return@LaunchedEffect
+            }
 
             val lyrics =
                 withContext(Dispatchers.IO) {
@@ -275,7 +289,7 @@ fun LyricsScreen(
                 }
             withContext(Dispatchers.IO) {
                 database.query {
-                    insertLyricsIfAbsent(
+                    replaceLyricsIfAbsentOrNotFound(
                         id = mediaMetadata.id,
                         lyrics = lyrics,
                     )
