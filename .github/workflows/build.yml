@@ -170,6 +170,11 @@ jobs:
           SOURCE_PROVIDER_KEY: ${{ secrets.SOURCE_PROVIDER_KEY }}
           # Must exactly match ArchivePool's Railway POOL_CLIENT_KEY.
           POOL_CLIENT_KEY: ${{ secrets.POOL_CLIENT_KEY }}
+          # Telegram (TDLib) credentials from https://my.telegram.org/apps. Optional: when unset the
+          # build falls back to Telegram Desktop's public api_id, which violates Telegram's ToS and
+          # risks user account bans — set these secrets to ship this fork's own registered app.
+          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
 
       - name: Resolve release output directory
         id: release_dir
@@ -404,6 +409,8 @@ jobs:
           SOURCE_PROVIDER_URL: ${{ vars.SOURCE_PROVIDER_URL }}
           SOURCE_PROVIDER_KEY: ${{ secrets.SOURCE_PROVIDER_KEY }}
           POOL_CLIENT_KEY: ${{ secrets.POOL_CLIENT_KEY }}
+          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
 
       - name: Upload Debug APK
         uses: actions/upload-artifact@v7

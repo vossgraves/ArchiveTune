@@ -166,8 +166,14 @@ android {
         // Telegram (TDLib) app credentials. Baked in at build time so users sign in with just
         // their phone number + login code — no my.telegram.org api_id/api_hash entry. Override via
         // local.properties or the TELEGRAM_API_ID / TELEGRAM_API_HASH env vars (e.g. in CI) to ship
-        // the fork's own registered app. The fallback is the public Telegram Desktop api_id/hash,
-        // which every TDLib client can use out of the box.
+        // the fork's own registered app.
+        //
+        // TODO(vossgraves): replace the fallback below with this fork's own credentials.
+        // The fallback is Telegram Desktop's official api_id/api_hash. Reusing another client's
+        // credentials violates Telegram's ToS and risks the api_id being revoked and *users'*
+        // accounts being flagged or banned. Register an app at https://my.telegram.org/apps and
+        // set TELEGRAM_API_ID / TELEGRAM_API_HASH as repository secrets (already wired into the
+        // build + release workflows) — no code change is then required.
         val telegramApiId =
             (
                 localProperties.getProperty("TELEGRAM_API_ID")?.takeIf { it.isNotBlank() }
@@ -239,7 +245,7 @@ android {
                 .equals("true", ignoreCase = true)
         buildConfigField("boolean", "IS_NIGHTLY", "$isNightlyBuild")
         buildConfigField("String", "DISTRIBUTION", "\"gms\"")
-        buildConfigField("boolean", "UPDATER_AVAILABLE", "false")
+        buildConfigField("boolean", "UPDATER_AVAILABLE", "true")
     }
 
     flavorDimensions += listOf("distribution", "device", "abi")
@@ -248,7 +254,7 @@ android {
             dimension = "distribution"
             isDefault = true
             buildConfigField("String", "DISTRIBUTION", "\"gms\"")
-            buildConfigField("boolean", "UPDATER_AVAILABLE", "false")
+            buildConfigField("boolean", "UPDATER_AVAILABLE", "true")
             buildConfigField("String", "DISCORD_APPLICATION_ID", "\"$discordApplicationId\"")
             buildConfigField("long", "DISCORD_APPLICATION_ID_LONG", "${discordApplicationIdLong}L")
             buildConfigField("String", "DISCORD_REDIRECT_SCHEME", "\"$discordRedirectScheme\"")
@@ -257,7 +263,7 @@ android {
         create("foss") {
             dimension = "distribution"
             buildConfigField("String", "DISTRIBUTION", "\"foss\"")
-            buildConfigField("boolean", "UPDATER_AVAILABLE", "false")
+            buildConfigField("boolean", "UPDATER_AVAILABLE", "true")
             buildConfigField("String", "DISCORD_APPLICATION_ID", "\"$discordApplicationId\"")
             buildConfigField("long", "DISCORD_APPLICATION_ID_LONG", "${discordApplicationIdLong}L")
             buildConfigField("String", "DISCORD_REDIRECT_SCHEME", "\"$discordRedirectScheme\"")

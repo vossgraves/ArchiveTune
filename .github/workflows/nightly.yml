@@ -211,6 +211,10 @@ jobs:
           SOURCE_PROVIDER_KEY: ${{ secrets.SOURCE_PROVIDER_KEY }}
           # End-to-end decryption key for encrypted pool credentials (secret). Blank if unencrypted.
           POOL_CLIENT_KEY: ${{ secrets.POOL_CLIENT_KEY }}
+          # Telegram (TDLib) credentials from https://my.telegram.org/apps. Optional: when unset the
+          # build falls back to Telegram Desktop's public api_id, which violates Telegram's ToS.
+          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
 
       - name: Resolve release output directory
         id: release_dir
