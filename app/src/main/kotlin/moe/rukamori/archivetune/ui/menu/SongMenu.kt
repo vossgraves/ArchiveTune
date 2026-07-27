@@ -10,7 +10,11 @@
 package moe.rukamori.archivetune.ui.menu
 
 import android.content.Intent
+import android.net.Uri
+import android.provider.DocumentsContract
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
@@ -51,6 +55,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.media3.datasource.cache.CacheSpan
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -136,6 +141,27 @@ fun SongMenu(
     var refetchIconDegree by remember { mutableFloatStateOf(0f) }
 
     val cacheViewModel = hiltViewModel<CachePlaylistViewModel>()
+
+    // SAF folder picker for "Export to folder" — lets the user pick any
+    // folder (internal or external, including OTG/cloud providers that
+    // expose a document tree) and copies the cached downloaded audio
+    // file there. The launcher is created at composition time and the
+    // selected tree URI is handed off to the export coroutine below.
+    val downloadUtil = LocalDownloadUtil.current
+    val exportFolderLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { treeUri ->
+            if (treeUri == null) return@rememberLauncherForActivityResult
+            val songId = song.id
+            val songTitle = song.song.title
+            coroutineScope.launch {
+                val result = withContext(Dispatchers.IO) { exportDownloadedSong(context, downloadUtil, treeUri, songId, songTitle) }
+                val msgResId = result.fold(
+                    onSuccess = { R.string.export_to_folder_success },
+                    onFailure = { R.string.export_to_folder_failed },
+                )
+                Toast.makeText(context, context.getString(msgResId), Toast.LENGTH_SHORT).show()
+            }
+        }
 
     val rotationAnimation by animateFloatAsState(
         targetValue = refetchIconDegree,
@@ -853,6 +879,27 @@ fun SongMenu(
                                     )
                                 }
                             }
+                            // Export the downloaded audio file to any folder the user
+                            // picks via the Storage Access Framework folder picker.
+                            // Only shown when the download has actually completed.
+                            if (download?.state == Download.STATE_COMPLETED) {
+                                ListItem(
+                                    headlineContent = {
+                                        Text(text = stringResource(R.string.export_to_folder))
+                                    },
+                                    leadingContent = {
+                                        Icon(
+                                            painter = painterResource(R.drawable.backup),
+                                            contentDescription = null,
+                                        )
+                                    },
+                                    modifier =
+                                        Modifier.clickable {
+                                            exportFolderLauncher.launch(null)
+                                        },
+                                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                                )
+                            }
                             if (externalDownloaderEnabled) {
                                 HorizontalDivider(
                                     modifier = Modifier.padding(start = 56.dp),
@@ -1018,5 +1065,64 @@ fun SongMenu(
                 }
             }
         }
+    }
+}
+
+/**
+ * Exports the downloaded audio file for [songId] from the ExoPlayer
+ * download cache into the user-picked [treeUri] folder.
+ *
+ * The ExoPlayer download cache stores each song as a series of CacheSpan
+ * files keyed by the song's media id. We concatenate all spans (sorted
+ * by position) into a single output stream provided by the
+ * ContentResolver for a new document created under the picked tree.
+ *
+ * @return the URI of the exported file on success, or an exception on
+ *   failure (caller is responsible for surfacing a toast).
+ */
+private suspend fun exportDownloadedSong(
+    context: android.content.Context,
+    downloadUtil: moe.rukamori.archivetune.playback.DownloadUtil,
+    treeUri: Uri,
+    songId: String,
+    songTitle: String,
+): Result<Uri> = runCatching {
+    withContext(Dispatchers.IO) {
+        // Access the underlying SimpleCache for the download cache. The
+        // DownloadUtil exposes it via reflection-free accessor — we read
+        // the spans directly via Cache (interface). CacheSpan files are
+        // already byte-aligned chunks of the original audio file, in
+        // order, so concatenating them yields the full audio.
+        val cache = downloadUtil.downloadCache
+        val spans = cache.getCachedSpans(songId)
+        if (spans.isEmpty()) {
+            throw IllegalStateException("Download cache is empty for this song")
+        }
+
+        // Pick a safe filename. Strip characters that are problematic on
+        // most filesystems and that the SAF DocumentContract generally
+        // rejects.
+        val safeTitle = songTitle.trim().replace(Regex("[\\\\/:*?\"<>|]"), "_").ifBlank { "audio" }
+        val displayName = "$safeTitle.mp3"
+
+        // Create the destination document under the picked tree URI.
+        val destUri =
+            DocumentsContract.createDocument(
+                context.contentResolver,
+                treeUri,
+                "audio/mpeg",
+                displayName,
+            ) ?: throw IllegalStateException("Could not create destination file in the picked folder")
+
+        context.contentResolver.openOutputStream(destUri, "w")?.use { output ->
+            spans.sortedBy { it.position }.forEach { span ->
+                java.io.FileInputStream(span.file).use { input ->
+                    input.copyTo(output)
+                }
+            }
+            output.flush()
+        } ?: throw IllegalStateException("Could not open destination stream")
+
+        destUri
     }
 }

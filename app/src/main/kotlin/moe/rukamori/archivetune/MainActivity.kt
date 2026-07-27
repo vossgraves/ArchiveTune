@@ -1917,6 +1917,19 @@ class MainActivity : ComponentActivity() {
                                                                 },
                                                             )
                                                             DropdownMenuItem(
+                                                                text = { Text(stringResource(R.string.lastfm_dashboard)) },
+                                                                onClick = {
+                                                                    profileMenuExpanded = false
+                                                                    navController.navigate("lastfm_dashboard")
+                                                                },
+                                                                leadingIcon = {
+                                                                    Icon(
+                                                                        painter = painterResource(R.drawable.stats),
+                                                                        contentDescription = null,
+                                                                    )
+                                                                },
+                                                            )
+                                                            DropdownMenuItem(
                                                                 text = { Text(stringResource(R.string.settings)) },
                                                                 onClick = {
                                                                     profileMenuExpanded = false

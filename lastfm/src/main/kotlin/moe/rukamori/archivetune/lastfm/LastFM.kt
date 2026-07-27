@@ -22,7 +22,10 @@ import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.Json
 import moe.rukamori.archivetune.lastfm.models.Authentication
 import moe.rukamori.archivetune.lastfm.models.LastFmError
+import moe.rukamori.archivetune.lastfm.models.RecentTracksResponse
+import moe.rukamori.archivetune.lastfm.models.TopTracksResponse
 import moe.rukamori.archivetune.lastfm.models.TokenResponse
+import moe.rukamori.archivetune.lastfm.models.UserInfo
 import java.net.URI
 import java.security.MessageDigest
 
@@ -187,6 +190,65 @@ object LastFM {
                     album?.let { put("album[0]", it) }
                     trackNumber?.let { put("trackNumber[0]", it.toString()) }
                     duration?.let { put("duration[0]", it.toString()) }
+                },
+        )
+    }
+
+    // --- Dashboard data fetchers -------------------------------------------
+
+    /**
+     * Fetches the user's profile info (playcount, registration date,
+     * avatar, etc.) for the Last.fm dashboard. Requires the user to be
+     * logged in (a session key is required by the dashboard contract,
+     * though the underlying Last.fm API endpoint technically allows
+     * unauthenticated reads; we keep it consistent with the rest of
+     * the dashboard).
+     */
+    suspend fun getUserInfo(username: String) =
+        runCatching {
+            postAndDecode<UserInfo>(
+                method = "user.getInfo",
+                extra = mapOf("user" to username),
+            )
+        }
+
+    /**
+     * Fetches the user's recent listening history for the dashboard.
+     * Limit defaults to 50 (Last.fm's max per page).
+     */
+    suspend fun getRecentTracks(
+        username: String,
+        limit: Int = 50,
+        page: Int = 1,
+    ) = runCatching {
+        postAndDecode<RecentTracksResponse>(
+            method = "user.getRecentTracks",
+            extra =
+                buildMap {
+                    put("user", username)
+                    put("limit", limit.toString())
+                    put("page", page.toString())
+                },
+        )
+    }
+
+    /**
+     * Fetches the user's all-time top tracks for the dashboard.
+     */
+    suspend fun getTopTracks(
+        username: String,
+        period: String = "overall",
+        limit: Int = 50,
+        page: Int = 1,
+    ) = runCatching {
+        postAndDecode<TopTracksResponse>(
+            method = "user.getTopTracks",
+            extra =
+                buildMap {
+                    put("user", username)
+                    put("period", period)
+                    put("limit", limit.toString())
+                    put("page", page.toString())
                 },
         )
     }

@@ -1338,18 +1338,21 @@ class MusicService :
         combine(
             currentMediaMetadata.distinctUntilChangedBy { it?.id },
             dataStore.data.map { it[ShowLyricsKey] ?: false }.distinctUntilChanged(),
-        ) { mediaMetadata, showLyrics ->
-            mediaMetadata to showLyrics
-        }.collectLatest(ioScope) { (mediaMetadata, showLyrics) ->
+        ) { mediaMetadata, _ ->
+            mediaMetadata
+        }.collectLatest(ioScope) { mediaMetadata ->
             if (mediaMetadata == null) return@collectLatest
-            // Telegram tracks have no embedded lyrics, so fetch through the provider chain on
-            // every play (not only once the lyrics panel has been opened), and retry a stored
-            // LYRICS_NOT_FOUND — early plays can fail while metadata/network are still settling.
-            val isTelegram = mediaMetadata.id.isTelegramMediaId()
-            if (!showLyrics && !isTelegram) return@collectLatest
+            // Always attempt to fetch lyrics when a new song starts playing so the
+            // lyrics panel is ready by the time the user opens it (instead of
+            // requiring the user to manually open the panel + search to trigger a
+            // fetch). Previously this was gated on `showLyrics || isTelegram`,
+            // which broke auto-fetch for non-Telegram tracks by default.
+            //
+            // We also retry a stored LYRICS_NOT_FOUND on every play, because early
+            // plays can fail while metadata/network are still settling.
             val stored = database.lyrics(mediaMetadata.id).first()
             val shouldFetch =
-                stored == null || (isTelegram && stored.lyrics == LyricsEntity.LYRICS_NOT_FOUND)
+                stored == null || stored.lyrics == LyricsEntity.LYRICS_NOT_FOUND
             if (shouldFetch) {
                 val lyrics = lyricsHelper.getLyrics(mediaMetadata)
                 database.query {

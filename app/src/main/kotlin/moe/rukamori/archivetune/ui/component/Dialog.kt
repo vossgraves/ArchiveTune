@@ -46,6 +46,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -55,8 +56,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -81,6 +84,16 @@ fun DefaultDialog(
     contentScrollable: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    // Signal "dialog showing" to the parent screen so it can apply a
+    // backdrop blur (Material 3 Expressive frosted-glass effect). The
+    // default value is a no-op MutableState, so this is a safe no-op
+    // when the dialog is shown outside of an opt-in screen.
+    val dialogShowingState = LocalSettingsDialogShowing.current
+    DisposableEffect(Unit) {
+        dialogShowingState.value = true
+        onDispose { dialogShowingState.value = false }
+    }
+
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
@@ -96,9 +109,12 @@ fun DefaultDialog(
         ) {
             Surface(
                 modifier = Modifier.heightIn(max = maxHeight),
+                // Material 3 Expressive: extra-large rounded corners +
+                // elevated tonal surface for a more modern dialog look.
                 shape = AlertDialogDefaults.shape,
                 color = AlertDialogDefaults.containerColor,
                 tonalElevation = AlertDialogDefaults.TonalElevation,
+                shadowElevation = 6.dp,
             ) {
                 Column(
                     modifier = modifier.padding(24.dp),
@@ -177,6 +193,16 @@ fun ActionPromptDialog(
     onCancel: (() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit = {},
 ) {
+    // Signal "dialog showing" to the parent screen so it can apply a
+    // backdrop blur (Material 3 Expressive frosted-glass effect). The
+    // default value is a no-op MutableState, so this is a safe no-op
+    // when the dialog is shown outside of an opt-in screen.
+    val dialogShowingState = LocalSettingsDialogShowing.current
+    DisposableEffect(Unit) {
+        dialogShowingState.value = true
+        onDispose { dialogShowingState.value = false }
+    }
+
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
@@ -192,9 +218,12 @@ fun ActionPromptDialog(
         ) {
             Surface(
                 modifier = Modifier.heightIn(max = maxHeight),
+                // Material 3 Expressive: extra-large rounded corners +
+                // elevated tonal surface for a more modern dialog look.
                 shape = AlertDialogDefaults.shape,
                 color = AlertDialogDefaults.containerColor,
                 tonalElevation = AlertDialogDefaults.TonalElevation,
+                shadowElevation = 6.dp,
             ) {
                 Column(
                     modifier = Modifier.padding(24.dp),
@@ -261,6 +290,16 @@ fun ListDialog(
     modifier: Modifier = Modifier,
     content: LazyListScope.() -> Unit,
 ) {
+    // Signal "dialog showing" to the parent screen so it can apply a
+    // backdrop blur (Material 3 Expressive frosted-glass effect). The
+    // default value is a no-op MutableState, so this is a safe no-op
+    // when the dialog is shown outside of an opt-in screen.
+    val dialogShowingState = LocalSettingsDialogShowing.current
+    DisposableEffect(Unit) {
+        dialogShowingState.value = true
+        onDispose { dialogShowingState.value = false }
+    }
+
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
@@ -276,9 +315,12 @@ fun ListDialog(
         ) {
             Surface(
                 modifier = Modifier.heightIn(max = maxHeight),
+                // Material 3 Expressive: extra-large rounded corners +
+                // elevated tonal surface for a more modern dialog look.
                 shape = AlertDialogDefaults.shape,
                 color = AlertDialogDefaults.containerColor,
                 tonalElevation = AlertDialogDefaults.TonalElevation,
+                shadowElevation = 6.dp,
             ) {
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
