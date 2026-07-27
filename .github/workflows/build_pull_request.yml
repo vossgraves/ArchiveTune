@@ -5,6 +5,13 @@ on:
     branches:
       - "**"
 
+concurrency:
+  # One in-flight build per PR. Without this, pushing several commits in quick succession leaves
+  # every obsolete build queued and competing for runners, so the commit you actually care about
+  # waits behind builds whose result is already irrelevant.
+  group: pr-build-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest

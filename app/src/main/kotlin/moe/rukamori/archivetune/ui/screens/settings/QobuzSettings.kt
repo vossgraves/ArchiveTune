@@ -137,6 +137,34 @@ fun QobuzSettings(navController: NavController) {
 
     // Direct-API tokens, stored as a JSON list. Tried before proxy instances during resolution.
     val (storedTokens, onStoredTokensChange) = rememberPreference(QobuzTokensKey, "")
+
+    // Destination + tagging options for the "Download lossless" action in the song menu.
+    val (losslessFolder, onLosslessFolderChange) = rememberPreference(LosslessDownloadFolderKey, "")
+    val (embedTags, onEmbedTagsChange) = rememberPreference(LosslessDownloadTagKey, true)
+
+    // Resolve the tree Uri to the folder's display name. Falls back to "not set" when nothing has
+    // been picked yet, or when a previously granted folder was deleted or had its grant revoked.
+    val losslessFolderLabel =
+        remember(losslessFolder) {
+            losslessFolder
+                .takeIf { it.isNotEmpty() }
+                ?.let { stored ->
+                    runCatching { DocumentFile.fromTreeUri(context, stored.toUri())?.name }.getOrNull()
+                }
+        } ?: stringResource(R.string.lossless_download_folder_unset)
+
+    val pickLosslessFolderLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { treeUri ->
+            if (treeUri == null) return@rememberLauncherForActivityResult
+            // Persist the grant so the choice survives reboots and we only have to ask once.
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    treeUri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                )
+            }
+            onLosslessFolderChange(treeUri.toString())
+        }
     val tokens = remember(storedTokens) { QobuzToken.listFromJson(storedTokens) }
     fun persistTokens(list: List<QobuzToken>) {
         val deduped = list.distinctBy { it.token }
@@ -589,6 +617,27 @@ fun QobuzSettings(navController: NavController) {
                                 QobuzAudioQuality.MAX -> stringResource(R.string.qobuz_quality_max)
                             }
                         },
+                    )
+                }
+            }
+
+            PreferenceGroup(title = stringResource(R.string.lossless_download_group)) {
+                item {
+                    PreferenceEntry(
+                        title = { Text(stringResource(R.string.lossless_download_folder)) },
+                        description = losslessFolderLabel,
+                        icon = { Icon(painterResource(R.drawable.snippet_folder), null) },
+                        onClick = { pickLosslessFolderLauncher.launch(null) },
+                    )
+                }
+
+                item {
+                    SwitchPreference(
+                        title = { Text(stringResource(R.string.lossless_download_tag)) },
+                        description = stringResource(R.string.lossless_download_tag_description),
+                        icon = { Icon(painterResource(R.drawable.info), null) },
+                        checked = embedTags,
+                        onCheckedChange = onEmbedTagsChange,
                     )
                 }
             }
