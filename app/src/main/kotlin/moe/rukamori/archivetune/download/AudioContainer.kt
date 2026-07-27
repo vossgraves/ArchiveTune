@@ -33,7 +33,13 @@ enum class AudioContainer(
     ;
 
     companion object {
-        /** Enough bytes to cover an ID3v2 header plus the ftyp box that follows it. */
+        /**
+         * Bytes to read for a probe. Comfortably covers every magic-byte check below.
+         *
+         * Deliberately not large enough to skip a full ID3v2 tag, which is usually several KB once
+         * cover art is embedded. That only costs us the rare ID3-prefixed-MP4 case, which falls back
+         * to MP3 — the correct answer for the overwhelmingly more common ID3-prefixed MP3.
+         */
         const val PROBE_BYTES = 64
 
         /**

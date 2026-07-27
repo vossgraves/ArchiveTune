@@ -215,8 +215,10 @@ object LosslessDownloader {
             // Replace any previous partial/complete file with the same name so a retry cannot leave
             // "Song (1).flac" clutter behind.
             folder.findFile(fileName)?.delete()
+            // Derive the mime from the extension we settled on, so the two can never disagree —
+            // SAF stores this type and other apps use it to decide how to open the file.
             val target =
-                folder.createFile(stream.mimeType.ifBlank { "audio/flac" }, fileName)
+                folder.createFile(mimeForExtension(extension), fileName)
                     ?: throw IOException("Could not create $fileName in the selected folder")
 
             var written = 0L
@@ -276,12 +278,19 @@ object LosslessDownloader {
      */
     private fun extensionFor(stream: DirectStream): String =
         when {
-            stream.mimeType.contains("flac", true) -> "flac"
-            stream.mimeType.contains("mp4", true) || stream.codecs.contains("alac", true) -> "m4a"
-            stream.mimeType.contains("mpeg", true) -> "mp3"
-            stream.uri.contains(".flac", true) -> "flac"
-            else -> "flac"
+            // ALAC is carried in an MP4 container, so the codec has to win over a generic mime.
+            stream.codecs.contains("alac", true) -> "m4a"
+            // The proxy puts the real extension in the path (…/file.flac), which is more reliable
+            // than its Content-Type — some instances return application/octet-stream for FLAC.
+            stream.uri.substringBefore('?').contains(".flac", true) -> "flac"
+            // Otherwise trust the mime. Falls back to m4a, never to a bare "flac" guess: naming a
+            // non-FLAC file .flac is the exact mislabelling this class exists to stop.
+            else -> AudioContainer.extensionForMime(stream.mimeType.ifBlank { null })
         }
+
+    /** Inverse of [AudioContainer.extensionForMime], so the stored type always matches the name. */
+    private fun mimeForExtension(extension: String): String =
+        AudioContainer.entries.firstOrNull { it.extension == extension }?.mimeType ?: "audio/mp4"
 
     private fun buildFileName(
         request: Request,

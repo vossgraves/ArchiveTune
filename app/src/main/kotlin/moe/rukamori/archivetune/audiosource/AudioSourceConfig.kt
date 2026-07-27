@@ -34,7 +34,31 @@ data class DirectStream(
     val matchedDurationMs: Long? = null,
     /** True only when the provider resolved a catalog id that is already authoritative. */
     val trustedDirectId: Boolean = false,
+    /**
+     * Real technical metadata as reported by the provider, in Hz and bits respectively.
+     *
+     * These exist so the media-info "Details" tab can show what a track actually is. Without them the
+     * playback layer had to infer values from the quality tier in [label], which mislabels any stream
+     * whose tier does not match the guess: Qobuz alone serves 44.1, 48, 88.2, 96, 176.4 and 192 kHz
+     * all under one "HI_RES" banner. Null means the provider did not report it, in which case the
+     * consumer should fall back to a tier heuristic rather than inventing precision.
+     */
+    val sampleRate: Int? = null,
+    val bitDepth: Int? = null,
 )
+
+/**
+ * Uncompressed PCM bitrate in bits/sec, or null when either input is unknown.
+ *
+ * For FLAC this is the pre-compression ceiling, not the true average rate (real FLAC typically lands
+ * 40-60% lower), but it is the figure streaming services quote for a tier, so it matches what users
+ * see elsewhere. Assumes stereo, which holds for effectively the whole catalog.
+ */
+fun DirectStream.pcmBitrateOrNull(channels: Int = 2): Int? {
+    val rate = sampleRate?.takeIf { it > 0 } ?: return null
+    val depth = bitDepth?.takeIf { it > 0 } ?: return null
+    return rate * depth * channels
+}
 
 /**
  * Metadata-aware track matching used to gate lossless source playback. Inspired by Stash's matcher,

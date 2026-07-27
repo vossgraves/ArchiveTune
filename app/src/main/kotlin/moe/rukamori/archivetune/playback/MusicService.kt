@@ -8208,20 +8208,29 @@ class MusicService :
             stream.codecs.ifBlank {
                 stream.mimeType.substringAfter("codecs=", "").removeSurrounding("\"").ifBlank { "flac" }
             }
-        // Tidal tiers: HI_RES_LOSSLESS is 24-bit/up to 192 kHz; LOSSLESS (HiFi) is 16-bit/44.1 kHz.
+        // Prefer what the provider actually reported. The tier heuristic is only a fallback, because a
+        // tier maps to a RANGE rather than a value: Qobuz serves 44.1 through 192 kHz all under
+        // "HI_RES", so a fixed 96 kHz guess mislabels most hi-res tracks. Tidal exposes no per-track
+        // figures, so it keeps using the heuristic.
         val sampleRate =
-            when {
-                label.contains("HI_RES") || label.contains("MASTER") || label.contains("MQA") -> 96_000
-                label.contains("LOSSLESS") || codecs.contains("flac", true) || codecs.contains("alac", true) -> 44_100
-                else -> null
-            }
+            stream.sampleRate?.takeIf { it > 0 }
+                ?: when {
+                    label.contains("HI_RES") || label.contains("MASTER") || label.contains("MQA") -> 96_000
+                    label.contains("LOSSLESS") ||
+                        codecs.contains("flac", true) ||
+                        codecs.contains("alac", true) -> 44_100
+                    else -> null
+                }
         val bitrate =
-            when {
-                label.contains("HI_RES") || label.contains("MASTER") || label.contains("MQA") -> 2_304_000
-                label.contains("LOSSLESS") || codecs.contains("flac", true) || codecs.contains("alac", true) -> 1_411_000
-                label.contains("HIGH") -> 320_000
-                else -> 0
-            }
+            stream.pcmBitrateOrNull()
+                ?: when {
+                    label.contains("HI_RES") || label.contains("MASTER") || label.contains("MQA") -> 2_304_000
+                    label.contains("LOSSLESS") ||
+                        codecs.contains("flac", true) ||
+                        codecs.contains("alac", true) -> 1_411_000
+                    label.contains("HIGH") -> 320_000
+                    else -> 0
+                }
         val formatEntity =
             FormatEntity(
                 id = mediaId,

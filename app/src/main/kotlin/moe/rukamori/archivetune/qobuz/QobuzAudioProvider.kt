@@ -132,6 +132,15 @@ object QobuzAudioProvider {
         val artist: String?,
         val album: String?,
         val durationMs: Long?,
+        /**
+         * From the search hit's `maximum_sampling_rate` / `maximum_bit_depth`, in Hz and bits.
+         *
+         * Used only as a fallback when the download response omits them. Note "maximum" is the best
+         * the track is available at, which can exceed what the requested format tier actually
+         * delivers, so a value from the download call always wins.
+         */
+        val sampleRate: Int? = null,
+        val bitDepth: Int? = null,
     )
 
     private data class CachedStream(val stream: DirectStream, val expiresAt: Long)
@@ -410,13 +419,17 @@ object QobuzAudioProvider {
                     uri = download.url,
                     mimeType = download.mimeType,
                     codecs = download.codecs,
-                    contentLength = null,
+                    contentLength = download.contentLength,
                     label = "Qobuz ${qualityLabel(formatId)}",
                     source = AudioSourceType.QOBUZ,
                     matchedTitle = match.title,
                     matchedArtist = match.artist,
                     matchedAlbum = match.album,
                     matchedDurationMs = match.durationMs,
+                    // Prefer what the API reported; fall back to the search hit, which carries
+                    // maximum_* for the track. Both beat guessing from the quality tier.
+                    sampleRate = download.sampleRate ?: match.sampleRate,
+                    bitDepth = download.bitDepth ?: match.bitDepth,
                 )
             streamCache[cacheKey] = CachedStream(stream, now + STREAM_CACHE_MS)
             Timber.tag("Qobuz").i("resolved \"%s\" via %s [%s]", query.title, backend.label, stream.label)
@@ -498,6 +511,8 @@ object QobuzAudioProvider {
         var bestArtist: String? = null
         var bestAlbum: String? = null
         var bestDurationMs: Long? = null
+        var bestSampleRate: Int? = null
+        var bestBitDepth: Int? = null
         var bestScore = Int.MIN_VALUE
         for (index in 0 until items.length()) {
             val item = items.optJSONObject(index) ?: continue
@@ -527,11 +542,13 @@ object QobuzAudioProvider {
                 bestArtist = candidateArtist.takeIf { it.isNotBlank() }
                 bestAlbum = candidateAlbum
                 bestDurationMs = candidateDurationMs
+                bestSampleRate = item.samplingRateHz()
+                bestBitDepth = item.bitDepthOrNull()
             }
         }
         val id = bestId
         return if (bestScore >= MIN_MATCH_SCORE && id != null) {
-            Match(id, bestTitle, bestArtist, bestAlbum, bestDurationMs)
+            Match(id, bestTitle, bestArtist, bestAlbum, bestDurationMs, bestSampleRate, bestBitDepth)
         } else {
             null
         }
@@ -584,7 +601,29 @@ object QobuzAudioProvider {
         val mimeType: String,
         val codecs: String,
         val isPreview: Boolean,
+        /** Hz / bits / bytes as reported by the API. Null when the response omitted the field. */
+        val sampleRate: Int? = null,
+        val bitDepth: Int? = null,
+        val contentLength: Long? = null,
     )
+
+    /**
+     * Reads Qobuz's sampling rate, which the API reports in kHz as a float ("44.1", "96", "192").
+     *
+     * Some proxies pass it through already converted to Hz, so treat any value above 1000 as Hz and
+     * anything smaller as kHz. Without that check a 96 kHz track would be stored as 96 Hz.
+     */
+    private fun JSONObject.samplingRateHz(): Int? {
+        val raw =
+            optDouble("sampling_rate", Double.NaN)
+                .takeIf { !it.isNaN() && it > 0 }
+                ?: optDouble("maximum_sampling_rate", Double.NaN).takeIf { !it.isNaN() && it > 0 }
+                ?: return null
+        return if (raw > 1000) raw.toInt() else (raw * 1000).toInt()
+    }
+
+    private fun JSONObject.bitDepthOrNull(): Int? =
+        (optInt("bit_depth", 0).takeIf { it > 0 } ?: optInt("maximum_bit_depth", 0).takeIf { it > 0 })
 
     /** Calls download-music and extracts the direct URL + a best-effort preview flag. */
     private fun fetchDownload(
@@ -623,7 +662,21 @@ object QobuzAudioProvider {
                     else -> AUDIO_FLAC_MIME_TYPE
                 }
             val codecs = if (mime == AUDIO_FLAC_MIME_TYPE) "flac" else "mp4a.40.2"
-            return DownloadResult(streamUrl, mime, codecs, isPreview)
+            // Proxies wrap the Qobuz payload, so the technical fields may sit at the root or one
+            // level down under "data". Check both before giving up and letting the caller guess.
+            val meta = root.optJSONObject("data") ?: root
+            return DownloadResult(
+                url = streamUrl,
+                mimeType = mime,
+                codecs = codecs,
+                isPreview = isPreview,
+                sampleRate = meta.samplingRateHz() ?: root.samplingRateHz(),
+                bitDepth = meta.bitDepthOrNull() ?: root.bitDepthOrNull(),
+                contentLength =
+                    meta.longOrNull("file_size")
+                        ?: meta.longOrNull("size")
+                        ?: root.longOrNull("file_size"),
+            )
         }
     }
 
@@ -709,7 +762,16 @@ object QobuzAudioProvider {
                 else -> AUDIO_FLAC_MIME_TYPE
             }
         val codecs = if (mime == AUDIO_FLAC_MIME_TYPE) "flac" else "mp4a.40.2"
-        return DownloadResult(streamUrl, mime, codecs, isPreview)
+        return DownloadResult(
+            url = streamUrl,
+            mimeType = mime,
+            codecs = codecs,
+            isPreview = isPreview,
+            sampleRate = root.samplingRateHz(),
+            bitDepth = root.bitDepthOrNull(),
+            // getFileUrl does not include a size; a proxy mirroring the payload sometimes does.
+            contentLength = root.longOrNull("file_size") ?: root.longOrNull("size"),
+        )
     }
 
     private fun directRequest(
