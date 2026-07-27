@@ -266,9 +266,16 @@ fun LyricsScreen(
         // populated anything yet, OR if it populated a LYRICS_NOT_FOUND (so the
         // user gets an automatic retry when they open the lyrics panel instead
         // of being forced to use the manual search menu).
+        //
+        // NOTE: snapshot `currentLyrics` into a local val so the compiler can
+        // smart-cast it to non-null. `currentLyrics` itself is a delegated
+        // property (State<LyricsEntity?>) and cannot be smart-cast across the
+        // `||` because it could be invalidated between the null-check and the
+        // member-access.
+        val snapshot = currentLyrics
         val needsFetch =
-            currentLyrics == null ||
-                currentLyrics.lyrics == LyricsEntity.LYRICS_NOT_FOUND
+            snapshot == null ||
+                snapshot.lyrics == LyricsEntity.LYRICS_NOT_FOUND
         if (!needsFetch) return@LaunchedEffect
         try {
             val existingLyrics =
