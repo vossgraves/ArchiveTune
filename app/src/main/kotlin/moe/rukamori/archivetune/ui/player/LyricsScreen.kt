@@ -14,11 +14,9 @@ import android.view.HapticFeedbackConstants
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
@@ -74,6 +72,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
@@ -579,13 +578,11 @@ fun LyricsScreen(
                 AnimatedVisibility(
                     visible = controlsVisible,
                     enter =
-                        fadeIn(tween(180)) +
-                            slideInVertically(tween(240)) { fullHeight -> fullHeight / 6 } +
-                            expandVertically(tween(240)),
+                        fadeIn(tween(120)) +
+                            slideInVertically(tween(180)) { fullHeight -> fullHeight / 6 },
                     exit =
-                        fadeOut(tween(120)) +
-                            slideOutVertically(tween(180)) { fullHeight -> fullHeight / 8 } +
-                            shrinkVertically(tween(180)),
+                        fadeOut(tween(90)) +
+                            slideOutVertically(tween(140)) { fullHeight -> fullHeight / 8 },
                     label = "lyrics-player-controls",
                 ) {
                     AppleMusicControls(
@@ -978,8 +975,8 @@ private fun AppleMusicControls(
 
         AnimatedVisibility(
             visible = controlsExpanded,
-            enter = fadeIn(tween(180)) + expandVertically(tween(220)),
-            exit = fadeOut(tween(120)) + shrinkVertically(tween(180)),
+            enter = fadeIn(tween(120)) + slideInVertically(tween(160)) { fullHeight -> fullHeight / 8 },
+            exit = fadeOut(tween(90)) + slideOutVertically(tween(120)) { fullHeight -> fullHeight / 10 },
             label = "lyrics-expanded-player-controls",
         ) {
             Column(
@@ -998,11 +995,12 @@ private fun AppleMusicControls(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     AppleMusicTransportButton(
-                        iconRes = R.drawable.player_skip_previous,
+                        iconRes = R.drawable.player_fast_forward,
                         contentDescription = stringResource(R.string.widget_previous),
                         iconSize = 44.dp,
                         touchSize = 68.dp,
                         foregroundColor = foregroundColor,
+                        mirrored = true,
                         onClick = onPreviousClick,
                     )
                     IconButton(
@@ -1029,11 +1027,12 @@ private fun AppleMusicControls(
                         }
                     }
                     AppleMusicTransportButton(
-                        iconRes = R.drawable.player_skip_next,
+                        iconRes = R.drawable.player_fast_forward,
                         contentDescription = stringResource(R.string.next),
                         iconSize = 44.dp,
                         touchSize = 68.dp,
                         foregroundColor = foregroundColor,
+                        mirrored = false,
                         onClick = onNextClick,
                     )
                 }
@@ -1046,7 +1045,7 @@ private fun AppleMusicControls(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Icon(
-                        painter = painterResource(R.drawable.player_volume_off),
+                        painter = painterResource(R.drawable.player_volume_min),
                         contentDescription = stringResource(R.string.minimum_volume),
                         tint = foregroundColor.copy(alpha = 0.66f),
                         modifier = Modifier.size(17.dp),
@@ -1083,6 +1082,7 @@ private fun AppleMusicTransportButton(
     iconSize: Dp,
     touchSize: Dp,
     foregroundColor: Color,
+    mirrored: Boolean = false,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -1094,7 +1094,10 @@ private fun AppleMusicTransportButton(
             painter = painterResource(iconRes),
             contentDescription = contentDescription,
             tint = foregroundColor,
-            modifier = Modifier.size(iconSize),
+            modifier =
+                Modifier
+                    .size(iconSize)
+                    .graphicsLayer { if (mirrored) scaleX = -1f },
         )
     }
 }

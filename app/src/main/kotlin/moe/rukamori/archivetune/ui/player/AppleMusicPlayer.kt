@@ -494,7 +494,7 @@ private fun AppleMusicControlsColumn(
             modifier = Modifier.fillMaxWidth(),
         ) {
             Icon(
-                painter = painterResource(R.drawable.player_volume_off),
+                painter = painterResource(R.drawable.player_volume_min),
                 contentDescription = null,
                 tint = Color.White.copy(alpha = 0.55f),
                 modifier = Modifier.size(18.dp),
