@@ -15,8 +15,15 @@ import android.content.Context
 import android.net.Uri
 import androidx.documentfile.provider.DocumentFile
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.audiosource.DirectStream
 import moe.rukamori.archivetune.audiosource.TitleMatch
@@ -59,6 +66,21 @@ object LosslessDownloader {
      */
     private const val RETRY_BASE_DELAY_MS = 800L
 
+    /**
+     * Scope that owns in-flight downloads.
+     *
+     * Deliberately not the caller's `rememberCoroutineScope()`: that scope dies with the composition,
+     * so closing the song menu would silently abort a partially-written file. A hi-res FLAC can be
+     * 100MB and take minutes, and the user has no reason to expect it to survive only while a bottom
+     * sheet stays open. Matches the object-held SupervisorJob pattern used by DownloadUtil.
+     */
+    private val downloadScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    private val activeDownloads = MutableStateFlow<Set<String>>(emptySet())
+
+    /** Media ids currently downloading, so any UI can show progress without owning the work. */
+    val active: StateFlow<Set<String>> = activeDownloads.asStateFlow()
+
     private val client: OkHttpClient by lazy {
         OkHttpClient
             .Builder()
@@ -96,6 +118,54 @@ object LosslessDownloader {
         data object NotAvailable : Result
 
         data class Failed(val reason: String, val cause: Throwable? = null) : Result
+    }
+
+    /**
+     * Starts a download on [downloadScope] and returns immediately.
+     *
+     * Use this from UI. [onResult] is invoked on the main thread, and is skipped if the same track is
+     * already downloading so a double-tap cannot produce two writers racing on one file.
+     */
+    fun enqueue(
+        context: Context,
+        request: Request,
+        folderUri: Uri,
+        formatId: Int,
+        embedTags: Boolean,
+        onResult: (Result) -> Unit,
+    ) {
+        if (!activeDownloads.value.add(request.mediaId)) return
+        // Hold the application context: this outlives the calling composable, so keeping an Activity
+        // or sheet context here would leak it for the duration of the download.
+        val appContext = context.applicationContext
+        downloadScope.launch {
+            val result =
+                try {
+                    download(appContext, request, folderUri, formatId, embedTags)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Throwable) {
+                    Timber.tag(TAG).e(e, "unexpected failure for \"%s\"", request.title)
+                    Result.Failed(e.message ?: "download failed", e)
+                } finally {
+                    activeDownloads.update { it - request.mediaId }
+                }
+            withContext(Dispatchers.Main) { onResult(result) }
+        }
+    }
+
+    /** Adds [id] to the active set, returning false when it was already present. */
+    private fun MutableStateFlow<Set<String>>.add(id: String): Boolean {
+        var added = false
+        update { current ->
+            if (current.contains(id)) {
+                current
+            } else {
+                added = true
+                current + id
+            }
+        }
+        return added
     }
 
     /**

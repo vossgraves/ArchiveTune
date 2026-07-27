@@ -155,47 +155,52 @@ fun SongMenu(
     var losslessFolder by rememberPreference(LosslessDownloadFolderKey, "")
     val embedTags by rememberPreference(LosslessDownloadTagKey, defaultValue = true)
     val qobuzQuality by rememberPreference(QobuzAudioQualityKey, QobuzAudioQuality.FLAC.name)
-    var losslessInProgress by remember { mutableStateOf(false) }
+    // The result callback fires after the download finishes, which may be long after this sheet is
+    // gone, so the toast must not hold the Activity context.
+    val appContext = remember(context) { context.applicationContext }
+
+    // Observed from the downloader rather than held locally, so the spinner stays correct even if the
+    // menu is closed and reopened while the download is still running.
+    val activeLosslessDownloads by LosslessDownloader.active.collectAsState()
+    val losslessInProgress = song.id in activeLosslessDownloads
 
     // Runs the download; shared by the "already have a folder" and "just picked one" paths.
     val startLosslessDownload: (Uri) -> Unit = { folderUri ->
-        losslessInProgress = true
         Toast
             .makeText(context, context.getString(R.string.lossless_download_started), Toast.LENGTH_SHORT)
             .show()
-        coroutineScope.launch {
-            val formatId =
-                runCatching { QobuzAudioQuality.valueOf(qobuzQuality) }
-                    .getOrDefault(QobuzAudioQuality.FLAC)
-                    .toFormatId()
-            val result =
-                LosslessDownloader.download(
-                    context = context,
-                    request =
-                        LosslessDownloader.Request(
-                            mediaId = song.id,
-                            title = song.song.title,
-                            artists = song.artists.map { it.name },
-                            album = song.song.albumName,
-                            durationMs = song.song.duration.takeIf { it > 0 }?.times(1000L),
-                            year = song.song.year?.toString(),
-                            artworkUrl = song.song.thumbnailUrl,
-                        ),
-                    folderUri = folderUri,
-                    formatId = formatId,
-                    embedTags = embedTags,
-                )
-            losslessInProgress = false
+        val formatId =
+            runCatching { QobuzAudioQuality.valueOf(qobuzQuality) }
+                .getOrDefault(QobuzAudioQuality.FLAC)
+                .toFormatId()
+        // enqueue, not launch: this must outlive the bottom sheet. A 100MB hi-res FLAC would
+        // otherwise be cancelled the moment the user dismisses the menu.
+        LosslessDownloader.enqueue(
+            context = context,
+            request =
+                LosslessDownloader.Request(
+                    mediaId = song.id,
+                    title = song.song.title,
+                    artists = song.artists.map { it.name },
+                    album = song.song.albumName,
+                    durationMs = song.song.duration.takeIf { it > 0 }?.times(1000L),
+                    year = song.song.year?.toString(),
+                    artworkUrl = song.song.thumbnailUrl,
+                ),
+            folderUri = folderUri,
+            formatId = formatId,
+            embedTags = embedTags,
+        ) { result ->
             val message =
                 when (result) {
                     is LosslessDownloader.Result.Success ->
-                        context.getString(R.string.lossless_download_saved, result.fileName)
+                        appContext.getString(R.string.lossless_download_saved, result.fileName)
                     LosslessDownloader.Result.NotAvailable ->
-                        context.getString(R.string.lossless_download_unavailable)
+                        appContext.getString(R.string.lossless_download_unavailable)
                     is LosslessDownloader.Result.Failed ->
-                        context.getString(R.string.lossless_download_failed, result.reason)
+                        appContext.getString(R.string.lossless_download_failed, result.reason)
                 }
-            Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+            Toast.makeText(appContext, message, Toast.LENGTH_LONG).show()
         }
     }
 

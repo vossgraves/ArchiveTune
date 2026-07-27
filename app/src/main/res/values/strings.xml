@@ -172,6 +172,11 @@
          download above which stores transcoded audio in the private player cache. -->
     <string name="action_download_lossless">Download lossless</string>
     <string name="action_download_lossless_desc">Save a FLAC file to your chosen folder</string>
+    <string name="lossless_download_group">Lossless downloads</string>
+    <string name="lossless_download_folder">Download folder</string>
+    <string name="lossless_download_folder_unset">Not set — you\'ll be asked on first download</string>
+    <string name="lossless_download_tag">Write tags</string>
+    <string name="lossless_download_tag_description">Embed title, artist, album and cover art into the downloaded file</string>
     <string name="lossless_download_started">Downloading lossless file…</string>
     <string name="lossless_download_saved">Saved %1$s</string>
     <string name="lossless_download_unavailable">No lossless source has this track</string>
