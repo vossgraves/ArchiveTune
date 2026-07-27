@@ -134,7 +134,7 @@ object LosslessDownloader {
         embedTags: Boolean,
         onResult: (Result) -> Unit,
     ) {
-        if (!activeDownloads.value.add(request.mediaId)) return
+        if (!markActive(request.mediaId)) return
         // Hold the application context: this outlives the calling composable, so keeping an Activity
         // or sheet context here would leak it for the duration of the download.
         val appContext = context.applicationContext
@@ -154,18 +154,26 @@ object LosslessDownloader {
         }
     }
 
-    /** Adds [id] to the active set, returning false when it was already present. */
-    private fun MutableStateFlow<Set<String>>.add(id: String): Boolean {
-        var added = false
-        update { current ->
-            if (current.contains(id)) {
-                current
-            } else {
-                added = true
-                current + id
-            }
+    /**
+     * Atomically claims [id], returning false when a download for it is already running.
+     *
+     * Uses an explicit compareAndSet loop rather than [update], because update re-invokes its lambda
+     * when it loses the CAS race, which would leave a captured "did I add it" flag set from an attempt
+     * that never took effect — and two concurrent writers on one file is exactly what this prevents.
+     */
+    /**
+     * Atomically claims [id], returning false if a download for it is already running.
+     *
+     * Stops a double-tap on the menu item from starting two downloads that write the same file.
+     * Uses compareAndSet rather than [MutableStateFlow.update], because update's lambda can be
+     * re-run under contention and so cannot reliably report whether *this* caller won the race.
+     */
+    private fun markActive(id: String): Boolean {
+        while (true) {
+            val current = activeDownloads.value
+            if (id in current) return false
+            if (activeDownloads.compareAndSet(current, current + id)) return true
         }
-        return added
     }
 
     /**
