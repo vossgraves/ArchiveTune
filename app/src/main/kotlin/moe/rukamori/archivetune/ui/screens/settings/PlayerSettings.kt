@@ -43,6 +43,7 @@ import moe.rukamori.archivetune.constants.CrossfadeDurationKey
 import moe.rukamori.archivetune.constants.CrossfadeEnabledKey
 import moe.rukamori.archivetune.constants.CrossfadeGaplessKey
 import moe.rukamori.archivetune.constants.DeviceMutePlaybackRecoveryVolumeKey
+import moe.rukamori.archivetune.constants.DownloadSourceKey
 import moe.rukamori.archivetune.constants.ExternalDownloaderEnabledKey
 import moe.rukamori.archivetune.constants.ExternalDownloaderPackageKey
 import moe.rukamori.archivetune.constants.HISTORY_DURATION_DEFAULT
@@ -205,6 +206,11 @@ fun PlayerSettings(navController: NavController) {
         rememberPreference(
             WakelockKey,
             defaultValue = false,
+        )
+    val (downloadSource, onDownloadSourceChange) =
+        rememberPreference(
+            DownloadSourceKey,
+            defaultValue = "youtube_music",
         )
     var showArtistSeparatorsDialog by remember { mutableStateOf(false) }
     var showTagsManagementDialog by remember { mutableStateOf(false) }
@@ -445,6 +451,26 @@ fun PlayerSettings(navController: NavController) {
             }
 
             PreferenceGroup(title = stringResource(R.string.queue)) {
+                item {
+                    PreferenceEntry(
+                        title = { Text(stringResource(R.string.download_source_title)) },
+                        description = when (downloadSource) {
+                            "youtube_music" -> stringResource(R.string.download_source_youtube_music)
+                            "tidal" -> stringResource(R.string.download_source_tidal)
+                            "qobuz" -> stringResource(R.string.download_source_qobuz)
+                            else -> downloadSource
+                        },
+                        icon = { Icon(painterResource(R.drawable.download), null) },
+                        onClick = { onDownloadSourceChange(
+                            when (downloadSource) {
+                                "youtube_music" -> "tidal"
+                                "tidal" -> "qobuz"
+                                else -> "youtube_music"
+                            }
+                        ) },
+                    )
+                }
+
                 item {
                     SwitchPreference(
                         title = { Text(stringResource(R.string.persistent_queue)) },

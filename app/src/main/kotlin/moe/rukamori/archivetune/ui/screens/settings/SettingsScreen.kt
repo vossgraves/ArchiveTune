@@ -143,27 +143,34 @@ fun SettingsScreen(
 
     // Auto-scroll to the first matching item when search query changes.
     // We debounce slightly so rapid typing doesn't cause excessive scrolls.
-    LaunchedEffect(listState, filteredGroups) {
+    // Note: filteredGroups is NOT a LaunchedEffect key — if it were, every
+    // keystroke would cancel the debounce timer before it fires.
+    LaunchedEffect(listState) {
         snapshotFlow { searchQuery }
-            .debounce(150L)
+            .debounce(200L)
             .distinctUntilChanged()
             .collect { query ->
                 if (query.isBlank()) return@collect
-                // Find the first item's key in the filtered results and scroll to it.
-                val firstItemKey = filteredGroups
+                // Snapshot the current filtered groups inside the flow so
+                // we always scroll to the latest match.
+                val groups = filteredGroups
+                val firstItemKey = groups
                     .firstOrNull()?.items?.firstOrNull()?.key ?: return@collect
-                // The LazyColumn has: search_bar, search_spacing items before any group items.
-                // We use scrollToItem with the approximate index of the first result.
-                // Since each group has items and spacers, we calculate the flat index.
-                var targetIndex = 2 // search_bar + search_spacing
-                for (group in filteredGroups) {
+                // When searching, the banners are hidden, so the LazyColumn layout is:
+                //   0 = search_bar, 1 = search_spacing, then group items.
+                var targetIndex = 2
+                var found = false
+                for (group in groups) {
                     if (group.items.any { it.key == firstItemKey }) {
-                        // Found the group containing the first item
+                        found = true
                         break
                     }
-                    targetIndex += 1 + group.items.size // group spacing + items
+                    // Each non-first group has a spacer item before its items.
+                    targetIndex += 1 + group.items.size
                 }
-                listState.scrollToItem(targetIndex)
+                if (found) {
+                    listState.animateScrollToItem(targetIndex)
+                }
             }
     }
 

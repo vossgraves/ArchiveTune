@@ -11,7 +11,6 @@ package moe.rukamori.archivetune.ui.menu
 
 import android.content.Intent
 import android.net.Uri
-import android.provider.DocumentsContract
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -142,27 +141,9 @@ fun SongMenu(
 
     val cacheViewModel = hiltViewModel<CachePlaylistViewModel>()
 
-    // SAF folder picker for "Export to folder" — lets the user pick any
-    // folder (internal or external, including OTG/cloud providers that
-    // expose a document tree) and copies the cached downloaded audio
-    // file there. The launcher is created at composition time and the
-    // selected tree URI is handed off to the export coroutine below.
     val downloadUtil = LocalDownloadUtil.current
-    val exportFolderLauncher =
-        rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { treeUri ->
-            if (treeUri == null) return@rememberLauncherForActivityResult
-            val songId = song.id
-            val songTitle = song.song.title
-            coroutineScope.launch {
-                val result = exportDownloadedSong(context, downloadUtil, treeUri, songId, songTitle)
-                val msgResId = result.fold(
-                    onSuccess = { R.string.export_to_folder_success },
-                    onFailure = { R.string.export_to_folder_failed },
-                )
-                Toast.makeText(context, context.getString(msgResId), Toast.LENGTH_SHORT).show()
-            }
-        }
-    // Direct export to the device's Downloads folder (via MediaStore / Downloads collection)
+
+    // Direct export to the device's Downloads folder (via SAF CreateDocument)
     val exportToDownloadsLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("audio/mpeg")) { destUri ->
             if (destUri == null) return@rememberLauncherForActivityResult
@@ -894,13 +875,13 @@ fun SongMenu(
                                     )
                                 }
                             }
-                            // Export options — only shown when the download has actually completed.
+                            // Export — only shown when the download has actually completed.
                             if (download?.state == Download.STATE_COMPLETED) {
                                 val safeTitle = song.song.title.trim()
                                     .replace(Regex("[\\\\/:*?\"<>|]"), "_").ifBlank { "audio" }
                                 ListItem(
                                     headlineContent = {
-                                        Text(text = stringResource(R.string.export_to_downloads))
+                                        Text(text = stringResource(R.string.export))
                                     },
                                     leadingContent = {
                                         Icon(
@@ -911,22 +892,6 @@ fun SongMenu(
                                     modifier =
                                         Modifier.clickable {
                                             exportToDownloadsLauncher.launch("$safeTitle.mp3")
-                                        },
-                                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                                )
-                                ListItem(
-                                    headlineContent = {
-                                        Text(text = stringResource(R.string.export_to_folder))
-                                    },
-                                    leadingContent = {
-                                        Icon(
-                                            painter = painterResource(R.drawable.backup),
-                                            contentDescription = null,
-                                        )
-                                    },
-                                    modifier =
-                                        Modifier.clickable {
-                                            exportFolderLauncher.launch(null)
                                         },
                                     colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                                 )
@@ -1099,44 +1064,6 @@ fun SongMenu(
     }
 }
 
-/**
- * Exports the downloaded audio file for [songId] from the ExoPlayer
- * download cache into the user-picked [treeUri] folder.
- *
- * The ExoPlayer download cache stores each song as a series of CacheSpan
- * files keyed by the song's media id. We concatenate all spans (sorted
- * by position) into a single output stream provided by the
- * ContentResolver for a new document created under the picked tree.
- *
- * @return the URI of the exported file on success, or an exception on
- *   failure (caller is responsible for surfacing a toast).
- */
-private suspend fun exportDownloadedSong(
-    context: android.content.Context,
-    downloadUtil: moe.rukamori.archivetune.playback.DownloadUtil,
-    treeUri: Uri,
-    songId: String,
-    songTitle: String,
-): Result<Uri> = runCatching {
-    withContext(Dispatchers.IO) {
-        val cache = downloadUtil.downloadCache
-        val spans = getCachedSpansForKey(cache, songId)
-        if (spans.isEmpty()) {
-            throw IllegalStateException("Download cache is empty for this song")
-        }
-        val safeTitle = songTitle.trim().replace(Regex("[\\\\/:*?\"<>|]"), "_").ifBlank { "audio" }
-        val displayName = "$safeTitle.mp3"
-        val destUri =
-            DocumentsContract.createDocument(
-                context.contentResolver,
-                treeUri,
-                "audio/mpeg",
-                displayName,
-            ) ?: throw IllegalStateException("Could not create destination file in the picked folder")
-        writeSpansToUri(context, destUri, spans)
-        destUri
-    }
-}
 
 /**
  * Exports a downloaded song to a pre-existing [destUri] (e.g. from CreateDocument).
