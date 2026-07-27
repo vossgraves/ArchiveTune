@@ -116,6 +116,7 @@ fun CachePlaylistScreen(
     val haptic = LocalHapticFeedback.current
     val focusManager = LocalFocusManager.current
     val coroutineScope = rememberCoroutineScope()
+    val cachedSongs by viewModel.cachedSongs.collectAsState()
 
     // SAF folder picker for "Export all"
     val exportAllLauncher =
@@ -162,7 +163,6 @@ fun CachePlaylistScreen(
 
     val isPlaying by playerConnection.isPlaying.collectAsState()
     val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
-    val cachedSongs by viewModel.cachedSongs.collectAsState()
 
     val (sortType, onSortTypeChange) =
         rememberEnumPreference(
