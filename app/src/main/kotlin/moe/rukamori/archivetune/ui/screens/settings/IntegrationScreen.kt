@@ -95,16 +95,6 @@ fun IntegrationScreen(navController: NavController) {
                         },
                     )
                 }
-                item {
-                    PreferenceEntry(
-                        title = { Text(stringResource(R.string.telegram_integration)) },
-                        description = stringResource(R.string.telegram_integration_description),
-                        icon = { Icon(painterResource(R.drawable.provider_telegram), null) },
-                        onClick = {
-                            navController.navigate("settings/telegram")
-                        },
-                    )
-                }
             }
 
             if (manualSourceLogin) {

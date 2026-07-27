@@ -172,7 +172,12 @@
     <string name="remove_download">Remove download</string>
     <string name="download_progress_percent">%1$d%%</string>
     <string name="export_to_folder">Export to folder…</string>
-    <string name="export_to_downloads">Export to Downloads</string>
+    <string name="export">Export</string>
+    <string name="export_all_songs">Export all songs</string>
+    <string name="download_source_title">Download source</string>
+    <string name="download_source_youtube_music">YouTube Music</string>
+    <string name="download_source_tidal">Tidal</string>
+    <string name="download_source_qobuz">Qobuz</string>
     <string name="export_to_downloads_success">Exported to Downloads folder</string>
     <string name="export_to_folder_success">Exported to selected folder</string>
     <string name="export_to_folder_failed">Export failed. Make sure the song is fully downloaded and the folder is writable.</string>
@@ -1055,7 +1060,7 @@
     <string name="log_level_error">Error</string>
     <string name="filter_all_logs">All</string>
     <string name="clear">Clear</string>
-    <string name="export">Export</string>
+    <string name="export_logs">Export</string>
     <string name="logs_empty_message">Logs will appear here when available</string>
     <string name="real_time_playback_stats">Real-time playback statistics</string>
     <string name="copied_to_clipboard">Copied log to clipboard</string>

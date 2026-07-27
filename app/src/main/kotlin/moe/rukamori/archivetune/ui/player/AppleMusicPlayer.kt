@@ -19,6 +19,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -40,6 +41,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -86,8 +88,8 @@ import moe.rukamori.archivetune.utils.rememberLowDataModeActive
 
 private val AppleMusicContentPadding = 28.dp
 private val AppleMusicChipSize = 34.dp
-private val AppleMusicTransportIconSize = 44.dp
-private val AppleMusicPlayPauseIconSize = 52.dp
+private val AppleMusicTransportIconSize = 52.dp
+private val AppleMusicPlayPauseIconSize = 62.dp
 private val AppleMusicBottomIconSize = 24.dp
 
 @Composable
@@ -373,8 +375,34 @@ private fun AppleMusicControlsColumn(
     onSliderValueChangeFinished: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var swipeUpAccumulated by remember { mutableFloatStateOf(0f) }
+    val swipeUpThreshold = 120f
+    val resetSwipeUp = remember {
+        {
+            if (swipeUpAccumulated != 0f) swipeUpAccumulated = 0f
+        }
+    }
+    LaunchedEffect(Unit) { kotlinx.coroutines.delay(300); resetSwipeUp() }
+
     Column(
-        modifier = modifier.padding(horizontal = AppleMusicContentPadding),
+        modifier = modifier
+            .padding(horizontal = AppleMusicContentPadding)
+            .pointerInput(Unit) {
+                detectVerticalDragGestures(
+                    onDragEnd = {
+                        if (swipeUpAccumulated < -swipeUpThreshold) {
+                            onQueueClick()
+                        }
+                        swipeUpAccumulated = 0f
+                    },
+                    onVerticalDrag = { change, dragAmount ->
+                        change.consume()
+                        if (dragAmount < 0f) { // upward swipe
+                            swipeUpAccumulated = (swipeUpAccumulated + dragAmount).coerceAtLeast(-swipeUpThreshold * 1.5f)
+                        }
+                    },
+                )
+            },
         verticalArrangement = Arrangement.SpaceEvenly,
     ) {
         // Title / artist row with star + more chips.
@@ -411,8 +439,8 @@ private fun AppleMusicControlsColumn(
             }
             Spacer(Modifier.width(12.dp))
             AppleMusicChip(
-                iconRes = R.drawable.player_star,
-                tint = Color.White,
+                iconRes = if (currentSongLiked) R.drawable.player_star_filled else R.drawable.player_star,
+                tint = if (currentSongLiked) Color(0xFFFFD700) else Color.White,
                 contentDescription = null,
                 onClick = playerConnection::toggleLike,
             )
