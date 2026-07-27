@@ -76,6 +76,7 @@ data class RecentTrack(
     val album: RecentTrackAlbum? = null,
     val url: String? = null,
     val date: RecentTrackDate? = null,
+    val image: List<UserImage>? = null,
     @SerialName("@attr") val attr: RecentTrackAttr? = null,
 ) {
     val isNowPlaying: Boolean get() = attr?.nowplaying == "true"

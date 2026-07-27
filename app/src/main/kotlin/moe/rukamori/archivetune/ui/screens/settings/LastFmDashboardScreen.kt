@@ -9,6 +9,9 @@
 
 package moe.rukamori.archivetune.ui.screens.settings
 
+import androidx.compose.animation.core.RepeatableSpec
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,6 +28,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -32,6 +38,8 @@ import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -48,12 +56,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Int
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
@@ -70,7 +80,7 @@ import moe.rukamori.archivetune.lastfm.models.RecentTrack
 import moe.rukamori.archivetune.lastfm.models.TopTrack
 import moe.rukamori.archivetune.lastfm.models.UserInfo
 import moe.rukamori.archivetune.scrobbling.LastFmSettingsRepository
-import moe.rukamori.archivetune.ui.component.IconButton
+import moe.rukamori.archivetune.ui.component.IconButton as AppIconButton
 import moe.rukamori.archivetune.ui.utils.backToMain
 import javax.inject.Inject
 
@@ -82,10 +92,11 @@ import javax.inject.Inject
  * screen for sign-in. If logged in, the dashboard fetches and displays:
  *
  *   - User profile card (avatar, name, total playcount, registered date)
- *   - Recent tracks (up to 20)
- *   - All-time top tracks (up to 20)
+ *   - Recent tracks with album art thumbnails (up to 20)
+ *   - All-time top tracks with artwork thumbnails (up to 20)
  *
- * Errors during fetch are surfaced inline as a small error message —
+ * A refresh button in the top app bar allows the user to manually
+ * re-fetch all stats. Errors during fetch are surfaced inline —
  * the dashboard degrades gracefully and lets the user retry.
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -145,7 +156,7 @@ fun LastFmDashboardScreen(
                     )
                 },
                 navigationIcon = {
-                    IconButton(
+                    AppIconButton(
                         onClick = navController::navigateUp,
                         onLongClick = navController::backToMain,
                     ) {
@@ -153,6 +164,36 @@ fun LastFmDashboardScreen(
                             painter = painterResource(R.drawable.arrow_back),
                             contentDescription = stringResource(R.string.back_button_desc),
                         )
+                    }
+                },
+                actions = {
+                    if (isLoggedIn) {
+                        // Refresh button — spins while data is being fetched.
+                        val rotation by animateFloatAsState(
+                            targetValue = if (isRefreshing) 360f else 0f,
+                            animationSpec = if (isRefreshing) {
+                                RepeatableSpec(
+                                    iterations = Int.MAX_VALUE,
+                                    animation = tween(durationMillis = 1000),
+                                )
+                            } else {
+                                tween(durationMillis = 300)
+                            },
+                            label = "refresh_rotation",
+                        )
+                        IconButton(
+                            onClick = { if (!isRefreshing) refresh() },
+                            enabled = !isRefreshing,
+                            colors = IconButtonDefaults.iconButtonColors(
+                                contentColor = MaterialTheme.colorScheme.onSurface,
+                            ),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = stringResource(R.string.lastfm_refresh),
+                                modifier = Modifier.graphicsLayer { rotationZ = rotation },
+                            )
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.largeTopAppBarColors(
@@ -397,12 +438,55 @@ private fun EmptyHint(text: String) {
     )
 }
 
+/**
+ * Extracts the best-quality (largest) artwork URL from a list of Last.fm
+ * [UserImage] entries.  Returns null when the list is empty or all URLs
+ * are blank.
+ */
+private fun bestArtwork(images: List<moe.rukamori.archivetune.lastfm.models.UserImage>?): String? =
+    images
+        ?.filter { it.text.isNotBlank() }
+        ?.lastOrNull()
+        ?.text
+
+/**
+ * A single recent-track row with an album-art thumbnail fetched from
+ * the Last.fm API image data attached to each track.
+ */
 @Composable
 private fun RecentTrackRow(track: RecentTrack) {
+    val artworkUrl = bestArtwork(track.image)
+
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // Album art thumbnail (48 dp square with rounded corners)
+        Surface(
+            modifier = Modifier.size(48.dp),
+            shape = RoundedCornerShape(8.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerHighest,
+        ) {
+            if (!artworkUrl.isNullOrBlank()) {
+                AsyncImage(
+                    model = artworkUrl,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(8.dp)),
+                    contentScale = ContentScale.Crop,
+                )
+            } else {
+                // Fallback placeholder when no artwork is available
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Default.MusicNote,
+                        contentDescription = null,
+                        modifier = Modifier.size(24.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+        Spacer(Modifier.size(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = track.name.orEmpty(),
@@ -433,12 +517,44 @@ private fun RecentTrackRow(track: RecentTrack) {
     )
 }
 
+/**
+ * A single top-track row with rank badge and an artwork thumbnail
+ * fetched from the Last.fm API image data attached to each track.
+ */
 @Composable
 private fun TopTrackRow(rank: Int, track: TopTrack) {
+    val artworkUrl = bestArtwork(track.image)
+
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // Album art thumbnail (48 dp square with rounded corners)
+        Surface(
+            modifier = Modifier.size(48.dp),
+            shape = RoundedCornerShape(8.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerHighest,
+        ) {
+            if (!artworkUrl.isNullOrBlank()) {
+                AsyncImage(
+                    model = artworkUrl,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(8.dp)),
+                    contentScale = ContentScale.Crop,
+                )
+            } else {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Default.MusicNote,
+                        contentDescription = null,
+                        modifier = Modifier.size(24.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+        Spacer(Modifier.size(12.dp))
+        // Rank badge
         Surface(
             modifier = Modifier.size(28.dp),
             shape = CircleShape,
@@ -453,7 +569,7 @@ private fun TopTrackRow(rank: Int, track: TopTrack) {
                 )
             }
         }
-        Spacer(Modifier.size(12.dp))
+        Spacer(Modifier.size(8.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = track.name.orEmpty(),

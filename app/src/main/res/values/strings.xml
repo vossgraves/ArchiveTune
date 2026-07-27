@@ -895,6 +895,7 @@
     <string name="lastfm_no_top_tracks">No top tracks to show.</string>
     <string name="lastfm_load_failed">Could not load your Last.fm dashboard.</string>
     <string name="lastfm_retry">Retry</string>
+    <string name="lastfm_refresh">Refresh Last.fm stats</string>
     <string name="lastfm_playcount">%1$d scrobbles</string>
     <string name="lastfm_playcount_short">%1$d plays</string>
     <string name="enable_scrobbling">Enable Scrobbling</string>

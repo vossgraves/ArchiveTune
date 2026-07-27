@@ -49,20 +49,22 @@ dependencyResolutionManagement {
 
 rootProject.name = "ArchiveTune"
 include(":app")
-include(":core")
-include(":lyrics:kugou")
-include(":lyrics:lrclib")
-include(":lyrics:simpmusic")
-include(":lyrics:paxsenix")
-include(":lyrics:betterlyrics")
-include(":lyrics:unison")
-include(":lyrics:youlyplus")
+// Modules below have empty source directories and are temporarily excluded.
+// Restore the include() lines once the module sources are added back.
+// include(":core")
+// include(":lyrics:kugou")
+// include(":lyrics:lrclib")
+// include(":lyrics:simpmusic")
+// include(":lyrics:paxsenix")
+// include(":lyrics:betterlyrics")
+// include(":lyrics:unison")
+// include(":lyrics:youlyplus")
 include(":lastfm")
 include(":canvas")
 include(":shazamkit")
 include(":spotifycore")
-include(":moriextractor")
-include(":morideobfuscator")
+// include(":moriextractor")
+// include(":morideobfuscator")
 
 // Use a local copy of NewPipe Extractor by uncommenting the lines below.
 // We assume, that ArchiveTune and NewPipe Extractor have the same parent directory.
