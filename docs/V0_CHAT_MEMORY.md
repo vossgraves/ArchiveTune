@@ -248,10 +248,66 @@ future sessions (or contributors) can pick up with full context.
   which looks like a failure but is not. Only the upstream maintainer can
   approve or relax that setting.
 
+## Qobuz metadata accuracy + lossless download (branch `feat/anx-merge`)
+
+CI-validated at `8c07e06ad`.
+
+- **Real sample rate / bit depth.** These were previously assumed from the
+  requested quality tier; they are now parsed from the `getFileUrl` response.
+  Note `44.1 * 1000` truncates to **44099 Hz** through `toInt()`, because 44.1
+  and 88.2 have no exact binary representation — `roundToInt()` is required. The
+  wrong value reached both the quality badge and the FLAC tags written on
+  download.
+- **`contentLength` is never returned by Qobuz.** The visible symptom was a blank
+  file-size row, but the important one was silent: the offline check in
+  `MusicService` is `downloadCache.isCached(mediaId, 0, contentLength)`, and
+  given 0 it always answers "not cached" — so Qobuz tracks re-downloaded on
+  every play. `QobuzAudioProvider.probeContentLength()` now asks the CDN: `HEAD`
+  first, then a one-byte ranged `GET` reading the total after the slash of
+  `Content-Range: bytes 0-0/<total>`, since some edges reject `HEAD` on signed
+  URLs. It sends `Accept-Encoding: identity` (a gzipping edge would otherwise
+  report the compressed size) and deliberately ignores `Content-Length` on the
+  ranged reply, where it is 1 rather than the file size.
+- **The probe is on the path to first audio.** It runs inside `resolve`, which
+  executes in `runBlocking(Dispatchers.IO)` on ExoPlayer's resolver thread.
+  `healthClient`'s 8s call timeout applies to each of the two attempts, so a
+  stalled edge could delay playback by 16s; the probe therefore gets its own 3s
+  budget via `healthClient.newBuilder()`, which still shares the connection pool.
+  A size we fail to learn only costs a blank row and a re-download — making the
+  user wait to hear anything is worse.
+- **Lossless download** is `LosslessDownloader` + `AudioFileTagger` plus
+  container sniffing. It runs on a service-lived scope rather than the
+  composition scope: tying it to the bottom sheet meant dismissing the menu
+  aborted a partially written file. `markActive()` guards against a double-tap
+  starting two writers on one file, using an explicit `compareAndSet` loop —
+  `MutableStateFlow.update {}` re-invokes its lambda after losing a CAS race, so
+  a captured "did I add it" flag can stay set from an attempt that never took
+  effect.
+- **Settings.** `LosslessDownloadFolderKey` and `LosslessDownloadTagKey` were
+  read by `SongMenu` but never writable, leaving the tag switch permanently on
+  and a folder unchangeable once chosen. `QobuzSettings.kt` now has a "Lossless
+  downloads" group that resolves the stored tree Uri to a display name via
+  `DocumentFile.fromTreeUri` and re-takes the persistable permission grant each
+  time a folder is picked.
+
 ## Constraints / working notes for future sessions
 
 - Cannot build Android locally in this environment — validate compilation via
   the fork's `Build APKs` CI (`build_debug` job).
+- `build_pull_request.yml` has a `concurrency` group with `cancel-in-progress`,
+  so a new push supersedes the previous ~8min build instead of queueing behind
+  it. Runs started before that group existed cannot be cancelled retroactively.
+- Because CI is the only compile gate and each run is slow, unresolved-reference
+  typos are expensive. Before pushing, confirm every new symbol has a definition
+  (`grep -rn "fun <name>" --include=*.kt .`) and that each new import resolves.
+  Extension receivers hide from naive patterns: `fun QobuzAudioQuality.toFormatId`
+  does not match `fun toFormatId`.
+- Kotlin trap worth remembering: `MutableStateFlow<Set<T>>.value.add(x)` does not
+  resolve to a `MutableStateFlow` extension, because `.value` makes the receiver
+  an immutable `Set`.
+- When chasing a green verdict, stop editing until the working tree is clean and
+  `HEAD` equals `origin/<branch>`; otherwise each follow-up commit cancels the
+  run you are waiting on.
 - GPL-3.0 copyright notices (`© Rukamori — github.com/rukamori`) at the top of
   source files MUST be preserved (per GPL-3.0 Section 4 & 5).
 - The working checkout at `.forks/at-fork` is periodically reset; re-clone from
