@@ -74,6 +74,7 @@ import moe.rukamori.archivetune.ui.screens.settings.TELEGRAM_LOGIN_ROUTE
 import moe.rukamori.archivetune.ui.screens.settings.TelegramLoginScreen
 import moe.rukamori.archivetune.ui.screens.settings.TelegramSettings
 import moe.rukamori.archivetune.ui.screens.settings.LastFMSettings
+import moe.rukamori.archivetune.ui.screens.settings.LastFmDashboardScreen
 import moe.rukamori.archivetune.ui.screens.settings.LanguagePackSettings
 import moe.rukamori.archivetune.ui.screens.settings.LogcatScreen
 import moe.rukamori.archivetune.ui.screens.settings.LyricsAnimationSettings
@@ -479,6 +480,9 @@ fun NavGraphBuilder.navigationBuilder(
     }
     composable("settings/lastfm") {
         LastFMSettings(navController)
+    }
+    composable("lastfm_dashboard") {
+        LastFmDashboardScreen(navController)
     }
     composable("settings/discord/experimental") {
         moe.rukamori.archivetune.ui.screens.settings
