@@ -172,6 +172,8 @@
     <string name="remove_download">Remove download</string>
     <string name="download_progress_percent">%1$d%%</string>
     <string name="export_to_folder">Export to folder…</string>
+    <string name="export_to_downloads">Export to Downloads</string>
+    <string name="export_to_downloads_success">Exported to Downloads folder</string>
     <string name="export_to_folder_success">Exported to selected folder</string>
     <string name="export_to_folder_failed">Export failed. Make sure the song is fully downloaded and the folder is writable.</string>
     <string name="import_playlist">Import playlist</string>
@@ -693,6 +695,8 @@
     <string name="display">Display</string>
     <string name="romanization">Romanization</string>
     <string name="hide_explicit">Hide explicit content</string>
+    <string name="allow_age_restricted">Allow age-restricted content</string>
+    <string name="allow_age_restricted_summary">Enable playback of age-restricted songs that are normally filtered out</string>
     <string name="hide_video">Hide music videos</string>
     <string name="ai_content_filter">AI content filter</string>
     <string name="ai_content_filter_hide">Hide AI-generated content</string>
