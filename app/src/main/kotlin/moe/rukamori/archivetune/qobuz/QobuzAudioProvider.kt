@@ -462,7 +462,10 @@ object QobuzAudioProvider {
                     uri = download.url,
                     mimeType = download.mimeType,
                     codecs = download.codecs,
-                    contentLength = download.contentLength,
+                    // Ask the CDN only when the API withheld the size, which is the usual case. The
+                    // result is cached with this stream, so it costs one small request per resolve
+                    // rather than one per play.
+                    contentLength = download.contentLength ?: probeContentLength(download.url),
                     label = "Qobuz ${qualityLabel(formatId)}",
                     source = AudioSourceType.QOBUZ,
                     matchedTitle = match.title,
