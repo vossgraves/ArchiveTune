@@ -171,6 +171,9 @@
     <string name="downloading">Downloading</string>
     <string name="remove_download">Remove download</string>
     <string name="download_progress_percent">%1$d%%</string>
+    <string name="export_to_folder">Export to folder…</string>
+    <string name="export_to_folder_success">Exported to selected folder</string>
+    <string name="export_to_folder_failed">Export failed. Make sure the song is fully downloaded and the folder is writable.</string>
     <string name="import_playlist">Import playlist</string>
     <string name="import_failed">Import failed</string>
     <string name="update_button">Update</string>
