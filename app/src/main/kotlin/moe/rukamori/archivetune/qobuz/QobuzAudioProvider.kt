@@ -159,8 +159,9 @@ object QobuzAudioProvider {
                 .newCall(builder.get().header("Range", "bytes=0-0").build())
                 .execute()
                 .use { response ->
-                    // "bytes 0-0/12345678" - the total after the slash is what we want. A plain
-                    // Content-Length here would be 1, so only trust it on a 206 with no Content-Range.
+                    // Read the total out of "bytes 0-0/12345678". Deliberately ignore Content-Length
+                    // on this response: we asked for one byte, so it reports 1, not the file size.
+                    // A "bytes 0-0/*" reply means the edge does not know the total, and parses to null.
                     response
                         .header("Content-Range")
                         ?.substringAfterLast('/', missingDelimiterValue = "")
