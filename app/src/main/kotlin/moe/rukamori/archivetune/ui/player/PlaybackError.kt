@@ -371,7 +371,7 @@ private fun PlaybackErrorHeader(
             color = MaterialTheme.colorScheme.errorContainer,
         ) {
             Icon(
-                painter = painterResource(R.drawable.error),
+                painter = painterResource(R.drawable.player_error),
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onErrorContainer,
                 modifier = Modifier.padding(14.dp),
@@ -453,14 +453,14 @@ private fun PlaybackErrorActions(
     ) {
         OutlinedButton(onClick = onClose) {
             PlaybackErrorActionContent(
-                icon = R.drawable.close,
+                icon = R.drawable.player_close,
                 label = closeText,
             )
         }
         if (showLoginAction) {
             OutlinedButton(onClick = onLogin) {
                 PlaybackErrorActionContent(
-                    icon = R.drawable.login,
+                    icon = R.drawable.player_login,
                     label = loginText,
                 )
             }
@@ -468,20 +468,20 @@ private fun PlaybackErrorActions(
         if (showPoTokenLoginAction) {
             OutlinedButton(onClick = onPoTokenLogin) {
                 PlaybackErrorActionContent(
-                    icon = R.drawable.token,
+                    icon = R.drawable.player_token,
                     label = poTokenLoginText,
                 )
             }
         }
         FilledTonalButton(onClick = onCopy) {
             PlaybackErrorActionContent(
-                icon = R.drawable.select_all,
+                icon = R.drawable.player_select_all,
                 label = copyText,
             )
         }
         Button(onClick = onRetry) {
             PlaybackErrorActionContent(
-                icon = R.drawable.replay,
+                icon = R.drawable.player_replay,
                 label = retryText,
             )
         }

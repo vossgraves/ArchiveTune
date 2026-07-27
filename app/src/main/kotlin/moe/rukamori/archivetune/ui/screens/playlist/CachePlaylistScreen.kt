@@ -16,6 +16,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
@@ -31,6 +32,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -46,6 +48,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Alignment
@@ -54,6 +57,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
@@ -67,6 +71,10 @@ import androidx.navigation.NavController
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import moe.rukamori.archivetune.LocalDownloadUtil
 import moe.rukamori.archivetune.constants.AppBarHeight
 import moe.rukamori.archivetune.constants.HideExplicitKey
 import moe.rukamori.archivetune.constants.SongSortDescendingKey
@@ -89,6 +97,9 @@ import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.CachePlaylistViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.time.LocalDateTime
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
@@ -98,14 +109,60 @@ fun CachePlaylistScreen(
     scrollBehavior: TopAppBarScrollBehavior,
     viewModel: CachePlaylistViewModel = hiltViewModel(),
 ) {
+    val context = LocalContext.current
     val menuState = LocalMenuState.current
     val playerConnection = LocalPlayerConnection.current ?: return
+    val downloadUtil = LocalDownloadUtil.current
     val haptic = LocalHapticFeedback.current
     val focusManager = LocalFocusManager.current
+    val coroutineScope = rememberCoroutineScope()
+    val cachedSongs by viewModel.cachedSongs.collectAsState()
+
+    // SAF folder picker for "Export all"
+    val exportAllLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { treeUri ->
+            if (treeUri == null) return@rememberLauncherForActivityResult
+            coroutineScope.launch {
+                var exported = 0
+                var failed = 0
+                for (song in cachedSongs) {
+                    val result = runCatching {
+                        withContext(Dispatchers.IO) {
+                            val cache = downloadUtil.downloadCache
+                            val spans = getCachedSpansForKey(cache, song.id)
+                            if (spans.isEmpty()) {
+                                throw IllegalStateException("No cache")
+                            }
+                            val safeTitle = song.title.trim()
+                                .replace(Regex("[\\\\/:*?\"<>|]"), "_").ifBlank { "audio" }
+                            val destUri = android.provider.DocumentsContract.createDocument(
+                                context.contentResolver,
+                                treeUri,
+                                "audio/mpeg",
+                                "$safeTitle.mp3",
+                            ) ?: throw IllegalStateException("Could not create file")
+                            context.contentResolver.openOutputStream(destUri, "w")?.use { output ->
+                                spans.sortedBy { it.position }.forEach { span ->
+                                    java.io.FileInputStream(span.file).use { input ->
+                                        input.copyTo(output)
+                                    }
+                                }
+                                output.flush()
+                            } ?: throw IllegalStateException("Could not open stream")
+                        }
+                    }
+                    if (result.isSuccess) exported++ else failed++
+                }
+                Toast.makeText(
+                    context,
+                    "Exported $exported song(s)${if (failed > 0) ", $failed failed" else ""}",
+                    Toast.LENGTH_LONG,
+                ).show()
+            }
+        }
 
     val isPlaying by playerConnection.isPlaying.collectAsState()
     val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
-    val cachedSongs by viewModel.cachedSongs.collectAsState()
 
     val (sortType, onSortTypeChange) =
         rememberEnumPreference(
@@ -281,6 +338,27 @@ fun CachePlaylistScreen(
                             },
                             onToggleAdd = null,
                         )
+                    }
+
+                    // Export all button below the song count
+                    item(key = "export_all") {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            FilledTonalButton(
+                                onClick = { exportAllLauncher.launch(null) },
+                                content = {
+                                    Icon(
+                                        painter = painterResource(R.drawable.download),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp),
+                                    )
+                                    Spacer(modifier = Modifier.size(8.dp))
+                                    Text(stringResource(R.string.export_all_songs))
+                                },
+                            )
+                        }
                     }
                 }
 
@@ -559,4 +637,24 @@ fun CachePlaylistScreen(
             },
         )
     }
+}
+
+/**
+ * Resolves cached spans for a given [songId]. Tries the key directly first,
+ * then falls back to searching all cache keys for a matching entry.
+ */
+private fun getCachedSpansForKey(
+    cache: androidx.media3.datasource.cache.Cache,
+    songId: String,
+): java.util.NavigableSet<androidx.media3.datasource.cache.CacheSpan> {
+    var spans = cache.getCachedSpans(songId)
+    if (spans.isNotEmpty()) return spans
+    for (key in cache.keys) {
+        val cleanKey = key.substringAfterLast("/")
+        if (cleanKey == songId || key == songId) {
+            spans = cache.getCachedSpans(key)
+            if (spans.isNotEmpty()) return spans
+        }
+    }
+    return spans
 }

@@ -56,11 +56,12 @@ object Updater {
     private val client = HttpClient()
     private const val ReleaseCacheCheckIntervalMs: Long = 6 * 60 * 60 * 1000L
     private const val CanaryCacheCheckIntervalMs: Long = 15 * 60 * 1000L
-    private const val StableReleaseBaseUrl = "https://github.com/vossgraves/ArchiveTune/releases"
+    private const val OWNER = "4nx3b/ArchiveTune"
+    private const val StableReleaseBaseUrl = "https://github.com/$OWNER/releases"
     private const val CanaryReleaseBaseUrl =
-        "https://github.com/vossgraves/ArchiveTune/releases"
+        "https://github.com/$OWNER/releases"
     private const val CanaryWorkflowRunsUrl =
-        "https://api.github.com/repos/vossgraves/ArchiveTune/actions/workflows/nightly.yml/runs" +
+        "https://api.github.com/repos/$OWNER/actions/workflows/nightly.yml/runs" +
             "?branch=dev&status=success&per_page=1&exclude_pull_requests=true"
     var lastCheckTime = -1L
         private set
@@ -99,7 +100,7 @@ object Updater {
 
     private fun workflowArtifactDownloadUrl(): String {
         val artifactUrl =
-            "https://nightly.link/vossgraves/ArchiveTune/workflows/nightly/dev/${workflowArtifactName()}"
+            "https://nightly.link/$OWNER/workflows/nightly/dev/${workflowArtifactName()}"
         return if (canDownloadUpdatesDirectly) "$artifactUrl.zip" else artifactUrl
     }
 
@@ -342,7 +343,7 @@ object Updater {
         cachedEtag: String?,
     ): ReleasesNetworkResult {
         val response: HttpResponse =
-            client.get("https://api.github.com/repos/vossgraves/ArchiveTune/releases?per_page=$perPage") {
+            client.get("https://api.github.com/repos/$OWNER/releases?per_page=$perPage") {
                 headers {
                     append("Accept", "application/vnd.github+json")
                     append("User-Agent", "ArchiveTune")
@@ -414,7 +415,7 @@ object Updater {
 
             val response =
                 client
-                    .get("https://api.github.com/repos/vossgraves/ArchiveTune/commits?sha=$branch&per_page=$count")
+                    .get("https://api.github.com/repos/$OWNER/commits?sha=$branch&per_page=$count")
                     .bodyAsText()
             val jsonArray = JSONArray(response)
             val commits = mutableListOf<GitCommit>()
@@ -662,7 +663,7 @@ object Updater {
         cachedEtag: String?,
     ): ReleasesNetworkResult {
         val response: HttpResponse =
-            client.get("https://api.github.com/repos/vossgraves/ArchiveTune/releases?per_page=$perPage") {
+            client.get("https://api.github.com/repos/$OWNER/releases?per_page=$perPage") {
                 headers {
                     append("Accept", "application/vnd.github+json")
                     append("User-Agent", "ArchiveTune")

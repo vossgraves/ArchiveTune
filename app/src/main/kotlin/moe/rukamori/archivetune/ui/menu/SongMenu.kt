@@ -10,7 +10,10 @@
 package moe.rukamori.archivetune.ui.menu
 
 import android.content.Intent
+import android.net.Uri
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
@@ -51,6 +54,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.media3.datasource.cache.CacheSpan
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -93,6 +97,7 @@ import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.models.toMediaMetadata
 import moe.rukamori.archivetune.playback.ExoDownloadService
 import moe.rukamori.archivetune.playback.queues.YouTubeQueue
+import moe.rukamori.archivetune.telegram.isTelegramMediaId
 import moe.rukamori.archivetune.ui.component.ListDialog
 import moe.rukamori.archivetune.ui.component.LocalBottomSheetPageState
 import moe.rukamori.archivetune.ui.component.MenuSurfaceSection
@@ -135,6 +140,24 @@ fun SongMenu(
     var refetchIconDegree by remember { mutableFloatStateOf(0f) }
 
     val cacheViewModel = hiltViewModel<CachePlaylistViewModel>()
+
+    val downloadUtil = LocalDownloadUtil.current
+
+    // Direct export to the device's Downloads folder (via SAF CreateDocument)
+    val exportToDownloadsLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("audio/mpeg")) { destUri ->
+            if (destUri == null) return@rememberLauncherForActivityResult
+            val songId = song.id
+            val songTitle = song.song.title
+            coroutineScope.launch {
+                val result = exportDownloadedSongToUri(context, downloadUtil, destUri, songId, songTitle)
+                val msgResId = result.fold(
+                    onSuccess = { R.string.export_to_downloads_success },
+                    onFailure = { R.string.export_to_folder_failed },
+                )
+                Toast.makeText(context, context.getString(msgResId), Toast.LENGTH_SHORT).show()
+            }
+        }
 
     val rotationAnimation by animateFloatAsState(
         targetValue = refetchIconDegree,
@@ -404,6 +427,9 @@ fun SongMenu(
 
     val bottomSheetPageState = LocalBottomSheetPageState.current
     val isLocalSong = song.song.isLocal
+    // Telegram tracks have no YouTube watch endpoint, so YouTube-only actions (e.g. Start radio)
+    // are hidden for them — they still support play next / add to queue / add to playlist.
+    val isTelegramSong = song.song.id.isTelegramMediaId()
 
     val startRadioText = stringResource(R.string.start_radio)
     val playNextText = stringResource(R.string.play_next)
@@ -426,7 +452,7 @@ fun SongMenu(
             playerConnection,
         ) {
             buildList {
-                if (!isLocalSong) {
+                if (!isLocalSong && !isTelegramSong) {
                     add(
                         NewAction(
                             icon = {
@@ -849,6 +875,27 @@ fun SongMenu(
                                     )
                                 }
                             }
+                            // Export — only shown when the download has actually completed.
+                            if (download?.state == Download.STATE_COMPLETED) {
+                                val safeTitle = song.song.title.trim()
+                                    .replace(Regex("[\\\\/:*?\"<>|]"), "_").ifBlank { "audio" }
+                                ListItem(
+                                    headlineContent = {
+                                        Text(text = stringResource(R.string.export))
+                                    },
+                                    leadingContent = {
+                                        Icon(
+                                            painter = painterResource(R.drawable.download),
+                                            contentDescription = null,
+                                        )
+                                    },
+                                    modifier =
+                                        Modifier.clickable {
+                                            exportToDownloadsLauncher.launch("$safeTitle.mp3")
+                                        },
+                                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                                )
+                            }
                             if (externalDownloaderEnabled) {
                                 HorizontalDivider(
                                     modifier = Modifier.padding(start = 56.dp),
@@ -1015,4 +1062,67 @@ fun SongMenu(
             }
         }
     }
+}
+
+
+/**
+ * Exports a downloaded song to a pre-existing [destUri] (e.g. from CreateDocument).
+ */
+private suspend fun exportDownloadedSongToUri(
+    context: android.content.Context,
+    downloadUtil: moe.rukamori.archivetune.playback.DownloadUtil,
+    destUri: Uri,
+    songId: String,
+    songTitle: String,
+): Result<Uri> = runCatching {
+    withContext(Dispatchers.IO) {
+        val cache = downloadUtil.downloadCache
+        val spans = getCachedSpansForKey(cache, songId)
+        if (spans.isEmpty()) {
+            throw IllegalStateException("Download cache is empty for this song")
+        }
+        writeSpansToUri(context, destUri, spans)
+        destUri
+    }
+}
+
+/**
+ * Resolves cached spans for a given [songId]. Tries the key directly first,
+ * then falls back to searching all cache keys for a matching entry.
+ */
+private fun getCachedSpansForKey(
+    cache: androidx.media3.datasource.cache.Cache,
+    songId: String,
+): java.util.NavigableSet<androidx.media3.datasource.cache.CacheSpan> {
+    var spans = cache.getCachedSpans(songId)
+    if (spans.isNotEmpty()) return spans
+    // Fallback: the download may have been stored under a slightly different
+    // key (e.g. with a URI prefix). Search all keys for one that ends with
+    // the songId or equals it after URI decoding.
+    for (key in cache.keys) {
+        val cleanKey = key.substringAfterLast("/")
+        if (cleanKey == songId || key == songId) {
+            spans = cache.getCachedSpans(key)
+            if (spans.isNotEmpty()) return spans
+        }
+    }
+    return spans
+}
+
+/**
+ * Writes cached [spans] (sorted by position) to the output stream at [destUri].
+ */
+private fun writeSpansToUri(
+    context: android.content.Context,
+    destUri: Uri,
+    spans: java.util.NavigableSet<androidx.media3.datasource.cache.CacheSpan>,
+) {
+    context.contentResolver.openOutputStream(destUri, "w")?.use { output ->
+        spans.sortedBy { it.position }.forEach { span ->
+            java.io.FileInputStream(span.file).use { input ->
+                input.copyTo(output)
+            }
+        }
+        output.flush()
+    } ?: throw IllegalStateException("Could not open destination stream")
 }

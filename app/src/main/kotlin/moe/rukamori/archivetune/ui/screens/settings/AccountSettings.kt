@@ -411,20 +411,29 @@ fun AccountSettings(
                 item {
                     ExpressiveSectionCard(title = integrationLabel) {
                         ExpressiveActionRow(
+                            icon = painterResource(R.drawable.provider_telegram),
+                            title = stringResource(R.string.telegram_integration),
+                            subtitle = stringResource(R.string.telegram_integration_description),
+                            onClick = { navController.navigate("settings/telegram") },
+                            index = 0,
+                            count = 3,
+                        )
+
+                        ExpressiveActionRow(
                             icon = painterResource(R.drawable.integration),
                             title = integrationLabel,
                             subtitle = stringResource(R.string.account_integrations_summary),
                             onClick = { navController.navigate("settings/integration") },
-                            index = 0,
-                            count = 2,
+                            index = 1,
+                            count = 3,
                         )
 
                         ExpressiveActionRow(
                             icon = painterResource(R.drawable.fire),
                             title = stringResource(R.string.music_together),
                             onClick = { navController.navigate("settings/music_together") },
-                            index = 1,
-                            count = 2,
+                            index = 2,
+                            count = 3,
                         )
                     }
                 }

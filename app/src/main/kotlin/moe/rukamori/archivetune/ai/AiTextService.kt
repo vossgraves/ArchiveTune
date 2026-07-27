@@ -22,7 +22,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
-class AiServiceException(
+open class AiServiceException(
     message: String,
     cause: Throwable? = null,
 ) : Exception(message, cause)
@@ -68,21 +68,23 @@ object AiTextService {
         val payload = JSONArray()
         lines.forEach { payload.put(it) }
         val response =
-            complete(
-                config = config,
-                systemPrompt =
-                    """
-                    You are an expert song lyrics translator.
-                    Translate each input string into $targetLanguage with natural, accurate lyric phrasing.
-                    Preserve meaning, tone, profanity level, names, repeated hooks, and line-level intent.
-                    Do not add timestamps, IDs, XML, markdown, explanations, or extra lines.
-                    Return only a JSON array of strings with exactly ${lines.size} items in the same order.
-                    The caller will reconstruct the $formatName lyrics container separately.
-                    """.trimIndent(),
-                userPrompt = payload.toString(),
-                temperature = 0.15,
-                maxTokens = 8192,
-            )
+            AiRateLimiter.withLimit(AiRateLimiter.Feature.LYRICS_TRANSLATION) {
+                complete(
+                    config = config,
+                    systemPrompt =
+                        """
+                        You are an expert song lyrics translator.
+                        Translate each input string into $targetLanguage with natural, accurate lyric phrasing.
+                        Preserve meaning, tone, profanity level, names, repeated hooks, and line-level intent.
+                        Do not add timestamps, IDs, XML, markdown, explanations, or extra lines.
+                        Return only a JSON array of strings with exactly ${lines.size} items in the same order.
+                        The caller will reconstruct the $formatName lyrics container separately.
+                        """.trimIndent(),
+                    userPrompt = payload.toString(),
+                    temperature = 0.15,
+                    maxTokens = 8192,
+                )
+            }
         val array = extractJsonArray(response)
         require(array.length() == lines.size) { "AI response changed the lyric segment count" }
         return List(array.length()) { index -> array.optString(index) }

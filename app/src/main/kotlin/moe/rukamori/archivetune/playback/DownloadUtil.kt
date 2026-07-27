@@ -11,8 +11,12 @@ import android.content.Context
 import android.net.ConnectivityManager
 import androidx.core.content.getSystemService
 import androidx.core.net.toUri
+import android.net.Uri
 import androidx.media3.database.DatabaseProvider
+import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.ResolvingDataSource
+import androidx.media3.datasource.TransferListener
 import androidx.media3.datasource.cache.Cache
 import androidx.media3.datasource.cache.CacheDataSink
 import androidx.media3.datasource.cache.CacheDataSource
@@ -78,12 +82,12 @@ class DownloadUtil
                 .followRedirects(true)
                 .followSslRedirects(true)
                 .retryOnConnectionFailure(true)
-                .connectTimeout(30, TimeUnit.SECONDS)
-                .readTimeout(30, TimeUnit.SECONDS)
+                .connectTimeout(10, TimeUnit.SECONDS)
+                .readTimeout(20, TimeUnit.SECONDS)
                 .dispatcher(
                     okhttp3.Dispatcher().apply {
                         maxRequests = MAX_DOWNLOAD_HTTP_REQUESTS
-                        maxRequestsPerHost = DEFAULT_MAX_PARALLEL_DOWNLOADS
+                        maxRequestsPerHost = MAX_DOWNLOAD_HTTP_REQUESTS
                     },
                 ).connectionPool(
                     ConnectionPool(
@@ -116,7 +120,7 @@ class DownloadUtil
 
         val downloads = MutableStateFlow<Map<String, Download>>(emptyMap())
 
-        private val dataSourceFactory =
+        private val youtubeDataSourceFactory =
             ResolvingDataSource.Factory(
                 CacheDataSource
                     .Factory()
@@ -169,6 +173,18 @@ class DownloadUtil
                         authFingerprint = playbackData.authFingerprint,
                     )
                 dataSpec.withUri(streamUrl.toUri())
+            }
+
+        // Route downloads by scheme: telegram:// tracks stream through TDLib (same as playback),
+        // everything else through the YouTube-resolving factory above.
+        private val telegramDataSourceFactory = moe.rukamori.archivetune.telegram.TelegramDataSource.Factory()
+
+        private val dataSourceFactory =
+            DataSource.Factory {
+                DownloadSchemeRoutingDataSource(
+                    youtubeFactory = youtubeDataSourceFactory,
+                    telegramFactory = telegramDataSourceFactory,
+                )
             }
 
         val downloadNotificationHelper =
@@ -302,11 +318,52 @@ class DownloadUtil
             }
         }
 
+        /**
+         * Picks the download upstream by URI scheme: `telegram://` tracks go through TDLib (mirroring
+         * playback's SchemeRoutingDataSource), everything else through the YouTube-resolving factory.
+         */
+        private class DownloadSchemeRoutingDataSource(
+            private val youtubeFactory: DataSource.Factory,
+            private val telegramFactory: DataSource.Factory,
+        ) : DataSource {
+            private val transferListeners = mutableListOf<TransferListener>()
+            private var delegate: DataSource? = null
+
+            override fun addTransferListener(transferListener: TransferListener) {
+                transferListeners += transferListener
+                delegate?.addTransferListener(transferListener)
+            }
+
+            override fun open(dataSpec: DataSpec): Long {
+                val scheme = dataSpec.uri.scheme?.lowercase(java.util.Locale.US)
+                val selected = if (scheme == "telegram") telegramFactory else youtubeFactory
+                val source = selected.createDataSource()
+                transferListeners.forEach(source::addTransferListener)
+                delegate = source
+                return source.open(dataSpec)
+            }
+
+            override fun read(
+                buffer: ByteArray,
+                offset: Int,
+                length: Int,
+            ): Int = checkNotNull(delegate).read(buffer, offset, length)
+
+            override fun getUri(): Uri? = delegate?.uri
+
+            override fun getResponseHeaders(): Map<String, List<String>> = delegate?.responseHeaders ?: emptyMap()
+
+            override fun close() {
+                delegate?.close()
+                delegate = null
+            }
+        }
+
         companion object {
-            private const val DEFAULT_MAX_PARALLEL_DOWNLOADS = 6
-            private const val MAX_IDLE_DOWNLOAD_CONNECTIONS = 12
-            private const val MAX_DOWNLOAD_HTTP_REQUESTS = 24
+            private const val DEFAULT_MAX_PARALLEL_DOWNLOADS = 16
+            private const val MAX_IDLE_DOWNLOAD_CONNECTIONS = 32
+            private const val MAX_DOWNLOAD_HTTP_REQUESTS = 64
             private const val DOWNLOAD_CONNECTION_KEEP_ALIVE_MINUTES = 5L
-            private const val DOWNLOAD_WRITE_BUFFER_SIZE = 256 * 1024
+            private const val DOWNLOAD_WRITE_BUFFER_SIZE = 1024 * 1024
         }
     }

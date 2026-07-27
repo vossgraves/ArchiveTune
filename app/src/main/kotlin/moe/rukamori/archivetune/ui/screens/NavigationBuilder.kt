@@ -70,7 +70,11 @@ import moe.rukamori.archivetune.ui.screens.settings.TidalLoginScreen
 import moe.rukamori.archivetune.ui.screens.settings.TIDAL_LOGIN_ROUTE
 import moe.rukamori.archivetune.ui.screens.settings.QobuzLoginScreen
 import moe.rukamori.archivetune.ui.screens.settings.QOBUZ_LOGIN_ROUTE
+import moe.rukamori.archivetune.ui.screens.settings.TELEGRAM_LOGIN_ROUTE
+import moe.rukamori.archivetune.ui.screens.settings.TelegramLoginScreen
+import moe.rukamori.archivetune.ui.screens.settings.TelegramSettings
 import moe.rukamori.archivetune.ui.screens.settings.LastFMSettings
+import moe.rukamori.archivetune.ui.screens.settings.LastFmDashboardScreen
 import moe.rukamori.archivetune.ui.screens.settings.LanguagePackSettings
 import moe.rukamori.archivetune.ui.screens.settings.LogcatScreen
 import moe.rukamori.archivetune.ui.screens.settings.LyricsAnimationSettings
@@ -459,6 +463,15 @@ fun NavGraphBuilder.navigationBuilder(
     composable(QOBUZ_LOGIN_ROUTE) {
         QobuzLoginScreen(navController)
     }
+    composable("settings/telegram") {
+        TelegramSettings(navController)
+    }
+    composable(TELEGRAM_LOGIN_ROUTE) {
+        TelegramLoginScreen(navController)
+    }
+    composable(TELEGRAM_BROWSE_ROUTE) {
+        TelegramBrowseScreen(navController)
+    }
     composable("settings/ai_integration") {
         AiIntegrationSettings(navController)
     }
@@ -467,6 +480,9 @@ fun NavGraphBuilder.navigationBuilder(
     }
     composable("settings/lastfm") {
         LastFMSettings(navController)
+    }
+    composable("lastfm_dashboard") {
+        LastFmDashboardScreen(navController)
     }
     composable("settings/discord/experimental") {
         moe.rukamori.archivetune.ui.screens.settings

@@ -1,0 +1,156 @@
+/*
+ * ArchiveTune (2026)
+ * © Rukamori — github.com/rukamori
+ * GPL-3.0 License | Contributors: see git history
+ * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
+ */
+
+package moe.rukamori.archivetune.lastfm.models
+
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
+
+/**
+ * Subset of Last.fm's `user.getInfo` response — only the fields
+ * surfaced on the in-app dashboard.
+ *
+ * See https://www.last.fm/api/show/user.getInfo
+ */
+@Serializable
+data class UserInfo(
+    val name: String,
+    val realname: String? = null,
+    val url: String? = null,
+    val image: List<UserImage>? = null,
+    val country: String? = null,
+    val age: Int? = null,
+    val gender: String? = null,
+    val subscriber: Int? = null,
+    @SerialName("playcount") private val _playcount: String? = null,
+    val playlists: Int? = null,
+    val registered: UserRegistered? = null,
+) {
+    val playcount: Int? get() = _playcount?.toIntOrNull()
+}
+
+@Serializable
+data class UserImage(
+    @SerialName("#text") val text: String,
+    val size: String? = null,
+)
+
+@Serializable
+data class UserRegistered(
+    val unixtime: String? = null,
+    @SerialName("#text") val text: Int? = null,
+)
+
+/**
+ * Wrapper for the `user.getRecentTracks` response.
+ */
+@Serializable
+data class RecentTracksResponse(
+    val recenttracks: RecentTracks,
+)
+
+@Serializable
+data class RecentTracks(
+    val track: List<RecentTrack> = emptyList(),
+    @SerialName("@attr") val attr: RecentTracksAttr? = null,
+)
+
+@Serializable
+data class RecentTracksAttr(
+    val user: String? = null,
+    val page: String? = null,
+    val perPage: String? = null,
+    val totalPages: String? = null,
+    val total: String? = null,
+)
+
+@Serializable
+data class RecentTrack(
+    val artist: RecentTrackArtist? = null,
+    val name: String? = null,
+    val album: RecentTrackAlbum? = null,
+    val url: String? = null,
+    val date: RecentTrackDate? = null,
+    val image: List<UserImage>? = null,
+    @SerialName("@attr") val attr: RecentTrackAttr? = null,
+) {
+    val isNowPlaying: Boolean get() = attr?.nowplaying == "true"
+}
+
+@Serializable
+data class RecentTrackAttr(
+    val nowplaying: String? = null,
+)
+
+@Serializable
+data class RecentTrackArtist(
+    @SerialName("#text") val text: String? = null,
+    val mbid: String? = null,
+)
+
+@Serializable
+data class RecentTrackAlbum(
+    @SerialName("#text") val text: String? = null,
+    val mbid: String? = null,
+)
+
+@Serializable
+data class RecentTrackDate(
+    val uts: String? = null,
+    @SerialName("#text") val text: String? = null,
+)
+
+/**
+ * Wrapper for the `user.getTopTracks` response.
+ */
+@Serializable
+data class TopTracksResponse(
+    val toptracks: TopTracks,
+)
+
+@Serializable
+data class TopTracks(
+    val track: List<TopTrack> = emptyList(),
+    @SerialName("@attr") val attr: TopTracksAttr? = null,
+)
+
+@Serializable
+data class TopTracksAttr(
+    val user: String? = null,
+    val page: String? = null,
+    val perPage: String? = null,
+    val totalPages: String? = null,
+    val total: String? = null,
+)
+
+@Serializable
+data class TopTrack(
+    val name: String? = null,
+    @SerialName("playcount") private val _playcount: String? = null,
+    val artist: RecentTrackArtist? = null,
+    val url: String? = null,
+    val image: List<UserImage>? = null,
+    @SerialName("@attr") val attr: TopTrackAttr? = null,
+) {
+    val playcount: Int? get() = _playcount?.toIntOrNull()
+    val rank: String? get() = attr?.rank
+}
+
+@Serializable
+data class TopTrackAttr(
+    val rank: String? = null,
+)
+
+/**
+ * Fallback raw JSON element — used when we want to surface a parse
+ * failure to the UI without losing the whole dashboard.
+ */
+@Serializable
+data class RawJson(
+    val raw: JsonElement? = null,
+)

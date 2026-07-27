@@ -1,9 +1,16 @@
+<!-- Solar Icons by 480 Design (CC BY 4.0) - solar-icons.vercel.app -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
-    android:viewportWidth="960"
-    android:viewportHeight="960">
+    android:viewportWidth="24"
+    android:viewportHeight="24">
   <path
-      android:fillColor="@android:color/white"
-      android:pathData="M200,840Q149,840 127.5,794.5Q106,749 138,710L360,440L360,200L320,200Q303,200 291.5,188.5Q280,177 280,160Q280,143 291.5,131.5Q303,120 320,120L640,120Q657,120 668.5,131.5Q680,143 680,160Q680,177 668.5,188.5Q657,200 640,200L600,200L600,440L822,710Q854,749 832.5,794.5Q811,840 760,840L200,840ZM280,720L680,720L544,560L416,560L280,720ZM200,760L760,760L520,468L520,200L440,200L440,468L200,760ZM480,480L480,480L480,480L480,480L480,480L480,480Z"/>
+      android:pathData="m9.749 2.494l8.41 4.826M9.75 2.494l-7.1 12.252a4.827 4.827 0 0 0 1.776 6.605a4.86 4.86 0 0 0 6.629-1.77l1.495-2.58M9.75 2.493L8.913 2m9.246 5.32l-2.257 3.896m2.257-3.896l.841.484m-3.098 3.412l-1.713 2.958m1.713-2.958l-2.558-1.471m.845 4.429L12.55 17m1.638-2.826l-4.203-2.418M12.55 17l-2.613-1.503"
+      android:strokeColor="@android:color/white"
+      android:strokeWidth="1.5"
+      android:strokeLineCap="round"/>
+  <path
+      android:pathData="M22 14.917c0 1.15-.895 2.083-2 2.083s-2-.933-2-2.083c0-.72.783-1.681 1.37-2.3a.86.86 0 0 1 1.26 0c.587.619 1.37 1.58 1.37 2.3Z"
+      android:strokeColor="@android:color/white"
+      android:strokeWidth="1.5"/>
 </vector>

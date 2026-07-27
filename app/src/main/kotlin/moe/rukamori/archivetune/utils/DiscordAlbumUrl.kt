@@ -8,9 +8,10 @@
 package moe.rukamori.archivetune.utils
 
 import moe.rukamori.archivetune.db.entities.Song
+import moe.rukamori.archivetune.telegram.isTelegramMediaId
 
 internal fun Song.discordAlbumMusicUrl(): String? =
-    if (song.isLocal || song.id.isLocalMediaId()) {
+    if (song.isLocal || song.id.isLocalMediaId() || song.id.isTelegramMediaId()) {
         null
     } else {
         album

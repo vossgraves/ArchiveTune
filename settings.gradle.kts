@@ -34,6 +34,9 @@ dependencyResolutionManagement {
             filter {
                 includeGroup("com.github.therealbush")
                 includeGroup("com.github.TeamNewPipe")
+                // Prebuilt TDLib (Telegram Database Library) AAR with bundled JNI natives,
+                // used by the Telegram channel streaming integration.
+                includeGroup("com.github.tdlibx")
             }
         }
     }

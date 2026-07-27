@@ -419,7 +419,10 @@ class App :
 
         return ImageLoader
             .Builder(this)
-            .crossfade(true)
+            .components {
+                // Resolve `tgthumb://<fileId>` artwork models through TDLib (Telegram source).
+                add(moe.rukamori.archivetune.telegram.TelegramThumbnailFetcher.Factory())
+            }.crossfade(true)
             .allowHardware(Build.VERSION.SDK_INT >= Build.VERSION_CODES.P)
             .diskCache(diskCache)
             .diskCachePolicy(imageCacheConfig.policy)

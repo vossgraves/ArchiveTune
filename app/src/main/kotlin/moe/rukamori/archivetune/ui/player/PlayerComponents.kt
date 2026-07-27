@@ -152,7 +152,7 @@ internal fun PlayerTitleText(
                 }
             }
         }
-    val badgePainter = painterResource(R.drawable.explicit)
+    val badgePainter = painterResource(R.drawable.player_explicit)
     val inlineContent =
         remember(badgePainter, color, explicit) {
             if (explicit) {
@@ -306,7 +306,7 @@ fun PlayerTopActions(
                             },
                 ) {
                     Image(
-                        painter = painterResource(R.drawable.share),
+                        painter = painterResource(R.drawable.player_share),
                         contentDescription = null,
                         colorFilter = ColorFilter.tint(iconButtonColor),
                         modifier =
@@ -330,9 +330,9 @@ fun PlayerTopActions(
                         painter =
                             painterResource(
                                 if (currentSongLiked) {
-                                    R.drawable.favorite
+                                    R.drawable.player_favorite
                                 } else {
-                                    R.drawable.favorite_border
+                                    R.drawable.player_favorite_border
                                 },
                             ),
                         contentDescription = null,
@@ -371,7 +371,7 @@ fun PlayerTopActions(
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
-                        painter = painterResource(R.drawable.share),
+                        painter = painterResource(R.drawable.player_share),
                         contentDescription = null,
                         tint = textBackgroundColor.copy(alpha = 0.7f),
                         modifier = Modifier.size(20.dp),
@@ -389,9 +389,9 @@ fun PlayerTopActions(
                         painter =
                             painterResource(
                                 if (currentSongLiked) {
-                                    R.drawable.favorite
+                                    R.drawable.player_favorite
                                 } else {
-                                    R.drawable.favorite_border
+                                    R.drawable.player_favorite_border
                                 },
                             ),
                         contentDescription = null,
@@ -434,7 +434,7 @@ fun PlayerTopActions(
                 ) {
                     Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
                         Icon(
-                            painter = painterResource(R.drawable.share),
+                            painter = painterResource(R.drawable.player_share),
                             contentDescription = null,
                             tint = textBackgroundColor,
                             modifier = Modifier.size(22.dp),
@@ -461,9 +461,9 @@ fun PlayerTopActions(
                             painter =
                                 painterResource(
                                     if (currentSongLiked) {
-                                        R.drawable.favorite
+                                        R.drawable.player_favorite
                                     } else {
-                                        R.drawable.favorite_border
+                                        R.drawable.player_favorite_border
                                     },
                                 ),
                             contentDescription = null,
@@ -506,7 +506,7 @@ fun PlayerTopActions(
                 ) {
                     Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
                         Icon(
-                            painter = painterResource(R.drawable.more_horiz),
+                            painter = painterResource(R.drawable.player_more_horiz),
                             contentDescription = null,
                             tint = textBackgroundColor,
                             modifier = Modifier.size(22.dp),
@@ -537,7 +537,7 @@ fun PlayerTopActions(
                         },
             ) {
                 Image(
-                    painter = painterResource(R.drawable.share),
+                    painter = painterResource(R.drawable.player_share),
                     contentDescription = null,
                     colorFilter = ColorFilter.tint(iconButtonColor),
                     modifier =
@@ -575,7 +575,7 @@ fun PlayerTopActions(
                         },
             ) {
                 Image(
-                    painter = painterResource(R.drawable.more_horiz),
+                    painter = painterResource(R.drawable.player_more_horiz),
                     contentDescription = null,
                     colorFilter = ColorFilter.tint(iconButtonColor),
                 )
@@ -615,7 +615,7 @@ fun PlayerTopActions(
                 ) {
                     Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
                         Icon(
-                            painter = painterResource(R.drawable.share),
+                            painter = painterResource(R.drawable.player_share),
                             contentDescription = null,
                             tint = textBackgroundColor,
                             modifier = Modifier.size(20.dp),
@@ -642,9 +642,9 @@ fun PlayerTopActions(
                             painter =
                                 painterResource(
                                     if (currentSongLiked) {
-                                        R.drawable.favorite
+                                        R.drawable.player_favorite
                                     } else {
-                                        R.drawable.favorite_border
+                                        R.drawable.player_favorite_border
                                     },
                                 ),
                             contentDescription = null,
@@ -692,7 +692,7 @@ fun PlayerTopActions(
                 ) {
                     Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
                         Icon(
-                            painter = painterResource(R.drawable.more_horiz),
+                            painter = painterResource(R.drawable.player_more_horiz),
                             contentDescription = null,
                             tint = textBackgroundColor,
                             modifier = Modifier.size(20.dp),
@@ -702,7 +702,7 @@ fun PlayerTopActions(
             }
         }
 
-        PlayerDesignStyle.V7, PlayerDesignStyle.V8, PlayerDesignStyle.V9 -> {
+        PlayerDesignStyle.V7, PlayerDesignStyle.V8, PlayerDesignStyle.V9, PlayerDesignStyle.APPLE_MUSIC -> {
             Unit
         }
     }
@@ -950,7 +950,7 @@ fun PlayerPlaybackControls(
                                 .clip(RoundedCornerShape(32.dp)),
                     ) {
                         Icon(
-                            painter = painterResource(R.drawable.skip_previous),
+                            painter = painterResource(R.drawable.player_skip_previous),
                             contentDescription = null,
                             modifier = Modifier.size(32.dp),
                         )
@@ -988,9 +988,9 @@ fun PlayerPlaybackControls(
                                 painter =
                                     painterResource(
                                         when {
-                                            playbackState == STATE_ENDED -> R.drawable.replay
-                                            isPlaying -> R.drawable.pause
-                                            else -> R.drawable.play
+                                            playbackState == STATE_ENDED -> R.drawable.player_replay
+                                            isPlaying -> R.drawable.player_pause
+                                            else -> R.drawable.player_play
                                         },
                                     ),
                                 contentDescription = null,
@@ -1018,7 +1018,7 @@ fun PlayerPlaybackControls(
                                 .clip(RoundedCornerShape(32.dp)),
                     ) {
                         Icon(
-                            painter = painterResource(R.drawable.skip_next),
+                            painter = painterResource(R.drawable.player_skip_next),
                             contentDescription = null,
                             modifier = Modifier.size(32.dp),
                         )
@@ -1052,7 +1052,7 @@ fun PlayerPlaybackControls(
                         contentAlignment = Alignment.Center,
                     ) {
                         Icon(
-                            painter = painterResource(R.drawable.shuffle),
+                            painter = painterResource(R.drawable.player_shuffle),
                             contentDescription = null,
                             tint =
                                 textBackgroundColor.copy(
@@ -1075,7 +1075,7 @@ fun PlayerPlaybackControls(
                         contentAlignment = Alignment.Center,
                     ) {
                         Icon(
-                            painter = painterResource(R.drawable.skip_previous),
+                            painter = painterResource(R.drawable.player_skip_previous),
                             contentDescription = null,
                             tint = textBackgroundColor.copy(alpha = if (canSkipPrevious) 0.9f else 0.4f),
                             modifier = Modifier.size(26.dp),
@@ -1109,9 +1109,9 @@ fun PlayerPlaybackControls(
                                 painter =
                                     painterResource(
                                         when {
-                                            playbackState == STATE_ENDED -> R.drawable.replay
-                                            isPlaying -> R.drawable.pause
-                                            else -> R.drawable.play
+                                            playbackState == STATE_ENDED -> R.drawable.player_replay
+                                            isPlaying -> R.drawable.player_pause
+                                            else -> R.drawable.player_play
                                         },
                                     ),
                                 contentDescription = null,
@@ -1134,7 +1134,7 @@ fun PlayerPlaybackControls(
                         contentAlignment = Alignment.Center,
                     ) {
                         Icon(
-                            painter = painterResource(R.drawable.skip_next),
+                            painter = painterResource(R.drawable.player_skip_next),
                             contentDescription = null,
                             tint = textBackgroundColor.copy(alpha = if (canSkipNext) 0.9f else 0.4f),
                             modifier = Modifier.size(26.dp),
@@ -1161,9 +1161,9 @@ fun PlayerPlaybackControls(
                             painter =
                                 painterResource(
                                     when (repeatMode) {
-                                        Player.REPEAT_MODE_OFF, Player.REPEAT_MODE_ALL -> R.drawable.repeat
-                                        Player.REPEAT_MODE_ONE -> R.drawable.repeat_one
-                                        else -> R.drawable.repeat
+                                        Player.REPEAT_MODE_OFF, Player.REPEAT_MODE_ALL -> R.drawable.player_repeat
+                                        Player.REPEAT_MODE_ONE -> R.drawable.player_repeat_one
+                                        else -> R.drawable.player_repeat
                                     },
                                 ),
                             contentDescription = null,
@@ -1236,7 +1236,7 @@ fun PlayerPlaybackControls(
                                 contentAlignment = Alignment.Center,
                             ) {
                                 Icon(
-                                    painter = painterResource(R.drawable.shuffle),
+                                    painter = painterResource(R.drawable.player_shuffle),
                                     contentDescription = null,
                                     tint =
                                         textBackgroundColor.copy(
@@ -1264,7 +1264,7 @@ fun PlayerPlaybackControls(
                                 contentAlignment = Alignment.Center,
                             ) {
                                 Icon(
-                                    painter = painterResource(R.drawable.skip_previous),
+                                    painter = painterResource(R.drawable.player_skip_previous),
                                     contentDescription = null,
                                     tint =
                                         textBackgroundColor.copy(
@@ -1307,9 +1307,9 @@ fun PlayerPlaybackControls(
                                     painter =
                                         painterResource(
                                             when {
-                                                playbackState == STATE_ENDED -> R.drawable.replay
-                                                isPlaying -> R.drawable.pause
-                                                else -> R.drawable.play
+                                                playbackState == STATE_ENDED -> R.drawable.player_replay
+                                                isPlaying -> R.drawable.player_pause
+                                                else -> R.drawable.player_play
                                             },
                                         ),
                                     contentDescription = null,
@@ -1339,7 +1339,7 @@ fun PlayerPlaybackControls(
                                 contentAlignment = Alignment.Center,
                             ) {
                                 Icon(
-                                    painter = painterResource(R.drawable.skip_next),
+                                    painter = painterResource(R.drawable.player_skip_next),
                                     contentDescription = null,
                                     tint =
                                         textBackgroundColor.copy(
@@ -1377,8 +1377,8 @@ fun PlayerPlaybackControls(
                                     painter =
                                         painterResource(
                                             when (repeatMode) {
-                                                Player.REPEAT_MODE_ONE -> R.drawable.repeat_one
-                                                else -> R.drawable.repeat
+                                                Player.REPEAT_MODE_ONE -> R.drawable.player_repeat_one
+                                                else -> R.drawable.player_repeat
                                             },
                                         ),
                                     contentDescription = null,
@@ -1407,8 +1407,8 @@ fun PlayerPlaybackControls(
                     ResizableIconButton(
                         icon =
                             when (repeatMode) {
-                                Player.REPEAT_MODE_OFF, Player.REPEAT_MODE_ALL -> R.drawable.repeat
-                                Player.REPEAT_MODE_ONE -> R.drawable.repeat_one
+                                Player.REPEAT_MODE_OFF, Player.REPEAT_MODE_ALL -> R.drawable.player_repeat
+                                Player.REPEAT_MODE_ONE -> R.drawable.player_repeat_one
                                 else -> throw IllegalStateException()
                             },
                         color = textBackgroundColor,
@@ -1432,7 +1432,7 @@ fun PlayerPlaybackControls(
 
                 Box(modifier = Modifier.weight(1f)) {
                     ResizableIconButton(
-                        icon = R.drawable.skip_previous,
+                        icon = R.drawable.player_skip_previous,
                         enabled = canSkipPrevious,
                         color = textBackgroundColor,
                         modifier =
@@ -1479,11 +1479,11 @@ fun PlayerPlaybackControls(
                                     if (playbackState ==
                                         STATE_ENDED
                                     ) {
-                                        R.drawable.replay
+                                        R.drawable.player_replay
                                     } else if (isPlaying) {
-                                        R.drawable.pause
+                                        R.drawable.player_pause
                                     } else {
-                                        R.drawable.play
+                                        R.drawable.player_play
                                     },
                                 ),
                             contentDescription = null,
@@ -1500,7 +1500,7 @@ fun PlayerPlaybackControls(
 
                 Box(modifier = Modifier.weight(1f)) {
                     ResizableIconButton(
-                        icon = R.drawable.skip_next,
+                        icon = R.drawable.player_skip_next,
                         enabled = canSkipNext,
                         color = textBackgroundColor,
                         modifier =
@@ -1516,7 +1516,7 @@ fun PlayerPlaybackControls(
 
                 Box(modifier = Modifier.weight(1f)) {
                     ResizableIconButton(
-                        icon = if (currentSongLiked) R.drawable.favorite else R.drawable.favorite_border,
+                        icon = if (currentSongLiked) R.drawable.player_favorite else R.drawable.player_favorite_border,
                         color = if (currentSongLiked) MaterialTheme.colorScheme.error else textBackgroundColor,
                         modifier =
                             Modifier
@@ -1574,7 +1574,7 @@ fun PlayerPlaybackControls(
                                 contentAlignment = Alignment.Center,
                             ) {
                                 Icon(
-                                    painter = painterResource(R.drawable.skip_previous),
+                                    painter = painterResource(R.drawable.player_skip_previous),
                                     contentDescription = null,
                                     tint =
                                         MaterialTheme.colorScheme.onSecondaryContainer.copy(
@@ -1617,9 +1617,9 @@ fun PlayerPlaybackControls(
                                         painter =
                                             painterResource(
                                                 when {
-                                                    playbackState == STATE_ENDED -> R.drawable.replay
-                                                    isPlaying -> R.drawable.pause
-                                                    else -> R.drawable.play
+                                                    playbackState == STATE_ENDED -> R.drawable.player_replay
+                                                    isPlaying -> R.drawable.player_pause
+                                                    else -> R.drawable.player_play
                                                 },
                                             ),
                                         contentDescription = null,
@@ -1656,7 +1656,7 @@ fun PlayerPlaybackControls(
                                 contentAlignment = Alignment.Center,
                             ) {
                                 Icon(
-                                    painter = painterResource(R.drawable.skip_next),
+                                    painter = painterResource(R.drawable.player_skip_next),
                                     contentDescription = null,
                                     tint =
                                         MaterialTheme.colorScheme.onSecondaryContainer.copy(
@@ -1700,7 +1700,7 @@ fun PlayerPlaybackControls(
                             contentAlignment = Alignment.Center,
                         ) {
                             Icon(
-                                painter = painterResource(R.drawable.shuffle),
+                                painter = painterResource(R.drawable.player_shuffle),
                                 contentDescription = null,
                                 tint =
                                     if (shuffleModeEnabled) {
@@ -1742,8 +1742,8 @@ fun PlayerPlaybackControls(
                                 painter =
                                     painterResource(
                                         when (repeatMode) {
-                                            Player.REPEAT_MODE_ONE -> R.drawable.repeat_one
-                                            else -> R.drawable.repeat
+                                            Player.REPEAT_MODE_ONE -> R.drawable.player_repeat_one
+                                            else -> R.drawable.player_repeat
                                         },
                                     ),
                                 contentDescription = null,
@@ -1761,7 +1761,7 @@ fun PlayerPlaybackControls(
             }
         }
 
-        PlayerDesignStyle.V7, PlayerDesignStyle.V8, PlayerDesignStyle.V9 -> {
+        PlayerDesignStyle.V7, PlayerDesignStyle.V8, PlayerDesignStyle.V9, PlayerDesignStyle.APPLE_MUSIC -> {
             Unit
         }
     }
@@ -1887,7 +1887,7 @@ fun PlayerControlsContent(
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
                         ) {
                             Icon(
-                                painter = painterResource(R.drawable.graphic_eq),
+                                painter = painterResource(R.drawable.player_graphic_eq),
                                 contentDescription = null,
                                 modifier = Modifier.size(14.dp),
                                 tint = textBackgroundColor.copy(alpha = 0.8f),
@@ -2649,7 +2649,7 @@ private fun V8MetadataActions(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             V8ActionButton(
-                iconRes = R.drawable.more_vert,
+                iconRes = R.drawable.player_more_vert,
                 contentDescription = stringResource(R.string.more_options),
                 foreground = foreground,
                 containerColor = foreground.copy(alpha = 0.16f),
@@ -2657,7 +2657,7 @@ private fun V8MetadataActions(
                 onClick = onMenuClick,
             )
             V8ActionButton(
-                iconRes = if (liked) R.drawable.favorite else R.drawable.favorite_border,
+                iconRes = if (liked) R.drawable.player_favorite else R.drawable.player_favorite_border,
                 contentDescription = stringResource(R.string.action_like),
                 foreground = foreground,
                 containerColor = foreground.copy(alpha = 0.16f),
@@ -2785,7 +2785,7 @@ private fun V8QualityChip(
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
         ) {
             Icon(
-                painter = painterResource(R.drawable.graphic_eq),
+                painter = painterResource(R.drawable.player_graphic_eq),
                 contentDescription = null,
                 tint = foreground.copy(alpha = 0.72f),
                 modifier = Modifier.size(15.dp),
@@ -2820,7 +2820,7 @@ private fun V8TransportControls(
         horizontalArrangement = Arrangement.SpaceEvenly,
     ) {
         V8TransportButton(
-            iconRes = R.drawable.skip_previous,
+            iconRes = R.drawable.player_skip_previous,
             contentDescription = stringResource(R.string.widget_previous),
             foreground = foreground,
             enabled = canSkipPrevious,
@@ -2855,9 +2855,9 @@ private fun V8TransportControls(
                         painter =
                             painterResource(
                                 when {
-                                    playbackState == STATE_ENDED -> R.drawable.replay
-                                    isPlaying -> R.drawable.pause
-                                    else -> R.drawable.play
+                                    playbackState == STATE_ENDED -> R.drawable.player_replay
+                                    isPlaying -> R.drawable.player_pause
+                                    else -> R.drawable.player_play
                                 },
                             ),
                         contentDescription =
@@ -2874,7 +2874,7 @@ private fun V8TransportControls(
         }
 
         V8TransportButton(
-            iconRes = R.drawable.skip_next,
+            iconRes = R.drawable.player_skip_next,
             contentDescription = stringResource(R.string.next),
             foreground = foreground,
             enabled = canSkipNext,
@@ -2931,7 +2931,7 @@ private fun V8VolumeControls(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
-            painter = painterResource(R.drawable.volume_off),
+            painter = painterResource(R.drawable.player_volume_off),
             contentDescription = stringResource(R.string.minimum_volume),
             tint = secondaryForeground,
             modifier = Modifier.size(22.dp),
@@ -2950,7 +2950,7 @@ private fun V8VolumeControls(
                     .padding(horizontal = 18.dp),
         )
         Icon(
-            painter = painterResource(R.drawable.volume_up),
+            painter = painterResource(R.drawable.player_volume_up),
             contentDescription = stringResource(R.string.maximum_volume),
             tint = secondaryForeground,
             modifier = Modifier.size(24.dp),
@@ -3393,7 +3393,7 @@ private fun V9Header(
         horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         V9HeaderButton(
-            iconRes = R.drawable.expand_more,
+            iconRes = R.drawable.player_expand_more,
             contentDescription = null,
             containerColor = containerColor,
             iconColor = iconColor,
@@ -3419,7 +3419,7 @@ private fun V9Header(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             V9HeaderButton(
-                iconRes = R.drawable.lyrics,
+                iconRes = R.drawable.player_lyrics,
                 contentDescription = stringResource(R.string.lyrics),
                 containerColor = containerColor,
                 iconColor = iconColor,
@@ -3427,7 +3427,7 @@ private fun V9Header(
                 onClick = onLyricsClick,
             )
             V9HeaderButton(
-                iconRes = R.drawable.queue_music,
+                iconRes = R.drawable.player_queue_music,
                 contentDescription = stringResource(R.string.queue),
                 containerColor = containerColor,
                 iconColor = iconColor,
@@ -3653,7 +3653,7 @@ private fun V9TransportControls(
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         V9TransportButton(
-            iconRes = R.drawable.skip_previous,
+            iconRes = R.drawable.player_skip_previous,
             contentDescription = stringResource(R.string.widget_previous),
             enabled = canSkipPrevious,
             containerColor = containerColor,
@@ -3690,9 +3690,9 @@ private fun V9TransportControls(
                     AnimatedContent(
                         targetState =
                             when {
-                                playbackState == STATE_ENDED -> R.drawable.replay
-                                isPlaying -> R.drawable.pause
-                                else -> R.drawable.play
+                                playbackState == STATE_ENDED -> R.drawable.player_replay
+                                isPlaying -> R.drawable.player_pause
+                                else -> R.drawable.player_play
                             },
                         transitionSpec = {
                             fadeIn(spring(stiffness = Spring.StiffnessMediumLow)) togetherWith fadeOut(tween(90))
@@ -3716,7 +3716,7 @@ private fun V9TransportControls(
         }
 
         V9TransportButton(
-            iconRes = R.drawable.skip_next,
+            iconRes = R.drawable.player_skip_next,
             contentDescription = stringResource(R.string.next),
             enabled = canSkipNext,
             containerColor = containerColor,

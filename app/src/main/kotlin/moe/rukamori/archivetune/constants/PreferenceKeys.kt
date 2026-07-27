@@ -163,9 +163,12 @@ val EnablePaxsenixYouTubeLyricsKey = booleanPreferencesKey("enablePaxsenixYouTub
 val EnableUnisonLyricsKey = booleanPreferencesKey("enableUnisonLyrics")
 val HideExplicitKey = booleanPreferencesKey("hideExplicit")
 val HideVideoKey = booleanPreferencesKey("hideVideo")
+val AllowAgeRestrictedKey = booleanPreferencesKey("allowAgeRestricted")
+val DownloadSourceKey = stringPreferencesKey("downloadSource")
 val AiContentFilterEnabledKey = booleanPreferencesKey("aiContentFilterEnabled")
 val AiContentFilterIncludeModerateKey = booleanPreferencesKey("aiContentFilterIncludeModerate")
 val AiContentFilterLastUpdatedKey = longPreferencesKey("aiContentFilterLastUpdated")
+val AiMixLastGeneratedAtKey = longPreferencesKey("aiMixLastGeneratedAt")
 val ProxyEnabledKey = booleanPreferencesKey("proxyEnabled")
 val ProxyHostKey = stringPreferencesKey("proxyHost")
 val ProxyPortKey = intPreferencesKey("proxyPort")
@@ -205,6 +208,9 @@ val AiApiKeyKey = stringPreferencesKey("ai_api_key")
 val AiApiValidationStatusKey = stringPreferencesKey("ai_api_validation_status")
 val AiSelectedModelKey = stringPreferencesKey("ai_selected_model")
 val AiCustomModelKey = stringPreferencesKey("ai_custom_model")
+
+// Hides the AI-generated "Top mixes" section in the library Mix tab (and stops auto-generation).
+val HideAiMixKey = booleanPreferencesKey("hide_ai_mix")
 
 enum class AiProvider {
     CHATGPT,
@@ -642,6 +648,7 @@ enum class PlayerDesignStyle {
     V7,
     V8,
     V9,
+    APPLE_MUSIC,
 }
 
 enum class PlayerBackgroundStyle {
@@ -673,7 +680,21 @@ enum class MiniPlayerBackgroundStyle {
     THEME,
     GRADIENT,
     GLOW,
+    FROSTED,
 }
+
+// Bottom navigation bar look: DEFAULT keeps the docked full-width bar; FLOATING detaches it into
+// a pill with larger margins that never pairs with the mini player.
+enum class NavigationBarStyle {
+    DEFAULT,
+    FLOATING,
+}
+
+val NavigationBarStyleKey = stringPreferencesKey("navigationBarStyle")
+
+// Draws a frosted (blurred app content) backdrop behind the navigation bar. True backdrop blur on
+// Android 12+; a translucent surface fallback below that.
+val NavigationBarFrostedBlurKey = booleanPreferencesKey("navigationBarFrostedBlur")
 
 // Keys for customized background
 val PlayerCustomImageUriKey = stringPreferencesKey("playerCustomImageUri")
@@ -888,6 +909,21 @@ fun QobuzAudioQuality.toFormatId(): Int =
         QobuzAudioQuality.HI_RES -> 7
         QobuzAudioQuality.MAX -> 27
     }
+
+// ---------------------------------------------------------------------------
+// Telegram channel streaming integration
+// ---------------------------------------------------------------------------
+// Streams audio files (lossless-first) directly from Telegram channels via TDLib. The user logs in
+// with their own Telegram account (phone + code + optional 2FA password); the app's api_id/api_hash
+// are baked in at build time (BuildConfig.TELEGRAM_API_ID/HASH), so no developer credentials are
+// entered in-app. The session lives in TDLib's encrypted database under filesDir; these keys only
+// hold display metadata for the settings screen.
+val TelegramAccountNameKey = stringPreferencesKey("telegramAccountName")
+val TelegramAccountPhoneKey = stringPreferencesKey("telegramAccountPhone")
+
+// When ON (default) the channel browser only materialises lossless files (FLAC/WAV/AIFF/APE/ALAC/…)
+// into the channel's playlist; when OFF every audio message and audio-typed document is included.
+val TelegramLosslessOnlyKey = booleanPreferencesKey("telegramLosslessOnly")
 
 // ---------------------------------------------------------------------------
 // Multi-source audio framework

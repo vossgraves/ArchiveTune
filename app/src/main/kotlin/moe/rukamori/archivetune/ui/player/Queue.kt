@@ -244,7 +244,7 @@ fun Queue(
         TextFieldDialog(
             icon = {
                 Icon(
-                    painter = painterResource(R.drawable.queue_music),
+                    painter = painterResource(R.drawable.player_queue_music),
                     contentDescription = null,
                 )
             },
@@ -590,6 +590,11 @@ fun Queue(
                         },
                         onShowLyrics = onShowLyrics,
                     )
+                }
+
+                PlayerDesignStyle.APPLE_MUSIC -> {
+                    // The Apple Music style keeps its collapsed peek bar empty: the queue, lyrics and
+                    // output controls all live in the player's own bottom row, so no extra pills here.
                 }
 
                 PlayerDesignStyle.V9 -> {
@@ -1020,7 +1025,7 @@ fun Queue(
                                                 },
                                             ) {
                                                 Icon(
-                                                    painter = painterResource(R.drawable.more_vert),
+                                                    painter = painterResource(R.drawable.player_more_vert),
                                                     contentDescription = null,
                                                 )
                                             }
@@ -1030,7 +1035,7 @@ fun Queue(
                                                     modifier = Modifier.draggableHandle(),
                                                 ) {
                                                     Icon(
-                                                        painter = painterResource(R.drawable.drag_handle),
+                                                        painter = painterResource(R.drawable.player_drag_handle),
                                                         contentDescription = null,
                                                     )
                                                 }
@@ -1253,7 +1258,7 @@ private fun QueueSelectionFloatingToolbar(
                 contentColor = fabContentColor,
             ) {
                 Icon(
-                    painter = painterResource(R.drawable.close),
+                    painter = painterResource(R.drawable.player_close),
                     contentDescription = stringResource(R.string.close),
                     modifier = Modifier.size(22.dp),
                 )
@@ -1273,28 +1278,28 @@ private fun QueueSelectionFloatingToolbar(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             QueueSelectionToolbarAction(
-                icon = if (allSelected) R.drawable.deselect else R.drawable.select_all,
+                icon = if (allSelected) R.drawable.player_deselect else R.drawable.player_select_all,
                 contentDescription = null,
                 tint = toolbarContentColor,
                 onClick = onToggleSelectAll,
             )
 
             QueueSelectionToolbarAction(
-                icon = R.drawable.playlist_add,
+                icon = R.drawable.player_playlist_add,
                 contentDescription = stringResource(R.string.add_to_playlist),
                 tint = colorScheme.primary,
                 onClick = onAddToPlaylist,
             )
 
             QueueSelectionToolbarAction(
-                icon = R.drawable.queue_music,
+                icon = R.drawable.player_queue_music,
                 contentDescription = stringResource(R.string.create_playlist),
                 tint = colorScheme.primary,
                 onClick = onCreatePlaylist,
             )
 
             QueueSelectionToolbarAction(
-                icon = R.drawable.delete,
+                icon = R.drawable.player_delete,
                 contentDescription = stringResource(R.string.delete),
                 tint = colorScheme.error,
                 onClick = onDelete,
