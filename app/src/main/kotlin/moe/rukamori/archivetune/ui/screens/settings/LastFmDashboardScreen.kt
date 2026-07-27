@@ -32,7 +32,6 @@ import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -71,6 +70,7 @@ import moe.rukamori.archivetune.lastfm.models.RecentTrack
 import moe.rukamori.archivetune.lastfm.models.TopTrack
 import moe.rukamori.archivetune.lastfm.models.UserInfo
 import moe.rukamori.archivetune.scrobbling.LastFmSettingsRepository
+import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.utils.backToMain
 import javax.inject.Inject
 
