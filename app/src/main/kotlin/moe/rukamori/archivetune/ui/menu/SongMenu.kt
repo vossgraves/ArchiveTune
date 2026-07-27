@@ -154,9 +154,24 @@ fun SongMenu(
             val songId = song.id
             val songTitle = song.song.title
             coroutineScope.launch {
-                val result = withContext(Dispatchers.IO) { exportDownloadedSong(context, downloadUtil, treeUri, songId, songTitle) }
+                val result = exportDownloadedSong(context, downloadUtil, treeUri, songId, songTitle)
                 val msgResId = result.fold(
                     onSuccess = { R.string.export_to_folder_success },
+                    onFailure = { R.string.export_to_folder_failed },
+                )
+                Toast.makeText(context, context.getString(msgResId), Toast.LENGTH_SHORT).show()
+            }
+        }
+    // Direct export to the device's Downloads folder (via MediaStore / Downloads collection)
+    val exportToDownloadsLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("audio/mpeg")) { destUri ->
+            if (destUri == null) return@rememberLauncherForActivityResult
+            val songId = song.id
+            val songTitle = song.song.title
+            coroutineScope.launch {
+                val result = exportDownloadedSongToUri(context, downloadUtil, destUri, songId, songTitle)
+                val msgResId = result.fold(
+                    onSuccess = { R.string.export_to_downloads_success },
                     onFailure = { R.string.export_to_folder_failed },
                 )
                 Toast.makeText(context, context.getString(msgResId), Toast.LENGTH_SHORT).show()
@@ -879,10 +894,26 @@ fun SongMenu(
                                     )
                                 }
                             }
-                            // Export the downloaded audio file to any folder the user
-                            // picks via the Storage Access Framework folder picker.
-                            // Only shown when the download has actually completed.
+                            // Export options — only shown when the download has actually completed.
                             if (download?.state == Download.STATE_COMPLETED) {
+                                val safeTitle = song.song.title.trim()
+                                    .replace(Regex("[\\\\/:*?\"<>|]"), "_").ifBlank { "audio" }
+                                ListItem(
+                                    headlineContent = {
+                                        Text(text = stringResource(R.string.export_to_downloads))
+                                    },
+                                    leadingContent = {
+                                        Icon(
+                                            painter = painterResource(R.drawable.download),
+                                            contentDescription = null,
+                                        )
+                                    },
+                                    modifier =
+                                        Modifier.clickable {
+                                            exportToDownloadsLauncher.launch("$safeTitle.mp3")
+                                        },
+                                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                                )
                                 ListItem(
                                     headlineContent = {
                                         Text(text = stringResource(R.string.export_to_folder))
@@ -1088,24 +1119,13 @@ private suspend fun exportDownloadedSong(
     songTitle: String,
 ): Result<Uri> = runCatching {
     withContext(Dispatchers.IO) {
-        // Access the underlying SimpleCache for the download cache. The
-        // DownloadUtil exposes it via reflection-free accessor — we read
-        // the spans directly via Cache (interface). CacheSpan files are
-        // already byte-aligned chunks of the original audio file, in
-        // order, so concatenating them yields the full audio.
         val cache = downloadUtil.downloadCache
-        val spans = cache.getCachedSpans(songId)
+        val spans = getCachedSpansForKey(cache, songId)
         if (spans.isEmpty()) {
             throw IllegalStateException("Download cache is empty for this song")
         }
-
-        // Pick a safe filename. Strip characters that are problematic on
-        // most filesystems and that the SAF DocumentContract generally
-        // rejects.
         val safeTitle = songTitle.trim().replace(Regex("[\\\\/:*?\"<>|]"), "_").ifBlank { "audio" }
         val displayName = "$safeTitle.mp3"
-
-        // Create the destination document under the picked tree URI.
         val destUri =
             DocumentsContract.createDocument(
                 context.contentResolver,
@@ -1113,16 +1133,69 @@ private suspend fun exportDownloadedSong(
                 "audio/mpeg",
                 displayName,
             ) ?: throw IllegalStateException("Could not create destination file in the picked folder")
-
-        context.contentResolver.openOutputStream(destUri, "w")?.use { output ->
-            spans.sortedBy { it.position }.forEach { span ->
-                java.io.FileInputStream(span.file).use { input ->
-                    input.copyTo(output)
-                }
-            }
-            output.flush()
-        } ?: throw IllegalStateException("Could not open destination stream")
-
+        writeSpansToUri(context, destUri, spans)
         destUri
     }
+}
+
+/**
+ * Exports a downloaded song to a pre-existing [destUri] (e.g. from CreateDocument).
+ */
+private suspend fun exportDownloadedSongToUri(
+    context: android.content.Context,
+    downloadUtil: moe.rukamori.archivetune.playback.DownloadUtil,
+    destUri: Uri,
+    songId: String,
+    songTitle: String,
+): Result<Uri> = runCatching {
+    withContext(Dispatchers.IO) {
+        val cache = downloadUtil.downloadCache
+        val spans = getCachedSpansForKey(cache, songId)
+        if (spans.isEmpty()) {
+            throw IllegalStateException("Download cache is empty for this song")
+        }
+        writeSpansToUri(context, destUri, spans)
+        destUri
+    }
+}
+
+/**
+ * Resolves cached spans for a given [songId]. Tries the key directly first,
+ * then falls back to searching all cache keys for a matching entry.
+ */
+private fun getCachedSpansForKey(
+    cache: androidx.media3.datasource.cache.Cache,
+    songId: String,
+): java.util.NavigableSet<androidx.media3.datasource.cache.CacheSpan> {
+    var spans = cache.getCachedSpans(songId)
+    if (spans.isNotEmpty()) return spans
+    // Fallback: the download may have been stored under a slightly different
+    // key (e.g. with a URI prefix). Search all keys for one that ends with
+    // the songId or equals it after URI decoding.
+    for (key in cache.keys) {
+        val cleanKey = key.substringAfterLast("/")
+        if (cleanKey == songId || key == songId) {
+            spans = cache.getCachedSpans(key)
+            if (spans.isNotEmpty()) return spans
+        }
+    }
+    return spans
+}
+
+/**
+ * Writes cached [spans] (sorted by position) to the output stream at [destUri].
+ */
+private fun writeSpansToUri(
+    context: android.content.Context,
+    destUri: Uri,
+    spans: java.util.NavigableSet<androidx.media3.datasource.cache.CacheSpan>,
+) {
+    context.contentResolver.openOutputStream(destUri, "w")?.use { output ->
+        spans.sortedBy { it.position }.forEach { span ->
+            java.io.FileInputStream(span.file).use { input ->
+                input.copyTo(output)
+            }
+        }
+        output.flush()
+    } ?: throw IllegalStateException("Could not open destination stream")
 }

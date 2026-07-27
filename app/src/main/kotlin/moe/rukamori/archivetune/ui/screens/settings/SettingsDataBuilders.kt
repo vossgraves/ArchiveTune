@@ -95,7 +95,7 @@ fun buildSettingsGroups(
             title = stringResource(R.string.content),
             subtitle = stringResource(R.string.settings_content_subtitle),
             accentColor = MaterialTheme.colorScheme.primary,
-            keywords = listOf("content", "language", "locale", "country", "region", "app language"),
+            keywords = listOf("content", "language", "locale", "country", "region", "app language", "explicit", "age restricted", "age", "mature", "video"),
             onClick = { navController.navigate("settings/content") },
         )
     val languagePacks =

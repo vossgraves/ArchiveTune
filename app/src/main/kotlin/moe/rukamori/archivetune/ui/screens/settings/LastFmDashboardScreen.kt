@@ -335,19 +335,23 @@ private fun UserCard(
                 }
             }
             userInfo?.isFailure == true -> {
-                Column(
+                // Silently degrade — show the placeholder instead of the error card
+                // so the user can still see recent tracks and top tracks below.
+                Row(
                     modifier = Modifier.fillMaxWidth().padding(24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(
-                        text = stringResource(R.string.lastfm_load_failed),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.error,
+                    Icon(
+                        painter = painterResource(R.drawable.account),
+                        contentDescription = null,
+                        modifier = Modifier.size(48.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    Spacer(Modifier.height(8.dp))
-                    FilledTonalButton(onClick = onRetry) {
-                        Text(stringResource(R.string.lastfm_retry))
-                    }
+                    Spacer(Modifier.size(12.dp))
+                    Text(
+                        text = "@$username",
+                        style = MaterialTheme.typography.titleMedium,
+                    )
                 }
             }
             else -> {

@@ -14,7 +14,6 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -28,6 +27,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
@@ -40,10 +40,12 @@ import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -54,6 +56,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.navigation.NavController
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
 import moe.rukamori.archivetune.BuildConfig
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
@@ -64,7 +69,7 @@ import moe.rukamori.archivetune.ui.utils.appBarScrollBehavior
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.Updater
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, FlowPreview::class)
 @Composable
 fun SettingsScreen(
     navController: NavController,
@@ -134,6 +139,32 @@ fun SettingsScreen(
                 group.copy(items = filteredItems, showWhenFiltered = filteredItems.isNotEmpty())
             }.filter { it.items.isNotEmpty() }
         }
+    }
+
+    // Auto-scroll to the first matching item when search query changes.
+    // We debounce slightly so rapid typing doesn't cause excessive scrolls.
+    LaunchedEffect(listState, filteredGroups) {
+        snapshotFlow { searchQuery }
+            .debounce(150L)
+            .distinctUntilChanged()
+            .collect { query ->
+                if (query.isBlank()) return@collect
+                // Find the first item's key in the filtered results and scroll to it.
+                val firstItemKey = filteredGroups
+                    .firstOrNull()?.items?.firstOrNull()?.key ?: return@collect
+                // The LazyColumn has: search_bar, search_spacing items before any group items.
+                // We use scrollToItem with the approximate index of the first result.
+                // Since each group has items and spacers, we calculate the flat index.
+                var targetIndex = 2 // search_bar + search_spacing
+                for (group in filteredGroups) {
+                    if (group.items.any { it.key == firstItemKey }) {
+                        // Found the group containing the first item
+                        break
+                    }
+                    targetIndex += 1 + group.items.size // group spacing + items
+                }
+                listState.scrollToItem(targetIndex)
+            }
     }
 
     // Material 3 Expressive: when any settings dialog (history duration,
