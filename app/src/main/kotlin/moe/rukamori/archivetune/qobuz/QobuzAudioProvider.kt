@@ -328,6 +328,23 @@ object QobuzAudioProvider {
         if (healthy) markInstanceHealthy(normalized) else markInstanceFailed(normalized, hardFailure = true)
     }
 
+    /**
+     * Drops any cached stream/failure entry for [query], forcing the next [resolve] to hit the
+     * network.
+     *
+     * Needed by the download path: proxy URLs are signed with a short `etsp` expiry, so a cached URL
+     * can be syntactically fine but already dead. Without this, retrying a download would keep
+     * replaying the same expired link until the cache aged out on its own.
+     */
+    fun invalidate(
+        query: Query,
+        formatId: Int,
+    ) {
+        val key = query.cacheKey() + ":" + formatId
+        streamCache.remove(key)
+        failureCache.remove(key)
+    }
+
     /** Lookup metadata for a track, matching Tidal's [TidalAudioProvider.Query] shape. */
     data class Query(
         val mediaId: String,

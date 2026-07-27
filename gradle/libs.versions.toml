@@ -40,6 +40,9 @@ translator = "1.1.1"
 rhino = "1.9.1"
 markwon = "4.6.2"
 okhttp = "5.4.0"
+# Android fork of jaudiotagger; upstream net.jthink needs java.awt, which Android lacks.
+jaudiotagger = "2.3.15"
+documentfile = "1.1.0"
 accompanist = "1.0.19"
 accompanist-core = "0.4.7"
 androidsvg = "1.4"
@@ -120,6 +123,11 @@ re2j = { module = "com.google.re2j:re2j", version.ref = "re2j" }
 json = { module = "org.json:json", version.ref = "json" }
 okhttp_dnsoverhttps = { module = "com.squareup.okhttp3:okhttp-dnsoverhttps", version.ref = "okhttp" }
 okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
+
+# Writes FLAC Vorbis comments + embedded cover art on lossless downloads.
+jaudiotagger = { module = "com.github.Adonai:jaudiotagger", version.ref = "jaudiotagger" }
+# SAF: user-picked download folder is a tree Uri, accessed through DocumentFile.
+documentfile = { module = "androidx.documentfile:documentfile", version.ref = "documentfile" }
 
 brotli = { module = "org.brotli:dec", version.ref = "brotli" }
 rhino = { module = "org.mozilla:rhino", version.ref = "rhino" }

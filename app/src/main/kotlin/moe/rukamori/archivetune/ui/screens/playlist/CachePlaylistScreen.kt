@@ -133,16 +133,21 @@ fun CachePlaylistScreen(
                             if (spans.isEmpty()) {
                                 throw IllegalStateException("No cache")
                             }
+                            val ordered = spans.sortedBy { it.position }
                             val safeTitle = song.title.trim()
                                 .replace(Regex("[\\\\/:*?\"<>|]"), "_").ifBlank { "audio" }
+                            // Detect the real container instead of labelling everything .mp3/audio-mpeg;
+                            // these caches hold Opus/AAC (and FLAC from lossless sources), so the old
+                            // hardcoded name lied about every single exported file.
+                            val container = detectContainer(ordered)
                             val destUri = android.provider.DocumentsContract.createDocument(
                                 context.contentResolver,
                                 treeUri,
-                                "audio/mpeg",
-                                "$safeTitle.mp3",
+                                container?.mimeType ?: "audio/mp4",
+                                "$safeTitle.${container?.extension ?: "m4a"}",
                             ) ?: throw IllegalStateException("Could not create file")
                             context.contentResolver.openOutputStream(destUri, "w")?.use { output ->
-                                spans.sortedBy { it.position }.forEach { span ->
+                                ordered.forEach { span ->
                                     java.io.FileInputStream(span.file).use { input ->
                                         input.copyTo(output)
                                     }
@@ -151,6 +156,9 @@ fun CachePlaylistScreen(
                             } ?: throw IllegalStateException("Could not open stream")
                         }
                     }
+                    // Leaving the screen cancels the scope; stop rather than grinding through the
+                    // rest of the queue and then toasting into a dead composition.
+                    result.exceptionOrNull()?.let { if (it is kotlinx.coroutines.CancellationException) throw it }
                     if (result.isSuccess) exported++ else failed++
                 }
                 Toast.makeText(
@@ -637,6 +645,24 @@ fun CachePlaylistScreen(
             },
         )
     }
+}
+
+/**
+ * Sniffs the audio container from the first cached span so exported files get a truthful name.
+ *
+ * Only the span at position 0 carries the container's magic bytes; later spans are mid-stream.
+ * Returns null when it cannot be determined, letting the caller apply its own default.
+ */
+private fun detectContainer(
+    orderedSpans: List<androidx.media3.datasource.cache.CacheSpan>,
+): moe.rukamori.archivetune.download.AudioContainer? {
+    val first = orderedSpans.firstOrNull { it.position == 0L } ?: return null
+    val header = ByteArray(moe.rukamori.archivetune.download.AudioContainer.PROBE_BYTES)
+    val read =
+        runCatching { java.io.FileInputStream(first.file).use { it.read(header) } }
+            .getOrDefault(0)
+    if (read <= 0) return null
+    return moe.rukamori.archivetune.download.AudioContainer.detect(header.copyOf(read))
 }
 
 /**

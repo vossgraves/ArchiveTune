@@ -143,9 +143,11 @@ fun SongMenu(
 
     val downloadUtil = LocalDownloadUtil.current
 
-    // Direct export to the device's Downloads folder (via SAF CreateDocument)
+    // Direct export to the device's Downloads folder (via SAF CreateDocument).
+    // "audio/*" rather than a concrete type: the real container is sniffed from the cached bytes at
+    // launch time, so committing to audio/mpeg here would contradict the extension we pass in.
     val exportToDownloadsLauncher =
-        rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("audio/mpeg")) { destUri ->
+        rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("audio/*")) { destUri ->
             if (destUri == null) return@rememberLauncherForActivityResult
             val songId = song.id
             val songTitle = song.song.title
@@ -891,7 +893,10 @@ fun SongMenu(
                                     },
                                     modifier =
                                         Modifier.clickable {
-                                            exportToDownloadsLauncher.launch("$safeTitle.mp3")
+                                            // Name the file after what it actually is, not a guess.
+                                            val ext =
+                                                detectCachedExtension(downloadUtil.downloadCache, song.id)
+                                            exportToDownloadsLauncher.launch("$safeTitle.$ext")
                                         },
                                     colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                                 )
@@ -1107,6 +1112,30 @@ private fun getCachedSpansForKey(
         }
     }
     return spans
+}
+
+/**
+ * Sniffs the container of a cached download so the exported file gets a truthful extension.
+ *
+ * Reads only the first span's header — every span after it is mid-stream and has no magic bytes.
+ * Falls back to "m4a" because YouTube audio is overwhelmingly AAC/Opus in an MP4 container, which is
+ * a far better default than the ".mp3" this used to hardcode.
+ */
+private fun detectCachedExtension(
+    cache: androidx.media3.datasource.cache.Cache,
+    songId: String,
+): String {
+    val spans = getCachedSpansForKey(cache, songId)
+    val first = spans.sortedBy { it.position }.firstOrNull { it.position == 0L } ?: return "m4a"
+    val header = ByteArray(moe.rukamori.archivetune.download.AudioContainer.PROBE_BYTES)
+    val read =
+        runCatching {
+            java.io.FileInputStream(first.file).use { it.read(header) }
+        }.getOrDefault(0)
+    if (read <= 0) return "m4a"
+    return moe.rukamori.archivetune.download.AudioContainer
+        .detect(header.copyOf(read))
+        ?.extension ?: "m4a"
 }
 
 /**

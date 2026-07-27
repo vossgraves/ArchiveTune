@@ -37,6 +37,10 @@ dependencyResolutionManagement {
                 // Prebuilt TDLib (Telegram Database Library) AAR with bundled JNI natives,
                 // used by the Telegram channel streaming integration.
                 includeGroup("com.github.tdlibx")
+                // Android-compatible fork of jaudiotagger. The upstream net.jthink artifact pulls in
+                // java.awt for artwork handling, which does not exist on Android; this fork strips it.
+                // Used to write FLAC Vorbis comments and embedded cover art on lossless downloads.
+                includeGroup("com.github.Adonai")
             }
         }
     }

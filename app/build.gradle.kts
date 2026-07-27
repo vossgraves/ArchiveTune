@@ -523,6 +523,11 @@ dependencies {
     implementation(libs.accompanist.lyrics.core)
 
     implementation("org.json:json:20240303")
+
+    // Lossless (Qobuz/Tidal) downloads: SAF tree access for the user-picked folder, and FLAC
+    // tagging. jaudiotagger bundles its own logging config that collides with ours, so exclude it.
+    implementation(libs.documentfile)
+    implementation(libs.jaudiotagger)
 }
 
 androidComponents {

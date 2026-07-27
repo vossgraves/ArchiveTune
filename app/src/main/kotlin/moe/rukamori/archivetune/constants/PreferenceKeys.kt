@@ -878,6 +878,21 @@ val ManualSourceLoginEnabledKey = booleanPreferencesKey("dev_manual_source_login
 // a fully-working instance from a reachable-but-preview-only one.
 val QobuzLastProbeTrackKey = stringPreferencesKey("qobuzLastProbeTrack")
 
+// ---------------------------------------------------------------------------
+// Lossless downloads (Qobuz/Tidal direct file download)
+// ---------------------------------------------------------------------------
+// Downloading is a different mechanism from streaming: the proxy's download-music endpoint returns a
+// URL to a COMPLETE .flac file, so we fetch it straight to disk instead of going through ExoPlayer.
+//
+// Persisted SAF tree Uri of the user-picked destination folder. Empty => not chosen yet, so the UI
+// must prompt with OpenDocumentTree before the first lossless download. We keep the tree Uri (not a
+// file path) because scoped storage gives us no filesystem path, and we take a persistable
+// permission so the grant survives reboots.
+val LosslessDownloadFolderKey = stringPreferencesKey("losslessDownloadFolder")
+
+// When ON, write Vorbis comments + embedded cover art into the downloaded FLAC.
+val LosslessDownloadTagKey = booleanPreferencesKey("losslessDownloadTag")
+
 // JSON list of direct Qobuz API token entries (user_auth_token + user_id + app_id + app_secret +
 // metadata). These call www.qobuz.com/api.json/0.2 directly with an MD5 request signature, so they
 // need no proxy instance. Tried before proxy URLs during resolution (direct = highest fidelity).
