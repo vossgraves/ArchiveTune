@@ -14,7 +14,9 @@ package moe.rukamori.archivetune.download
 import android.content.Context
 import android.net.Uri
 import androidx.documentfile.provider.DocumentFile
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.audiosource.DirectStream
 import moe.rukamori.archivetune.audiosource.TitleMatch
@@ -47,6 +49,15 @@ object LosslessDownloader {
     /** Proxy links carry a short-lived `etsp` expiry, so a stale URL is expected, not exceptional. */
     private const val MAX_ATTEMPTS = 3
     private const val BUFFER_BYTES = 64 * 1024
+
+    /**
+     * Delay before re-resolving after a failed attempt, doubled each time.
+     *
+     * Without this the three attempts fire back-to-back in milliseconds, which against a rate-limited
+     * or briefly-down proxy is effectively one attempt with extra logging. An expired link is the one
+     * case that needs no wait, since re-resolving is guaranteed to hand back a different URL.
+     */
+    private const val RETRY_BASE_DELAY_MS = 800L
 
     private val client: OkHttpClient by lazy {
         OkHttpClient
@@ -125,10 +136,18 @@ object LosslessDownloader {
 
                 val error = attemptResult.exceptionOrNull()
                 lastFailure = error?.message ?: "download failed"
+                // Cancellation is not a failure to retry: the user left the screen.
+                if (error is CancellationException) throw error
+
                 if (error is ExpiredLinkException) {
                     Timber.tag(TAG).w("link expired for \"%s\", re-resolving", request.title)
                 } else {
                     Timber.tag(TAG).w(error, "attempt %d failed for \"%s\"", attempt + 1, request.title)
+                    // Back off before hammering a proxy that just errored. Skipped for expired links,
+                    // where a fresh URL is immediately available, and after the final attempt.
+                    if (attempt < MAX_ATTEMPTS - 1) {
+                        delay(RETRY_BASE_DELAY_MS shl attempt)
+                    }
                 }
             }
 
