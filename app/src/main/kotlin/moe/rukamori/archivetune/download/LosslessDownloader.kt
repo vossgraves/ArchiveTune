@@ -16,9 +16,9 @@ import android.net.Uri
 import androidx.documentfile.provider.DocumentFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import moe.rukamori.archivetune.audiosource.AudioSourceType
 import moe.rukamori.archivetune.audiosource.DirectStream
 import moe.rukamori.archivetune.audiosource.TitleMatch
+import moe.rukamori.archivetune.constants.AudioSourceType
 import moe.rukamori.archivetune.qobuz.QobuzAudioProvider
 import okhttp3.OkHttpClient
 // Aliased: this file's own public Request type would otherwise shadow OkHttp's.
@@ -306,7 +306,4 @@ object LosslessDownloader {
                 .trimEnd('.')
         return cleaned.take(180).ifBlank { "track" }
     }
-
-    /** Qobuz format ids: 5=MP3, 6=CD lossless, 7=hi-res <=96kHz, 27=hi-res >96kHz. */
-    fun isLosslessCapable(source: AudioSourceType): Boolean = source == AudioSourceType.QOBUZ
 }

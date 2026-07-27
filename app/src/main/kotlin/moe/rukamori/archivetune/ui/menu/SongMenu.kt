@@ -87,11 +87,16 @@ import moe.rukamori.archivetune.constants.ArtistSeparatorsKey
 import moe.rukamori.archivetune.constants.ExternalDownloaderEnabledKey
 import moe.rukamori.archivetune.constants.ExternalDownloaderPackageKey
 import moe.rukamori.archivetune.constants.ListThumbnailSize
+import moe.rukamori.archivetune.constants.LosslessDownloadFolderKey
+import moe.rukamori.archivetune.constants.LosslessDownloadTagKey
+import moe.rukamori.archivetune.constants.QobuzAudioQuality
+import moe.rukamori.archivetune.constants.QobuzAudioQualityKey
 import moe.rukamori.archivetune.constants.SpeedDialSongIdsKey
 import moe.rukamori.archivetune.db.entities.ArtistEntity
 import moe.rukamori.archivetune.db.entities.Event
 import moe.rukamori.archivetune.db.entities.PlaylistSong
 import moe.rukamori.archivetune.db.entities.Song
+import moe.rukamori.archivetune.download.LosslessDownloader
 import moe.rukamori.archivetune.extensions.toMediaItem
 import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.models.toMediaMetadata
@@ -142,6 +147,71 @@ fun SongMenu(
     val cacheViewModel = hiltViewModel<CachePlaylistViewModel>()
 
     val downloadUtil = LocalDownloadUtil.current
+
+    // ---- Lossless (Qobuz) download -------------------------------------------------------------
+    // Separate from the ExoPlayer download above: this fetches a complete .flac over plain HTTP into
+    // a folder the user owns, so the result is a real file other apps can read.
+    var losslessFolder by rememberPreference(LosslessDownloadFolderKey, "")
+    val embedTags by rememberPreference(LosslessDownloadTagKey, defaultValue = true)
+    val qobuzQuality by rememberPreference(QobuzAudioQualityKey, QobuzAudioQuality.FLAC.name)
+    var losslessInProgress by remember { mutableStateOf(false) }
+
+    // Runs the download; shared by the "already have a folder" and "just picked one" paths.
+    val startLosslessDownload: (Uri) -> Unit = { folderUri ->
+        losslessInProgress = true
+        Toast
+            .makeText(context, context.getString(R.string.lossless_download_started), Toast.LENGTH_SHORT)
+            .show()
+        coroutineScope.launch {
+            val formatId =
+                runCatching { QobuzAudioQuality.valueOf(qobuzQuality) }
+                    .getOrDefault(QobuzAudioQuality.FLAC)
+                    .toFormatId()
+            val result =
+                LosslessDownloader.download(
+                    context = context,
+                    request =
+                        LosslessDownloader.Request(
+                            mediaId = song.id,
+                            title = song.song.title,
+                            artists = song.artists.map { it.name },
+                            album = song.song.albumName,
+                            durationMs = song.song.duration.takeIf { it > 0 }?.times(1000L),
+                            year = song.song.year?.toString(),
+                            artworkUrl = song.song.thumbnailUrl,
+                        ),
+                    folderUri = folderUri,
+                    formatId = formatId,
+                    embedTags = embedTags,
+                )
+            losslessInProgress = false
+            val message =
+                when (result) {
+                    is LosslessDownloader.Result.Success ->
+                        context.getString(R.string.lossless_download_saved, result.fileName)
+                    LosslessDownloader.Result.NotAvailable ->
+                        context.getString(R.string.lossless_download_unavailable)
+                    is LosslessDownloader.Result.Failed ->
+                        context.getString(R.string.lossless_download_failed, result.reason)
+                }
+            Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+        }
+    }
+
+    // SAF folder picker. Scoped storage gives no real path, so we persist the tree Uri and take a
+    // persistable grant so the choice survives reboots and we only ask once.
+    val pickLosslessFolderLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { treeUri ->
+            if (treeUri == null) return@rememberLauncherForActivityResult
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    treeUri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                )
+            }
+            losslessFolder = treeUri.toString()
+            startLosslessDownload(treeUri)
+        }
 
     // Direct export to the device's Downloads folder (via SAF CreateDocument).
     // "audio/*" rather than a concrete type: the real container is sniffed from the cached bytes at
@@ -876,6 +946,45 @@ fun SongMenu(
                                         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                                     )
                                 }
+                            }
+                            // Lossless download. Hidden for Telegram tracks, which are already a
+                            // direct file source and are not resolvable through the Qobuz proxies.
+                            if (!isTelegramMediaId(song.id)) {
+                                ListItem(
+                                    headlineContent = {
+                                        Text(text = stringResource(R.string.action_download_lossless))
+                                    },
+                                    supportingContent = {
+                                        Text(text = stringResource(R.string.action_download_lossless_desc))
+                                    },
+                                    leadingContent = {
+                                        if (losslessInProgress) {
+                                            CircularWavyProgressIndicator(modifier = Modifier.size(24.dp))
+                                        } else {
+                                            Icon(
+                                                painter = painterResource(R.drawable.download),
+                                                contentDescription = null,
+                                            )
+                                        }
+                                    },
+                                    modifier =
+                                        Modifier.clickable(enabled = !losslessInProgress) {
+                                            val saved = losslessFolder
+                                            // Re-prompt if the saved grant was revoked, otherwise
+                                            // the write would fail with a confusing permission error.
+                                            val usable =
+                                                saved.isNotEmpty() &&
+                                                    context.contentResolver
+                                                        .persistedUriPermissions
+                                                        .any { it.uri.toString() == saved && it.isWritePermission }
+                                            if (usable) {
+                                                startLosslessDownload(saved.toUri())
+                                            } else {
+                                                pickLosslessFolderLauncher.launch(null)
+                                            }
+                                        },
+                                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                                )
                             }
                             // Export — only shown when the download has actually completed.
                             if (download?.state == Download.STATE_COMPLETED) {

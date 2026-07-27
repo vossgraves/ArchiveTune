@@ -168,6 +168,14 @@
     <string name="remove_from_library">Remove from library</string>
     <string name="remove_from_library_confirm">Remove \u0022%1$s\u0022 from your library?</string>
     <string name="action_download">Download</string>
+    <!-- Lossless download: fetches a complete FLAC to a user-picked folder, unlike the in-app
+         download above which stores transcoded audio in the private player cache. -->
+    <string name="action_download_lossless">Download lossless</string>
+    <string name="action_download_lossless_desc">Save a FLAC file to your chosen folder</string>
+    <string name="lossless_download_started">Downloading lossless file…</string>
+    <string name="lossless_download_saved">Saved %1$s</string>
+    <string name="lossless_download_unavailable">No lossless source has this track</string>
+    <string name="lossless_download_failed">Lossless download failed: %1$s</string>
     <string name="downloading">Downloading</string>
     <string name="remove_download">Remove download</string>
     <string name="download_progress_percent">%1$d%%</string>
