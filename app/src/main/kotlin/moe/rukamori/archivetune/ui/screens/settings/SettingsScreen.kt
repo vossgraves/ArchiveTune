@@ -14,6 +14,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -33,6 +34,8 @@ import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -108,13 +111,29 @@ fun SettingsScreen(
             }
         }
 
+    var searchQuery by remember { mutableStateOf("") }
     val scrollBehavior = appBarScrollBehavior()
     val shouldShowPermissionHint = !isStorageGranted || !isNotificationGranted
     val hasUpdate =
         BuildConfig.UPDATER_AVAILABLE &&
             Updater.isUpdateAvailable(latestVersionName, BuildConfig.VERSION_NAME)
     var isUpdateDismissed by remember { mutableStateOf(false) }
-    val settingsGroups = buildSettingsGroups(navController, isAndroid12OrLater, hasUpdate, context)
+    val allSettingsGroups = buildSettingsGroups(navController, isAndroid12OrLater, hasUpdate, context)
+    val filteredGroups = remember(searchQuery, allSettingsGroups) {
+        if (searchQuery.isBlank()) {
+            allSettingsGroups
+        } else {
+            val query = searchQuery.trim().lowercase()
+            allSettingsGroups.map { group ->
+                val filteredItems = group.items.filter { item ->
+                    item.title.lowercase().contains(query) ||
+                        item.subtitle?.lowercase()?.contains(query) == true ||
+                        item.keywords.any { keyword -> keyword.lowercase().contains(query) }
+                }
+                group.copy(items = filteredItems, showWhenFiltered = filteredItems.isNotEmpty())
+            }.filter { it.items.isNotEmpty() }
+        }
+    }
 
     // Material 3 Expressive: when any settings dialog (history duration,
     // lyrics preload count, etc.) is showing, apply a backdrop blur to
@@ -186,7 +205,7 @@ fun SettingsScreen(
                     bottom = SettingsDimensions.ScreenBottomPadding,
                 ),
         ) {
-            if (hasUpdate && !isUpdateDismissed) {
+            if (hasUpdate && !isUpdateDismissed && searchQuery.isBlank()) {
                 item(key = "update", contentType = "settings_banner") {
                     SettingsUpdateBanner(
                         latestVersion = latestVersionName,
@@ -200,7 +219,7 @@ fun SettingsScreen(
                 }
             }
 
-            if (shouldShowPermissionHint) {
+            if (shouldShowPermissionHint && searchQuery.isBlank()) {
                 item(key = "permission", contentType = "settings_banner") {
                     SettingsPermissionBanner(
                         onRequestPermission = {
@@ -223,7 +242,42 @@ fun SettingsScreen(
                 }
             }
 
-            settingsGroups.forEachIndexed { groupIndex, group ->
+            item(key = "search_bar", contentType = "search_bar") {
+                TextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = {
+                        Text(
+                            text = stringResource(R.string.search_settings),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    },
+                    leadingIcon = {
+                        Icon(
+                            painter = painterResource(R.drawable.search),
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    },
+                    singleLine = true,
+                    shape = RoundedCornerShape(28.dp),
+                    colors = TextFieldDefaults.colors(
+                        focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        focusedIndicatorColor = MaterialTheme.colorScheme.primary,
+                        unfocusedIndicatorColor = MaterialTheme.colorScheme.transparent,
+                    ),
+                    modifier = Modifier
+                        .padding(horizontal = SettingsDimensions.SegmentedGroupHorizontalPadding)
+                        .fillMaxWidth(),
+                )
+            }
+
+            item(key = "search_spacing", contentType = "spacing") {
+                Spacer(modifier = Modifier.height(SettingsDimensions.SectionSpacing))
+            }
+
+            filteredGroups.forEachIndexed { groupIndex, group ->
                 if (groupIndex > 0) {
                     item(
                         key = "settings_group_spacing_$groupIndex",

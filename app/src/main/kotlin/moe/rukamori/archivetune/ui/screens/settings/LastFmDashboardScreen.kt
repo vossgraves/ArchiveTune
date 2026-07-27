@@ -203,7 +203,7 @@ fun LastFmDashboardScreen(
             if (recent.isEmpty() && recentTracks != null && !isRefreshing) {
                 item(key = "recent_empty") { EmptyHint(text = stringResource(R.string.lastfm_no_recent_tracks)) }
             } else {
-                items(recent, key = { "recent_${it.name}_${it.date?.uts ?: it.nowPlaying ?: ""}" }) { track ->
+                items(recent, key = { "recent_${it.name}_${it.date?.uts ?: it.attr?.nowplaying ?: ""}" }) { track ->
                     RecentTrackRow(track)
                 }
             }
@@ -415,7 +415,7 @@ private fun RecentTrackRow(track: RecentTrack) {
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        if (track.nowPlaying == "true") {
+        if (track.isNowPlaying) {
             Text(
                 text = stringResource(R.string.lastfm_now_playing),
                 style = MaterialTheme.typography.labelSmall,

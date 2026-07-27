@@ -27,10 +27,12 @@ data class UserInfo(
     val age: Int? = null,
     val gender: String? = null,
     val subscriber: Int? = null,
-    val playcount: Int? = null,
+    @SerialName("playcount") private val _playcount: String? = null,
     val playlists: Int? = null,
     val registered: UserRegistered? = null,
-)
+) {
+    val playcount: Int? get() = _playcount?.toIntOrNull()
+}
 
 @Serializable
 data class UserImage(
@@ -74,7 +76,14 @@ data class RecentTrack(
     val album: RecentTrackAlbum? = null,
     val url: String? = null,
     val date: RecentTrackDate? = null,
-    @SerialName("@attr") val nowPlaying: String? = null,
+    @SerialName("@attr") val attr: RecentTrackAttr? = null,
+) {
+    val isNowPlaying: Boolean get() = attr?.nowplaying == "true"
+}
+
+@Serializable
+data class RecentTrackAttr(
+    val nowplaying: String? = null,
 )
 
 @Serializable
@@ -121,11 +130,19 @@ data class TopTracksAttr(
 @Serializable
 data class TopTrack(
     val name: String? = null,
-    val playcount: Int? = null,
+    @SerialName("playcount") private val _playcount: String? = null,
     val artist: RecentTrackArtist? = null,
     val url: String? = null,
     val image: List<UserImage>? = null,
-    @SerialName("@attr") val rank: String? = null,
+    @SerialName("@attr") val attr: TopTrackAttr? = null,
+) {
+    val playcount: Int? get() = _playcount?.toIntOrNull()
+    val rank: String? get() = attr?.rank
+}
+
+@Serializable
+data class TopTrackAttr(
+    val rank: String? = null,
 )
 
 /**

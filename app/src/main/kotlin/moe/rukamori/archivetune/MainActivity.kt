@@ -1817,7 +1817,9 @@ class MainActivity : ComponentActivity() {
                                                 },
                                                 actions = {
                                                     var profileMenuExpanded by remember { mutableStateOf(false) }
-                                                    Box {
+                                                    Box(
+                                                        modifier = Modifier.padding(end = 4.dp),
+                                                    ) {
                                                         IconButton(
                                                             onClick = { profileMenuExpanded = true },
                                                             colors = IconButtonDefaults.iconButtonColors(
@@ -1855,13 +1857,15 @@ class MainActivity : ComponentActivity() {
                                                         DropdownMenu(
                                                             expanded = profileMenuExpanded,
                                                             onDismissRequest = { profileMenuExpanded = false },
+                                                            shape = RoundedCornerShape(20.dp),
                                                         ) {
                                                             // Optional header line showing the signed-in account name (or "Not signed in")
                                                             if (accountName.isNotBlank()) {
                                                                 Text(
                                                                     text = accountName,
-                                                                    style = MaterialTheme.typography.labelMedium,
-                                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                                    style = MaterialTheme.typography.titleSmall,
+                                                                    fontWeight = FontWeight.SemiBold,
+                                                                    color = MaterialTheme.colorScheme.onSurface,
                                                                     modifier = Modifier.padding(
                                                                         start = 16.dp,
                                                                         end = 16.dp,

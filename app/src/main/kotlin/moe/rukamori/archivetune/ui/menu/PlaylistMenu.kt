@@ -67,6 +67,7 @@ import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.LocalSyncUtils
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.SpeedDialSongIdsKey
+import moe.rukamori.archivetune.constants.TelegramLosslessOnlyKey
 import moe.rukamori.archivetune.db.entities.Playlist
 import moe.rukamori.archivetune.db.entities.PlaylistSong
 import moe.rukamori.archivetune.db.entities.Song
@@ -86,6 +87,7 @@ import moe.rukamori.archivetune.ui.component.NewActionGrid
 import moe.rukamori.archivetune.ui.component.PlaylistListItem
 import moe.rukamori.archivetune.ui.utils.HeaderDownloadItem
 import moe.rukamori.archivetune.ui.utils.sendAddMissingDownloads
+import moe.rukamori.archivetune.telegram.TelegramChannelSync
 import moe.rukamori.archivetune.utils.SpeedDialPin
 import moe.rukamori.archivetune.utils.SpeedDialPinType
 import moe.rukamori.archivetune.utils.parseSpeedDialPins
@@ -910,6 +912,37 @@ public fun PlaylistMenu(
 
             item {
                 MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+                    val isTelegramPlaylist = playlist.playlist.id.startsWith("LPtg")
+                    if (isTelegramPlaylist) {
+                        val losslessOnly by rememberPreference(TelegramLosslessOnlyKey, defaultValue = false)
+                        ListItem(
+                            headlineContent = { Text(text = stringResource(R.string.refresh_telegram_playlist)) },
+                            leadingContent = {
+                                Icon(
+                                    painter = painterResource(R.drawable.sync),
+                                    contentDescription = null,
+                                )
+                            },
+                            modifier =
+                                Modifier.clickable {
+                                    onDismiss()
+                                    val chatId = playlist.playlist.id.removePrefix("LPtg").toLongOrNull() ?: return@clickable
+                                    TelegramChannelSync.syncAsync(
+                                        database = database,
+                                        chatId = chatId,
+                                        title = playlist.playlist.name,
+                                        losslessOnly = losslessOnly,
+                                    )
+                                },
+                            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                        )
+
+                        HorizontalDivider(
+                            modifier = dividerModifier,
+                            color = MaterialTheme.colorScheme.outlineVariant,
+                        )
+                    }
+
                     ListItem(
                         headlineContent = { Text(text = stringResource(R.string.sync_playlist)) },
                         leadingContent = {

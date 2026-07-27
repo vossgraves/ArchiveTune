@@ -889,7 +889,8 @@
     <string name="lastfm_playcount">%1$d scrobbles</string>
     <string name="lastfm_playcount_short">%1$d plays</string>
     <string name="enable_scrobbling">Enable Scrobbling</string>
-    <string name="lastfm_now_playing">Update Now Playing</string>
+    <string name="lastfm_now_playing">Now playing</string>
+    <string name="refresh_telegram_playlist">Refresh from Telegram</string>
     <string name="scrobbling_configuration">Scrobbling Configuration</string>
     <string name="scrobble_min_track_duration">Minimum Track Duration</string>
     <string name="scrobble_delay_percent">Scrobble Delay Percent</string>
