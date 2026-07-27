@@ -40,6 +40,28 @@ future sessions (or contributors) can pick up with full context.
   passed the gate per media id (`resolvedSourcesByMediaId`) and exposes
   `availableSourcesForSong()` / `setSongSourceOverride()`; the latter clears the
   cached stream and re-`prepare()`s the current item so the change is immediate.
+- **Download lossless (song menu):** downloads the resolved Tidal/Qobuz stream to
+  a user-chosen SAF folder instead of the Media3 cache, so the file survives the
+  app. `download/LosslessDownloader.kt` owns the transfer: it runs on its own
+  process-lived scope (NOT the composition scope, or closing the menu cancelled
+  the download), sniffs the real container from magic bytes rather than trusting
+  the URL extension, retries with backoff, and dedupes concurrent requests for one
+  track through an atomic `markActive` compare-and-set so two writers can never
+  race on a single file. Tagging (title/artist/album + cover art) is applied when
+  `LosslessDownloadTagKey` is on. Destination + tag toggle live in Qobuz settings
+  (`LosslessDownloadFolderKey`); the folder's persistable Uri grant is re-taken on
+  each pick so the choice survives reboots.
+- **Qobuz stream metadata:** the quality badge and download tags report the real
+  bit depth / sampling rate / bitrate parsed from `getFileUrl`. Sampling rate is
+  ROUNDED, not truncated — `44.1 * 1000` is 44099.999… in binary, so `toInt()`
+  used to write 44099 Hz into the badge and the FLAC tags. Qobuz never returns a
+  file size, so `probeContentLength()` asks the CDN (HEAD, falling back to a
+  one-byte ranged GET reading the total out of `Content-Range`, since some edges
+  reject HEAD on signed URLs). This matters beyond the details sheet: the offline
+  check is `downloadCache.isCached(mediaId, 0, contentLength)`, and a 0 length
+  always reported "not cached", so Qobuz tracks silently re-downloaded every play.
+  The probe gets its own 3s timeout because it sits on the path to the first audio
+  frame — a missing size is cheap, making the user wait is not.
 - **Integration account cards:** YouTube Music always shown; Last.fm and Discord
   cards are pinnable, float to top, and show live connection status + identity.
 - **Backup classification:** Tidal login/session and Qobuz direct-API tokens are
