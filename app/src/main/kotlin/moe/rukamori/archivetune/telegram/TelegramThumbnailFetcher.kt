@@ -68,8 +68,11 @@ class TelegramThumbnailFetcher(
             }
         }
 
-        // 2. Embedded album cover from the Telegram file.
+        // 2. Embedded album cover from the Telegram file. Await the session first: on a cold start
+        // TDLib is still restoring, and asking for the file too early just returned null, leaving
+        // the placeholder in place until something else happened to start the client.
         if (fileId > 0) {
+            if (!TelegramClient.awaitReady(options.context)) return null
             val path = TelegramClient.downloadFileBlocking(fileId) ?: return null
             return SourceFetchResult(
                 source = ImageSource(file = path.toPath(), fileSystem = options.fileSystem),

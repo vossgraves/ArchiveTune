@@ -7490,7 +7490,8 @@ class MusicService :
                 )
             }
         val directFactory = createResolvedUpstreamDataSourceFactory()
-        val telegramFactory = TelegramDataSource.Factory()
+        // Application Context, so the factory (which outlives this Service) cannot leak it.
+        val telegramFactory = TelegramDataSource.Factory(this)
 
         return DataSource.Factory {
             SchemeRoutingDataSource(

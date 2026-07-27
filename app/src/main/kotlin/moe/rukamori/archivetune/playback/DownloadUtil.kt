@@ -177,7 +177,8 @@ class DownloadUtil
 
         // Route downloads by scheme: telegram:// tracks stream through TDLib (same as playback),
         // everything else through the YouTube-resolving factory above.
-        private val telegramDataSourceFactory = moe.rukamori.archivetune.telegram.TelegramDataSource.Factory()
+        private val telegramDataSourceFactory =
+            moe.rukamori.archivetune.telegram.TelegramDataSource.Factory(context)
 
         private val dataSourceFactory =
             DataSource.Factory {
