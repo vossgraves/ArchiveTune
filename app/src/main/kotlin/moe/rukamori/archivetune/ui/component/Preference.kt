@@ -1000,7 +1000,14 @@ fun NumberPickerPreference(
         mutableStateOf(false)
     }
 
-    var sliderValue by remember {
+    // KEY the remember on `value` (the persisted value) so that opening the
+    // dialog always starts the slider at the persisted value, and so that
+    // recompositions triggered while the dialog is open (e.g. from a parent
+    // recomposing on drag-tick) do NOT reset `sliderValue` back to the
+    // initial value of 1. This mirrors the fix already applied to
+    // `SliderPreference` (Preference.kt:771) when HistoryDuration migrated
+    // Float→Int, and was simply never applied here.
+    var sliderValue by remember(value) {
         mutableFloatStateOf(value.toFloat())
     }
 
@@ -1017,7 +1024,6 @@ fun NumberPickerPreference(
             onDismiss = { showDialog = false },
             onConfirm = {
                 val rounded = sliderValue.roundToInt().coerceIn(minValue, maxValue)
-                sliderValue = rounded.toFloat()
                 showDialog = false
                 onValueChange.invoke(rounded)
             },
@@ -1038,6 +1044,12 @@ fun NumberPickerPreference(
 
                     Spacer(Modifier.height(16.dp))
 
+                    // Read the slider state ONCE per dialog open (keyed on
+                    // `value`), then never overwrite `pickerSliderState.value`
+                    // from `sliderValue` again on subsequent recompositions —
+                    // doing so caused the slider to snap back to 1 mid-drag
+                    // because the recomposition ran before `sliderValue` was
+                    // committed by the gesture handler.
                     val pickerSliderState =
                         rememberSliderState(
                             value = sliderValue,
@@ -1048,7 +1060,6 @@ fun NumberPickerPreference(
                     pickerSliderState.onValueChange = {
                         sliderValue = it.coerceIn(minValue.toFloat(), maxValue.toFloat())
                     }
-                    pickerSliderState.value = sliderValue
 
                     Slider(
                         state = pickerSliderState,

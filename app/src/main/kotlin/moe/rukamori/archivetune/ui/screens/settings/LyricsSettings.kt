@@ -218,7 +218,7 @@ fun LyricsSettings(
             PreloadQueueLyricsEnabledKey,
             defaultValue = true,
         )
-    val (queueLyricsPreloadCount, onQueueLyricsPreloadCountChange) = rememberPreference(QueueLyricsPreloadCountKey, defaultValue = 1)
+    val (queueLyricsPreloadCount, onQueueLyricsPreloadCountChange) = rememberPreference(QueueLyricsPreloadCountKey, defaultValue = 3)
     val japaneseLanguagePackState by JapaneseLanguagePackManager.state.collectAsStateWithLifecycle()
 
     var showProviderOrderDialog by rememberSaveable { mutableStateOf(false) }
