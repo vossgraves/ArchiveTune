@@ -84,6 +84,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -92,21 +93,16 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MenuDefaults
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
-import androidx.compose.material3.PlainTooltip
-import androidx.compose.material3.RichTooltip
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SearchBarDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextFieldDefaults
-import androidx.compose.material3.TooltipBox
-import androidx.compose.material3.TooltipDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.material3.contentColorFor
-import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -125,11 +121,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
@@ -178,6 +176,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.window.core.layout.WindowSizeClass
+import coil3.compose.AsyncImage
 import coil3.imageLoader
 import coil3.request.ImageRequest
 import coil3.request.SuccessResult
@@ -905,6 +904,8 @@ class MainActivity : ComponentActivity() {
                     val newsViewModel: NewsViewModel = hiltViewModel()
                     val allLocalItems by homeViewModel.allLocalItems.collectAsState()
                     val allYtItems by homeViewModel.allYtItems.collectAsState()
+                    val accountImageUrl by homeViewModel.accountImageUrl.collectAsStateWithLifecycle()
+                    val accountName by homeViewModel.accountName.collectAsStateWithLifecycle()
                     val networkBannerState by networkBannerViewModel.bannerState.collectAsStateWithLifecycle()
                     val hasUnreadNews by newsViewModel.hasUnreadNews.collectAsStateWithLifecycle()
                     val navBackStackEntry by navController.currentBackStackEntryAsState()
@@ -1815,75 +1816,126 @@ class MainActivity : ComponentActivity() {
                                                     }
                                                 },
                                                 actions = {
-                                                    TranslucentTopAppBarIconButton(
-                                                        onClick = { navController.navigate("history") },
-                                                    ) {
-                                                        Icon(
-                                                            painter = painterResource(R.drawable.history),
-                                                            contentDescription = stringResource(R.string.history),
-                                                        )
-                                                    }
-                                                    TooltipBox(
-                                                        positionProvider =
-                                                            if (hasUnreadNews) {
-                                                                TooltipDefaults.rememberRichTooltipPositionProvider()
-                                                            } else {
-                                                                TooltipDefaults.rememberPlainTooltipPositionProvider()
-                                                            },
-                                                        tooltip = {
-                                                            if (hasUnreadNews) {
-                                                                RichTooltip(
-                                                                    title = { Text(stringResource(R.string.news_tooltip_title)) },
-                                                                ) {
-                                                                    Text(stringResource(R.string.news_tooltip_body))
-                                                                }
-                                                            } else {
-                                                                PlainTooltip {
-                                                                    Text(stringResource(R.string.news))
-                                                                }
-                                                            }
-                                                        },
-                                                        state = rememberTooltipState(),
-                                                    ) {
-                                                        TranslucentTopAppBarIconButton(
-                                                            onClick = { navController.navigate("news") },
+                                                    var profileMenuExpanded by remember { mutableStateOf(false) }
+                                                    Box {
+                                                        IconButton(
+                                                            onClick = { profileMenuExpanded = true },
+                                                            colors = IconButtonDefaults.iconButtonColors(
+                                                                containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
+                                                                    .copy(alpha = TopAppBarIconButtonContainerAlpha),
+                                                                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                            ),
                                                         ) {
-                                                            BadgedBox(badge = {
-                                                                if (hasUnreadNews) {
-                                                                    Badge()
+                                                            Surface(
+                                                                modifier = Modifier.size(28.dp),
+                                                                shape = CircleShape,
+                                                                color = MaterialTheme.colorScheme.primaryContainer,
+                                                            ) {
+                                                                if (!accountImageUrl.isNullOrBlank()) {
+                                                                    AsyncImage(
+                                                                        model = accountImageUrl,
+                                                                        contentDescription = stringResource(R.string.account),
+                                                                        modifier = Modifier
+                                                                            .fillMaxSize()
+                                                                            .clip(CircleShape),
+                                                                        contentScale = ContentScale.Crop,
+                                                                    )
+                                                                } else {
+                                                                    Box(contentAlignment = Alignment.Center) {
+                                                                        Icon(
+                                                                            painter = painterResource(R.drawable.account),
+                                                                            contentDescription = stringResource(R.string.account),
+                                                                            modifier = Modifier.size(20.dp),
+                                                                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                                        )
+                                                                    }
                                                                 }
-                                                            }) {
-                                                                Icon(
-                                                                    painter = painterResource(R.drawable.newspaper),
-                                                                    contentDescription = stringResource(R.string.news),
-                                                                )
                                                             }
                                                         }
-                                                    }
-                                                    TranslucentTopAppBarIconButton(
-                                                        onClick = { navController.navigate("new_release") },
-                                                    ) {
-                                                        Icon(
-                                                            painter = painterResource(R.drawable.new_release),
-                                                            contentDescription = stringResource(R.string.new_release_albums),
-                                                        )
-                                                    }
-                                                    TranslucentTopAppBarIconButton(
-                                                        onClick = { navController.navigate("settings") },
-                                                    ) {
-                                                        BadgedBox(badge = {
-                                                            if (
-                                                                BuildConfig.UPDATER_AVAILABLE &&
-                                                                latestUpdateChannel == updateChannel &&
-                                                                Updater.isUpdateAvailable(latestVersionName, BuildConfig.VERSION_NAME)
-                                                            ) {
-                                                                Badge()
+                                                        DropdownMenu(
+                                                            expanded = profileMenuExpanded,
+                                                            onDismissRequest = { profileMenuExpanded = false },
+                                                        ) {
+                                                            // Optional header line showing the signed-in account name (or "Not signed in")
+                                                            if (accountName.isNotBlank()) {
+                                                                Text(
+                                                                    text = accountName,
+                                                                    style = MaterialTheme.typography.labelMedium,
+                                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                                    modifier = Modifier.padding(
+                                                                        start = 16.dp,
+                                                                        end = 16.dp,
+                                                                        top = 8.dp,
+                                                                        bottom = 4.dp,
+                                                                    ),
+                                                                    maxLines = 1,
+                                                                    overflow = TextOverflow.Ellipsis,
+                                                                )
+                                                                HorizontalDivider()
                                                             }
-                                                        }) {
-                                                            Icon(
-                                                                painter = painterResource(R.drawable.settings),
-                                                                contentDescription = stringResource(R.string.settings),
-                                                                modifier = Modifier.size(24.dp),
+                                                            DropdownMenuItem(
+                                                                text = { Text(stringResource(R.string.history)) },
+                                                                onClick = {
+                                                                    profileMenuExpanded = false
+                                                                    navController.navigate("history")
+                                                                },
+                                                                leadingIcon = {
+                                                                    Icon(
+                                                                        painter = painterResource(R.drawable.history),
+                                                                        contentDescription = null,
+                                                                    )
+                                                                },
+                                                            )
+                                                            DropdownMenuItem(
+                                                                text = { Text(stringResource(R.string.news)) },
+                                                                onClick = {
+                                                                    profileMenuExpanded = false
+                                                                    navController.navigate("news")
+                                                                },
+                                                                leadingIcon = {
+                                                                    BadgedBox(badge = {
+                                                                        if (hasUnreadNews) Badge()
+                                                                    }) {
+                                                                        Icon(
+                                                                            painter = painterResource(R.drawable.newspaper),
+                                                                            contentDescription = null,
+                                                                        )
+                                                                    }
+                                                                },
+                                                            )
+                                                            DropdownMenuItem(
+                                                                text = { Text(stringResource(R.string.new_release_albums)) },
+                                                                onClick = {
+                                                                    profileMenuExpanded = false
+                                                                    navController.navigate("new_release")
+                                                                },
+                                                                leadingIcon = {
+                                                                    Icon(
+                                                                        painter = painterResource(R.drawable.new_release),
+                                                                        contentDescription = null,
+                                                                    )
+                                                                },
+                                                            )
+                                                            DropdownMenuItem(
+                                                                text = { Text(stringResource(R.string.settings)) },
+                                                                onClick = {
+                                                                    profileMenuExpanded = false
+                                                                    navController.navigate("settings")
+                                                                },
+                                                                leadingIcon = {
+                                                                    BadgedBox(badge = {
+                                                                        if (
+                                                                            BuildConfig.UPDATER_AVAILABLE &&
+                                                                            latestUpdateChannel == updateChannel &&
+                                                                            Updater.isUpdateAvailable(latestVersionName, BuildConfig.VERSION_NAME)
+                                                                        ) Badge()
+                                                                    }) {
+                                                                        Icon(
+                                                                            painter = painterResource(R.drawable.settings),
+                                                                            contentDescription = null,
+                                                                        )
+                                                                    }
+                                                                },
                                                             )
                                                         }
                                                     }
@@ -3138,25 +3190,6 @@ private fun HomeOverflowMenuIcon(
 }
 
 private const val TopAppBarIconButtonContainerAlpha = 0.48f
-
-@Composable
-private fun TranslucentTopAppBarIconButton(
-    onClick: () -> Unit,
-    content: @Composable () -> Unit,
-) {
-    IconButton(
-        onClick = onClick,
-        colors =
-            IconButtonDefaults.iconButtonColors(
-                containerColor =
-                    MaterialTheme.colorScheme.surfaceContainerHighest.copy(
-                        alpha = TopAppBarIconButtonContainerAlpha,
-                    ),
-                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-            ),
-        content = content,
-    )
-}
 
 @Composable
 private fun OnlineSearchSortMenu(
