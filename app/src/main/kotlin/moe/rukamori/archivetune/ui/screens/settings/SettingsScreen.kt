@@ -273,7 +273,9 @@ fun SettingsScreen(
                 )
             }
 
-            Spacer(modifier = Modifier.height(SettingsDimensions.SectionSpacing))
+            item(key = "search_spacing", contentType = "spacing") {
+                Spacer(modifier = Modifier.height(SettingsDimensions.SectionSpacing))
+            }
 
             filteredGroups.forEachIndexed { groupIndex, group ->
                 if (groupIndex > 0) {
