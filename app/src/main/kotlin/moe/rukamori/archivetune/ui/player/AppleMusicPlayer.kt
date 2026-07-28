@@ -19,6 +19,7 @@ package moe.rukamori.archivetune.ui.player
 
 import android.content.Intent
 import android.os.Build
+import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -161,9 +162,9 @@ fun AppleMusicPlayerContent(
     //   ThumbnailCornerRadiusKey  — the sharp square artwork is the defining trait.
     val (disableBlur) = rememberPreference(DisableBlurKey, defaultValue = false)
     // Backdrop strength uses BackdropEnabled/BackdropBlurAmount, the same pair Thumbnail.kt and
-    // Player.kt read. NOT BlurRadiusKey: despite its name nothing consumes that key outside the
-    // settings slider that writes it, so honouring it here would react to a control that has no
-    // effect anywhere else in the app.
+    // Player.kt read for player backdrops. Not BlurRadiusKey, which despite the similar name is a
+    // separate setting scoped to the lyrics sheet background (Player.kt hands it to LyricsScreen and
+    // nowhere else). This full-screen artwork is a player backdrop, so it belongs to the former pair.
     val (backdropEnabled) = rememberPreference(BackdropEnabledKey, defaultValue = true)
     val (backdropBlurAmount) = rememberPreference(BackdropBlurAmountKey, defaultValue = 60)
     val (showPlayerVolumeBar) = rememberPreference(ShowPlayerVolumeBarKey, defaultValue = true)
