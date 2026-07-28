@@ -78,6 +78,35 @@ assertion fails in seconds rather than after a full build. Keep it that way: for
 a long time these tests existed but no workflow ran them, which made every
 assertion in them decorative.
 
+### The ktlint and unit-test gates are PULL-REQUEST ONLY
+
+`build_pull_request.yml` is the only workflow that runs `ktlintCheck` and the
+unit tests. Pushing straight to `dev` runs `nightly.yml`, which builds APKs but
+runs NEITHER gate — so a lint violation or failing assertion sails through and
+lands unverified.
+
+To verify a `dev` push, open a throwaway PR between two temp branches:
+
+    git push -f <remote> <sha>:refs/heads/v0-ci-verify
+    git push -f <remote> <base-sha>:refs/heads/v0-ci-base
+    gh pr create --base v0-ci-base --head v0-ci-verify --title "CI verify"
+
+Close it without merging and delete both branches afterwards.
+
+Do NOT delete `build_pull_request.yml`. Besides being the only gate, it is what
+`upstream-sync-merge.yml` waits on: that workflow triggers on `workflow_run` of
+**"Build Pull Request"** completing, so removing it silently disables the hourly
+upstream auto-merge.
+
+### A green debug build does not clear a release failure
+
+R8/minification runs only in release variants. `build_debug` and the unit tests
+can be fully green while every release variant fails — this happened with
+`jaudiotagger` referencing `sun.security.action.GetPropertyAction` (fixed by
+`-dontwarn sun.security.action.**` in `app/proguard-rules.pro`). Before calling a
+CI failure pre-existing, bisect it: compare the last green run's timestamp
+against the commits that landed just before the first red one.
+
 ## Working without a local JDK
 
 If you are editing this repo from an environment with no JDK/Android SDK, you
