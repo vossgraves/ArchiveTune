@@ -466,7 +466,17 @@ fun LyricsScreen(
     Box(
         modifier =
             modifier
-                .fillMaxSize(),
+                .fillMaxSize()
+                // Sits on the ROOT box, so it is a parent of both the scrim below and the lyrics
+                // Column above and therefore sees touches that land on either. The previous
+                // full-screen scrim was a SIBLING stacked underneath the lyrics, so the lyrics list
+                // won hit testing and swallowed every tap on a line -- only the narrow gaps around
+                // the text revealed the controls. This observes on the Initial pass and consumes
+                // nothing, so lyric scrolling and line seeking keep working untouched.
+                .observeAnyPointerDown(
+                    enabled = showPlayerControlsEnabled && autoHidePlayerControls,
+                    onDown = { pokePlayerControlsVisibility() },
+                ),
     ) {
         LyricsScreenBackground(
             style = lyricsBackground,
@@ -480,18 +490,14 @@ fun LyricsScreen(
             playerCustomBrightness = playerCustomBrightness,
         )
 
+        // Still needed to swallow taps that fall through to the background, so they do not reach
+        // whatever sits behind the lyrics sheet. The reveal poke it used to own now lives on the
+        // root Box above, which can actually see touches on the lyrics themselves.
         Box(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .consumeUnhandledPointerInput()
-                    .pointerInput(showPlayerControlsEnabled, autoHidePlayerControls) {
-                        if (!showPlayerControlsEnabled || !autoHidePlayerControls) return@pointerInput
-                        awaitEachGesture {
-                            awaitFirstDown(requireUnconsumed = false)
-                            pokePlayerControlsVisibility()
-                        }
-                    },
+                    .consumeUnhandledPointerInput(),
         )
 
         Column(
@@ -1058,39 +1064,19 @@ private fun AppleMusicControls(
                     )
                 }
 
-                Row(
+                // Shared with the Apple Music player itself so the two screens read as one
+                // control: animated fill, track that grows while held, and a muted glyph at zero.
+                AppleMusicVolumeRow(
+                    volume = volume.coerceIn(0f, 1f),
+                    onVolumeChange = onVolumeChange,
+                    iconTint = foregroundColor.copy(alpha = 0.66f),
+                    trackColor = foregroundColor.copy(alpha = 0.24f),
+                    fillColor = foregroundColor.copy(alpha = 0.88f),
                     modifier =
                         Modifier
                             .fillMaxWidth()
                             .padding(top = 26.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.player_volume_min),
-                        contentDescription = stringResource(R.string.minimum_volume),
-                        tint = foregroundColor.copy(alpha = 0.66f),
-                        modifier = Modifier.size(17.dp),
-                    )
-                    AppleMusicSlider(
-                        value = volume.coerceIn(0f, 1f),
-                        valueRange = 0f..1f,
-                        activeColor = foregroundColor.copy(alpha = 0.88f),
-                        inactiveColor = foregroundColor.copy(alpha = 0.24f),
-                        trackHeight = 8.dp,
-                        onValueChange = onVolumeChange,
-                        onValueChangeFinished = {},
-                        modifier =
-                            Modifier
-                                .weight(1f)
-                                .padding(horizontal = 16.dp),
-                    )
-                    Icon(
-                        painter = painterResource(R.drawable.player_volume_up),
-                        contentDescription = stringResource(R.string.maximum_volume),
-                        tint = foregroundColor.copy(alpha = 0.66f),
-                        modifier = Modifier.size(19.dp),
-                    )
-                }
+                )
             }
         }
     }

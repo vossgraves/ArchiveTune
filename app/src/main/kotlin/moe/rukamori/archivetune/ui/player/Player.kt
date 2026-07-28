@@ -2157,8 +2157,13 @@ private fun V8PlayerBackdrop(
     }
 }
 
+// internal, not private: the Apple Music design reuses this instead of Modifier.blur(). A live
+// Modifier.blur() on a full-screen image re-runs the gaussian every frame, which made the lyrics
+// transition visibly choppy in that style only. This blurs once into a cached 500px bitmap off the
+// main thread, so per-frame cost is zero. Despite the name it is not API-gated — ImageBlurUtils is
+// a software blur, so it also gives older devices a backdrop they previously never got.
 @Composable
-private fun BackdropBlurApi30(
+internal fun BackdropBlurApi30(
     model: String?,
     blurAmount: Int,
     modifier: Modifier = Modifier,
