@@ -233,7 +233,12 @@ fun ExportFormatDialog(
 ) {
     val options = remember(sourceExtension) { exportFormatOptionsFor(sourceExtension) }
     val firstEnabled = remember(options) { options.firstOrNull { it.enabled }?.format }
-    var selected by rememberSaveable(sourceExtension) { mutableStateOf(firstEnabled) }
+
+    // Persisted across process death, so a restored pick could name a format that is no longer
+    // selectable if the cached file changed underneath us. Fall back to the first enabled option
+    // rather than leaving a disabled row selected and Confirm doing nothing.
+    var saved by rememberSaveable(sourceExtension) { mutableStateOf(firstEnabled) }
+    val selected = saved?.takeIf { candidate -> options.any { it.enabled && it.format == candidate } } ?: firstEnabled
 
     ActionPromptDialog(
         title = stringResource(R.string.export_format_title),
@@ -272,7 +277,7 @@ fun ExportFormatDialog(
                     ),
                 modifier =
                     Modifier.clickable(enabled = option.enabled) {
-                        selected = option.format
+                        saved = option.format
                     },
             )
         }
