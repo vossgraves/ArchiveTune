@@ -151,9 +151,10 @@ data class ExportFormatOption(
 )
 
 /**
- * Every container the cache sniffer can report, so "rewrap into what it already is" is always an
- * option. Restricting this to FLAC/M4A/OPUS left the common case — YouTube Opus, which arrives in a
- * WebM container — with no selectable target at all.
+ * Must stay in step with [moe.rukamori.archivetune.download.AudioContainer]: any container the
+ * sniffer can report needs an entry here, or a track in that container has no offerable target.
+ *
+ * Note YouTube Opus is cached in a WebM container, so an `OPUS` entry would never match anything.
  */
 enum class ExportFormat(
     val extension: String,
