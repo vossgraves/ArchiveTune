@@ -51,6 +51,30 @@ jobs:
               -dname "CN=Android Debug,O=Android,C=US"
           fi
 
+      # Runs before the APK build: unit tests compile a fraction of the project, so a broken
+      # assertion surfaces in well under a minute instead of after a full assemble+lint.
+      - name: Unit Tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew --console=plain :app:testGmsMobileUniversalDebugUnitTest --warning-mode summary
+        env:
+          LASTFM_API_KEY: ${{ secrets.LASTFM_API_KEY }}
+          LASTFM_SECRET: ${{ secrets.LASTFM_SECRET }}
+          API_BEARER_TOKEN: ${{ secrets.API_BEARER_TOKEN }}
+          CANVAS_BEARER_TOKEN: ${{ secrets.CANVAS_BEARER_TOKEN }}
+          EXTRACTOR_BEARER: ${{ secrets.EXTRACTOR_BEARER }}
+
+      - name: Upload Unit Test Report
+        # Only useful when something failed, and the report is what makes the failure diagnosable
+        # without re-running locally.
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-report
+          path: app/build/reports/tests/
+          retention-days: 7
+
       - name: Build and Lint Mobile Universal Debug APK
         shell: bash
         run: |
