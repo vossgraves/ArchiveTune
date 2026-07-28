@@ -349,6 +349,43 @@ CI-validated at `8c07e06ad`.
   11-bit MPEG frame sync, `ftyp` at offset 4 rather than 0, and RIFF without
   WAVE (which also fronts AVI).
 
+## Download quality + export format prompts (`ui/component/AudioQualityDialogs.kt`)
+
+- Starting a download from the song menu used the global Qobuz quality
+  preference silently, and Export wrote whatever container happened to be
+  cached. Both now ask.
+- **`DownloadQualityDialog`** offers Max / Hi-Res / Lossless, pre-selecting the
+  current global preference. Ticking "remember this choice" writes
+  `QobuzAudioQualityKey` *and* clears `AskDownloadQualityKey`, so turning the
+  prompt off keeps the tier the user just picked instead of silently reverting to
+  whatever was set before.
+- **`ExportFormatDialog`** picks the container. There is no audio transcoder in
+  the app — `jaudiotagger` writes tags, not audio — so the cached bytes can only
+  be copied out in the container they already use. That makes the source format
+  the only genuinely available choice.
+- FLAC is still listed for lossy sources but **disabled with a reason**, because
+  users go looking for it and an omission reads as a missing feature. Producing
+  one would mean handing back a `.flac` that is still lossy inside. The dialog
+  offers to re-download from a lossless provider instead, which is the only real
+  route to one.
+- **Enumerate what the detector emits, not what the codec is called.** The first
+  version listed FLAC/M4A/OPUS and enabled a row only when its extension matched
+  the sniffed container. `AudioContainer.detect` never returns `opus` — YouTube
+  Opus arrives in a **WebM** container — so the most common case had every row
+  disabled and Confirm silently did nothing. `ExportFormat` now covers the full
+  detector range (`flac`, `wav`, `m4a`, `webm`, `ogg`, `mp3`).
+- The selected format lives in `rememberSaveable`, so it survives process death
+  while the available options are derived from the cached file. A restored pick is
+  validated against the current options and falls back to the first enabled one,
+  otherwise Confirm would do nothing on a row that can no longer be selected.
+- Container sniffing reads the download cache, so it runs on `Dispatchers.IO`
+  before the dialog opens rather than on the main thread.
+- Both wrappers call `onConfirm(...)` then `onDismiss()`. `ActionPromptDialog`
+  itself only calls `onConfirm`, so the dismissal has to live in the wrapper —
+  but that also means callers must not flip the visibility flag a second time.
+- Download now re-prompts for a folder when the persisted SAF grant has been
+  revoked, instead of failing the write with a confusing permission error.
+
 ## Constraints / working notes for future sessions
 
 - Cannot build Android locally in this environment — validate compilation via
