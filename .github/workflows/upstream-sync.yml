@@ -24,8 +24,20 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  AI_BASE_URL: ${{ vars.AI_BASE_URL || 'https://opencode.ai/zen/go/v1' }}
-  AI_MODEL: ${{ vars.AI_MODEL || 'kimi-k3' }}
+  # Conflict resolver. NVIDIA NIM is OpenAI-compatible, so scripts/ai_resolve.py posts to
+  # ${AI_BASE_URL}/chat/completions unchanged.
+  #
+  # kimi-k2.6 is the strongest coder available on NIM (80.2% SWE-bench Verified, vs 71.9%
+  # for nemotron-3-ultra), which is what matters here: resolving a conflict hunk is a
+  # mechanical code edit. It is free on NIM's developer tier, rate-limited at roughly
+  # 40 req/min with no daily cap -- the resolver issues one request PER CONFLICT HUNK, so a
+  # daily-capped free tier (OpenRouter allows 50/day) would spill mid-merge into the
+  # GitHub Models fallback on any sizeable conflict.
+  #
+  # Replaces opencode zen kimi-k3, which cost $3.00/$15.00 per 1M tokens.
+  # Both values are overridable by repo variables if this provider ever degrades.
+  AI_BASE_URL: ${{ vars.AI_BASE_URL || 'https://integrate.api.nvidia.com/v1' }}
+  AI_MODEL: ${{ vars.AI_MODEL || 'moonshotai/kimi-k2.6' }}
   # This job adds an `upstream` remote pointing at rukamori/ArchiveTune, and gh resolves
   # an unqualified `gh pr`/`gh issue` against `upstream` in PREFERENCE to `origin`. That
   # silently opened PRs and "sync FAILED" issues on the UPSTREAM maintainer's repo instead

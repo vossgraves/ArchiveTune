@@ -936,6 +936,27 @@ fun SongMenu(
                                         },
                                         modifier =
                                             Modifier.clickable {
+                                                // Clear any failed/queued download and its partial
+                                                // bytes before starting a fresh one. A stale cache
+                                                // entry makes the server reject the resumed range
+                                                // with HTTP 416 (Range Not Satisfiable) once the
+                                                // stream URL or content-length changes between
+                                                // attempts, so the retry can never succeed.
+                                                //
+                                                // Copied into a local because `download` is a
+                                                // delegated property and cannot be smart-cast.
+                                                val existing = download
+                                                if (existing != null && existing.state != Download.STATE_COMPLETED) {
+                                                    DownloadService.sendRemoveDownload(
+                                                        context,
+                                                        ExoDownloadService::class.java,
+                                                        song.id,
+                                                        false,
+                                                    )
+                                                }
+                                                // Wrapped, as elsewhere in the app: removeResource
+                                                // throws if the resource is still held open.
+                                                runCatching { downloadUtil.downloadCache.removeResource(song.id) }
                                                 val downloadRequest =
                                                     DownloadRequest
                                                         .Builder(song.id, song.id.toUri())
