@@ -252,9 +252,13 @@ fun AppleMusicPlayerContent(
                 modifier =
                     Modifier
                         .matchParentSize()
-                        // backdropBlurAmount is a 0..100 scale; map it onto the same 25dp ceiling
-                        // BackdropBlurApi30 uses so both paths look alike at a given setting.
-                        .blur((backdropBlurAmount * 25 / 100f).coerceIn(1f, 25f).dp),
+                        // 0..100 mapped onto a 60dp ceiling, matching the full-screen thumbnail
+                        // backdrop in Thumbnail.kt. Deliberately NOT the 25 that BackdropBlurApi30
+                        // uses: that radius is applied to a downscaled 500px bitmap, so 25 there is
+                        // a much stronger blur than 25dp across a full-screen image. Reusing 25 here
+                        // would leave API 31+ looking nearly unblurred next to older devices, and
+                        // well short of the 72dp this design originally hardcoded.
+                        .blur((backdropBlurAmount * 60 / 100f).coerceIn(1f, 60f).dp),
             )
         } else {
             BackdropBlurApi30(
