@@ -18,6 +18,7 @@
 package moe.rukamori.archivetune.ui.player
 
 import android.content.Intent
+import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -51,6 +52,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
@@ -74,7 +76,8 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
 import moe.rukamori.archivetune.R
-import moe.rukamori.archivetune.constants.BlurRadiusKey
+import moe.rukamori.archivetune.constants.BackdropBlurAmountKey
+import moe.rukamori.archivetune.constants.BackdropEnabledKey
 import moe.rukamori.archivetune.constants.DisableBlurKey
 import moe.rukamori.archivetune.constants.PlayerButtonsStyle
 import moe.rukamori.archivetune.constants.PlayerButtonsStyleKey
@@ -157,7 +160,12 @@ fun AppleMusicPlayerContent(
     //                               (BottomSheetPlayer already forces DEFAULT for this design.)
     //   ThumbnailCornerRadiusKey  — the sharp square artwork is the defining trait.
     val (disableBlur) = rememberPreference(DisableBlurKey, defaultValue = false)
-    val (blurRadius) = rememberPreference(BlurRadiusKey, defaultValue = 48f)
+    // Backdrop strength uses BackdropEnabled/BackdropBlurAmount, the same pair Thumbnail.kt and
+    // Player.kt read. NOT BlurRadiusKey: despite its name nothing consumes that key outside the
+    // settings slider that writes it, so honouring it here would react to a control that has no
+    // effect anywhere else in the app.
+    val (backdropEnabled) = rememberPreference(BackdropEnabledKey, defaultValue = true)
+    val (backdropBlurAmount) = rememberPreference(BackdropBlurAmountKey, defaultValue = 60)
     val (showPlayerVolumeBar) = rememberPreference(ShowPlayerVolumeBarKey, defaultValue = true)
     val (swipeThumbnail) = rememberPreference(SwipeThumbnailKey, defaultValue = true)
     val playerButtonsStyle by rememberEnumPreference(
@@ -219,18 +227,39 @@ fun AppleMusicPlayerContent(
         val sharpArtworkHeight = if (landscape) maxHeight else maxHeight * 0.55f
 
         // 1. Blurred artwork fills the whole player as the base layer.
-        if (disableBlur) {
-            // Blur disabled: the scrim below carries all the contrast on its own.
+        //
+        // Mirrors the strategy Player.kt uses for every other design rather than inventing a third
+        // one. On API 31+ Modifier.blur compiles to a hardware RenderEffect, so a live blur is cheap
+        // and stays sharp at any radius. Below 31 there is no RenderEffect, so Compose falls back to
+        // re-running a software gaussian over a full-screen bitmap EVERY frame -- that is what made
+        // the lyrics transition choppy in this design specifically, since it hardcoded a live
+        // blur(72.dp) with no API split at all. BackdropBlurApi30 blurs once into a cached 500px
+        // bitmap off the main thread instead, so the per-frame cost there drops to zero.
+        val hasBlur = !disableBlur && backdropEnabled && backdropBlurAmount > 0
+        if (!hasBlur) {
+            // Blur off: the scrim below carries all the contrast on its own.
             AsyncImage(
                 model = artworkRequest ?: artworkUrl,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.matchParentSize(),
             )
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            AsyncImage(
+                model = artworkRequest ?: artworkUrl,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier =
+                    Modifier
+                        .matchParentSize()
+                        // backdropBlurAmount is a 0..100 scale; map it onto the same 25dp ceiling
+                        // BackdropBlurApi30 uses so both paths look alike at a given setting.
+                        .blur((backdropBlurAmount * 25 / 100f).coerceIn(1f, 25f).dp),
+            )
         } else {
             BackdropBlurApi30(
                 model = artworkUrl,
-                blurAmount = blurRadius.toInt().coerceIn(1, 100),
+                blurAmount = backdropBlurAmount,
                 modifier = Modifier.matchParentSize(),
             )
         }
@@ -238,7 +267,10 @@ fun AppleMusicPlayerContent(
         // panel rather than a bright blur, so the whole surface is pulled well down in brightness
         // and pushed darker still toward the bottom where the controls sit. Without a blur the
         // artwork stays sharp underneath, so the scrim has to work harder to keep text legible.
-        val scrimBoost = if (disableBlur) 0.10f else 0f
+        // Keyed on hasBlur, not disableBlur alone: the backdrop can also be off because the user
+        // turned it off or set its amount to zero, and a sharp artwork needs the heavier scrim in
+        // every one of those cases for the white text to stay legible.
+        val scrimBoost = if (hasBlur) 0f else 0.10f
         Box(
             modifier =
                 Modifier
@@ -704,7 +736,10 @@ private fun AppleMusicBottomButton(
         contentAlignment = Alignment.Center,
         modifier =
             Modifier
-                .size(44.dp)
+                // 48dp, not the icon's 22dp: this is the Material minimum touch target, and the
+                // queue button on this row is the one that was unreachable, so it is worth the few
+                // extra dp of hit area even though the glyph itself stays small.
+                .size(48.dp)
                 .clip(CircleShape)
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
