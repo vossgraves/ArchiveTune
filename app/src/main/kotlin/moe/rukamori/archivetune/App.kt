@@ -354,10 +354,11 @@ class App :
                     YouTube.authState = authState
                     if (previousFingerprint != authState.fingerprint) {
                         YTPlayerUtils.clearPlaybackAuthCaches()
-                        val sessionId = authState.sessionId
-                        if (!sessionId.isNullOrBlank()) {
-                            BotGuardTokenGenerator.preWarm(sessionId)
-                        }
+                        // Deliberately no preWarm() here. It spins up a WebView and runs the
+                        // BotGuard bootstrap, which is one of the heaviest things the app can do
+                        // and it fired on every cold start even when nothing was ever played.
+                        // mintToken() calls getOrCreateEngine() itself, so the engine is built on
+                        // first actual use instead; only the first playback pays for it.
                     }
                 }
         }
