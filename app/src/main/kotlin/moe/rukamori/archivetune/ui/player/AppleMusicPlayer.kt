@@ -21,9 +21,10 @@ import android.content.Intent
 import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -64,6 +65,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -253,12 +255,12 @@ fun AppleMusicPlayerContent(
                 modifier =
                     Modifier
                         .matchParentSize()
-                        // 0..100 mapped onto a 60dp ceiling, matching the full-screen thumbnail
-                        // backdrop in Thumbnail.kt. Deliberately NOT the 25 that BackdropBlurApi30
-                        // uses: that radius is applied to a downscaled 500px bitmap, so 25 there is
-                        // a much stronger blur than 25dp across a full-screen image. Reusing 25 here
-                        // would leave API 31+ looking nearly unblurred next to older devices, and
-                        // well short of the 72dp this design originally hardcoded.
+                        // 0..100 mapped onto a 60dp ceiling, the same math Thumbnail.kt:559 uses for
+                        // its full-screen backdrop. Deliberately NOT the 25 BackdropBlurApi30 uses
+                        // internally: that radius applies to a small cached bitmap and is rescaled
+                        // along with it, so it is not in the same units as a dp radius spread across
+                        // a full-screen image. Reusing 25 here would leave API 31+ looking barely
+                        // blurred, and well short of the 72dp this design once hardcoded.
                         .blur((backdropBlurAmount * 60 / 100f).coerceIn(1f, 60f).dp),
             )
         } else {
@@ -469,20 +471,36 @@ private fun AppleMusicSharpArtwork(
                         },
                     )
                 }.pointerInput(Unit) {
+                    // Hand-rolled rather than detectVerticalDragGestures, which claims the gesture
+                    // on BOTH axes' slop and would swallow downward drags. BottomSheet runs its own
+                    // detectVerticalDragGestures, and this Box is its descendant, so a child that
+                    // consumes every vertical move stops the user from dragging the artwork down to
+                    // collapse the player. Only upward travel is consumed here; a downward drag is
+                    // left completely untouched so the sheet still receives it.
                     val threshold = AppleMusicSwipeThreshold.toPx()
-                    var travelled = 0f
-                    detectVerticalDragGestures(
-                        onDragStart = { travelled = 0f },
-                        onDragCancel = { travelled = 0f },
-                        onDragEnd = {
-                            if (travelled <= -threshold) currentOnQueueClick()
-                            travelled = 0f
-                        },
-                        onVerticalDrag = { change, dragAmount ->
-                            change.consume()
-                            travelled += dragAmount
-                        },
-                    )
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        var travelled = 0f
+                        var opened = false
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                            if (!change.pressed) break
+                            travelled += change.positionChange().y
+                            // Clearly heading down: bail out without ever consuming, leaving the
+                            // gesture to the sheet.
+                            if (!opened && travelled > threshold) break
+                            if (travelled <= -threshold) {
+                                if (!opened) {
+                                    opened = true
+                                    currentOnQueueClick()
+                                }
+                            }
+                            // Consume only once this is committed to being our swipe, so the sheet
+                            // does not also act on the same finger movement.
+                            if (opened) change.consume()
+                        }
+                    }
                 },
     ) {
         AsyncImage(
