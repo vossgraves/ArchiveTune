@@ -51,6 +51,24 @@ jobs:
               -dname "CN=Android Debug,O=Android,C=US"
           fi
 
+      # Cheapest gate first: ktlint parses sources without compiling them, so a stale
+      # import fails here in seconds rather than after a full assemble.
+      #
+      # The task-list assertion is deliberate. ktlint-gradle only registers its source-set
+      # tasks if it detects a Kotlin plugin on the project, and :app gets Kotlin via AGP
+      # rather than an explicit kotlin-android alias. If that detection ever stops working,
+      # `ktlintCheck` would succeed while checking zero files -- a gate that silently passes
+      # everything. Failing when the per-source-set tasks are absent keeps that honest.
+      - name: Lint (ktlint)
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! ./gradlew --console=plain :app:tasks --all -q | grep -qE '^ktlint\w+SourceSetCheck'; then
+            echo "::error::ktlint registered no source-set check tasks for :app -- the lint gate is not actually running."
+            exit 1
+          fi
+          ./gradlew --console=plain :app:ktlintCheck --warning-mode summary
+
       # Runs before the APK build: unit tests compile a fraction of the project, so a broken
       # assertion surfaces in well under a minute instead of after a full assemble+lint.
       - name: Unit Tests

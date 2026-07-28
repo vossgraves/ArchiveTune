@@ -69,7 +69,6 @@ import moe.rukamori.archivetune.constants.PoTokenPlayerKey
 import moe.rukamori.archivetune.innertube.utils.hasYouTubeLoginCookie
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.EnumListPreference
-import moe.rukamori.archivetune.ui.component.InfoLabel
 import moe.rukamori.archivetune.ui.component.ListPreference
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup

@@ -89,10 +89,15 @@ checks worth far more than usual:
   adding code, list the external symbols you used and confirm each is imported.
   Same-package types need no import; extensions like `isActive`, `flow.update`,
   and `dataStore.get` do.
-- **Keep imports sorted, with no unused entries.** ktlint fails the build on
-  either. Ordering is the IntelliJ layout: everything alphabetically, with
-  `java.*`, `javax.*`, and `kotlin.*` last. Inserting an import in a plausible
-  but wrong slot is the single most common way to fail a build here.
+- **Remove unused imports.** ktlint's `no-unused-imports` is the one rule this fork
+  gates, and CI fails on it (`Lint (ktlint)` in `build_pull_request.yml`).
+- **Import ordering is NOT enforced — match the surrounding file.** The rest of the
+  standard ruleset is switched off in `.editorconfig`, deliberately: enabling ordering
+  would reformat hundreds of upstream-owned files and collide with the hourly
+  upstream-sync merge forever. The convention here is the IntelliJ layout,
+  everything alphabetical with `java.*`, `javax.*` and `kotlin.*` last, which means
+  `kotlinx.*` sorts BEFORE `kotlin.*` (verified across the tree). Follow the file you
+  are editing; do not "fix" an order that looks wrong but is consistent.
 - **Do not push while a build is in flight.** `build_pull_request.yml` sets
   `cancel-in-progress`, so pushing again cancels the run you were waiting on and
   you never get a verdict. Batch fixes, then push once.

@@ -27,6 +27,25 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.compose.compiler)
     alias(libs.plugins.aboutlibraries.android)
+    alias(libs.plugins.ktlint)
+}
+
+// Lint gate. Only ktlint's no-unused-imports rule is active; .editorconfig explains why the
+// rest of the standard ruleset stays off in this fork.
+//
+// Applied here rather than through `subprojects {}` in the root build, because cross-project
+// configuration is deprecated under Gradle's project-isolation work. ktlint itself resolves from
+// the repositories in settings.gradle.kts -- that uses FAIL_ON_PROJECT_REPOS, so adding a
+// `repositories {}` block here (as the plugin README suggests) would fail the build instead.
+ktlint {
+    // Rule enablement is read from .editorconfig, so it is not duplicated here.
+    android.set(true)
+    ignoreFailures.set(false)
+    // Generated sources (Room, Hilt, KSP) are not ours to format. Uses a predicate because
+    // Gradle's include/exclude only filters files located under the project directory.
+    filter {
+        exclude { it.file.path.contains("${File.separator}build${File.separator}") }
+    }
 }
 
 val localProperties = Properties()

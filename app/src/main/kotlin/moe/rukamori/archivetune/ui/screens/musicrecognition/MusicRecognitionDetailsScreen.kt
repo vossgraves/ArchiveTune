@@ -31,8 +31,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.ui.text.font.FontWeight
 import androidx.navigation.NavHostController
 import androidx.window.core.layout.WindowSizeClass
 import androidx.window.core.layout.WindowWidthSizeClass
