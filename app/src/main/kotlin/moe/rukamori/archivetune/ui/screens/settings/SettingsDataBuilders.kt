@@ -15,6 +15,8 @@ import android.provider.Settings
 import android.widget.Toast
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.navigation.NavController
@@ -272,6 +274,11 @@ fun buildSettingsGroups(
             onClick = { navController.navigate("settings/about") },
         )
 
+    // Search-only rows for individual preferences inside the busiest sub-screens. They are appended
+    // to their parent group so search results appear under a heading that makes sense, and are
+    // filtered out entirely while the search field is empty.
+    val deepEntries = buildDeepSettingsEntries(navController)
+
     return listOf(
         SettingsGroup(
             title = stringResource(R.string.settings),
@@ -279,7 +286,9 @@ fun buildSettingsGroups(
         ),
         SettingsGroup(
             title = stringResource(R.string.settings_section_player_content),
-            items = listOf(appearance, playback, sources, lyrics, languagePacks, content, behavior),
+            items =
+                listOf(appearance, playback, sources, lyrics, languagePacks, content, behavior) +
+                    deepEntries.playerAndContent,
         ),
         SettingsGroup(
             title = stringResource(R.string.integration),
@@ -287,7 +296,7 @@ fun buildSettingsGroups(
         ),
         SettingsGroup(
             title = stringResource(R.string.storage),
-            items = listOf(storage, backupRestore),
+            items = listOf(storage, backupRestore) + deepEntries.storage,
         ),
         SettingsGroup(
             title = stringResource(R.string.about),
@@ -300,4 +309,254 @@ fun buildSettingsGroups(
                 },
         ),
     )
+}
+
+/**
+ * Builds a search-only result that points at a single preference buried inside a sub-screen.
+ *
+ * Selecting it navigates to [screen] and asks that screen to scroll the [anchor] preference into
+ * view and flash it, so "crossfade" lands on the crossfade toggle rather than merely on the screen
+ * that happens to contain it. These entries are hidden unless the user is searching -- see
+ * [SettingsItem.deepOnly].
+ */
+@Composable
+private fun deepEntry(
+    navController: NavController,
+    screen: String,
+    anchor: String,
+    icon: Painter,
+    title: String,
+    parentTitle: String,
+    accentColor: Color,
+    keywords: List<String>,
+) = SettingsItem(
+    // Namespaced so a deep entry can never collide with the top-level key of the same name.
+    key = "deep:$screen:$anchor",
+    icon = icon,
+    title = title,
+    subtitle = stringResource(R.string.settings_search_located_in, parentTitle),
+    accentColor = accentColor,
+    keywords = keywords,
+    deepOnly = true,
+    onClick = {
+        SettingsAnchorRequest.request(screen, anchor)
+        navController.navigate(screen)
+    },
+)
+
+/**
+ * Individual preferences from the three highest-traffic settings screens, exposed to search.
+ *
+ * Deliberately not exhaustive: these are the preferences users actually hunt for. Coverage is
+ * bounded by the anchors declared in [SettingsAnchors], and every anchor here must be applied to a
+ * real preference with `anchors.anchor(...)` or the row will scroll nowhere.
+ */
+/**
+ * Deep search entries split by the group they belong under, so a storage preference surfaces below
+ * the Storage heading rather than under Player.
+ */
+internal data class DeepSettingsEntries(
+    val playerAndContent: List<SettingsItem>,
+    val storage: List<SettingsItem>,
+)
+
+@Composable
+internal fun buildDeepSettingsEntries(navController: NavController): DeepSettingsEntries {
+    val playerIcon = painterResource(R.drawable.music_note)
+    val appearanceIcon = painterResource(R.drawable.palette)
+    val storageIcon = painterResource(R.drawable.storage)
+    val playerTitle = stringResource(R.string.settings_playback_title)
+    val appearanceTitle = stringResource(R.string.appearance)
+    val storageTitle = stringResource(R.string.storage)
+    val playerAccent = MaterialTheme.colorScheme.tertiary
+    val appearanceAccent = MaterialTheme.colorScheme.secondary
+    val storageAccent = MaterialTheme.colorScheme.primary
+
+    val playerAndContent = listOf(
+        deepEntry(
+            navController = navController,
+            screen = SettingsAnchorScreens.PLAYER,
+            anchor = SettingsAnchors.CROSSFADE,
+            icon = playerIcon,
+            title = stringResource(R.string.audio_crossfade_title),
+            parentTitle = playerTitle,
+            accentColor = playerAccent,
+            keywords = listOf("crossfade", "fade", "blend", "overlap", "transition", "mix"),
+        ),
+        deepEntry(
+            navController = navController,
+            screen = SettingsAnchorScreens.PLAYER,
+            anchor = SettingsAnchors.GAPLESS,
+            icon = playerIcon,
+            title = stringResource(R.string.crossfade_gapless_title),
+            parentTitle = playerTitle,
+            accentColor = playerAccent,
+            keywords = listOf("gapless", "gap", "silence between", "continuous", "seamless"),
+        ),
+        deepEntry(
+            navController = navController,
+            screen = SettingsAnchorScreens.PLAYER,
+            anchor = SettingsAnchors.SKIP_SILENCE,
+            icon = playerIcon,
+            title = stringResource(R.string.skip_silence),
+            parentTitle = playerTitle,
+            accentColor = playerAccent,
+            keywords = listOf("skip silence", "silence", "quiet", "trim", "blank"),
+        ),
+        deepEntry(
+            navController = navController,
+            screen = SettingsAnchorScreens.PLAYER,
+            anchor = SettingsAnchors.AUDIO_NORMALIZATION,
+            icon = playerIcon,
+            title = stringResource(R.string.audio_normalization),
+            parentTitle = playerTitle,
+            accentColor = playerAccent,
+            keywords = listOf("normalization", "normalise", "loudness", "volume", "replaygain", "gain"),
+        ),
+        deepEntry(
+            navController = navController,
+            screen = SettingsAnchorScreens.PLAYER,
+            anchor = SettingsAnchors.PERSISTENT_QUEUE,
+            icon = playerIcon,
+            title = stringResource(R.string.persistent_queue),
+            parentTitle = playerTitle,
+            accentColor = playerAccent,
+            keywords = listOf("queue", "persistent queue", "restore queue", "resume", "remember"),
+        ),
+        deepEntry(
+            navController = navController,
+            screen = SettingsAnchorScreens.PLAYER,
+            anchor = SettingsAnchors.EXTERNAL_DOWNLOADER,
+            icon = playerIcon,
+            title = stringResource(R.string.external_downloader),
+            parentTitle = playerTitle,
+            accentColor = playerAccent,
+            keywords = listOf("external downloader", "downloader", "download app", "third party"),
+        ),
+        deepEntry(
+            navController = navController,
+            screen = SettingsAnchorScreens.APPEARANCE,
+            anchor = SettingsAnchors.DYNAMIC_THEME,
+            icon = appearanceIcon,
+            title = stringResource(R.string.enable_dynamic_theme),
+            parentTitle = appearanceTitle,
+            accentColor = appearanceAccent,
+            keywords = listOf("dynamic theme", "dynamic color", "material you", "monet", "wallpaper", "accent"),
+        ),
+        deepEntry(
+            navController = navController,
+            screen = SettingsAnchorScreens.APPEARANCE,
+            anchor = SettingsAnchors.DARK_THEME,
+            icon = appearanceIcon,
+            title = stringResource(R.string.dark_theme),
+            parentTitle = appearanceTitle,
+            accentColor = appearanceAccent,
+            keywords = listOf("dark theme", "dark mode", "night", "light mode", "theme"),
+        ),
+        deepEntry(
+            navController = navController,
+            screen = SettingsAnchorScreens.APPEARANCE,
+            anchor = SettingsAnchors.PURE_BLACK,
+            icon = appearanceIcon,
+            title = stringResource(R.string.pure_black),
+            parentTitle = appearanceTitle,
+            accentColor = appearanceAccent,
+            keywords = listOf("pure black", "amoled", "oled", "true black", "contrast"),
+        ),
+        deepEntry(
+            navController = navController,
+            screen = SettingsAnchorScreens.APPEARANCE,
+            anchor = SettingsAnchors.APP_ICON,
+            icon = appearanceIcon,
+            title = stringResource(R.string.app_icon),
+            parentTitle = appearanceTitle,
+            accentColor = appearanceAccent,
+            keywords = listOf("app icon", "icon", "launcher", "shortcut", "logo"),
+        ),
+        deepEntry(
+            navController = navController,
+            screen = SettingsAnchorScreens.APPEARANCE,
+            anchor = SettingsAnchors.FONT,
+            icon = appearanceIcon,
+            title = stringResource(R.string.font_preference),
+            parentTitle = appearanceTitle,
+            accentColor = appearanceAccent,
+            keywords = listOf("font", "typeface", "typography", "text size", "letters"),
+        ),
+        deepEntry(
+            navController = navController,
+            screen = SettingsAnchorScreens.APPEARANCE,
+            anchor = SettingsAnchors.HIGH_REFRESH_RATE,
+            icon = appearanceIcon,
+            title = stringResource(R.string.force_high_refresh_rate),
+            parentTitle = appearanceTitle,
+            accentColor = appearanceAccent,
+            keywords = listOf("refresh rate", "hz", "120hz", "90hz", "smooth", "frame rate", "fps"),
+        ),
+    )
+
+    val storage = listOf(
+        deepEntry(
+            navController = navController,
+            screen = SettingsAnchorScreens.STORAGE,
+            anchor = SettingsAnchors.EXPORT_DOWNLOADS,
+            icon = storageIcon,
+            title = stringResource(R.string.export_downloaded_songs),
+            parentTitle = storageTitle,
+            accentColor = storageAccent,
+            keywords = listOf("export", "copy songs", "save to folder", "sd card", "usb", "backup songs", "mp3"),
+        ),
+        deepEntry(
+            navController = navController,
+            screen = SettingsAnchorScreens.STORAGE,
+            anchor = SettingsAnchors.CLEAR_DOWNLOADS,
+            icon = storageIcon,
+            title = stringResource(R.string.clear_all_downloads),
+            parentTitle = storageTitle,
+            accentColor = storageAccent,
+            keywords = listOf("clear downloads", "delete downloads", "remove downloads", "free space"),
+        ),
+        deepEntry(
+            navController = navController,
+            screen = SettingsAnchorScreens.STORAGE,
+            anchor = SettingsAnchors.SONG_CACHE_SIZE,
+            icon = storageIcon,
+            title = stringResource(R.string.max_song_cache_size),
+            parentTitle = storageTitle,
+            accentColor = storageAccent,
+            keywords = listOf("song cache", "cache size", "music cache", "limit", "storage limit"),
+        ),
+        deepEntry(
+            navController = navController,
+            screen = SettingsAnchorScreens.STORAGE,
+            anchor = SettingsAnchors.CLEAR_SONG_CACHE,
+            icon = storageIcon,
+            title = stringResource(R.string.clear_song_cache),
+            parentTitle = storageTitle,
+            accentColor = storageAccent,
+            keywords = listOf("clear cache", "clear song cache", "empty cache", "free space"),
+        ),
+        deepEntry(
+            navController = navController,
+            screen = SettingsAnchorScreens.STORAGE,
+            anchor = SettingsAnchors.IMAGE_CACHE_SIZE,
+            icon = storageIcon,
+            title = stringResource(R.string.max_image_cache_size),
+            parentTitle = storageTitle,
+            accentColor = storageAccent,
+            keywords = listOf("image cache", "artwork cache", "thumbnail cache", "cover art", "cache size"),
+        ),
+        deepEntry(
+            navController = navController,
+            screen = SettingsAnchorScreens.STORAGE,
+            anchor = SettingsAnchors.SMART_TRIMMER,
+            icon = storageIcon,
+            title = stringResource(R.string.smart_trimmer),
+            parentTitle = storageTitle,
+            accentColor = storageAccent,
+            keywords = listOf("smart trimmer", "trimmer", "auto clean", "prune", "automatic cleanup"),
+        ),
+    )
+
+    return DeepSettingsEntries(playerAndContent = playerAndContent, storage = storage)
 }

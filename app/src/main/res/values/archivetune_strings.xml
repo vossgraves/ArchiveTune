@@ -644,4 +644,7 @@
     <string name="about_content_desc_discord">Discord</string>
     <string name="about_content_desc_telegram">Telegram</string>
     <string name="about_content_desc_donate">Donate</string>
+    <!-- Subtitle on a settings search result that points at one preference inside a sub-screen,
+         e.g. "in Player and audio". %1$s is the name of the screen holding that preference. -->
+    <string name="settings_search_located_in">in %1$s</string>
 </resources>

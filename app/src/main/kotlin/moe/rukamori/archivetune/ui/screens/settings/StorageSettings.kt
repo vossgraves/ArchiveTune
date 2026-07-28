@@ -28,7 +28,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.Button
@@ -112,6 +111,7 @@ fun StorageSettings(
     navController: NavController,
     viewModel: StorageSettingsViewModel = hiltViewModel(),
 ) {
+    val anchors = rememberSettingsAnchorState(SettingsAnchorScreens.STORAGE)
     val context = LocalContext.current
     val imageDiskCache = context.imageLoader.diskCache ?: return
     val playerCache = LocalPlayerConnection.current?.service?.playerCache ?: return
@@ -339,7 +339,8 @@ fun StorageSettings(
             Modifier
                 .padding(top = topPadding)
                 .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom))
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(anchors.scrollState)
+                .then(anchors.containerModifier)
                 .padding(
                     start = 12.dp,
                     top = 12.dp,
@@ -353,11 +354,13 @@ fun StorageSettings(
                 isSmartTrimmerAvailable = isSmartTrimmerAvailable,
                 onSmartTrimmerChange = onSmartTrimmerChange,
                 onSelectFolder = viewModel::openStorageLocationPicker,
+                smartTrimmerModifier = anchors.anchor(SettingsAnchors.SMART_TRIMMER),
             )
 
             PreferenceGroup(title = stringResource(R.string.downloaded_songs)) {
                 item {
                     PreferenceEntry(
+                        modifier = anchors.anchor(SettingsAnchors.CLEAR_DOWNLOADS),
                         title = { Text(stringResource(R.string.clear_all_downloads)) },
                         description = stringResource(R.string.size_used, formatFileSize(downloadCacheSize)),
                         icon = {
@@ -371,6 +374,7 @@ fun StorageSettings(
                 }
                 item {
                     PreferenceEntry(
+                        modifier = anchors.anchor(SettingsAnchors.EXPORT_DOWNLOADS),
                         title = { Text(stringResource(R.string.export_downloaded_songs)) },
                         description =
                             exportProgress
@@ -415,6 +419,7 @@ fun StorageSettings(
             PreferenceGroup(title = stringResource(R.string.song_cache)) {
                 item {
                     ListPreference(
+                        modifier = anchors.anchor(SettingsAnchors.SONG_CACHE_SIZE),
                         title = { Text(stringResource(R.string.max_song_cache_size)) },
                         description =
                             if (maxSongCacheSize == -1) {
@@ -449,6 +454,7 @@ fun StorageSettings(
                 }
                 item {
                     PreferenceEntry(
+                        modifier = anchors.anchor(SettingsAnchors.CLEAR_SONG_CACHE),
                         title = { Text(stringResource(R.string.clear_song_cache)) },
                         onClick = { clearCacheDialog = true },
                     )
@@ -473,6 +479,7 @@ fun StorageSettings(
             PreferenceGroup(title = stringResource(R.string.image_cache)) {
                 item {
                     ListPreference(
+                        modifier = anchors.anchor(SettingsAnchors.IMAGE_CACHE_SIZE),
                         title = { Text(stringResource(R.string.max_image_cache_size)) },
                         description =
                             when {
@@ -630,6 +637,7 @@ private fun StorageFolderSection(
     isSmartTrimmerAvailable: Boolean,
     onSmartTrimmerChange: (Boolean) -> Unit,
     onSelectFolder: () -> Unit,
+    smartTrimmerModifier: Modifier = Modifier,
 ) {
     PreferenceGroup(title = stringResource(R.string.storage_folder)) {
         when (state) {
@@ -681,6 +689,7 @@ private fun StorageFolderSection(
 
         item {
             SwitchPreference(
+                modifier = smartTrimmerModifier,
                 title = { Text(stringResource(R.string.smart_trimmer)) },
                 description = stringResource(R.string.smart_trimmer_description),
                 checked = smartTrimmer && isSmartTrimmerAvailable,

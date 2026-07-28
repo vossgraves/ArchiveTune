@@ -37,5 +37,11 @@ data class SettingsItem(
     val showUpdateIndicator: Boolean = false,
     val accentColor: Color = Color.Unspecified,
     val keywords: List<String> = emptyList(),
+    /**
+     * True for entries that point at an individual preference inside a sub-screen rather than at
+     * the sub-screen itself. These are only offered while searching: listing them on the resting
+     * settings list would bury the top-level categories under dozens of near-duplicate rows.
+     */
+    val deepOnly: Boolean = false,
     val onClick: () -> Unit,
 )

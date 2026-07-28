@@ -127,7 +127,11 @@ fun SettingsScreen(
     val allSettingsGroups = buildSettingsGroups(navController, isAndroid12OrLater, hasUpdate, context)
     val filteredGroups = remember(searchQuery, allSettingsGroups) {
         if (searchQuery.isBlank()) {
+            // Deep entries point at a single preference inside a sub-screen and only make sense as
+            // search results, so they are dropped from the resting list.
             allSettingsGroups
+                .map { group -> group.copy(items = group.items.filterNot { it.deepOnly }) }
+                .filter { it.items.isNotEmpty() }
         } else {
             val query = searchQuery.trim().lowercase()
             allSettingsGroups.map { group ->

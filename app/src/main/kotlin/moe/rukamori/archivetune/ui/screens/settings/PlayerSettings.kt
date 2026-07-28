@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -75,6 +74,7 @@ import moe.rukamori.archivetune.utils.rememberPreference
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlayerSettings(navController: NavController) {
+    val anchors = rememberSettingsAnchorState(SettingsAnchorScreens.PLAYER)
     val (lowDataMode, onLowDataModeChange) =
         rememberPreference(
             LowDataModeKey,
@@ -272,8 +272,9 @@ fun PlayerSettings(navController: NavController) {
             Modifier
                 .padding(top = topPadding)
                 .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom))
-                .verticalScroll(rememberScrollState())
-                .padding(bottom = SettingsDimensions.ScreenBottomPadding),
+                .verticalScroll(anchors.scrollState)
+                .padding(bottom = SettingsDimensions.ScreenBottomPadding)
+                .then(anchors.containerModifier),
         ) {
             PreferenceGroup(title = stringResource(R.string.player)) {
                 item {
@@ -297,6 +298,7 @@ fun PlayerSettings(navController: NavController) {
 
                 item {
                     SwitchPreference(
+                        modifier = anchors.anchor(SettingsAnchors.CROSSFADE),
                         title = { Text(stringResource(R.string.audio_crossfade_title)) },
                         description = stringResource(R.string.audio_crossfade_description),
                         icon = { Icon(painterResource(R.drawable.animation), null) },
@@ -320,6 +322,7 @@ fun PlayerSettings(navController: NavController) {
 
                 item {
                     SwitchPreference(
+                        modifier = anchors.anchor(SettingsAnchors.GAPLESS),
                         title = { Text(stringResource(R.string.crossfade_gapless_title)) },
                         description = stringResource(R.string.crossfade_gapless_description),
                         icon = { Icon(painterResource(R.drawable.fast_forward), null) },
@@ -331,6 +334,7 @@ fun PlayerSettings(navController: NavController) {
 
                 item {
                     SwitchPreference(
+                        modifier = anchors.anchor(SettingsAnchors.SKIP_SILENCE),
                         title = { Text(stringResource(R.string.skip_silence)) },
                         icon = { Icon(painterResource(R.drawable.fast_forward), null) },
                         checked = skipSilence,
@@ -341,6 +345,7 @@ fun PlayerSettings(navController: NavController) {
 
                 item {
                     SwitchPreference(
+                        modifier = anchors.anchor(SettingsAnchors.AUDIO_NORMALIZATION),
                         title = { Text(stringResource(R.string.audio_normalization)) },
                         icon = { Icon(painterResource(R.drawable.volume_up), null) },
                         checked = audioNormalization,
@@ -473,6 +478,7 @@ fun PlayerSettings(navController: NavController) {
 
                 item {
                     SwitchPreference(
+                        modifier = anchors.anchor(SettingsAnchors.PERSISTENT_QUEUE),
                         title = { Text(stringResource(R.string.persistent_queue)) },
                         description = stringResource(R.string.persistent_queue_desc),
                         icon = { Icon(painterResource(R.drawable.queue_music), null) },
@@ -552,6 +558,7 @@ fun PlayerSettings(navController: NavController) {
 
                 item {
                     SwitchPreference(
+                        modifier = anchors.anchor(SettingsAnchors.EXTERNAL_DOWNLOADER),
                         title = { Text(stringResource(R.string.external_downloader)) },
                         description = stringResource(R.string.external_downloader_desc),
                         icon = { Icon(painterResource(R.drawable.download), null) },

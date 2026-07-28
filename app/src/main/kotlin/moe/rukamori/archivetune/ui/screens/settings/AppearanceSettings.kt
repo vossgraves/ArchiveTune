@@ -34,7 +34,6 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ButtonDefaults
@@ -131,6 +130,7 @@ import kotlin.math.roundToInt
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppearanceSettings(navController: NavController) {
+    val anchors = rememberSettingsAnchorState(SettingsAnchorScreens.APPEARANCE)
     val context = LocalContext.current
     val defaultDisableAnimations = remember(context) { context.isLowRamDevice() }
     val (dynamicTheme, onDynamicThemeChange) =
@@ -451,12 +451,14 @@ fun AppearanceSettings(navController: NavController) {
             Modifier
                 .padding(top = topPadding)
                 .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom))
-                .verticalScroll(rememberScrollState())
-                .padding(bottom = SettingsDimensions.ScreenBottomPadding),
+                .verticalScroll(anchors.scrollState)
+                .padding(bottom = SettingsDimensions.ScreenBottomPadding)
+                .then(anchors.containerModifier),
         ) {
             PreferenceGroup(title = stringResource(R.string.theme)) {
                 item {
                     SwitchPreference(
+                        modifier = anchors.anchor(SettingsAnchors.DYNAMIC_THEME),
                         title = { Text(stringResource(R.string.enable_dynamic_theme)) },
                         icon = { Icon(painterResource(R.drawable.palette), null) },
                         checked = dynamicTheme,
@@ -485,6 +487,7 @@ fun AppearanceSettings(navController: NavController) {
 
                 item {
                     PreferenceEntry(
+                        modifier = anchors.anchor(SettingsAnchors.APP_ICON),
                         title = { Text(stringResource(R.string.app_icon)) },
                         description = stringResource(R.string.app_icon_description),
                         icon = { Icon(painterResource(R.drawable.app_icon_small), null) },
@@ -494,6 +497,7 @@ fun AppearanceSettings(navController: NavController) {
 
                 item {
                     EnumListPreference(
+                        modifier = anchors.anchor(SettingsAnchors.DARK_THEME),
                         title = { Text(stringResource(R.string.dark_theme)) },
                         icon = { Icon(painterResource(R.drawable.dark_mode), null) },
                         selectedValue = darkMode,
@@ -510,6 +514,7 @@ fun AppearanceSettings(navController: NavController) {
 
                 item(visible = useDarkTheme) {
                     SwitchPreference(
+                        modifier = anchors.anchor(SettingsAnchors.PURE_BLACK),
                         title = { Text(stringResource(R.string.pure_black)) },
                         icon = { Icon(painterResource(R.drawable.contrast), null) },
                         checked = pureBlack,
@@ -539,6 +544,7 @@ fun AppearanceSettings(navController: NavController) {
 
                 item {
                     SwitchPreference(
+                        modifier = anchors.anchor(SettingsAnchors.HIGH_REFRESH_RATE),
                         title = { Text(stringResource(R.string.force_high_refresh_rate)) },
                         description =
                             stringResource(
@@ -604,6 +610,7 @@ fun AppearanceSettings(navController: NavController) {
 
                 item {
                     EnumListPreference(
+                        modifier = anchors.anchor(SettingsAnchors.FONT),
                         title = { Text(stringResource(R.string.font_preference)) },
                         description = stringResource(R.string.font_preference_desc),
                         icon = { Icon(painterResource(R.drawable.text_fields), null) },
