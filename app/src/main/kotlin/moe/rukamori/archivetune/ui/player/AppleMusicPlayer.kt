@@ -9,12 +9,15 @@
  * "more" chips, a thin scrubber with elapsed/-remaining times, bare oversized transport glyphs, a
  * flat volume slider, and a bottom lyrics / output / queue icon row. Everything is tinted by the
  * artwork itself (no palette extraction needed — the blur provides the color).
+ *
+ * Gesture ownership matters here. Swipe gestures live on the artwork ONLY, never on the controls
+ * column: a drag detector wrapping the controls consumes events before the buttons and sliders
+ * beneath it can see a tap, which is what previously left the queue button dead.
  */
 
 package moe.rukamori.archivetune.ui.player
 
 import android.content.Intent
-import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -35,13 +38,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.ripple
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -49,7 +51,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
@@ -73,6 +74,12 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.constants.BlurRadiusKey
+import moe.rukamori.archivetune.constants.DisableBlurKey
+import moe.rukamori.archivetune.constants.PlayerButtonsStyle
+import moe.rukamori.archivetune.constants.PlayerButtonsStyleKey
+import moe.rukamori.archivetune.constants.ShowPlayerVolumeBarKey
+import moe.rukamori.archivetune.constants.SwipeThumbnailKey
 import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.playback.PlayerConnection
@@ -84,13 +91,18 @@ import moe.rukamori.archivetune.ui.menu.rememberCastPlayerMenuAction
 import moe.rukamori.archivetune.ui.utils.ShowMediaInfo
 import moe.rukamori.archivetune.ui.utils.highRes
 import moe.rukamori.archivetune.utils.makeTimeString
+import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberLowDataModeActive
+import moe.rukamori.archivetune.utils.rememberPreference
 
 private val AppleMusicContentPadding = 28.dp
 private val AppleMusicChipSize = 34.dp
 private val AppleMusicTransportIconSize = 52.dp
 private val AppleMusicPlayPauseIconSize = 62.dp
 private val AppleMusicBottomIconSize = 24.dp
+
+/** Distance a drag must travel before it counts as a deliberate swipe rather than a stray move. */
+private val AppleMusicSwipeThreshold = 72.dp
 
 @Composable
 fun AppleMusicPlayerContent(
@@ -134,6 +146,39 @@ fun AppleMusicPlayerContent(
     val menuState = LocalMenuState.current
     val context = LocalContext.current
 
+    // Preferences this design honours. Read here rather than threaded down from BottomSheetPlayer so
+    // the design stays self-contained, matching how Thumbnail.kt and MiniPlayer.kt read the same
+    // keys. DataStore is still the single source of truth, so the values cannot diverge.
+    //
+    // Deliberately NOT honoured, because each would erase what makes this design recognisable — and
+    // the design is itself an explicit user choice via PlayerDesignStyleKey:
+    //   SliderStyleKey            — Wavy/Circular would replace the signature flat scrubber.
+    //   PlayerBackgroundStyleKey  — the artwork-tinted panel *is* the Apple Music background.
+    //                               (BottomSheetPlayer already forces DEFAULT for this design.)
+    //   ThumbnailCornerRadiusKey  — the sharp square artwork is the defining trait.
+    val (disableBlur) = rememberPreference(DisableBlurKey, defaultValue = false)
+    val (blurRadius) = rememberPreference(BlurRadiusKey, defaultValue = 48f)
+    val (showPlayerVolumeBar) = rememberPreference(ShowPlayerVolumeBarKey, defaultValue = true)
+    val (swipeThumbnail) = rememberPreference(SwipeThumbnailKey, defaultValue = true)
+    val playerButtonsStyle by rememberEnumPreference(
+        key = PlayerButtonsStyleKey,
+        defaultValue = PlayerButtonsStyle.DEFAULT,
+    )
+
+    // The chips carry their own background, so an accent stays legible there. The oversized
+    // transport glyphs sit directly on artwork and stay white for contrast — the same compromise
+    // Player.kt makes for the V7/V8 designs.
+    val chipBackground =
+        when (playerButtonsStyle) {
+            PlayerButtonsStyle.DEFAULT -> Color.White.copy(alpha = 0.14f)
+            PlayerButtonsStyle.SECONDARY -> MaterialTheme.colorScheme.secondary
+        }
+    val chipTint =
+        when (playerButtonsStyle) {
+            PlayerButtonsStyle.DEFAULT -> Color.White
+            PlayerButtonsStyle.SECONDARY -> MaterialTheme.colorScheme.onSecondary
+        }
+
     val onPlayPauseClick = {
         if (playbackState == STATE_ENDED) {
             playerConnection.player.seekTo(0, 0)
@@ -173,38 +218,36 @@ fun AppleMusicPlayerContent(
     BoxWithConstraints(modifier = modifier) {
         val sharpArtworkHeight = if (landscape) maxHeight else maxHeight * 0.55f
 
-        // 1. Blurred artwork fills the whole player as the base layer. On Android 12+ this is a
-        // real gaussian blur; below that the scrim alone carries the contrast.
-        AsyncImage(
-            model = artworkRequest ?: artworkUrl,
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier =
-                Modifier
-                    .matchParentSize()
-                    .then(
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                            Modifier.blur(72.dp)
-                        } else {
-                            Modifier
-                        },
-                    ).graphicsLayer {
-                        scaleX = 1.2f
-                        scaleY = 1.2f
-                    },
-        )
+        // 1. Blurred artwork fills the whole player as the base layer.
+        if (disableBlur) {
+            // Blur disabled: the scrim below carries all the contrast on its own.
+            AsyncImage(
+                model = artworkRequest ?: artworkUrl,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.matchParentSize(),
+            )
+        } else {
+            BackdropBlurApi30(
+                model = artworkUrl,
+                blurAmount = blurRadius.toInt().coerceIn(1, 100),
+                modifier = Modifier.matchParentSize(),
+            )
+        }
         // Deep contrast scrim over the blur: the Apple Music sheet reads as a dark, artwork-tinted
         // panel rather than a bright blur, so the whole surface is pulled well down in brightness
-        // and pushed darker still toward the bottom where the controls sit.
+        // and pushed darker still toward the bottom where the controls sit. Without a blur the
+        // artwork stays sharp underneath, so the scrim has to work harder to keep text legible.
+        val scrimBoost = if (disableBlur) 0.10f else 0f
         Box(
             modifier =
                 Modifier
                     .matchParentSize()
                     .background(
                         Brush.verticalGradient(
-                            0f to Color.Black.copy(alpha = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) 0.42f else 0.52f),
-                            0.5f to Color.Black.copy(alpha = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) 0.60f else 0.68f),
-                            1f to Color.Black.copy(alpha = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) 0.82f else 0.86f),
+                            0f to Color.Black.copy(alpha = 0.42f + scrimBoost),
+                            0.5f to Color.Black.copy(alpha = 0.60f + scrimBoost),
+                            1f to Color.Black.copy(alpha = 0.82f + scrimBoost),
                         ),
                     ),
         )
@@ -218,6 +261,12 @@ fun AppleMusicPlayerContent(
                     canvasFallbackUrl = canvasFallbackUrl,
                     isPlaying = isPlaying,
                     fadeBottom = false,
+                    swipeThumbnail = swipeThumbnail,
+                    canSkipPrevious = canSkipPrevious,
+                    canSkipNext = canSkipNext,
+                    onSkipPrevious = playerConnection::seekToPrevious,
+                    onSkipNext = playerConnection::seekToNext,
+                    onQueueClick = onQueueClick,
                     modifier =
                         Modifier
                             .weight(1f)
@@ -236,6 +285,9 @@ fun AppleMusicPlayerContent(
                     currentSongLiked = currentSongLiked,
                     volume = volume,
                     onVolumeChange = onVolumeChange,
+                    showVolumeBar = showPlayerVolumeBar,
+                    chipBackground = chipBackground,
+                    chipTint = chipTint,
                     titleActions = titleActions,
                     onPlayPauseClick = onPlayPauseClick,
                     onMoreClick = onMoreClick,
@@ -260,6 +312,12 @@ fun AppleMusicPlayerContent(
                 canvasFallbackUrl = canvasFallbackUrl,
                 isPlaying = isPlaying,
                 fadeBottom = true,
+                swipeThumbnail = swipeThumbnail,
+                canSkipPrevious = canSkipPrevious,
+                canSkipNext = canSkipNext,
+                onSkipPrevious = playerConnection::seekToPrevious,
+                onSkipNext = playerConnection::seekToNext,
+                onQueueClick = onQueueClick,
                 modifier =
                     Modifier
                         .fillMaxWidth()
@@ -267,7 +325,7 @@ fun AppleMusicPlayerContent(
                         .align(Alignment.TopCenter),
             )
 
-            // 3. Controls anchored to the bottom.
+            // 3. Controls anchored to the bottom. No gesture detector wraps this — see file header.
             AppleMusicControlsColumn(
                 mediaMetadata = mediaMetadata,
                 isPlaying = isPlaying,
@@ -281,6 +339,9 @@ fun AppleMusicPlayerContent(
                 currentSongLiked = currentSongLiked,
                 volume = volume,
                 onVolumeChange = onVolumeChange,
+                showVolumeBar = showPlayerVolumeBar,
+                chipBackground = chipBackground,
+                chipTint = chipTint,
                 titleActions = titleActions,
                 onPlayPauseClick = onPlayPauseClick,
                 onMoreClick = onMoreClick,
@@ -308,30 +369,75 @@ private fun AppleMusicSharpArtwork(
     canvasFallbackUrl: String?,
     isPlaying: Boolean,
     fadeBottom: Boolean,
+    swipeThumbnail: Boolean,
+    canSkipPrevious: Boolean,
+    canSkipNext: Boolean,
+    onSkipPrevious: () -> Unit,
+    onSkipNext: () -> Unit,
+    onQueueClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Box(
         modifier =
-            modifier.then(
-                if (fadeBottom) {
-                    // Fade the sharp artwork's lower edge into the blurred layer beneath.
-                    Modifier
-                        .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-                        .drawWithContent {
-                            drawContent()
-                            drawRect(
-                                brush =
-                                    Brush.verticalGradient(
-                                        0.62f to Color.Black,
-                                        1f to Color.Transparent,
-                                    ),
-                                blendMode = androidx.compose.ui.graphics.BlendMode.DstIn,
-                            )
-                        }
-                } else {
-                    Modifier
+            modifier
+                .then(
+                    if (fadeBottom) {
+                        // Fade the sharp artwork's lower edge into the blurred layer beneath.
+                        Modifier
+                            .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                            .drawWithContent {
+                                drawContent()
+                                drawRect(
+                                    brush =
+                                        Brush.verticalGradient(
+                                            0.62f to Color.Black,
+                                            1f to Color.Transparent,
+                                        ),
+                                    blendMode = androidx.compose.ui.graphics.BlendMode.DstIn,
+                                )
+                            }
+                    } else {
+                        Modifier
+                    },
+                )
+                // Swipe gestures live here, on artwork with no interactive children, so consuming
+                // events cannot steal taps from a button. The two detectors each wait for slop on
+                // their own axis, so whichever axis the finger commits to wins cleanly.
+                .pointerInput(swipeThumbnail, canSkipPrevious, canSkipNext) {
+                    if (!swipeThumbnail) return@pointerInput
+                    val threshold = AppleMusicSwipeThreshold.toPx()
+                    var travelled = 0f
+                    detectHorizontalDragGestures(
+                        onDragStart = { travelled = 0f },
+                        onDragCancel = { travelled = 0f },
+                        onDragEnd = {
+                            when {
+                                travelled <= -threshold && canSkipNext -> onSkipNext()
+                                travelled >= threshold && canSkipPrevious -> onSkipPrevious()
+                            }
+                            travelled = 0f
+                        },
+                        onHorizontalDrag = { change, dragAmount ->
+                            change.consume()
+                            travelled += dragAmount
+                        },
+                    )
+                }.pointerInput(Unit) {
+                    val threshold = AppleMusicSwipeThreshold.toPx()
+                    var travelled = 0f
+                    detectVerticalDragGestures(
+                        onDragStart = { travelled = 0f },
+                        onDragCancel = { travelled = 0f },
+                        onDragEnd = {
+                            if (travelled <= -threshold) onQueueClick()
+                            travelled = 0f
+                        },
+                        onVerticalDrag = { change, dragAmount ->
+                            change.consume()
+                            travelled += dragAmount
+                        },
+                    )
                 },
-            ),
     ) {
         AsyncImage(
             model = artworkRequest ?: artworkUrl,
@@ -365,6 +471,9 @@ private fun AppleMusicControlsColumn(
     currentSongLiked: Boolean,
     volume: Float,
     onVolumeChange: (Float) -> Unit,
+    showVolumeBar: Boolean,
+    chipBackground: Color,
+    chipTint: Color,
     titleActions: PlayerTitleActions,
     onPlayPauseClick: () -> Unit,
     onMoreClick: () -> Unit,
@@ -375,34 +484,8 @@ private fun AppleMusicControlsColumn(
     onSliderValueChangeFinished: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var swipeUpAccumulated by remember { mutableFloatStateOf(0f) }
-    val swipeUpThreshold = 120f
-    val resetSwipeUp = remember {
-        {
-            if (swipeUpAccumulated != 0f) swipeUpAccumulated = 0f
-        }
-    }
-    LaunchedEffect(Unit) { kotlinx.coroutines.delay(300); resetSwipeUp() }
-
     Column(
-        modifier = modifier
-            .padding(horizontal = AppleMusicContentPadding)
-            .pointerInput(Unit) {
-                detectVerticalDragGestures(
-                    onDragEnd = {
-                        if (swipeUpAccumulated < -swipeUpThreshold) {
-                            onQueueClick()
-                        }
-                        swipeUpAccumulated = 0f
-                    },
-                    onVerticalDrag = { change, dragAmount ->
-                        change.consume()
-                        if (dragAmount < 0f) { // upward swipe
-                            swipeUpAccumulated = (swipeUpAccumulated + dragAmount).coerceAtLeast(-swipeUpThreshold * 1.5f)
-                        }
-                    },
-                )
-            },
+        modifier = modifier.padding(horizontal = AppleMusicContentPadding),
         verticalArrangement = Arrangement.SpaceEvenly,
     ) {
         // Title / artist row with star + more chips.
@@ -440,14 +523,16 @@ private fun AppleMusicControlsColumn(
             Spacer(Modifier.width(12.dp))
             AppleMusicChip(
                 iconRes = if (currentSongLiked) R.drawable.player_star_filled else R.drawable.player_star,
-                tint = if (currentSongLiked) Color(0xFFFFD700) else Color.White,
+                background = chipBackground,
+                tint = if (currentSongLiked) Color(0xFFFFD700) else chipTint,
                 contentDescription = null,
                 onClick = playerConnection::toggleLike,
             )
             Spacer(Modifier.width(10.dp))
             AppleMusicChip(
                 iconRes = R.drawable.player_more_horiz,
-                tint = Color.White,
+                background = chipBackground,
+                tint = chipTint,
                 contentDescription = null,
                 onClick = onMoreClick,
             )
@@ -516,29 +601,12 @@ private fun AppleMusicControlsColumn(
             )
         }
 
-        // Flat volume slider with speaker glyphs.
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Icon(
-                painter = painterResource(R.drawable.player_volume_min),
-                contentDescription = null,
-                tint = Color.White.copy(alpha = 0.55f),
-                modifier = Modifier.size(18.dp),
-            )
-            Spacer(Modifier.width(12.dp))
-            AppleMusicVolumeSlider(
+        // Flat volume slider with speaker glyphs, shared with the lyrics screen.
+        if (showVolumeBar) {
+            AppleMusicVolumeRow(
                 volume = volume,
                 onVolumeChange = onVolumeChange,
-                modifier = Modifier.weight(1f),
-            )
-            Spacer(Modifier.width(12.dp))
-            Icon(
-                painter = painterResource(R.drawable.player_volume_up),
-                contentDescription = null,
-                tint = Color.White.copy(alpha = 0.55f),
-                modifier = Modifier.size(18.dp),
+                modifier = Modifier.fillMaxWidth(),
             )
         }
 
@@ -570,6 +638,7 @@ private fun AppleMusicControlsColumn(
 @Composable
 private fun AppleMusicChip(
     iconRes: Int,
+    background: Color,
     tint: Color,
     contentDescription: String?,
     onClick: () -> Unit,
@@ -580,7 +649,7 @@ private fun AppleMusicChip(
             Modifier
                 .size(AppleMusicChipSize)
                 .clip(CircleShape)
-                .background(Color.White.copy(alpha = 0.14f))
+                .background(background)
                 .clickable(onClick = onClick),
     ) {
         Icon(
@@ -652,7 +721,7 @@ private fun AppleMusicBottomButton(
     }
 }
 
-/** Thin Apple-Music-style scrubber: rounded 6dp track, no thumb, tap + drag to seek. */
+/** Thin Apple-Music-style scrubber: rounded track, no thumb, tap + drag to seek. */
 @Composable
 private fun AppleMusicSeekBar(
     position: Long,
@@ -712,46 +781,6 @@ private fun AppleMusicSeekBar(
                         color = Color.White.copy(alpha = if (dragging) 1f else 0.85f),
                         topLeft = Offset(0f, top),
                         size = Size(size.width * shownFraction, trackHeight),
-                        cornerRadius = radius,
-                    )
-                },
-    )
-}
-
-/** Flat volume slider matching the scrubber's look. */
-@Composable
-private fun AppleMusicVolumeSlider(
-    volume: Float,
-    onVolumeChange: (Float) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Box(
-        modifier =
-            modifier
-                .height(26.dp)
-                .pointerInput(Unit) {
-                    detectTapGestures { offset ->
-                        onVolumeChange((offset.x / size.width).coerceIn(0f, 1f))
-                    }
-                }.pointerInput(Unit) {
-                    detectHorizontalDragGestures { change, _ ->
-                        change.consume()
-                        onVolumeChange((change.position.x / size.width).coerceIn(0f, 1f))
-                    }
-                }.drawWithContent {
-                    val trackHeight = 6.dp.toPx()
-                    val top = (size.height - trackHeight) / 2f
-                    val radius = CornerRadius(trackHeight / 2f)
-                    drawRoundRect(
-                        color = Color.White.copy(alpha = 0.28f),
-                        topLeft = Offset(0f, top),
-                        size = Size(size.width, trackHeight),
-                        cornerRadius = radius,
-                    )
-                    drawRoundRect(
-                        color = Color.White.copy(alpha = 0.85f),
-                        topLeft = Offset(0f, top),
-                        size = Size(size.width * volume.coerceIn(0f, 1f), trackHeight),
                         cornerRadius = radius,
                     )
                 },
