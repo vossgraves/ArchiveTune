@@ -201,10 +201,12 @@
     <string name="download_quality_remember">Remember this choice and stop asking</string>
     <string name="export_format_title">Export format</string>
     <string name="export_format_flac">FLAC</string>
+    <string name="export_format_wav">WAV</string>
     <string name="export_format_m4a">M4A (AAC)</string>
-    <string name="export_format_opus">Opus</string>
+    <string name="export_format_webm">WebM (Opus)</string>
+    <string name="export_format_ogg">Ogg</string>
+    <string name="export_format_mp3">MP3</string>
     <string name="export_format_unavailable_lossy_source">Source is lossy — exporting as FLAC would not add quality</string>
-    <string name="export_format_unavailable_no_transcoder">Cannot convert audio, only the source format can be exported</string>
     <string name="export_format_redownload_lossless">Re-download as lossless, then export</string>
     <string name="export_format_redownload_lossless_description">Fetches a real lossless file from Qobuz or Tidal first</string>
     <string name="export_to_downloads_success">Exported to Downloads folder</string>

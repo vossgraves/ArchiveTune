@@ -145,62 +145,72 @@ data class ExportFormatOption(
     val disabledReasonRes: Int? = null,
 )
 
+/**
+ * Every container the cache sniffer can report, so "rewrap into what it already is" is always an
+ * option. Restricting this to FLAC/M4A/OPUS left the common case — YouTube Opus, which arrives in a
+ * WebM container — with no selectable target at all.
+ */
 enum class ExportFormat(
     val extension: String,
-    val mimeType: String,
+    val isLossless: Boolean,
 ) {
-    /** Only genuinely available when the bytes on disk are already FLAC. */
-    FLAC("flac", "audio/flac"),
+    FLAC("flac", isLossless = true),
+    WAV("wav", isLossless = true),
+    M4A("m4a", isLossless = false),
+    WEBM("webm", isLossless = false),
+    OGG("ogg", isLossless = false),
+    MP3("mp3", isLossless = false),
+    ;
 
-    /** The usual container for AAC streams cached from YouTube. */
-    M4A("m4a", "audio/mp4"),
-
-    /** The usual container for Opus streams cached from YouTube. */
-    OPUS("opus", "audio/opus"),
+    companion object {
+        fun forExtension(extension: String?): ExportFormat? {
+            val normalised = extension?.lowercase()?.removePrefix(".") ?: return null
+            return entries.firstOrNull { it.extension == normalised }
+        }
+    }
 }
 
 private val ExportFormat.titleRes: Int
     get() =
         when (this) {
             ExportFormat.FLAC -> R.string.export_format_flac
+            ExportFormat.WAV -> R.string.export_format_wav
             ExportFormat.M4A -> R.string.export_format_m4a
-            ExportFormat.OPUS -> R.string.export_format_opus
+            ExportFormat.WEBM -> R.string.export_format_webm
+            ExportFormat.OGG -> R.string.export_format_ogg
+            ExportFormat.MP3 -> R.string.export_format_mp3
         }
 
 /**
  * Works out which containers can honestly be produced for a track.
  *
  * The app has no audio transcoder — `jaudiotagger` writes tags, not audio — so the cached bytes can
- * only ever be rewrapped, never converted. A lossy stream can therefore not become a real FLAC, and
- * offering one would hand the user a `.flac` that is still lossy inside. Impossible targets are
- * returned disabled with a reason rather than dropped, so the limitation is visible instead of
- * looking like a missing feature.
+ * only ever be copied out in the container they already use. That makes the source format the only
+ * real choice, which is why just one enabled row comes back.
+ *
+ * When the source is lossy, FLAC is still listed but disabled: users go looking for it, and saying
+ * why it is impossible is more useful than omitting it and looking like a missing feature. Producing
+ * one would mean writing a `.flac` that is still lossy inside.
  */
 fun exportFormatOptionsFor(sourceExtension: String?): List<ExportFormatOption> {
-    val normalised = sourceExtension?.lowercase()?.removePrefix(".")
-    val sourceIsLossless = normalised == "flac"
+    // Fall back to M4A to match detectCachedExtension, which assumes it when sniffing fails.
+    val source = ExportFormat.forExtension(sourceExtension) ?: ExportFormat.M4A
 
-    return ExportFormat.entries.map { format ->
-        when {
-            // Rewrapping into the container the bytes already use is always safe.
-            normalised != null && format.extension == normalised ->
-                ExportFormatOption(format, enabled = true)
+    // The source's own container: a straight byte copy, so always genuinely available.
+    val options = mutableListOf(ExportFormatOption(source, enabled = true))
 
-            format == ExportFormat.FLAC && !sourceIsLossless ->
-                ExportFormatOption(
-                    format = format,
-                    enabled = false,
-                    disabledReasonRes = R.string.export_format_unavailable_lossy_source,
-                )
-
-            else ->
-                ExportFormatOption(
-                    format = format,
-                    enabled = false,
-                    disabledReasonRes = R.string.export_format_unavailable_no_transcoder,
-                )
-        }
+    // Only worth showing a second row when the user might reasonably expect FLAC and cannot have it.
+    // Listing every other container disabled would be noise: none of them are reachable either.
+    if (!source.isLossless) {
+        options +=
+            ExportFormatOption(
+                format = ExportFormat.FLAC,
+                enabled = false,
+                disabledReasonRes = R.string.export_format_unavailable_lossy_source,
+            )
     }
+
+    return options
 }
 
 /**
