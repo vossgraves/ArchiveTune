@@ -29,8 +29,10 @@ internal fun Modifier.observeAnyPointerDown(
     enabled: Boolean,
     onDown: () -> Unit,
 ): Modifier {
-    // Keyed on `enabled` alone, so a fresh lambda from the caller cannot restart the handler on every
-    // recomposition; rememberUpdatedState keeps the callback current without being part of the key.
+    // pointerInput is keyed on Unit so a fresh lambda from the caller cannot restart the handler on
+    // every recomposition; rememberUpdatedState keeps the callback current without being a key.
+    // Toggling `enabled` is handled by swapping the modifier branch below, which tears the handler
+    // down and rebuilds it, so the key does not need to track it.
     val currentOnDown by rememberUpdatedState(onDown)
     return if (!enabled) {
         this

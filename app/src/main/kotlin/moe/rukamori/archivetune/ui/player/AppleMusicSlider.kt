@@ -99,8 +99,12 @@ internal fun AppleMusicFlatSlider(
                 .pointerInput(enabled) {
                     if (!enabled) return@pointerInput
                     detectTapGestures { offset ->
+                        // Not setting `dragging` here: a tap has no press/release span to animate
+                        // over, so the fill should spring to the new value from wherever it is. It
+                        // reaches us through the caller's state on the next frame, so dragFraction
+                        // deliberately stays untouched -- writing it while dragging is false would
+                        // leave a stale value that the next real drag animates away from.
                         val tapped = (offset.x / size.width).coerceIn(0f, 1f)
-                        dragFraction = tapped
                         onFractionChange(tapped)
                         onFractionChangeFinished()
                     }
