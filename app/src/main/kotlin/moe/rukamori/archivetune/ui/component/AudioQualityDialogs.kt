@@ -58,8 +58,13 @@ enum class DownloadQualityChoice(
     ;
 
     companion object {
+        /**
+         * Falls back to [LOSSLESS] instead of throwing: this only picks the dialog's initial
+         * selection, so a new Qobuz tier appearing upstream should not be able to crash the song
+         * menu just because it has no radio button yet.
+         */
         fun forQobuzQuality(quality: QobuzAudioQuality): DownloadQualityChoice =
-            entries.first { it.qobuzQuality == quality }
+            entries.firstOrNull { it.qobuzQuality == quality } ?: LOSSLESS
     }
 }
 

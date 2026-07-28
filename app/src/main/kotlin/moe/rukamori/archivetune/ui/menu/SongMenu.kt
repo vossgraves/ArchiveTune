@@ -268,9 +268,6 @@ fun SongMenu(
                     qobuzQuality = choice.qobuzQuality.name
                     askDownloadQuality = false
                 }
-                // ActionPromptDialog does not dismiss itself, and the next step can open the folder
-                // picker, so close this first or it would sit behind that system UI.
-                showDownloadQualityDialog = false
                 resolveFolderAndDownload()
             },
         )
@@ -299,9 +296,6 @@ fun SongMenu(
             sourceExtension = exportSourceExtension,
             onDismiss = { showExportFormatDialog = false },
             onConfirm = { format ->
-                // Close before launching the SAF create-document sheet, otherwise this dialog stays
-                // stacked underneath it and is still there when the user comes back.
-                showExportFormatDialog = false
                 exportToDownloadsLauncher.launch("$exportBaseName.${format.extension}")
             },
             // Re-downloading from a lossless provider is the only honest route to a real FLAC, so
