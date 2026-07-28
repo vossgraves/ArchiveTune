@@ -72,3 +72,45 @@ JDK 21, Android SDK. Debug build check:
 Fork contract tests (palette/crossfade/artwork/multi-source/presence — run
 after any upstream merge or feature change):
 `./gradlew :app:testGmsMobileUniversalDebugUnitTest`
+
+`build_pull_request.yml` runs that same task before assembling, so a broken
+assertion fails in seconds rather than after a full build. Keep it that way: for
+a long time these tests existed but no workflow ran them, which made every
+assertion in them decorative.
+
+## Working without a local JDK
+
+If you are editing this repo from an environment with no JDK/Android SDK, you
+cannot compile, and CI is the only real verdict. That makes cheap pre-push
+checks worth far more than usual:
+
+- **Verify every symbol resolves to an import.** Kotlin reports only the *first*
+  unresolved reference per file, so one missing import hides the next. After
+  adding code, list the external symbols you used and confirm each is imported.
+  Same-package types need no import; extensions like `isActive`, `flow.update`,
+  and `dataStore.get` do.
+- **Keep imports sorted, with no unused entries.** ktlint fails the build on
+  either. Ordering is the IntelliJ layout: everything alphabetically, with
+  `java.*`, `javax.*`, and `kotlin.*` last. Inserting an import in a plausible
+  but wrong slot is the single most common way to fail a build here.
+- **Do not push while a build is in flight.** `build_pull_request.yml` sets
+  `cancel-in-progress`, so pushing again cancels the run you were waiting on and
+  you never get a verdict. Batch fixes, then push once.
+- Read compile errors straight out of the log:
+  `gh run view <id> --log-failed | grep -oE "e: file:///[^ ]*\.kt:[0-9]+:[0-9]+ .*"`
+
+## Coroutine scopes for work that outlives the UI
+
+Downloads and exports must not run on a composition or ViewModel scope. Both die
+when the user navigates away, which cancels the transfer partway and leaves
+partial files behind. Own a process-lived scope
+(`CoroutineScope(SupervisorJob() + Dispatchers.IO)`) in a singleton — see
+`download/LosslessDownloader.kt` and `download/CacheExporter.kt` — and expose
+progress as a `StateFlow` so a screen reopened mid-run rebinds to the work
+already in flight instead of starting a second copy.
+
+For single-flight guards, use `MutableStateFlow.compareAndSet` in an explicit
+loop, **not** `update {}`: `update` re-runs its lambda after losing a race, so a
+flag captured inside it can report success for an attempt that never took
+effect. Note also that `stateFlow.value.add(x)` does not compile when the value
+is an immutable collection.
