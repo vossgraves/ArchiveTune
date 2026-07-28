@@ -26,6 +26,12 @@ concurrency:
 env:
   AI_BASE_URL: ${{ vars.AI_BASE_URL || 'https://opencode.ai/zen/go/v1' }}
   AI_MODEL: ${{ vars.AI_MODEL || 'kimi-k3' }}
+  # This job adds an `upstream` remote pointing at rukamori/ArchiveTune, and gh resolves
+  # an unqualified `gh pr`/`gh issue` against `upstream` in PREFERENCE to `origin`. That
+  # silently opened PRs and "sync FAILED" issues on the UPSTREAM maintainer's repo instead
+  # of this fork. GH_REPO pins every gh call in this workflow to the fork, including any
+  # added later, so never remove it. Individual calls also pass --repo for clarity.
+  GH_REPO: ${{ github.repository }}
 
 jobs:
   sync:
@@ -120,12 +126,13 @@ jobs:
           BEHIND: ${{ steps.sync.outputs.behind }}
         run: |
           PR_URL=$(gh pr create \
+            --repo "$GITHUB_REPOSITORY" \
             --base dev \
             --head "$SYNC_BRANCH" \
             --title "chore(sync): merge upstream/dev ($BEHIND commits, AI-resolved)" \
             --body-file /tmp/sync_report.md)
           echo "Opened PR: $PR_URL"
-          gh pr comment "$PR_URL" --body "This PR will be merged automatically by the 'Upstream Sync Merge' workflow once the Build Pull Request CI passes. No action needed unless CI fails."
+          gh pr comment --repo "$GITHUB_REPOSITORY" "$PR_URL" --body "This PR will be merged automatically by the 'Upstream Sync Merge' workflow once the Build Pull Request CI passes. No action needed unless CI fails."
 
       - name: Report successful sync
         if: steps.sync.outputs.result == 'clean' || steps.sync.outputs.result == 'ai'
@@ -136,6 +143,7 @@ jobs:
           BEHIND: ${{ steps.sync.outputs.behind }}
         run: |
           gh issue create \
+            --repo "$GITHUB_REPOSITORY" \
             --title "Upstream sync $(date +%Y-%m-%d): $BEHIND commits ($RESULT)" \
             --body-file /tmp/sync_report.md || \
             echo "::warning::Could not open the report issue (are Issues enabled on this repo?). Sync itself succeeded."
@@ -156,6 +164,7 @@ jobs:
             echo "- See docs/UPSTREAM_SYNC.md (Troubleshooting) for recovery steps."
           } > /tmp/sync_failure.md
           gh issue create \
+            --repo "$GITHUB_REPOSITORY" \
             --title "Upstream sync FAILED $(date +%Y-%m-%d)" \
             --body-file /tmp/sync_failure.md || \
             echo "::warning::Could not open the failure issue (are Issues enabled on this repo?). Check the run log."
