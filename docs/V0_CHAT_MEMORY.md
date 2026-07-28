@@ -312,10 +312,56 @@ CI-validated at `8c07e06ad`.
   `DocumentFile.fromTreeUri` and re-takes the persistable permission grant each
   time a folder is picked.
 
+## Cache export + a real test gate (branch `feat/anx-merge`)
+
+- **`download/CacheExporter.kt`.** Exporting downloaded songs used to run inline
+  in `CachePlaylistScreen` on the composition scope, so leaving the screen
+  cancelled the copy midway and left partial files behind, and the summary toast
+  could fire into a dead composition. It also only existed on that one screen.
+  The logic now lives in a singleton owning a `SupervisorJob + Dispatchers.IO`
+  scope that outlives any composition, with progress exposed as a `StateFlow` so
+  a screen reopened mid-run rebinds to the export already in flight rather than
+  starting a second one. A second concurrent export is rejected: two runs into
+  the same folder race on identical filenames.
+- Storage settings gained an "Export downloaded songs" entry, so the feature is
+  reachable without going through the cache playlist. It observes `CacheExporter`
+  directly instead of mirroring progress into the ViewModel.
+- **SAF gotcha.** Create files with `DocumentFile.fromTreeUri(...).createFile()`.
+  `DocumentsContract.createDocument()` needs a *document* Uri and throws on most
+  providers when handed the tree Uri from `OpenDocumentTree`. Validate the target
+  folder once up front, so an unwritable tree fails the run immediately instead
+  of being reported as N per-song failures.
+- `processed` counts *finished* songs, so the "X of Y" label needs
+  `(processed + 1).coerceAtMost(total)` or the final song reads "13 of 12".
+- **Unit tests now actually run.** The repo had eight test files and no workflow
+  that ran them, so every assertion in them was decorative. `Unit Tests` in
+  `build_pull_request.yml` runs `:app:testGmsMobileUniversalDebugUnitTest` before
+  assemble — unit tests compile a fraction of the project, so a broken assertion
+  fails in about a minute instead of after a full build — and uploads
+  `app/build/reports/tests/` on failure. Keep it before the build step.
+- That gate immediately caught a pre-existing broken test:
+  `TitleMatchTest.rejectsIdenticalTitleByDifferentArtist` used a 141s candidate
+  against a 242s wanted duration, and that 101s gap trips the 15s duration hard
+  gate — so `evaluate()` rejected on duration and never compared artists, leaving
+  the gate the test is named for untested. Only the fixture was wrong.
+- `download/AudioContainerTest.kt` covers `AudioContainer.detect`, which decides
+  the extension every exported file gets: the synchsafe ID3 size parse, the
+  11-bit MPEG frame sync, `ftyp` at offset 4 rather than 0, and RIFF without
+  WAVE (which also fronts AVI).
+
 ## Constraints / working notes for future sessions
 
 - Cannot build Android locally in this environment — validate compilation via
-  the fork's `Build APKs` CI (`build_debug` job).
+  the fork's `Build APKs` CI (`build_debug` job). For a feature branch, pushing
+  triggers `Build Pull Request`, which compiles the same code; `gh workflow run`
+  is forbidden with the fork token (403), so a push is the only way to start CI.
+- Kotlin reports only the **first** unresolved reference per file, so one missing
+  import hides the next and costs another full CI round. `isActive`,
+  `flow.update`, and similar extensions need explicit imports even though they
+  look built in.
+- ktlint fails on unsorted or unused imports. Ordering is the IntelliJ layout:
+  alphabetical, with `java.*`, `javax.*`, and `kotlin.*` last. Inserting an
+  import into a plausible but wrong slot is an easy way to fail a build.
 - `build_pull_request.yml` has a `concurrency` group with `cancel-in-progress`,
   so a new push supersedes the previous ~8min build instead of queueing behind
   it. Runs started before that group existed cannot be cancelled retroactively.
