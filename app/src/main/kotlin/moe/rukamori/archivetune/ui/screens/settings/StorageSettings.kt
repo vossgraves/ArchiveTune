@@ -378,7 +378,9 @@ fun StorageSettings(
                                 ?.let {
                                     stringResource(
                                         R.string.export_in_progress,
-                                        it.processed + 1,
+                                        // processed counts finished songs, so +1 names the one in
+                                        // flight -- clamped so the last song cannot read "13 of 12".
+                                        (it.processed + 1).coerceAtMost(it.total),
                                         it.total,
                                     )
                                 }
