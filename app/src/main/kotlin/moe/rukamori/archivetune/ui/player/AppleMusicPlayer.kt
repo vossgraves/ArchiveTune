@@ -49,6 +49,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -413,6 +414,15 @@ private fun AppleMusicSharpArtwork(
     onQueueClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // The detectors below are keyed on values that rarely change, so a lambda captured directly gets
+    // pinned to the composition that created it. openQueue upstream is a
+    // remember(state, queueSheetState), so if either sheet state is recreated a captured copy would
+    // keep calling expandSoft() on the orphaned one -- a silently dead swipe. Reading through
+    // rememberUpdatedState keeps the current lambda without making it a pointerInput key, which
+    // would otherwise tear down the gesture mid-drag.
+    val currentOnSkipNext by rememberUpdatedState(onSkipNext)
+    val currentOnSkipPrevious by rememberUpdatedState(onSkipPrevious)
+    val currentOnQueueClick by rememberUpdatedState(onQueueClick)
     Box(
         modifier =
             modifier
@@ -448,8 +458,8 @@ private fun AppleMusicSharpArtwork(
                         onDragCancel = { travelled = 0f },
                         onDragEnd = {
                             when {
-                                travelled <= -threshold && canSkipNext -> onSkipNext()
-                                travelled >= threshold && canSkipPrevious -> onSkipPrevious()
+                                travelled <= -threshold && canSkipNext -> currentOnSkipNext()
+                                travelled >= threshold && canSkipPrevious -> currentOnSkipPrevious()
                             }
                             travelled = 0f
                         },
@@ -465,7 +475,7 @@ private fun AppleMusicSharpArtwork(
                         onDragStart = { travelled = 0f },
                         onDragCancel = { travelled = 0f },
                         onDragEnd = {
-                            if (travelled <= -threshold) onQueueClick()
+                            if (travelled <= -threshold) currentOnQueueClick()
                             travelled = 0f
                         },
                         onVerticalDrag = { change, dragAmount ->
