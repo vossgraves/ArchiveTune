@@ -421,19 +421,3 @@ jobs:
             app/build/outputs/apk/gmsMobileUniversal/debug/*.apk
             app/build/outputs/apk/gms/mobile/universal/debug/*.apk
             app/build/outputs/apk/mobileUniversal/debug/*.apk
-
-  notifyUser:
-    name: Notify referenced issues
-    # Fork: only run on the upstream repo. On forks the referenced issue numbers don't exist, so
-    # this job fails with "Not Found" and shows a spurious red X on otherwise-green builds.
-    if: github.repository == 'rukamori/ArchiveTune' && github.ref == 'refs/heads/dev' && github.actor != 'dependabot[bot]' && github.actor != 'renovate[bot]'
-    needs:
-      - build
-      - aggregateAndSend
-      - build_debug
-    uses: ./.github/workflows/notify_user.yml
-    permissions:
-      issues: write
-      pull-requests: write
-      contents: read
-    secrets: inherit
