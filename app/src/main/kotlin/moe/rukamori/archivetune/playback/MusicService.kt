@@ -9138,8 +9138,19 @@ class MusicService :
                         payload
                     }
                 }
-            }.onFailure {
-                Timber.tag(TAG).w(it, "Failed to read persistent file: $fileName")
+            }.onFailure { cause ->
+                Timber.tag(TAG).w(cause, "Failed to read persistent file: $fileName")
+                // A file we cannot deserialize will never become readable again — most often because
+                // a release changed the shape of a Serializable model, which makes the JVM raise
+                // InvalidClassException. Leaving it on disk means every subsequent launch repeats
+                // this failure and the queue silently never restores, so drop it and start clean.
+                if (cause is IOException || cause is ClassNotFoundException || cause is IllegalStateException) {
+                    runCatching {
+                        if (persistentFile.exists() && !persistentFile.delete()) {
+                            Timber.tag(TAG).w("Failed to discard unreadable persistent file: $fileName")
+                        }
+                    }
+                }
             }.getOrNull()
         }
     }

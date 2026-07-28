@@ -20,6 +20,7 @@ package moe.rukamori.archivetune.ui.player
 import android.content.Intent
 import android.os.Build
 import androidx.compose.foundation.background
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -39,12 +40,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -63,6 +66,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -79,6 +83,8 @@ import moe.rukamori.archivetune.constants.PlayerButtonsStyle
 import moe.rukamori.archivetune.constants.PlayerButtonsStyleKey
 import moe.rukamori.archivetune.constants.ShowPlayerVolumeBarKey
 import moe.rukamori.archivetune.constants.SwipeThumbnailKey
+import moe.rukamori.archivetune.db.entities.FormatEntity
+import moe.rukamori.archivetune.db.entities.codecBadgeLabel
 import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.playback.PlayerConnection
@@ -165,10 +171,16 @@ fun AppleMusicPlayerContent(
     val (backdropBlurAmount) = rememberPreference(BackdropBlurAmountKey, defaultValue = 60)
     val (showPlayerVolumeBar) = rememberPreference(ShowPlayerVolumeBarKey, defaultValue = true)
     val (swipeThumbnail) = rememberPreference(SwipeThumbnailKey, defaultValue = true)
+    // Honoured, unlike the keys listed above: this design has no queue peek bar, which is where the
+    // other designs render the codec readout, so the setting was silently doing nothing here.
+    // Same untyped key Player.kt uses for the other designs; there is no constant for it.
+    val (showCodecOnPlayer) = rememberPreference(booleanPreferencesKey("show_codec_on_player"), defaultValue = false)
     val playerButtonsStyle by rememberEnumPreference(
         key = PlayerButtonsStyleKey,
         defaultValue = PlayerButtonsStyle.DEFAULT,
     )
+
+    val currentFormat by playerConnection.currentFormat.collectAsState(initial = null)
 
     // The chips carry their own background, so an accent stays legible there. The oversized
     // transport glyphs sit directly on artwork and stay white for contrast — the same compromise
@@ -322,6 +334,8 @@ fun AppleMusicPlayerContent(
                     chipBackground = chipBackground,
                     chipTint = chipTint,
                     titleActions = titleActions,
+                    showCodecOnPlayer = showCodecOnPlayer,
+                    currentFormat = currentFormat,
                     onPlayPauseClick = onPlayPauseClick,
                     onMoreClick = onMoreClick,
                     onOutputClick = onOutputClick,
@@ -376,6 +390,8 @@ fun AppleMusicPlayerContent(
                 chipBackground = chipBackground,
                 chipTint = chipTint,
                 titleActions = titleActions,
+                showCodecOnPlayer = showCodecOnPlayer,
+                currentFormat = currentFormat,
                 onPlayPauseClick = onPlayPauseClick,
                 onMoreClick = onMoreClick,
                 onOutputClick = onOutputClick,
@@ -533,6 +549,8 @@ private fun AppleMusicControlsColumn(
     chipBackground: Color,
     chipTint: Color,
     titleActions: PlayerTitleActions,
+    showCodecOnPlayer: Boolean,
+    currentFormat: FormatEntity?,
     onPlayPauseClick: () -> Unit,
     onMoreClick: () -> Unit,
     onOutputClick: () -> Unit,
@@ -577,6 +595,31 @@ private fun AppleMusicControlsColumn(
                             mediaMetadata.artists.firstOrNull()?.id?.let(titleActions.onArtistClick)
                         },
                 )
+
+                // The Apple Music design draws no queue peek bar, which is where every other style
+                // shows the codec readout, so surface it here instead.
+                val codecBadge =
+                    currentFormat
+                        ?.takeIf { showCodecOnPlayer }
+                        ?.codecBadgeLabel()
+                        ?.takeIf { it.isNotBlank() }
+
+                if (codecBadge != null) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = codecBadge,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontFamily = FontFamily.Monospace,
+                        color = Color.White.copy(alpha = 0.55f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier =
+                            Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(Color.White.copy(alpha = 0.10f))
+                                .padding(horizontal = 6.dp, vertical = 2.dp),
+                    )
+                }
             }
             Spacer(Modifier.width(12.dp))
             AppleMusicChip(

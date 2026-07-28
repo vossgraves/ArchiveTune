@@ -51,6 +51,17 @@ fun FormatEntity.formattedSampleRate(): String? =
         "${(it / 100.0).roundToInt() / 10.0} kHz"
     }
 
+/**
+ * Compact single-line codec summary for player chrome, e.g. `Lossless • 96 kHz` or `AAC • 256 kbps`.
+ * Prefers sample rate because it is the more meaningful figure for lossless streams, and falls back
+ * to bitrate for lossy ones where the sample rate is usually unremarkable.
+ */
+fun FormatEntity.codecBadgeLabel(): String =
+    listOfNotNull(
+        codecLabel().takeIf { it.isNotBlank() },
+        formattedSampleRate() ?: formattedBitrate(),
+    ).joinToString(separator = " • ")
+
 fun FormatEntity.formattedFileSize(): String =
     contentLength.takeIf { it > 0 }?.let {
         val units = arrayOf("B", "KB", "MB", "GB", "TB")

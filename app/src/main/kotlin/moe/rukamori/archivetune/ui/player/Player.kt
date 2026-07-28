@@ -88,6 +88,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
@@ -213,6 +214,7 @@ import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberLowDataModeActive
 import moe.rukamori.archivetune.utils.rememberPreference
 import java.util.Locale
+import timber.log.Timber
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
@@ -229,6 +231,14 @@ private const val V7BackdropOverlapDp = 72
 private const val V7SharpStageBottomScrimStartFraction = 0.40f
 private const val V7BackdropFloorBlackStartFraction = 0.88f
 private const val V8BackdropArtworkSizePx = 1_024
+
+/**
+ * Separation between the queue sheet's dismissed and collapsed anchors for designs that draw no
+ * peek bar. [BottomSheet] treats `value == collapsedBound` as "collapsed" and skips composing its
+ * content, so the two anchors must not coincide or the sheet can never open. Sub-pixel on every
+ * supported density, therefore invisible.
+ */
+private val CollapsedAnchorEpsilon = 0.5.dp
 
 @Stable
 internal class DeviceMusicVolumeController(
@@ -833,11 +843,25 @@ fun BottomSheetPlayer(
 
     val dismissedBound = dynamicQueuePeekHeight + WindowInsets.systemBars.asPaddingValues().calculateBottomPadding()
 
+    // The queue sheet rests at `collapsedBound`. BottomSheet gates its content on
+    // `!state.isCollapsed` (value == collapsedBound) and scales the background alpha by `progress`,
+    // which is 0 at the collapsed anchor. Designs with a 0.dp peek (V5, Apple Music) previously
+    // passed the same value for both bounds, so the sheet was permanently "collapsed": expanding it
+    // composed no content and drew a fully transparent background, which is why the queue button
+    // appeared completely dead. Keep the resting position visually hidden but make the collapsed
+    // anchor a hair below the dismissed one so the two states stay distinguishable.
+    val collapsedBound =
+        if (dynamicQueuePeekHeight == 0.dp) {
+            dismissedBound + CollapsedAnchorEpsilon
+        } else {
+            dismissedBound
+        }
+
     val queueSheetState =
         rememberBottomSheetState(
             dismissedBound = dismissedBound,
             expandedBound = state.expandedBound,
-            collapsedBound = dismissedBound,
+            collapsedBound = collapsedBound,
             initialAnchor = 0,
         )
 
@@ -863,8 +887,35 @@ fun BottomSheetPlayer(
                     state.expandSoft()
                 }
                 queueSheetState.expandSoft()
+                // TODO(v0): temporary diagnostics for the Apple Music queue button, remove once fixed.
+                Timber.tag("v0").d(
+                    "openQueue: style=%s dismissed=%s collapsed=%s expanded=%s value=%s " +
+                        "isCollapsed=%s isDismissed=%s progress=%s targetAnchor=%s",
+                    playerDesignStyle,
+                    queueSheetState.dismissedBound,
+                    queueSheetState.collapsedBound,
+                    queueSheetState.expandedBound,
+                    queueSheetState.value,
+                    queueSheetState.isCollapsed,
+                    queueSheetState.isDismissed,
+                    queueSheetState.progress,
+                    queueSheetState.targetAnchor,
+                )
             }
         }
+
+    // TODO(v0): temporary diagnostics; reports where the queue sheet actually settles after a tap.
+    LaunchedEffect(queueSheetState.targetAnchor) {
+        snapshotFlow { queueSheetState.value }
+            .collect { current ->
+                Timber.tag("v0").d(
+                    "queueSheet settle: value=%s isCollapsed=%s progress=%s",
+                    current,
+                    queueSheetState.isCollapsed,
+                    queueSheetState.progress,
+                )
+            }
+    }
 
     BackHandler(
         enabled =
