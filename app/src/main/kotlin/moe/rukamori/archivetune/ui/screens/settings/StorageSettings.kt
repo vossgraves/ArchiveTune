@@ -9,6 +9,9 @@
 
 package moe.rukamori.archivetune.ui.screens.settings
 
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -48,6 +51,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -76,6 +80,7 @@ import moe.rukamori.archivetune.constants.MaxCanvasCacheSizeKey
 import moe.rukamori.archivetune.constants.MaxImageCacheSizeKey
 import moe.rukamori.archivetune.constants.MaxSongCacheSizeKey
 import moe.rukamori.archivetune.constants.SmartTrimmerKey
+import moe.rukamori.archivetune.download.CacheExporter
 import moe.rukamori.archivetune.extensions.directorySizeBytes
 import moe.rukamori.archivetune.extensions.tryOrNull
 import moe.rukamori.archivetune.storage.StorageFolderKind
@@ -172,6 +177,20 @@ fun StorageSettings(
         )
     var clearCacheDialog by remember { mutableStateOf(false) }
     var clearDownloads by remember { mutableStateOf(false) }
+
+    // Observed straight from CacheExporter rather than mirrored into screen state: the export runs on
+    // a process-lived scope, so it can already be in flight when this screen is opened.
+    val exportProgress by CacheExporter.progress.collectAsState()
+    val exportFolderLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { treeUri ->
+            treeUri?.let(viewModel::exportDownloadedSongs)
+        }
+    LaunchedEffect(exportProgress?.running) {
+        val finished =
+            exportProgress?.takeIf { !it.running && it.processed > 0 } ?: return@LaunchedEffect
+        Toast.makeText(context, finished.summary(context), Toast.LENGTH_LONG).show()
+        CacheExporter.clearProgress()
+    }
     var clearImageCacheDialog by remember { mutableStateOf(false) }
     var clearCanvasCacheDialog by remember { mutableStateOf(false) }
     var imageCacheSize by remember { mutableLongStateOf(0L) }
@@ -348,6 +367,30 @@ fun StorageSettings(
                             )
                         },
                         onClick = { clearDownloads = true },
+                    )
+                }
+                item {
+                    PreferenceEntry(
+                        title = { Text(stringResource(R.string.export_downloaded_songs)) },
+                        description =
+                            exportProgress
+                                ?.takeIf { it.running }
+                                ?.let {
+                                    stringResource(
+                                        R.string.export_in_progress,
+                                        it.processed + 1,
+                                        it.total,
+                                    )
+                                }
+                                ?: stringResource(R.string.export_downloaded_songs_description),
+                        icon = {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_download),
+                                contentDescription = null,
+                            )
+                        },
+                        isEnabled = exportProgress?.running != true,
+                        onClick = { exportFolderLauncher.launch(null) },
                     )
                 }
             }

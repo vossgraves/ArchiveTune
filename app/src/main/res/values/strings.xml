@@ -194,6 +194,17 @@
     <string name="export_to_downloads_success">Exported to Downloads folder</string>
     <string name="export_to_folder_success">Exported to selected folder</string>
     <string name="export_to_folder_failed">Export failed. Make sure the song is fully downloaded and the folder is writable.</string>
+    <string name="export_downloaded_songs">Export downloaded songs</string>
+    <string name="export_downloaded_songs_description">Copy downloaded songs to a folder you choose, with tags and cover art</string>
+    <plurals name="export_result_exported">
+        <item quantity="one">Exported %1$d song</item>
+        <item quantity="other">Exported %1$d songs</item>
+    </plurals>
+    <string name="export_result_skipped">%1$d not downloaded</string>
+    <string name="export_result_failed">%1$d failed</string>
+    <string name="export_in_progress">Exporting %1$d of %2$d…</string>
+    <string name="export_nothing_to_do">No downloaded songs to export</string>
+    <string name="export_already_running">An export is already running</string>
     <string name="import_playlist">Import playlist</string>
     <string name="import_failed">Import failed</string>
     <string name="update_button">Update</string>

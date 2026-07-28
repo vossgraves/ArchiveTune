@@ -13,7 +13,6 @@ package moe.rukamori.archivetune.download
 
 import android.content.Context
 import android.net.Uri
-import moe.rukamori.archivetune.audiosource.DirectStream
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.jaudiotagger.audio.AudioFileIO
@@ -44,12 +43,17 @@ internal object AudioFileTagger {
             .build()
     }
 
+    /**
+     * Takes [sourceLabel] rather than the whole [moe.rukamori.archivetune.audiosource.DirectStream]:
+     * the label is all that was ever read from it, and depending on the type would tie tagging to the
+     * download path. Cache export has no stream to hand over, only bytes that are already on disk.
+     */
     fun tag(
         context: Context,
         target: Uri,
         fileName: String,
         request: LosslessDownloader.Request,
-        stream: DirectStream,
+        sourceLabel: String,
     ) {
         // jaudiotagger picks its reader from the extension, so preserve it on the temp file.
         val extension = fileName.substringAfterLast('.', "flac")
@@ -73,7 +77,7 @@ internal object AudioFileTagger {
             request.album?.takeIf { it.isNotBlank() }?.let { tag.setField(FieldKey.ALBUM, it) }
             request.trackNumber?.takeIf { it > 0 }?.let { tag.setField(FieldKey.TRACK, it.toString()) }
             request.year?.takeIf { it.isNotBlank() }?.let { tag.setField(FieldKey.YEAR, it) }
-            tag.setField(FieldKey.COMMENT, "Source: ${stream.label}")
+            tag.setField(FieldKey.COMMENT, "Source: $sourceLabel")
 
             request.artworkUrl?.let { url ->
                 // Best-effort: never fail the whole tagging pass because artwork could not be fetched.

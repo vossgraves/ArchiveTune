@@ -347,7 +347,7 @@ object LosslessDownloader {
             if (embedTags) {
                 // Tagging is best-effort: a valid audio file with no tags still beats no file.
                 runCatching {
-                    AudioFileTagger.tag(context, target.uri, fileName, request, stream)
+                    AudioFileTagger.tag(context, target.uri, fileName, request, stream.label)
                 }.onFailure { Timber.tag(TAG).w(it, "tagging failed for %s", fileName) }
             }
 

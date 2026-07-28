@@ -9,6 +9,7 @@ package moe.rukamori.archivetune.storage
 
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import androidx.compose.runtime.Immutable
 import androidx.core.net.toUri
 import androidx.datastore.preferences.core.Preferences
@@ -34,17 +35,21 @@ import moe.rukamori.archivetune.constants.GitHubContributorsJsonKey
 import moe.rukamori.archivetune.constants.GitHubContributorsLastCheckedAtKey
 import moe.rukamori.archivetune.constants.GitHubTranslationContributorsJsonKey
 import moe.rukamori.archivetune.constants.GitHubTranslationContributorsLastCheckedAtKey
+import moe.rukamori.archivetune.constants.LosslessDownloadTagKey
 import moe.rukamori.archivetune.constants.StorageFolderDisplayNameKey
 import moe.rukamori.archivetune.constants.StorageFolderIdKey
 import moe.rukamori.archivetune.constants.StorageFolderPathKey
 import moe.rukamori.archivetune.constants.StorageFolderTreeUriKey
+import moe.rukamori.archivetune.db.MusicDatabase
 import moe.rukamori.archivetune.di.DownloadCache
 import moe.rukamori.archivetune.di.PlayerCache
+import moe.rukamori.archivetune.download.CacheExporter
 import moe.rukamori.archivetune.playback.DownloadUtil
 import moe.rukamori.archivetune.ui.player.CanvasArtworkPlaybackCache
 import moe.rukamori.archivetune.utils.ArtworkStorage
 import moe.rukamori.archivetune.utils.PreferenceStore
 import moe.rukamori.archivetune.utils.dataStore
+import moe.rukamori.archivetune.utils.get
 import java.io.File
 import javax.inject.Inject
 
@@ -177,6 +182,43 @@ class ClearStorageCacheUseCase
             kind: StorageCacheKind,
             onProgress: suspend (StorageCacheClearProgress) -> Unit,
         ): StorageCacheClearResult = repository.clearCache(kind, onProgress)
+    }
+
+/**
+ * Copies every downloaded song out of the download cache into a user-picked folder.
+ *
+ * Resolving which songs are downloaded needs both the cache (which ids hold bytes) and the database
+ * (the metadata to name and tag files with), so it does not belong in the ViewModel. The transfer
+ * itself is owned by [CacheExporter] on a process-lived scope, because it outlives the screen.
+ */
+class ExportDownloadsUseCase
+    @Inject
+    constructor(
+        @ApplicationContext private val context: Context,
+        @DownloadCache private val downloadCache: Cache,
+        private val database: MusicDatabase,
+    ) {
+        /** @return how many songs were queued, or 0 when nothing is downloaded. */
+        suspend operator fun invoke(treeUri: Uri): Int {
+            // Read here rather than taking it as a parameter: this owns the Context, so the caller
+            // does not need one just to look up a preference it has no other use for.
+            val embedTags = context.dataStore.get(LosslessDownloadTagKey, true)
+            val songs =
+                withContext(Dispatchers.IO) {
+                    // Cache keys can be path-prefixed, so normalise before matching against the db.
+                    val ids = downloadCache.keys.map { it.substringAfterLast("/") }.distinct()
+                    if (ids.isEmpty()) emptyList() else database.getSongsByIds(ids)
+                }
+            if (songs.isEmpty()) return 0
+            CacheExporter.export(
+                context = context,
+                cache = downloadCache,
+                treeUri = treeUri,
+                songs = songs,
+                embedTags = embedTags,
+            )
+            return songs.size
+        }
     }
 
 class StorageLocationRepository
