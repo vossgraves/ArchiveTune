@@ -24,7 +24,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -47,19 +46,13 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
@@ -106,6 +99,7 @@ private val AppleMusicChipSize = 34.dp
 private val AppleMusicTransportIconSize = 52.dp
 private val AppleMusicPlayPauseIconSize = 62.dp
 private val AppleMusicBottomIconSize = 24.dp
+private val AppleMusicSeekIdleTrackHeight = 7.dp
 
 /** Distance a drag must travel before it counts as a deliberate swipe rather than a stray move. */
 private val AppleMusicSwipeThreshold = 72.dp
@@ -788,7 +782,15 @@ private fun AppleMusicBottomButton(
     }
 }
 
-/** Thin Apple-Music-style scrubber: rounded track, no thumb, tap + drag to seek. */
+/**
+ * Thin Apple-Music-style scrubber.
+ *
+ * Delegates to the shared [AppleMusicFlatSlider] rather than redrawing the same track a second
+ * time. This used to be its own copy of the identical gesture-and-draw code, which meant the seek
+ * bar missed the animation work that landed on the volume slider: the fill jumped between
+ * positions instead of gliding, and the track did not thicken under the finger. Sharing the
+ * component also keeps the scrubber and the volume row from drifting apart visually.
+ */
 @Composable
 private fun AppleMusicSeekBar(
     position: Long,
@@ -796,60 +798,14 @@ private fun AppleMusicSeekBar(
     onScrub: (Long) -> Unit,
     onScrubFinished: () -> Unit,
 ) {
-    val enabled = duration > 0L
-    var dragging by remember { mutableStateOf(false) }
-    var dragFraction by remember { mutableFloatStateOf(0f) }
-    val playedFraction =
-        if (duration > 0L) (position.toFloat() / duration).coerceIn(0f, 1f) else 0f
-    val shownFraction = if (dragging) dragFraction else playedFraction
-
-    Box(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .height(26.dp)
-                .pointerInput(enabled, duration) {
-                    if (!enabled) return@pointerInput
-                    detectTapGestures { offset ->
-                        val fraction = (offset.x / size.width).coerceIn(0f, 1f)
-                        onScrub((fraction * duration).toLong())
-                        onScrubFinished()
-                    }
-                }.pointerInput(enabled, duration) {
-                    if (!enabled) return@pointerInput
-                    detectHorizontalDragGestures(
-                        onDragStart = { offset ->
-                            dragging = true
-                            dragFraction = (offset.x / size.width).coerceIn(0f, 1f)
-                            onScrub((dragFraction * duration).toLong())
-                        },
-                        onDragEnd = {
-                            dragging = false
-                            onScrubFinished()
-                        },
-                        onDragCancel = { dragging = false },
-                        onHorizontalDrag = { change, _ ->
-                            change.consume()
-                            dragFraction = (change.position.x / size.width).coerceIn(0f, 1f)
-                            onScrub((dragFraction * duration).toLong())
-                        },
-                    )
-                }.drawWithContent {
-                    val trackHeight = if (dragging) 10.dp.toPx() else 7.dp.toPx()
-                    val top = (size.height - trackHeight) / 2f
-                    val radius = CornerRadius(trackHeight / 2f)
-                    drawRoundRect(
-                        color = Color.White.copy(alpha = 0.28f),
-                        topLeft = Offset(0f, top),
-                        size = Size(size.width, trackHeight),
-                        cornerRadius = radius,
-                    )
-                    drawRoundRect(
-                        color = Color.White.copy(alpha = if (dragging) 1f else 0.85f),
-                        topLeft = Offset(0f, top),
-                        size = Size(size.width * shownFraction, trackHeight),
-                        cornerRadius = radius,
-                    )
-                },
+    AppleMusicFlatSlider(
+        fraction = if (duration > 0L) (position.toFloat() / duration).coerceIn(0f, 1f) else 0f,
+        onFractionChange = { fraction -> onScrub((fraction * duration).toLong()) },
+        onFractionChangeFinished = onScrubFinished,
+        enabled = duration > 0L,
+        // The scrubber reads a touch heavier than the volume track in this design, so keep its
+        // slightly taller idle height rather than inheriting the shared default.
+        idleTrackHeight = AppleMusicSeekIdleTrackHeight,
+        modifier = Modifier.fillMaxWidth(),
     )
 }

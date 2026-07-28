@@ -33,6 +33,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -76,6 +77,15 @@ internal fun AppleMusicFlatSlider(
     var dragging by remember { mutableStateOf(false) }
     var dragFraction by remember { mutableFloatStateOf(fraction) }
 
+    // The gesture blocks below are keyed on `enabled` alone, so anything they capture would
+    // otherwise be frozen at the composition that installed them. The seek bar's callback closes
+    // over the track duration, which changes on every song change -- a captured copy would keep
+    // converting taps against the previous song's length and seek to the wrong spot. Keying the
+    // pointerInput on the callbacks instead would cancel an in-flight drag whenever the position
+    // updated, so read them through rememberUpdatedState.
+    val currentOnFractionChange by rememberUpdatedState(onFractionChange)
+    val currentOnFractionChangeFinished by rememberUpdatedState(onFractionChangeFinished)
+
     val target = (if (dragging) dragFraction else fraction).coerceIn(0f, 1f)
     val animatedFraction by animateFloatAsState(
         targetValue = target,
@@ -105,8 +115,8 @@ internal fun AppleMusicFlatSlider(
                         // deliberately stays untouched -- writing it while dragging is false would
                         // leave a stale value that the next real drag animates away from.
                         val tapped = (offset.x / size.width).coerceIn(0f, 1f)
-                        onFractionChange(tapped)
-                        onFractionChangeFinished()
+                        currentOnFractionChange(tapped)
+                        currentOnFractionChangeFinished()
                     }
                 }.pointerInput(enabled) {
                     if (!enabled) return@pointerInput
@@ -114,17 +124,17 @@ internal fun AppleMusicFlatSlider(
                         onDragStart = { offset ->
                             dragging = true
                             dragFraction = (offset.x / size.width).coerceIn(0f, 1f)
-                            onFractionChange(dragFraction)
+                            currentOnFractionChange(dragFraction)
                         },
                         onDragEnd = {
                             dragging = false
-                            onFractionChangeFinished()
+                            currentOnFractionChangeFinished()
                         },
                         onDragCancel = { dragging = false },
                         onHorizontalDrag = { change, _ ->
                             change.consume()
                             dragFraction = (change.position.x / size.width).coerceIn(0f, 1f)
-                            onFractionChange(dragFraction)
+                            currentOnFractionChange(dragFraction)
                         },
                     )
                 }.drawBehind {
