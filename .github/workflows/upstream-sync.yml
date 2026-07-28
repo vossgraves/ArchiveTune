@@ -130,24 +130,32 @@ jobs:
           CANVAS_BEARER_TOKEN: ${{ secrets.CANVAS_BEARER_TOKEN }}
           EXTRACTOR_BEARER: ${{ secrets.EXTRACTOR_BEARER }}
 
-      - name: Open sync PR (AI-resolved sync)
-        if: steps.sync.outputs.result == 'ai'
+      # `raced` is a clean merge that passed the build gate but could not fast-forward dev
+      # because dev advanced during the run. It ships down the same self-merging PR path.
+      - name: Open sync PR (AI-resolved or raced sync)
+        if: steps.sync.outputs.result == 'ai' || steps.sync.outputs.result == 'raced'
         env:
           GH_TOKEN: ${{ secrets.SYNC_PAT }}
           SYNC_BRANCH: ${{ steps.sync.outputs.branch }}
           BEHIND: ${{ steps.sync.outputs.behind }}
+          RESULT: ${{ steps.sync.outputs.result }}
         run: |
+          if [ "$RESULT" = "raced" ]; then
+            TITLE="chore(sync): merge upstream/dev ($BEHIND commits, dev moved mid-run)"
+          else
+            TITLE="chore(sync): merge upstream/dev ($BEHIND commits, AI-resolved)"
+          fi
           PR_URL=$(gh pr create \
             --repo "$GITHUB_REPOSITORY" \
             --base dev \
             --head "$SYNC_BRANCH" \
-            --title "chore(sync): merge upstream/dev ($BEHIND commits, AI-resolved)" \
+            --title "$TITLE" \
             --body-file /tmp/sync_report.md)
           echo "Opened PR: $PR_URL"
           gh pr comment --repo "$GITHUB_REPOSITORY" "$PR_URL" --body "This PR will be merged automatically by the 'Upstream Sync Merge' workflow once the Build Pull Request CI passes. No action needed unless CI fails."
 
       - name: Report successful sync
-        if: steps.sync.outputs.result == 'clean' || steps.sync.outputs.result == 'ai'
+        if: steps.sync.outputs.result == 'clean' || steps.sync.outputs.result == 'ai' || steps.sync.outputs.result == 'raced'
         continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.SYNC_PAT }}
