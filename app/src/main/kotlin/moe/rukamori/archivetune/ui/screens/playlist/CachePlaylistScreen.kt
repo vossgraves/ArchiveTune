@@ -80,6 +80,7 @@ import moe.rukamori.archivetune.constants.LosslessDownloadTagKey
 import moe.rukamori.archivetune.constants.SongSortDescendingKey
 import moe.rukamori.archivetune.constants.SongSortType
 import moe.rukamori.archivetune.constants.SongSortTypeKey
+import moe.rukamori.archivetune.db.entities.Song
 import moe.rukamori.archivetune.download.CacheExporter
 import moe.rukamori.archivetune.extensions.toMediaItem
 import moe.rukamori.archivetune.extensions.togglePlayPause
@@ -131,6 +132,24 @@ fun CachePlaylistScreen(
                 cache = downloadUtil.downloadCache,
                 treeUri = treeUri,
                 songs = cachedSongs,
+                embedTags = embedExportTags,
+            )
+        }
+
+    // "Export selected" needs the chosen songs to survive the trip through the folder picker,
+    // which tears down the selection UI, so latch them here rather than reading selection state
+    // back in the result callback.
+    var pendingExportSongs by remember { mutableStateOf<List<Song>>(emptyList()) }
+    val exportSelectedLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { treeUri ->
+            val songs = pendingExportSongs
+            pendingExportSongs = emptyList()
+            if (treeUri == null || songs.isEmpty()) return@rememberLauncherForActivityResult
+            CacheExporter.export(
+                context = context,
+                cache = downloadUtil.downloadCache,
+                treeUri = treeUri,
+                songs = songs,
                 embedTags = embedExportTags,
             )
         }
@@ -578,6 +597,10 @@ fun CachePlaylistScreen(
                                 isFromCache = true,
                                 onRemoveFromCache = { songs ->
                                     songs.forEach { viewModel.removeSongFromCache(it.id) }
+                                },
+                                onExportSelected = { songs ->
+                                    pendingExportSongs = songs
+                                    exportSelectedLauncher.launch(null)
                                 },
                             )
                         }
