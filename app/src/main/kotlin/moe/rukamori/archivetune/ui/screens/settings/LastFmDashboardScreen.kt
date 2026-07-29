@@ -71,9 +71,12 @@ import androidx.navigation.NavController
 import coil3.compose.AsyncImage
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.lastfm.CatalogueCoverProvider
 import moe.rukamori.archivetune.lastfm.LastFM
 import moe.rukamori.archivetune.lastfm.models.RecentTrack
 import moe.rukamori.archivetune.lastfm.models.TopTrack
@@ -217,6 +220,56 @@ fun LastFmDashboardScreen(
             return@Scaffold
         }
 
+        val recentForArtwork = recentTracks?.getOrNull().orEmpty()
+        val topForArtwork = topTracks?.getOrNull().orEmpty()
+
+        // Combine both sections into one de-duplicated lookup list so covers resolve in a single
+        // pass. Resolving per-section would re-fetch tracks that appear in both.
+        val artworkLookups =
+            remember(artworkSeedKey(recentForArtwork, topForArtwork)) {
+                buildArtworkLookups(recentForArtwork, topForArtwork)
+            }
+
+        // Seed from the process-wide cache so navigating away and back doesn't re-resolve
+        // everything we already looked up this session.
+        var catalogueArtwork by remember(artworkLookups) {
+            mutableStateOf(
+                artworkLookups.mapNotNull { lookup ->
+                    CachedArtworkStore.get(lookup.key)?.let { lookup.key to it }
+                }.toMap(),
+            )
+        }
+
+        LaunchedEffect(artworkLookups) {
+            if (artworkLookups.isEmpty()) return@LaunchedEffect
+            val snapshot = HashMap(catalogueArtwork)
+            for (chunk in artworkLookups.chunked(LASTFM_ARTWORK_CONCURRENCY)) {
+                // Only tracks Last.fm gave us no image for, and that we haven't already resolved.
+                val toResolve = chunk.filter { it.lastFmArtwork.isNullOrBlank() && snapshot[it.key].isNullOrBlank() }
+                if (toResolve.isEmpty()) continue
+                val resolved =
+                    withContext(Dispatchers.IO) {
+                        toResolve
+                            .map { lookup ->
+                                async {
+                                    CatalogueCoverProvider
+                                        .resolveCoverUrl(lookup.title, lookup.artist)
+                                        ?.let { lookup.key to it }
+                                }
+                            }.awaitAll()
+                            .filterNotNull()
+                    }
+                if (resolved.isEmpty()) continue
+                resolved.forEach { (key, url) ->
+                    snapshot[key] = url
+                    CachedArtworkStore.put(key, url)
+                }
+                // Publish a NEW map each chunk: mutating the existing one wouldn't change the
+                // reference, so Compose would never recompose the rows.
+                catalogueArtwork = snapshot.toMap()
+            }
+        }
+
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding =
@@ -239,12 +292,12 @@ fun LastFmDashboardScreen(
                 SectionHeader(text = stringResource(R.string.lastfm_recent_tracks))
             }
 
-            val recent = recentTracks?.getOrNull().orEmpty()
+            val recent = recentForArtwork
             if (recent.isEmpty() && recentTracks != null && !isRefreshing) {
                 item(key = "recent_empty") { EmptyHint(text = stringResource(R.string.lastfm_no_recent_tracks)) }
             } else {
                 items(recent, key = { "recent_${it.name}_${it.date?.uts ?: it.attr?.nowplaying ?: ""}" }) { track ->
-                    RecentTrackRow(track)
+                    RecentTrackRow(track, catalogueArtwork[track.trackArtworkKey()])
                 }
             }
 
@@ -252,12 +305,16 @@ fun LastFmDashboardScreen(
                 SectionHeader(text = stringResource(R.string.lastfm_top_tracks))
             }
 
-            val top = topTracks?.getOrNull().orEmpty()
+            val top = topForArtwork
             if (top.isEmpty() && topTracks != null && !isRefreshing) {
                 item(key = "top_empty") { EmptyHint(text = stringResource(R.string.lastfm_no_top_tracks)) }
             } else {
                 items(top.withIndex().toList(), key = { "top_${it.index}_${it.value.name}" }) { (index, track) ->
-                    TopTrackRow(rank = index + 1, track = track)
+                    TopTrackRow(
+                        rank = index + 1,
+                        track = track,
+                        fallbackArtworkUrl = catalogueArtwork[track.trackArtworkKey()],
+                    )
                 }
             }
         }
@@ -448,13 +505,96 @@ private fun bestArtwork(images: List<moe.rukamori.archivetune.lastfm.models.User
         ?.lastOrNull()
         ?.text
 
+/** How many catalogue lookups to run at once. iTunes/Deezer per-IP limits are well above this. */
+private const val LASTFM_ARTWORK_CONCURRENCY = 12
+
+/**
+ * A track to resolve a cover for. Deliberately holds only plain strings rather than the
+ * RecentTrack/TopTrack models, so the two row types share one resolution path.
+ */
+private data class ArtworkLookup(
+    val key: String,
+    val title: String,
+    val artist: String?,
+    val lastFmArtwork: String?,
+)
+
+/** Case-insensitive `title::artist` identity, so the same song in both sections resolves once. */
+private fun RecentTrack.trackArtworkKey(): String =
+    "${name.orEmpty().trim().lowercase()}::${artist?.text.orEmpty().trim().lowercase()}"
+
+private fun TopTrack.trackArtworkKey(): String =
+    "${name.orEmpty().trim().lowercase()}::${artist?.text.orEmpty().trim().lowercase()}"
+
+/**
+ * Process-wide LRU cache of resolved cover URLs, capped at 256 entries — roughly a full dashboard
+ * page plus a few earlier sessions.
+ *
+ * Deliberately NOT persisted: third-party catalogue URLs expire, and re-resolving once per process
+ * is cheap. `LinkedHashMap(accessOrder = true)` gives LRU eviction via [removeEldestEntry].
+ */
+private object CachedArtworkStore {
+    private const val MAX_ENTRIES = 256
+
+    private val map =
+        object : LinkedHashMap<String, String>(MAX_ENTRIES, 0.75f, true) {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String>?): Boolean = size > MAX_ENTRIES
+        }
+
+    @Synchronized
+    fun get(key: String): String? = map[key]
+
+    @Synchronized
+    fun put(
+        key: String,
+        url: String,
+    ) {
+        map[key] = url
+    }
+}
+
+/** Top tracks first (they're the ones users stare at), de-duplicated against recents. */
+private fun buildArtworkLookups(
+    recent: List<RecentTrack>,
+    top: List<TopTrack>,
+): List<ArtworkLookup> {
+    val seen = mutableSetOf<String>()
+    val combined = mutableListOf<ArtworkLookup>()
+    top.forEach { t ->
+        val key = t.trackArtworkKey()
+        if (seen.add(key)) combined += ArtworkLookup(key, t.name.orEmpty(), t.artist?.text, bestArtwork(t.image))
+    }
+    recent.forEach { t ->
+        val key = t.trackArtworkKey()
+        if (seen.add(key)) combined += ArtworkLookup(key, t.name.orEmpty(), t.artist?.text, bestArtwork(t.image))
+    }
+    return combined
+}
+
+/**
+ * Stable key over both track lists so the lookup list is only rebuilt when the track set actually
+ * changes, instead of on every recomposition.
+ */
+private fun artworkSeedKey(
+    recent: List<RecentTrack>,
+    top: List<TopTrack>,
+): String =
+    buildString {
+        top.forEach { append(it.trackArtworkKey()).append('|') }
+        append('#')
+        recent.forEach { append(it.trackArtworkKey()).append('|') }
+    }
+
 /**
  * A single recent-track row with an album-art thumbnail fetched from
  * the Last.fm API image data attached to each track.
  */
 @Composable
-private fun RecentTrackRow(track: RecentTrack) {
-    val artworkUrl = bestArtwork(track.image)
+private fun RecentTrackRow(
+    track: RecentTrack,
+    fallbackArtworkUrl: String? = null,
+) {
+    val artworkUrl = bestArtwork(track.image) ?: fallbackArtworkUrl
 
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
@@ -521,8 +661,12 @@ private fun RecentTrackRow(track: RecentTrack) {
  * fetched from the Last.fm API image data attached to each track.
  */
 @Composable
-private fun TopTrackRow(rank: Int, track: TopTrack) {
-    val artworkUrl = bestArtwork(track.image)
+private fun TopTrackRow(
+    rank: Int,
+    track: TopTrack,
+    fallbackArtworkUrl: String? = null,
+) {
+    val artworkUrl = bestArtwork(track.image) ?: fallbackArtworkUrl
 
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
