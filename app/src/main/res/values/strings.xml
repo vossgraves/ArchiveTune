@@ -223,6 +223,11 @@
     <string name="export_in_progress">Exporting %1$d of %2$d…</string>
     <string name="export_nothing_to_do">No downloaded songs to export</string>
     <string name="export_already_running">An export is already running</string>
+    <string name="export_choose_songs">Choose songs to export</string>
+    <string name="export_choose_songs_description">Pick individual downloads instead of exporting everything</string>
+    <string name="export_selected_of_total">%1$d of %2$d selected</string>
+    <string name="select_all">Select all</string>
+    <string name="deselect_all">Deselect all</string>
     <string name="import_playlist">Import playlist</string>
     <string name="import_failed">Import failed</string>
     <string name="update_button">Update</string>

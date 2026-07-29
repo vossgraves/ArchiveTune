@@ -688,6 +688,16 @@ internal fun buildDeepSettingsEntries(navController: NavController): DeepSetting
         deepEntry(
             navController = navController,
             screen = SettingsAnchorScreens.STORAGE,
+            anchor = SettingsAnchors.EXPORT_DOWNLOADS_PICK,
+            icon = storageIcon,
+            title = stringResource(R.string.export_choose_songs),
+            parentTitle = storageTitle,
+            accentColor = storageAccent,
+            keywords = listOf("export selected", "select songs", "pick songs", "export some", "partial export"),
+        ),
+        deepEntry(
+            navController = navController,
+            screen = SettingsAnchorScreens.STORAGE,
             anchor = SettingsAnchors.CLEAR_DOWNLOADS,
             icon = storageIcon,
             title = stringResource(R.string.clear_all_downloads),

@@ -149,6 +149,7 @@ object SettingsAnchors {
 
     // Storage
     const val EXPORT_DOWNLOADS = "export_downloads"
+    const val EXPORT_DOWNLOADS_PICK = "export_downloads_pick"
     const val CLEAR_DOWNLOADS = "clear_downloads"
     const val SONG_CACHE_SIZE = "song_cache_size"
     const val CLEAR_SONG_CACHE = "clear_song_cache"

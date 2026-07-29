@@ -399,6 +399,22 @@ fun StorageSettings(
                         onClick = { exportFolderLauncher.launch(null) },
                     )
                 }
+                item {
+                    PreferenceEntry(
+                        modifier = anchors.anchor(SettingsAnchors.EXPORT_DOWNLOADS_PICK),
+                        title = { Text(stringResource(R.string.export_choose_songs)) },
+                        description = stringResource(R.string.export_choose_songs_description),
+                        icon = {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_download),
+                                contentDescription = null,
+                            )
+                        },
+                        // Not disabled while an export runs: the picker shows that run's live progress,
+                        // and blocking the way in would hide it from anyone who did not start it here.
+                        onClick = { navController.navigate("settings/storage/export_downloads") },
+                    )
+                }
             }
 
             if (clearDownloads) {
