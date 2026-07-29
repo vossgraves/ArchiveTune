@@ -41,6 +41,7 @@ import moe.rukamori.archivetune.constants.CrossfadeDurationKey
 import moe.rukamori.archivetune.constants.CrossfadeEnabledKey
 import moe.rukamori.archivetune.constants.CrossfadeGaplessKey
 import moe.rukamori.archivetune.constants.DeviceMutePlaybackRecoveryVolumeKey
+import moe.rukamori.archivetune.constants.DownloadSource
 import moe.rukamori.archivetune.constants.DownloadSourceKey
 import moe.rukamori.archivetune.constants.ExternalDownloaderEnabledKey
 import moe.rukamori.archivetune.constants.ExternalDownloaderPackageKey
@@ -58,6 +59,7 @@ import moe.rukamori.archivetune.constants.TidalEnabledKey
 import moe.rukamori.archivetune.constants.WakelockKey
 import moe.rukamori.archivetune.ui.component.ArtistSeparatorsDialog
 import moe.rukamori.archivetune.ui.component.CrossfadeSliderPreference
+import moe.rukamori.archivetune.ui.component.EnumListPreference
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.NumberPickerPreference
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
@@ -67,6 +69,7 @@ import moe.rukamori.archivetune.ui.component.SwitchPreference
 import moe.rukamori.archivetune.ui.component.TagsManagementDialog
 import moe.rukamori.archivetune.ui.component.TextFieldDialog
 import moe.rukamori.archivetune.ui.utils.backToMain
+import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -206,9 +209,9 @@ fun PlayerSettings(navController: NavController) {
             defaultValue = false,
         )
     val (downloadSource, onDownloadSourceChange) =
-        rememberPreference(
+        rememberEnumPreference(
             DownloadSourceKey,
-            defaultValue = "youtube_music",
+            defaultValue = DownloadSource.YOUTUBE_MUSIC,
         )
     var showArtistSeparatorsDialog by remember { mutableStateOf(false) }
     var showTagsManagementDialog by remember { mutableStateOf(false) }
@@ -453,27 +456,26 @@ fun PlayerSettings(navController: NavController) {
                 }
             }
 
-            PreferenceGroup(title = stringResource(R.string.queue)) {
+            PreferenceGroup(title = stringResource(R.string.downloads)) {
                 item {
-                    PreferenceEntry(
+                    EnumListPreference(
                         title = { Text(stringResource(R.string.download_source_title)) },
-                        description = when (downloadSource) {
-                            "youtube_music" -> stringResource(R.string.download_source_youtube_music)
-                            "tidal" -> stringResource(R.string.download_source_tidal)
-                            "qobuz" -> stringResource(R.string.download_source_qobuz)
-                            else -> downloadSource
-                        },
+                        description = stringResource(R.string.download_source_description),
                         icon = { Icon(painterResource(R.drawable.download), null) },
-                        onClick = { onDownloadSourceChange(
-                            when (downloadSource) {
-                                "youtube_music" -> "tidal"
-                                "tidal" -> "qobuz"
-                                else -> "youtube_music"
+                        selectedValue = downloadSource,
+                        onValueSelected = onDownloadSourceChange,
+                        valueText = {
+                            when (it) {
+                                DownloadSource.QOBUZ -> stringResource(R.string.download_source_qobuz)
+                                DownloadSource.TIDAL -> stringResource(R.string.download_source_tidal)
+                                DownloadSource.YOUTUBE_MUSIC -> stringResource(R.string.download_source_youtube_music)
                             }
-                        ) },
+                        },
                     )
                 }
+            }
 
+            PreferenceGroup(title = stringResource(R.string.queue)) {
                 item {
                     SwitchPreference(
                         modifier = anchors.anchor(SettingsAnchors.PERSISTENT_QUEUE),

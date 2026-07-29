@@ -164,6 +164,19 @@ val EnableUnisonLyricsKey = booleanPreferencesKey("enableUnisonLyrics")
 val HideExplicitKey = booleanPreferencesKey("hideExplicit")
 val HideVideoKey = booleanPreferencesKey("hideVideo")
 val AllowAgeRestrictedKey = booleanPreferencesKey("allowAgeRestricted")
+/**
+ * Which provider an offline download pulls its bytes from.
+ *
+ * Older builds stored lowercase strings ("qobuz") in [DownloadSourceKey] while nothing consumed the
+ * value, so downloads always came from YouTube Music regardless of the setting. `toEnum` maps those
+ * stale values to [YOUTUBE_MUSIC], which matches what those builds actually did.
+ */
+enum class DownloadSource {
+    QOBUZ,
+    TIDAL,
+    YOUTUBE_MUSIC,
+}
+
 val DownloadSourceKey = stringPreferencesKey("downloadSource")
 val AiContentFilterEnabledKey = booleanPreferencesKey("aiContentFilterEnabled")
 val AiContentFilterIncludeModerateKey = booleanPreferencesKey("aiContentFilterIncludeModerate")
