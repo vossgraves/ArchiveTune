@@ -172,9 +172,24 @@ val AllowAgeRestrictedKey = booleanPreferencesKey("allowAgeRestricted")
  * stale values to [YOUTUBE_MUSIC], which matches what those builds actually did.
  */
 enum class DownloadSource {
+    /** Try each lossless provider in [losslessChain] order, then fall back to YouTube Music. */
+    AUTO,
     QOBUZ,
     TIDAL,
     YOUTUBE_MUSIC,
+    ;
+
+    /**
+     * Lossless providers to attempt, in order. Empty for [YOUTUBE_MUSIC] (nothing to resolve) and
+     * for [AUTO] it is the full chain; a single explicit source resolves only itself.
+     */
+    fun losslessChain(): List<DownloadSource> =
+        when (this) {
+            AUTO -> listOf(QOBUZ, TIDAL)
+            QOBUZ -> listOf(QOBUZ)
+            TIDAL -> listOf(TIDAL)
+            YOUTUBE_MUSIC -> emptyList()
+        }
 }
 
 val DownloadSourceKey = stringPreferencesKey("downloadSource")

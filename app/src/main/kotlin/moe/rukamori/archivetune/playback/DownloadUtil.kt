@@ -276,12 +276,20 @@ class DownloadUtil
 
         fun getDownload(songId: String): Flow<Download?> = downloads.map { it[songId] }
 
+        private data class ResolvedStream(
+            val uri: String,
+            val mimeType: String,
+            val codecs: String,
+            val contentLength: Long?,
+        )
+
         /**
-         * Redirects a download to the user's preferred external source (Qobuz/Tidal).
+         * Redirects a download to the user's preferred external source.
          *
-         * Returns null to mean "use YouTube Music", which covers the default setting, a song we
-         * have no local row for, and any provider failure — so a Qobuz outage degrades to a normal
-         * YouTube download instead of failing the download outright.
+         * For [DownloadSource.AUTO] each lossless provider is tried in turn and the first hit wins;
+         * an explicit source resolves only itself. Returns null to mean "use YouTube Music", which
+         * covers the default setting, a song we have no local row for, and every provider failing —
+         * so a Qobuz outage degrades to a normal YouTube download instead of failing outright.
          *
          * Runs on the download thread, which the ResolvingDataSource already treats as blocking.
          */
@@ -289,53 +297,60 @@ class DownloadUtil
             dataSpec: DataSpec,
             mediaId: String,
         ): DataSpec? {
-            if (downloadSource == DownloadSource.YOUTUBE_MUSIC) return null
+            val chain = downloadSource.losslessChain()
+            if (chain.isEmpty()) return null
             val song = database.getSongByIdBlocking(mediaId) ?: return null
             val queryTitle = song.song.title.takeIf { it.isNotBlank() } ?: return null
             val artists = song.artists.mapNotNull { it.name.takeIf(String::isNotBlank) }
             val album = song.album?.title?.takeIf { it.isNotBlank() }
             val durationMs = song.song.duration.takeIf { it > 0 }?.toLong()?.times(1000L)
 
-            data class ResolvedStream(
-                val uri: String,
-                val mimeType: String,
-                val codecs: String,
-                val contentLength: Long?,
-            )
+            for (source in chain) {
+                // Per-source runCatching: one dead provider must not abort the whole chain.
+                val resolvedStream =
+                    runCatching { resolveFromSource(source, mediaId, queryTitle, artists, album, durationMs) }
+                        .getOrNull() ?: continue
 
-            val resolvedStream =
-                runCatching {
-                    when (downloadSource) {
-                        DownloadSource.QOBUZ ->
-                            QobuzAudioProvider
-                                .resolve(
-                                    QobuzAudioProvider.Query(mediaId, queryTitle, artists, album, durationMs),
-                                    qobuzAudioQuality.toFormatId(),
-                                )?.let { ResolvedStream(it.uri, it.mimeType, it.codecs, it.contentLength) }
-                        DownloadSource.TIDAL ->
-                            TidalAudioProvider
-                                .resolve(
-                                    TidalAudioProvider.Query(mediaId, queryTitle, artists, album, null, durationMs),
-                                    audioQuality = tidalAudioQuality,
-                                ).let { ResolvedStream(it.mediaUri, it.mimeType, it.codecs, it.contentLength) }
-                        DownloadSource.YOUTUBE_MUSIC -> null
-                    }
-                }.getOrNull() ?: return null
-
-            persistSourceFormatEntity(
-                mediaId = mediaId,
-                mimeType = resolvedStream.mimeType,
-                codecs = resolvedStream.codecs,
-                contentLength = resolvedStream.contentLength,
-            )
-            // Namespace the cache key so Qobuz/Tidal/YouTube copies of the same track can't
-            // collide in the download cache.
-            return dataSpec
-                .buildUpon()
-                .setUri(resolvedStream.uri.toUri())
-                .setKey("${downloadSource.name.lowercase(Locale.US)}:$mediaId")
-                .build()
+                persistSourceFormatEntity(
+                    mediaId = mediaId,
+                    mimeType = resolvedStream.mimeType,
+                    codecs = resolvedStream.codecs,
+                    contentLength = resolvedStream.contentLength,
+                )
+                // Key by the source that actually resolved, never by `downloadSource` — under AUTO
+                // that would file Qobuz and Tidal bytes under one "auto:" key and let them collide.
+                return dataSpec
+                    .buildUpon()
+                    .setUri(resolvedStream.uri.toUri())
+                    .setKey("${source.name.lowercase(Locale.US)}:$mediaId")
+                    .build()
+            }
+            return null
         }
+
+        private fun resolveFromSource(
+            source: DownloadSource,
+            mediaId: String,
+            queryTitle: String,
+            artists: List<String>,
+            album: String?,
+            durationMs: Long?,
+        ): ResolvedStream? =
+            when (source) {
+                DownloadSource.QOBUZ ->
+                    QobuzAudioProvider
+                        .resolve(
+                            QobuzAudioProvider.Query(mediaId, queryTitle, artists, album, durationMs),
+                            qobuzAudioQuality.toFormatId(),
+                        )?.let { ResolvedStream(it.uri, it.mimeType, it.codecs, it.contentLength) }
+                DownloadSource.TIDAL ->
+                    TidalAudioProvider
+                        .resolve(
+                            TidalAudioProvider.Query(mediaId, queryTitle, artists, album, null, durationMs),
+                            audioQuality = tidalAudioQuality,
+                        ).let { ResolvedStream(it.mediaUri, it.mimeType, it.codecs, it.contentLength) }
+                DownloadSource.AUTO, DownloadSource.YOUTUBE_MUSIC -> null
+            }
 
         /**
          * Records the resolved stream's real MIME/codec in a [FormatEntity] so later exports and the

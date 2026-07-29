@@ -466,6 +466,7 @@ fun PlayerSettings(navController: NavController) {
                         onValueSelected = onDownloadSourceChange,
                         valueText = {
                             when (it) {
+                                DownloadSource.AUTO -> stringResource(R.string.download_source_auto)
                                 DownloadSource.QOBUZ -> stringResource(R.string.download_source_qobuz)
                                 DownloadSource.TIDAL -> stringResource(R.string.download_source_tidal)
                                 DownloadSource.YOUTUBE_MUSIC -> stringResource(R.string.download_source_youtube_music)

@@ -188,7 +188,8 @@
     <string name="export">Export</string>
     <string name="export_all_songs">Export all songs</string>
     <string name="download_source_title">Download source</string>
-    <string name="download_source_description">Where downloads fetch audio from. Qobuz and Tidal need a configured account and fall back to YouTube Music when no match is found.</string>
+    <string name="download_source_description">Where downloads fetch audio from. Automatic tries each lossless service in turn. Qobuz and Tidal need a configured account and fall back to YouTube Music when no match is found.</string>
+    <string name="download_source_auto">Automatic (best available)</string>
     <string name="download_source_youtube_music">YouTube Music</string>
     <string name="download_source_tidal">Tidal</string>
     <string name="download_source_qobuz">Qobuz</string>
