@@ -85,12 +85,6 @@ fun IntegrationScreen(navController: NavController) {
                 .padding(bottom = SettingsDimensions.ScreenBottomPadding)
                 .then(anchors.containerModifier),
         ) {
-            PreferenceGroup(title = stringResource(R.string.integration_accounts)) {
-                item {
-                    IntegrationAccountCards(navController = navController)
-                }
-            }
-
             PreferenceGroup(title = stringResource(R.string.general)) {
                 item {
                     PreferenceEntry(
