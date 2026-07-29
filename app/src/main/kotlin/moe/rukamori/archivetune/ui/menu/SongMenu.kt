@@ -84,6 +84,7 @@ import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.LocalSyncUtils
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.ArtistSeparatorsKey
+import moe.rukamori.archivetune.constants.AskDownloadQualityKey
 import moe.rukamori.archivetune.constants.ExternalDownloaderEnabledKey
 import moe.rukamori.archivetune.constants.ExternalDownloaderPackageKey
 import moe.rukamori.archivetune.constants.ListThumbnailSize
@@ -104,6 +105,9 @@ import moe.rukamori.archivetune.models.toMediaMetadata
 import moe.rukamori.archivetune.playback.ExoDownloadService
 import moe.rukamori.archivetune.playback.queues.YouTubeQueue
 import moe.rukamori.archivetune.telegram.isTelegramMediaId
+import moe.rukamori.archivetune.ui.component.DownloadQualityChoice
+import moe.rukamori.archivetune.ui.component.DownloadQualityDialog
+import moe.rukamori.archivetune.ui.component.ExportFormatDialog
 import moe.rukamori.archivetune.ui.component.ListDialog
 import moe.rukamori.archivetune.ui.component.LocalBottomSheetPageState
 import moe.rukamori.archivetune.ui.component.MenuSurfaceSection
@@ -154,7 +158,7 @@ fun SongMenu(
     // a folder the user owns, so the result is a real file other apps can read.
     var losslessFolder by rememberPreference(LosslessDownloadFolderKey, "")
     val embedTags by rememberPreference(LosslessDownloadTagKey, defaultValue = true)
-    val qobuzQuality by rememberPreference(QobuzAudioQualityKey, QobuzAudioQuality.FLAC.name)
+    var qobuzQuality by rememberPreference(QobuzAudioQualityKey, QobuzAudioQuality.FLAC.name)
     // The result callback fires after the download finishes, which may be long after this sheet is
     // gone, so the toast must not hold the Activity context.
     val appContext = remember(context) { context.applicationContext }
@@ -164,15 +168,32 @@ fun SongMenu(
     val activeLosslessDownloads by LosslessDownloader.active.collectAsState()
     val losslessInProgress = song.id in activeLosslessDownloads
 
+    // The global preference is the starting point for the per-download prompt, and the fallback when
+    // the user has asked not to be prompted.
+    val globalQobuzQuality =
+        remember(qobuzQuality) {
+            runCatching { QobuzAudioQuality.valueOf(qobuzQuality) }
+                .getOrDefault(QobuzAudioQuality.FLAC)
+        }
+
+    // Set when the user picks a tier in the dialog; null means "use the global preference".
+    var chosenDownloadQuality by remember { mutableStateOf<DownloadQualityChoice?>(null) }
+    var showDownloadQualityDialog by rememberSaveable { mutableStateOf(false) }
+    var askDownloadQuality by rememberPreference(AskDownloadQualityKey, defaultValue = true)
+
+    // Export: the real container is sniffed from the cached bytes before the dialog opens, so the
+    // dialog can grey out targets the app cannot honestly produce.
+    var showExportFormatDialog by rememberSaveable { mutableStateOf(false) }
+    var exportSourceExtension by rememberSaveable { mutableStateOf<String?>(null) }
+    var exportBaseName by rememberSaveable { mutableStateOf("audio") }
+
     // Runs the download; shared by the "already have a folder" and "just picked one" paths.
     val startLosslessDownload: (Uri) -> Unit = { folderUri ->
         Toast
             .makeText(context, context.getString(R.string.lossless_download_started), Toast.LENGTH_SHORT)
             .show()
         val formatId =
-            runCatching { QobuzAudioQuality.valueOf(qobuzQuality) }
-                .getOrDefault(QobuzAudioQuality.FLAC)
-                .toFormatId()
+            (chosenDownloadQuality?.qobuzQuality ?: globalQobuzQuality).toFormatId()
         // enqueue, not launch: this must outlive the bottom sheet. A 100MB hi-res FLAC would
         // otherwise be cancelled the moment the user dismisses the menu.
         LosslessDownloader.enqueue(
@@ -219,6 +240,39 @@ fun SongMenu(
             startLosslessDownload(treeUri)
         }
 
+    // Resolves the destination folder, then downloads. Re-prompts if the saved grant was revoked,
+    // otherwise the write would fail with a confusing permission error.
+    val resolveFolderAndDownload: () -> Unit = {
+        val saved = losslessFolder
+        val usable =
+            saved.isNotEmpty() &&
+                context.contentResolver
+                    .persistedUriPermissions
+                    .any { it.uri.toString() == saved && it.isWritePermission }
+        if (usable) {
+            startLosslessDownload(saved.toUri())
+        } else {
+            pickLosslessFolderLauncher.launch(null)
+        }
+    }
+
+    if (showDownloadQualityDialog) {
+        DownloadQualityDialog(
+            initialChoice = DownloadQualityChoice.forQobuzQuality(globalQobuzQuality),
+            onDismiss = { showDownloadQualityDialog = false },
+            onConfirm = { choice, rememberChoice ->
+                chosenDownloadQuality = choice
+                if (rememberChoice) {
+                    // Make the choice the new global default and stop prompting, so opting out of
+                    // the dialog does not silently revert to a different tier next time.
+                    qobuzQuality = choice.qobuzQuality.name
+                    askDownloadQuality = false
+                }
+                resolveFolderAndDownload()
+            },
+        )
+    }
+
     // Direct export to the device's Downloads folder (via SAF CreateDocument).
     // "audio/*" rather than a concrete type: the real container is sniffed from the cached bytes at
     // launch time, so committing to audio/mpeg here would contradict the extension we pass in.
@@ -236,6 +290,26 @@ fun SongMenu(
                 Toast.makeText(context, context.getString(msgResId), Toast.LENGTH_SHORT).show()
             }
         }
+
+    if (showExportFormatDialog) {
+        ExportFormatDialog(
+            sourceExtension = exportSourceExtension,
+            onDismiss = { showExportFormatDialog = false },
+            onConfirm = { format ->
+                exportToDownloadsLauncher.launch("$exportBaseName.${format.extension}")
+            },
+            // Re-downloading from a lossless provider is the only honest route to a real FLAC, so
+            // hand the user straight over to the existing lossless download flow.
+            onRedownloadLossless = {
+                showExportFormatDialog = false
+                if (askDownloadQuality) {
+                    showDownloadQualityDialog = true
+                } else {
+                    resolveFolderAndDownload()
+                }
+            },
+        )
+    }
 
     val rotationAnimation by animateFloatAsState(
         targetValue = refetchIconDegree,
@@ -996,18 +1070,12 @@ fun SongMenu(
                                     },
                                     modifier =
                                         Modifier.clickable(enabled = !losslessInProgress) {
-                                            val saved = losslessFolder
-                                            // Re-prompt if the saved grant was revoked, otherwise
-                                            // the write would fail with a confusing permission error.
-                                            val usable =
-                                                saved.isNotEmpty() &&
-                                                    context.contentResolver
-                                                        .persistedUriPermissions
-                                                        .any { it.uri.toString() == saved && it.isWritePermission }
-                                            if (usable) {
-                                                startLosslessDownload(saved.toUri())
+                                            // Ask which tier to fetch, unless the user opted out of
+                                            // the prompt, in which case the global preference wins.
+                                            if (askDownloadQuality) {
+                                                showDownloadQualityDialog = true
                                             } else {
-                                                pickLosslessFolderLauncher.launch(null)
+                                                resolveFolderAndDownload()
                                             }
                                         },
                                     colors = ListItemDefaults.colors(containerColor = Color.Transparent),
@@ -1029,10 +1097,19 @@ fun SongMenu(
                                     },
                                     modifier =
                                         Modifier.clickable {
-                                            // Name the file after what it actually is, not a guess.
-                                            val ext =
-                                                detectCachedExtension(downloadUtil.downloadCache, song.id)
-                                            exportToDownloadsLauncher.launch("$safeTitle.$ext")
+                                            // Sniffing reads the cache off disk, so keep it off the
+                                            // main thread, then let the user confirm the container.
+                                            coroutineScope.launch {
+                                                exportSourceExtension =
+                                                    withContext(Dispatchers.IO) {
+                                                        detectCachedExtension(
+                                                            downloadUtil.downloadCache,
+                                                            song.id,
+                                                        )
+                                                    }
+                                                exportBaseName = safeTitle
+                                                showExportFormatDialog = true
+                                            }
                                         },
                                     colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                                 )

@@ -33,6 +33,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 import moe.rukamori.archivetune.canvas.ArchiveTuneCanvas
 import moe.rukamori.archivetune.constants.*
 import moe.rukamori.archivetune.extensions.*
@@ -161,11 +163,31 @@ class App :
 
         val locale = Locale.getDefault()
         val languageTag = locale.toLanguageTag().replace("-Hant", "")
+
+        // The content country/language overrides must be folded in *here*, synchronously, before
+        // any request can go out. Applying them later from a background coroutine raced with the
+        // first browse/search calls, which then went out tagged with the SIM country (e.g. gl=RU)
+        // and got region-restricted responses.
+        val storedPrefs =
+            runCatching {
+                runBlocking(Dispatchers.IO) {
+                    withTimeoutOrNull(LOCALE_PREFS_READ_TIMEOUT_MILLIS) { dataStore.data.first() }
+                }
+            }.onFailure { Timber.w(it, "Could not read locale overrides synchronously") }
+                .getOrNull()
+
+        val countryOverride = storedPrefs?.get(ContentCountryKey)?.takeIf { it != SYSTEM_DEFAULT }
+        val languageOverride = storedPrefs?.get(ContentLanguageKey)?.takeIf { it != SYSTEM_DEFAULT }
+
         YouTube.locale =
             YouTubeLocale(
-                gl = locale.country.takeIf { it in CountryCodeToName } ?: "US",
+                gl =
+                    countryOverride
+                        ?: locale.country.takeIf { it in CountryCodeToName }
+                        ?: "US",
                 hl =
-                    locale.language.takeIf { it in LanguageCodeToName }
+                    languageOverride
+                        ?: locale.language.takeIf { it in LanguageCodeToName }
                         ?: languageTag.takeIf { it in LanguageCodeToName }
                         ?: "en",
             )
@@ -188,12 +210,8 @@ class App :
             try {
                 val prefs = dataStore.data.first()
 
-                prefs[ContentCountryKey]?.takeIf { it != SYSTEM_DEFAULT }?.let { country ->
-                    YouTube.locale = YouTube.locale.copy(gl = country)
-                }
-                prefs[ContentLanguageKey]?.takeIf { it != SYSTEM_DEFAULT }?.let { lang ->
-                    YouTube.locale = YouTube.locale.copy(hl = lang)
-                }
+                // Content country/language are applied synchronously in initializeCriticalSync().
+                // Re-applying them here would reintroduce the startup race.
 
                 LastFmServiceConfig.fromPreferences(prefs).apply(prefs[LastFMSessionKey])
 
@@ -336,10 +354,11 @@ class App :
                     YouTube.authState = authState
                     if (previousFingerprint != authState.fingerprint) {
                         YTPlayerUtils.clearPlaybackAuthCaches()
-                        val sessionId = authState.sessionId
-                        if (!sessionId.isNullOrBlank()) {
-                            BotGuardTokenGenerator.preWarm(sessionId)
-                        }
+                        // Deliberately no preWarm() here. It spins up a WebView and runs the
+                        // BotGuard bootstrap, which is one of the heaviest things the app can do
+                        // and it fired on every cold start even when nothing was ever played.
+                        // mintToken() calls getOrCreateEngine() itself, so the engine is built on
+                        // first actual use instead; only the first playback pays for it.
                     }
                 }
         }
@@ -457,6 +476,12 @@ class App :
 
     companion object {
         private const val GATEKEEPER_RETRY_INTERVAL_MILLIS = 30_000L
+
+        /**
+         * Bounded budget for the one synchronous preferences read done during startup so the
+         * content country/language overrides are known before the first network call.
+         */
+        private const val LOCALE_PREFS_READ_TIMEOUT_MILLIS = 1_500L
 
         lateinit var instance: App
             private set

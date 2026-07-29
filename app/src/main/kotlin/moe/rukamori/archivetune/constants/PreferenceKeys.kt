@@ -918,6 +918,13 @@ val QobuzAudioQualityOptions =
 
 val QobuzAudioQualityKey = stringPreferencesKey("qobuzAudioQuality")
 
+/**
+ * Whether a download prompts for its quality tier instead of silently using
+ * [QobuzAudioQualityKey]. Cleared when the user ticks "remember this choice", so the prompt can be
+ * turned off without digging through settings.
+ */
+val AskDownloadQualityKey = booleanPreferencesKey("askDownloadQuality")
+
 fun QobuzAudioQuality.toFormatId(): Int =
     when (this) {
         QobuzAudioQuality.FLAC -> 6

@@ -434,6 +434,7 @@ dependencies {
     implementation(libs.navigation)
     implementation(libs.hilt.navigation)
     implementation(libs.datastore)
+    implementation(libs.webkit)
     implementation(libs.work.runtime)
     implementation("androidx.browser:browser:1.10.0")
 

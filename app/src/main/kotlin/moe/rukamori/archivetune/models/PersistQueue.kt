@@ -22,21 +22,36 @@ data class PersistQueue(
     }
 }
 
+/**
+ * Java serialization instantiates a *fresh* object for each `object` declaration it reads, so a
+ * restored [PersistQueue] would carry copies that are not referentially equal to `QueueType.LIST` &
+ * co. `object`s inherit identity equality, so every `queueType == QueueType.X` check downstream
+ * silently failed after a process restart and the queue was rebuilt as a plain list. `readResolve`
+ * makes the runtime hand back the canonical singletons instead.
+ */
 sealed class QueueType : Serializable {
     object LIST : QueueType() {
         private const val serialVersionUID = 1L
+
+        private fun readResolve(): Any = LIST
     }
 
     object YOUTUBE : QueueType() {
         private const val serialVersionUID = 1L
+
+        private fun readResolve(): Any = YOUTUBE
     }
 
     object YOUTUBE_ALBUM_RADIO : QueueType() {
         private const val serialVersionUID = 1L
+
+        private fun readResolve(): Any = YOUTUBE_ALBUM_RADIO
     }
 
     object LOCAL_ALBUM_RADIO : QueueType() {
         private const val serialVersionUID = 1L
+
+        private fun readResolve(): Any = LOCAL_ALBUM_RADIO
     }
 }
 
