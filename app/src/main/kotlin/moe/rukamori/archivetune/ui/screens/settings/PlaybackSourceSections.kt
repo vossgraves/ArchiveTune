@@ -50,6 +50,7 @@ import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.audiosource.AudioSourceConfig
 import moe.rukamori.archivetune.constants.AudioSourceOrderKey
 import moe.rukamori.archivetune.constants.AudioSourceType
+import moe.rukamori.archivetune.constants.ManualSourceLoginEnabledKey
 import moe.rukamori.archivetune.constants.QobuzAudioQuality
 import moe.rukamori.archivetune.constants.QobuzAudioQualityKey
 import moe.rukamori.archivetune.constants.QobuzEnabledKey
@@ -104,6 +105,10 @@ fun PlaybackSourceSections(navController: NavController) {
     val (sourceOrderRaw, onSourceOrderChange) = rememberPreference(AudioSourceOrderKey, "")
     val (tidalEnabled, onTidalEnabledChange) = rememberPreference(TidalEnabledKey, true)
     val (qobuzEnabled, onQobuzEnabledChange) = rememberPreference(QobuzEnabledKey, false)
+
+    // The Integration screen only shows its per-service login entries when this Debug flag is
+    // on, so the "manage in Integration" shortcuts below would otherwise lead nowhere useful.
+    val (manualSourceLogin, _) = rememberPreference(ManualSourceLoginEnabledKey, false)
 
     val (tidalAccountFirst, onTidalAccountFirstChange) = rememberPreference(TidalAccountFirstKey, true)
     val (audioQuality, onAudioQualityChange) =
@@ -300,13 +305,15 @@ fun PlaybackSourceSections(navController: NavController) {
             )
         }
 
-        item {
-            PreferenceEntry(
-                title = { Text(stringResource(R.string.tidal_manage_instances)) },
-                description = stringResource(R.string.manage_in_integration),
-                icon = { Icon(painterResource(R.drawable.integration), null) },
-                onClick = { navController.navigate("settings/integration") },
-            )
+        if (manualSourceLogin) {
+            item {
+                PreferenceEntry(
+                    title = { Text(stringResource(R.string.tidal_manage_instances)) },
+                    description = stringResource(R.string.manage_in_integration),
+                    icon = { Icon(painterResource(R.drawable.integration), null) },
+                    onClick = { navController.navigate("settings/integration") },
+                )
+            }
         }
     }
 
@@ -338,13 +345,15 @@ fun PlaybackSourceSections(navController: NavController) {
             )
         }
 
-        item {
-            PreferenceEntry(
-                title = { Text(stringResource(R.string.qobuz_manage_instances)) },
-                description = stringResource(R.string.manage_in_integration),
-                icon = { Icon(painterResource(R.drawable.integration), null) },
-                onClick = { navController.navigate("settings/integration") },
-            )
+        if (manualSourceLogin) {
+            item {
+                PreferenceEntry(
+                    title = { Text(stringResource(R.string.qobuz_manage_instances)) },
+                    description = stringResource(R.string.manage_in_integration),
+                    icon = { Icon(painterResource(R.drawable.integration), null) },
+                    onClick = { navController.navigate("settings/integration") },
+                )
+            }
         }
     }
 }
