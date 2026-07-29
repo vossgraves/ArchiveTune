@@ -126,6 +126,7 @@ object SettingsAnchorScreens {
     const val INTERNET = "settings/internet"
     const val LYRICS = "settings/lyrics"
     const val BACKUP = "settings/backup_restore"
+    const val INTEGRATION = "settings/integration"
 }
 
 /** Stable ids for individually searchable preferences. Referenced by the deep search index. */
@@ -179,6 +180,9 @@ object SettingsAnchors {
     // Backup and restore
     const val BACKUP = "backup"
     const val RESTORE = "restore"
+
+    // Integration
+    const val CROSS_SERVICE_IMPORT = "cross_service_import"
 }
 
 private val HighlightCornerRadius = 18.dp

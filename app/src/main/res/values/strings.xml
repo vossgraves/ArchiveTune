@@ -1417,4 +1417,18 @@
     <string name="telegram_unavailable">Telegram support is unavailable in this build</string>
     <string name="telegram_error">Telegram error: %1$s</string>
     <string name="telegram_error_generic">Couldn\'t open this Telegram channel</string>
+
+    <!-- Cross-service playlist import (Apple Music / Amazon Music / Tidal / Deezer -> YouTube Music) -->
+    <string name="cross_service_import_entry_title">Import playlist from another service</string>
+    <string name="cross_service_import_entry_desc">Pull a playlist from YouTube Music, Apple Music, Amazon Music, Tidal or Deezer</string>
+    <string name="cross_service_import_playlist_title">Import playlist from URL</string>
+    <string name="cross_service_import_playlist_url_label">Playlist URL</string>
+    <string name="cross_service_import_playlist_url_placeholder">Paste a playlist URL</string>
+    <string name="cross_service_import_playlist_supported">Supports YouTube Music, Apple Music, Amazon Music, Tidal and Deezer playlists. Each track is matched on YouTube Music and added to a new local playlist.</string>
+    <string name="cross_service_import_action">Import</string>
+    <string name="cross_service_import_resolving_playlist">Resolving playlist…</string>
+    <string name="cross_service_import_progress">Matched %1$d of %2$d tracks</string>
+    <string name="cross_service_import_unsupported">Unrecognised link. Supported services: YouTube Music, Apple Music, Amazon Music, Tidal and Deezer.</string>
+    <string name="cross_service_import_no_tracks">No tracks found in that playlist (it may be private)</string>
+    <string name="cross_service_import_no_matches">Couldn\'t match any tracks on YouTube Music</string>
 </resources>

@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -20,8 +19,10 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -37,6 +38,7 @@ import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.SwitchPreference
 import moe.rukamori.archivetune.ui.component.TextFieldDialog
+import moe.rukamori.archivetune.ui.menu.CrossServiceImportPlaylistDialog
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.rememberPreference
 
@@ -51,6 +53,9 @@ fun IntegrationScreen(navController: NavController) {
     val (manualSourceLogin, _) = rememberPreference(ManualSourceLoginEnabledKey, false)
 
     var showListenBrainzTokenEditor = remember { mutableStateOf(false) }
+    var showCrossServiceImportDialog by remember { mutableStateOf(false) }
+
+    val anchors = rememberSettingsAnchorState(SettingsAnchorScreens.INTEGRATION)
 
     Scaffold(
         topBar = {
@@ -76,8 +81,9 @@ fun IntegrationScreen(navController: NavController) {
             Modifier
                 .padding(top = topPadding)
                 .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom))
-                .verticalScroll(rememberScrollState())
-                .padding(bottom = SettingsDimensions.ScreenBottomPadding),
+                .verticalScroll(anchors.scrollState)
+                .padding(bottom = SettingsDimensions.ScreenBottomPadding)
+                .then(anchors.containerModifier),
         ) {
             PreferenceGroup(title = stringResource(R.string.integration_accounts)) {
                 item {
@@ -93,6 +99,16 @@ fun IntegrationScreen(navController: NavController) {
                         onClick = {
                             navController.navigate("settings/discord")
                         },
+                    )
+                }
+
+                item {
+                    PreferenceEntry(
+                        title = { Text(stringResource(R.string.cross_service_import_entry_title)) },
+                        description = stringResource(R.string.cross_service_import_entry_desc),
+                        icon = { Icon(painterResource(R.drawable.playlist_import), null) },
+                        onClick = { showCrossServiceImportDialog = true },
+                        modifier = anchors.anchor(SettingsAnchors.CROSS_SERVICE_IMPORT),
                     )
                 }
             }
@@ -185,4 +201,9 @@ fun IntegrationScreen(navController: NavController) {
             },
         )
     }
+
+    CrossServiceImportPlaylistDialog(
+        isVisible = showCrossServiceImportDialog,
+        onDismiss = { showCrossServiceImportDialog = false },
+    )
 }

@@ -381,11 +381,13 @@ internal fun buildDeepSettingsEntries(navController: NavController): DeepSetting
     val lyricsIcon = painterResource(R.drawable.lyrics)
     val internetIcon = painterResource(R.drawable.wifi_proxy)
     val backupIcon = painterResource(R.drawable.backup)
+    val importIcon = painterResource(R.drawable.playlist_import)
     val contentTitle = stringResource(R.string.content)
     val privacyTitle = stringResource(R.string.settings_behavior_title)
     val lyricsScreenTitle = stringResource(R.string.lyrics)
     val internetTitle = stringResource(R.string.internet)
     val backupParentTitle = stringResource(R.string.backup_restore)
+    val integrationTitle = stringResource(R.string.integration)
 
     val playerAndContent = listOf(
         deepEntry(
@@ -653,6 +655,22 @@ internal fun buildDeepSettingsEntries(navController: NavController): DeepSetting
             parentTitle = internetTitle,
             accentColor = storageAccent,
             keywords = listOf("proxy", "socks", "http proxy", "vpn", "network", "bypass"),
+        ),
+        deepEntry(
+            navController = navController,
+            screen = SettingsAnchorScreens.INTEGRATION,
+            anchor = SettingsAnchors.CROSS_SERVICE_IMPORT,
+            icon = importIcon,
+            title = stringResource(R.string.cross_service_import_entry_title),
+            parentTitle = integrationTitle,
+            accentColor = storageAccent,
+            // Users search by the service they are migrating FROM, so each supported one is a
+            // keyword in its own right. Deliberately no "spotify": it is not a supported source,
+            // and matching it would send users to an importer that rejects their URL.
+            keywords = listOf(
+                "import", "import playlist", "playlist import", "migrate", "transfer",
+                "apple music", "amazon music", "tidal", "deezer", "url",
+            ),
         ),
     )
 
