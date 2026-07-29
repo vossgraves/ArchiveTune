@@ -77,7 +77,7 @@ fun buildSettingsGroups(
             title = stringResource(R.string.source_settings),
             subtitle = stringResource(R.string.source_settings_subtitle),
             accentColor = MaterialTheme.colorScheme.tertiary,
-            keywords = listOf("source", "music source", "youtube music", "tidal", "qobuz", "provider", "streaming"),
+            keywords = listOf("source", "music source", "youtube music", "tidal", "qobuz", "deezer", "provider", "streaming"),
             onClick = { navController.navigate("settings/sources") },
         )
     val lyrics =

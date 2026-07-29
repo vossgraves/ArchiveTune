@@ -7,7 +7,7 @@
  * Streaming-source sections rendered inline inside Player & Audio settings:
  *  - a single lyrics-style drag-to-reorder "preferred sources" picker (top = preferred),
  *  - a common section (YouTube history sync),
- *  - and per-source sections (YouTube note, Tidal, Qobuz).
+ *  - and per-source sections (YouTube note, Tidal, Qobuz, Deezer).
  *
  * Account login / instance / API management lives in the Integration section, not here.
  */
@@ -50,6 +50,9 @@ import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.audiosource.AudioSourceConfig
 import moe.rukamori.archivetune.constants.AudioSourceOrderKey
 import moe.rukamori.archivetune.constants.AudioSourceType
+import moe.rukamori.archivetune.constants.DeezerAudioQuality
+import moe.rukamori.archivetune.constants.DeezerAudioQualityKey
+import moe.rukamori.archivetune.constants.DeezerEnabledKey
 import moe.rukamori.archivetune.constants.ManualSourceLoginEnabledKey
 import moe.rukamori.archivetune.constants.QobuzAudioQuality
 import moe.rukamori.archivetune.constants.QobuzAudioQualityKey
@@ -105,6 +108,7 @@ fun PlaybackSourceSections(navController: NavController) {
     val (sourceOrderRaw, onSourceOrderChange) = rememberPreference(AudioSourceOrderKey, "")
     val (tidalEnabled, onTidalEnabledChange) = rememberPreference(TidalEnabledKey, true)
     val (qobuzEnabled, onQobuzEnabledChange) = rememberPreference(QobuzEnabledKey, false)
+    val (deezerEnabled, onDeezerEnabledChange) = rememberPreference(DeezerEnabledKey, false)
 
     // The Integration screen only shows its per-service login entries when this Debug flag is
     // on, so the "manage in Integration" shortcuts below would otherwise lead nowhere useful.
@@ -151,6 +155,8 @@ fun PlaybackSourceSections(navController: NavController) {
     }
     val (qobuzQuality, onQobuzQualityChange) =
         rememberEnumPreference(QobuzAudioQualityKey, QobuzAudioQuality.FLAC)
+    val (deezerQuality, onDeezerQualityChange) =
+        rememberEnumPreference(DeezerAudioQualityKey, DeezerAudioQuality.FLAC)
     // The Tidal artwork-fetching toggle lives in Player Settings → Artwork (same key).
     val (animatedCovers, onAnimatedCoversChange) =
         rememberPreference(TidalAnimatedCoversEnabledKey, false)
@@ -354,6 +360,37 @@ fun PlaybackSourceSections(navController: NavController) {
                     onClick = { navController.navigate("settings/integration") },
                 )
             }
+        }
+    }
+
+    // Deezer has no proxy-instance or per-account tier to manage, so unlike Tidal/Qobuz there is no
+    // "manage in Integration" row here — accounts arrive via the pool.
+    PreferenceGroup(title = stringResource(R.string.deezer_specific)) {
+        item {
+            SwitchPreference(
+                title = { Text(stringResource(R.string.deezer_enable)) },
+                description = stringResource(R.string.deezer_enable_description),
+                icon = { Icon(painterResource(R.drawable.provider_deezer), null) },
+                checked = deezerEnabled,
+                onCheckedChange = onDeezerEnabledChange,
+            )
+        }
+
+        item {
+            EnumListPreference(
+                title = { Text(stringResource(R.string.deezer_audio_quality)) },
+                icon = { Icon(painterResource(R.drawable.play), null) },
+                selectedValue = deezerQuality,
+                onValueSelected = onDeezerQualityChange,
+                isEnabled = deezerEnabled,
+                valueText = { quality ->
+                    when (quality) {
+                        DeezerAudioQuality.FLAC -> stringResource(R.string.deezer_quality_flac)
+                        DeezerAudioQuality.MP3_320 -> stringResource(R.string.deezer_quality_mp3_320)
+                        DeezerAudioQuality.MP3_128 -> stringResource(R.string.deezer_quality_mp3_128)
+                    }
+                },
+            )
         }
     }
 }

@@ -956,6 +956,39 @@ fun QobuzAudioQuality.toFormatId(): Int =
     }
 
 // ---------------------------------------------------------------------------
+// Deezer source
+// ---------------------------------------------------------------------------
+// Unlike Tidal/Qobuz there is no self-hosted proxy tier: Deezer streams come from accounts
+// authenticated with an `arl` cookie, supplied by the pool. Defaults OFF because the source is inert
+// without accounts.
+val DeezerEnabledKey = booleanPreferencesKey("deezerEnabled")
+
+// Deezer serves three tiers. FLAC needs a lossless plan, so the provider walks down from the
+// requested tier and a free account silently lands on MP3 rather than failing the track.
+enum class DeezerAudioQuality {
+    FLAC,
+    MP3_320,
+    MP3_128,
+}
+
+val DeezerAudioQualityOptions =
+    listOf(
+        DeezerAudioQuality.FLAC,
+        DeezerAudioQuality.MP3_320,
+        DeezerAudioQuality.MP3_128,
+    )
+
+val DeezerAudioQualityKey = stringPreferencesKey("deezerAudioQuality")
+
+/** The `format` string Deezer's media endpoint expects for each tier. */
+fun DeezerAudioQuality.toFormatName(): String =
+    when (this) {
+        DeezerAudioQuality.FLAC -> "FLAC"
+        DeezerAudioQuality.MP3_320 -> "MP3_320"
+        DeezerAudioQuality.MP3_128 -> "MP3_128"
+    }
+
+// ---------------------------------------------------------------------------
 // Telegram channel streaming integration
 // ---------------------------------------------------------------------------
 // Streams audio files (lossless-first) directly from Telegram channels via TDLib. The user logs in

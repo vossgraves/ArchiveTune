@@ -54,6 +54,13 @@ object DeezerAudioProvider {
     private const val MIME_FLAC = "audio/flac"
     private const val MIME_MPEG = "audio/mpeg"
 
+    const val FORMAT_FLAC = "FLAC"
+    const val FORMAT_MP3_320 = "MP3_320"
+    const val FORMAT_MP3_128 = "MP3_128"
+
+    /** Deezer's tiers, best first. Ordering matters: a resolve offers the requested tier and all below. */
+    private val FORMAT_TIERS = listOf(FORMAT_FLAC, FORMAT_MP3_320, FORMAT_MP3_128)
+
     private val client =
         OkHttpClient
             .Builder()
@@ -127,25 +134,30 @@ object DeezerAudioProvider {
     /** True when at least one pooled Deezer account is available. */
     fun hasBackends(): Boolean = PoolAccountManager.deezerAccounts().isNotEmpty()
 
-    /** Drops the cached stream for [query] at [lossless], forcing the next resolve to refetch. */
+    /** Drops the cached stream for [query] at [format], forcing the next resolve to refetch. */
     fun invalidate(
         query: Query,
-        lossless: Boolean,
+        format: String,
     ) {
-        val key = query.cacheKey() + ":" + lossless
+        val key = query.cacheKey() + ":" + format
         streamCache.remove(key)
         failureCache.remove(key)
     }
 
     /**
-     * Resolves a playable stream for [query], preferring FLAC when [lossless] is set.
+     * Resolves a playable stream for [query] at [format] (`FLAC`, `MP3_320` or `MP3_128` — see
+     * `DeezerAudioQuality.toFormatName()`), degrading to the next tier down when the account's plan
+     * does not cover the requested one.
+     *
+     * Takes the format as a plain string rather than the preference enum so this stays independent of
+     * the settings layer, matching how `QobuzAudioProvider` takes a bare `formatId`.
      *
      * Returns null when no pooled account can serve the track. The returned [Resolved] carries a
      * `deezer://` URI rather than the CDN URL, because the bytes still need decrypting.
      */
     fun resolve(
         query: Query,
-        lossless: Boolean,
+        format: String,
     ): Resolved? {
         val accounts = PoolAccountManager.deezerAccounts()
         if (accounts.isEmpty()) {
@@ -154,7 +166,7 @@ object DeezerAudioProvider {
         }
 
         val now = System.currentTimeMillis()
-        val cacheKey = query.cacheKey() + ":" + lossless
+        val cacheKey = query.cacheKey() + ":" + format
         streamCache[cacheKey]?.let { cached ->
             if (cached.expiresAt > now) return cached.stream
             streamCache.remove(cacheKey)
@@ -164,16 +176,16 @@ object DeezerAudioProvider {
             failureCache.remove(cacheKey)
         }
 
-        // A lossless request is only satisfiable by an account that actually has the entitlement, so
-        // those are tried first; a lossy request can use any account.
+        // Accounts with a paid plan come first so a FLAC request has the best chance of being served
+        // at full quality. An account whose plan cannot cover the requested tier is NOT skipped: it
+        // degrades to the highest tier it does have, so a pool of free accounts still plays the track
+        // instead of the whole source going silent.
         val ordered = accounts.sortedByDescending { it.premium }
         for (account in ordered) {
             val session =
                 runCatching { session(account) }
                     .onFailure { Timber.tag(TAG).w(it, "session failed for pooled account") }
                     .getOrNull() ?: continue
-
-            if (lossless && !session.lossless) continue
 
             val match =
                 runCatching { matchTrack(session, query) }
@@ -182,7 +194,7 @@ object DeezerAudioProvider {
             val trackId = match.id
 
             val media =
-                runCatching { requestUrl(session, trackId, lossless) }
+                runCatching { requestUrl(session, trackId, format) }
                     .onFailure { Timber.tag(TAG).w(it, "get_url failed for track %s", trackId) }
                     .getOrNull()
             if (media == null) {
@@ -199,7 +211,15 @@ object DeezerAudioProvider {
                     // MP3 is mpeg-layer-3, not AAC; naming it "mp4a" would mislead the extractor.
                     codecs = if (media.flac) "flac" else "mp3",
                     contentLength = media.contentLength,
-                    label = if (media.flac) "Deezer FLAC" else "Deezer MP3",
+                    // Report the tier actually served, not the one requested, so the player does not
+                    // claim FLAC for a track that degraded to MP3.
+                    label =
+                        when (media.format.uppercase()) {
+                            FORMAT_FLAC -> "Deezer FLAC"
+                            FORMAT_MP3_320 -> "Deezer MP3 320"
+                            FORMAT_MP3_128 -> "Deezer MP3 128"
+                            else -> "Deezer"
+                        },
                     matchedTitle = match.title,
                     matchedArtist = match.artists.firstOrNull(),
                     matchedAlbum = match.album,
@@ -348,6 +368,8 @@ object DeezerAudioProvider {
     private class Media(
         val url: String,
         val flac: Boolean,
+        /** The tier the gateway served, which may be lower than the one requested. */
+        val format: String,
         val contentLength: Long?,
     )
 
@@ -360,7 +382,7 @@ object DeezerAudioProvider {
     private fun requestUrl(
         session: Session,
         trackId: String,
-        lossless: Boolean,
+        format: String,
     ): Media? {
         val trackJson =
             gateway(
@@ -372,17 +394,15 @@ object DeezerAudioProvider {
         val trackToken = trackJson.optJSONObject("results")?.optString("TRACK_TOKEN").orEmpty()
         if (trackToken.isBlank()) return null
 
-        // Ask for FLAC first when allowed, then fall back to 320kbps MP3 within the same request so a
-        // track without a lossless master still plays instead of failing the whole resolve.
-        val formats =
-            buildList {
-                if (lossless && session.lossless) add("FLAC")
-                add("MP3_320")
-                add("MP3_128")
-            }
+        // Offer the requested tier and everything below it in one request, so a track with no lossless
+        // master (or an account without the entitlement) still plays at the best available quality
+        // instead of failing the resolve. FLAC is dropped when the plan does not cover it, otherwise
+        // the gateway would answer with an empty media list.
+        val requested = if (format == FORMAT_FLAC && !session.lossless) FORMAT_MP3_320 else format
+        val formats = FORMAT_TIERS.dropWhile { it != requested }.ifEmpty { listOf(FORMAT_MP3_320, FORMAT_MP3_128) }
         val formatArray = JSONArray()
-        formats.forEach { format ->
-            formatArray.put(JSONObject().put("cipher", "BF_CBC_STRIPE").put("format", format))
+        formats.forEach { tier ->
+            formatArray.put(JSONObject().put("cipher", "BF_CBC_STRIPE").put("format", tier))
         }
         val mediaArray =
             JSONArray().put(
@@ -415,20 +435,21 @@ object DeezerAudioProvider {
         val media = first.optJSONArray("media")?.optJSONObject(0) ?: return null
         val source = media.optJSONArray("sources")?.optJSONObject(0) ?: return null
         val url = source.optString("url").takeIf { it.isNotBlank() } ?: return null
-        val format = media.optString("format")
-        val flac = format.equals("FLAC", ignoreCase = true)
+        // The tier the gateway actually served, which may be lower than the one requested.
+        val servedFormat = media.optString("format")
+        val flac = servedFormat.equals(FORMAT_FLAC, ignoreCase = true)
 
         // song.getData carries a per-format size (FILESIZE_FLAC, FILESIZE_MP3_320, ...). The encrypted
         // stream is byte-for-byte the same length as the decrypted one because BF_CBC_STRIPE adds no
         // padding, so this size is valid for the decrypted output and saves a HEAD probe. Null is fine:
         // DirectStream treats an unknown length as "ask the CDN".
-        val sizeField = if (flac) "FILESIZE_FLAC" else "FILESIZE_${format.uppercase()}"
+        val sizeField = "FILESIZE_${servedFormat.uppercase()}"
         val results = trackJson.optJSONObject("results")
         val contentLength =
             results?.optString(sizeField)?.toLongOrNull()?.takeIf { it > 0L }
                 ?: results?.optString("FILESIZE")?.toLongOrNull()?.takeIf { it > 0L }
 
-        return Media(url = url, flac = flac, contentLength = contentLength)
+        return Media(url = url, flac = flac, format = servedFormat, contentLength = contentLength)
     }
 
     private val JSON_MEDIA = "application/json; charset=utf-8".toMediaTypeOrNull()

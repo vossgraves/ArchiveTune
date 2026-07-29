@@ -826,6 +826,16 @@
     <string name="tidal_instance_preview_only">Deprecated — %1$d ms</string>
     <string name="tidal_instance_unknown">Not tested — tap Test instances</string>
 
+    <!-- Deezer music source integration -->
+    <string name="deezer_specific">Deezer</string>
+    <string name="source_deezer">Deezer</string>
+    <string name="deezer_enable">Enable Deezer source</string>
+    <string name="deezer_enable_description">Route playback through shared Deezer accounts when a matching track is found</string>
+    <string name="deezer_audio_quality">Audio quality</string>
+    <string name="deezer_quality_flac">FLAC (CD 16-bit)</string>
+    <string name="deezer_quality_mp3_320">MP3 320 kbps</string>
+    <string name="deezer_quality_mp3_128">MP3 128 kbps</string>
+
     <!-- Qobuz music source integration -->
     <string name="source_qobuz">Qobuz</string>
     <string name="qobuz_integration">Qobuz</string>
