@@ -14,6 +14,7 @@
 
 package moe.rukamori.archivetune.ui.screens.settings
 
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -428,6 +429,11 @@ fun PlaybackSourceSections(navController: NavController) {
                         onDeezerArlChange("")
                         onDeezerAccountNameChange("")
                         onDeezerAccountPremiumChange(false)
+                        // The row swapping back to "Sign in" is easy to miss on its own as
+                        // confirmation that anything happened.
+                        Toast
+                            .makeText(context, R.string.deezer_signed_out, Toast.LENGTH_SHORT)
+                            .show()
                     },
                 )
             }
