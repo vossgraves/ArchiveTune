@@ -122,6 +122,7 @@ fun LyricsSettings(
     navController: NavController,
     viewModel: ContentSettingsViewModel = hiltViewModel(),
 ) {
+    val anchors = rememberSettingsAnchorState(SettingsAnchorScreens.LYRICS)
     var showClearLyricsDialog by remember { mutableStateOf(false) }
     var showPaxsenixStatsDialog by remember { mutableStateOf(false) }
 
@@ -237,8 +238,9 @@ fun LyricsSettings(
     Column(
         Modifier
             .windowInsetsPadding(LocalPlayerAwareWindowInsets.current)
-            .verticalScroll(rememberScrollState())
-            .padding(bottom = SettingsDimensions.ScreenBottomPadding),
+            .verticalScroll(anchors.scrollState)
+            .padding(bottom = SettingsDimensions.ScreenBottomPadding)
+            .then(anchors.containerModifier),
     ) {
         var showLyricsTextSizeDialog by rememberSaveable { mutableStateOf(false) }
 
@@ -377,6 +379,7 @@ fun LyricsSettings(
         PreferenceGroup(title = stringResource(R.string.display)) {
             item {
                 EnumListPreference(
+                    modifier = anchors.anchor(SettingsAnchors.LYRICS_MODE),
                     title = { Text(stringResource(R.string.lyrics_mode)) },
                     icon = { Icon(painterResource(R.drawable.lyrics), null) },
                     selectedValue = lyricsMode,
@@ -394,6 +397,7 @@ fun LyricsSettings(
                 val animationSettingsEnabled = lyricsMode == LyricsMode.V2
 
                 PreferenceEntry(
+                    modifier = anchors.anchor(SettingsAnchors.LYRICS_ANIMATION),
                     title = { Text(stringResource(R.string.lyrics_animation_style)) },
                     description = if (animationSettingsEnabled) null else stringResource(R.string.lyrics_animation_style_v2_only),
                     icon = { Icon(painterResource(R.drawable.animation), null) },
@@ -413,6 +417,7 @@ fun LyricsSettings(
 
             item {
                 SwitchPreference(
+                    modifier = anchors.anchor(SettingsAnchors.LYRICS_AUTO_SCROLL),
                     title = { Text(stringResource(R.string.lyrics_auto_scroll)) },
                     icon = { Icon(painterResource(R.drawable.lyrics), null) },
                     checked = lyricsScroll,
@@ -422,6 +427,7 @@ fun LyricsSettings(
 
             item {
                 SwitchPreference(
+                    modifier = anchors.anchor(SettingsAnchors.LYRICS_LINE_BLUR),
                     title = { Text(stringResource(R.string.lyrics_line_blur)) },
                     icon = { Icon(painterResource(R.drawable.lyrics), null) },
                     checked = lyricsLineBlur,

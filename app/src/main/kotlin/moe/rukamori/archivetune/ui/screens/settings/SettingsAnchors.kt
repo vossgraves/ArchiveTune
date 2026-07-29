@@ -109,11 +109,23 @@ object SettingsAnchorRequest {
     }
 }
 
-/** Route strings of the settings screens that support deep anchors. */
+/**
+ * Route strings of the settings screens that support deep anchors.
+ *
+ * Only screens whose content is a `Column` with a single `verticalScroll` can appear here: the
+ * anchor maths resolves a row's offset against one [ScrollState]. Screens built on a LazyColumn
+ * (account, Discord) never measure off-screen rows at all, so they would need a different
+ * mechanism entirely rather than an entry in this list.
+ */
 object SettingsAnchorScreens {
     const val PLAYER = "settings/player"
     const val APPEARANCE = "settings/appearance"
     const val STORAGE = "settings/storage"
+    const val CONTENT = "settings/content"
+    const val PRIVACY = "settings/privacy"
+    const val INTERNET = "settings/internet"
+    const val LYRICS = "settings/lyrics"
+    const val BACKUP = "settings/backup_restore"
 }
 
 /** Stable ids for individually searchable preferences. Referenced by the deep search index. */
@@ -141,6 +153,32 @@ object SettingsAnchors {
     const val CLEAR_SONG_CACHE = "clear_song_cache"
     const val IMAGE_CACHE_SIZE = "image_cache_size"
     const val SMART_TRIMMER = "smart_trimmer"
+
+    // Content
+    const val HIDE_EXPLICIT = "hide_explicit"
+    const val HIDE_VIDEO = "hide_video"
+    const val ALLOW_AGE_RESTRICTED = "allow_age_restricted"
+    const val APP_LANGUAGE = "app_language"
+
+    // Privacy
+    const val PAUSE_LISTEN_HISTORY = "pause_listen_history"
+    const val PAUSE_SEARCH_HISTORY = "pause_search_history"
+    const val HAPTICS = "haptics"
+    const val DISABLE_SCREENSHOT = "disable_screenshot"
+
+    // Internet
+    const val DNS_OVER_HTTPS = "dns_over_https"
+    const val PROXY = "proxy"
+
+    // Lyrics
+    const val LYRICS_MODE = "lyrics_mode"
+    const val LYRICS_ANIMATION = "lyrics_animation"
+    const val LYRICS_AUTO_SCROLL = "lyrics_auto_scroll"
+    const val LYRICS_LINE_BLUR = "lyrics_line_blur"
+
+    // Backup and restore
+    const val BACKUP = "backup"
+    const val RESTORE = "restore"
 }
 
 private val HighlightCornerRadius = 18.dp

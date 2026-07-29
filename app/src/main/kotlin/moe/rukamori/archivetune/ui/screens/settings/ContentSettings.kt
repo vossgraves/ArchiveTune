@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
@@ -63,6 +62,7 @@ fun ContentSettings(
     navController: NavController,
     viewModel: ContentSettingsViewModel = hiltViewModel(),
 ) {
+    val anchors = rememberSettingsAnchorState(SettingsAnchorScreens.CONTENT)
     val context = LocalContext.current
     val aiContentFilterState by viewModel.aiContentFilterState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -100,8 +100,9 @@ fun ContentSettings(
     Column(
         Modifier
             .windowInsetsPadding(LocalPlayerAwareWindowInsets.current)
-            .verticalScroll(rememberScrollState())
-            .padding(bottom = SettingsDimensions.ScreenBottomPadding),
+            .verticalScroll(anchors.scrollState)
+            .padding(bottom = SettingsDimensions.ScreenBottomPadding)
+            .then(anchors.containerModifier),
     ) {
         PreferenceGroup(title = stringResource(R.string.general)) {
             item {
@@ -180,6 +181,7 @@ fun ContentSettings(
 
             item {
                 SwitchPreference(
+                    modifier = anchors.anchor(SettingsAnchors.HIDE_EXPLICIT),
                     title = { Text(stringResource(R.string.hide_explicit)) },
                     icon = { Icon(painterResource(R.drawable.explicit), null) },
                     checked = hideExplicit,
@@ -189,6 +191,7 @@ fun ContentSettings(
 
             item {
                 SwitchPreference(
+                    modifier = anchors.anchor(SettingsAnchors.HIDE_VIDEO),
                     title = { Text(stringResource(R.string.hide_video)) },
                     icon = { Icon(painterResource(R.drawable.slow_motion_video), null) },
                     checked = hideVideo,
@@ -198,6 +201,7 @@ fun ContentSettings(
 
             item {
                 SwitchPreference(
+                    modifier = anchors.anchor(SettingsAnchors.ALLOW_AGE_RESTRICTED),
                     title = { Text(stringResource(R.string.allow_age_restricted)) },
                     description = stringResource(R.string.allow_age_restricted_summary),
                     icon = { Icon(painterResource(R.drawable.login), null) },
@@ -219,6 +223,7 @@ fun ContentSettings(
             item {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     PreferenceEntry(
+                        modifier = anchors.anchor(SettingsAnchors.APP_LANGUAGE),
                         title = { Text(stringResource(R.string.app_language)) },
                         icon = { Icon(painterResource(R.drawable.language), null) },
                         onClick = {
@@ -232,6 +237,7 @@ fun ContentSettings(
                     )
                 } else {
                     ListPreference(
+                        modifier = anchors.anchor(SettingsAnchors.APP_LANGUAGE),
                         title = { Text(stringResource(R.string.app_language)) },
                         icon = { Icon(painterResource(R.drawable.language), null) },
                         selectedValue = appLanguage,

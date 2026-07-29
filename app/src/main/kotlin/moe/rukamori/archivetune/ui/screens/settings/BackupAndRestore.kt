@@ -150,6 +150,7 @@ fun BackupAndRestore(
     viewModel: BackupRestoreViewModel = hiltViewModel(),
     spotifyAccountViewModel: SpotifyAccountViewModel = hiltViewModel(),
 ) {
+    val anchors = rememberSettingsAnchorState(SettingsAnchorScreens.BACKUP)
     val importedSongs = remember { mutableStateListOf<Song>() }
     var showChoosePlaylistDialogOnline by rememberSaveable { mutableStateOf(false) }
     var isProgressStarted by rememberSaveable { mutableStateOf(false) }
@@ -274,8 +275,9 @@ fun BackupAndRestore(
             Modifier
                 .padding(top = topPadding)
                 .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom))
-                .verticalScroll(rememberScrollState())
-                .padding(bottom = SettingsDimensions.ScreenBottomPadding),
+                .verticalScroll(anchors.scrollState)
+                .padding(bottom = SettingsDimensions.ScreenBottomPadding)
+                .then(anchors.containerModifier),
         ) {
             val scheduledBackupData =
                 when (val state = scheduledBackupState) {
@@ -311,6 +313,7 @@ fun BackupAndRestore(
             PreferenceGroup(title = stringResource(R.string.internal_service)) {
                 item {
                     PreferenceEntry(
+                        modifier = anchors.anchor(SettingsAnchors.BACKUP),
                         title = { Text(stringResource(R.string.action_backup)) },
                         description = stringResource(R.string.backup_create_backup_desc),
                         icon = { Icon(painterResource(R.drawable.backup), null) },
@@ -320,6 +323,7 @@ fun BackupAndRestore(
 
                 item {
                     PreferenceEntry(
+                        modifier = anchors.anchor(SettingsAnchors.RESTORE),
                         title = { Text(stringResource(R.string.action_restore)) },
                         description = stringResource(R.string.restore_select_backup),
                         icon = { Icon(painterResource(R.drawable.restore), null) },

@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -53,6 +52,7 @@ import moe.rukamori.archivetune.utils.rememberPreference
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PrivacySettings(navController: NavController) {
+    val anchors = rememberSettingsAnchorState(SettingsAnchorScreens.PRIVACY)
     val database = LocalDatabase.current
     val (pauseListenHistory, onPauseListenHistoryChange) =
         rememberPreference(
@@ -173,12 +173,14 @@ fun PrivacySettings(navController: NavController) {
             Modifier
                 .padding(top = topPadding)
                 .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom))
-                .verticalScroll(rememberScrollState())
-                .padding(bottom = SettingsDimensions.ScreenBottomPadding),
+                .verticalScroll(anchors.scrollState)
+                .padding(bottom = SettingsDimensions.ScreenBottomPadding)
+                .then(anchors.containerModifier),
         ) {
             PreferenceGroup(title = stringResource(R.string.listen_history)) {
                 item {
                     SwitchPreference(
+                        modifier = anchors.anchor(SettingsAnchors.PAUSE_LISTEN_HISTORY),
                         title = { Text(stringResource(R.string.pause_listen_history)) },
                         icon = { Icon(painterResource(R.drawable.history), null) },
                         checked = pauseListenHistory,
@@ -198,6 +200,7 @@ fun PrivacySettings(navController: NavController) {
             PreferenceGroup(title = stringResource(R.string.search_history)) {
                 item {
                     SwitchPreference(
+                        modifier = anchors.anchor(SettingsAnchors.PAUSE_SEARCH_HISTORY),
                         title = { Text(stringResource(R.string.pause_search_history)) },
                         icon = { Icon(painterResource(R.drawable.search_off), null) },
                         checked = pauseSearchHistory,
@@ -217,6 +220,7 @@ fun PrivacySettings(navController: NavController) {
             PreferenceGroup(title = stringResource(R.string.misc)) {
                 item {
                     SwitchPreference(
+                        modifier = anchors.anchor(SettingsAnchors.HAPTICS),
                         title = { Text(stringResource(R.string.haptics)) },
                         description = stringResource(R.string.haptics_desc),
                         icon = { Icon(painterResource(R.drawable.vibration), null) },
@@ -227,6 +231,7 @@ fun PrivacySettings(navController: NavController) {
 
                 item {
                     SwitchPreference(
+                        modifier = anchors.anchor(SettingsAnchors.DISABLE_SCREENSHOT),
                         title = { Text(stringResource(R.string.disable_screenshot)) },
                         description = stringResource(R.string.disable_screenshot_desc),
                         icon = { Icon(painterResource(R.drawable.screenshot), null) },

@@ -292,7 +292,7 @@ fun buildSettingsGroups(
         ),
         SettingsGroup(
             title = stringResource(R.string.integration),
-            items = listOf(integration, aiIntegration, internet, poToken),
+            items = listOf(integration, aiIntegration, internet, poToken) + deepEntries.integration,
         ),
         SettingsGroup(
             title = stringResource(R.string.storage),
@@ -345,11 +345,12 @@ private fun deepEntry(
 )
 
 /**
- * Individual preferences from the three highest-traffic settings screens, exposed to search.
+ * Individual preferences from the anchor-capable settings screens, exposed to search.
  *
  * Deliberately not exhaustive: these are the preferences users actually hunt for. Coverage is
  * bounded by the anchors declared in [SettingsAnchors], and every anchor here must be applied to a
- * real preference with `anchors.anchor(...)` or the row will scroll nowhere.
+ * real preference with `anchors.anchor(...)` or the row will scroll nowhere. The `screen` must also
+ * be a route registered in the nav graph, since selecting a result navigates to it directly.
  */
 /**
  * Deep search entries split by the group they belong under, so a storage preference surfaces below
@@ -357,6 +358,7 @@ private fun deepEntry(
  */
 internal data class DeepSettingsEntries(
     val playerAndContent: List<SettingsItem>,
+    val integration: List<SettingsItem>,
     val storage: List<SettingsItem>,
 )
 
@@ -371,6 +373,19 @@ internal fun buildDeepSettingsEntries(navController: NavController): DeepSetting
     val playerAccent = MaterialTheme.colorScheme.tertiary
     val appearanceAccent = MaterialTheme.colorScheme.secondary
     val storageAccent = MaterialTheme.colorScheme.primary
+
+    // Icons/titles deliberately mirror each screen's own top-level entry, so a deep result looks
+    // like the screen it lands on.
+    val contentIcon = painterResource(R.drawable.language)
+    val privacyIcon = painterResource(R.drawable.swipe)
+    val lyricsIcon = painterResource(R.drawable.lyrics)
+    val internetIcon = painterResource(R.drawable.wifi_proxy)
+    val backupIcon = painterResource(R.drawable.backup)
+    val contentTitle = stringResource(R.string.content)
+    val privacyTitle = stringResource(R.string.settings_behavior_title)
+    val lyricsScreenTitle = stringResource(R.string.lyrics)
+    val internetTitle = stringResource(R.string.internet)
+    val backupParentTitle = stringResource(R.string.backup_restore)
 
     val playerAndContent = listOf(
         deepEntry(
@@ -495,6 +510,152 @@ internal fun buildDeepSettingsEntries(navController: NavController): DeepSetting
         ),
     )
 
+    val contentAndPrivacy = listOf(
+        deepEntry(
+            navController = navController,
+            screen = SettingsAnchorScreens.CONTENT,
+            anchor = SettingsAnchors.HIDE_EXPLICIT,
+            icon = contentIcon,
+            title = stringResource(R.string.hide_explicit),
+            parentTitle = contentTitle,
+            accentColor = playerAccent,
+            keywords = listOf("explicit", "hide explicit", "clean", "censor", "parental", "family"),
+        ),
+        deepEntry(
+            navController = navController,
+            screen = SettingsAnchorScreens.CONTENT,
+            anchor = SettingsAnchors.HIDE_VIDEO,
+            icon = contentIcon,
+            title = stringResource(R.string.hide_video),
+            parentTitle = contentTitle,
+            accentColor = playerAccent,
+            keywords = listOf("video", "hide video", "music video", "audio only"),
+        ),
+        deepEntry(
+            navController = navController,
+            screen = SettingsAnchorScreens.CONTENT,
+            anchor = SettingsAnchors.ALLOW_AGE_RESTRICTED,
+            icon = contentIcon,
+            title = stringResource(R.string.allow_age_restricted),
+            parentTitle = contentTitle,
+            accentColor = playerAccent,
+            keywords = listOf("age restricted", "age", "restricted", "18", "mature", "sign in"),
+        ),
+        deepEntry(
+            navController = navController,
+            screen = SettingsAnchorScreens.CONTENT,
+            anchor = SettingsAnchors.APP_LANGUAGE,
+            icon = contentIcon,
+            title = stringResource(R.string.app_language),
+            parentTitle = contentTitle,
+            accentColor = playerAccent,
+            keywords = listOf("language", "app language", "locale", "translation", "region"),
+        ),
+        deepEntry(
+            navController = navController,
+            screen = SettingsAnchorScreens.PRIVACY,
+            anchor = SettingsAnchors.PAUSE_LISTEN_HISTORY,
+            icon = privacyIcon,
+            title = stringResource(R.string.pause_listen_history),
+            parentTitle = privacyTitle,
+            accentColor = playerAccent,
+            keywords = listOf("listen history", "pause history", "history", "tracking", "privacy", "incognito"),
+        ),
+        deepEntry(
+            navController = navController,
+            screen = SettingsAnchorScreens.PRIVACY,
+            anchor = SettingsAnchors.PAUSE_SEARCH_HISTORY,
+            icon = privacyIcon,
+            title = stringResource(R.string.pause_search_history),
+            parentTitle = privacyTitle,
+            accentColor = playerAccent,
+            keywords = listOf("search history", "pause search", "recent searches", "privacy", "clear"),
+        ),
+        deepEntry(
+            navController = navController,
+            screen = SettingsAnchorScreens.PRIVACY,
+            anchor = SettingsAnchors.HAPTICS,
+            icon = privacyIcon,
+            title = stringResource(R.string.haptics),
+            parentTitle = privacyTitle,
+            accentColor = playerAccent,
+            keywords = listOf("haptics", "vibration", "vibrate", "feedback", "touch"),
+        ),
+        deepEntry(
+            navController = navController,
+            screen = SettingsAnchorScreens.PRIVACY,
+            anchor = SettingsAnchors.DISABLE_SCREENSHOT,
+            icon = privacyIcon,
+            title = stringResource(R.string.disable_screenshot),
+            parentTitle = privacyTitle,
+            accentColor = playerAccent,
+            keywords = listOf("screenshot", "disable screenshot", "screen capture", "secure", "privacy"),
+        ),
+        deepEntry(
+            navController = navController,
+            screen = SettingsAnchorScreens.LYRICS,
+            anchor = SettingsAnchors.LYRICS_MODE,
+            icon = lyricsIcon,
+            title = stringResource(R.string.lyrics_mode),
+            parentTitle = lyricsScreenTitle,
+            accentColor = playerAccent,
+            keywords = listOf("lyrics mode", "lyrics", "synced", "karaoke", "style"),
+        ),
+        deepEntry(
+            navController = navController,
+            screen = SettingsAnchorScreens.LYRICS,
+            anchor = SettingsAnchors.LYRICS_ANIMATION,
+            icon = lyricsIcon,
+            title = stringResource(R.string.lyrics_animation_style),
+            parentTitle = lyricsScreenTitle,
+            accentColor = playerAccent,
+            keywords = listOf("lyrics animation", "animation", "transition", "effect", "motion"),
+        ),
+        deepEntry(
+            navController = navController,
+            screen = SettingsAnchorScreens.LYRICS,
+            anchor = SettingsAnchors.LYRICS_AUTO_SCROLL,
+            icon = lyricsIcon,
+            title = stringResource(R.string.lyrics_auto_scroll),
+            parentTitle = lyricsScreenTitle,
+            accentColor = playerAccent,
+            keywords = listOf("auto scroll", "lyrics scroll", "follow", "scroll"),
+        ),
+        deepEntry(
+            navController = navController,
+            screen = SettingsAnchorScreens.LYRICS,
+            anchor = SettingsAnchors.LYRICS_LINE_BLUR,
+            icon = lyricsIcon,
+            title = stringResource(R.string.lyrics_line_blur),
+            parentTitle = lyricsScreenTitle,
+            accentColor = playerAccent,
+            keywords = listOf("blur", "line blur", "lyrics blur", "focus", "depth"),
+        ),
+    )
+
+    val integration = listOf(
+        deepEntry(
+            navController = navController,
+            screen = SettingsAnchorScreens.INTERNET,
+            anchor = SettingsAnchors.DNS_OVER_HTTPS,
+            icon = internetIcon,
+            title = stringResource(R.string.dns_over_https),
+            parentTitle = internetTitle,
+            accentColor = storageAccent,
+            keywords = listOf("dns", "doh", "dns over https", "unblock", "bypass", "network"),
+        ),
+        deepEntry(
+            navController = navController,
+            screen = SettingsAnchorScreens.INTERNET,
+            anchor = SettingsAnchors.PROXY,
+            icon = internetIcon,
+            title = stringResource(R.string.enable_proxy),
+            parentTitle = internetTitle,
+            accentColor = storageAccent,
+            keywords = listOf("proxy", "socks", "http proxy", "vpn", "network", "bypass"),
+        ),
+    )
+
     val storage = listOf(
         deepEntry(
             navController = navController,
@@ -556,7 +717,31 @@ internal fun buildDeepSettingsEntries(navController: NavController): DeepSetting
             accentColor = storageAccent,
             keywords = listOf("smart trimmer", "trimmer", "auto clean", "prune", "automatic cleanup"),
         ),
+        deepEntry(
+            navController = navController,
+            screen = SettingsAnchorScreens.BACKUP,
+            anchor = SettingsAnchors.BACKUP,
+            icon = backupIcon,
+            title = stringResource(R.string.action_backup),
+            parentTitle = backupParentTitle,
+            accentColor = storageAccent,
+            keywords = listOf("backup", "export settings", "save data", "database", "migrate"),
+        ),
+        deepEntry(
+            navController = navController,
+            screen = SettingsAnchorScreens.BACKUP,
+            anchor = SettingsAnchors.RESTORE,
+            icon = backupIcon,
+            title = stringResource(R.string.action_restore),
+            parentTitle = backupParentTitle,
+            accentColor = storageAccent,
+            keywords = listOf("restore", "import", "recover", "load backup", "migrate"),
+        ),
     )
 
-    return DeepSettingsEntries(playerAndContent = playerAndContent, storage = storage)
+    return DeepSettingsEntries(
+        playerAndContent = playerAndContent + contentAndPrivacy,
+        integration = integration,
+        storage = storage,
+    )
 }

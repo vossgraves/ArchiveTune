@@ -25,7 +25,6 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -141,6 +140,7 @@ fun InternetWarningBox(modifier: Modifier = Modifier) {
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun InternetSettings(navController: NavController) {
+    val anchors = rememberSettingsAnchorState(SettingsAnchorScreens.INTERNET)
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -197,14 +197,16 @@ fun InternetSettings(navController: NavController) {
             Modifier
                 .padding(top = topPadding)
                 .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom))
-                .verticalScroll(rememberScrollState())
-                .padding(bottom = SettingsDimensions.ScreenBottomPadding),
+                .verticalScroll(anchors.scrollState)
+                .padding(bottom = SettingsDimensions.ScreenBottomPadding)
+                .then(anchors.containerModifier),
         ) {
             InternetWarningBox()
 
             PreferenceGroup(title = stringResource(R.string.dns_over_https)) {
                 item {
                     SwitchPreference(
+                        modifier = anchors.anchor(SettingsAnchors.DNS_OVER_HTTPS),
                         title = { Text(stringResource(R.string.dns_over_https)) },
                         description = stringResource(R.string.dns_over_https_desc),
                         icon = { Icon(painterResource(R.drawable.security), null) },
@@ -236,6 +238,7 @@ fun InternetSettings(navController: NavController) {
             PreferenceGroup(title = stringResource(R.string.proxy)) {
                 item {
                     SwitchPreference(
+                        modifier = anchors.anchor(SettingsAnchors.PROXY),
                         title = { Text(stringResource(R.string.enable_proxy)) },
                         icon = { Icon(painterResource(R.drawable.wifi_proxy), null) },
                         checked = proxyEnabled,
