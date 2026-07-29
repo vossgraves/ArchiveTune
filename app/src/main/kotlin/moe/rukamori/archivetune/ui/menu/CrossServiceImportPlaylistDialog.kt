@@ -38,6 +38,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -238,9 +239,13 @@ fun CrossServiceImportPlaylistDialog(
                             // straight away for that source instead of re-searching every title.
                             val ids = CrossServicePlaylistImporter.resolveToYouTubeMusic(
                                 tracks = resolved.tracks,
+                                // Invoked from the importer's IO dispatcher, so hop back to Main:
+                                // Compose state must not be written from a background thread.
                                 onProgress = { done, total ->
-                                    resolvedCount = done
-                                    totalCount = total
+                                    coroutineScope.launch(Dispatchers.Main) {
+                                        resolvedCount = done
+                                        totalCount = total
+                                    }
                                 },
                             )
                             if (ids.isEmpty()) error(noMatchesMessage)
@@ -267,6 +272,11 @@ fun CrossServiceImportPlaylistDialog(
                                     resolvedTitle = resolved.title.ifBlank { resolved.source.displayName }
                                 }
                                 .onFailure { throwable ->
+                                    // runCatching also catches CancellationException. If this
+                                    // coroutine was cancelled (dialog dismissed, screen left) the
+                                    // composable is gone and there is no failure to report, so
+                                    // rethrow rather than surfacing a bogus error.
+                                    if (throwable is CancellationException) throw throwable
                                     errorMessage = throwable.message ?: unsupportedMessage
                                 }
                         }
