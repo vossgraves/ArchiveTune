@@ -69,6 +69,87 @@ object DeezerAudioProvider {
             .callTimeout(15, TimeUnit.SECONDS)
             .build()
 
+    /**
+     * A manually captured ARL, set by the Deezer login screen and mirrored from DataStore on startup.
+     * Held here rather than in [PoolAccountManager] because that cache is replaced wholesale on every
+     * pool refresh and is gated behind `isEnabled`, either of which would drop a user's own account.
+     */
+    @Volatile
+    private var manualAccount: PoolAccountManager.DeezerPoolAccount? = null
+
+    /**
+     * Registers (or clears, on null/blank) the manually signed-in account. Cheap and idempotent, so
+     * call sites can push the current value without tracking whether it changed.
+     */
+    fun setManualArl(
+        arl: String?,
+        premium: Boolean = false,
+    ) {
+        val trimmed = arl?.trim()
+        val next =
+            if (trimmed.isNullOrEmpty()) {
+                null
+            } else {
+                // masterSecret stays null: only the pool serves an override, and DeezerCrypto falls
+                // back to the salt the app ships with.
+                PoolAccountManager.DeezerPoolAccount(arl = trimmed, premium = premium)
+            }
+        val previous = manualAccount
+        manualAccount = next
+        // Sessions are keyed by ARL, so a changed or removed credential must not keep serving from a
+        // session established under the old one.
+        if (previous != null && previous.arl != next?.arl) {
+            sessions.remove(previous.arl)
+        }
+    }
+
+    /**
+     * Every usable credential, manual first so a user's own (likely paid) account is tried before
+     * shared pool entries.
+     */
+    private fun accounts(): List<PoolAccountManager.DeezerPoolAccount> {
+        val pooled = PoolAccountManager.deezerAccounts()
+        val manual = manualAccount ?: return pooled
+        // Drop a pooled duplicate so one bad credential cannot be attempted twice per resolve.
+        return listOf(manual) + pooled.filter { it.arl != manual.arl }
+    }
+
+    /** What a manual sign-in learns about the account behind an ARL. */
+    data class AccountInfo(
+        val name: String,
+        val lossless: Boolean,
+    )
+
+    /**
+     * Checks an ARL against the gateway and reports the account behind it, or null when the cookie is
+     * not a usable credential. Runs blocking network I/O.
+     *
+     * The login screen needs this because Deezer hands out an `arl` cookie to anonymous visitors too:
+     * without verifying, a user who closed the page before signing in would be told they were signed
+     * in and then get silence on every track.
+     */
+    fun verifyArl(arl: String): AccountInfo? =
+        runCatching {
+            val json = gateway(arl.trim(), apiToken = "", method = "deezer.getUserData", payload = null)
+            val user = json.optJSONObject("results")?.optJSONObject("USER") ?: return@runCatching null
+            // An anonymous or expired ARL still returns HTTP 200, just with USER_ID 0.
+            if (user.optLong("USER_ID", 0L) == 0L) return@runCatching null
+            val options = user.optJSONObject("OPTIONS")
+            val name =
+                sequenceOf(
+                    user.optString("BLOG_NAME"),
+                    user.optString("FIRSTNAME"),
+                    user.optString("EMAIL"),
+                ).firstOrNull { it.isNotBlank() } ?: "Deezer"
+            AccountInfo(
+                name = name,
+                lossless =
+                    options?.optBoolean("web_lossless", false) == true ||
+                        options?.optBoolean("mobile_lossless", false) == true,
+            )
+        }.onFailure { Timber.tag(TAG).w(it, "ARL verification failed") }
+            .getOrNull()
+
     /** An authenticated gateway session derived from one pooled ARL. */
     private data class Session(
         val arl: String,
@@ -131,8 +212,8 @@ object DeezerAudioProvider {
         listOf(mediaId, title.lowercase(), artists.joinToString(",").lowercase(), album.orEmpty().lowercase())
             .joinToString("|")
 
-    /** True when at least one pooled Deezer account is available. */
-    fun hasBackends(): Boolean = PoolAccountManager.deezerAccounts().isNotEmpty()
+    /** True when at least one Deezer account is available, manual or pooled. */
+    fun hasBackends(): Boolean = accounts().isNotEmpty()
 
     /** Drops the cached stream for [query] at [format], forcing the next resolve to refetch. */
     fun invalidate(
@@ -159,9 +240,9 @@ object DeezerAudioProvider {
         query: Query,
         format: String,
     ): Resolved? {
-        val accounts = PoolAccountManager.deezerAccounts()
+        val accounts = accounts()
         if (accounts.isEmpty()) {
-            Timber.tag(TAG).d("resolve skipped: no pooled accounts")
+            Timber.tag(TAG).d("resolve skipped: no manual or pooled accounts")
             return null
         }
 

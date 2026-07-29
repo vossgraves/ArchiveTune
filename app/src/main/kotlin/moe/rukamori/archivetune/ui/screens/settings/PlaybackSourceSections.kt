@@ -50,6 +50,9 @@ import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.audiosource.AudioSourceConfig
 import moe.rukamori.archivetune.constants.AudioSourceOrderKey
 import moe.rukamori.archivetune.constants.AudioSourceType
+import moe.rukamori.archivetune.constants.DeezerAccountNameKey
+import moe.rukamori.archivetune.constants.DeezerAccountPremiumKey
+import moe.rukamori.archivetune.constants.DeezerArlKey
 import moe.rukamori.archivetune.constants.DeezerAudioQuality
 import moe.rukamori.archivetune.constants.DeezerAudioQualityKey
 import moe.rukamori.archivetune.constants.DeezerEnabledKey
@@ -111,6 +114,10 @@ fun PlaybackSourceSections(navController: NavController) {
     val (tidalEnabled, onTidalEnabledChange) = rememberPreference(TidalEnabledKey, true)
     val (qobuzEnabled, onQobuzEnabledChange) = rememberPreference(QobuzEnabledKey, false)
     val (deezerEnabled, onDeezerEnabledChange) = rememberPreference(DeezerEnabledKey, false)
+    // Only the setters are needed here; the ARL and tier themselves are never shown in settings.
+    val (_, onDeezerArlChange) = rememberPreference(DeezerArlKey, "")
+    val (deezerAccountName, onDeezerAccountNameChange) = rememberPreference(DeezerAccountNameKey, "")
+    val (_, onDeezerAccountPremiumChange) = rememberPreference(DeezerAccountPremiumKey, false)
 
     // The Integration screen only shows its per-service login entries when this Debug flag is
     // on, so the "manage in Integration" shortcuts below would otherwise lead nowhere useful.
@@ -394,6 +401,36 @@ fun PlaybackSourceSections(navController: NavController) {
                     }
                 },
             )
+        }
+
+        // A manual sign-in is offered regardless of `manualSourceLogin`: that flag gates self-hosted
+        // proxy instances, which Deezer does not have. Signing in here is the only way to use Deezer
+        // without waiting on the shared pool.
+        if (deezerAccountName.isEmpty()) {
+            item {
+                PreferenceEntry(
+                    title = { Text(stringResource(R.string.deezer_login)) },
+                    description = stringResource(R.string.deezer_login_description),
+                    icon = { Icon(painterResource(R.drawable.token), null) },
+                    isEnabled = deezerEnabled,
+                    onClick = { navController.navigate(DEEZER_LOGIN_ROUTE) },
+                )
+            }
+        } else {
+            item {
+                PreferenceEntry(
+                    title = { Text(stringResource(R.string.deezer_sign_out)) },
+                    description = stringResource(R.string.deezer_signed_in_as, deezerAccountName),
+                    icon = { Icon(painterResource(R.drawable.logout), null) },
+                    onClick = {
+                        // Clearing the ARL is what actually signs out; App.kt's collector observes it
+                        // and drops the provider's session. Name/premium are display state only.
+                        onDeezerArlChange("")
+                        onDeezerAccountNameChange("")
+                        onDeezerAccountPremiumChange(false)
+                    },
+                )
+            }
         }
     }
 }

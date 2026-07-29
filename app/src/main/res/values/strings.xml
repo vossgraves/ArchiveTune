@@ -841,6 +841,13 @@
     <string name="deezer_quality_flac">FLAC (CD 16-bit)</string>
     <string name="deezer_quality_mp3_320">MP3 320 kbps</string>
     <string name="deezer_quality_mp3_128">MP3 128 kbps</string>
+    <string name="deezer_login">Sign in to Deezer</string>
+    <string name="deezer_login_description">Use your own Deezer account instead of the shared pool</string>
+    <string name="deezer_login_success">Signed in to Deezer as %1$s</string>
+    <string name="deezer_signed_in_as">Signed in as %1$s</string>
+    <string name="deezer_sign_out">Sign out of Deezer</string>
+    <string name="deezer_sign_out_description">Removes the stored session cookie from this device</string>
+    <string name="deezer_signed_out">Signed out of Deezer</string>
 
     <!-- Qobuz music source integration -->
     <string name="source_qobuz">Qobuz</string>
