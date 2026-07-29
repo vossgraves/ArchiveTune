@@ -67,6 +67,7 @@ import moe.rukamori.archivetune.constants.TelegramLosslessOnlyKey
 import moe.rukamori.archivetune.telegram.TelegramChannel
 import moe.rukamori.archivetune.telegram.TelegramChannelSync
 import moe.rukamori.archivetune.telegram.TelegramClient
+import moe.rukamori.archivetune.telegram.TelegramJoinRequestPendingException
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.rememberPreference
@@ -96,12 +97,15 @@ fun TelegramBrowseScreen(navController: NavController) {
             val found =
                 runCatching { TelegramClient.searchChannels(trimmed) }
                     .onFailure { e ->
-                        Toast
-                            .makeText(
-                                context,
-                                context.getString(R.string.telegram_error, e.message ?: "?"),
-                                Toast.LENGTH_SHORT,
-                            ).show()
+                        // An approval-required invite link is a distinct outcome, not an error:
+                        // reporting it as a generic failure looked identical to a bad link.
+                        val message =
+                            if (e is TelegramJoinRequestPendingException) {
+                                context.getString(R.string.telegram_join_request_pending, e.chatTitle)
+                            } else {
+                                context.getString(R.string.telegram_error, e.message ?: "?")
+                            }
+                        Toast.makeText(context, message, Toast.LENGTH_LONG).show()
                     }.getOrDefault(emptyList())
             results.clear()
             results.addAll(found)

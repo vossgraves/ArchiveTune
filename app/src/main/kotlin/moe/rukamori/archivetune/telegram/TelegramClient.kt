@@ -88,6 +88,14 @@ class TelegramApiException(
     message: String,
 ) : IOException("Telegram error $code: $message")
 
+/**
+ * Raised when an invite link needs an admin to approve the join before the channel can be read.
+ * Distinct from a plain failure so the UI can say the channel is pending rather than missing.
+ */
+class TelegramJoinRequestPendingException(
+    val chatTitle: String,
+) : IOException("Join request required for \"$chatTitle\"")
+
 object TelegramClient {
     private const val TAG = "TelegramClient"
 
@@ -270,8 +278,7 @@ object TelegramClient {
     /**
      * Resolves a private channel invite link to a chat id. `t.me/c/<internalId>/<messageId>` encodes
      * the supergroup's internal id, which maps to a chat id by the documented -100 prefix rule.
-     * `t.me/+hash` / `t.me/joinchat/<hash>` links are resolved through TDLib, which returns the chat
-     * id when the user has already joined.
+     * `t.me/+hash` / `t.me/joinchat/<hash>` links are resolved through TDLib.
      */
     private suspend fun privateChannelChatId(query: String): Long? {
         Regex("t(?:elegram)?\\.me/c/(\\d{1,19})", RegexOption.IGNORE_CASE)
@@ -284,17 +291,31 @@ object TelegramClient {
                 return "-100$internalId".toLongOrNull()
             }
 
+        // `add/` is accepted as well as `+`/`joinchat/`: Telegram hands out all three shapes.
         val inviteHash =
-            Regex("t(?:elegram)?\\.me/(?:\\+|joinchat/)([A-Za-z0-9_-]+)", RegexOption.IGNORE_CASE)
-                .find(query)
+            Regex(
+                "t(?:elegram)?\\.me/(?:\\+|joinchat/|add/)([A-Za-z0-9_-]+)",
+                RegexOption.IGNORE_CASE,
+            ).find(query)
                 ?.groupValues
                 ?.get(1)
                 ?: return null
-        // Only inspects the invite link; it does not join on the user's behalf.
-        return runCatching { send(TdApi.CheckChatInviteLink("https://t.me/+$inviteHash")) }
-            .getOrNull()
-            ?.chatId
-            ?.takeIf { it != 0L }
+        val inviteLink = "https://t.me/+$inviteHash"
+
+        val info = send(TdApi.CheckChatInviteLink(inviteLink))
+        // Per TDLib, chatId is "0 if the user has no access to the chat before joining", so a
+        // non-zero id means the account is already a member and can read the channel as-is.
+        info.chatId.takeIf { it != 0L }?.let { return it }
+
+        // Otherwise inspecting the link is not enough. CheckChatInviteLink alone never grants read
+        // access, so returning here — as this used to — left every unjoined private channel
+        // unreachable, which is the bug this fixes: joining is the only way in.
+        if (info.createsJoinRequest) {
+            // An approval-required link cannot be joined unilaterally. Joining would only queue a
+            // request, so report it instead of failing as "no channels found".
+            throw TelegramJoinRequestPendingException(info.title)
+        }
+        return send(TdApi.JoinChatByInviteLink(inviteLink)).id
     }
 
     suspend fun getChat(chatId: Long): TdApi.Chat = chatCache[chatId] ?: send(TdApi.GetChat(chatId))

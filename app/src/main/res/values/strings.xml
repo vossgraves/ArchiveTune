@@ -1426,7 +1426,8 @@
     <string name="telegram_auth_unsupported">Unsupported login step: %1$s. Try signing in with the official Telegram app first.</string>
     <string name="telegram_browse_channels">Browse channels</string>
     <string name="telegram_browse_channels_description">Search Telegram channels and stream their audio files</string>
-    <string name="telegram_search_channels_hint">Channel name, @username or t.me link</string>
+    <string name="telegram_search_channels_hint">Channel name, @username, or public/private t.me link</string>
+    <string name="telegram_join_request_pending">\u0022%1$s\u0022 needs an admin to approve your join request. Try again once it is accepted.</string>
     <string name="telegram_channel">Channel</string>
     <string name="telegram_group">Group</string>
     <string name="telegram_members">%1$s members</string>
