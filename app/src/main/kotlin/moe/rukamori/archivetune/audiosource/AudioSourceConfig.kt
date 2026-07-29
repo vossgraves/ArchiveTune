@@ -263,6 +263,7 @@ object AudioSourceConfig {
         listOf(
             AudioSourceType.TIDAL,
             AudioSourceType.QOBUZ,
+            AudioSourceType.DEEZER,
             AudioSourceType.YOUTUBE,
         )
 
@@ -287,8 +288,11 @@ object AudioSourceConfig {
                 ?.distinct()
                 .orEmpty()
         val merged = LinkedHashSet(parsed)
-        // Append any sources not present in the stored order in their default position. When nothing
-        // is stored this yields DEFAULT_ORDER (Tidal, Qobuz, YouTube), i.e. YouTube stays last.
+        // Append any sources not present in the stored order. When nothing is stored this yields
+        // DEFAULT_ORDER (Tidal, Qobuz, Deezer, YouTube), i.e. YouTube stays last. Note a source added
+        // by a later app update lands at the END for users who already have an order stored, even if
+        // DEFAULT_ORDER puts it before YouTube — deliberately, so an update never silently promotes a
+        // new source above the stream a user already had configured.
         DEFAULT_ORDER.forEach { merged.add(it) }
         return merged.toList()
     }

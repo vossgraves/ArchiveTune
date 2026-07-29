@@ -86,6 +86,7 @@ private fun AudioSourceType.displayName(context: android.content.Context): Strin
     when (this) {
         AudioSourceType.TIDAL -> context.getString(R.string.source_tidal)
         AudioSourceType.QOBUZ -> context.getString(R.string.source_qobuz)
+        AudioSourceType.DEEZER -> context.getString(R.string.source_deezer)
         AudioSourceType.YOUTUBE -> context.getString(R.string.source_youtube)
     }
 
@@ -93,13 +94,14 @@ private fun AudioSourceType.iconRes(): Int =
     when (this) {
         AudioSourceType.TIDAL -> R.drawable.provider_tidal
         AudioSourceType.QOBUZ -> R.drawable.provider_qobuz
+        AudioSourceType.DEEZER -> R.drawable.provider_deezer
         AudioSourceType.YOUTUBE -> R.drawable.play
     }
 
 /**
  * Renders all streaming-source preference groups inline in the caller's scrolling Column. Meant to
  * be called from [PlayerSettings]. Emits, in order: the common "Sources" group (preferred-source
- * picker + YouTube history sync), then YouTube, Tidal and Qobuz specific groups.
+ * picker + YouTube history sync), then YouTube, Tidal, Qobuz and Deezer specific groups.
  */
 @Composable
 fun PlaybackSourceSections(navController: NavController) {
@@ -170,6 +172,7 @@ fun PlaybackSourceSections(navController: NavController) {
         when (source) {
             AudioSourceType.TIDAL -> tidalEnabled
             AudioSourceType.QOBUZ -> qobuzEnabled
+            AudioSourceType.DEEZER -> deezerEnabled
             AudioSourceType.YOUTUBE -> true
         }
 

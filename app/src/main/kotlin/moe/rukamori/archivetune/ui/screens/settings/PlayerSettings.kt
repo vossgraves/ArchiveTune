@@ -469,6 +469,7 @@ fun PlayerSettings(navController: NavController) {
                                 DownloadSource.AUTO -> stringResource(R.string.download_source_auto)
                                 DownloadSource.QOBUZ -> stringResource(R.string.download_source_qobuz)
                                 DownloadSource.TIDAL -> stringResource(R.string.download_source_tidal)
+                                DownloadSource.DEEZER -> stringResource(R.string.download_source_deezer)
                                 DownloadSource.YOUTUBE_MUSIC -> stringResource(R.string.download_source_youtube_music)
                             }
                         },

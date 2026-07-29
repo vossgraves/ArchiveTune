@@ -176,6 +176,7 @@ enum class DownloadSource {
     AUTO,
     QOBUZ,
     TIDAL,
+    DEEZER,
     YOUTUBE_MUSIC,
     ;
 
@@ -185,9 +186,12 @@ enum class DownloadSource {
      */
     fun losslessChain(): List<DownloadSource> =
         when (this) {
-            AUTO -> listOf(QOBUZ, TIDAL)
+            // Deezer is tried last: it is inert without pooled accounts, so putting it ahead of
+            // Qobuz/Tidal would just add a wasted round trip for the many users who have none.
+            AUTO -> listOf(QOBUZ, TIDAL, DEEZER)
             QOBUZ -> listOf(QOBUZ)
             TIDAL -> listOf(TIDAL)
+            DEEZER -> listOf(DEEZER)
             YOUTUBE_MUSIC -> emptyList()
         }
 }
@@ -1013,6 +1017,9 @@ val TelegramLosslessOnlyKey = booleanPreferencesKey("telegramLosslessOnly")
 enum class AudioSourceType {
     TIDAL,
     QOBUZ,
+    DEEZER,
+
+    // Must stay last: the resolution chain treats everything after YOUTUBE as "not an override".
     YOUTUBE,
 }
 

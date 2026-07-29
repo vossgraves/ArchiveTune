@@ -1496,6 +1496,7 @@ private fun AudioSourceType.sourceLabelRes(): Int =
     when (this) {
         AudioSourceType.TIDAL -> R.string.source_tidal
         AudioSourceType.QOBUZ -> R.string.source_qobuz
+        AudioSourceType.DEEZER -> R.string.source_deezer
         AudioSourceType.YOUTUBE -> R.string.source_youtube
     }
 
@@ -1503,6 +1504,7 @@ private fun AudioSourceType.sourceIconRes(): Int =
     when (this) {
         AudioSourceType.TIDAL -> R.drawable.provider_tidal
         AudioSourceType.QOBUZ -> R.drawable.provider_qobuz
+        AudioSourceType.DEEZER -> R.drawable.provider_deezer
         AudioSourceType.YOUTUBE -> R.drawable.play
     }
 

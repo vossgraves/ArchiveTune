@@ -185,11 +185,12 @@
         <item quantity="other">Export %1$d songs</item>
     </plurals>
     <string name="download_source_title">Download source</string>
-    <string name="download_source_description">Where downloads fetch audio from. Automatic tries each lossless service in turn. Qobuz and Tidal need a configured account and fall back to YouTube Music when no match is found.</string>
+    <string name="download_source_description">Where downloads fetch audio from. Automatic tries each lossless service in turn. Qobuz, Tidal and Deezer need a configured account and fall back to YouTube Music when no match is found.</string>
     <string name="download_source_auto">Automatic (best available)</string>
     <string name="download_source_youtube_music">YouTube Music</string>
     <string name="download_source_tidal">Tidal</string>
     <string name="download_source_qobuz">Qobuz</string>
+    <string name="download_source_deezer">Deezer</string>
     <string name="download_quality_title">Download quality</string>
     <string name="download_quality_max">Max</string>
     <string name="download_quality_max_description">Best the source offers, up to 24-bit/192 kHz</string>
