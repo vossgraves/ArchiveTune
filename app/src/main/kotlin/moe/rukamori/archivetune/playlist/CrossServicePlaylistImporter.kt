@@ -14,6 +14,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.innertube.models.SongItem
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
@@ -84,13 +85,31 @@ object CrossServicePlaylistImporter {
      * Detects the source service from a URL. Returns [ImportSource.UNKNOWN]
      * for unrecognized URLs so the caller can show a friendly error.
      */
-    fun detectSource(url: String): ImportSource = when {
-        url.contains("music.youtube.com") || url.contains("youtube.com/playlist") -> ImportSource.YOUTUBE_MUSIC
-        url.contains("music.apple.com") -> ImportSource.APPLE_MUSIC
-        url.contains("music.amazon.com") -> ImportSource.AMAZON_MUSIC
-        url.contains("tidal.com") -> ImportSource.TIDAL
-        url.contains("deezer.com") -> ImportSource.DEEZER
-        else -> ImportSource.UNKNOWN
+    fun detectSource(url: String): ImportSource {
+        // Match on the parsed *host*, never on a substring of the whole URL:
+        // `https://evil.example/?ref=tidal.com` contains "tidal.com" but is not
+        // Tidal, and we hand this URL straight to an HTTP GET further down.
+        // Parsed with OkHttp's HttpUrl — the same parser that performs the
+        // request — so validation can't disagree with what actually gets fetched
+        // (it also strips userinfo, so `https://tidal.com@evil.example` resolves
+        // to host `evil.example` and is correctly rejected).
+        val parsed = url.trim().toHttpUrlOrNull() ?: return ImportSource.UNKNOWN
+
+        // Only https:// is accepted so a playlist link can't downgrade the fetch.
+        if (parsed.scheme != "https") return ImportSource.UNKNOWN
+
+        val host = parsed.host.lowercase().removePrefix("www.")
+
+        fun matches(domain: String) = host == domain || host.endsWith(".$domain")
+
+        return when {
+            matches("music.youtube.com") || matches("youtube.com") -> ImportSource.YOUTUBE_MUSIC
+            matches("music.apple.com") -> ImportSource.APPLE_MUSIC
+            matches("music.amazon.com") -> ImportSource.AMAZON_MUSIC
+            matches("tidal.com") -> ImportSource.TIDAL
+            matches("deezer.com") -> ImportSource.DEEZER
+            else -> ImportSource.UNKNOWN
+        }
     }
 
     /**
@@ -419,7 +438,16 @@ object CrossServicePlaylistImporter {
             .build()
         client.newCall(req).execute().use { res ->
             if (!res.isSuccessful) error("HTTP ${res.code} fetching $url")
-            res.body?.string() ?: error("Empty response from $url")
+            // Redirects are followed, so re-validate where we actually landed:
+            // a trusted host must not be able to bounce us to an arbitrary one.
+            if (detectSource(res.request.url.toString()) == ImportSource.UNKNOWN) {
+                error("Playlist URL redirected to an untrusted host")
+            }
+            // Playlist pages are HTML/JSON; cap the body so a hostile or
+            // mis-routed response can't stream until the app runs out of memory.
+            // peekBody reads at most MAX_RESPONSE_BYTES and truncates beyond it.
+            res.peekBody(MAX_RESPONSE_BYTES).string()
+                .ifBlank { error("Empty response from $url") }
         }
     }
 
@@ -447,4 +475,7 @@ object CrossServicePlaylistImporter {
             .replace("&#x2F;", "/")
 
     private const val MAX_PARALLEL_SEARCHES = 6
+
+    /** Upper bound on a fetched playlist page. Real pages are well under 8 MB. */
+    private const val MAX_RESPONSE_BYTES = 8L * 1024 * 1024
 }
