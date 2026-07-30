@@ -46,6 +46,7 @@ import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalDatabase
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.db.entities.PlaylistEntity
+import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.playlist.CrossServiceImportCredentials
 import moe.rukamori.archivetune.playlist.CrossServicePlaylistImporter
 import moe.rukamori.archivetune.ui.component.DefaultDialog
@@ -198,13 +199,22 @@ fun CrossServiceImportPlaylistDialog(
                                 return@launch
                             }
 
-                            // For YouTube Music imports we already have song ids —
-                            // skip the per-track search step.
-                            val songIds: List<String> =
+                            // Resolve tracks all the way to fully-populated
+                            // MediaMetadata (title/artists/album/thumbnail)
+                            // so we can insert them into the `song` table
+                            // BEFORE linking them to a playlist. Without this,
+                            // addSongToPlaylist() trips the
+                            // playlist_song_map.songId → song.id FOREIGN KEY
+                            // constraint and the whole import fails with
+                            // "FOREIGN KEY constraint failed (code 787)".
+                            //
+                            // YouTube Music already has the song ids natively
+                            // (no per-track search needed) but we still fetch
+                            // the full SongItems via fetchYouTubePlaylistSongs
+                            // so we have the metadata to populate the song row.
+                            val songs: List<MediaMetadata> =
                                 if (resolved.source == CrossServicePlaylistImporter.ImportSource.YOUTUBE_MUSIC) {
-                                    // Re-resolve via the existing YouTube.playlist path
-                                    // which returns SongItems with their YouTube ids.
-                                    YouTubePlaylistImportFetcher.fetch(resolved.sourcePlaylistId)
+                                    CrossServicePlaylistImporter.fetchYouTubePlaylistSongs(resolved.sourcePlaylistId)
                                 } else {
                                     withContext(Dispatchers.Main) {
                                         statusMessage = context.getString(
@@ -214,7 +224,7 @@ fun CrossServiceImportPlaylistDialog(
                                         totalCount = resolved.tracks.size
                                         resolvedCount = 0
                                     }
-                                    CrossServicePlaylistImporter.resolveToYouTubeMusic(
+                                    CrossServicePlaylistImporter.resolveToYouTubeMusicMetadata(
                                         tracks = resolved.tracks,
                                         onProgress = { done, total ->
                                             resolvedCount = done
@@ -223,7 +233,7 @@ fun CrossServiceImportPlaylistDialog(
                                     )
                                 }
 
-                            if (songIds.isEmpty()) {
+                            if (songs.isEmpty()) {
                                 withContext(Dispatchers.Main) {
                                     statusMessage = null
                                     isLoading = false
@@ -235,6 +245,18 @@ fun CrossServiceImportPlaylistDialog(
                                 }
                                 return@launch
                             }
+
+                            // === Foreign-key-safe insert ===
+                            // Insert every resolved song into the `song` table
+                            // (plus its artist rows via the @Transaction insert
+                            // overload) inside a single transaction so a
+                            // mid-import crash doesn't leave half the songs
+                            // behind. After this, addSongToPlaylist() can
+                            // safely create the playlist_song_map rows.
+                            database.withTransaction {
+                                songs.forEach { meta -> insert(meta) }
+                            }
+                            val songIds = songs.map { it.id }
 
                             // Create the local playlist and insert the song ids.
                             val playlistName = resolved.title.ifBlank {
@@ -309,21 +331,4 @@ fun CrossServiceImportPlaylistDialog(
             }
         },
     )
-}
-
-/**
- * Tiny helper that calls the existing YouTube.playlist() API to fetch
- * SongItems with their YouTube Music ids. Kept separate so the
- * [CrossServiceImportPlaylistDialog] can treat YouTube Music imports
- * the same as foreign-service imports (final result is a list of
- * YouTube Music song ids).
- */
-private object YouTubePlaylistImportFetcher {
-    suspend fun fetch(playlistId: String): List<String> {
-        val page = moe.rukamori.archivetune.innertube.YouTube
-            .playlist(playlistId)
-            .getOrNull()
-            ?: return emptyList()
-        return page.songs.map { it.id }
-    }
 }

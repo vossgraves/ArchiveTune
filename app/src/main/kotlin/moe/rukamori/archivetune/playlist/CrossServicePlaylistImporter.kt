@@ -14,6 +14,9 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.innertube.models.SongItem
+import moe.rukamori.archivetune.innertube.utils.completed
+import moe.rukamori.archivetune.models.MediaMetadata
+import moe.rukamori.archivetune.models.toMediaMetadata
 import moe.rukamori.archivetune.spotify.Spotify
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -201,6 +204,67 @@ object CrossServicePlaylistImporter {
         }
         results
     }
+
+    /**
+     * Same as [resolveToYouTubeMusic] but returns the fully-resolved
+     * [MediaMetadata] for each matched track (instead of just the song id).
+     *
+     * Callers that need to insert the resolved songs into the local `song`
+     * table — e.g. before linking them to a playlist via
+     * `addSongToPlaylist` — should prefer this overload so they have the
+     * title / artists / thumbnailUrl / album fields required to populate
+     * the `song` row. Otherwise the `playlist_song_map.songId` FOREIGN KEY
+     * → `song.id` constraint will reject the insert.
+     *
+     * Tracks that can't be matched on YouTube Music are skipped.
+     *
+     * @param onProgress optional callback invoked with (resolved, total)
+     *        after each track resolves. Lets the UI show a live counter.
+     */
+    suspend fun resolveToYouTubeMusicMetadata(
+        tracks: List<ForeignTrack>,
+        onProgress: ((Int, Int) -> Unit)? = null,
+    ): List<MediaMetadata> = coroutineScope {
+        val total = tracks.size
+        if (total == 0) return@coroutineScope emptyList()
+        val results = mutableListOf<MediaMetadata>()
+        var completed = 0
+
+        // Process in bounded-concurrency batches so we don't hammer
+        // InnerTube with 100+ parallel searches for a 100-track playlist.
+        tracks.chunked(MAX_PARALLEL_SEARCHES).forEach { batch ->
+            val resolved = batch.map { track ->
+                async {
+                    val term = listOfNotNull(track.artist?.takeIf(String::isNotBlank), track.title)
+                        .joinToString(" ")
+                        .ifBlank { return@async null }
+                    val search = YouTube.search(term, YouTube.SearchFilter.FILTER_SONG).getOrNull()
+                    val first = search?.items?.firstOrNull { it is SongItem } as? SongItem
+                    first?.toMediaMetadata()
+                }
+            }.awaitAll()
+            resolved.filterNotNull().forEach { results.add(it) }
+            completed += batch.size
+            onProgress?.invoke(completed, total)
+        }
+        results
+    }
+
+    /**
+     * Fetches a YouTube Music playlist (following continuation pages)
+     * and returns the fully-resolved [MediaMetadata] for every song.
+     *
+     * Use this instead of `YouTubePlaylistImportFetcher.fetch(...)` when
+     * the caller needs to insert the song rows into the local `song`
+     * table before linking them to a playlist — otherwise the
+     * `playlist_song_map.songId` FOREIGN KEY → `song.id` constraint
+     * will reject the insert.
+     */
+    suspend fun fetchYouTubePlaylistSongs(playlistId: String): List<MediaMetadata> =
+        withContext(Dispatchers.IO) {
+            val page = YouTube.playlist(playlistId).completed().getOrNull() ?: return@withContext emptyList()
+            page.songs.map { it.toMediaMetadata() }
+        }
 
     // ─── Spotify ──────────────────────────────────────────────────────────
     // URL pattern: https://open.spotify.com/playlist/{base62-id}
