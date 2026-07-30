@@ -169,6 +169,17 @@ fun BackupAndRestore(
     var pendingBackupCategories by remember { mutableStateOf(BackupCategory.entries.toSet()) }
     var pendingRestoreCategories by remember { mutableStateOf(BackupCategory.entries.toSet()) }
     var pendingRestoreUri by remember { mutableStateOf<Uri?>(null) }
+    // Drive-folder picker UX state:
+    //   - showGDriveFolderPickerHelp: shown BEFORE launching the SAF picker, to instruct the user
+    //     to switch to the "Drive" provider in the picker's sidebar. Without this hint, users
+    //     frequently pick a local folder and are then confused that backups land on local storage.
+    //   - showGDriveNotDriveFolderError: shown AFTER the picker returns a non-Drive URI. Rejects
+    //     the pick so the previous (valid-or-null) folder stays configured.
+    //   - showGDriveDriveNotInstalledError: shown when the user taps "Drive folder" but no Drive
+    //     DocumentsProvider is registered (Google Drive app not installed on the device).
+    var showGDriveFolderPickerHelp by rememberSaveable { mutableStateOf(false) }
+    var showGDriveNotDriveFolderError by rememberSaveable { mutableStateOf(false) }
+    var showGDriveDriveNotInstalledError by rememberSaveable { mutableStateOf(false) }
 
     val backupRestoreProgress by viewModel.backupRestoreProgress.collectAsStateWithLifecycle()
     val scheduledBackupState by viewModel.scheduledBackupState.collectAsStateWithLifecycle()
@@ -214,16 +225,29 @@ fun BackupAndRestore(
     // choice survives app restarts and reboots, then hand the tree URI + its display name to
     // the ViewModel. This replaced an AccountManager OAuth + Drive REST API approach that
     // failed with `UnregisteredOnApiConsole` for any non-Cloud-Console-registered build.
+    //
+    // IMPORTANT: We reject any URI whose authority isn't the Google Drive DocumentsProvider.
+    // Without this check, users frequently pick a local-storage folder (the picker's default
+    // view) and then report that backups land on local storage instead of Drive — see the
+    // attached screenshots in the user's bug report. Rejecting non-Drive URIs forces the user
+    // back to the picker with a clear error so they can navigate to Drive in the sidebar.
     val gdriveFolderPickerLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { treeUri ->
             if (treeUri == null) return@rememberLauncherForActivityResult
+            // Reject non-Drive folders so backups don't silently land on local storage.
+            // The picker's permission grant is temporary and expires when the process dies,
+            // so there's nothing to release here — we just don't persist it.
+            if (!isGoogleDriveTreeUri(treeUri)) {
+                showGDriveNotDriveFolderError = true
+                return@rememberLauncherForActivityResult
+            }
             // Persist access so the WorkManager worker can write to this folder later, even
             // after the app process is killed.
             runCatching {
                 context.contentResolver.takePersistableUriPermission(
                     treeUri,
-                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
-                        android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                        Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
                 )
             }
             // Derive a display name from the picked tree URI so the UI can show which folder
@@ -366,6 +390,7 @@ fun BackupAndRestore(
                             customDateEpochDay = null,
                             customDateLabel = null,
                             remoteFolderName = null,
+                            remoteFolderUri = null,
                             overwriteExisting = false,
                             showCustomDatePicker = false,
                             lastSyncLabel = null,
@@ -382,7 +407,17 @@ fun BackupAndRestore(
                 onFrequencySelected = viewModel::onGoogleDriveSyncFrequencySelected,
                 onCustomDateSelected = viewModel::onGoogleDriveSyncCustomDateSelected,
                 onCustomDateDismissed = viewModel::onGoogleDriveSyncCustomDateDismissed,
-                onRemoteFolderClick = { gdriveFolderPickerLauncher.launch(null) },
+                onRemoteFolderClick = {
+                    // Don't launch the SAF picker directly — first show a help dialog that tells
+                    // the user to switch to the "Drive" provider in the picker's sidebar. Without
+                    // this hint, users almost always pick a local folder and then complain that
+                    // backups land on local storage.
+                    if (isGoogleDriveInstalled(context)) {
+                        showGDriveFolderPickerHelp = true
+                    } else {
+                        showGDriveDriveNotInstalledError = true
+                    }
+                },
                 onClearFolderClick = viewModel::onGoogleDriveSyncRemoteFolderCleared,
                 onOverwriteChanged = viewModel::onGoogleDriveSyncOverwriteChanged,
                 onSyncNowClick = viewModel::onGoogleDriveSyncRunNow,
@@ -520,6 +555,105 @@ fun BackupAndRestore(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+    }
+
+    // Pre-picker help dialog. Explains to the user that they MUST switch to the "Drive"
+    // provider in the system picker's sidebar — otherwise they'll pick a local-storage
+    // folder and the backup won't actually go to Google Drive. Tapping "Open picker"
+    // launches the SAF OpenDocumentTree intent.
+    if (showGDriveFolderPickerHelp) {
+        AlertDialog(
+            onDismissRequest = { showGDriveFolderPickerHelp = false },
+            title = { Text(stringResource(R.string.google_drive_sync_pick_folder_help_title)) },
+            text = {
+                Text(
+                    text = stringResource(R.string.google_drive_sync_pick_folder_help_message),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showGDriveFolderPickerHelp = false
+                        gdriveFolderPickerLauncher.launch(null)
+                    },
+                    shapes = ButtonDefaults.shapes(),
+                ) {
+                    Text(stringResource(R.string.google_drive_sync_pick_folder_help_open))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showGDriveFolderPickerHelp = false },
+                    shapes = ButtonDefaults.shapes(),
+                ) {
+                    Text(stringResource(android.R.string.cancel))
+                }
+            },
+        )
+    }
+
+    // Post-picker rejection dialog. Shown when the user picked a folder whose authority isn't
+    // Google Drive's DocumentsProvider — i.e. they picked a local-storage, Nextcloud, or
+    // other-provider folder. "Try again" re-opens the picker so they can navigate to Drive.
+    if (showGDriveNotDriveFolderError) {
+        AlertDialog(
+            onDismissRequest = { showGDriveNotDriveFolderError = false },
+            title = { Text(stringResource(R.string.google_drive_sync_not_drive_folder_title)) },
+            text = {
+                Text(
+                    text = stringResource(R.string.google_drive_sync_not_drive_folder_message),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showGDriveNotDriveFolderError = false
+                        gdriveFolderPickerLauncher.launch(null)
+                    },
+                    shapes = ButtonDefaults.shapes(),
+                ) {
+                    Text(stringResource(R.string.google_drive_sync_not_drive_folder_try_again))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showGDriveNotDriveFolderError = false },
+                    shapes = ButtonDefaults.shapes(),
+                ) {
+                    Text(stringResource(android.R.string.cancel))
+                }
+            },
+        )
+    }
+
+    // Drive-not-installed dialog. Shown when the user taps "Drive folder" but no Google Drive
+    // DocumentsProvider is registered on the device (the Google Drive app isn't installed).
+    // Without the Drive app, the SAF picker can't show Drive folders, so the feature is
+    // unusable — surface a clear error instead of silently letting the user pick a local folder.
+    if (showGDriveDriveNotInstalledError) {
+        AlertDialog(
+            onDismissRequest = { showGDriveDriveNotInstalledError = false },
+            title = { Text(stringResource(R.string.google_drive_sync_drive_not_installed_title)) },
+            text = {
+                Text(
+                    text = stringResource(R.string.google_drive_sync_drive_not_installed_message),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = { showGDriveDriveNotInstalledError = false },
+                    shapes = ButtonDefaults.shapes(),
+                ) {
+                    Text(stringResource(android.R.string.ok))
+                }
+            },
+        )
     }
 
     if (showSpotifyLogin) {
@@ -723,18 +857,23 @@ private val ScheduledBackupFrequency.labelRes: Int
  *
  * Layout:
  *   - "Drive folder" entry — opens the SAF folder picker (OpenDocumentTree). Shows the picked
- *     folder name, or "Not set — tap to pick" if no folder has been chosen yet. This is the
- *     primary setup action: picking a folder is what enables the rest of the section.
+ *     folder name, "Not set — tap to pick a Drive folder" if no folder has been chosen yet,
+ *     or "Not a Google Drive folder — tap to re-pick" if the existing pick's URI authority
+ *     doesn't match the Google Drive DocumentsProvider (e.g. a pre-fix user picked a local
+ *     folder by mistake). This is the primary setup action: picking a folder is what enables
+ *     the rest of the section.
  *   - "Clear folder" entry — appears only once a folder is picked. Releases the persisted URI
  *     permission (via the ViewModel) and disables auto-sync.
- *   - "Enable Google Drive sync" switch (disabled until a folder is picked).
+ *   - "Enable Google Drive sync" switch (disabled until a valid Drive folder is picked).
  *   - "Backup schedule" enum list — DAILY / WEEKLY / MONTHLY / CUSTOM (date picker).
  *   - "Overwrite existing Drive backup" switch.
  *   - "Sync now" entry — triggers an immediate one-shot upload to the picked folder.
  *   - "Last synced: …" footer (or "Last sync failed — will retry automatically" on failure).
  *
  * The frequency selector, overwrite switch, enable toggle, and sync-now entry are all gated on
- * `remoteFolderName != null` — you can't sync to a folder you haven't picked yet.
+ * `folderEffective` (= folder picked AND URI is a Drive URI) — you can't sync to a folder you
+ * haven't picked yet, and you can't sync to a non-Drive folder either (the upload would silently
+ * land on local storage).
  */
 @Composable
 private fun GoogleDriveSyncSection(
@@ -750,7 +889,14 @@ private fun GoogleDriveSyncSection(
     onSyncNowClick: () -> Unit,
     positions: PreferencePositions,
 ) {
+    // A folder is "configured" if a name was picked, but it's only "valid" if the underlying
+    // URI is a Google Drive tree URI. Pre-fix users (and users who somehow bypassed the picker
+    // validation) may have a non-Drive URI saved — we surface a warning in the folder row and
+    // disable sync actions so they're forced to re-pick before anything uploads to the wrong
+    // place.
     val folderConfigured = data.remoteFolderName != null
+    val folderUriValid = data.remoteFolderUri?.let { isGoogleDriveTreeUri(Uri.parse(it)) } ?: false
+    val folderEffective = folderConfigured && folderUriValid
     PreferenceGroup(
         modifier = positions.modifierFor("google_drive_sync"),
         title = stringResource(R.string.google_drive_sync),
@@ -759,8 +905,15 @@ private fun GoogleDriveSyncSection(
             PreferenceEntry(
                 title = { Text(stringResource(R.string.google_drive_sync_remote_folder)) },
                 description =
-                    data.remoteFolderName
-                        ?: stringResource(R.string.google_drive_sync_remote_folder_not_set),
+                    when {
+                        // Existing pick but URI doesn't point at Drive — surface a warning so
+                        // the user knows to re-pick (otherwise sync would upload to local
+                        // storage and they'd be confused, exactly as in the bug report).
+                        folderConfigured && !folderUriValid ->
+                            stringResource(R.string.google_drive_sync_invalid_folder_warning)
+                        data.remoteFolderName != null -> data.remoteFolderName
+                        else -> stringResource(R.string.google_drive_sync_remote_folder_not_set)
+                    },
                 icon = { Icon(painterResource(R.drawable.snippet_folder), contentDescription = null) },
                 onClick = onRemoteFolderClick,
                 isEnabled = enabled,
@@ -793,7 +946,7 @@ private fun GoogleDriveSyncSection(
                 icon = { Icon(painterResource(R.drawable.sync), contentDescription = null) },
                 checked = data.enabled,
                 onCheckedChange = onEnabledChanged,
-                isEnabled = enabled && folderConfigured,
+                isEnabled = enabled && folderEffective,
             )
         }
 
@@ -810,7 +963,7 @@ private fun GoogleDriveSyncSection(
                 selectedValue = data.frequency,
                 valueText = { frequency -> stringResource(frequency.labelRes) },
                 onValueSelected = onFrequencySelected,
-                isEnabled = enabled && folderConfigured,
+                isEnabled = enabled && folderEffective,
             )
         }
 
@@ -821,7 +974,7 @@ private fun GoogleDriveSyncSection(
                 icon = { Icon(painterResource(R.drawable.backup), contentDescription = null) },
                 checked = data.overwriteExisting,
                 onCheckedChange = onOverwriteChanged,
-                isEnabled = enabled && folderConfigured,
+                isEnabled = enabled && folderEffective,
             )
         }
 
@@ -838,7 +991,7 @@ private fun GoogleDriveSyncSection(
                     },
                 icon = { Icon(painterResource(R.drawable.sync), contentDescription = null) },
                 onClick = onSyncNowClick,
-                isEnabled = enabled && folderConfigured && !data.isSyncing,
+                isEnabled = enabled && folderEffective && !data.isSyncing,
             )
         }
     }
@@ -1568,4 +1721,47 @@ private fun resolveFolderDisplayName(context: android.content.Context, treeUri: 
     } catch (e: Exception) {
         ""
     }
+}
+
+/**
+ * Authorities registered by the Google Drive app's DocumentsProvider. When the user picks a
+ * Drive folder via the system `OpenDocumentTree` picker, the returned tree URI has one of
+ * these as its authority. Any other authority (e.g. `com.android.externalstorage.documents`
+ * for local storage, `org.nextcloud.documents` for Nextcloud) means the user picked a
+ * non-Drive folder — we reject those so backups don't silently land somewhere the user
+ * didn't intend.
+ *
+ *   - `com.google.android.apps.docs.storage` — the modern Drive app.
+ *   - `com.google.android.apps.docs.storage.legacy` — older Drive app variants still seen
+ *     on some OEM ROMs.
+ */
+private val GOOGLE_DRIVE_AUTHORITIES = setOf(
+    "com.google.android.apps.docs.storage",
+    "com.google.android.apps.docs.storage.legacy",
+)
+
+/**
+ * Returns true iff [uri] is a SAF tree URI whose authority matches the Google Drive
+ * DocumentsProvider. Used to validate the result of `OpenDocumentTree` so we can reject
+ * non-Drive picks before persisting them.
+ */
+private fun isGoogleDriveTreeUri(uri: Uri): Boolean {
+    val authority = uri.authority ?: return false
+    return authority in GOOGLE_DRIVE_AUTHORITIES
+}
+
+/**
+ * Returns true iff the Google Drive app is installed and registered as a DocumentsProvider
+ * on this device. We probe via [PackageManager.resolveContentProvider] (cheap, no IPC)
+ * rather than `getPackageInfo` so we don't need to know Drive's exact package name (which
+ * has changed historically) and so we accept any fork that registers the same authority.
+ *
+ * If Drive isn't installed, the SAF picker has no Drive root to navigate to, so the entire
+ * Drive-sync feature is unusable — we surface a clear error to the user instead of letting
+ * them pick a local folder by mistake.
+ */
+private fun isGoogleDriveInstalled(context: android.content.Context): Boolean {
+    val resolveInfo = context.packageManager
+        .resolveContentProvider("com.google.android.apps.docs.storage", 0)
+    return resolveInfo != null
 }

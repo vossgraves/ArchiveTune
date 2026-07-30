@@ -112,6 +112,16 @@ class GoogleDriveClient
                     } catch (e: Exception) {
                         return@withContext UploadResult.PermanentFailure("Invalid folder URI: ${e.message}")
                     }
+                // Defensive: reject non-Drive URIs at the upload boundary. The UI picker
+                // validates this too, but a pre-fix user (or one who cleared app data and
+                // restored a backup that pre-dates this check) may still have a local-storage
+                // URI saved. Letting the upload proceed would silently write the backup to
+                // local storage instead of Drive — exactly the bug this fix addresses.
+                if (!isGoogleDriveAuthority(treeUri)) {
+                    return@withContext UploadResult.PermanentFailure(
+                        "The configured folder is not on Google Drive. Please re-pick a Drive folder.",
+                    )
+                }
                 val folderDocUri =
                     try {
                         val folderDocId = DocumentsContract.getTreeDocumentId(treeUri)
@@ -237,5 +247,31 @@ class GoogleDriveClient
             /** MIME type used when creating the backup document. Octet-stream is accepted by all
              *  SAF providers and preserves the bytes verbatim. */
             private const val BACKUP_MIME_TYPE = "application/octet-stream"
+
+            /**
+             * Authorities registered by the Google Drive app's DocumentsProvider. When the user
+             * picks a Drive folder via the system `OpenDocumentTree` picker, the returned tree
+             * URI has one of these as its authority. Kept in sync with the same set in
+             * `BackupAndRestore.kt` (UI-side picker validation) — duplicated here so the worker
+             * doesn't have to depend on the UI module.
+             *
+             *   - `com.google.android.apps.docs.storage` — the modern Drive app.
+             *   - `com.google.android.apps.docs.storage.legacy` — older Drive app variants.
+             */
+            private val GOOGLE_DRIVE_AUTHORITIES = setOf(
+                "com.google.android.apps.docs.storage",
+                "com.google.android.apps.docs.storage.legacy",
+            )
+
+            /**
+             * Returns true iff [uri]'s authority matches the Google Drive DocumentsProvider.
+             * Used at the upload boundary to reject non-Drive URIs (e.g. local-storage picks
+             * from before the picker gained validation) so backups never silently land on
+             * local storage.
+             */
+            fun isGoogleDriveAuthority(uri: Uri): Boolean {
+                val authority = uri.authority ?: return false
+                return authority in GOOGLE_DRIVE_AUTHORITIES
+            }
         }
     }
