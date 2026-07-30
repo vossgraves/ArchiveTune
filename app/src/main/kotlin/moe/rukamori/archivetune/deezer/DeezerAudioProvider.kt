@@ -36,15 +36,12 @@ import java.util.concurrent.TimeUnit
  * All calls run blocking network I/O and must not be made from the main thread.
  */
 object DeezerAudioProvider {
-    data class Query(
-        val mediaId: String,
-        val title: String,
-        val artists: List<String>,
-        val album: String?,
-        val durationMs: Long?,
-    )
-
-    data class Resolved(
+    /**
+     * Catalogue metadata for a track, with no playable stream attached. Returned by [lookup] and kept
+     * separate from [Resolved] because callers that only enrich stored metadata (artwork, album name,
+     * ISRC) must not have to satisfy the streaming contract.
+     */
+    data class Metadata(
         val trackId: String,
         val title: String,
         val artist: String?,
@@ -563,7 +560,7 @@ object DeezerAudioProvider {
      * credentials. The returned [Resolved] is used for ISRC lookup, artwork fallback, and
      * downloaded-song metadata enrichment.
      */
-    suspend fun lookup(query: Query): Resolved? =
+    suspend fun lookup(query: Query): Metadata? =
         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             runCatching {
                 val q = buildSearchQuery(query)
@@ -594,7 +591,7 @@ object DeezerAudioProvider {
                             val preview = obj.optString("preview").ifBlank { null }
                             val cover = obj.optJSONObject("album")?.optString("cover_big")?.ifBlank { null }
                             val score = scoreCandidate(query, title, artist, album, durationSec)
-                            Resolved(
+                            Metadata(
                                 trackId = obj.optLong("id").toString(),
                                 title = title,
                                 artist = artist,
