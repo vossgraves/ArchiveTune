@@ -126,6 +126,7 @@ import moe.rukamori.archivetune.db.entities.LyricsEntity.Companion.LYRICS_NOT_FO
 import moe.rukamori.archivetune.lyrics.LyricsEntry
 import moe.rukamori.archivetune.lyrics.LyricsRomanizationPreferences
 import moe.rukamori.archivetune.lyrics.LyricsUtils.findCurrentLineIndex
+import moe.rukamori.archivetune.lyrics.LyricsUtils.hasTrueWordSync
 import moe.rukamori.archivetune.lyrics.LyricsUtils.insertInstrumentalBreaks
 import moe.rukamori.archivetune.lyrics.LyricsUtils.isLineSyncedLrc
 import moe.rukamori.archivetune.lyrics.LyricsUtils.isTtml
@@ -888,7 +889,7 @@ fun LyricsV2(
                             )
                         }
 
-                        if (item.words != null && isSynced) {
+                        if (item.words != null && isSynced && LyricsUtils.hasTrueWordSync(item)) {
                             LyricsLineV2(
                                 words = item.words!!,
                                 isActive = isActive,

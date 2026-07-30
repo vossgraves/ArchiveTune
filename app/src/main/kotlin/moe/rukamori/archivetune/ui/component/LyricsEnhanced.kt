@@ -123,6 +123,7 @@ import moe.rukamori.archivetune.db.entities.LyricsEntity
 import moe.rukamori.archivetune.db.entities.LyricsEntity.Companion.LYRICS_NOT_FOUND
 import moe.rukamori.archivetune.lyrics.LyricsEntry
 import moe.rukamori.archivetune.lyrics.LyricsRomanizationPreferences
+import moe.rukamori.archivetune.lyrics.LyricsUtils.hasTrueWordSync
 import moe.rukamori.archivetune.lyrics.LyricsUtils.isLineSyncedLrc
 import moe.rukamori.archivetune.lyrics.LyricsUtils.isTtml
 import moe.rukamori.archivetune.lyrics.LyricsUtils.parseLyrics
@@ -1257,7 +1258,7 @@ private fun buildSyncedLyrics(
         if (entry.isInstrumental) return@forEachIndexed
         if (entry.text.isBlank() && entry.words.isNullOrEmpty()) return@forEachIndexed
 
-        if (isTtml && entry.words != null) {
+        if (isTtml && entry.words != null && LyricsUtils.hasTrueWordSync(entry)) {
             val translation = providedTranslationTextForEntry(entry)
             val mainWords = entry.words!!.filter { !it.isBackground }
             val bgWords = entry.words!!.filter { it.isBackground }

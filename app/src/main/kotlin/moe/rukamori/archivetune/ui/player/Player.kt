@@ -453,6 +453,10 @@ fun BottomSheetPlayer(
     val currentSongLiked = currentSong?.song?.liked == true
     val queueTitle by playerConnection.queueTitle.collectAsState()
     val currentFormat by playerConnection.currentFormat.collectAsState(initial = null)
+    // Snapshot the lyrics entity for the AOD screen — AOD shows only the current line, so we
+    // pass the raw text down rather than the full Lyrics composable tree (cheaper to render,
+    // and matches the "dim, low-power" goal of always-on display).
+    val currentLyricsEntity by playerConnection.currentLyrics.collectAsState(initial = null)
     val queueWindows by playerConnection.queueWindows.collectAsState()
     val currentWindowIndex by playerConnection.currentWindowIndex.collectAsState()
     val deviceMusicVolumeController = rememberDeviceMusicVolumeController()
@@ -1982,6 +1986,7 @@ fun BottomSheetPlayer(
                     canSkipPrevious = canSkipPrevious,
                     canSkipNext = canSkipNext,
                     thumbnailCornerRadius = thumbnailCornerRadius,
+                    lyricsText = currentLyricsEntity?.lyrics,
                     onPlayPause = { playerConnection.player.togglePlayPause() },
                     onSkipPrevious = playerConnection::seekToPrevious,
                     onSkipNext = playerConnection::seekToNext,

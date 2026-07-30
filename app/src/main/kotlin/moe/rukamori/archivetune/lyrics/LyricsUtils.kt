@@ -675,7 +675,9 @@ object LyricsUtils {
     ): Int {
         if (lines.isEmpty()) return -1
 
-        val target = position + leadMs
+        // Find the last line whose start time is <= position (no lead). This is the
+        // "candidate current line" — we then decide whether to advance to the next line.
+        val exactTarget = position
         var low = 0
         var high = lines.lastIndex
 
@@ -683,14 +685,123 @@ object LyricsUtils {
             val mid = (low + high).ushr(1)
             val midTime = lines[mid].time
 
-            if (midTime < target) {
+            if (midTime < exactTarget) {
                 low = mid + 1
             } else {
                 high = mid - 1
             }
         }
+        val currentIdx = high.coerceIn(0, lines.lastIndex)
 
-        return high.coerceIn(0, lines.lastIndex)
+        // If there's no next line, the current line is the answer.
+        val nextIdx = currentIdx + 1
+        if (nextIdx > lines.lastIndex) return currentIdx
+
+        val currentLine = lines[currentIdx]
+        val nextLine = lines[nextIdx]
+
+        // Fix for "next line becomes active while the previous line is still being sung" —
+        // when the current line has an explicit durationMs (TTML), do not advance to the next
+        // line until we're past the current line's end. The previous behaviour unconditionally
+        // applied `leadMs` and could highlight N+1 up to 300ms before N finished singing,
+        // which was jarring on lines with tight tail gaps.
+        if (currentLine.durationMs > 0L) {
+            val currentLineEndMs = currentLine.time + currentLine.durationMs
+            if (position < currentLineEndMs) {
+                return currentIdx
+            }
+        }
+
+        // For line-synced LRC (no durationMs), the previous behaviour applied a flat 300ms lead
+        // regardless of how big the gap to the next line was. That made the next line highlight
+        // 300ms early even when there was a long instrumental break — and when the actual singing
+        // of the next line was still slightly delayed by the singer, the highlight felt premature.
+        //
+        // We now only apply the lead when lines are back-to-back (gap between line starts <= 2s).
+        // For longer gaps (slow ballads, instrumental interludes), we transition exactly at the
+        // next line's start time — no read-ahead. This preserves smooth transitions on rapid
+        // lyrics while avoiding the premature highlight on long-gap tracks.
+        val gapBetweenLineStartsMs = nextLine.time - currentLine.time
+        val effectiveLeadMs = if (gapBetweenLineStartsMs > 2_000L) 0L else leadMs
+
+        return if (position + effectiveLeadMs >= nextLine.time) {
+            nextIdx
+        } else {
+            currentIdx
+        }
+    }
+
+    /**
+     * Returns true when [entry] has real, per-word timing information that should drive
+     * word-by-word (karaoke) animation. Returns false when the [LyricsEntry.words] list
+     * is missing, empty, or contains only fake/synthetic timing patterns — namely:
+     *
+     *   - All word start times identical (line start sprayed onto every word).
+     *   - All word end times identical (line end sprayed onto every word).
+     *   - All word durations <= 0 (zero-duration spans).
+     *   - Word start times that perfectly match an even linear distribution across the
+     *     line (the classic "provider computed timing by dividing line duration by N"
+     *     pattern) AND word durations are also near-identical (low stddev relative to
+     *     mean). Real human singing has timing variation; mathematically-perfect even
+     *     distribution with identical word durations is the signature of a fake.
+     *
+     * This catches the case where providers like Better Lyrics / YouLyPlus / similar
+     * emit TTML with a `<span>` per word but the spans inherit the line's begin/end with
+     * no actual per-word offsets — which previously made Lyrics.kt animate each word
+     * in lockstep even though the lyric wasn't truly word-synced.
+     */
+    fun hasTrueWordSync(entry: LyricsEntry): Boolean {
+        val raw = entry.words ?: return false
+        val words = raw.filter { it.text.isNotBlank() }
+        if (words.size < 2) return false
+
+        val startTimes = words.map { it.startTime }
+        val endTimes = words.map { it.endTime }
+
+        // All start times identical → no per-word timing.
+        if (startTimes.distinct().size == 1) return false
+        // All end times identical → no per-word timing.
+        if (endTimes.distinct().size == 1) return false
+
+        val durations = words.map { (it.endTime - it.startTime).coerceAtLeast(0.0) }
+        // All durations zero → no real word spans.
+        if (durations.all { it <= 0.0 }) return false
+
+        val lineStart = startTimes.min()
+        val lineEnd = endTimes.max()
+        val lineDuration = lineEnd - lineStart
+
+        // Detect perfectly even linear distribution of start times across the line.
+        // This is what providers produce when they fake word sync by computing
+        //   word[i].start = lineStart + i * (lineEnd - lineStart) / (N - 1)
+        // We tolerate up to 50ms deviation per word; real word sync deviates more.
+        if (lineDuration > 0.0 && words.size > 2) {
+            val tolerance = 0.05 // 50ms
+            val isEvenlyDistributed = startTimes.indices.all { i ->
+                val expected = lineStart + (lineDuration * i / (words.size - 1))
+                kotlin.math.abs(startTimes[i] - expected) < tolerance
+            }
+            if (isEvenlyDistributed) {
+                // Even distribution could still be real singing that happens to be very
+                // regular. Require word durations to also have meaningful variation —
+                // fake providers typically give every word the same duration too.
+                val positiveDurations = durations.filter { it > 0.0 }
+                if (positiveDurations.size >= 3) {
+                    val avg = positiveDurations.average()
+                    if (avg > 0.0) {
+                        val variance = positiveDurations.map { (it - avg) * (it - avg) }.average()
+                        val stddev = kotlin.math.sqrt(variance)
+                        if (stddev / avg < 0.1) {
+                            // Durations are essentially identical AND start times are perfectly
+                            // evenly spaced — this is almost certainly synthetic timing.
+                            return false
+                        }
+                    }
+                }
+            }
+        }
+
+        return true
     }
 
     /**
