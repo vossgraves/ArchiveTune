@@ -198,8 +198,8 @@
     <string name="update_button">Update</string>
     <string name="cross_service_import_playlist_title">Import playlist from URL</string>
     <string name="cross_service_import_playlist_url_label">Playlist URL</string>
-    <string name="cross_service_import_playlist_url_placeholder">Paste a YouTube Music, Apple Music, Amazon Music, Tidal or Deezer playlist URL</string>
-    <string name="cross_service_import_playlist_supported">Supports YouTube Music, Apple Music, Amazon Music, Tidal and Deezer playlists. Each track is matched on YouTube Music and added to a new local playlist.</string>
+    <string name="cross_service_import_playlist_url_placeholder">Paste a YouTube Music, Spotify, Apple Music, Amazon Music, Tidal, Qobuz or Deezer playlist URL</string>
+    <string name="cross_service_import_playlist_supported">Supports YouTube Music, Spotify, Apple Music, Amazon Music, Tidal, Qobuz and Deezer playlists. Each track is matched on YouTube Music and added to a new local playlist.\n\nTidal and Qobuz imports need a linked account or Source Pool.</string>
     <string name="cross_service_import_action">Import</string>
     <string name="cross_service_import_resolving_playlist">Resolving playlist…</string>
     <string name="cross_service_import_searching_yt">Matching %1$d tracks on YouTube Music…</string>
@@ -209,7 +209,7 @@
     <string name="cross_service_import_success">Imported %1$d of %2$d tracks into "%3$s"</string>
     <string name="cross_service_import_failed">Import failed: %1$s</string>
     <string name="cross_service_import_entry_title">Import playlist from another service</string>
-    <string name="cross_service_import_entry_desc">Pull a playlist from YouTube Music, Apple Music, Amazon Music, Tidal or Deezer</string>
+    <string name="cross_service_import_entry_desc">Pull a playlist from YouTube Music, Spotify, Apple Music, Amazon Music, Tidal, Qobuz or Deezer</string>
     <string name="add">Add</string>
     <string name="add_to_playlist">Add to playlist</string>
     <string name="add_to_n_playlists">Add to %1$d</string>

@@ -46,6 +46,7 @@ import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalDatabase
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.db.entities.PlaylistEntity
+import moe.rukamori.archivetune.playlist.CrossServiceImportCredentials
 import moe.rukamori.archivetune.playlist.CrossServicePlaylistImporter
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import java.time.LocalDateTime
@@ -164,7 +165,10 @@ fun CrossServiceImportPlaylistDialog(
                     statusMessage = context.getString(R.string.cross_service_import_resolving_playlist)
                     coroutineScope.launch(Dispatchers.IO) {
                         try {
-                            val resolved = CrossServicePlaylistImporter.fetchPlaylist(url)
+                            // Tidal/Qobuz playlist reads need an account token;
+                            // the other services resolve anonymously.
+                            val credentials = CrossServiceImportCredentials.load(context)
+                            val resolved = CrossServicePlaylistImporter.fetchPlaylist(url, credentials)
                                 .getOrElse { e ->
                                     withContext(Dispatchers.Main) {
                                         statusMessage = null
