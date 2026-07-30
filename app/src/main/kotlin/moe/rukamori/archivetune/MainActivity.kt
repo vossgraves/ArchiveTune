@@ -2605,7 +2605,12 @@ class MainActivity : ComponentActivity() {
                             try {
                                 delay(100)
                                 searchBarFocusRequester.requestFocus()
-                            } catch (_: Exception) {
+                            } catch (e: CancellationException) {
+                                // delay() cancels whenever this effect leaves composition. Catching
+                                // it broke structured concurrency; only requestFocus() on a
+                                // not-yet-attached FocusRequester is a real, ignorable failure.
+                                throw e
+                            } catch (_: IllegalStateException) {
                             }
                             openSearchImmediately = false
                         }

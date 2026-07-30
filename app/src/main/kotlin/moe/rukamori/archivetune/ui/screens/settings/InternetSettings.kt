@@ -58,6 +58,7 @@ import androidx.compose.ui.unit.dp
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
@@ -69,6 +70,7 @@ import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.ProxyUtils
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
+import moe.rukamori.archivetune.utils.reportException
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.net.Proxy
@@ -403,7 +405,13 @@ fun InternetSettings(navController: NavController) {
                                     loadingIpRotation = true
                                     try {
                                         YouTube.enableIpRotation()
-                                    } catch (_: Exception) {
+                                    } catch (e: CancellationException) {
+                                        // Leaving the screen cancels this scope. Treating that as a
+                                        // failure silently flipped the user's toggle back off, so
+                                        // rethrow and only revert on a genuine error.
+                                        throw e
+                                    } catch (e: Exception) {
+                                        reportException(e)
                                         onIpRotationEnabledChange(false)
                                     } finally {
                                         loadingIpRotation = false
@@ -419,7 +427,10 @@ fun InternetSettings(navController: NavController) {
                                 refreshingIpRotation = true
                                 try {
                                     YouTube.refreshIpRotation()
-                                } catch (_: Exception) {
+                                } catch (e: CancellationException) {
+                                    throw e
+                                } catch (e: Exception) {
+                                    reportException(e)
                                 } finally {
                                     refreshingIpRotation = false
                                 }
