@@ -556,9 +556,9 @@ object DeezerAudioProvider {
      * Searches Deezer's public catalogue for [query] and returns the best-matching track's metadata.
      * Returns null when no match is found or the Deezer API is unreachable.
      *
-     * This does NOT return a streamable URL — full-track streaming requires Deezer Premium
-     * credentials. The returned [Resolved] is used for ISRC lookup, artwork fallback, and
-     * downloaded-song metadata enrichment.
+     * Unlike [resolve] this hits Deezer's public API and needs no account, so it returns catalogue
+     * metadata only and never a playable URL. Used for artwork and album-name fallback on downloaded
+     * songs, where a missing field is worth a cheap unauthenticated lookup but silence is not.
      */
     suspend fun lookup(query: Query): Metadata? =
         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
