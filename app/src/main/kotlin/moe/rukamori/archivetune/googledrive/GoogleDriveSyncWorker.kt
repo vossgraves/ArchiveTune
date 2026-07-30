@@ -43,7 +43,7 @@ class GoogleDriveSyncWorker(
                 applicationContext,
                 GoogleDriveSyncWorkerEntryPoint::class.java,
             )
-        val settings = dependencies.repository().getSettings() ?: return Result.success()
+        val settings = dependencies.googleDriveRepository().getSettings() ?: return Result.success()
         if (!settings.enabled || settings.accountEmail == null) return Result.success()
 
         return try {
@@ -55,10 +55,10 @@ class GoogleDriveSyncWorker(
                     "${applicationContext.getString(R.string.app_name)}_$timestamp"
                 }
             val fileId =
-                dependencies.client().uploadBackup(settings, fileName)
+                dependencies.googleDriveClient().uploadBackup(settings, fileName)
                     ?: return Result.retry()
-            dependencies.repository().recordSyncResult(success = true)
-            dependencies.scheduler().appendNext(
+            dependencies.googleDriveRepository().recordSyncResult(success = true)
+            dependencies.googleDriveScheduler().appendNext(
                 settings.copy(lastSyncEpochMs = System.currentTimeMillis(), lastSyncFailed = false),
             )
             Result.success()
@@ -66,11 +66,11 @@ class GoogleDriveSyncWorker(
             throw cancellation
         } catch (security: SecurityException) {
             reportException(security)
-            dependencies.repository().recordSyncResult(success = false)
+            dependencies.googleDriveRepository().recordSyncResult(success = false)
             Result.failure()
         } catch (exception: Exception) {
             reportException(exception)
-            dependencies.repository().recordSyncResult(success = false)
+            dependencies.googleDriveRepository().recordSyncResult(success = false)
             Result.retry()
         }
     }
@@ -80,12 +80,25 @@ class GoogleDriveSyncWorker(
     }
 }
 
+/**
+ * Hilt entry point used by [GoogleDriveSyncWorker] to access the Drive sync dependencies without
+ * a Hilt-injected constructor (WorkManager instantiates workers via its own factory).
+ *
+ * Method names are prefixed with `googleDrive` because Hilt generates a single `SingletonC`
+ * class that implements EVERY `@EntryPoint` interface installed in `SingletonComponent`. If
+ * two entry points expose methods with the same name and JVM-erased signature (e.g.
+ * `repository()` returning different types), the generated Java class has two methods with the
+ * same name + parameter list but different return types — which the JVM rejects with
+ * "Found conflicting entry point declarations". This was happening between
+ * `ScheduledBackupWorkerEntryPoint` (pre-existing) and this interface, so the Google Drive
+ * entry point uses unique method names to avoid the clash.
+ */
 @EntryPoint
 @InstallIn(SingletonComponent::class)
 interface GoogleDriveSyncWorkerEntryPoint {
-    fun repository(): GoogleDriveSyncRepository
+    fun googleDriveRepository(): GoogleDriveSyncRepository
 
-    fun scheduler(): GoogleDriveSyncScheduler
+    fun googleDriveScheduler(): GoogleDriveSyncScheduler
 
-    fun client(): GoogleDriveClient
+    fun googleDriveClient(): GoogleDriveClient
 }
