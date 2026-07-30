@@ -16,17 +16,28 @@ import moe.rukamori.archivetune.backup.ScheduledBackupFrequency
  * so the user sees a consistent set of options in both the local scheduled-backup section and the
  * Google Drive sync section of the Backup & Restore screen.
  *
- * @param enabled Whether auto-sync to Google Drive is active. When false, the WorkManager
- *   scheduled job is cancelled and no uploads happen.
+ * ## Implementation note — SAF, not OAuth
+ *
+ * Backups are uploaded via the Android Storage Access Framework (SAF): the user picks a Drive
+ * folder through the system `OpenDocumentTree` picker, the app persists the returned tree URI
+ * (`takePersistableUriPermission`), and each sync writes the backup file directly into that folder
+ * via `ContentResolver.openOutputStream`.
+ *
+ * This replaced an earlier AccountManager + Drive REST API approach that failed with
+ * `AuthenticatorException: UnregisteredOnApiConsole` because the app's package + SHA-1 was not
+ * registered on Google Cloud Console for the `drive.file` OAuth scope. SAF needs no OAuth, no
+ * Cloud Console registration, and no extra dependencies — the Drive app (and any other cloud
+ * provider that exposes a DocumentsProvider) handles authentication itself.
+ *
+ * @param enabled Whether auto-sync is active. When false, the WorkManager scheduled job is
+ *   cancelled and no uploads happen.
  * @param frequency How often the sync should run.
  * @param customDateEpochDay For CUSTOM frequency — the next date at which the sync should run.
  *   Stored as epoch-day (days since 1970-01-01) for locale-independent storage.
- * @param accountEmail The Google account email the user picked at sign-in. Used to look up the
- *   account via AccountManager when fetching an OAuth token for the Drive API.
- * @param remoteFolderId Google Drive folder ID where backups are uploaded. Null means upload to
- *   "My Drive" root. Resolved once at folder-pick time and persisted.
- * @param remoteFolderName Display name of [remoteFolderId] — shown in the UI so the user can
- *   tell at a glance which Drive folder backups land in.
+ * @param remoteFolderUri The persisted SAF tree URI (as a string) of the folder backups are
+ *   written to. Null means no folder has been picked yet — sync is disabled until one is chosen.
+ * @param remoteFolderName Display name of [remoteFolderUri] — shown in the UI so the user can
+ *   tell at a glance which folder backups land in. Derived from `DocumentFile.name`.
  * @param overwriteExisting When true, each sync overwrites the previous backup file (matched by
  *   name) instead of creating a timestamped new file.
  * @param lastSyncEpochMs Epoch-millis of the last successful sync, or null if never synced.
@@ -37,8 +48,7 @@ data class GoogleDriveSyncSettings(
     val enabled: Boolean = false,
     val frequency: ScheduledBackupFrequency = ScheduledBackupFrequency.WEEKLY,
     val customDateEpochDay: Long? = null,
-    val accountEmail: String? = null,
-    val remoteFolderId: String? = null,
+    val remoteFolderUri: String? = null,
     val remoteFolderName: String? = null,
     val overwriteExisting: Boolean = false,
     val lastSyncEpochMs: Long? = null,

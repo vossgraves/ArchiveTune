@@ -7,58 +7,64 @@
 
 package moe.rukamori.archivetune.googledrive
 
-import android.accounts.Account
-import android.accounts.AccountManager
-import android.accounts.AuthenticatorException
 import android.content.Context
-import android.content.Intent
 import android.net.Uri
+import android.provider.DocumentsContract
 import androidx.core.content.FileProvider
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.backup.BackupArchiveCategory
 import moe.rukamori.archivetune.backup.CreateBackupUseCase
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.MultipartBody
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.asRequestBody
-import okhttp3.RequestBody.Companion.toRequestBody
-import okhttp3.Response
-import org.json.JSONArray
-import org.json.JSONObject
 import timber.log.Timber
 import java.io.File
 import java.io.IOException
-import java.net.URLEncoder
-import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Talks to the Google Drive REST API v3 to upload backup files.
+ * Uploads backup files to a cloud folder chosen by the user via the Android Storage Access
+ * Framework (SAF).
  *
- * Why REST + AccountManager instead of the Google Drive Android API or the google-api-client?
- *  - The Drive Android API was deprecated by Google in 2024.
- *  - The google-api-client + google-api-services-drive JARs add ~6 MB to the APK and require
- *    ProGuard keep rules. They're overkill for a "upload a single file" use case.
- *  - AccountManager is built into Android, works on both GMS and FOSS builds, and lets us
- *    request an OAuth2 token for the `drive.file` scope without shipping any extra dependencies.
+ * ## Why SAF instead of the Drive REST API?
  *
- * The flow:
- *   1. User picks a Google account via AccountManager.getAccountsByType("com.google")
- *      (requires GET_ACCOUNTS permission on API ≤ 22).
- *   2. When a sync is due, [uploadBackup] asks AccountManager for an OAuth2 token for the
- *      `https://www.googleapis.com/auth/drive.file` scope.
- *   3. We build a local backup .zip via [CreateBackupUseCase] into `cacheDir/gdrive_backup/`.
- *   4. We list existing Drive files in the target folder with a `q=name='AppName.backup'`
- *      query — if found and overwrite is requested, we PATCH the existing file; otherwise
- *      we POST a new multipart upload.
- *   5. The local temp file is deleted after upload (success or failure).
+ * An earlier implementation used `AccountManager.getAuthToken` to obtain an OAuth2 token for the
+ * `drive.file` scope and then talked to the Drive REST v3 API directly. That approach failed with
+ * `AuthenticatorException: UnregisteredOnApiConsole` because the app's package name + SHA-1
+ * signing key was not registered on Google Cloud Console for that OAuth client — and for an
+ * open-source app that end users build themselves, it never can be (every fork has a different
+ * signing key).
  *
- * The `drive.file` scope is the least permissive Drive scope — it only allows access to files
- * created or opened by this app, which is exactly what we need for backup files.
+ * SAF sidesteps the entire problem:
+ *   - The user picks a folder through the system `OpenDocumentTree` picker. The Drive app (and
+ *     Nextcloud, Dropbox, etc.) exposes its folder tree as a DocumentsProvider, so the picker
+ *     shows the user's actual Google Drive folder hierarchy.
+ *   - The returned tree URI is persisted via `ContentResolver.takePersistableUriPermission`, so
+ *     it survives app restarts and reboots.
+ *   - Each sync writes the backup file directly into that folder via the framework
+ *     [DocumentsContract] / `ContentResolver.openOutputStream` APIs — no OAuth token, no Cloud
+ *     Console registration, no extra dependencies. The cloud provider handles authentication
+ *     and uploading to its backend transparently.
+ *
+ * ## Upload flow
+ *
+ *   1. [uploadBackup] builds a local backup .zip into `cacheDir/gdrive_backup/` via
+ *      [CreateBackupUseCase] (writing to a FileProvider-backed temp file).
+ *   2. It resolves the persisted tree URI from [GoogleDriveSyncSettings.remoteFolderUri] and
+ *      derives the folder's document URI via [DocumentsContract.buildDocumentUriUsingTree].
+ *   3. If [GoogleDriveSyncSettings.overwriteExisting] is true and a child document with the
+ *      target name already exists in the folder, that document is deleted first (SAF providers
+ *      don't reliably overwrite an existing document in place — `createDocument` would produce
+ *      a "name (1)" copy instead, so we delete explicitly to get a clean replace).
+ *   4. A new child document is created with [DocumentsContract.createDocument] and the temp
+ *      backup bytes are streamed into its output stream.
+ *   5. The temp file is deleted on success or unrecoverable failure.
+ *
+ * ## Why DocumentsContract and not androidx.documentfile?
+ *
+ * [DocumentsContract] is a framework API (available since API 19) and needs no extra gradle
+ * dependency. The app already uses it elsewhere (see `CachePlaylistScreen`), so this keeps the
+ * dependency footprint unchanged.
  */
 @Singleton
 class GoogleDriveClient
@@ -67,142 +73,57 @@ class GoogleDriveClient
         @ApplicationContext private val context: Context,
         private val createBackupUseCase: CreateBackupUseCase,
     ) {
-        private val httpClient =
-            OkHttpClient
-                .Builder()
-                .connectTimeout(30, TimeUnit.SECONDS)
-                .readTimeout(120, TimeUnit.SECONDS)
-                .writeTimeout(120, TimeUnit.SECONDS)
-                .build()
-
         /**
-         * Lists Google accounts registered on the device.
+         * Result of an upload attempt.
          *
-         * On Android 6.0+ the GET_ACCOUNTS permission is runtime-guarded; the caller must hold
-         * it before invoking this. Returns an empty list if no Google accounts are present.
-         */
-        fun listGoogleAccounts(): List<Account> =
-            try {
-                AccountManager.get(context).getAccountsByType("com.google").toList()
-            } catch (security: SecurityException) {
-                Timber.w(security, "GET_ACCOUNTS permission not granted")
-                emptyList()
-            }
-
-        /**
-         * Returns the human-readable names of all Google accounts on the device.
-         * Used by the account-picker dialog in the UI.
-         */
-        fun listGoogleAccountNames(): List<String> = listGoogleAccounts().map { it.name }
-
-        /**
-         * Fetches an OAuth2 access token for [accountEmail] scoped to `drive.file`.
-         *
-         * Blocks the calling thread — callers MUST be on a background thread. AccountManager
-         * may show a system " granting permission" dialog on first run.
-         *
-         * Returns null if the user denies the permission grant or the account is no longer
-         * present on the device.
-         */
-        @Suppress("DEPRECATION")
-        private fun fetchAuthToken(accountEmail: String): String? {
-            val account =
-                AccountManager.get(context).getAccountsByType("com.google").firstOrNull {
-                    it.name == accountEmail
-                } ?: return null
-            // AccountManager.getAuthToken blocks the calling thread and may surface a
-            // permission-grant dialog if the user hasn't yet approved this app for the
-            // requested scope. We pass null for the notify AuthenticatorException callback
-            // (we're not on the main thread) and rely on the system to show a notification
-            // instead if the user needs to take action.
-            val result =
-                AccountManager
-                    .get(context)
-                    .getAuthToken(
-                        account,
-                        "oauth2:https://www.googleapis.com/auth/drive.file",
-                        null,
-                        false,
-                        null,
-                        null,
-                    )
-            return result?.getResult()?.getString(AccountManager.KEY_AUTHTOKEN)
-        }
-
-        /**
-         * Invalidates the cached OAuth token for [token] so a subsequent [fetchAuthToken] call
-         * re-fetches from the system. Called when the Drive API returns 401 — typically because
-         * the user revoked the permission via the Google account security page.
-         */
-        private fun invalidateAuthToken(token: String) {
-            AccountManager.get(context).invalidateAuthToken("com.google", token)
-        }
-
-        /**
-         * Result of an upload attempt. The caller (the WorkManager worker / UI) needs to know
-         * not just success/failure but WHY it failed, so it can show the right fallback:
-         *
-         *   - [Success] — Drive returned a file ID, backup is on the user's Drive.
-         *   - [NeedsManualUpload] — AccountManager refused to grant the `drive.file` OAuth scope
-         *     (typically `AuthenticatorException: UnregisteredOnApiConsole` — the app's package +
-         *     SHA-1 is not registered on Google Cloud Console for this OAuth client). The temp
-         *     backup file has been built locally and is available via [buildManualUploadIntent]
-         *     so the user can save it to Drive via the system "Save to Drive" share sheet.
-         *   - [TransientFailure] — Network blip, Drive 5xx, or other recoverable error. Caller
-         *     should retry (WorkManager backs off exponentially).
-         *   - [PermanentFailure] — Anything else (account no longer present, etc.). Caller
-         *     should not retry automatically.
+         *   - [Success] — the backup file was written to the picked folder.
+         *   - [TransientFailure] — a recoverable error (the folder URI is temporarily
+         *     unreachable, a provider-side hiccup, or an I/O blip). The caller should retry
+         *     with backoff.
+         *   - [PermanentFailure] — the folder URI is missing/malformed, the permission was
+         *     revoked, or the provider rejected the write. The caller should not retry
+         *     automatically and should surface a message prompting the user to re-pick a
+         *     folder.
          */
         sealed interface UploadResult {
-            data class Success(val fileId: String) : UploadResult
-
-            /**
-             * OAuth grant failed because the app isn't registered on Google Cloud Console for
-             * the `drive.file` scope. The temp backup file is kept at [tempFileUri] (a
-             * FileProvider URI) so the UI can launch an ACTION_SEND intent and let the user
-             * save the file to Drive (or anywhere else) manually.
-             */
-            data class NeedsManualUpload(
-                val tempFileUri: Uri,
-                val fileName: String,
-            ) : UploadResult
+            data class Success(val fileName: String) : UploadResult
 
             data class TransientFailure(val message: String) : UploadResult
+
             data class PermanentFailure(val message: String) : UploadResult
         }
 
         /**
-         * Uploads a single backup file to Google Drive under the configured folder.
+         * Uploads a single backup file to the user-picked cloud folder.
          *
-         * Steps:
-         *   1. Create a temp .backup file locally via [CreateBackupUseCase].
-         *   2. Fetch an OAuth token for the configured account.
-         *      - If AccountManager throws [AuthenticatorException] (typically
-         *        `UnregisteredOnApiConsole`), the OAuth client for this app isn't registered
-         *        on Google Cloud Console. Return [UploadResult.NeedsManualUpload] with the
-         *        temp file URI so the UI can offer a manual save via the system share sheet.
-         *   3. If [settings].overwriteExisting and a file with the same name already exists in
-         *      the target folder, PATCH the existing file's content. Otherwise, POST a new
-         *      multipart upload.
-         *   4. On a 401 response, invalidate the token and retry once with a fresh token.
-         *   5. Delete the temp file on success or unrecoverable failure. The temp file is
-         *      KEPT on [UploadResult.NeedsManualUpload] because the UI needs it for the
-         *      manual upload intent.
-         *
-         * @param settings The current Google Drive sync settings — must have a non-null
-         *   `accountEmail` (caller's responsibility to check before invoking).
-         * @param backupFileName The user-visible name to give the uploaded Drive file (without
+         * @param settings The current sync settings — must have a non-null
+         *   [GoogleDriveSyncSettings.remoteFolderUri] (the caller's responsibility to check
+         *   before invoking).
+         * @param backupFileName The user-visible name to give the uploaded file (without
          *   extension — we append `.backup` here for consistency with local backups).
          */
         suspend fun uploadBackup(settings: GoogleDriveSyncSettings, backupFileName: String): UploadResult =
             withContext(Dispatchers.IO) {
-                val accountEmail = settings.accountEmail
-                    ?: return@withContext UploadResult.PermanentFailure("No Google account configured")
+                val treeUriString = settings.remoteFolderUri
+                    ?: return@withContext UploadResult.PermanentFailure("No backup folder configured")
+                val treeUri =
+                    try {
+                        Uri.parse(treeUriString)
+                    } catch (e: Exception) {
+                        return@withContext UploadResult.PermanentFailure("Invalid folder URI: ${e.message}")
+                    }
+                val folderDocUri =
+                    try {
+                        val folderDocId = DocumentsContract.getTreeDocumentId(treeUri)
+                        DocumentsContract.buildDocumentUriUsingTree(treeUri, folderDocId)
+                    } catch (e: Exception) {
+                        return@withContext UploadResult.PermanentFailure("Could not resolve the picked folder: ${e.message}")
+                    }
+
                 val tempDir = File(context.cacheDir, "gdrive_backup").apply { mkdirs() }
                 val tempFile = File(tempDir, "${System.currentTimeMillis()}_upload.backup")
-                var keepTempFile = false
                 try {
-                    // Stage 1: build the local backup into a temp file.
+                    // Stage 1: build the local backup into a temp file via the FileProvider.
                     val tempUri = FileProvider.getUriForFile(
                         context,
                         "${context.packageName}.FileProvider",
@@ -213,215 +134,108 @@ class GoogleDriveClient
                         categories = BackupArchiveCategory.entries.toSet(),
                     )
 
-                    // Stage 2: fetch an OAuth token. Catch AuthenticatorException explicitly
-                    // — this is the "UnregisteredOnApiConsole" error the user is seeing, and
-                    // we want to surface a manual-upload fallback rather than a silent retry.
-                    val token =
-                        try {
-                            fetchAuthToken(accountEmail)
-                        } catch (auth: AuthenticatorException) {
-                            Timber.w(auth, "GoogleDriveClient: OAuth grant refused for %s", accountEmail)
-                            keepTempFile = true
-                            return@withContext UploadResult.NeedsManualUpload(
-                                tempFileUri = tempUri,
-                                fileName = "$backupFileName.backup",
-                            )
-                        }
-                    if (token == null) {
-                        Timber.w("GoogleDriveClient: failed to obtain OAuth token for %s", accountEmail)
-                        return@withContext UploadResult.TransientFailure("OAuth token unavailable")
-                    }
-
                     val fullFileName = "$backupFileName.backup"
-                    val folderId = settings.remoteFolderId // null = root of My Drive
 
-                    val existingFileId =
-                        if (settings.overwriteExisting) {
-                            findFileByName(token, fullFileName, folderId)
-                        } else {
-                            null
+                    // Stage 2: if overwriting, delete any existing child document with the same
+                    // name first. SAF providers don't reliably truncate/overwrite an existing
+                    // document in place — createDocument would produce a "name (1)" copy.
+                    if (settings.overwriteExisting) {
+                        findChildDocumentId(treeUri, folderDocUri, fullFileName)?.let { existingDocId ->
+                            val existingDocUri =
+                                DocumentsContract.buildDocumentUriUsingTree(treeUri, existingDocId)
+                            runCatching {
+                                DocumentsContract.deleteDocument(context.contentResolver, existingDocUri)
+                            }.onFailure { Timber.w(it, "GoogleDriveClient: could not delete existing backup document") }
                         }
-
-                    val fileId =
-                        if (existingFileId != null) {
-                            patchFileContent(token, existingFileId, tempFile)
-                        } else {
-                            uploadNewFile(token, fullFileName, folderId, tempFile)
-                        }
-
-                    val finalFileId =
-                        if (fileId == null) {
-                            // Token may have been revoked — try one more time with a fresh token.
-                            invalidateAuthToken(token)
-                            val freshToken = fetchAuthToken(accountEmail)
-                                ?: return@withContext UploadResult.TransientFailure("OAuth token refresh failed")
-                            val retryFileId =
-                                if (existingFileId != null) {
-                                    patchFileContent(freshToken, existingFileId, tempFile)
-                                } else {
-                                    uploadNewFile(freshToken, fullFileName, folderId, tempFile)
-                                }
-                            retryFileId
-                        } else {
-                            fileId
-                        }
-
-                    if (finalFileId != null) {
-                        UploadResult.Success(finalFileId)
-                    } else {
-                        UploadResult.TransientFailure("Drive upload returned null file id")
                     }
+
+                    // Stage 3: create the destination document and stream the backup bytes into it.
+                    val targetDocUri =
+                        try {
+                            DocumentsContract.createDocument(
+                                context.contentResolver,
+                                folderDocUri,
+                                BACKUP_MIME_TYPE,
+                                fullFileName,
+                            )
+                        } catch (e: Exception) {
+                            Timber.w(e, "GoogleDriveClient: provider refused to create backup document")
+                            null
+                        } ?: return@withContext UploadResult.TransientFailure(
+                            "The cloud provider refused to create the backup file",
+                        )
+
+                    val written =
+                        try {
+                            context.contentResolver.openOutputStream(targetDocUri, "w")?.use { out ->
+                                tempFile.inputStream().use { input ->
+                                    input.copyTo(out)
+                                }
+                                true
+                            } ?: false
+                        } catch (io: IOException) {
+                            Timber.w(io, "GoogleDriveClient: IOException writing backup to folder")
+                            // Clean up the half-written document so we don't leave a corrupt file.
+                            runCatching {
+                                DocumentsContract.deleteDocument(context.contentResolver, targetDocUri)
+                            }
+                            false
+                        }
+                    if (!written) {
+                        return@withContext UploadResult.TransientFailure("Failed to write backup bytes to the folder")
+                    }
+
+                    UploadResult.Success(fullFileName)
                 } catch (cancellation: kotlinx.coroutines.CancellationException) {
                     throw cancellation
-                } catch (auth: AuthenticatorException) {
-                    Timber.w(auth, "GoogleDriveClient.uploadBackup: AuthenticatorException")
-                    keepTempFile = true
-                    FileProvider.getUriForFile(
-                        context,
-                        "${context.packageName}.FileProvider",
-                        tempFile,
-                    ).let { uri ->
-                        UploadResult.NeedsManualUpload(tempFileUri = uri, fileName = "$backupFileName.backup")
-                    }
+                } catch (security: SecurityException) {
+                    // The persisted URI permission was revoked (e.g. user cleared app data, or
+                    // the provider withdrew access). Surface as permanent so the UI can prompt
+                    // the user to re-pick a folder.
+                    Timber.w(security, "GoogleDriveClient: no permission for folder URI")
+                    UploadResult.PermanentFailure("Folder access was revoked — please re-pick the folder")
                 } catch (e: Exception) {
                     Timber.w(e, "GoogleDriveClient.uploadBackup failed")
                     UploadResult.TransientFailure(e.message ?: "Unknown error")
                 } finally {
-                    if (!keepTempFile) {
-                        runCatching { tempFile.delete() }
-                    }
+                    runCatching { tempFile.delete() }
                 }
             }
 
         /**
-         * Builds an [Intent.ACTION_SEND] for the temp backup file produced by a
-         * [UploadResult.NeedsManualUpload] result. The user can pick "Save to Drive" in the
-         * system share sheet — Google's Drive app accepts arbitrary file types and uploads
-         * them to the user's Drive, prompting for a destination folder.
-         *
-         * This is the fallback path when the OAuth flow refuses with `UnregisteredOnApiConsole`
-         * (i.e. the app's package + SHA-1 is not registered on Google Cloud Console for the
-         * `drive.file` scope). It's a worse UX than automatic upload but it actually works
-         * without cloud console registration.
-         *
-         * The intent grants read permission to the recipient via [Intent.FLAG_GRANT_READ_URI_PERMISSION]
-         * so Drive can read the FileProvider-backed temp file.
+         * Queries the picked folder for a child document with the given [name]. Returns the
+         * matching document ID, or null if no such child exists (or the query failed).
          */
-        fun buildManualUploadIntent(tempFileUri: Uri, fileName: String): Intent =
-            Intent(Intent.ACTION_SEND).apply {
-                type = "application/octet-stream"
-                putExtra(Intent.EXTRA_STREAM, tempFileUri)
-                putExtra(Intent.EXTRA_TITLE, fileName)
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            }
-
-        /**
-         * Queries Drive for a file with the given [name] under [folderId] (or root if null).
-         * Returns the first matching file ID, or null if none exists.
-         *
-         * Drive's `files.list` endpoint accepts a `q` parameter with a query like:
-         *   `name = 'AppName.backup' and trashed = false and 'root' in parents`
-         */
-        private fun findFileByName(token: String, name: String, folderId: String?): String? {
-            val escapedName = name.replace("'", "\\'")
-            val parentClause =
-                if (folderId == null) "'root' in parents" else "'$folderId' in parents"
-            val query = "name = '$escapedName' and trashed = false and $parentClause"
-            val url =
-                "https://www.googleapis.com/drive/v3/files?q=" +
-                    URLEncoder.encode(query, "UTF-8") +
-                    "&fields=files(id,name)&pageSize=1"
-            val request =
-                Request
-                    .Builder()
-                    .url(url)
-                    .header("Authorization", "Bearer $token")
-                    .get()
-                    .build()
-            httpClient.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
-                    Timber.w("Drive files.list failed: %d %s", response.code, response.message)
-                    return null
-                }
-                val body = response.body?.string().orEmpty()
-                val files = JSONObject(body).optJSONArray("files") ?: return null
-                if (files.length() == 0) return null
-                return files.optJSONObject(0)?.optString("id")?.takeIf { it.isNotBlank() }
-            }
-        }
-
-        /**
-         * Uploads a new file via Drive's multipart upload endpoint.
-         *
-         * The multipart body has two parts:
-         *   1. `application/json; charset=UTF-8` — the file metadata (name, parents).
-         *   2. `application/octet-stream` — the raw file content.
-         *
-         * Returns the new file ID from the response, or null on failure.
-         */
-        private fun uploadNewFile(token: String, name: String, folderId: String?, file: File): String? {
-            val metadata =
-                JSONObject().apply {
-                    put("name", name)
-                    if (folderId != null) {
-                        val parents = JSONArray()
-                        parents.put(folderId)
-                        put("parents", parents)
-                    }
-                }
-            val metadataBody =
-                metadata
-                    .toString()
-                    .toRequestBody("application/json; charset=UTF-8".toMediaType())
-            val fileBody = file.asRequestBody("application/octet-stream".toMediaType())
-            // Google Drive's multipart upload requires `multipart/related` (RFC 2387).
-            // OkHttp's MultipartBody only exposes MIXED/ALTERNATIVE/DIGEST/PARALLEL/FORM as named
-            // constants, so we construct the MediaType directly and pass it to setType().
-            val multipart =
-                MultipartBody
-                    .Builder()
-                    .setType("multipart/related".toMediaType())
-                    .addPart(metadataBody)
-                    .addPart(fileBody)
-                    .build()
-            val request =
-                Request
-                    .Builder()
-                    .url("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id")
-                    .header("Authorization", "Bearer $token")
-                    .post(multipart)
-                    .build()
-            return executeForFileId(request)
-        }
-
-        /**
-         * Updates an existing file's content via Drive's PATCH media-upload endpoint.
-         * The URL path includes the existing file ID so Drive knows which file to replace.
-         */
-        private fun patchFileContent(token: String, fileId: String, file: File): String? {
-            val fileBody = file.asRequestBody("application/octet-stream".toMediaType())
-            val request =
-                Request
-                    .Builder()
-                    .url("https://www.googleapis.com/upload/drive/v3/files/$fileId?uploadType=media&fields=id")
-                    .header("Authorization", "Bearer $token")
-                    .patch(fileBody)
-                    .build()
-            return executeForFileId(request)
-        }
-
-        private fun executeForFileId(request: Request): String? {
+        private fun findChildDocumentId(treeUri: Uri, folderDocUri: Uri, name: String): String? {
+            val folderDocId = DocumentsContract.getDocumentId(folderDocUri)
+            val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, folderDocId)
             return try {
-                httpClient.newCall(request).execute().use { response: Response ->
-                    if (!response.isSuccessful) {
-                        Timber.w("Drive API call failed: %d %s", response.code, response.message)
-                        return null
+                context.contentResolver.query(
+                    childrenUri,
+                    arrayOf(
+                        DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                        DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                    ),
+                    null,
+                    null,
+                    null,
+                )?.use { cursor ->
+                    while (cursor.moveToNext()) {
+                        val docId = cursor.getString(0) ?: continue
+                        val docName = cursor.getString(1) ?: continue
+                        if (docName == name) return docId
                     }
-                    JSONObject(response.body?.string().orEmpty()).optString("id").takeIf { it.isNotBlank() }
+                    null
                 }
-            } catch (io: IOException) {
-                Timber.w(io, "Drive API call threw IOException")
+            } catch (e: Exception) {
+                Timber.w(e, "GoogleDriveClient: failed to list folder children")
                 null
             }
+        }
+
+        companion object {
+            /** MIME type used when creating the backup document. Octet-stream is accepted by all
+             *  SAF providers and preserves the bytes verbatim. */
+            private const val BACKUP_MIME_TYPE = "application/octet-stream"
         }
     }

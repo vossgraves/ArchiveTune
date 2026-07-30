@@ -1366,6 +1366,10 @@
     <string name="google_drive_sync_remote_folder_description">Choose a Drive folder, or use My Drive root.</string>
     <string name="google_drive_sync_remote_folder_root">My Drive (root)</string>
     <string name="google_drive_sync_remote_folder_pick">Pick a folder</string>
+    <string name="google_drive_sync_remote_folder_not_set">Not set — tap to pick a Drive folder</string>
+    <string name="google_drive_sync_remote_folder_default_name">Drive folder</string>
+    <string name="google_drive_sync_clear_folder">Clear folder</string>
+    <string name="google_drive_sync_clear_folder_description">Forget the picked folder and disable auto-sync. You can pick a different folder afterwards.</string>
     <string name="google_drive_sync_overwrite">Overwrite existing Drive backup</string>
     <string name="google_drive_sync_overwrite_description">Keep one current backup instead of creating a dated history.</string>
     <string name="google_drive_sync_run_now">Sync now</string>
@@ -1383,7 +1387,7 @@
     <string name="google_drive_sync_pick_folder_paste_hint">Open the folder in Drive, copy the last path segment from its URL, or paste the URL here.</string>
     <string name="google_drive_sync_succeeded">Backup uploaded to Google Drive.</string>
     <string name="google_drive_sync_failed_transient">Sync failed — will retry automatically.</string>
-    <string name="google_drive_sync_failed_permanent">Sync failed. Sign in again or pick a different account.</string>
+    <string name="google_drive_sync_failed_permanent">Sync failed. The folder may have been removed or access revoked — try re-picking the folder.</string>
     <string name="google_drive_sync_manual_upload_channel">Manual Drive upload</string>
     <string name="google_drive_sync_manual_upload_channel_desc">Notifications shown when automatic Drive upload isn\'t possible and a manual save is required.</string>
     <string name="google_drive_sync_manual_upload_title">Save backup to Google Drive</string>

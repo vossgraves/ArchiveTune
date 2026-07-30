@@ -139,7 +139,6 @@ data class GoogleDriveSyncUiData(
     val frequency: ScheduledBackupFrequency,
     val customDateEpochDay: Long?,
     val customDateLabel: String?,
-    val accountEmail: String?,
     val remoteFolderName: String?,
     val overwriteExisting: Boolean,
     val showCustomDatePicker: Boolean,
@@ -269,18 +268,6 @@ class BackupRestoreViewModel
 
         private val _googleDriveSyncEvent = MutableSharedFlow<Int>(extraBufferCapacity = 1)
         val googleDriveSyncEvent: SharedFlow<Int> = _googleDriveSyncEvent.asSharedFlow()
-
-        /**
-         * Emitted when an auto-upload attempt failed because Google's AccountManager refused to
-         * grant the `drive.file` OAuth scope (typically `AuthenticatorException:
-         * UnregisteredOnApiConsole` — the app's package + SHA-1 is not registered on Google
-         * Cloud Console). The UI catches this and opens the system share sheet so the user can
-         * save the prepared backup file to Drive (or anywhere else) manually.
-         */
-        private val _manualUploadRequest =
-            MutableSharedFlow<GoogleDriveClient.UploadResult.NeedsManualUpload>(extraBufferCapacity = 1)
-        val manualUploadRequest: SharedFlow<GoogleDriveClient.UploadResult.NeedsManualUpload> =
-            _manualUploadRequest.asSharedFlow()
 
         private var googleDriveSettings: GoogleDriveSyncSettings? = null
         private var showGoogleDriveCustomDatePicker = false
@@ -487,18 +474,12 @@ class BackupRestoreViewModel
             publishGoogleDriveSyncState()
         }
 
-        fun onGoogleDriveSyncAccountSelected(email: String) {
-            updateGoogleDriveSync(
-                successMessageRes = null,
-            ) { updateGoogleDriveSync.setAccount(email) }
+        fun onGoogleDriveSyncRemoteFolderSelected(uri: String?, name: String?) {
+            updateGoogleDriveSync { updateGoogleDriveSync.setRemoteFolder(uri, name) }
         }
 
-        fun onGoogleDriveSyncSignOut() {
-            updateGoogleDriveSync { updateGoogleDriveSync.clearAccount() }
-        }
-
-        fun onGoogleDriveSyncRemoteFolderSelected(id: String?, name: String?) {
-            updateGoogleDriveSync { updateGoogleDriveSync.setRemoteFolder(id, name) }
+        fun onGoogleDriveSyncRemoteFolderCleared() {
+            updateGoogleDriveSync { updateGoogleDriveSync.clearRemoteFolder() }
         }
 
         fun onGoogleDriveSyncOverwriteChanged(overwrite: Boolean) {
@@ -510,13 +491,12 @@ class BackupRestoreViewModel
             isGDriveSyncing = true
             publishGoogleDriveSyncState()
             // Run the upload directly (not via WorkManager) so we can react to the result
-            // synchronously and show the manual-upload sheet immediately if OAuth refused.
-            // WorkManager's runNow() is still triggered as a fallback for the scheduled path.
+            // synchronously and show a snackbar immediately. WorkManager's runNow() is still
+            // triggered as a fallback for the scheduled path.
             viewModelScope.launch {
                 try {
                     val settings = googleDriveSettings
-                    val accountEmail = settings?.accountEmail
-                    if (settings == null || !settings.enabled || accountEmail == null) {
+                    if (settings == null || !settings.enabled || settings.remoteFolderUri == null) {
                         // Fall back to the WorkManager path — settings may have changed but not
                         // yet propagated to the local cache. The worker will bail out safely.
                         updateGoogleDriveSync.runNow()
@@ -539,14 +519,6 @@ class BackupRestoreViewModel
                                 googleDriveSyncRepository.recordSyncResult(success = true)
                             }
                             _googleDriveSyncEvent.emit(R.string.google_drive_sync_succeeded)
-                        }
-                        is GoogleDriveClient.UploadResult.NeedsManualUpload -> {
-                            // OAuth refused (UnregisteredOnApiConsole). Surface the manual-upload
-                            // sheet so the user can save the temp file to Drive via share sheet.
-                            updateGoogleDriveSync {
-                                googleDriveSyncRepository.recordSyncResult(success = false)
-                            }
-                            _manualUploadRequest.emit(result)
                         }
                         is GoogleDriveClient.UploadResult.TransientFailure -> {
                             updateGoogleDriveSync {
@@ -574,8 +546,6 @@ class BackupRestoreViewModel
                 }
             }
         }
-
-        fun listGoogleAccounts(): List<String> = googleDriveClient.listGoogleAccountNames()
 
         private fun updateGoogleDriveSync(
             @StringRes successMessageRes: Int? = null,
@@ -634,7 +604,6 @@ class BackupRestoreViewModel
                         frequency = resolved.frequency,
                         customDateEpochDay = resolved.customDateEpochDay,
                         customDateLabel = formattedCustomDate,
-                        accountEmail = resolved.accountEmail,
                         remoteFolderName = resolved.remoteFolderName,
                         overwriteExisting = resolved.overwriteExisting,
                         showCustomDatePicker = showGoogleDriveCustomDatePicker,

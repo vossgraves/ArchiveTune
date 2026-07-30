@@ -32,9 +32,10 @@ import javax.inject.Singleton
  * All updaters serialize through [updateMutex] to prevent lost updates when multiple fields are
  * changed in rapid succession (e.g. user toggles enable + picks a frequency in quick succession).
  *
- * The settings keys are NOT portable across devices — they reference the local Google account
- * email and a Drive folder ID. They're added to `NON_PORTABLE_PREFERENCE_KEYS` so the
- * BackupArchiveRepository skips them when exporting a portable SETTINGS backup.
+ * The settings keys are NOT portable across devices — they reference a device-specific SAF tree
+ * URI whose persistable permission only exists on the device that granted it. They're added to
+ * `NON_PORTABLE_PREFERENCE_KEYS` so the BackupArchiveRepository skips them when exporting a
+ * portable SETTINGS backup.
  */
 @Singleton
 class GoogleDriveSyncRepository
@@ -46,7 +47,7 @@ class GoogleDriveSyncRepository
 
         fun observeSettings(): Flow<GoogleDriveSyncSettings?> =
             context.dataStore.data.map { preferences ->
-                if (!preferences.contains(ENABLED_KEY) && !preferences.contains(ACCOUNT_EMAIL_KEY)) {
+                if (!preferences.contains(ENABLED_KEY) && !preferences.contains(REMOTE_FOLDER_URI_KEY)) {
                     return@map null
                 }
                 preferences.toSettings()
@@ -54,7 +55,7 @@ class GoogleDriveSyncRepository
 
         suspend fun getSettings(): GoogleDriveSyncSettings? =
             context.dataStore.data.first().let { preferences ->
-                if (!preferences.contains(ENABLED_KEY) && !preferences.contains(ACCOUNT_EMAIL_KEY)) {
+                if (!preferences.contains(ENABLED_KEY) && !preferences.contains(REMOTE_FOLDER_URI_KEY)) {
                     null
                 } else {
                     preferences.toSettings()
@@ -83,16 +84,15 @@ class GoogleDriveSyncRepository
                     }.toSettings()
             }
 
-        suspend fun updateAccount(email: String): GoogleDriveSyncSettings =
-            updateMutex.withLock {
-                context.dataStore.edit { it[ACCOUNT_EMAIL_KEY] = email }.toSettings()
-            }
-
-        suspend fun updateRemoteFolder(id: String?, name: String?): GoogleDriveSyncSettings =
+        /**
+         * Persists the picked SAF folder tree URI and its display name. Pass nulls to clear the
+         * folder (also disables auto-sync, since sync can't run without a target folder).
+         */
+        suspend fun updateRemoteFolder(uri: String?, name: String?): GoogleDriveSyncSettings =
             updateMutex.withLock {
                 context.dataStore
                     .edit {
-                        if (id == null) it.remove(REMOTE_FOLDER_ID_KEY) else it[REMOTE_FOLDER_ID_KEY] = id
+                        if (uri == null) it.remove(REMOTE_FOLDER_URI_KEY) else it[REMOTE_FOLDER_URI_KEY] = uri
                         if (name == null) it.remove(REMOTE_FOLDER_NAME_KEY) else it[REMOTE_FOLDER_NAME_KEY] = name
                     }.toSettings()
             }
@@ -111,12 +111,16 @@ class GoogleDriveSyncRepository
                     }.toSettings()
             }
 
-        suspend fun clearAccount(): GoogleDriveSyncSettings =
+        /**
+         * Clears the picked folder and disables auto-sync. Called when the user taps "Clear
+         * folder" in the UI. The persistable URI permission for the old tree URI is released by
+         * the caller (the UI holds the ContentResolver) before invoking this.
+         */
+        suspend fun clearRemoteFolder(): GoogleDriveSyncSettings =
             updateMutex.withLock {
                 context.dataStore
                     .edit {
-                        it.remove(ACCOUNT_EMAIL_KEY)
-                        it.remove(REMOTE_FOLDER_ID_KEY)
+                        it.remove(REMOTE_FOLDER_URI_KEY)
                         it.remove(REMOTE_FOLDER_NAME_KEY)
                         it[ENABLED_KEY] = false
                     }.toSettings()
@@ -130,8 +134,7 @@ class GoogleDriveSyncRepository
                         ?.let { stored -> ScheduledBackupFrequency.entries.firstOrNull { it.name == stored } }
                         ?: ScheduledBackupFrequency.WEEKLY,
                 customDateEpochDay = this[CUSTOM_DATE_KEY],
-                accountEmail = this[ACCOUNT_EMAIL_KEY],
-                remoteFolderId = this[REMOTE_FOLDER_ID_KEY],
+                remoteFolderUri = this[REMOTE_FOLDER_URI_KEY],
                 remoteFolderName = this[REMOTE_FOLDER_NAME_KEY],
                 overwriteExisting = this[OVERWRITE_KEY] ?: false,
                 lastSyncEpochMs = this[LAST_SYNC_MS_KEY],
@@ -142,8 +145,7 @@ class GoogleDriveSyncRepository
             private val ENABLED_KEY = booleanPreferencesKey("googleDriveSyncEnabled")
             private val FREQUENCY_KEY = stringPreferencesKey("googleDriveSyncFrequency")
             private val CUSTOM_DATE_KEY = longPreferencesKey("googleDriveSyncCustomDateEpochDay")
-            private val ACCOUNT_EMAIL_KEY = stringPreferencesKey("googleDriveSyncAccountEmail")
-            private val REMOTE_FOLDER_ID_KEY = stringPreferencesKey("googleDriveSyncRemoteFolderId")
+            private val REMOTE_FOLDER_URI_KEY = stringPreferencesKey("googleDriveSyncRemoteFolderUri")
             private val REMOTE_FOLDER_NAME_KEY = stringPreferencesKey("googleDriveSyncRemoteFolderName")
             private val OVERWRITE_KEY = booleanPreferencesKey("googleDriveSyncOverwriteExisting")
             private val LAST_SYNC_MS_KEY = longPreferencesKey("googleDriveSyncLastSyncEpochMs")
@@ -151,15 +153,15 @@ class GoogleDriveSyncRepository
 
             /**
              * Keys that should be excluded from portable SETTINGS backups because they reference
-             * device-specific state (the local Google account email + a Drive folder ID).
+             * device-specific state (a SAF tree URI whose persistable permission only exists on
+             * the granting device).
              */
             val NON_PORTABLE_PREFERENCE_KEYS: Set<String> =
                 setOf(
                     ENABLED_KEY.name,
                     FREQUENCY_KEY.name,
                     CUSTOM_DATE_KEY.name,
-                    ACCOUNT_EMAIL_KEY.name,
-                    REMOTE_FOLDER_ID_KEY.name,
+                    REMOTE_FOLDER_URI_KEY.name,
                     REMOTE_FOLDER_NAME_KEY.name,
                     OVERWRITE_KEY.name,
                     LAST_SYNC_MS_KEY.name,
