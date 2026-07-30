@@ -119,6 +119,8 @@ import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.utils.resetAuthWebViewSession
 import moe.rukamori.archivetune.viewmodels.BackupCategory
 import moe.rukamori.archivetune.viewmodels.BackupRestoreViewModel
+import moe.rukamori.archivetune.viewmodels.GoogleDriveSyncScreenState
+import moe.rukamori.archivetune.viewmodels.GoogleDriveSyncUiData
 import moe.rukamori.archivetune.viewmodels.ScheduledBackupScreenState
 import moe.rukamori.archivetune.viewmodels.ScheduledBackupUiData
 import java.time.Instant
