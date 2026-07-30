@@ -194,7 +194,7 @@ android {
             (
                 localProperties.getProperty("SOURCE_PROVIDER_URL")?.takeIf { it.isNotBlank() }
                     ?: System.getenv("SOURCE_PROVIDER_URL")?.takeIf { it.isNotBlank() }
-                    ?: "https://archivepool.up.railway.app"
+                    ?: "https://archivepool.vercel.app"
                 ).trim().trimEnd('/')
         buildConfigField("String", "SOURCE_PROVIDER_URL", "\"$sourceProviderUrl\"")
 
