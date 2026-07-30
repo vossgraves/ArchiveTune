@@ -24,6 +24,10 @@
         android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Google Drive sync: needed to enumerate Google accounts on the device so the user can
+         pick which one to upload backups to. On API 23+ this is a runtime permission grouped
+         under "Contacts" — we request it on demand when the user taps "Sign in with Google". -->
+    <uses-permission android:name="android.permission.GET_ACCOUNTS" />
 
     <queries>
         <intent>
