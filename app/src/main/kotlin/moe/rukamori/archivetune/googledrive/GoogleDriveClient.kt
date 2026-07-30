@@ -277,10 +277,13 @@ class GoogleDriveClient
                     .toString()
                     .toRequestBody("application/json; charset=UTF-8".toMediaType())
             val fileBody = file.asRequestBody("application/octet-stream".toMediaType())
+            // Google Drive's multipart upload requires `multipart/related` (RFC 2387).
+            // OkHttp's MultipartBody only exposes MIXED/ALTERNATIVE/DIGEST/PARALLEL/FORM as named
+            // constants, so we construct the MediaType directly and pass it to setType().
             val multipart =
                 MultipartBody
                     .Builder()
-                    .setType(MultipartBody.RELATED)
+                    .setType("multipart/related".toMediaType())
                     .addPart(metadataBody)
                     .addPart(fileBody)
                     .build()
