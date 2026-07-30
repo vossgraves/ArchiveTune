@@ -19,7 +19,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -61,6 +62,10 @@ import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.changedToUp
+import kotlin.math.abs
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -418,6 +423,15 @@ private fun AppleMusicControlsColumn(
 ) {
     var swipeUpAccumulated by remember { mutableFloatStateOf(0f) }
     val swipeUpThreshold = 120f
+    // Activation threshold for the swipe-up gesture, in pixels. The previous implementation
+    // used detectVerticalDragGestures, which fires (and calls change.consume()) the moment
+    // the finger drifts past viewConfiguration.touchSlop (~8dp ≈ 24px on a 3x-density phone).
+    // That consume() call cancels every child clickable's tap gesture — so users whose taps
+    // drifted even slightly would see "queue button doesn't work at all". By requiring a
+    // much larger initial movement (72px ≈ 24dp on a 3x-density phone) before we treat it
+    // as a swipe and start consuming, small finger drifts on taps no longer activate the
+    // swipe detector and the child tap completes normally. Clear upward swipes still work.
+    val swipeActivationThreshold = 72f
     val resetSwipeUp = remember {
         {
             if (swipeUpAccumulated != 0f) swipeUpAccumulated = 0f
@@ -429,20 +443,48 @@ private fun AppleMusicControlsColumn(
         modifier = modifier
             .padding(horizontal = AppleMusicContentPadding)
             .pointerInput(Unit) {
-                detectVerticalDragGestures(
-                    onDragEnd = {
-                        if (swipeUpAccumulated < -swipeUpThreshold) {
-                            onQueueClick()
+                // Custom vertical-drag detector that only consumes events once the user has
+                // clearly started swiping upward (movement > swipeActivationThreshold).
+                // Before that point, we don't consume — so child clickables (queue, lyrics,
+                // output, play/pause, skip, like, more, title, artist) receive the full
+                // tap sequence and fire normally. This fixes the "queue button doesn't work
+                // at all" report for users whose taps drift a few pixels vertically.
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    var accumulated = 0f
+                    var swipeActivated = false
+                    while (true) {
+                        val event = awaitPointerEvent(PointerEventPass.Main)
+                        val change = event.changes.firstOrNull() ?: break
+                        if (change.changedToUp()) break
+
+                        val dragDelta = change.positionChange().y
+
+                        if (!swipeActivated) {
+                            // Track upward movement but don't consume yet — let child taps win.
+                            if (dragDelta < 0f) {
+                                accumulated += dragDelta
+                            }
+                            if (abs(accumulated) > swipeActivationThreshold) {
+                                swipeActivated = true
+                                swipeUpAccumulated = accumulated
+                                change.consume()
+                            }
+                        } else {
+                            // Swipe is confirmed — consume to prevent child handling.
+                            if (dragDelta < 0f) {
+                                swipeUpAccumulated =
+                                    (swipeUpAccumulated + dragDelta).coerceAtLeast(-swipeUpThreshold * 1.5f)
+                            }
+                            change.consume()
                         }
-                        swipeUpAccumulated = 0f
-                    },
-                    onVerticalDrag = { change, dragAmount ->
-                        change.consume()
-                        if (dragAmount < 0f) { // upward swipe
-                            swipeUpAccumulated = (swipeUpAccumulated + dragAmount).coerceAtLeast(-swipeUpThreshold * 1.5f)
-                        }
-                    },
-                )
+                    }
+
+                    if (swipeActivated && swipeUpAccumulated < -swipeUpThreshold) {
+                        onQueueClick()
+                    }
+                    swipeUpAccumulated = 0f
+                }
             },
         verticalArrangement = Arrangement.SpaceEvenly,
     ) {

@@ -29,6 +29,8 @@ import moe.rukamori.archivetune.auth.SwitchSavedYouTubeAccountUseCase
 import moe.rukamori.archivetune.constants.AccountChannelHandleKey
 import moe.rukamori.archivetune.constants.AccountEmailKey
 import moe.rukamori.archivetune.constants.AccountNameKey
+import moe.rukamori.archivetune.constants.ContentCountryKey
+import moe.rukamori.archivetune.constants.ContentLanguageKey
 import moe.rukamori.archivetune.constants.DataSyncIdKey
 import moe.rukamori.archivetune.constants.HideExplicitKey
 import moe.rukamori.archivetune.constants.HideVideoKey
@@ -36,6 +38,7 @@ import moe.rukamori.archivetune.constants.InnerTubeCookieKey
 import moe.rukamori.archivetune.constants.QuickPicks
 import moe.rukamori.archivetune.constants.QuickPicksKey
 import moe.rukamori.archivetune.constants.SpeedDialSongIdsKey
+import moe.rukamori.archivetune.constants.YouTubeMusicRegionKey
 import moe.rukamori.archivetune.constants.YtmSyncKey
 import moe.rukamori.archivetune.db.MusicDatabase
 import moe.rukamori.archivetune.db.entities.*
@@ -893,6 +896,31 @@ class HomeViewModel
 
             viewModelScope.launch(Dispatchers.IO) {
                 load()
+            }
+
+            // Re-fetch the home feed whenever the YT Music region (or content country/language)
+            // changes. This is what makes the "YouTube Music region" setting in Internet
+            // Settings actually take effect on the home screen: when the user picks a country,
+            // InternetSettings writes YouTubeMusicRegionKey to the DataStore AND mutates
+            // YouTube.locale.gl in-memory — we observe the preference here and trigger a
+            // fresh YouTube.home() call. Without this, the user would have to manually
+            // pull-to-refresh after changing the region.
+            //
+            // We observe ContentCountryKey and ContentLanguageKey too, since those also
+            // mutate YouTube.locale (via App.kt's initializeDeferredAsync) and therefore
+            // affect what the home feed returns.
+            //
+            // drop(1) so we don't re-fetch on initial subscription (the load() above
+            // already covers the cold-start case).
+            viewModelScope.launch(Dispatchers.IO) {
+                context.dataStore.data
+                    .map { Triple(it[YouTubeMusicRegionKey], it[ContentCountryKey], it[ContentLanguageKey]) }
+                    .distinctUntilChanged()
+                    .drop(1)
+                    .collectLatest {
+                        isLoading.filter { loading -> !loading }.first()
+                        load()
+                    }
             }
 
             viewModelScope.launch(Dispatchers.IO) {

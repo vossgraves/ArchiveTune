@@ -232,15 +232,28 @@ fun InternetSettings(navController: NavController, scrollTo: String? = null) {
                         },
                         onValueSelected = { newValue ->
                             // Apply immediately — `gl` is in the JSON body of every YT Music
-                            // request, so the next call (search / player / browse / next /
-                            // suggestions) will use the new region. `SYSTEM_DEFAULT` falls
-                            // back to the device locale (or, if that's not in
-                            // CountryCodeToName, to "US"), matching the App.kt startup logic.
+                            // request (browse/search/player/next/suggestions/queue), so the
+                            // next call will use the new region. `SYSTEM_DEFAULT` falls back
+                            // to the device locale (or, if that's not in CountryCodeToName,
+                            // to "US"), matching the App.kt startup logic.
+                            //
+                            // We also clear visitorData: that token is minted by YouTube with
+                            // an implicit region baked in (derived from the IP/locale at the
+                            // time of the sw.js_data scrape). Without rotation, YouTube can
+                            // keep serving content pinned to the *old* region for personalized
+                            // endpoints like FEmusic_home, even though context.client.gl says
+                            // otherwise. Setting it to null forces the next request to re-fetch
+                            // a fresh, region-pinned token.
+                            //
+                            // The locale assignment emits YouTube.localeChanges, which
+                            // HomeViewModel collects to trigger an immediate home-feed refresh
+                            // (no manual pull-to-refresh required).
                             val deviceLocale = Locale.getDefault()
                             val resolvedGl =
                                 newValue.takeIf { it != SYSTEM_DEFAULT }
                                     ?: deviceLocale.country.takeIf { it in CountryCodeToName }
                                     ?: "US"
+                            YouTube.visitorData = null
                             YouTube.locale = YouTube.locale.copy(gl = resolvedGl)
                             onYtMusicRegionChange(newValue)
                         },

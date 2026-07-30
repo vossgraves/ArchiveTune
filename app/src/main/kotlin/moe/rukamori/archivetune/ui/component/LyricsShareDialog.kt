@@ -32,6 +32,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -412,6 +413,12 @@ private fun LyricsShareStudioScaffold(
         modifier =
             modifier
                 .fillMaxWidth()
+                // fillMaxHeight ensures the weighted scrollable Column below always gets a
+                // definite height to distribute. Without this, when the content exceeds the
+                // Surface's heightIn(max = maxDialogHeight) cap, the weight modifier has no
+                // bounded parent height to distribute and the scrollable area overflows the
+                // Surface — which then clips the bottom rows (e.g. "Show album cover" description).
+                .fillMaxHeight()
                 .animateContentSize(animationSpec = motionScheme.defaultSpatialSpec()),
     ) {
         Column(
@@ -426,8 +433,6 @@ private fun LyricsShareStudioScaffold(
                 LyricsShareHeader(
                     payload = payload,
                     options = options,
-                    areAdvancedOptionsVisible = areAdvancedOptionsVisible,
-                    onToggleAdvancedOptions = onShowAdvancedOptions,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 PreviewContainer(
@@ -448,6 +453,7 @@ private fun LyricsShareStudioScaffold(
                     customTextColor = customTextColor,
                     onCustomTextColorChange = onCustomTextColorChange,
                     areAdvancedOptionsVisible = areAdvancedOptionsVisible,
+                    onShowAdvancedOptions = onShowAdvancedOptions,
                     isCompactLayout = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -473,8 +479,6 @@ private fun LyricsShareStudioScaffold(
                         LyricsShareHeader(
                             payload = payload,
                             options = options,
-                            areAdvancedOptionsVisible = areAdvancedOptionsVisible,
-                            onToggleAdvancedOptions = onShowAdvancedOptions,
                             modifier = Modifier.fillMaxWidth(),
                         )
                         ControlsSection(
@@ -486,6 +490,7 @@ private fun LyricsShareStudioScaffold(
                             customTextColor = customTextColor,
                             onCustomTextColorChange = onCustomTextColorChange,
                             areAdvancedOptionsVisible = areAdvancedOptionsVisible,
+                            onShowAdvancedOptions = onShowAdvancedOptions,
                             isCompactLayout = false,
                             modifier = Modifier.fillMaxWidth(),
                         )
@@ -507,8 +512,6 @@ private fun LyricsShareStudioScaffold(
 private fun LyricsShareHeader(
     payload: LyricsSharePayload,
     options: LyricsShareImageOptions,
-    areAdvancedOptionsVisible: Boolean,
-    onToggleAdvancedOptions: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val lyricSnippet =
@@ -524,12 +527,6 @@ private fun LyricsShareHeader(
     // instead of stacked, which saves one line of vertical space. The lyric snippet is
     // dropped when it would duplicate the title, and the resolution pill sits inline with
     // the artist row. The previous layout used 4 stacked text blocks + a pill = ~5 lines.
-    //
-    // The "More options" / "Less options" toggle is now a compact TextButton in the
-    // header row (top-right, next to the resolution pill) so it's always visible
-    // regardless of scroll position — previously it was a full-width button at the very
-    // bottom of the scrollable controls area, which the user reported as awkward and
-    // "positioned wrong / extremely bottom".
     Column(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -554,29 +551,6 @@ private fun LyricsShareHeader(
                     ),
                 emphasized = true,
             )
-            TextButton(
-                onClick = onToggleAdvancedOptions,
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                    horizontal = 8.dp,
-                    vertical = 0.dp,
-                ),
-                modifier = Modifier.heightIn(min = 32.dp),
-            ) {
-                Text(
-                    text =
-                        stringResource(
-                            if (areAdvancedOptionsVisible) {
-                                R.string.lyrics_share_less_options
-                            } else {
-                                R.string.more_options
-                            },
-                        ),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
         }
         Text(
             text = payload.songTitle,
@@ -675,6 +649,7 @@ private fun ControlsSection(
     customTextColor: Color?,
     onCustomTextColorChange: (Color?) -> Unit,
     areAdvancedOptionsVisible: Boolean,
+    onShowAdvancedOptions: () -> Unit,
     isCompactLayout: Boolean,
     modifier: Modifier = Modifier,
 ) {
@@ -788,12 +763,18 @@ private fun ControlsSection(
                         shape = MaterialTheme.shapes.large,
                         color = MaterialTheme.colorScheme.surfaceContainerLowest,
                     ) {
+                        // NOTE: the redundant `.clip(MaterialTheme.shapes.large)` that used to
+                        // live here on the Row was removed. The Surface already clips to its
+                        // shape, and the second clip on the Row was clipping the description
+                        // text's wrapped second line ("...the exported image.") whenever the
+                        // dialog's content overflowed maxDialogHeight — the Row's clip
+                        // applied before the Row grew to fit the wrapped text, so the bottom
+                        // line was visually cut off even though the layout measured it.
                         Row(
                             modifier =
                                 Modifier
                                     .fillMaxWidth()
                                     .heightIn(min = 56.dp)
-                                    .clip(MaterialTheme.shapes.large)
                                     .clickable { onOptionsChange(options.copy(showArtwork = !options.showArtwork)) }
                                     .padding(horizontal = 12.dp, vertical = 10.dp),
                             verticalAlignment = Alignment.CenterVertically,
@@ -820,10 +801,26 @@ private fun ControlsSection(
                         }
                     }
                 }
+            } else {
+                // "More options" toggle in its original position — a full-width TextButton at
+                // the bottom of the scrollable controls area. This was the placement before
+                // the header-move experiment; the user explicitly asked to revert.
+                TextButton(
+                    onClick = onShowAdvancedOptions,
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 48.dp),
+                    shape = MaterialTheme.shapes.large,
+                ) {
+                    Text(
+                        text = stringResource(R.string.more_options),
+                        style = MaterialTheme.typography.labelLargeEmphasized,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
-            // No bottom "More options" button here — the toggle has been moved into the
-            // header row (LyricsShareHeader) so it's always visible regardless of scroll
-            // position, instead of being pinned to the very bottom of the scrollable area.
         }
     }
 }
