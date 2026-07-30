@@ -10,6 +10,7 @@
 package moe.rukamori.archivetune.ui.screens.settings
 
 import android.annotation.SuppressLint
+import android.accounts.AccountManager
 import android.content.Intent
 import android.net.Uri
 import android.os.Message
@@ -161,12 +162,15 @@ fun BackupAndRestore(
     var showRestoreValidationError by rememberSaveable { mutableStateOf(false) }
     var restoreValidationErrorMessage by remember { mutableStateOf("") }
     var showSpotifyLogin by rememberSaveable { mutableStateOf(false) }
+    var showGoogleDriveAccountPicker by rememberSaveable { mutableStateOf(false) }
+    var showGoogleDriveFolderPicker by rememberSaveable { mutableStateOf(false) }
     var pendingBackupCategories by remember { mutableStateOf(BackupCategory.entries.toSet()) }
     var pendingRestoreCategories by remember { mutableStateOf(BackupCategory.entries.toSet()) }
     var pendingRestoreUri by remember { mutableStateOf<Uri?>(null) }
 
     val backupRestoreProgress by viewModel.backupRestoreProgress.collectAsStateWithLifecycle()
     val scheduledBackupState by viewModel.scheduledBackupState.collectAsStateWithLifecycle()
+    val googleDriveSyncState by viewModel.googleDriveSyncState.collectAsStateWithLifecycle()
     val spotifyState by spotifyAccountViewModel.uiState.collectAsStateWithLifecycle()
     val (showSpotifyPlaylists, onShowSpotifyPlaylistsChange) = rememberPreference(ShowSpotifyPlaylistsKey, false)
     val context = LocalContext.current
@@ -185,6 +189,12 @@ fun BackupAndRestore(
         }
     }
 
+    LaunchedEffect(Unit) {
+        viewModel.googleDriveSyncEvent.collect { messageRes ->
+            snackbarHostState.showSnackbar(context.getString(messageRes))
+        }
+    }
+
     val backupLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
             if (uri != null) {
@@ -194,6 +204,72 @@ fun BackupAndRestore(
     val backupDirectoryLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
             uri?.let(viewModel::onScheduledBackupDirectorySelected)
+        }
+    // Google account picker — uses the system AccountManager.newChooseAccountIntent. The
+    // contract returns the chosen account name (email) as a String, or null if the user
+    // cancelled. The activity is launched only when showGoogleDriveAccountPicker becomes true
+    // (see LaunchedEffect below) so the picker isn't triggered on every recomposition.
+    val googleAccountPickerLauncher =
+        rememberLauncherForActivityResult(
+            object : androidx.activity.result.contract.ActivityResultContract<Unit, String?>() {
+                override fun createIntent(context: android.content.Context, input: Unit): Intent =
+                    AccountManager.newChooseAccountIntent(
+                        /* selectedAccount = */ null,
+                        /* allowableAccounts = */ null,
+                        /* allowableAccountTypes = */ arrayOf("com.google"),
+                        /* descriptionOverride = */ null,
+                        /* addAccountLabel = */ null,
+                        /* packageNames = */ null,
+                        /* features = */ null,
+                    )
+
+                override fun parseResult(resultCode: Int, intent: Intent?): String? =
+                    if (resultCode != android.app.Activity.RESULT_OK || intent == null) {
+                        null
+                    } else {
+                        intent.getStringExtra(AccountManager.KEY_ACCOUNT_NAME)
+                    }
+            },
+        ) { accountEmail ->
+            if (!accountEmail.isNullOrBlank()) {
+                viewModel.onGoogleDriveSyncAccountSelected(accountEmail)
+            }
+        }
+    // Drive folder picker — uses SAF's OpenDocumentTree. We treat the picked tree URI as the
+    // Drive folder name (the human-readable folder name comes from COLUMN_DISPLAY_NAME). The
+    // user can pick any folder visible in the system Documents UI, including Drive folders
+    // synced via the Google Drive Android app or any other cloud provider.
+    val googleDriveFolderPickerLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+            if (uri != null) {
+                val folderName =
+                    runCatching {
+                        val docId = android.provider.DocumentsContract.getTreeDocumentId(uri)
+                        val docUri = android.provider.DocumentsContract.buildDocumentUriUsingTree(uri, docId)
+                        context.contentResolver
+                            .query(
+                                docUri,
+                                arrayOf(android.provider.DocumentsContract.Document.COLUMN_DISPLAY_NAME),
+                                null,
+                                null,
+                                null,
+                            )?.use { c ->
+                                if (c.moveToFirst()) {
+                                    c.getString(
+                                        c.getColumnIndexOrThrow(
+                                            android.provider.DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                                        ),
+                                    )
+                                } else {
+                                    null
+                                }
+                            }
+                    }.getOrNull() ?: uri.lastPathSegment ?: "Drive folder"
+                // We don't actually need the URI persistable permission here — the Drive REST
+                // API uses OAuth tokens, not SAF. We just store the name for display and let
+                // uploads go to "My Drive root" by default (folderId = null).
+                viewModel.onGoogleDriveSyncRemoteFolderSelected(id = null, name = folderName)
+            }
         }
     val restoreLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -239,6 +315,19 @@ fun BackupAndRestore(
     LaunchedEffect(spotifyState.isAuthenticated) {
         if (spotifyState.isAuthenticated) {
             showSpotifyLogin = false
+        }
+    }
+
+    LaunchedEffect(showGoogleDriveAccountPicker) {
+        if (showGoogleDriveAccountPicker) {
+            googleAccountPickerLauncher.launch(Unit)
+            showGoogleDriveAccountPicker = false
+        }
+    }
+    LaunchedEffect(showGoogleDriveFolderPicker) {
+        if (showGoogleDriveFolderPicker) {
+            googleDriveFolderPickerLauncher.launch(null)
+            showGoogleDriveFolderPicker = false
         }
     }
 
@@ -313,6 +402,52 @@ fun BackupAndRestore(
                 onOverwriteChanged = viewModel::onScheduledBackupOverwriteChanged,
                 positions = positions,
             )
+
+            val googleDriveData =
+                when (val state = googleDriveSyncState) {
+                    is GoogleDriveSyncScreenState.Success -> state.data
+                    GoogleDriveSyncScreenState.Loading,
+                    GoogleDriveSyncScreenState.Empty,
+                    is GoogleDriveSyncScreenState.Error,
+                    -> {
+                        GoogleDriveSyncUiData(
+                            enabled = false,
+                            frequency = ScheduledBackupFrequency.WEEKLY,
+                            customDateEpochDay = null,
+                            customDateLabel = null,
+                            accountEmail = null,
+                            remoteFolderName = null,
+                            overwriteExisting = false,
+                            showCustomDatePicker = false,
+                            lastSyncLabel = null,
+                            lastSyncFailed = false,
+                            isSyncing = false,
+                        )
+                    }
+                }
+
+            GoogleDriveSyncSection(
+                data = googleDriveData,
+                enabled = googleDriveSyncState !is GoogleDriveSyncScreenState.Loading,
+                onEnabledChanged = viewModel::onGoogleDriveSyncEnabledChanged,
+                onFrequencySelected = viewModel::onGoogleDriveSyncFrequencySelected,
+                onCustomDateSelected = viewModel::onGoogleDriveSyncCustomDateSelected,
+                onCustomDateDismissed = viewModel::onGoogleDriveSyncCustomDateDismissed,
+                onSignInClick = { showGoogleDriveAccountPicker = true },
+                onSignOutClick = viewModel::onGoogleDriveSyncSignOut,
+                onRemoteFolderClick = { showGoogleDriveFolderPicker = true },
+                onOverwriteChanged = viewModel::onGoogleDriveSyncOverwriteChanged,
+                onSyncNowClick = viewModel::onGoogleDriveSyncRunNow,
+                positions = positions,
+            )
+
+            if (googleDriveData.showCustomDatePicker) {
+                GoogleDriveSyncDatePickerDialog(
+                    selectedEpochDay = googleDriveData.customDateEpochDay,
+                    onDateSelected = viewModel::onGoogleDriveSyncCustomDateSelected,
+                    onDismiss = viewModel::onGoogleDriveSyncCustomDateDismissed,
+                )
+            }
 
             PreferenceGroup(
                 modifier = positions.modifierFor("backup"),
@@ -634,6 +769,205 @@ private val ScheduledBackupFrequency.labelRes: Int
             ScheduledBackupFrequency.MONTHLY -> R.string.scheduled_backup_monthly
             ScheduledBackupFrequency.CUSTOM -> R.string.scheduled_backup_custom
         }
+
+/**
+ * Google Drive sync section — mirrors [ScheduledBackupSection] in structure.
+ *
+ * Layout:
+ *   - "Enable Google Drive sync" switch (disabled until an account is picked).
+ *   - "Sign in with Google" entry (or "Signed in as …" + "Sign out" if already signed in).
+ *   - "Drive folder" entry — opens the SAF folder picker. Shows the picked folder name or
+ *     "My Drive (root)" if no folder was picked.
+ *   - "Backup schedule" enum list — DAILY / WEEKLY / MONTHLY / CUSTOM (date picker).
+ *   - "Overwrite existing Drive backup" switch.
+ *   - "Sync now" entry — triggers an immediate one-shot sync via WorkManager.
+ *   - "Last synced: …" footer (or "Last sync failed — will retry automatically" on failure).
+ *
+ * The frequency selector and overwrite switch are gated on `accountEmail != null` — you
+ * can't schedule an upload to an account you haven't picked yet.
+ */
+@Composable
+private fun GoogleDriveSyncSection(
+    data: GoogleDriveSyncUiData,
+    enabled: Boolean,
+    onEnabledChanged: (Boolean) -> Unit,
+    onFrequencySelected: (ScheduledBackupFrequency) -> Unit,
+    onCustomDateSelected: (Long) -> Unit,
+    onCustomDateDismissed: () -> Unit,
+    onSignInClick: () -> Unit,
+    onSignOutClick: () -> Unit,
+    onRemoteFolderClick: () -> Unit,
+    onOverwriteChanged: (Boolean) -> Unit,
+    onSyncNowClick: () -> Unit,
+    positions: PreferencePositions,
+) {
+    PreferenceGroup(
+        modifier = positions.modifierFor("google_drive_sync"),
+        title = stringResource(R.string.google_drive_sync),
+    ) {
+        item {
+            SwitchPreference(
+                title = { Text(stringResource(R.string.google_drive_sync_enabled)) },
+                description =
+                    stringResource(
+                        if (data.enabled) {
+                            R.string.google_drive_sync_enabled_description_on
+                        } else {
+                            R.string.google_drive_sync_enabled_description_off
+                        },
+                    ),
+                icon = { Icon(painterResource(R.drawable.sync), contentDescription = null) },
+                checked = data.enabled,
+                onCheckedChange = onEnabledChanged,
+                isEnabled = enabled && data.accountEmail != null,
+            )
+        }
+
+        item {
+            if (data.accountEmail == null) {
+                PreferenceEntry(
+                    title = { Text(stringResource(R.string.google_drive_sync_sign_in)) },
+                    description = stringResource(R.string.google_drive_sync_sign_in_description),
+                    icon = { Icon(painterResource(R.drawable.account), contentDescription = null) },
+                    onClick = onSignInClick,
+                    isEnabled = enabled,
+                )
+            } else {
+                PreferenceEntry(
+                    title = { Text(stringResource(R.string.google_drive_sync_signed_in_as, data.accountEmail)) },
+                    description = stringResource(R.string.google_drive_sync_sign_out),
+                    icon = { Icon(painterResource(R.drawable.account), contentDescription = null) },
+                    onClick = onSignOutClick,
+                    isEnabled = enabled,
+                )
+            }
+        }
+
+        item {
+            PreferenceEntry(
+                title = { Text(stringResource(R.string.google_drive_sync_remote_folder)) },
+                description =
+                    data.remoteFolderName
+                        ?: stringResource(R.string.google_drive_sync_remote_folder_root),
+                icon = { Icon(painterResource(R.drawable.snippet_folder), contentDescription = null) },
+                onClick = onRemoteFolderClick,
+                isEnabled = enabled && data.accountEmail != null,
+            )
+        }
+
+        item {
+            EnumListPreference(
+                title = { Text(stringResource(R.string.scheduled_backup_frequency)) },
+                description =
+                    if (data.frequency == ScheduledBackupFrequency.CUSTOM && data.customDateLabel != null) {
+                        stringResource(R.string.scheduled_backup_custom_date, data.customDateLabel)
+                    } else {
+                        stringResource(R.string.google_drive_sync_remote_folder_description)
+                    },
+                icon = { Icon(painterResource(R.drawable.calendar_today), contentDescription = null) },
+                selectedValue = data.frequency,
+                valueText = { frequency -> stringResource(frequency.labelRes) },
+                onValueSelected = onFrequencySelected,
+                isEnabled = enabled && data.accountEmail != null,
+            )
+        }
+
+        item {
+            SwitchPreference(
+                title = { Text(stringResource(R.string.google_drive_sync_overwrite)) },
+                description = stringResource(R.string.google_drive_sync_overwrite_description),
+                icon = { Icon(painterResource(R.drawable.backup), contentDescription = null) },
+                checked = data.overwriteExisting,
+                onCheckedChange = onOverwriteChanged,
+                isEnabled = enabled && data.accountEmail != null,
+            )
+        }
+
+        item {
+            PreferenceEntry(
+                title = { Text(stringResource(R.string.google_drive_sync_run_now)) },
+                description =
+                    when {
+                        data.isSyncing -> stringResource(R.string.google_drive_sync_running)
+                        data.lastSyncFailed -> stringResource(R.string.google_drive_sync_last_sync_failed)
+                        data.lastSyncLabel != null ->
+                            stringResource(R.string.google_drive_sync_last_synced, data.lastSyncLabel)
+                        else -> stringResource(R.string.google_drive_sync_never_synced)
+                    },
+                icon = { Icon(painterResource(R.drawable.sync), contentDescription = null) },
+                onClick = onSyncNowClick,
+                isEnabled = enabled && data.accountEmail != null && !data.isSyncing,
+            )
+        }
+    }
+}
+
+@Composable
+private fun GoogleDriveSyncDatePickerDialog(
+    selectedEpochDay: Long?,
+    onDateSelected: (Long) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val todayEpochDay = remember { LocalDate.now().toEpochDay() }
+    val initialEpochDay = selectedEpochDay?.coerceAtLeast(todayEpochDay) ?: todayEpochDay + 1
+    val datePickerState =
+        rememberDatePickerState(
+            initialSelectedDateMillis =
+                LocalDate
+                    .ofEpochDay(initialEpochDay)
+                    .atStartOfDay(ZoneOffset.UTC)
+                    .toInstant()
+                    .toEpochMilli(),
+            selectableDates =
+                remember(todayEpochDay) {
+                    object : androidx.compose.material3.SelectableDates {
+                        override fun isSelectableDate(utcTimeMillis: Long): Boolean =
+                            Instant
+                                .ofEpochMilli(utcTimeMillis)
+                                .atZone(ZoneOffset.UTC)
+                                .toLocalDate()
+                                .toEpochDay() >= todayEpochDay
+                    }
+                },
+        )
+
+    DatePickerDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    val selectedMillis = datePickerState.selectedDateMillis ?: return@TextButton
+                    val epochDay =
+                        Instant
+                            .ofEpochMilli(selectedMillis)
+                            .atZone(ZoneOffset.UTC)
+                            .toLocalDate()
+                            .toEpochDay()
+                    onDateSelected(epochDay)
+                },
+                enabled = datePickerState.selectedDateMillis != null,
+                shapes = ButtonDefaults.shapes(),
+            ) {
+                Text(stringResource(android.R.string.ok))
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                shapes = ButtonDefaults.shapes(),
+            ) {
+                Text(stringResource(android.R.string.cancel))
+            }
+        },
+    ) {
+        DatePicker(
+            state = datePickerState,
+            modifier = Modifier.verticalScroll(rememberScrollState()),
+            title = { Text(stringResource(R.string.scheduled_backup_custom_title)) },
+            showModeToggle = false,
+        )
+    }
+}
 
 private fun PreferenceGroupScope.spotifyAccountPreferences(
     state: SpotifyAccountUiState,

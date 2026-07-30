@@ -41,6 +41,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.border
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.BasicAlertDialog
@@ -68,6 +69,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
@@ -145,6 +149,13 @@ fun LyricsShareImageDialog(
     var paletteGlassStyle by remember { mutableStateOf<LyricsGlassStyle?>(null) }
     var options by remember { mutableStateOf(LyricsShareImageOptions()) }
     var areAdvancedOptionsVisible by remember { mutableStateOf(false) }
+    // User-overridden lyrics text color. When null, the active glass style's default textColor is
+    // used. Reset to null whenever the style changes so picking a new style reverts the override —
+    // this matches user expectation: "pick Frosted Light" → text becomes dark; "pick Frosted Dark"
+    // → text becomes white; an explicit custom color should not bleed across style swaps.
+    var customTextColor by remember { mutableStateOf<Color?>(null) }
+
+    LaunchedEffect(selectedGlassStyle) { customTextColor = null }
 
     LaunchedEffect(mediaMetadata?.thumbnailUrl) {
         val coverUrl = mediaMetadata?.thumbnailUrl
@@ -199,6 +210,7 @@ fun LyricsShareImageDialog(
                             lyrics = payload.lyricsText,
                             width = options.aspectRatio.exportWidth,
                             height = options.aspectRatio.exportHeight,
+                            textColor = customTextColor?.toArgb(),
                             glassStyle = selectedGlassStyle,
                             shareOptions = options,
                         )
@@ -239,6 +251,8 @@ fun LyricsShareImageDialog(
         availableStyles = availableStyles,
         selectedGlassStyle = selectedGlassStyle,
         onStyleSelect = { selectedGlassStyle = it },
+        customTextColor = customTextColor,
+        onCustomTextColorChange = { customTextColor = it },
         areAdvancedOptionsVisible = !isCompactLayout || areAdvancedOptionsVisible,
         onShowAdvancedOptions = { areAdvancedOptionsVisible = true },
         isSharing = isSharing,
@@ -261,6 +275,8 @@ private fun LyricsShareStudioDialog(
     availableStyles: LyricsGlassStyleOptions,
     selectedGlassStyle: LyricsGlassStyle,
     onStyleSelect: (LyricsGlassStyle) -> Unit,
+    customTextColor: Color?,
+    onCustomTextColorChange: (Color?) -> Unit,
     areAdvancedOptionsVisible: Boolean,
     onShowAdvancedOptions: () -> Unit,
     isSharing: Boolean,
@@ -311,6 +327,8 @@ private fun LyricsShareStudioDialog(
                     availableStyles = availableStyles,
                     selectedGlassStyle = selectedGlassStyle,
                     onStyleSelect = onStyleSelect,
+                    customTextColor = customTextColor,
+                    onCustomTextColorChange = onCustomTextColorChange,
                     areAdvancedOptionsVisible = areAdvancedOptionsVisible,
                     onShowAdvancedOptions = onShowAdvancedOptions,
                     isSharing = isSharing,
@@ -365,6 +383,8 @@ private fun LyricsShareStudioScaffold(
     availableStyles: LyricsGlassStyleOptions,
     selectedGlassStyle: LyricsGlassStyle,
     onStyleSelect: (LyricsGlassStyle) -> Unit,
+    customTextColor: Color?,
+    onCustomTextColorChange: (Color?) -> Unit,
     areAdvancedOptionsVisible: Boolean,
     onShowAdvancedOptions: () -> Unit,
     isSharing: Boolean,
@@ -404,6 +424,7 @@ private fun LyricsShareStudioScaffold(
                     mediaMetadata = mediaMetadata,
                     selectedGlassStyle = selectedGlassStyle,
                     options = options,
+                    customTextColor = customTextColor,
                     isCompactLayout = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -413,6 +434,8 @@ private fun LyricsShareStudioScaffold(
                     availableStyles = availableStyles,
                     selectedGlassStyle = selectedGlassStyle,
                     onStyleSelect = onStyleSelect,
+                    customTextColor = customTextColor,
+                    onCustomTextColorChange = onCustomTextColorChange,
                     areAdvancedOptionsVisible = areAdvancedOptionsVisible,
                     onShowAdvancedOptions = onShowAdvancedOptions,
                     isCompactLayout = true,
@@ -429,6 +452,7 @@ private fun LyricsShareStudioScaffold(
                         mediaMetadata = mediaMetadata,
                         selectedGlassStyle = selectedGlassStyle,
                         options = options,
+                        customTextColor = customTextColor,
                         isCompactLayout = false,
                         modifier = Modifier.weight(1.1f),
                     )
@@ -447,6 +471,8 @@ private fun LyricsShareStudioScaffold(
                             availableStyles = availableStyles,
                             selectedGlassStyle = selectedGlassStyle,
                             onStyleSelect = onStyleSelect,
+                            customTextColor = customTextColor,
+                            onCustomTextColorChange = onCustomTextColorChange,
                             areAdvancedOptionsVisible = areAdvancedOptionsVisible,
                             onShowAdvancedOptions = onShowAdvancedOptions,
                             isCompactLayout = false,
@@ -531,6 +557,7 @@ private fun PreviewContainer(
     mediaMetadata: MediaMetadata?,
     selectedGlassStyle: LyricsGlassStyle,
     options: LyricsShareImageOptions,
+    customTextColor: Color?,
     isCompactLayout: Boolean,
     modifier: Modifier = Modifier,
 ) {
@@ -575,6 +602,7 @@ private fun PreviewContainer(
                         coverArtUrl = mediaMetadata?.thumbnailUrl,
                         glassStyle = selectedGlassStyle,
                         shareOptions = options,
+                        textColor = customTextColor,
                     )
                 }
             }
@@ -589,6 +617,8 @@ private fun ControlsSection(
     availableStyles: LyricsGlassStyleOptions,
     selectedGlassStyle: LyricsGlassStyle,
     onStyleSelect: (LyricsGlassStyle) -> Unit,
+    customTextColor: Color?,
+    onCustomTextColorChange: (Color?) -> Unit,
     areAdvancedOptionsVisible: Boolean,
     onShowAdvancedOptions: () -> Unit,
     isCompactLayout: Boolean,
@@ -639,6 +669,36 @@ private fun ControlsSection(
                             style = style,
                             selected = selectedGlassStyle == style,
                             onClick = { onStyleSelect(style) },
+                        )
+                    }
+                }
+            }
+
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
+            // Lyrics text color override. The row of swatches lets the user pick a custom text
+            // color independent of the glass-style preset. The first chip ("Style default") clears
+            // the override, the rest are preset colors. Selecting a swatch re-renders the preview
+            // immediately; the change is also applied to the exported PNG via `textColor` on
+            // `ComposeToImage.createLyricsImage`.
+            LyricsShareControlGroup(title = stringResource(R.string.lyrics_share_text_color)) {
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    LyricsTextColorSwatch(
+                        color = selectedGlassStyle.textColor,
+                        label = stringResource(R.string.lyrics_share_text_color_default),
+                        selected = customTextColor == null,
+                        onClick = { onCustomTextColorChange(null) },
+                    )
+                    LyricsTextColorPreset.entries.forEach { preset ->
+                        LyricsTextColorSwatch(
+                            color = preset.color,
+                            label = stringResource(preset.labelRes),
+                            selected = customTextColor == preset.color,
+                            onClick = { onCustomTextColorChange(preset.color) },
                         )
                     }
                 }
@@ -1038,6 +1098,94 @@ private fun ActionsSection(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
+        }
+    }
+}
+
+/**
+ * Preset color swatches shown in the "Lyrics text color" row. Curated to span a wide perceptual
+ * range while remaining legible on the dark/frosted backgrounds that the glass-style presets
+ * typically produce — white, near-black, soft cream, red, orange, yellow, green, teal, blue,
+ * indigo, purple, pink. Anything picked here overrides the glass-style's default textColor on
+ * both the live preview and the exported PNG.
+ */
+private enum class LyricsTextColorPreset(
+    val color: Color,
+    val labelRes: Int,
+) {
+    WHITE(Color(0xFFFFFFFF), R.string.lyrics_share_text_color_custom),
+    BLACK(Color(0xFF000000), R.string.lyrics_share_text_color_custom),
+    CREAM(Color(0xFFF5E9D5), R.string.lyrics_share_text_color_custom),
+    CORAL(Color(0xFFFF6B6B), R.string.lyrics_share_text_color_custom),
+    AMBER(Color(0xFFFFB454), R.string.lyrics_share_text_color_custom),
+    LEMON(Color(0xFFFFE66D), R.string.lyrics_share_text_color_custom),
+    MINT(Color(0xFF6BCB77), R.string.lyrics_share_text_color_custom),
+    TEAL(Color(0xFF4DCCC0), R.string.lyrics_share_text_color_custom),
+    SKY(Color(0xFF54A0FF), R.string.lyrics_share_text_color_custom),
+    INDIGO(Color(0xFF5F6CAF), R.string.lyrics_share_text_color_custom),
+    VIOLET(Color(0xFFB06AB3), R.string.lyrics_share_text_color_custom),
+    ROSE(Color(0xFFFF7BB0), R.string.lyrics_share_text_color_custom),
+}
+
+@Composable
+private fun LyricsTextColorSwatch(
+    color: Color,
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val motionScheme = MaterialTheme.motionScheme
+    val borderColor by animateColorAsState(
+        targetValue =
+            if (selected) {
+                MaterialTheme.colorScheme.primary
+            } else {
+                MaterialTheme.colorScheme.outlineVariant
+            },
+        animationSpec = motionScheme.defaultEffectsSpec(),
+        label = "lyricsTextSwatchBorder",
+    )
+
+    // Tint the chip's container so the user can see at a glance which color they'd be picking —
+    // a 30% alpha wash keeps the chip readable against the surface while still conveying hue.
+    val containerColor = color.copy(alpha = 0.30f).compositeOver(MaterialTheme.colorScheme.surfaceColorAtElevation(1.dp))
+
+    Surface(
+        modifier =
+            modifier
+                .heightIn(min = 48.dp)
+                .clip(MaterialTheme.shapes.large)
+                .clickable(onClick = onClick),
+        shape = MaterialTheme.shapes.large,
+        color = containerColor,
+        border = BorderStroke(width = if (selected) 1.5.dp else 1.dp, color = borderColor),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier =
+                    Modifier
+                        .size(22.dp)
+                        .clip(MaterialTheme.shapes.extraLarge)
+                        .background(color)
+                        .border(
+                            width = 1.dp,
+                            color = MaterialTheme.colorScheme.outlineVariant,
+                            shape = MaterialTheme.shapes.extraLarge,
+                        ),
+            )
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelMedium,
+                color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.widthIn(max = 84.dp),
+            )
         }
     }
 }

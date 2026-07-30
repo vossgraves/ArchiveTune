@@ -52,6 +52,10 @@ import moe.rukamori.archivetune.db.entities.Song
 import moe.rukamori.archivetune.db.entities.SongEntity
 import moe.rukamori.archivetune.extensions.div
 import moe.rukamori.archivetune.extensions.zipInputStream
+import moe.rukamori.archivetune.googledrive.GoogleDriveClient
+import moe.rukamori.archivetune.googledrive.GoogleDriveSyncSettings
+import moe.rukamori.archivetune.googledrive.ObserveGoogleDriveSyncSettingsUseCase
+import moe.rukamori.archivetune.googledrive.UpdateGoogleDriveSyncUseCase
 import moe.rukamori.archivetune.playback.MusicService
 import moe.rukamori.archivetune.playback.MusicService.Companion.PERSISTENT_QUEUE_FILE
 import moe.rukamori.archivetune.utils.dataStore
@@ -112,6 +116,36 @@ data class ScheduledBackupUiData(
     val directoryName: String?,
     val overwriteExisting: Boolean,
     val showCustomDatePicker: Boolean,
+)
+
+sealed interface GoogleDriveSyncScreenState {
+    data object Loading : GoogleDriveSyncScreenState
+
+    @Immutable
+    data class Success(
+        val data: GoogleDriveSyncUiData,
+    ) : GoogleDriveSyncScreenState
+
+    data object Empty : GoogleDriveSyncScreenState
+
+    data class Error(
+        @StringRes val messageRes: Int,
+    ) : GoogleDriveSyncScreenState
+}
+
+@Immutable
+data class GoogleDriveSyncUiData(
+    val enabled: Boolean,
+    val frequency: ScheduledBackupFrequency,
+    val customDateEpochDay: Long?,
+    val customDateLabel: String?,
+    val accountEmail: String?,
+    val remoteFolderName: String?,
+    val overwriteExisting: Boolean,
+    val showCustomDatePicker: Boolean,
+    val lastSyncLabel: String?,
+    val lastSyncFailed: Boolean,
+    val isSyncing: Boolean,
 )
 
 internal fun readCsvRecords(reader: Reader): Sequence<List<String>> =
@@ -205,6 +239,9 @@ class BackupRestoreViewModel
         private val createBackupUseCase: CreateBackupUseCase,
         observeScheduledBackupSettings: ObserveScheduledBackupSettingsUseCase,
         private val updateScheduledBackup: UpdateScheduledBackupUseCase,
+        observeGoogleDriveSyncSettings: ObserveGoogleDriveSyncSettingsUseCase,
+        private val updateGoogleDriveSync: UpdateGoogleDriveSyncUseCase,
+        private val googleDriveClient: GoogleDriveClient,
     ) : ViewModel() {
         private val _backupRestoreProgress = MutableStateFlow<BackupRestoreProgressUi?>(null)
         val backupRestoreProgress: StateFlow<BackupRestoreProgressUi?> = _backupRestoreProgress.asStateFlow()
@@ -223,6 +260,19 @@ class BackupRestoreViewModel
         private var scheduledBackupUpdateJob: Job? = null
         private var manualBackupJob: Job? = null
 
+        // --- Google Drive sync state ----------------------------------------------------------
+        private val _googleDriveSyncState =
+            MutableStateFlow<GoogleDriveSyncScreenState>(GoogleDriveSyncScreenState.Loading)
+        val googleDriveSyncState: StateFlow<GoogleDriveSyncScreenState> = _googleDriveSyncState.asStateFlow()
+
+        private val _googleDriveSyncEvent = MutableSharedFlow<Int>(extraBufferCapacity = 1)
+        val googleDriveSyncEvent: SharedFlow<Int> = _googleDriveSyncEvent.asSharedFlow()
+
+        private var googleDriveSettings: GoogleDriveSyncSettings? = null
+        private var showGoogleDriveCustomDatePicker = false
+        private var googleDriveSyncUpdateJob: Job? = null
+        private var isGDriveSyncing = false
+
         init {
             viewModelScope.launch {
                 observeScheduledBackupSettings()
@@ -232,6 +282,16 @@ class BackupRestoreViewModel
                     }.collect { settings ->
                         scheduledBackupSettings = settings
                         publishScheduledBackupState()
+                    }
+            }
+            viewModelScope.launch {
+                observeGoogleDriveSyncSettings()
+                    .catch {
+                        _googleDriveSyncState.value =
+                            GoogleDriveSyncScreenState.Error(R.string.google_drive_sync_load_failed)
+                    }.collect { settings ->
+                        googleDriveSettings = settings
+                        publishGoogleDriveSyncState()
                     }
             }
         }
@@ -381,6 +441,135 @@ class BackupRestoreViewModel
                         directoryName = resolved.directoryName,
                         overwriteExisting = resolved.overwriteExisting,
                         showCustomDatePicker = showCustomDatePicker,
+                    ),
+                )
+        }
+
+        // --- Google Drive sync -----------------------------------------------------------------
+
+        fun onGoogleDriveSyncEnabledChanged(enabled: Boolean) {
+            updateGoogleDriveSync { updateGoogleDriveSync.setEnabled(enabled) }
+        }
+
+        fun onGoogleDriveSyncFrequencySelected(frequency: ScheduledBackupFrequency) {
+            if (frequency == ScheduledBackupFrequency.CUSTOM) {
+                showGoogleDriveCustomDatePicker = true
+                publishGoogleDriveSyncState(
+                    googleDriveSettings?.copy(frequency = frequency)
+                        ?: GoogleDriveSyncSettings(frequency = frequency),
+                )
+                return
+            }
+            updateGoogleDriveSync { updateGoogleDriveSync.setFrequency(frequency) }
+        }
+
+        fun onGoogleDriveSyncCustomDateSelected(epochDay: Long) {
+            showGoogleDriveCustomDatePicker = false
+            updateGoogleDriveSync { updateGoogleDriveSync.setCustomDate(epochDay) }
+        }
+
+        fun onGoogleDriveSyncCustomDateDismissed() {
+            showGoogleDriveCustomDatePicker = false
+            publishGoogleDriveSyncState()
+        }
+
+        fun onGoogleDriveSyncAccountSelected(email: String) {
+            updateGoogleDriveSync(
+                successMessageRes = null,
+            ) { updateGoogleDriveSync.setAccount(email) }
+        }
+
+        fun onGoogleDriveSyncSignOut() {
+            updateGoogleDriveSync { updateGoogleDriveSync.clearAccount() }
+        }
+
+        fun onGoogleDriveSyncRemoteFolderSelected(id: String?, name: String?) {
+            updateGoogleDriveSync { updateGoogleDriveSync.setRemoteFolder(id, name) }
+        }
+
+        fun onGoogleDriveSyncOverwriteChanged(overwrite: Boolean) {
+            updateGoogleDriveSync { updateGoogleDriveSync.setOverwrite(overwrite) }
+        }
+
+        fun onGoogleDriveSyncRunNow() {
+            if (isGDriveSyncing) return
+            isGDriveSyncing = true
+            publishGoogleDriveSyncState()
+            updateGoogleDriveSync.runNow()
+            // Show the "syncing" UI for a moment, then let the next settings tick reset isSyncing.
+            viewModelScope.launch {
+                kotlinx.coroutines.delay(2_500)
+                isGDriveSyncing = false
+                publishGoogleDriveSyncState()
+            }
+        }
+
+        fun listGoogleAccounts(): List<String> = googleDriveClient.listGoogleAccountNames()
+
+        private fun updateGoogleDriveSync(
+            @StringRes successMessageRes: Int? = null,
+            update: suspend () -> GoogleDriveSyncSettings,
+        ) {
+            googleDriveSyncUpdateJob?.cancel()
+            googleDriveSyncUpdateJob =
+                viewModelScope.launch {
+                    try {
+                        val settings = withContext(Dispatchers.IO) { update() }
+                        googleDriveSettings = settings
+                        publishGoogleDriveSyncState(settings)
+                        successMessageRes?.let { _googleDriveSyncEvent.emit(it) }
+                    } catch (cancellation: CancellationException) {
+                        throw cancellation
+                    } catch (exception: Exception) {
+                        reportException(exception)
+                        _googleDriveSyncState.value =
+                            GoogleDriveSyncScreenState.Error(R.string.google_drive_sync_update_failed)
+                        _googleDriveSyncEvent.emit(R.string.google_drive_sync_update_failed)
+                    }
+                }
+        }
+
+        private fun publishGoogleDriveSyncState(settings: GoogleDriveSyncSettings? = googleDriveSettings) {
+            if (settings == null && !showGoogleDriveCustomDatePicker) {
+                _googleDriveSyncState.value = GoogleDriveSyncScreenState.Empty
+                return
+            }
+            val resolved = settings ?: GoogleDriveSyncSettings(frequency = ScheduledBackupFrequency.CUSTOM)
+            val formattedCustomDate =
+                resolved.customDateEpochDay?.let { epochDay ->
+                    LocalDate
+                        .ofEpochDay(epochDay)
+                        .format(
+                            java.time.format.DateTimeFormatter
+                                .ofLocalizedDate(FormatStyle.MEDIUM)
+                                .withLocale(Locale.getDefault()),
+                        )
+                }
+            val lastSyncLabel =
+                resolved.lastSyncEpochMs?.let { ms ->
+                    java.time.format.DateTimeFormatter
+                        .ofLocalizedDateTime(java.time.format.FormatStyle.SHORT)
+                        .withLocale(Locale.getDefault())
+                        .format(
+                            java.time.Instant
+                                .ofEpochMilli(ms)
+                                .atZone(java.time.ZoneId.systemDefault()),
+                        )
+                }
+            _googleDriveSyncState.value =
+                GoogleDriveSyncScreenState.Success(
+                    GoogleDriveSyncUiData(
+                        enabled = resolved.enabled,
+                        frequency = resolved.frequency,
+                        customDateEpochDay = resolved.customDateEpochDay,
+                        customDateLabel = formattedCustomDate,
+                        accountEmail = resolved.accountEmail,
+                        remoteFolderName = resolved.remoteFolderName,
+                        overwriteExisting = resolved.overwriteExisting,
+                        showCustomDatePicker = showGoogleDriveCustomDatePicker,
+                        lastSyncLabel = lastSyncLabel,
+                        lastSyncFailed = resolved.lastSyncFailed,
+                        isSyncing = isGDriveSyncing,
                     ),
                 )
         }

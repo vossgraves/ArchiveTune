@@ -2031,6 +2031,12 @@ private fun MikoLyricsTransition(
     // interruptible spring, staying fully opaque the whole way (no cross-fade), while a dim scrim
     // fades in behind it. All derived transforms are read inside graphicsLayer/draw lambdas so the
     // animation runs entirely in the draw phase — zero recomposition per frame.
+    //
+    // Spring tuning: reverted to the fast (dampingRatio=0.9, stiffness=420) snap that the lyrics
+    // sheet used before commit 4ca3014fb. The soft critically-damped spring (1f / 160f) felt
+    // laggy on low-to-mid-range phones — the half-second glide held the heavy LyricsScreen
+    // composition open against the user's scroll/expand input for far too long. The fast snap
+    // settles in roughly ~150ms which is what feels "instant but not jarring" on touch.
     val animationsDisabled = LocalAnimationsDisabled.current
     val progressState =
         animateFloatAsState(
@@ -2040,31 +2046,20 @@ private fun MikoLyricsTransition(
                     snap()
                 } else {
                     spring(
-                        // Critically damped and deliberately soft: the sheet glides up over roughly
-                        // half a second and eases into place with no overshoot, instead of snapping
-                        // open.
-                        dampingRatio = 1f,
-                        stiffness = 160f,
+                        dampingRatio = 0.9f,
+                        stiffness = 420f,
                         visibilityThreshold = 0.001f,
                     )
                 },
             label = "mikoLyricsTransition",
         )
     val showContent by remember {
-        // Defer the heavy LyricsScreen composition until the sheet is
-        // mostly open. Composing LyricsScreen on frame 1 of the slide-up
-        // makes the spring compete for CPU/GPU with: (1) Palette extraction,
-        // (2) the lyrics network/DB fetch, (3) the blurred background
-        // thumbnail (Modifier.blur(46.dp) is a software blur on API < 31
-        // and a RenderEffect on 31+, both of which cost real frame time),
-        // and (4) the inner AnimatedVisibility for player controls. All of
-        // these used to fire on the first frame, causing the open animation
-        // to stutter visibly on low-to-mid-range phones. Deferring until
-        // the spring is past 50% means the slide-up itself runs against
-        // a flat surfaceColor backdrop (cheap), and the heavy composition
-        // only happens once the sheet has covered enough of the screen
-        // that the user isn't seeing the lyrics panel slide into place.
-        derivedStateOf { visible || progressState.value > 0.5f }
+        // Compose LyricsScreen as soon as the sheet starts to open (progress > 0.001). The fast
+        // spring settles quickly enough that there is no perceptible jank from composing the
+        // heavy lyrics tree on frame 1, and showing content immediately avoids the "blank panel
+        // then pop-in" artifact that the 0.5f deferral introduced on devices where the spring
+        // crossed the 0.5 threshold a frame or two after the visible=true commit.
+        derivedStateOf { visible || progressState.value > 0.001f }
     }
 
     if (showContent) {
