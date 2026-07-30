@@ -593,20 +593,37 @@ jobs:
           MOBILE_UNIVERSAL_APK=$(find downloaded_artifacts/app-gms-mobile-universal-release -name "*.apk" | head -n 1)
           OTHER_APKS=$(find downloaded_artifacts -path "*/app-*-release/*.apk" ! -path "*/app-gms-mobile-universal-release/*")
 
-          cat > release_notes.md <<'NOTES'
-          ## What's new 🎵
-
-          - 🎧 **Qobuz & Tidal integration** — the app now auto-discovers and connects to community-shared streaming accounts so you can play music right away
-          - 🖼️ **Fixed app icon on home screen** — the icon now displays correctly on all launchers
-          - ✨ **Smoother animations** — transitions and UI interactions feel noticeably more fluid throughout the app
-          - 🔧 **Various bug fixes and stability improvements** from the latest upstream updates
-
-          ---
-          NOTES
-
-          cat >> release_notes.md <<EOF
+          # Release notes are ONLY the generated changelog.
+          #
+          # This used to start with a hardcoded "What's new 🎵" block in a *quoted* heredoc
+          # (<<'NOTES'). Quoting means no expansion, so those four bullets were written out
+          # byte-identical on every single release. They described one specific past build --
+          # "Fixed app icon on home screen", "Smoother animations" -- and then kept advertising
+          # those same changes on every release afterwards, while pushing the real per-release
+          # list further down the page. That is why every changelog looked the same; the
+          # generator below was always working correctly.
+          #
+          # Anything newsworthy belongs in a commit subject, where build_changelog picks it up and
+          # files it under Features/Fixes/Performance automatically.
+          cat > release_notes.md <<EOF
           ${{ steps.build_changelog.outputs.changelog }}
           EOF
+
+          # With the static block gone the changelog is the only content, so an empty generator
+          # result (bad tag range, nothing categorised) would publish blank release notes.
+          # Fall back to a compare link instead of shipping an empty body.
+          if [ -z "$(tr -d '[:space:]' < release_notes.md)" ]; then
+            PREV_TAG="${{ steps.changelog_range.outputs.from_ref }}"
+            {
+              echo "# Changelog"
+              echo
+              echo "No categorised commits were found for this range."
+              if [ -n "$PREV_TAG" ]; then
+                echo
+                echo "Full diff: https://github.com/${{ github.repository }}/compare/${PREV_TAG}...v${{ needs.check-version.outputs.new_version }}"
+              fi
+            } > release_notes.md
+          fi
 
           gh release create "v${{ needs.check-version.outputs.new_version }}" \
             --target "${{ github.sha }}" \
