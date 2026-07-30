@@ -2032,11 +2032,11 @@ private fun MikoLyricsTransition(
     // fades in behind it. All derived transforms are read inside graphicsLayer/draw lambdas so the
     // animation runs entirely in the draw phase — zero recomposition per frame.
     //
-    // Spring tuning: reverted to the fast (dampingRatio=0.9, stiffness=420) snap that the lyrics
-    // sheet used before commit 4ca3014fb. The soft critically-damped spring (1f / 160f) felt
-    // laggy on low-to-mid-range phones — the half-second glide held the heavy LyricsScreen
-    // composition open against the user's scroll/expand input for far too long. The fast snap
-    // settles in roughly ~150ms which is what feels "instant but not jarring" on touch.
+    // Spring tuning: soft critically-damped spring (dampingRatio=1f / stiffness=160f) — the same
+    // tuning that was in place before commit 4ca3014fb. The ~500ms glide is what feels premium on
+    // touch and matches the user's explicit request to keep the slow lyrics opening animation.
+    // The fast snap (0.9 / 420, ~150ms) was too abrupt and the user asked for the previous
+    // (slower) tuning back.
     val animationsDisabled = LocalAnimationsDisabled.current
     val progressState =
         animateFloatAsState(
@@ -2046,20 +2046,21 @@ private fun MikoLyricsTransition(
                     snap()
                 } else {
                     spring(
-                        dampingRatio = 0.9f,
-                        stiffness = 420f,
+                        dampingRatio = 1f,
+                        stiffness = 160f,
                         visibilityThreshold = 0.001f,
                     )
                 },
             label = "mikoLyricsTransition",
         )
     val showContent by remember {
-        // Compose LyricsScreen as soon as the sheet starts to open (progress > 0.001). The fast
-        // spring settles quickly enough that there is no perceptible jank from composing the
-        // heavy lyrics tree on frame 1, and showing content immediately avoids the "blank panel
-        // then pop-in" artifact that the 0.5f deferral introduced on devices where the spring
-        // crossed the 0.5 threshold a frame or two after the visible=true commit.
-        derivedStateOf { visible || progressState.value > 0.001f }
+        // Defer composing the heavy LyricsScreen tree until the sheet has crossed the halfway
+        // mark (progress > 0.5). The slow spring takes ~250ms to reach this point, which is
+        // enough time for the slide-up to visually "commit" before the lyrics tree is composed
+        // — this avoids jank on low-end devices and avoids the "blank panel then pop-in"
+        // artifact that immediate composition introduced on devices where the first frame of
+        // the lyrics tree takes longer than 16ms to compute.
+        derivedStateOf { visible || progressState.value > 0.5f }
     }
 
     if (showContent) {

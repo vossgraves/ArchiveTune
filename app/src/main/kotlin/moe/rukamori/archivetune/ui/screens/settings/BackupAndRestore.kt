@@ -41,11 +41,13 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularWavyProgressIndicator
@@ -56,6 +58,7 @@ import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -166,6 +169,9 @@ fun BackupAndRestore(
     var showSpotifyLogin by rememberSaveable { mutableStateOf(false) }
     var showGoogleDriveAccountPicker by rememberSaveable { mutableStateOf(false) }
     var showGoogleDriveFolderPicker by rememberSaveable { mutableStateOf(false) }
+    var pendingManualUpload by remember {
+        mutableStateOf<moe.rukamori.archivetune.googledrive.GoogleDriveClient.UploadResult.NeedsManualUpload?>(null)
+    }
     var pendingBackupCategories by remember { mutableStateOf(BackupCategory.entries.toSet()) }
     var pendingRestoreCategories by remember { mutableStateOf(BackupCategory.entries.toSet()) }
     var pendingRestoreUri by remember { mutableStateOf<Uri?>(null) }
@@ -237,42 +243,43 @@ fun BackupAndRestore(
                 viewModel.onGoogleDriveSyncAccountSelected(accountEmail)
             }
         }
-    // Drive folder picker — uses SAF's OpenDocumentTree. We treat the picked tree URI as the
-    // Drive folder name (the human-readable folder name comes from COLUMN_DISPLAY_NAME). The
-    // user can pick any folder visible in the system Documents UI, including Drive folders
-    // synced via the Google Drive Android app or any other cloud provider.
-    val googleDriveFolderPickerLauncher =
-        rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
-            if (uri != null) {
-                val folderName =
-                    runCatching {
-                        val docId = android.provider.DocumentsContract.getTreeDocumentId(uri)
-                        val docUri = android.provider.DocumentsContract.buildDocumentUriUsingTree(uri, docId)
-                        context.contentResolver
-                            .query(
-                                docUri,
-                                arrayOf(android.provider.DocumentsContract.Document.COLUMN_DISPLAY_NAME),
-                                null,
-                                null,
-                                null,
-                            )?.use { c ->
-                                if (c.moveToFirst()) {
-                                    c.getString(
-                                        c.getColumnIndexOrThrow(
-                                            android.provider.DocumentsContract.Document.COLUMN_DISPLAY_NAME,
-                                        ),
-                                    )
-                                } else {
-                                    null
-                                }
-                            }
-                    }.getOrNull() ?: uri.lastPathSegment ?: "Drive folder"
-                // We don't actually need the URI persistable permission here — the Drive REST
-                // API uses OAuth tokens, not SAF. We just store the name for display and let
-                // uploads go to "My Drive root" by default (folderId = null).
-                viewModel.onGoogleDriveSyncRemoteFolderSelected(id = null, name = folderName)
-            }
+    // Manual-upload share-sheet launcher — used when the OAuth flow refuses with
+    // `UnregisteredOnApiConsole`. We launch an ACTION_SEND intent for the temp backup file
+    // produced by GoogleDriveClient.uploadBackup; the user picks "Save to Drive" (or any
+    // other target) in the system share sheet and Drive's own UI prompts for the destination
+    // folder. This is the fallback path that actually works without Google Cloud Console
+    // registration.
+    val manualUploadLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            // The share sheet doesn't return a useful result code — once the user dismisses it
+            // (whether they saved to Drive or not), we just clear the pending upload state.
+            // The temp file is cleaned up by the launcher's own lifecycle (it's in cacheDir).
+            pendingManualUpload = null
         }
+    LaunchedEffect(Unit) {
+        viewModel.manualUploadRequest.collect { request ->
+            pendingManualUpload = request
+        }
+    }
+    pendingManualUpload?.let { request ->
+        // Auto-launch the share sheet as soon as a manual upload is pending. The user can
+        // dismiss the sheet to cancel; we don't block on a result.
+        LaunchedEffect(request) {
+            val intent =
+                android.content.Intent(android.content.Intent.createChooser(
+                    android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                        type = "application/octet-stream"
+                        putExtra(android.content.Intent.EXTRA_STREAM, request.tempFileUri)
+                        putExtra(android.content.Intent.EXTRA_TITLE, request.fileName)
+                        addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    },
+                    context.getString(R.string.google_drive_sync_manual_upload_sheet_title),
+                )).apply {
+                    addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+            manualUploadLauncher.launch(intent)
+        }
+    }
     val restoreLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
             if (uri != null) {
@@ -327,8 +334,13 @@ fun BackupAndRestore(
         }
     }
     LaunchedEffect(showGoogleDriveFolderPicker) {
+        // No-op — the folder picker is now a custom in-app dialog (see
+        // GoogleDriveSyncFolderPickerDialog below) instead of the SAF OpenDocumentTree
+        // launcher. SAF only shows local / system-registered cloud folders, NOT the user's
+        // Google Drive folder tree, so it was opening the local file picker (which the user
+        // reported as a bug). The custom dialog lets the user paste a Drive folder ID or URL
+        // or pick "My Drive root".
         if (showGoogleDriveFolderPicker) {
-            googleDriveFolderPickerLauncher.launch(null)
             showGoogleDriveFolderPicker = false
         }
     }
@@ -448,6 +460,29 @@ fun BackupAndRestore(
                     selectedEpochDay = googleDriveData.customDateEpochDay,
                     onDateSelected = viewModel::onGoogleDriveSyncCustomDateSelected,
                     onDismiss = viewModel::onGoogleDriveSyncCustomDateDismissed,
+                )
+            }
+
+            if (showGoogleDriveFolderPicker) {
+                GoogleDriveSyncFolderPickerDialog(
+                    currentFolderName = googleDriveData.remoteFolderName,
+                    onUseRoot = {
+                        viewModel.onGoogleDriveSyncRemoteFolderSelected(id = null, name = null)
+                        showGoogleDriveFolderPicker = false
+                    },
+                    onFolderIdSubmitted = { rawInput ->
+                        // Accept either a raw folder ID or a Drive URL like
+                        // https://drive.google.com/drive/folders/<ID>?usp=sharing
+                        val id = extractDriveFolderId(rawInput)
+                        if (id != null) {
+                            viewModel.onGoogleDriveSyncRemoteFolderSelected(
+                                id = id,
+                                name = "Drive folder $id".takeLast(40),
+                            )
+                            showGoogleDriveFolderPicker = false
+                        }
+                    },
+                    onDismiss = { showGoogleDriveFolderPicker = false },
                 )
             }
 
@@ -1601,4 +1636,118 @@ private fun BackupOptionsDialog(
         }
         Spacer(Modifier.height(4.dp))
     }
+}
+
+/**
+ * Custom Drive folder picker dialog.
+ *
+ * Replaces the previous SAF OpenDocumentTree-based picker, which only showed local /
+ * system-registered cloud folders — never the user's actual Google Drive folder tree. The
+ * user reported this as "it opens my local folder" and that's exactly what SAF does.
+ *
+ * This dialog offers two options:
+ *   1. "Use My Drive root" — uploads go to the root of the user's My Drive (folderId = null).
+ *   2. Paste a Drive folder ID or URL — the user opens Drive in a browser or the Drive app,
+ *      copies the folder URL (or the folder ID from the URL), and pastes it here. We extract
+ *      the folder ID from either form.
+ *
+ * The OAuth-restricted automatic upload path (see GoogleDriveClient.UploadResult.NeedsManualUpload)
+ * also lands the user on this folder-pick model when they choose "Save with share sheet" — the
+ * share sheet itself prompts for the destination folder, so the in-app folder ID is only used
+ * for the auto-sync path.
+ */
+@Composable
+private fun GoogleDriveSyncFolderPickerDialog(
+    currentFolderName: String?,
+    onUseRoot: () -> Unit,
+    onFolderIdSubmitted: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var folderInput by remember { mutableStateOf("") }
+    val inputError = remember(folderInput) {
+        if (folderInput.isBlank()) null
+        else if (extractDriveFolderId(folderInput) == null) "Couldn't parse a folder ID from that input."
+        else null
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.google_drive_sync_pick_folder_title)) },
+        text = {
+            Column {
+                Text(
+                    stringResource(R.string.google_drive_sync_pick_folder_hint),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    stringResource(R.string.google_drive_sync_pick_folder_paste_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(8.dp))
+                androidx.compose.material3.OutlinedTextField(
+                    value = folderInput,
+                    onValueChange = { folderInput = it },
+                    label = { Text(stringResource(R.string.google_drive_sync_pick_folder_paste)) },
+                    singleLine = true,
+                    isError = inputError != null,
+                    supportingText = {
+                        if (inputError != null) {
+                            Text(
+                                inputError,
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                if (currentFolderName != null) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Current: $currentFolderName",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onFolderIdSubmitted(folderInput) },
+                enabled = extractDriveFolderId(folderInput) != null,
+            ) { Text("Save") }
+        },
+        dismissButton = {
+            Row {
+                TextButton(onClick = onUseRoot) {
+                    Text(stringResource(R.string.google_drive_sync_pick_folder_use_root))
+                }
+                Spacer(Modifier.width(4.dp))
+                TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+            }
+        },
+    )
+}
+
+/**
+ * Extracts a Google Drive folder ID from a raw user input. Accepts:
+ *   - A raw folder ID (e.g. `1A2B3C...XYZ`)
+ *   - A Drive URL like `https://drive.google.com/drive/folders/1A2B3C...XYZ?usp=sharing`
+ *   - A Drive URL with `open?id=` form
+ *
+ * Returns null if no folder ID could be extracted.
+ */
+internal fun extractDriveFolderId(rawInput: String): String? {
+    val trimmed = rawInput.trim()
+    if (trimmed.isEmpty()) return null
+    // URL form: .../folders/<ID>
+    val foldersMatch = Regex("""/folders/([A-Za-z0-9_-]{20,})""").find(trimmed)
+    if (foldersMatch != null) return foldersMatch.groupValues[1]
+    // URL form: open?id=<ID>
+    val openIdMatch = Regex("""[?&]id=([A-Za-z0-9_-]{20,})""").find(trimmed)
+    if (openIdMatch != null) return openIdMatch.groupValues[1]
+    // Raw ID: Drive IDs are 20+ chars from [A-Za-z0-9_-]
+    if (trimmed.matches(Regex("""[A-Za-z0-9_-]{20,}"""))) return trimmed
+    return null
 }

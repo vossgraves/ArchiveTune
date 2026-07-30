@@ -242,6 +242,8 @@ class BackupRestoreViewModel
         observeGoogleDriveSyncSettings: ObserveGoogleDriveSyncSettingsUseCase,
         private val updateGoogleDriveSync: UpdateGoogleDriveSyncUseCase,
         private val googleDriveClient: GoogleDriveClient,
+        private val googleDriveSyncRepository: moe.rukamori.archivetune.googledrive.GoogleDriveSyncRepository,
+        @dagger.hilt.android.qualifiers.ApplicationContext private val appContext: android.content.Context,
     ) : ViewModel() {
         private val _backupRestoreProgress = MutableStateFlow<BackupRestoreProgressUi?>(null)
         val backupRestoreProgress: StateFlow<BackupRestoreProgressUi?> = _backupRestoreProgress.asStateFlow()
@@ -267,6 +269,18 @@ class BackupRestoreViewModel
 
         private val _googleDriveSyncEvent = MutableSharedFlow<Int>(extraBufferCapacity = 1)
         val googleDriveSyncEvent: SharedFlow<Int> = _googleDriveSyncEvent.asSharedFlow()
+
+        /**
+         * Emitted when an auto-upload attempt failed because Google's AccountManager refused to
+         * grant the `drive.file` OAuth scope (typically `AuthenticatorException:
+         * UnregisteredOnApiConsole` — the app's package + SHA-1 is not registered on Google
+         * Cloud Console). The UI catches this and opens the system share sheet so the user can
+         * save the prepared backup file to Drive (or anywhere else) manually.
+         */
+        private val _manualUploadRequest =
+            MutableSharedFlow<GoogleDriveClient.UploadResult.NeedsManualUpload>(extraBufferCapacity = 1)
+        val manualUploadRequest: SharedFlow<GoogleDriveClient.UploadResult.NeedsManualUpload> =
+            _manualUploadRequest.asSharedFlow()
 
         private var googleDriveSettings: GoogleDriveSyncSettings? = null
         private var showGoogleDriveCustomDatePicker = false
@@ -495,12 +509,69 @@ class BackupRestoreViewModel
             if (isGDriveSyncing) return
             isGDriveSyncing = true
             publishGoogleDriveSyncState()
-            updateGoogleDriveSync.runNow()
-            // Show the "syncing" UI for a moment, then let the next settings tick reset isSyncing.
+            // Run the upload directly (not via WorkManager) so we can react to the result
+            // synchronously and show the manual-upload sheet immediately if OAuth refused.
+            // WorkManager's runNow() is still triggered as a fallback for the scheduled path.
             viewModelScope.launch {
-                kotlinx.coroutines.delay(2_500)
-                isGDriveSyncing = false
-                publishGoogleDriveSyncState()
+                try {
+                    val settings = googleDriveSettings
+                    val accountEmail = settings?.accountEmail
+                    if (settings == null || !settings.enabled || accountEmail == null) {
+                        // Fall back to the WorkManager path — settings may have changed but not
+                        // yet propagated to the local cache. The worker will bail out safely.
+                        updateGoogleDriveSync.runNow()
+                        return@launch
+                    }
+                    val appName = appContext.getString(R.string.app_name)
+                    val fileName =
+                        if (settings.overwriteExisting) {
+                            appName
+                        } else {
+                            val timestamp = java.time.LocalDateTime.now().format(
+                                java.time.format.DateTimeFormatter.ofPattern("yyyyMMddHHmmss"),
+                            )
+                            "${appName}_$timestamp"
+                        }
+                    when (val result = googleDriveClient.uploadBackup(settings, fileName)) {
+                        is GoogleDriveClient.UploadResult.Success -> {
+                            updateGoogleDriveSync {
+                                // recordSyncResult updates lastSyncEpochMs + lastSyncFailed
+                                googleDriveSyncRepository.recordSyncResult(success = true)
+                            }
+                            _googleDriveSyncEvent.emit(R.string.google_drive_sync_succeeded)
+                        }
+                        is GoogleDriveClient.UploadResult.NeedsManualUpload -> {
+                            // OAuth refused (UnregisteredOnApiConsole). Surface the manual-upload
+                            // sheet so the user can save the temp file to Drive via share sheet.
+                            updateGoogleDriveSync {
+                                googleDriveSyncRepository.recordSyncResult(success = false)
+                            }
+                            _manualUploadRequest.emit(result)
+                        }
+                        is GoogleDriveClient.UploadResult.TransientFailure -> {
+                            updateGoogleDriveSync {
+                                googleDriveSyncRepository.recordSyncResult(success = false)
+                            }
+                            _googleDriveSyncEvent.emit(R.string.google_drive_sync_failed_transient)
+                            // Also kick the WorkManager path so it retries with backoff.
+                            updateGoogleDriveSync.runNow()
+                        }
+                        is GoogleDriveClient.UploadResult.PermanentFailure -> {
+                            updateGoogleDriveSync {
+                                googleDriveSyncRepository.recordSyncResult(success = false)
+                            }
+                            _googleDriveSyncEvent.emit(R.string.google_drive_sync_failed_permanent)
+                        }
+                    }
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (e: Exception) {
+                    reportException(e)
+                    _googleDriveSyncEvent.emit(R.string.google_drive_sync_failed_transient)
+                } finally {
+                    isGDriveSyncing = false
+                    publishGoogleDriveSyncState()
+                }
             }
         }
 
