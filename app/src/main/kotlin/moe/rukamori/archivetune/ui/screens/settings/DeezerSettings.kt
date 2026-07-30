@@ -5,10 +5,8 @@
  * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
  *
  * Deezer integration settings. Reached from the Integration screen alongside
- * Tidal/Qobuz. Currently the Deezer provider only resolves metadata (track id,
- * ISRC, artwork) — full Premium streaming requires credentials that aren't
- * stored yet. This screen surfaces that status and will host the login flow
- * when it's implemented.
+ * Tidal/Qobuz. Hosts the entry point to the Deezer login flow, which captures
+ * an `arl` cookie so the provider can resolve full Premium streams.
  */
 
 package moe.rukamori.archivetune.ui.screens.settings
@@ -22,7 +20,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -31,12 +28,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.height
 import androidx.navigation.NavController
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.ui.component.IconButton
+import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.utils.backToMain
 
@@ -75,19 +71,12 @@ fun DeezerSettings(navController: NavController) {
                 title = stringResource(R.string.deezer_integration),
             ) {
                 item {
-                    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                        Text(
-                            text = stringResource(R.string.deezer_integration_description),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Spacer(Modifier.height(12.dp))
-                        Text(
-                            text = stringResource(R.string.deezer_settings_status_pending),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
+                    PreferenceEntry(
+                        title = { Text(stringResource(R.string.deezer_login)) },
+                        description = stringResource(R.string.deezer_login_description),
+                        icon = { Icon(painterResource(R.drawable.provider_deezer), null) },
+                        onClick = { navController.navigate(DEEZER_LOGIN_ROUTE) },
+                    )
                 }
             }
         }
