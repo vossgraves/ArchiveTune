@@ -157,6 +157,14 @@ enum class PlaylistSuggestionSource {
 val AppLanguageKey = stringPreferencesKey("appLanguage")
 val ContentLanguageKey = stringPreferencesKey("contentLanguage")
 val ContentCountryKey = stringPreferencesKey("contentCountry")
+// Region spoofer for YouTube Music — overrides `YouTube.locale.gl` independently of
+// `ContentCountryKey`. Set from Internet Settings so users can keep their content
+// language/culture but pretend to YouTube Music that they are connecting from a
+// different country (e.g. to play region-locked songs). Applied AFTER
+// `ContentCountryKey` in `App.initializeDeferredAsync()` so the more specific
+// Internet/region setting wins. `SYSTEM_DEFAULT` means "fall back to device locale
+// or `ContentCountryKey`".
+val YouTubeMusicRegionKey = stringPreferencesKey("youtubeMusicRegion")
 val PlaylistSuggestionSourceKey = stringPreferencesKey("playlistSuggestionSource")
 val EnableKugouKey = booleanPreferencesKey("enableKugou")
 val EnableLrcLibKey = booleanPreferencesKey("enableLrclib")
@@ -622,6 +630,7 @@ enum class PreferredLyricsProvider {
     PAXSENIX_SPOTIFY,
     PAXSENIX_MUSIXMATCH,
     PAXSENIX_YOUTUBE,
+    MUSIXMATCH_EXPERIMENTAL,
 }
 
 val DefaultLyricsProviderOrder =
@@ -639,6 +648,7 @@ val DefaultLyricsProviderOrder =
         PreferredLyricsProvider.PAXSENIX_SPOTIFY,
         PreferredLyricsProvider.PAXSENIX_MUSIXMATCH,
         PreferredLyricsProvider.PAXSENIX_YOUTUBE,
+        PreferredLyricsProvider.MUSIXMATCH_EXPERIMENTAL,
     )
 
 fun deserializeLyricsProviderOrder(orderStr: String?): List<PreferredLyricsProvider> {

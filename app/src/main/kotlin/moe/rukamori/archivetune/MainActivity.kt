@@ -21,6 +21,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
 import android.provider.OpenableColumns
+import android.provider.Settings
 import android.view.View
 import android.view.WindowManager
 import android.webkit.MimeTypeMap
@@ -1161,37 +1162,66 @@ class MainActivity : ComponentActivity() {
                         requestAodMode()
                     }
 
-                    // Convenience: when "Enter AOD when screen dims" is ON, register a system
-                    // receiver for ACTION_SCREEN_OFF. When the screen turns off while music is
-                    // playing and the player sheet isn't expanded, queue an AOD request — the
-                    // activity will pick it up on the next resume (onStart → openPendingAodModeIfReady).
-                    // We can't actually prevent the screen-off (that needs system-level access), but
-                    // queueing the request means AOD opens immediately when the user wakes the device,
-                    // instead of showing the regular player first.
+                    // Convenience: when "Enter AOD when screen dims" is ON, hold the screen on
+                    // past the system's screen-off timeout, then trigger AOD 2 seconds *before*
+                    // the system would have turned the screen off. This actually delivers on the
+                    // user-visible copy ("right before the screen turns off") and is what makes
+                    // the feature useful while driving — the driver sees AOD appear while the
+                    // screen is still lit, instead of seeing nothing until they manually wake
+                    // the device.
                     //
-                    // The receiver is intentionally only registered while `aodAutoOnScreenDim` is
-                    // true — the DisposableEffect key re-runs registration on toggle.
-                    val screenOffReceiver = remember {
-                        object : android.content.BroadcastReceiver() {
-                            override fun onReceive(context: android.content.Context?, intent: android.content.Intent?) {
-                                if (intent?.action != android.content.Intent.ACTION_SCREEN_OFF) return
-                                if (!isPlayingNow) return
-                                if (playerBottomSheetState.isExpanded) return
-                                requestAodMode()
-                            }
-                        }
-                    }
-                    DisposableEffect(aodAutoOnScreenDim) {
-                        if (aodAutoOnScreenDim) {
-                            val filter = android.content.IntentFilter(android.content.Intent.ACTION_SCREEN_OFF)
-                            registerReceiver(screenOffReceiver, filter)
-                        }
-                        onDispose {
-                            try {
-                                unregisterReceiver(screenOffReceiver)
-                            } catch (_: Exception) {
-                                // Receiver wasn't registered (e.g. toggle was off).
-                            }
+                    // Why this replaces the previous ACTION_SCREEN_OFF receiver:
+                    //   1. Android does NOT broadcast a "screen dimming" event. ACTION_SCREEN_OFF
+                    //      fires *after* the screen is already off — at that point the activity
+                    //      is in onStop() and any UI we flip on isn't drawn until the user wakes
+                    //      the device, which contradicts the in-app description.
+                    //   2. By holding FLAG_KEEP_SCREEN_ON we keep the window drawable, and by
+                    //      firing 2 s before the system timeout we ensure AOD appears while the
+                    //      user can still see it.
+                    //   3. The timer cancels automatically when the player sheet expands, when
+                    //      playback pauses, when AOD turns on, or when the toggle is turned off —
+                    //      all of which invalidate the LaunchedEffect keys.
+                    LaunchedEffect(
+                        aodAutoOnScreenDim,
+                        isPlayingNow,
+                        playerBottomSheetState.isExpanded,
+                        playerBottomSheetState.isDismissed,
+                        aodModeEnabled,
+                    ) {
+                        if (!aodAutoOnScreenDim) return@LaunchedEffect
+                        if (aodModeEnabled) return@LaunchedEffect
+                        if (!isPlayingNow) return@LaunchedEffect
+                        if (playerBottomSheetState.isExpanded) return@LaunchedEffect
+                        if (playerBottomSheetState.isDismissed) return@LaunchedEffect
+
+                        // Read the system screen-off timeout (e.g. 30 s). On most phones this is
+                        // 15 s – 2 min. Clamp to a sane range so a misconfigured device doesn't
+                        // either fire instantly or wait forever.
+                        val systemTimeoutMs =
+                            Settings.System
+                                .getLong(
+                                    contentResolver,
+                                    Settings.System.SCREEN_OFF_TIMEOUT,
+                                    30_000L,
+                                ).coerceIn(5_000L, 600_000L)
+
+                        // Fire 2 s before the system would have turned the screen off. This
+                        // window is what gives AOD time to fade in while the screen is still
+                        // lit. We also hold FLAG_KEEP_SCREEN_ON so the OS doesn't race us to
+                        // screen-off — AOD itself adds FLAG_KEEP_SCREEN_ON once it's enabled
+                        // (see the LaunchedEffect(aodModeEnabled) above), so the handoff is
+                        // seamless.
+                        val triggerDelayMs = (systemTimeoutMs - 2_000L).coerceAtLeast(2_000L)
+                        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                        try {
+                            delay(triggerDelayMs)
+                            requestAodMode()
+                        } finally {
+                            // Release the flag so the OS can manage screen-off normally again.
+                            // AOD's own LaunchedEffect(aodModeEnabled) will re-add it if AOD
+                            // actually engaged; if the timer was cancelled (e.g. the user
+                            // expanded the player sheet), we want the OS to dim/off normally.
+                            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                         }
                     }
 

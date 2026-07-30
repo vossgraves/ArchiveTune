@@ -381,9 +381,10 @@ fun buildSettingsGroups(
             title = stringResource(R.string.internet),
             subtitle = stringResource(R.string.settings_internet_subtitle),
             accentColor = MaterialTheme.colorScheme.tertiary,
-            keywords = listOf("internet", "proxy", "vpn", "network", "wifi", "connection", "traffic", "tor", "dns", "dns over https"),
+            keywords = listOf("internet", "proxy", "vpn", "network", "wifi", "connection", "traffic", "tor", "dns", "dns over https", "region", "country", "spoof", "geobypass", "geo bypass"),
             onClick = { navController.navigate("settings/internet") },
             children = listOf(
+                SettingsChild("YouTube Music region", "yt_music_region", listOf("region", "country", "gl", "geo", "location", "spoof", "youtube region", "youtube music country", "geobypass", "geo bypass")),
                 SettingsChild("Proxy", "proxy_settings", listOf("proxy", "http proxy", "socks", "vpn")) { SearchResultSwitch(ProxyEnabledKey, false) },
                 SettingsChild("Proxy host", "proxy_host", listOf("proxy host", "proxy address", "proxy server")),
                 SettingsChild("Proxy port", "proxy_port", listOf("proxy port", "port", "proxy port number")),

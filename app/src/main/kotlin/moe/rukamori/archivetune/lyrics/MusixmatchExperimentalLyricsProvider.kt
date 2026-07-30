@@ -8,8 +8,10 @@
 package moe.rukamori.archivetune.lyrics
 
 import android.content.Context
+import android.util.Log
 import moe.rukamori.archivetune.constants.EnableMusixmatchExperimentalKey
 import moe.rukamori.archivetune.musixmatch.Musixmatch
+import moe.rukamori.archivetune.utils.GlobalLog
 import moe.rukamori.archivetune.utils.dataStore
 import moe.rukamori.archivetune.utils.get
 
@@ -31,6 +33,16 @@ import moe.rukamori.archivetune.utils.get
  * need their own retry loop.
  */
 object MusixmatchExperimentalLyricsProvider : LyricsProvider {
+    // Wire the native module's log sink into GlobalLog so its diagnostic messages
+    // (token fetch, macro HTTP status, parse failures, output-format selection) are
+    // surfaced in the in-app log viewer. Mirrors the pattern used by
+    // BetterLyricsProvider and UnisonLyricsProvider.
+    init {
+        Musixmatch.logger = { message ->
+            GlobalLog.append(Log.INFO, "Musixmatch", message)
+        }
+    }
+
     override val name = "Musixmatch (experimental)"
 
     override fun isEnabled(context: Context): Boolean =

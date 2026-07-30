@@ -18,6 +18,8 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.isSuccess
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
@@ -152,6 +154,11 @@ object Musixmatch {
             return
         }
 
+        // Cooperative cancellation between the richsync / subtitle / plain-lyrics
+        // branches — mirrors the pattern used by LrcLib.getAllLyrics so a cancelled
+        // fetch aborts promptly at branch boundaries, not just at suspend points.
+        currentCoroutineContext().ensureActive()
+
         if (hasRichSync) {
             val ttml = fetchRichSyncTtml(track, token)
             if (ttml != null) {
@@ -159,12 +166,16 @@ object Musixmatch {
             }
         }
 
+        currentCoroutineContext().ensureActive()
+
         val subtitleBody = macro.message.body.macroCalls.trackSubtitlesGet?.message?.body?.subtitleList?.subtitleList
             ?.firstOrNull()?.subtitle?.subtitleBody
         if (!subtitleBody.isNullOrBlank()) {
             val lrc = subtitleBodyToLrc(subtitleBody)
             if (lrc.isNotBlank()) callback(lrc)
         }
+
+        currentCoroutineContext().ensureActive()
 
         val lyricsBody = macro.message.body.macroCalls.trackLyricsGet?.message?.body?.lyrics?.lyricsBody
         if (!lyricsBody.isNullOrBlank()) {
