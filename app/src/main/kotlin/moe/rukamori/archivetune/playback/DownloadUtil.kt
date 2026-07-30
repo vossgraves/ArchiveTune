@@ -48,7 +48,9 @@ import moe.rukamori.archivetune.constants.TidalAudioQuality
 import moe.rukamori.archivetune.constants.TidalAudioQualityKey
 import moe.rukamori.archivetune.constants.toFormatId
 import moe.rukamori.archivetune.db.MusicDatabase
+import moe.rukamori.archivetune.db.entities.ArtistEntity
 import moe.rukamori.archivetune.db.entities.FormatEntity
+import moe.rukamori.archivetune.db.entities.SongArtistMap
 import moe.rukamori.archivetune.db.entities.SongEntity
 import moe.rukamori.archivetune.di.DownloadCache
 import moe.rukamori.archivetune.di.PlayerCache
@@ -882,7 +884,8 @@ class DownloadUtil
                         )
 
                         val now = LocalDateTime.now()
-                        val existing = getSongByIdBlocking(mediaId)?.song
+                        val existingSongRow = getSongByIdBlocking(mediaId)
+                        val existing = existingSongRow?.song
                         val resolvedThumbnailUrl =
                             playbackData.videoDetails
                                 ?.thumbnail
@@ -908,6 +911,72 @@ class DownloadUtil
                             }
 
                         upsert(updatedSong)
+
+                        // Persist the YouTube channel (videoDetails.author) as an
+                        // ArtistEntity + SongArtistMap so that exported YT
+                        // downloads have an artist tag.
+                        //
+                        // Why this matters: when a song is downloaded directly
+                        // (without first being played from a YouTube Music
+                        // browse endpoint), the only metadata we get is in
+                        // playbackData.videoDetails — title, author, channelId,
+                        // thumbnail. Previously we only persisted the SongEntity
+                        // (title + thumbnail), leaving the song_artist_map empty.
+                        //
+                        // The export pipeline (resolveExportMetadata) reads
+                        // artists from song_artist_map; with no rows there, it
+                        // falls back to YouTube.getMediaInfo(videoId), which
+                        // queries the WEB client — that returns the channel
+                        // avatar (not the song cover) for artwork and a
+                        // sometimes-mangled channel name. Worse, the fallback
+                        // only triggers when hasFullMetadata is false; if the
+                        // DB has title + thumbnail but no artist, the fallback
+                        // path runs but yields "Unknown" artist in many cases.
+                        //
+                        // By inserting an ArtistEntity + SongArtistMap here
+                        // (only when no artist map exists yet — we never
+                        // overwrite a higher-quality artist relation inserted
+                        // by the browse endpoint), the export pipeline's fast
+                        // path resolves correctly: title + artist + thumbnail
+                        // all populated from the DB.
+                        val videoDetails = playbackData.videoDetails
+                        val hasArtistMap = existingSongRow?.artists?.isNotEmpty() == true
+                        if (!hasArtistMap && videoDetails != null) {
+                            val authorName = videoDetails.author.takeIf { it.isNotBlank() }
+                            val channelId = videoDetails.channelId.takeIf { it.isNotBlank() }
+                            if (authorName != null) {
+                                // Use the YouTube channelId as the artist id when
+                                // available (matches the convention used by
+                                // insert(MediaMetadata) in DatabaseDao). Fall back
+                                // to a deterministic pseudo-id derived from the
+                                // mediaId so we don't pollute the artist table
+                                // with random UUIDs for the same video.
+                                val artistId = channelId ?: "UCYT:${mediaId}"
+                                // Strip the trailing " - Topic" suffix that
+                                // YouTube Music auto-generated artist channels
+                                // have — it's not part of the artist's name and
+                                // would show up ugly in the exported metadata.
+                                val cleanArtistName = authorName
+                                    .removeSuffix(" - Topic")
+                                    .removeSuffix("- Topic")
+                                    .trim()
+                                    .ifBlank { authorName }
+                                upsert(
+                                    ArtistEntity(
+                                        id = artistId,
+                                        name = cleanArtistName,
+                                        channelId = channelId,
+                                    ),
+                                )
+                                insert(
+                                    SongArtistMap(
+                                        songId = mediaId,
+                                        artistId = artistId,
+                                        position = 0,
+                                    ),
+                                )
+                            }
+                        }
                     }
                 }
             }

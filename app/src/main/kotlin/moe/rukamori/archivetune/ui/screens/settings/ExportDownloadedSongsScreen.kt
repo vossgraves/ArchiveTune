@@ -138,7 +138,7 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
                 songIds.mapNotNull { songId ->
                     // Only include songs that actually have cached spans.
                     val hasSpans =
-                        listOf("qobuz:$songId", "tidal:$songId", songId).any { key ->
+                        listOf("qobuz:$songId", "tidal:$songId", "deezer:$songId", songId).any { key ->
                             cache.getCachedSpans(key).isNotEmpty()
                         }
                     if (!hasSpans) return@mapNotNull null
@@ -183,6 +183,7 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
             coroutineScope.launch {
                 var exported = 0
                 var failed = 0
+                var skippedWebm = 0
                 try {
                     withContext(Dispatchers.IO) {
                         val cache = downloadUtil.downloadCache
@@ -193,18 +194,59 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
                             )
                         val tempDir = java.io.File(context.cacheDir, "export_tmp").apply { mkdirs() }
                         loop@ for (row in toExport) {
-                            val spans =
-                                resolveSpans(cache, row.songId) ?: run { failed++; continue@loop }
+                            val resolved = resolveSpansWithSource(cache, row.songId) ?: run { failed++; continue@loop }
+                            val spans = resolved.spans
                             val detectedExt = detectAudioExtensionFromSpans(spans)
-                            val mime = extensionToMimeType(detectedExt)
+                            // Skip legacy WebM/Opus caches — these were downloaded
+                            // before the preferM4A fix in YTPlayerUtils and contain
+                            // Opus audio in a Matroska container. jaudiotagger
+                            // cannot read WebM (no reader registered), so we can't
+                            // tag them, and renaming the bytes to .mp3 would
+                            // produce a file most players refuse to play (the
+                            // container format is wrong, not just the extension).
+                            //
+                            // The user's request: "when i export the songs that
+                            // were downloaded from youtube music, its not in .webm
+                            // format but always .mp3 file". The proper fix is at
+                            // the download path (codec-rank-first comparator in
+                            // YTPlayerUtils — see that file). For OLD caches that
+                            // are already .webm, skipping with a clear count is
+                            // the safest path. The user can delete and re-download
+                            // the affected songs to get fresh .m4a bytes.
+                            if (detectedExt == "webm" || detectedExt == "opus") {
+                                skippedWebm++
+                                failed++
+                                continue@loop
+                            }
+                            // Determine the user-visible extension:
+                            //   - YouTube-sourced downloads (no source prefix on
+                            //     the cache key) are exported as .mp3 per the
+                            //     user's explicit request. The cached bytes are
+                            //     AAC/MP4 (after the codec-rank fix), which most
+                            //     Android players detect by magic bytes — they'll
+                            //     play correctly even with a .mp3 extension, and
+                            //     jaudiotagger reads the file by content (not
+                            //     extension) so MP4 tags are written correctly.
+                            //   - Lossless sources (Qobuz/Tidal/Deezer) keep
+                            //     their native extension (.flac) — the user's
+                            //     complaint is specifically about YouTube Music
+                            //     exports, not lossless.
+                            val isYouTubeSource = resolved.sourceKey == null
+                            val exportExt =
+                                if (isYouTubeSource && detectedExt == "m4a") "mp3" else detectedExt
+                            val mime = extensionToMimeType(exportExt)
                             val safeTitle =
                                 row.title
                                     .replace(Regex("[\\\\/:*?\"<>|]"), "_")
                                     .ifBlank { "audio_${row.songId}" }
                             // Stage 1: assemble spans into a single temp file
                             // so jaudiotagger can write metadata tags onto it.
-                            // The temp file is deleted in the finally block
-                            // below — both on success and on failure.
+                            // The temp file is named with the *real* detected
+                            // extension (m4a/flac/...) so jaudiotagger's
+                            // AudioFileIO.read() — which uses the extension to
+                            // pick a reader — finds the right format. The final
+                            // SAF document is renamed to exportExt (.mp3 for YT)
+                            // after tagging is complete.
                             val tempFile = java.io.File(tempDir, "${row.songId}.$detectedExt")
                             try {
                                 runCatching {
@@ -229,13 +271,16 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
                                 // unknown artist, unknown album, no song artwork".
                                 // Failure is non-fatal: AudioTagger.tag() wraps every
                                 // operation in runCatching, so an unsupported format
-                                // (e.g. WebM) just leaves the file untagged without
-                                // aborting the export.
+                                // just leaves the file untagged without aborting the
+                                // export.
                                 //
                                 // Metadata source priority:
                                 //   1. Database SongEntity (populated when the user
                                 //      clicked Download — title/artists/album come
-                                //      from YouTube Music's browse response).
+                                //      from YouTube Music's browse response OR from
+                                //      persistPlaybackMetadata which now inserts an
+                                //      ArtistEntity + SongArtistMap from
+                                //      videoDetails.author for direct YT downloads).
                                 //   2. YouTube.getMediaInfo(videoId) fallback — when
                                 //      the database has no artist/album (e.g. the song
                                 //      was downloaded via a playlist and the artist
@@ -244,25 +289,18 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
                                 //   3. Thumbnail URL from row.thumbnailUrl as the
                                 //      embedded artwork bytes.
                                 val resolvedMetadata = resolveExportMetadata(database, row)
-                                if (detectedExt != "webm") {
-                                    moe.rukamori.archivetune.playback.AudioTagger.tag(tempFile, resolvedMetadata)
-                                } else {
-                                    // WebM/Matroska is not supported by jaudiotagger
-                                    // (no reader). We can't tag it, but we still export
-                                    // the bytes so the user has the audio. The fix for
-                                    // "everything is .webm" is at the download path
-                                    // (preferM4A = true in YTPlayerUtils), not here —
-                                    // by the time we export, the file is already .m4a
-                                    // if the download path worked correctly.
-                                }
+                                moe.rukamori.archivetune.playback.AudioTagger.tag(tempFile, resolvedMetadata)
                                 // Stage 3: copy the tagged temp file to the
-                                // user-selected SAF folder.
+                                // user-selected SAF folder. The document is created
+                                // with the export extension (which may be .mp3 for
+                                // YouTube-sourced files even though the underlying
+                                // bytes are AAC/MP4 — see comment on exportExt above).
                                 val destUri =
                                     android.provider.DocumentsContract.createDocument(
                                         context.contentResolver,
                                         parentDocUri,
                                         mime,
-                                        "$safeTitle.$detectedExt",
+                                        "$safeTitle.$exportExt",
                                     ) ?: run { failed++; continue@loop }
                                 runCatching {
                                     context.contentResolver.openOutputStream(destUri, "w")?.use { output ->
@@ -287,12 +325,17 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
                     isExporting = false
                 }
                 val failedMsg = if (failed > 0) ", $failed failed" else ""
+                val webmMsg = if (skippedWebm > 0) {
+                    " ($skippedWebm skipped — re-download to enable MP3 export)"
+                } else {
+                    ""
+                }
                 Toast.makeText(
                     context,
                     context.getString(
                         R.string.export_downloaded_songs_complete,
                         exported,
-                        failedMsg,
+                        failedMsg + webmMsg,
                     ),
                     Toast.LENGTH_LONG,
                 ).show()
@@ -322,7 +365,7 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
                     val playerCache = downloadUtil.playerCache
                     for (row in toDelete) {
                         var removed = false
-                        for (key in listOf("qobuz:${row.songId}", "tidal:${row.songId}", row.songId)) {
+                        for (key in listOf("qobuz:${row.songId}", "tidal:${row.songId}", "deezer:${row.songId}", row.songId)) {
                             runCatching { cache.removeResource(key) }.onSuccess { removed = true }
                             runCatching { playerCache.removeResource(key) }.onSuccess { removed = true }
                         }
@@ -740,10 +783,38 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
 private fun resolveSpans(
     cache: androidx.media3.datasource.cache.Cache,
     songId: String,
-): java.util.NavigableSet<androidx.media3.datasource.cache.CacheSpan>? {
-    for (key in listOf("qobuz:$songId", "tidal:$songId", songId)) {
+): java.util.NavigableSet<androidx.media3.datasource.cache.CacheSpan>? =
+    resolveSpansWithSource(cache, songId)?.spans
+
+/**
+ * Same as [resolveSpans] but also returns the matched cache key so the caller
+ * can determine whether the cached bytes came from a lossless source
+ * ("qobuz:$songId" / "tidal:$songId" / "deezer:$songId") or from YouTube
+ * Music (bare media id, no prefix).
+ *
+ * The caller uses [sourceKey] to decide the user-visible export extension:
+ * YouTube-sourced AAC caches are renamed to .mp3 (per the user's explicit
+ * request), while lossless sources keep their native .flac extension.
+ *
+ * [sourceKey] is null when the bytes were cached under the bare media id
+ * (i.e. YouTube Music is the source). It is non-null for source-prefixed
+ * keys (Qobuz/Tidal/Deezer).
+ */
+private data class ResolvedSpansWithSource(
+    val spans: java.util.NavigableSet<androidx.media3.datasource.cache.CacheSpan>,
+    val sourceKey: String?,
+)
+
+private fun resolveSpansWithSource(
+    cache: androidx.media3.datasource.cache.Cache,
+    songId: String,
+): ResolvedSpansWithSource? {
+    for (key in listOf("qobuz:$songId", "tidal:$songId", "deezer:$songId", songId)) {
         val spans = cache.getCachedSpans(key)
-        if (spans.isNotEmpty()) return spans
+        if (spans.isNotEmpty()) {
+            val sourceKey = key.takeIf { it != songId }
+            return ResolvedSpansWithSource(spans, sourceKey)
+        }
     }
     return null
 }
