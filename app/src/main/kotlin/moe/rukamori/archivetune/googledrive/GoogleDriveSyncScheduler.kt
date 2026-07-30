@@ -98,7 +98,7 @@ class GoogleDriveSyncScheduler
                 ).build()
 
         private fun nextRunAt(settings: GoogleDriveSyncSettings): ZonedDateTime? {
-            if (!settings.enabled || settings.accountEmail == null) return null
+            if (!settings.enabled || settings.remoteFolderUri == null) return null
             val now = ZonedDateTime.now()
             val nextDate =
                 when (settings.frequency) {

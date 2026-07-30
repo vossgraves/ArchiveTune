@@ -21,17 +21,17 @@ import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
 /**
- * WorkManager worker that performs a Google Drive backup sync.
+ * WorkManager worker that performs a cloud backup sync via SAF.
  *
- * Loads settings from [GoogleDriveSyncRepository], bails out if disabled or unconfigured, then
- * delegates to [GoogleDriveClient.uploadBackup]. After a successful upload, schedules the next
- * run via [GoogleDriveSyncScheduler.appendNext].
+ * Loads settings from [GoogleDriveSyncRepository], bails out if disabled or no folder is
+ * configured, then delegates to [GoogleDriveClient.uploadBackup]. After a successful upload,
+ * schedules the next run via [GoogleDriveSyncScheduler.appendNext].
  *
  * Returns:
  *   - `Result.success()` after a successful upload (or when settings are disabled — nothing to do).
- *   - `Result.retry()` on a transient failure (network blip, Drive 5xx, OAuth token expiry
- *     that the client's one-shot retry didn't fix). WorkManager backs off exponentially.
- *   - `Result.failure()` on permanent failure (account no longer present, no Drive permission).
+ *   - `Result.retry()` on a transient failure (the folder URI is temporarily unreachable, a
+ *     provider-side hiccup, or an I/O blip). WorkManager backs off exponentially.
+ *   - `Result.failure()` on permanent failure (folder permission revoked, URI malformed).
  */
 class GoogleDriveSyncWorker(
     context: Context,
@@ -44,7 +44,7 @@ class GoogleDriveSyncWorker(
                 GoogleDriveSyncWorkerEntryPoint::class.java,
             )
         val settings = dependencies.googleDriveRepository().getSettings() ?: return Result.success()
-        if (!settings.enabled || settings.accountEmail == null) return Result.success()
+        if (!settings.enabled || settings.remoteFolderUri == null) return Result.success()
 
         return try {
             val fileName =
@@ -61,17 +61,6 @@ class GoogleDriveSyncWorker(
                         settings.copy(lastSyncEpochMs = System.currentTimeMillis(), lastSyncFailed = false),
                     )
                     Result.success()
-                }
-                is GoogleDriveClient.UploadResult.NeedsManualUpload -> {
-                    // OAuth refused (typically "UnregisteredOnApiConsole"). We can't auto-upload
-                    // without registering the app on Google Cloud Console. Post a notification
-                    // with an ACTION_SEND intent so the user can save the backup to Drive (or
-                    // anywhere else) via the system share sheet.
-                    postManualUploadNotification(result)
-                    // Treat as a permanent failure for the auto-sync path — we don't want
-                    // WorkManager to retry every 5 minutes and pile up notifications.
-                    dependencies.googleDriveRepository().recordSyncResult(success = false)
-                    Result.failure()
                 }
                 is GoogleDriveClient.UploadResult.TransientFailure -> {
                     dependencies.googleDriveRepository().recordSyncResult(success = false)
@@ -96,69 +85,8 @@ class GoogleDriveSyncWorker(
         }
     }
 
-    /**
-     * Posts a high-priority notification with a "Save to Drive" action so the user can manually
-     * upload the temp backup file produced by [GoogleDriveClient.UploadResult.NeedsManualUpload].
-     *
-     * The notification's tap action launches the system share sheet for the temp backup file —
-     * the user picks "Save to Drive" (or any other target) and Drive's own UI prompts for the
-     * destination folder.
-     */
-    private fun postManualUploadNotification(result: GoogleDriveClient.UploadResult.NeedsManualUpload) {
-        val client = EntryPointAccessors.fromApplication(
-            applicationContext,
-            GoogleDriveSyncWorkerEntryPoint::class.java,
-        ).googleDriveClient()
-        val intent = client.buildManualUploadIntent(result.tempFileUri, result.fileName).apply {
-            // Launch as a new task from a notification context.
-            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
-        val pendingIntent = android.app.PendingIntent.getActivity(
-            applicationContext,
-            MANUAL_UPLOAD_REQUEST_CODE,
-            android.content.Intent.createChooser(intent, result.fileName).apply {
-                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-            },
-            android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT,
-        )
-        val notificationManager = androidx.core.app.NotificationManagerCompat.from(applicationContext)
-        if (!notificationManager.areNotificationsEnabled()) return
-
-        val channel = android.app.NotificationChannel(
-            MANUAL_UPLOAD_CHANNEL_ID,
-            applicationContext.getString(R.string.google_drive_sync_manual_upload_channel),
-            android.app.NotificationManager.IMPORTANCE_HIGH,
-        ).apply {
-            description = applicationContext.getString(R.string.google_drive_sync_manual_upload_channel_desc)
-        }
-        notificationManager.createNotificationChannel(channel)
-
-        val notification = androidx.core.app.NotificationCompat
-            .Builder(applicationContext, MANUAL_UPLOAD_CHANNEL_ID)
-            .setSmallIcon(R.drawable.backup)
-            .setContentTitle(applicationContext.getString(R.string.google_drive_sync_manual_upload_title))
-            .setContentText(applicationContext.getString(R.string.google_drive_sync_manual_upload_text))
-            .setStyle(
-                androidx.core.app.NotificationCompat.BigTextStyle()
-                    .bigText(applicationContext.getString(R.string.google_drive_sync_manual_upload_big_text)),
-            )
-            .setPriority(androidx.core.app.NotificationCompat.PRIORITY_HIGH)
-            .setContentIntent(pendingIntent)
-            .setAutoCancel(true)
-            .build()
-        try {
-            notificationManager.notify(MANUAL_UPLOAD_NOTIFICATION_ID, notification)
-        } catch (security: SecurityException) {
-            // Some OEMs gate notifications behind a runtime permission we may not hold.
-            reportException(security)
-        }
-    }
-
     companion object {
         private val FILE_TIMESTAMP_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMddHHmmss")
-        private const val MANUAL_UPLOAD_CHANNEL_ID = "gdrive_manual_upload"
-        private const val MANUAL_UPLOAD_NOTIFICATION_ID = 4271
-        private const val MANUAL_UPLOAD_REQUEST_CODE = 4271
     }
 }
 

@@ -43,17 +43,18 @@ class UpdateGoogleDriveSyncUseCase
         suspend fun setCustomDate(epochDay: Long): GoogleDriveSyncSettings =
             repository.updateCustomDate(epochDay).also(scheduler::replace)
 
-        suspend fun setAccount(email: String): GoogleDriveSyncSettings =
-            repository.updateAccount(email).also(scheduler::replace)
-
-        suspend fun setRemoteFolder(id: String?, name: String?): GoogleDriveSyncSettings =
-            repository.updateRemoteFolder(id, name)
+        suspend fun setRemoteFolder(uri: String?, name: String?): GoogleDriveSyncSettings =
+            repository.updateRemoteFolder(uri, name)
 
         suspend fun setOverwrite(overwrite: Boolean): GoogleDriveSyncSettings =
             repository.updateOverwrite(overwrite)
 
-        suspend fun clearAccount(): GoogleDriveSyncSettings =
-            repository.clearAccount().also { scheduler.cancel() }
+        /**
+         * Clears the picked folder and disables auto-sync. Cancels the scheduled WorkManager job
+         * since sync can't run without a target folder.
+         */
+        suspend fun clearRemoteFolder(): GoogleDriveSyncSettings =
+            repository.clearRemoteFolder().also { scheduler.cancel() }
 
         fun runNow() = scheduler.runNow()
     }
