@@ -839,6 +839,9 @@
     <string name="source_qobuz">Qobuz</string>
     <string name="qobuz_integration">Qobuz</string>
     <string name="qobuz_integration_description">Manage Qobuz proxy instances and lossless quality</string>
+    <string name="deezer_integration">Deezer</string>
+    <string name="deezer_integration_description">Log in with Deezer Premium to stream lossless audio</string>
+    <string name="deezer_settings_status_pending">Deezer metadata resolution is active. Full Premium streaming requires login credentials — coming soon.</string>
     <string name="qobuz_enable">Enable Qobuz source</string>
     <string name="qobuz_enable_description">Route playback through your Qobuz proxy instances when a matching track is found</string>
     <string name="qobuz_audio_quality">Audio quality</string>

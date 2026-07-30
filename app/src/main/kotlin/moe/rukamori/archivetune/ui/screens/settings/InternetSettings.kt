@@ -245,6 +245,15 @@ fun InternetSettings(navController: NavController, scrollTo: String? = null) {
                             // otherwise. Setting it to null forces the next request to re-fetch
                             // a fresh, region-pinned token.
                             //
+                            // The regionSpooferActive flag forces region-sensitive endpoints
+                            // (home, search, charts, trending, new releases, moods & genres,
+                            // explore) to go ANONYMOUS — no cookie, no dataSyncId, no
+                            // visitorData in the body or X-Goog-Visitor-Id header. Without
+                            // this, a logged-in user's account region overrides `gl` and
+                            // YouTube keeps serving content from the account's home country,
+                            // defeating the spoofer. Login-required endpoints (library,
+                            // playlists, history) are unaffected and keep using the session.
+                            //
                             // The locale assignment emits YouTube.localeChanges, which
                             // HomeViewModel collects to trigger an immediate home-feed refresh
                             // (no manual pull-to-refresh required).
@@ -253,6 +262,8 @@ fun InternetSettings(navController: NavController, scrollTo: String? = null) {
                                 newValue.takeIf { it != SYSTEM_DEFAULT }
                                     ?: deviceLocale.country.takeIf { it in CountryCodeToName }
                                     ?: "US"
+                            val spooferActive = newValue != SYSTEM_DEFAULT
+                            YouTube.regionSpooferActive = spooferActive
                             YouTube.visitorData = null
                             YouTube.locale = YouTube.locale.copy(gl = resolvedGl)
                             onYtMusicRegionChange(newValue)

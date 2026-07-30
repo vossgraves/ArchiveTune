@@ -138,6 +138,38 @@ fun IntegrationScreen(navController: NavController, scrollTo: String? = null) {
                             },
                         )
                     }
+
+                    item {
+                        PreferenceEntry(
+                            title = { Text(stringResource(R.string.deezer_integration)) },
+                            description = stringResource(R.string.deezer_integration_description),
+                            icon = { Icon(painterResource(R.drawable.provider_deezer), null) },
+                            onClick = {
+                                navController.navigate("settings/deezer")
+                            },
+                        )
+                    }
+                }
+            }
+
+            // Telegram lives under Integration (alongside Tidal/Qobuz/Deezer) per
+            // product decision — it's a streaming source that needs its own login,
+            // not an "account" like YouTube Music / Last.fm. Not gated behind
+            // manualSourceLogin because the Telegram client uses TDLib (not a
+            // manual token flow).
+            PreferenceGroup(
+                modifier = positions.modifierFor("telegram"),
+                title = stringResource(R.string.music_sources),
+            ) {
+                item {
+                    PreferenceEntry(
+                        title = { Text(stringResource(R.string.telegram_integration)) },
+                        description = stringResource(R.string.telegram_integration_description),
+                        icon = { Icon(painterResource(R.drawable.provider_telegram), null) },
+                        onClick = {
+                            navController.navigate("settings/telegram")
+                        },
+                    )
                 }
             }
 

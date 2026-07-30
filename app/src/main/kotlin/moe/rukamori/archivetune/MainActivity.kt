@@ -593,6 +593,16 @@ class MainActivity : ComponentActivity() {
 
             val updateChannel by rememberEnumPreference(UpdateChannelKey, defaultValue = defaultUpdateChannel)
 
+            // Canary builds (GitHub Actions / dev branch) are locked to the canary
+            // update channel — even if the user opens Update settings and switches
+            // to "Stable", a canary build must never pop up a stable-release update
+            // (the stable APK would sideload-downgrade the canary, and the user
+            // signed up for canary builds by installing a GitHub Actions artifact).
+            // Stable builds respect the user's selection. This single value drives
+            // both the version-check LaunchedEffect and the popup-show
+            // LaunchedEffect so they stay in sync.
+            val effectiveUpdateChannel = if (isCanaryBuild) UpdateChannel.CANARY else updateChannel
+
             LaunchedEffect(Unit) {
                 while (playerConnection == null) {
                     delay(100)
@@ -604,7 +614,11 @@ class MainActivity : ComponentActivity() {
                     System.currentTimeMillis() - Updater.lastCheckTime > 1.days.inWholeMilliseconds
                 ) {
                     val channelString = withContext(Dispatchers.IO) { dataStore.data.first()[UpdateChannelKey] }
-                    val actualChannel = UpdateChannel.fromStoredName(channelString, defaultUpdateChannel)
+                    val userSelectedChannel = UpdateChannel.fromStoredName(channelString, defaultUpdateChannel)
+                    // Lock canary builds to canary updates regardless of the user's
+                    // selection — see the comment on effectiveUpdateChannel above.
+                    val actualChannel =
+                        if (isCanaryBuild) UpdateChannel.CANARY else userSelectedChannel
                     val versionResult =
                         when (actualChannel) {
                             UpdateChannel.CANARY -> Updater.getLatestCanaryVersionName()
@@ -703,10 +717,10 @@ class MainActivity : ComponentActivity() {
             }
 
             // fetch release notes and show sheet when a new version is detected
-            LaunchedEffect(latestVersionName, latestUpdateChannel, updateChannel) {
+            LaunchedEffect(latestVersionName, latestUpdateChannel, effectiveUpdateChannel) {
                 if (
                     BuildConfig.UPDATER_AVAILABLE &&
-                    latestUpdateChannel == updateChannel &&
+                    latestUpdateChannel == effectiveUpdateChannel &&
                     Updater.isUpdateAvailable(latestVersionName, BuildConfig.VERSION_NAME)
                 ) {
                     val releaseNotesResult =
@@ -2056,7 +2070,7 @@ class MainActivity : ComponentActivity() {
                                                                     BadgedBox(badge = {
                                                                         if (
                                                                             BuildConfig.UPDATER_AVAILABLE &&
-                                                                            latestUpdateChannel == updateChannel &&
+                                                                            latestUpdateChannel == effectiveUpdateChannel &&
                                                                             Updater.isUpdateAvailable(latestVersionName, BuildConfig.VERSION_NAME)
                                                                         ) Badge()
                                                                     }) {

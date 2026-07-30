@@ -836,13 +836,33 @@ fun BottomSheetPlayer(
             QueuePeekHeight
         }
 
-    val dismissedBound = dynamicQueuePeekHeight + WindowInsets.systemBars.asPaddingValues().calculateBottomPadding()
+    val systemBarsBottom = WindowInsets.systemBars.asPaddingValues().calculateBottomPadding()
+
+    // Queue sheet anchors. The previous code set collapsedBound == dismissedBound,
+    // which collapsed the sheet onto the dismissed anchor. At that anchor
+    // `isDismissed == true`, so per BottomSheet.kt the collapsedContent was NOT
+    // rendered (and neither was expandedContent since `isCollapsed == true`).
+    // Net effect: dragging the queue down made it vanish instantly — the user
+    // saw an empty strip with no controls and no way to drag it back up.
+    //
+    // The fix separates the two anchors:
+    //   - dismissedBound = 0.dp → sheet is fully off-screen (below the viewport)
+    //   - collapsedBound = peek + systemBarsBottom → sheet shows the peek/mini
+    //     controls just above the system bar
+    //
+    // Now dragging down snaps to collapsedBound (peek visible, controls tappable),
+    // and a hard downward fling past collapsedBound goes to dismissedBound only
+    // if `onDismiss != null` — which it isn't for Queue — so the sheet stays at
+    // the peek instead of vanishing. The user can tap the queue button to
+    // re-expand at any time.
+    val dismissedBound = 0.dp
+    val collapsedBound = dynamicQueuePeekHeight + systemBarsBottom
 
     val queueSheetState =
         rememberBottomSheetState(
             dismissedBound = dismissedBound,
             expandedBound = state.expandedBound,
-            collapsedBound = dismissedBound,
+            collapsedBound = collapsedBound,
             initialAnchor = 0,
         )
 

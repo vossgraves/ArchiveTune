@@ -29,6 +29,7 @@ enum class BackupArchiveStep {
     EXPORT_SETTINGS,
     CHECKPOINT_DATABASE,
     COPY_DATABASE_FILE,
+    COPY_CUSTOM_FONTS,
 }
 
 data class BackupArchiveProgress(
@@ -108,6 +109,45 @@ class BackupArchiveRepository
                     writeSettingsToXml(zipStream, settingsExcludedKeys)
                     zipStream.closeEntry()
                     completedUnits++
+
+                    // Embed custom font .ttf files so the user's font choice survives a
+                    // backup/restore cycle. The font URI/name preferences live in settings.xml,
+                    // but the actual .ttf binary lives in filesDir/custom_fonts/ — without
+                    // embedding the binary, restoring settings.xml would point at a font file
+                    // that doesn't exist on the new install. We walk the directory and write
+                    // each .ttf under a `fonts/` prefix in the ZIP.
+                    val fontsDir = java.io.File(context.filesDir, CUSTOM_FONTS_DIR_NAME)
+                    val fontFiles =
+                        if (fontsDir.isDirectory) {
+                            fontsDir.listFiles { file -> file.isFile && file.name.endsWith(".ttf", ignoreCase = true) }
+                                ?.sortedBy { it.name }
+                                ?: emptyList()
+                        } else {
+                            emptyList()
+                        }
+                    if (fontFiles.isNotEmpty()) {
+                        val buffer = ByteArray(BUFFER_SIZE)
+                        fontFiles.forEach { file ->
+                            val fileSize = file.length().coerceAtLeast(1L)
+                            var bytesCopied = 0L
+                            emit(BackupArchiveStep.COPY_CUSTOM_FONTS, file.name)
+                            zipStream.putNextEntry(ZipEntry("$FONTS_ZIP_PREFIX/${file.name}"))
+                            FileInputStream(file).use { input ->
+                                while (true) {
+                                    val read = input.read(buffer)
+                                    if (read <= 0) break
+                                    zipStream.write(buffer, 0, read)
+                                    bytesCopied += read
+                                    emit(
+                                        step = BackupArchiveStep.COPY_CUSTOM_FONTS,
+                                        fileName = file.name,
+                                        unitFraction = bytesCopied.toFloat() / fileSize.toFloat(),
+                                    )
+                                }
+                            }
+                            zipStream.closeEntry()
+                        }
+                    }
                 }
 
                 if (includeLibrary) {
@@ -201,6 +241,8 @@ class BackupArchiveRepository
 
         companion object {
             const val SETTINGS_XML_FILENAME = "settings.xml"
+            const val CUSTOM_FONTS_DIR_NAME = "custom_fonts"
+            const val FONTS_ZIP_PREFIX = "fonts"
             private const val BUFFER_SIZE = 64 * 1024
 
             val ACCOUNT_PREFERENCE_KEYS: Set<String> =

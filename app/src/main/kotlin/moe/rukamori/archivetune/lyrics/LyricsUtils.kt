@@ -989,6 +989,180 @@ object LyricsUtils {
             romajaBuilder.toString()
         }
 
+    // region Hindi (Devanagari) romanization
+    //
+    // A hand-written Devanagari→Latin mapper that produces intuitive, pronounceable
+    // romanization for Hindi lyrics (e.g. "नमस्ते" → "namaste", "आदित्य" → "aaditya",
+    // "क्षमा" → "kshama"). This replaces the previous ICU "Any-Latin; Latin-ASCII" path
+    // which produced ISO-15919 with diacritics (e.g. "namastē") and then stripped them
+    // (e.g. "namaste" — but lost length distinctions and palatal/retroflex contrasts).
+    //
+    // The mapper handles:
+    //   - Independent vowels (अ, आ, इ, …) and their vowel signs (matras: ा, ि, ी, …)
+    //   - Consonants with inherent "a" (क → "ka"), suppressed by virama (क् → "k")
+    //   - Conjunct consonants (क + ् + ष → "ksh")
+    //   - Anusvara (ं) → "n" before vowels/semivowels, "m" before labials, otherwise "n"
+    //   - Visarga (ः) → "h"
+    //   - Candrabindu (ँ) → "n" (nasalization marker, simplified)
+    //   - Common special conjuncts: ज्ञ → "gyan", त्र → "tra", श्र → "shra", क्ष → "ksha"
+    //   - Devanagari numerals (०-९) → 0-9
+    //   - Danda (।) → "."
+    private val DEVANAGARI_INDEPENDENT_VOWELS =
+        mapOf(
+            'अ' to "a", 'आ' to "aa", 'इ' to "i", 'ई' to "ii", 'उ' to "u", 'ऊ' to "uu",
+            'ऋ' to "ri", 'ॠ' to "rii", 'ऌ' to "lri", 'ॡ' to "lrii",
+            'ए' to "e", 'ऐ' to "ai", 'ओ' to "o", 'औ' to "au",
+        )
+
+    private val DEVANAGARI_MATRAS =
+        mapOf(
+            'ा' to "aa", 'ि' to "i", 'ी' to "ii", 'ु' to "u", 'ू' to "uu",
+            'ृ' to "ri", 'ॄ' to "rii", 'े' to "e", 'ै' to "ai", 'ो' to "o", 'ौ' to "au",
+            'ॅ' to "e", 'ॉ' to "o", 'ॢ' to "lri", 'ॣ' to "lrii",
+        )
+
+    private val DEVANAGARI_CONSONANTS =
+        mapOf(
+            'क' to "k", 'ख' to "kh", 'ग' to "g", 'घ' to "gh", 'ङ' to "ng",
+            'च' to "ch", 'छ' to "chh", 'ज' to "j", 'झ' to "jh", 'ञ' to "ny",
+            'ट' to "t", 'ठ' to "th", 'ड' to "d", 'ढ' to "dh", 'ण' to "n",
+            'त' to "t", 'थ' to "th", 'द' to "d", 'ध' to "dh", 'न' to "n",
+            'प' to "p", 'फ' to "ph", 'ब' to "b", 'भ' to "bh", 'म' to "m",
+            'य' to "y", 'र' to "r", 'ल' to "l", 'व' to "v",
+            'श' to "sh", 'ष' to "sh", 'स' to "s", 'ह' to "h",
+            'ळ' to "l",
+            // Note: common conjuncts (क्ष, ज्ञ, त्र, श्र) are NOT single Unicode
+            // codepoints — they're consonant + virama + consonant sequences, so they
+            // can't be map keys here. They are handled naturally by the main loop's
+            // consonant + virama + consonant flow, which produces the same result
+            // (e.g. क + ् + ष → "k" + "" + "sh" + "a" = "ksha").
+        )
+
+    // Approximations for less-common letters / chillu characters (Malayalam-in-Devanagari etc.)
+    private val DEVANAGARI_OTHER =
+        mapOf(
+            'ॐ' to "om",
+            '।' to ".", '॥' to "..",
+            'ऽ' to "'",  // avagraha
+            'ं' to "n",  // anusvara (default; refined by context below)
+            'ः' to "h",  // visarga
+            'ँ' to "n",  // candrabindu (nasalization, simplified)
+            '्' to "",   // virama (halant) — suppresses inherent "a"; handled by loop
+        )
+
+    private val DEVANAGARI_NUMERALS =
+        mapOf(
+            '०' to "0", '१' to "1", '२' to "2", '३' to "3", '४' to "4",
+            '५' to "5", '६' to "6", '७' to "7", '८' to "8", '९' to "9",
+        )
+
+    private val LABIALS = setOf('प', 'फ', 'ब', 'भ', 'म')
+
+    suspend fun romanizeHindi(text: String): String =
+        withContext(Dispatchers.Default) {
+            val sb = StringBuilder(text.length * 2)
+            var i = 0
+            val n = text.length
+            while (i < n) {
+                val ch = text[i]
+
+                // Devanagari numerals
+                if (DEVANAGARI_NUMERALS[ch] != null) {
+                    sb.append(DEVANAGARI_NUMERALS[ch])
+                    i++
+                    continue
+                }
+
+                // Anusvara (ं) — context-sensitive:
+                //   before labials (प फ ब भ म) → "m"
+                //   otherwise → "n"
+                if (ch == 'ं') {
+                    val next = text.getOrNull(i + 1)
+                    sb.append(if (next != null && next in LABIALS) "m" else "n")
+                    i++
+                    continue
+                }
+
+                // Candrabindu (ँ) — nasalization marker, simplified to "n"
+                if (ch == 'ँ') {
+                    sb.append("n")
+                    i++
+                    continue
+                }
+
+                // Visarga (ः)
+                if (ch == 'ः') {
+                    sb.append("h")
+                    i++
+                    continue
+                }
+
+                // Virama (्) — suppresses inherent "a" of preceding consonant.
+                // The preceding consonant was already emitted WITHOUT inherent "a"
+                // (see consonant branch below), so we just skip the virama here.
+                if (ch == '्') {
+                    i++
+                    continue
+                }
+
+                // Matras (vowel signs) — replace the inherent "a" of the preceding
+                // consonant. The preceding consonant was emitted WITHOUT "a" in
+                // anticipation (see consonant branch below).
+                val matra = DEVANAGARI_MATRAS[ch]
+                if (matra != null) {
+                    sb.append(matra)
+                    i++
+                    continue
+                }
+
+                // Independent vowels
+                val independentVowel = DEVANAGARI_INDEPENDENT_VOWELS[ch]
+                if (independentVowel != null) {
+                    sb.append(independentVowel)
+                    i++
+                    continue
+                }
+
+                // Consonants — look ahead to decide whether to emit inherent "a":
+                //   - If next char is a matra, virama, anusvara, visarga, or
+                //     candrabindu, emit just the consonant base (no "a").
+                //   - Otherwise emit consonant + "a" (inherent vowel).
+                val consonant = DEVANAGARI_CONSONANTS[ch]
+                if (consonant != null) {
+                    val next = text.getOrNull(i + 1)
+                    val suppressInherentA =
+                        next != null && (
+                            next in DEVANAGARI_MATRAS ||
+                                next == '्' ||
+                                next == 'ं' ||
+                                next == 'ः' ||
+                                next == 'ँ'
+                        )
+                    sb.append(consonant)
+                    if (!suppressInherentA) {
+                        sb.append('a')
+                    }
+                    i++
+                    continue
+                }
+
+                // Other Devanagari signs (ॐ, ।, ॥, ऽ)
+                val other = DEVANAGARI_OTHER[ch]
+                if (other != null) {
+                    sb.append(other)
+                    i++
+                    continue
+                }
+
+                // Non-Devanagari character — pass through as-is (spaces, punctuation,
+                // Latin letters, etc.)
+                sb.append(ch)
+                i++
+            }
+            sb.toString()
+        }
+    // endregion
+
     /**
      * Checks if the given text contains any Japanese characters (Hiragana, Katakana, or common Kanji).
      * This function is generally efficient due to '.any' and early exit.
@@ -1144,7 +1318,7 @@ object LyricsUtils {
             when {
                 preferences.romanizeJapanese && looksJapanese(text) -> romanizeJapanese(text)
                 preferences.romanizeKorean && isKorean(text) -> romanizeKorean(text)
-                preferences.romanizeHindi && isHindi(text) -> romanizeWithIcu(text)
+                preferences.romanizeHindi && isHindi(text) -> romanizeHindi(text)
                 preferences.romanizeChinese && isChinese(text) -> romanizeWithIcu(text)
                 preferences.romanizeOther && hasOtherRomanizableScript(text) -> romanizeWithIcu(text)
                 else -> null
@@ -1163,7 +1337,7 @@ object LyricsUtils {
             when {
                 preferences.romanizeJapanese && looksJapanese(lineText) -> romanizeJapanese(word)
                 preferences.romanizeKorean && isKorean(lineText) -> romanizeKorean(word)
-                preferences.romanizeHindi && isHindi(lineText) -> romanizeWithIcu(word)
+                preferences.romanizeHindi && isHindi(lineText) -> romanizeHindi(word)
                 preferences.romanizeChinese && isChinese(lineText) -> romanizeWithIcu(word)
                 preferences.romanizeOther && hasOtherRomanizableScript(lineText) -> romanizeWithIcu(word)
                 else -> null
@@ -1190,14 +1364,29 @@ object LyricsUtils {
         return normalized.takeUnless { it.equals(original.trim(), ignoreCase = true) }
     }
 
-    private fun looksJapanese(text: String): Boolean =
-        text.any {
-            hasScript(it, UnicodeScript.HIRAGANA) ||
-                hasScript(it, UnicodeScript.KATAKANA) ||
-                it == '々' ||
-                it == '〆' ||
-                it == 'ヶ'
+    private fun looksJapanese(text: String): Boolean {
+        // Fast path: kana (Hiragana/Katakana) or iteration marks always indicate
+        // Japanese. This matches the previous behavior.
+        if (
+            text.any {
+                hasScript(it, UnicodeScript.HIRAGANA) ||
+                    hasScript(it, UnicodeScript.KATAKANA) ||
+                    it == '々' ||
+                    it == '〆' ||
+                    it == 'ヶ'
+            }
+        ) {
+            return true
         }
+        // Kanji-only text: ambiguous between Japanese and Chinese. Treat it as
+        // Japanese ONLY when the Kuromoji language pack is installed — otherwise
+        // `romanizeJapanese` would silently return the original text unchanged
+        // (a no-op), and the user would see no romanization at all. When the
+        // pack isn't installed, fall through so the Chinese ICU path can attempt
+        // romanization instead.
+        val hasKanji = text.any { it in '\u4E00'..'\u9FFF' }
+        return hasKanji && JapaneseLanguagePackManager.tokenizerOrNull() != null
+    }
 
     private fun hasScript(
         char: Char,

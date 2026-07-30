@@ -369,14 +369,33 @@ jobs:
           {
             echo "# Nightly build"
             echo ""
-            echo "Automated canary build. Not intended for production use."
+            echo "Automated canary build from the dev branch. Not intended for production use."
             echo ""
             # Machine-readable monotonic build number read by the in-app updater to compare canary
             # builds (the display versionName is fixed, so the updater compares this instead).
             echo "<!-- at-build:${VERSION_CODE} -->"
             echo ""
-            echo "## Changes"
+            echo "## Pull requests"
           } > nightly_notes.md
+          # List merged PRs into the dev branch since the last nightly tag (or the
+          # last 30 PRs if there's no prior tag). PR titles give users a
+          # human-readable summary of what changed, complementing the raw commit
+          # log below.
+          if [ -n "${LAST_TAG:-}" ] && [ "$LAST_TAG" != "null" ] && git rev-parse "$LAST_TAG" >/dev/null 2>&1; then
+            MERGE_BASE="$(git merge-base "$LAST_TAG" HEAD)"
+            gh pr list --repo "$GITHUB_REPOSITORY" --base dev --state merged \
+              --search "merged:>=${MERGE_BASE}" \
+              --json title,number,author \
+              --template '{{range .}}- {{.title}} (#{{.number}}) — @{{.author.login}}{{"\n"}}{{end}}' >> nightly_notes.md || true
+          else
+            gh pr list --repo "$GITHUB_REPOSITORY" --base dev --state merged --limit 30 \
+              --json title,number,author \
+              --template '{{range .}}- {{.title}} (#{{.number}}) — @{{.author.login}}{{"\n"}}{{end}}' >> nightly_notes.md || true
+          fi
+          {
+            echo ""
+            echo "## Commits"
+          } >> nightly_notes.md
           if [ -n "${LAST_TAG:-}" ] && [ "$LAST_TAG" != "null" ] && git rev-parse "$LAST_TAG" >/dev/null 2>&1; then
             git log --pretty=format:'- %s (%h)' "${LAST_TAG}..HEAD" >> nightly_notes.md || true
           else

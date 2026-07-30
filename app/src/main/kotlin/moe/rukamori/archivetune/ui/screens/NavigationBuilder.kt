@@ -500,6 +500,9 @@ fun NavGraphBuilder.navigationBuilder(
     ) {
         QobuzSettings(navController, it.savedStateHandle["scrollTo"])
     }
+    composable("settings/deezer") {
+        DeezerSettings(navController)
+    }
     composable(TIDAL_LOGIN_ROUTE) {
         TidalLoginScreen(navController)
     }

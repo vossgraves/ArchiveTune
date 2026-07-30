@@ -340,6 +340,10 @@ class BackupRestoreViewModel
                                     BackupArchiveStep.COPY_DATABASE_FILE -> {
                                         context.getString(R.string.backup_step_copying_file, progress.fileName.orEmpty())
                                     }
+
+                                    BackupArchiveStep.COPY_CUSTOM_FONTS -> {
+                                        context.getString(R.string.backup_step_copying_file, progress.fileName.orEmpty())
+                                    }
                                 }
                             emitProgress(title, step, progress.percent, progress.indeterminate)
                         }
@@ -652,6 +656,7 @@ class BackupRestoreViewModel
                     val restoreEntries =
                         entryNames.filter { name ->
                             (includeSettings && (name == SETTINGS_XML_FILENAME || name == SETTINGS_FILENAME)) ||
+                                (includeSettings && name.startsWith("$FONTS_ZIP_PREFIX/")) ||
                                 (
                                     includeLibrary && (
                                         name == InternalDatabase.DB_NAME ||
@@ -720,6 +725,22 @@ class BackupRestoreViewModel
                                         }
                                         FileOutputStream(dbFile).use { out ->
                                             zip.copyTo(out)
+                                        }
+                                    }
+
+                                    else -> {
+                                        // Custom font .ttf entries live under the `fonts/` prefix.
+                                        // Extract them back to filesDir/custom_fonts/ so the
+                                        // restored settings.xml font URI resolves correctly.
+                                        if (name.startsWith("$FONTS_ZIP_PREFIX/") && name.endsWith(".ttf", ignoreCase = true)) {
+                                            emit(context.getString(R.string.restore_step_restoring_file, name), indeterminate = true)
+                                            val fontsDir = context.filesDir / CUSTOM_FONTS_DIR_NAME
+                                            if (!fontsDir.exists()) fontsDir.mkdirs()
+                                            val fontFileName = name.removePrefix("$FONTS_ZIP_PREFIX/")
+                                            val fontFile = fontsDir / fontFileName
+                                            fontFile.outputStream().use { out ->
+                                                zip.copyTo(out)
+                                            }
                                         }
                                     }
                                 }
@@ -1071,6 +1092,8 @@ class BackupRestoreViewModel
         companion object {
             const val SETTINGS_FILENAME = "settings.preferences_pb"
             const val SETTINGS_XML_FILENAME = BackupArchiveRepository.SETTINGS_XML_FILENAME
+            const val CUSTOM_FONTS_DIR_NAME = BackupArchiveRepository.CUSTOM_FONTS_DIR_NAME
+            const val FONTS_ZIP_PREFIX = BackupArchiveRepository.FONTS_ZIP_PREFIX
 
             val ACCOUNT_PREF_KEYS: Set<String> = BackupArchiveRepository.ACCOUNT_PREFERENCE_KEYS
         }

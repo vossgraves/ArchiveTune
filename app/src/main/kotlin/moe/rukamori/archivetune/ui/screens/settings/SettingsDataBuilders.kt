@@ -348,6 +348,7 @@ fun buildSettingsGroups(
                 SettingsChild("Qobuz account", "qobuz_account", listOf("qobuz account", "qobuz login", "qobuz email", "qobuz session")),
                 SettingsChild("Qobuz tokens", "qobuz_tokens", listOf("qobuz token", "qobuz app secret", "qobuz credential")),
                 SettingsChild("Qobuz instances", "qobuz_instances", listOf("qobuz instance", "qobuz server", "qobuz url", "qobuz endpoint")),
+                SettingsChild("Deezer", "deezer", listOf("deezer", "deezer login", "deezer premium", "deezer account", "deezer session")),
                 SettingsChild("Telegram", "telegram", listOf("telegram", "telegram channel", "channel sync", "telegram music", "telegram bot")),
                 SettingsChild("Telegram login", "telegram_login", listOf("telegram login", "telegram session", "telegram account", "sign in telegram")),
                 SettingsChild("Telegram browse channels", "telegram_browse_channels", listOf("browse channels", "channels", "telegram channels", "music channels")),

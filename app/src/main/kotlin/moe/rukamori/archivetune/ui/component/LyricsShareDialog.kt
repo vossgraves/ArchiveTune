@@ -759,46 +759,45 @@ private fun ControlsSection(
                         onValueChange = { onOptionsChange(options.copy(dimAmount = it)) },
                         valueRange = 0.6f..1.6f,
                     )
-                    Surface(
-                        shape = MaterialTheme.shapes.large,
-                        color = MaterialTheme.colorScheme.surfaceContainerLowest,
+                    // The toggle row uses a Box-with-background pattern (instead of a Surface)
+                    // because Surface internally applies `Modifier.clip(shape)` on a separate
+                    // modifier chain from its content measurement. When the wrapped description
+                    // text needs 2 lines and the dialog is height-constrained, Surface's clip
+                    // would silently crop the second line ("...the exported image.") even
+                    // though the Row measured it. By putting `clip + background + clickable +
+                    // padding` on the SAME Row modifier chain, the layout measures the wrapped
+                    // text first, then clips the painted result to the rounded shape — no
+                    // cropping of measured-but-unpainted content.
+                    Row(
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 56.dp)
+                                .clip(MaterialTheme.shapes.large)
+                                .background(MaterialTheme.colorScheme.surfaceContainerLowest)
+                                .clickable { onOptionsChange(options.copy(showArtwork = !options.showArtwork)) }
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
                     ) {
-                        // NOTE: the redundant `.clip(MaterialTheme.shapes.large)` that used to
-                        // live here on the Row was removed. The Surface already clips to its
-                        // shape, and the second clip on the Row was clipping the description
-                        // text's wrapped second line ("...the exported image.") whenever the
-                        // dialog's content overflowed maxDialogHeight — the Row's clip
-                        // applied before the Row grew to fit the wrapped text, so the bottom
-                        // line was visually cut off even though the layout measured it.
-                        Row(
-                            modifier =
-                                Modifier
-                                    .fillMaxWidth()
-                                    .heightIn(min = 56.dp)
-                                    .clickable { onOptionsChange(options.copy(showArtwork = !options.showArtwork)) }
-                                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = stringResource(R.string.lyrics_share_show_cover),
-                                    style = MaterialTheme.typography.titleSmall,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                )
-                                Text(
-                                    text = stringResource(R.string.lyrics_share_show_cover_desc),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.padding(top = 4.dp),
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(16.dp))
-                            Switch(
-                                checked = options.showArtwork,
-                                onCheckedChange = { onOptionsChange(options.copy(showArtwork = it)) },
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = stringResource(R.string.lyrics_share_show_cover),
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                            Text(
+                                text = stringResource(R.string.lyrics_share_show_cover_desc),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(top = 4.dp),
                             )
                         }
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Switch(
+                            checked = options.showArtwork,
+                            onCheckedChange = { onOptionsChange(options.copy(showArtwork = it)) },
+                        )
                     }
                 }
             } else {
