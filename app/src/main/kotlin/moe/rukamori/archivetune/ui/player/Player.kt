@@ -2850,19 +2850,30 @@ private fun LittlePlayerContent(
 
                 Spacer(Modifier.width((18f * scale).dp))
 
-                Icon(
-                    painter = painterResource(R.drawable.player_queue_music),
-                    contentDescription = null,
-                    tint = textColor.copy(alpha = 0.78f),
+                // Queue button — wrapped in a 48dp Box (Material minimum touch target) so the
+                // tap is reliably registerable even on dense layouts. The previous version put
+                // .clickable directly on the 26dp Icon, which (combined with indication=null)
+                // made taps very easy to miss — one of the root causes of the "queue button
+                // doesn't work at all" report. The Icon itself stays at iconSize for visual
+                // consistency; only the touch target grows.
+                Box(
+                    contentAlignment = Alignment.Center,
                     modifier =
                         Modifier
-                            .size(iconSize)
+                            .size(48.dp)
                             .clickable(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null,
                                 onClick = onExpandQueue,
                             ),
-                )
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.player_queue_music),
+                        contentDescription = null,
+                        tint = textColor.copy(alpha = 0.78f),
+                        modifier = Modifier.size(iconSize),
+                    )
+                }
 
                 Spacer(Modifier.width((18f * scale).dp))
 
