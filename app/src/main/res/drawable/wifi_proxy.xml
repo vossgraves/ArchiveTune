@@ -1,9 +1,27 @@
+<!-- Solar Icons by 480 Design (CC BY 4.0) - solar-icons.vercel.app -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
-    android:viewportWidth="960"
-    android:viewportHeight="960">
-    <path
-        android:fillColor="@android:color/white"
-        android:pathData="M700,780L750,780L750,730L700,730L700,780ZM700,670L750,670L750,620L700,620L700,670ZM810,780L860,780L860,730L810,730L810,780ZM640,840L640,560L810,560L810,670L920,670L920,840L640,840ZM480,840L0,360Q95,263 219.5,211.5Q344,160 480,160Q616,160 740.5,211.5Q865,263 960,360L822,497Q808,483 794,468.5Q780,454 766,440L844,362Q765,302 672,271Q579,240 480,240Q381,240 288,271Q195,302 116,362L480,726L520,686Q534,700 548.5,714.5Q563,729 577,743L480,840ZM480,483L480,483Q480,483 480,483Q480,483 480,483Q480,483 480,483Q480,483 480,483L480,483Q480,483 480,483Q480,483 480,483Q480,483 480,483Q480,483 480,483Q480,483 480,483Q480,483 480,483Z" />
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+  <path
+      android:pathData="M7 15a1 1 0 1 1-2 0a1 1 0 0 1 2 0m3 0a1 1 0 1 1-2 0a1 1 0 0 1 2 0"
+      android:fillColor="@android:color/white"/>
+  <path
+      android:pathData="M2 15c0-1.886 0-2.828.586-3.414S4.114 11 6 11h12c1.886 0 2.828 0 3.414.586S22 13.114 22 15s0 2.828-.586 3.414S19.886 19 18 19H6c-1.886 0-2.828 0-3.414-.586S2 16.886 2 15Z"
+      android:strokeColor="@android:color/white"
+      android:strokeWidth="1.5"/>
+  <path
+      android:pathData="M7 11L3 4m14 7l4-7m-7 11h4m-.833-9.603A5.502 5.502 0 0 0 7 5.397"
+      android:strokeColor="@android:color/white"
+      android:strokeWidth="1.5"
+      android:strokeLineCap="round"/>
+  <path
+      android:pathData="M14.965 6.658a3.001 3.001 0 0 0-5.76 0"
+      android:strokeColor="@android:color/white"
+      android:strokeWidth="1.5"
+      android:strokeLineCap="round"/>
+  <path
+      android:pathData="M13.084 7a1 1 0 1 1-2 0a1 1 0 0 1 2 0"
+      android:fillColor="@android:color/white"/>
 </vector>

@@ -24,7 +24,9 @@ import moe.rukamori.archivetune.constants.PreferredLyricsProvider
 import moe.rukamori.archivetune.constants.deserializeLyricsProviderOrder
 import moe.rukamori.archivetune.db.entities.LyricsEntity.Companion.LYRICS_NOT_FOUND
 import moe.rukamori.archivetune.models.MediaMetadata
+import moe.rukamori.archivetune.telegram.isTelegramMediaId
 import moe.rukamori.archivetune.utils.GlobalLog
+import moe.rukamori.archivetune.utils.isLocalMediaId
 import moe.rukamori.archivetune.utils.NetworkConnectivityObserver
 import moe.rukamori.archivetune.utils.dataStore
 import moe.rukamori.archivetune.utils.reportException
@@ -53,6 +55,10 @@ class LyricsHelper
                 PaxsenixYouTubeLyricsProvider,
                 YouTubeSubtitleLyricsProvider,
                 YouTubeLyricsProvider,
+                // Experimental native Musixmatch provider — gated by
+                // EnableMusixmatchExperimentalKey (off by default). When the toggle
+                // is off, isEnabled() returns false and LyricsHelper skips it.
+                MusixmatchExperimentalLyricsProvider,
             )
 
         private val cache = LruCache<String, List<LyricsResult>>(MAX_CACHE_SIZE)
@@ -99,7 +105,10 @@ class LyricsHelper
                 return LYRICS_NOT_FOUND
             }
 
-            val ordered = orderedProviders().filter { it.isEnabled(context) }
+            val ordered =
+                orderedProviders()
+                    .filter { it.isEnabled(context) }
+                    .filter { supportsMediaId(it, mediaMetadata.id) }
             val providers = if (preferredProviderOnly) ordered.take(1) else ordered
             val lyrics = fetchPriorityLyrics(providers, mediaMetadata)
             if (isMeaningfulLyrics(lyrics)) {
@@ -241,6 +250,21 @@ class LyricsHelper
         }
 
         private fun isMeaningfulLyrics(lyrics: String): Boolean = LyricsUtils.hasMeaningfulLyricsContent(lyrics)
+
+        /**
+         * Providers that treat the media id as a YouTube video id can never match local or
+         * Telegram tracks — skip them so the priority race isn't padded with guaranteed misses.
+         */
+        private fun supportsMediaId(
+            provider: LyricsProvider,
+            mediaId: String,
+        ): Boolean {
+            val isNonYouTubeId = mediaId.isTelegramMediaId() || mediaId.isLocalMediaId()
+            if (!isNonYouTubeId) return true
+            return provider !is SimpMusicLyricsProvider &&
+                provider !is YouTubeLyricsProvider &&
+                provider !is YouTubeSubtitleLyricsProvider
+        }
 
         fun clearCache() {
             cache.evictAll()

@@ -62,6 +62,7 @@ import java.util.Locale
 fun ContentSettings(
     navController: NavController,
     viewModel: ContentSettingsViewModel = hiltViewModel(),
+    scrollTo: String? = null,
 ) {
     val context = LocalContext.current
     val aiContentFilterState by viewModel.aiContentFilterState.collectAsStateWithLifecycle()
@@ -93,16 +94,25 @@ fun ContentSettings(
         )
     val (hideExplicit, onHideExplicitChange) = rememberPreference(key = HideExplicitKey, defaultValue = false)
     val (hideVideo, onHideVideoChange) = rememberPreference(key = HideVideoKey, defaultValue = false)
+    val (allowAgeRestricted, onAllowAgeRestrictedChange) = rememberPreference(key = AllowAgeRestrictedKey, defaultValue = false)
     val (lengthTop, onLengthTopChange) = rememberPreference(key = TopSize, defaultValue = "50")
     val (quickPicks, onQuickPicksChange) = rememberEnumPreference(key = QuickPicksKey, defaultValue = QuickPicks.QUICK_PICKS)
+
+    val scrollState = rememberScrollState()
+    val positions = rememberPreferencePositions()
+
+    LaunchedEffect(scrollTo) { positions.scrollToKey(scrollTo, scrollState) }
 
     Column(
         Modifier
             .windowInsetsPadding(LocalPlayerAwareWindowInsets.current)
-            .verticalScroll(rememberScrollState())
+            .verticalScroll(scrollState)
             .padding(bottom = SettingsDimensions.ScreenBottomPadding),
     ) {
-        PreferenceGroup(title = stringResource(R.string.general)) {
+        PreferenceGroup(
+            modifier = positions.modifierFor("content_language"),
+            title = stringResource(R.string.general),
+        ) {
             item {
                 ListPreference(
                     title = { Text(stringResource(R.string.content_language)) },
@@ -194,6 +204,16 @@ fun ContentSettings(
                     onCheckedChange = onHideVideoChange,
                 )
             }
+
+            item {
+                SwitchPreference(
+                    title = { Text(stringResource(R.string.allow_age_restricted)) },
+                    description = stringResource(R.string.allow_age_restricted_summary),
+                    icon = { Icon(painterResource(R.drawable.login), null) },
+                    checked = allowAgeRestricted,
+                    onCheckedChange = onAllowAgeRestrictedChange,
+                )
+            }
         }
 
         AiContentFilterPreferences(
@@ -204,7 +224,10 @@ fun ContentSettings(
             onOpenSource = viewModel::openAiContentFilterSource,
         )
 
-        PreferenceGroup(title = stringResource(R.string.app_language)) {
+        PreferenceGroup(
+            modifier = positions.modifierFor("app_language"),
+            title = stringResource(R.string.app_language),
+        ) {
             item {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     PreferenceEntry(
@@ -243,7 +266,10 @@ fun ContentSettings(
             }
         }
 
-        PreferenceGroup(title = stringResource(R.string.misc)) {
+        PreferenceGroup(
+            modifier = positions.modifierFor("quick_picks"),
+            title = stringResource(R.string.misc),
+        ) {
             item {
                 EditTextPreference(
                     title = { Text(stringResource(R.string.top_length)) },

@@ -40,6 +40,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -76,6 +77,7 @@ import kotlin.math.roundToInt
 @Composable
 fun LastFMSettings(
     navController: NavController,
+    scrollTo: String? = null,
     viewModel: LastFmSettingsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -103,6 +105,7 @@ fun LastFMSettings(
         LastFmSettingsContent(
             state = state,
             topPadding = topPadding,
+            scrollTo = scrollTo,
             onOpenServiceEditor = viewModel::openServiceEditor,
             onDismissServiceEditor = viewModel::dismissServiceEditor,
             onServiceProviderChange = viewModel::updateServiceProvider,
@@ -132,6 +135,7 @@ fun LastFMSettings(
 private fun LastFmSettingsContent(
     state: LastFmSettingsScreenState,
     topPadding: Dp,
+    scrollTo: String? = null,
     onOpenServiceEditor: () -> Unit,
     onDismissServiceEditor: () -> Unit,
     onServiceProviderChange: (LastFmProvider) -> Unit,
@@ -154,11 +158,16 @@ private fun LastFmSettingsContent(
     onTimingDelaySecondsChange: (Int) -> Unit,
     onSaveTimingEditor: () -> Unit,
 ) {
+    val scrollState = rememberScrollState()
+    val positions = rememberPreferencePositions()
+
+    LaunchedEffect(scrollTo) { positions.scrollToKey(scrollTo, scrollState) }
+
     Column(
         Modifier
             .padding(top = topPadding)
             .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom))
-            .verticalScroll(rememberScrollState())
+            .verticalScroll(scrollState)
             .padding(bottom = SettingsDimensions.ScreenBottomPadding),
     ) {
         when (state) {
@@ -177,6 +186,7 @@ private fun LastFmSettingsContent(
             is LastFmSettingsScreenState.Success -> {
                 LastFmSettingsSuccess(
                     model = state.model,
+                    positions = positions,
                     onOpenServiceEditor = onOpenServiceEditor,
                     onOpenLoginDialog = onOpenLoginDialog,
                     onLogout = onLogout,
@@ -252,6 +262,7 @@ private fun LastFmSettingsError(
 @Composable
 private fun LastFmSettingsSuccess(
     model: LastFmSettingsUiModel,
+    positions: PreferencePositions,
     onOpenServiceEditor: () -> Unit,
     onOpenLoginDialog: () -> Unit,
     onLogout: () -> Unit,
@@ -267,7 +278,10 @@ private fun LastFmSettingsSuccess(
             stringResource(R.string.lastfm_endpoint_invalid)
         }
 
-    PreferenceGroup(title = stringResource(R.string.lastfm_service)) {
+    PreferenceGroup(
+        modifier = positions.modifierFor("lastfm_service"),
+        title = stringResource(R.string.lastfm_service),
+    ) {
         item {
             PreferenceEntry(
                 title = { Text(stringResource(R.string.lastfm_service_provider)) },
@@ -292,7 +306,10 @@ private fun LastFmSettingsSuccess(
         }
     }
 
-    PreferenceGroup(title = stringResource(R.string.account)) {
+    PreferenceGroup(
+        modifier = positions.modifierFor("lastfm_account"),
+        title = stringResource(R.string.account),
+    ) {
         item {
             PreferenceEntry(
                 title = {
@@ -322,7 +339,10 @@ private fun LastFmSettingsSuccess(
         }
     }
 
-    PreferenceGroup(title = stringResource(R.string.options)) {
+    PreferenceGroup(
+        modifier = positions.modifierFor("lastfm_options"),
+        title = stringResource(R.string.options),
+    ) {
         item {
             SwitchPreference(
                 title = { Text(stringResource(R.string.enable_scrobbling)) },
@@ -342,7 +362,10 @@ private fun LastFmSettingsSuccess(
         }
     }
 
-    PreferenceGroup(title = stringResource(R.string.scrobbling_configuration)) {
+    PreferenceGroup(
+        modifier = positions.modifierFor("lastfm_scrobbling_config"),
+        title = stringResource(R.string.scrobbling_configuration),
+    ) {
         item {
             PreferenceEntry(
                 title = { Text(stringResource(R.string.scrobble_min_track_duration)) },

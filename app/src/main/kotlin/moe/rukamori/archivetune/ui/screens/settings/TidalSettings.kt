@@ -45,6 +45,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -99,7 +100,7 @@ private object TidalHealthUiCache {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TidalSettings(navController: NavController) {
+fun TidalSettings(navController: NavController, scrollTo: String? = null) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
@@ -418,6 +419,10 @@ fun TidalSettings(navController: NavController) {
         },
     ) { innerPadding ->
         val topPadding = innerPadding.calculateTopPadding()
+        val scrollState = rememberScrollState()
+        val positions = rememberPreferencePositions()
+
+        LaunchedEffect(scrollTo) { positions.scrollToKey(scrollTo, scrollState) }
 
         Column(
             Modifier
@@ -427,10 +432,13 @@ fun TidalSettings(navController: NavController) {
                         WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
                     ),
                 )
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scrollState)
                 .padding(bottom = SettingsDimensions.ScreenBottomPadding),
         ) {
-            PreferenceGroup(title = stringResource(R.string.tidal_account)) {
+            PreferenceGroup(
+                modifier = positions.modifierFor("tidal_account"),
+                title = stringResource(R.string.tidal_account),
+            ) {
                 if (accountConfigured) {
                     item {
                         PreferenceEntry(
@@ -504,7 +512,10 @@ fun TidalSettings(navController: NavController) {
                 }
             }
 
-            PreferenceGroup(title = stringResource(R.string.tidal_instances)) {
+            PreferenceGroup(
+                modifier = positions.modifierFor("tidal_instances"),
+                title = stringResource(R.string.tidal_instances),
+            ) {
                 item {
                     val onlineCount = effectiveInstances.count {
                         healthStatus[it] == TidalAudioProvider.InstanceHealth.HEALTHY

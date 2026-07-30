@@ -48,7 +48,12 @@ import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.playback.MusicService.MusicBinder
 import moe.rukamori.archivetune.playback.queues.Queue
 import moe.rukamori.archivetune.ui.player.refetchCanvasArtworkForPlayback
+import moe.rukamori.archivetune.telegram.TelegramClient
+import moe.rukamori.archivetune.telegram.TelegramMediaId
+import moe.rukamori.archivetune.telegram.isTelegramMediaId
 import moe.rukamori.archivetune.utils.isLocalMediaId
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import moe.rukamori.archivetune.utils.reportException
 import java.util.Locale
 
@@ -173,10 +178,78 @@ class PlayerConnection(
                                     }
                                 database.updateLocalAudioMetadata(mediaId, finalBitrate, result.second)
                             }
+                        } else if (mediaId.isTelegramMediaId()) {
+                            refineTelegramFormat(mediaId)
                         }
                     }
             }
     }
+
+    /**
+     * Refines a Telegram track's format row (seeded at enqueue with size + container + an average
+     * bitrate) by pulling the real sample rate — and a more accurate bitrate when the container
+     * reports one — from the downloaded audio header. Polls briefly for the header to arrive as the
+     * stream buffers; if the sample rate is already known it does nothing.
+     */
+    private suspend fun refineTelegramFormat(mediaId: String) {
+        val existing = database.format(mediaId).first() ?: return
+        if (existing.sampleRate != null) return
+        val decoded = TelegramMediaId.decode(mediaId) ?: return
+        repeat(TELEGRAM_FORMAT_REFINE_ATTEMPTS) {
+            currentCoroutineContext().ensureActive()
+            val path = TelegramClient.readyFilePath(decoded.fileId)
+            if (path != null) {
+                val result = extractAudioPropertiesFromPath(path)
+                if (result != null && (result.second != null || result.first > 0)) {
+                    currentCoroutineContext().ensureActive()
+                    val current = database.format(mediaId).first() ?: existing
+                    database.query {
+                        upsert(
+                            current.copy(
+                                bitrate = if (result.first > 0) result.first else current.bitrate,
+                                sampleRate = result.second ?: current.sampleRate,
+                            ),
+                        )
+                    }
+                    return
+                }
+            }
+            delay(TELEGRAM_FORMAT_REFINE_INTERVAL_MS)
+        }
+    }
+
+    private suspend fun extractAudioPropertiesFromPath(path: String): Pair<Int, Int?>? =
+        withContext(Dispatchers.IO) {
+            val extractor = android.media.MediaExtractor()
+            try {
+                extractor.setDataSource(path)
+                var bitrate = 0
+                var sampleRate: Int? = null
+                for (i in 0 until extractor.trackCount) {
+                    val format = extractor.getTrackFormat(i)
+                    val mime = format.getString(android.media.MediaFormat.KEY_MIME) ?: ""
+                    if (mime.startsWith("audio/")) {
+                        if (format.containsKey(android.media.MediaFormat.KEY_BIT_RATE)) {
+                            bitrate = format.getInteger(android.media.MediaFormat.KEY_BIT_RATE)
+                        }
+                        if (format.containsKey(android.media.MediaFormat.KEY_SAMPLE_RATE)) {
+                            sampleRate = format.getInteger(android.media.MediaFormat.KEY_SAMPLE_RATE)
+                        }
+                        break
+                    }
+                }
+                Pair(bitrate, sampleRate)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                timber.log.Timber
+                    .tag("TelegramMetadataExtractor")
+                    .w(e, "Could not extract audio properties from %s", path)
+                null
+            } finally {
+                runCatching { extractor.release() }
+            }
+        }
 
     private suspend fun extractLocalAudioProperties(
         context: Context,
@@ -316,6 +389,7 @@ class PlayerConnection(
                     artistNameRaw = metadata.artists.firstOrNull()?.name.orEmpty(),
                     storefront = storefront,
                     requireVertical = requireVertical,
+                    albumTitle = metadata.album?.title,
                 ) ?: return CanvasArtworkRefetchResult.Failure
 
             _canvasArtworkUpdates.emit(
@@ -459,5 +533,12 @@ class PlayerConnection(
         attachedPlayer = null
         metadataExtractionJob?.cancel()
         metadataExtractionJob = null
+    }
+
+    private companion object {
+        // How long to poll for a streamed Telegram track's header before giving up refining its
+        // sample rate (attempts × interval ≈ 15s).
+        const val TELEGRAM_FORMAT_REFINE_ATTEMPTS = 10
+        const val TELEGRAM_FORMAT_REFINE_INTERVAL_MS = 1_500L
     }
 }

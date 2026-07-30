@@ -244,7 +244,7 @@ fun Queue(
         TextFieldDialog(
             icon = {
                 Icon(
-                    painter = painterResource(R.drawable.queue_music),
+                    painter = painterResource(R.drawable.player_queue_music),
                     contentDescription = null,
                 )
             },
@@ -592,6 +592,11 @@ fun Queue(
                     )
                 }
 
+                PlayerDesignStyle.APPLE_MUSIC -> {
+                    // The Apple Music style keeps its collapsed peek bar empty: the queue, lyrics and
+                    // output controls all live in the player's own bottom row, so no extra pills here.
+                }
+
                 PlayerDesignStyle.V9 -> {
                     val shuffleModeEnabled by playerConnection.shuffleModeEnabled.collectAsState()
                     QueueCollapsedContentV9(
@@ -807,22 +812,49 @@ fun Queue(
             }
         }
 
+        // Tracks the previous collapsed state so we can detect the exact
+        // moment the queue sheet transitions from collapsed → expanded
+        // (whether via the queue button or a swipe-up gesture) and scroll
+        // to the currently playing song. Without this, the queue opens
+        // scrolled to the top, forcing the user to manually find what's
+        // playing. We avoid re-scrolling on every `currentPlayingUid`
+        // change so the user is free to browse the queue after opening it
+        // without being yanked back to the current song mid-scroll.
+        var prevIsCollapsed by remember { mutableStateOf(state.isCollapsed) }
+
         LaunchedEffect(
             state.isCollapsed,
             scrollToCurrentRequested,
             currentPlayingUid,
             reorderableState.isAnyItemDragging,
         ) {
-            if (
+            val justOpened = prevIsCollapsed && !state.isCollapsed
+            prevIsCollapsed = state.isCollapsed
+            val shouldScroll =
                 !state.isCollapsed &&
-                scrollToCurrentRequested &&
-                currentPlayingUid != null &&
-                !reorderableState.isAnyItemDragging
-            ) {
-                val indexInMutableList = mutableQueueWindows.indexOfFirst { it.uid == currentPlayingUid }
-                if (indexInMutableList != -1) {
-                    lazyListState.scrollToItem(indexInMutableList + headerItems)
-                    scrollToCurrentRequested = false
+                    (justOpened || scrollToCurrentRequested) &&
+                    currentPlayingUid != null &&
+                    !reorderableState.isAnyItemDragging
+            if (shouldScroll) {
+                // Wait briefly for the queue windows to populate after the
+                // sheet expands. The first composition after expand often has
+                // an empty `mutableQueueWindows` (the Snapshot.withMutableSnapshot
+                // that copies `queueWindows` into `mutableQueueWindows` runs
+                // in a separate LaunchedEffect that hasn't fired yet). A short
+                // retry loop lets the index lookup succeed.
+                var attempts = 0
+                while (attempts < 8) {
+                    val indexInMutableList =
+                        mutableQueueWindows.indexOfFirst { it.uid == currentPlayingUid }
+                    if (indexInMutableList != -1) {
+                        lazyListState.scrollToItem(
+                            (indexInMutableList + headerItems).coerceAtLeast(0),
+                        )
+                        scrollToCurrentRequested = false
+                        break
+                    }
+                    kotlinx.coroutines.delay(50L)
+                    attempts++
                 }
             }
         }
@@ -1020,7 +1052,7 @@ fun Queue(
                                                 },
                                             ) {
                                                 Icon(
-                                                    painter = painterResource(R.drawable.more_vert),
+                                                    painter = painterResource(R.drawable.player_more_vert),
                                                     contentDescription = null,
                                                 )
                                             }
@@ -1030,7 +1062,7 @@ fun Queue(
                                                     modifier = Modifier.draggableHandle(),
                                                 ) {
                                                     Icon(
-                                                        painter = painterResource(R.drawable.drag_handle),
+                                                        painter = painterResource(R.drawable.player_drag_handle),
                                                         contentDescription = null,
                                                     )
                                                 }
@@ -1253,7 +1285,7 @@ private fun QueueSelectionFloatingToolbar(
                 contentColor = fabContentColor,
             ) {
                 Icon(
-                    painter = painterResource(R.drawable.close),
+                    painter = painterResource(R.drawable.player_close),
                     contentDescription = stringResource(R.string.close),
                     modifier = Modifier.size(22.dp),
                 )
@@ -1273,28 +1305,28 @@ private fun QueueSelectionFloatingToolbar(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             QueueSelectionToolbarAction(
-                icon = if (allSelected) R.drawable.deselect else R.drawable.select_all,
+                icon = if (allSelected) R.drawable.player_deselect else R.drawable.player_select_all,
                 contentDescription = null,
                 tint = toolbarContentColor,
                 onClick = onToggleSelectAll,
             )
 
             QueueSelectionToolbarAction(
-                icon = R.drawable.playlist_add,
+                icon = R.drawable.player_playlist_add,
                 contentDescription = stringResource(R.string.add_to_playlist),
                 tint = colorScheme.primary,
                 onClick = onAddToPlaylist,
             )
 
             QueueSelectionToolbarAction(
-                icon = R.drawable.queue_music,
+                icon = R.drawable.player_queue_music,
                 contentDescription = stringResource(R.string.create_playlist),
                 tint = colorScheme.primary,
                 onClick = onCreatePlaylist,
             )
 
             QueueSelectionToolbarAction(
-                icon = R.drawable.delete,
+                icon = R.drawable.player_delete,
                 contentDescription = stringResource(R.string.delete),
                 tint = colorScheme.error,
                 onClick = onDelete,

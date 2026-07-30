@@ -35,6 +35,7 @@ import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.compose.ContentFrame
 import androidx.media3.ui.compose.SURFACE_TYPE_TEXTURE_VIEW
@@ -50,7 +51,7 @@ private const val CanvasPlaybackStallCheckIntervalMs = 1_000L
 private const val CanvasPlaybackStallTimeoutMs = 5_000L
 
 @Composable
-internal fun CanvasArtworkPlayer(
+fun CanvasArtworkPlayer(
     primaryUrl: String?,
     fallbackUrl: String?,
     isPlaying: Boolean,
@@ -118,19 +119,26 @@ internal fun CanvasArtworkPlayer(
         remember(context) {
             DefaultRenderersFactory(context).setEnableDecoderFallback(true)
         }
+    val trackSelector =
+        remember(context) {
+            DefaultTrackSelector(context).apply {
+                setParameters(
+                    buildUponParameters()
+                        .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
+                        .setForceHighestSupportedBitrate(true)
+                        .build(),
+                )
+            }
+        }
     val exoPlayer =
-        remember(initial, mediaSourceFactory, renderersFactory) {
+        remember(initial, mediaSourceFactory, renderersFactory, trackSelector) {
             ExoPlayer
                 .Builder(context)
                 .setMediaSourceFactory(mediaSourceFactory)
                 .setRenderersFactory(renderersFactory)
+                .setTrackSelector(trackSelector)
                 .build()
                 .apply {
-                    trackSelectionParameters =
-                        trackSelectionParameters
-                            .buildUpon()
-                            .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
-                            .build()
                     volume = 0f
                     repeatMode = Player.REPEAT_MODE_ONE
                     playWhenReady = isPlaying

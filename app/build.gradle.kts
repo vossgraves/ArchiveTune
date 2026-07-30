@@ -163,6 +163,26 @@ android {
                 ?: ""
         buildConfigField("String", "EXTRACTOR_BEARER", "\"$extractorBearer\"")
 
+        // Telegram (TDLib) app credentials. Baked in at build time so users sign in with just
+        // their phone number + login code — no my.telegram.org api_id/api_hash entry. Override via
+        // local.properties or the TELEGRAM_API_ID / TELEGRAM_API_HASH env vars (e.g. in CI) to ship
+        // the fork's own registered app. The fallback is the public Telegram Desktop api_id/hash,
+        // which every TDLib client can use out of the box.
+        val telegramApiId =
+            (
+                localProperties.getProperty("TELEGRAM_API_ID")?.takeIf { it.isNotBlank() }
+                    ?: System.getenv("TELEGRAM_API_ID")?.takeIf { it.isNotBlank() }
+                    ?: "2040"
+            ).trim()
+        val telegramApiHash =
+            (
+                localProperties.getProperty("TELEGRAM_API_HASH")?.takeIf { it.isNotBlank() }
+                    ?: System.getenv("TELEGRAM_API_HASH")?.takeIf { it.isNotBlank() }
+                    ?: "b18441a1ff607e10a989891a5462e627"
+            ).trim()
+        buildConfigField("int", "TELEGRAM_API_ID", telegramApiId)
+        buildConfigField("String", "TELEGRAM_API_HASH", "\"$telegramApiHash\"")
+
         // Base URL of the community Source Pool website (Next.js). When set, the app auto-discovers
         // health-checked Tidal/Qobuz instances from it. Precedence: local.properties override, then
         // the SOURCE_PROVIDER_URL env/CI variable, then the baked-in default below. Set to "" in
@@ -350,7 +370,11 @@ android {
 
     packaging {
         jniLibs {
-            useLegacyPackaging = false
+            // Compress native libs inside the APK and extract only the device's ABI at install.
+            // TDLib ships ~87 MiB of libtdjni.so across four ABIs; stored uncompressed that alone
+            // made the universal APK ~142 MiB. Compressed packaging cuts the universal APK by
+            // ~51 MiB (and each per-ABI APK by ~12 MiB) at the cost of a slightly slower install.
+            useLegacyPackaging = true
             keepDebugSymbols += listOf(
                 "**/libandroidx.graphics.path.so",
                 "**/libdatastore_shared_counter.so"
@@ -437,6 +461,10 @@ dependencies {
     add("gmsImplementation", libs.mediarouter)
     implementation(libs.squigglyslider)
 
+    // Prebuilt TDLib (Telegram MTProto client) with bundled JNI natives for all ABIs.
+    // Powers the Telegram channel lossless-streaming integration (telegram/ package).
+    implementation("com.github.tdlibx:td:1.8.56")
+
 
     implementation(libs.room.runtime)
     implementation(libs.kuromoji.ipadic)
@@ -459,6 +487,7 @@ dependencies {
     implementation(project(":lyrics:betterlyrics"))
     implementation(project(":lyrics:unison"))
     implementation(project(":lyrics:youlyplus"))
+    implementation(project(":musixmatch"))
     implementation(project(":lastfm"))
     implementation(project(":canvas"))
     implementation(project(":shazamkit"))
@@ -489,6 +518,31 @@ dependencies {
     implementation(libs.accompanist.lyrics.core)
 
     implementation("org.json:json:20240303")
+
+    // PRDownloader — lightweight (~45 KB) file download library with
+    // pause/resume, retry, and progress callbacks. Used as the HTTP
+    // fetcher inside PRDownloaderDataSource (a Media3 DataSource wrapper).
+    // Replaces Ketch — Ketch's WorkManager + Flow observation added
+    // overhead without improving throughput, and its temp-file lifecycle
+    // occasionally left partial files that corrupted subsequent exports.
+    // PRDownloader is simpler (single OkHttp call per download, callback
+    // API instead of Flow), which makes the temp-file lifecycle easier
+    // to reason about.
+    implementation(libs.prdownloader)
+
+    // jaudiotagger — pure-Java audio metadata tagger (ID3v2 / Vorbis Comments
+    // / MP4 / FLAC). Used by AudioTagger to write title / artist / album /
+    // year / track-number / artwork tags onto exported downloaded songs so
+    // they show up correctly in external music players. Pinned to 1.4.x
+    // (Java 21 bytecode) — the 2.x line targets Java 25 which Android cannot
+    // consume.
+    implementation("com.github.RouHim:jaudiotagger:1.4.31")
+    // SLF4J binding required by jaudiotagger at runtime — jaudiotagger
+    // depends on slf4j-api but does not bundle a binding. slf4j-jdk14
+    // routes log calls through java.util.logging (which Android forwards
+    // to logcat). Without this, jaudiotagger logs a single "no SLF4J
+    // providers found" warning at startup and silently no-ops logging.
+    implementation("org.slf4j:slf4j-jdk14:2.0.17")
 }
 
 androidComponents {

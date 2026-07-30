@@ -155,6 +155,27 @@ class App :
             ),
         )
         MoriCipherUpdateScheduler.schedule(this)
+        // PRDownloader is the file downloader used by PRDownloaderDataSource
+        // (the upstream HTTP fetcher inside Media3's download CacheDataSource
+        // chain). Initialized once at app start with tuned timeouts so
+        // downloads benefit from PRDownloader's pause/resume + retry support
+        // without paying init cost on the first download. Replaces Ketch —
+        // see PRDownloaderDataSource.kt for the rationale.
+        //
+        // Tuned for parallel-throughput: PRDownloader internally caps each
+        // download at 1 concurrent connection (it's a sequential fetcher),
+        // but it can run many downloads in parallel — the OkHttp dispatcher
+        // inside PRDownloader honors `setUserAgent` for proper HTTP/2
+        // connection reuse, and the read/connect timeouts are generous
+        // enough for large FLAC files on slow links.
+        runCatching {
+            val config = com.downloader.PRDownloaderConfig.newBuilder()
+                .setReadTimeout(60_000)
+                .setConnectTimeout(15_000)
+                .setUserAgent("ArchiveTune/${BuildConfig.VERSION_NAME}")
+                .build()
+            com.downloader.PRDownloader.initialize(this, config)
+        }
         CanvasArtworkPlaybackCache.init(this)
         ArchiveTuneCanvas.initialize(BuildConfig.CANVAS_BEARER_TOKEN)
         PaxsenixLyrics.setUserAgent("ArchiveTune", BuildConfig.VERSION_NAME)
@@ -419,7 +440,10 @@ class App :
 
         return ImageLoader
             .Builder(this)
-            .crossfade(true)
+            .components {
+                // Resolve `tgthumb://<fileId>` artwork models through TDLib (Telegram source).
+                add(moe.rukamori.archivetune.telegram.TelegramThumbnailFetcher.Factory())
+            }.crossfade(true)
             .allowHardware(Build.VERSION.SDK_INT >= Build.VERSION_CODES.P)
             .diskCache(diskCache)
             .diskCachePolicy(imageCacheConfig.policy)

@@ -271,6 +271,15 @@ fun StatsScreen(
                 },
                 actions = {
                     IconButton(
+                        onClick = viewModel::retry,
+                        onLongClick = {},
+                    ) {
+                        Icon(
+                            painterResource(R.drawable.sync),
+                            contentDescription = stringResource(R.string.refresh),
+                        )
+                    }
+                    IconButton(
                         onClick = viewModel::showYearPicker,
                         onLongClick = {},
                     ) {

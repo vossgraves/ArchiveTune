@@ -26,6 +26,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -52,7 +53,7 @@ import moe.rukamori.archivetune.utils.rememberPreference
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PrivacySettings(navController: NavController) {
+fun PrivacySettings(navController: NavController, scrollTo: String? = null) {
     val database = LocalDatabase.current
     val (pauseListenHistory, onPauseListenHistoryChange) =
         rememberPreference(
@@ -168,15 +169,22 @@ fun PrivacySettings(navController: NavController) {
         },
     ) { innerPadding ->
         val topPadding = innerPadding.calculateTopPadding()
+        val scrollState = rememberScrollState()
+        val positions = rememberPreferencePositions()
+
+        LaunchedEffect(scrollTo) { positions.scrollToKey(scrollTo, scrollState) }
 
         Column(
             Modifier
                 .padding(top = topPadding)
                 .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom))
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scrollState)
                 .padding(bottom = SettingsDimensions.ScreenBottomPadding),
         ) {
-            PreferenceGroup(title = stringResource(R.string.listen_history)) {
+            PreferenceGroup(
+                modifier = positions.modifierFor("pause_listen_history"),
+                title = stringResource(R.string.listen_history),
+            ) {
                 item {
                     SwitchPreference(
                         title = { Text(stringResource(R.string.pause_listen_history)) },
@@ -195,7 +203,10 @@ fun PrivacySettings(navController: NavController) {
                 }
             }
 
-            PreferenceGroup(title = stringResource(R.string.search_history)) {
+            PreferenceGroup(
+                modifier = positions.modifierFor("pause_search_history"),
+                title = stringResource(R.string.search_history),
+            ) {
                 item {
                     SwitchPreference(
                         title = { Text(stringResource(R.string.pause_search_history)) },
@@ -214,7 +225,10 @@ fun PrivacySettings(navController: NavController) {
                 }
             }
 
-            PreferenceGroup(title = stringResource(R.string.misc)) {
+            PreferenceGroup(
+                modifier = positions.modifierFor("haptics"),
+                title = stringResource(R.string.misc),
+            ) {
                 item {
                     SwitchPreference(
                         title = { Text(stringResource(R.string.haptics)) },

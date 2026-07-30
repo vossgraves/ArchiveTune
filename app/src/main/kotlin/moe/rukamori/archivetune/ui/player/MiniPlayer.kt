@@ -7,6 +7,7 @@
 
 package moe.rukamori.archivetune.ui.player
 
+import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
@@ -26,11 +27,19 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.BlurEffect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TileMode
+import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.IntOffset
@@ -53,6 +62,7 @@ import moe.rukamori.archivetune.constants.NavigationBarMaxWidth
 import moe.rukamori.archivetune.constants.SwipeSensitivityKey
 import moe.rukamori.archivetune.playback.artwork.PlayerPaletteCacheKey
 import moe.rukamori.archivetune.playback.artwork.guessArtworkProvider
+import moe.rukamori.archivetune.ui.component.LocalNavigationBarBackdrop
 import moe.rukamori.archivetune.ui.theme.PlayerColorExtractor
 import moe.rukamori.archivetune.ui.theme.PlayerPaletteCache
 import moe.rukamori.archivetune.utils.rememberEnumPreference
@@ -101,7 +111,10 @@ private fun NewMiniPlayer(
     }
     var hasValidPalette by remember { mutableStateOf(false) }
     val fallbackColor = MaterialTheme.colorScheme.surface.toArgb()
-    val shouldUseArtworkBackground = miniPlayerBackgroundStyle != MiniPlayerBackgroundStyle.THEME
+    // Only the artwork-derived styles need palette extraction; THEME and FROSTED don't.
+    val shouldUseArtworkBackground =
+        miniPlayerBackgroundStyle == MiniPlayerBackgroundStyle.GRADIENT ||
+            miniPlayerBackgroundStyle == MiniPlayerBackgroundStyle.GLOW
     val darkTheme = isSystemInDarkTheme()
 
     LaunchedEffect(
@@ -199,15 +212,17 @@ private fun NewMiniPlayer(
             MiniPlayerBackgroundPalette.from(gradientColors)
         }
     val effectiveBackgroundStyle =
-        if (shouldUseArtworkBackground && backgroundPalette != null) {
-            miniPlayerBackgroundStyle
-        } else {
-            MiniPlayerBackgroundStyle.THEME
+        when {
+            miniPlayerBackgroundStyle == MiniPlayerBackgroundStyle.FROSTED -> MiniPlayerBackgroundStyle.FROSTED
+            shouldUseArtworkBackground && backgroundPalette != null -> miniPlayerBackgroundStyle
+            else -> MiniPlayerBackgroundStyle.THEME
         }
 
     val contentColors =
         rememberMiniPlayerContentColors(
-            useArtworkBackground = effectiveBackgroundStyle != MiniPlayerBackgroundStyle.THEME,
+            useArtworkBackground =
+                effectiveBackgroundStyle == MiniPlayerBackgroundStyle.GRADIENT ||
+                    effectiveBackgroundStyle == MiniPlayerBackgroundStyle.GLOW,
         )
     val miniPlayerShape =
         remember(isPairedWithNavigation) {
@@ -309,6 +324,11 @@ private fun rememberMiniPlayerContentColors(useArtworkBackground: Boolean): Mini
     }
 }
 
+// Frosted mini-player backdrop: blur radius in raw px (RenderEffect works in pixels) and the
+// bounded fraction of blurred content shown over the opaque base — same recipe as the nav bar.
+private const val FrostedMiniPlayerBlurRadiusPx = 60f
+private const val FrostedMiniPlayerOverlayAlpha = 0.30f
+
 @Composable
 private fun MiniPlayerBackground(
     style: MiniPlayerBackgroundStyle,
@@ -320,6 +340,47 @@ private fun MiniPlayerBackground(
             Box(
                 modifier = modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh),
             )
+        }
+
+        MiniPlayerBackgroundStyle.FROSTED -> {
+            // Same frosted-glass recipe as the navigation bar: an always-opaque surface with the
+            // captured app content blurred and composited on top at a bounded alpha. Falls back to
+            // the plain theme surface when no backdrop capture is available (setting combinations
+            // that never record one, rail layouts, Android < 12).
+            val backdrop = LocalNavigationBarBackdrop.current
+            val baseColor = MaterialTheme.colorScheme.surfaceContainerHigh
+            if (backdrop == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+                Box(modifier = modifier.background(baseColor))
+            } else {
+                var positionInRoot by remember { mutableStateOf(Offset.Zero) }
+                Box(
+                    modifier =
+                        modifier
+                            .onGloballyPositioned { positionInRoot = it.positionInRoot() }
+                            .background(baseColor),
+                ) {
+                    Box(
+                        modifier =
+                            Modifier
+                                .fillMaxSize()
+                                .graphicsLayer {
+                                    renderEffect =
+                                        BlurEffect(
+                                            radiusX = FrostedMiniPlayerBlurRadiusPx,
+                                            radiusY = FrostedMiniPlayerBlurRadiusPx,
+                                            edgeTreatment = TileMode.Clamp,
+                                        )
+                                    alpha = FrostedMiniPlayerOverlayAlpha
+                                    clip = true
+                                }.drawBehind {
+                                    val offset = backdrop.contentOffsetInRoot - positionInRoot
+                                    translate(offset.x, offset.y) {
+                                        drawLayer(backdrop.layer)
+                                    }
+                                },
+                    )
+                }
+            }
         }
 
         MiniPlayerBackgroundStyle.GRADIENT -> {

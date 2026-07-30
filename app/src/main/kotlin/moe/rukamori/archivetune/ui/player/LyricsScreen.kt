@@ -14,11 +14,9 @@ import android.view.HapticFeedbackConstants
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
@@ -74,6 +72,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
@@ -125,6 +125,7 @@ import moe.rukamori.archivetune.constants.PlayerCustomBrightnessKey
 import moe.rukamori.archivetune.constants.PlayerCustomContrastKey
 import moe.rukamori.archivetune.constants.PlayerCustomImageUriKey
 import moe.rukamori.archivetune.constants.ShowLyricsPlayerControlsKey
+import moe.rukamori.archivetune.db.entities.LyricsEntity
 import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.ui.component.LocalMenuState
@@ -132,6 +133,7 @@ import moe.rukamori.archivetune.ui.component.LyricsEnhanced
 import moe.rukamori.archivetune.ui.component.LyricsV2
 import moe.rukamori.archivetune.ui.component.PlayerSliderTrack
 import moe.rukamori.archivetune.ui.menu.LyricsMenu
+import moe.rukamori.archivetune.ui.utils.rememberPreBlurredBitmap
 import moe.rukamori.archivetune.ui.theme.PlayerColorExtractor
 import moe.rukamori.archivetune.ui.theme.PlayerPaletteCache
 import moe.rukamori.archivetune.playback.artwork.PlayerPaletteCacheKey
@@ -262,13 +264,33 @@ fun LyricsScreen(
         }
 
     LaunchedEffect(mediaMetadata.id, currentLyrics?.lyrics) {
-        if (currentLyrics != null) return@LaunchedEffect
+        // Only fetch manually here if the background MusicService fetch hasn't
+        // populated anything yet, OR if it populated a LYRICS_NOT_FOUND (so the
+        // user gets an automatic retry when they open the lyrics panel instead
+        // of being forced to use the manual search menu).
+        //
+        // NOTE: snapshot `currentLyrics` into a local val so the compiler can
+        // smart-cast it to non-null. `currentLyrics` itself is a delegated
+        // property (State<LyricsEntity?>) and cannot be smart-cast across the
+        // `||` because it could be invalidated between the null-check and the
+        // member-access.
+        val snapshot = currentLyrics
+        val needsFetch =
+            snapshot == null ||
+                snapshot.lyrics == LyricsEntity.LYRICS_NOT_FOUND
+        if (!needsFetch) return@LaunchedEffect
         try {
             val existingLyrics =
                 withContext(Dispatchers.IO) {
                     database.lyrics(mediaMetadata.id).first()
                 }
-            if (existingLyrics != null) return@LaunchedEffect
+            // Skip only if we already have real lyrics. LYRICS_NOT_FOUND triggers
+            // a retry below (mirrors MusicService behavior).
+            if (existingLyrics != null &&
+                existingLyrics.lyrics != LyricsEntity.LYRICS_NOT_FOUND
+            ) {
+                return@LaunchedEffect
+            }
 
             val lyrics =
                 withContext(Dispatchers.IO) {
@@ -276,7 +298,7 @@ fun LyricsScreen(
                 }
             withContext(Dispatchers.IO) {
                 database.query {
-                    insertLyricsIfAbsent(
+                    replaceLyricsIfAbsentOrNotFound(
                         id = mediaMetadata.id,
                         lyrics = lyrics,
                     )
@@ -300,6 +322,17 @@ fun LyricsScreen(
     val darkTheme = isSystemInDarkTheme()
 
     LaunchedEffect(mediaMetadata.id, mediaMetadata.thumbnailUrl, lyricsBackground, darkTheme) {
+        // Yield one frame before kicking off Palette extraction. The lyrics
+        // sheet's slide-up animation runs in the draw phase (graphicsLayer)
+        // and doesn't recompose per frame on its own, but the *first*
+        // composition of LyricsScreen still runs heavy code on the IO/Default
+        // dispatchers (Palette generate + image decode) that competes with
+        // the spring animation for CPU on low/mid-range phones. A 120ms
+        // delay lets the spring get ~60% of the way through its travel
+        // before Palette work starts — invisible to the user (the blurred
+        // background thumbnail covers the unextracted state) but noticeably
+        // smoother on devices where the open animation was laggy.
+        kotlinx.coroutines.delay(120)
         if (lyricsBackground != LyricsBackgroundStyle.DEFAULT && lyricsBackground != LyricsBackgroundStyle.COLORING) {
             gradientColors = AppleMusicFallbackGradient
             hasValidPalette = false
@@ -579,13 +612,11 @@ fun LyricsScreen(
                 AnimatedVisibility(
                     visible = controlsVisible,
                     enter =
-                        fadeIn(tween(180)) +
-                            slideInVertically(tween(240)) { fullHeight -> fullHeight / 6 } +
-                            expandVertically(tween(240)),
+                        fadeIn(tween(120)) +
+                            slideInVertically(tween(180)) { fullHeight -> fullHeight / 6 },
                     exit =
-                        fadeOut(tween(120)) +
-                            slideOutVertically(tween(180)) { fullHeight -> fullHeight / 8 } +
-                            shrinkVertically(tween(180)),
+                        fadeOut(tween(90)) +
+                            slideOutVertically(tween(140)) { fullHeight -> fullHeight / 8 },
                     label = "lyrics-player-controls",
                 ) {
                     AppleMusicControls(
@@ -707,22 +738,38 @@ private fun AppleMusicBackground(
                 .fillMaxSize()
                 .background(AppleMusicFallbackGradient.last()),
     ) {
+        // Pre-blurred bitmap for the lyrics background. On Android 12+ this is null and we fall
+        // through to AsyncImage + Modifier.blur. On older Android it returns a CPU-blurred bitmap
+        // that we render directly, because Modifier.blur is a silent no-op below API 31.
+        val preBlurredBitmap = rememberPreBlurredBitmap(imageUrl = mediaMetadata.thumbnailUrl, radiusDp = 46.dp)
         AnimatedContent(
             targetState = mediaMetadata.thumbnailUrl,
             transitionSpec = { fadeIn(tween(700)) togetherWith fadeOut(tween(700)) },
             label = "lyrics-apple-background",
         ) { thumbnailUrl ->
             if (thumbnailUrl != null) {
-                AsyncImage(
-                    model = thumbnailUrl,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier =
-                        Modifier
-                            .fillMaxSize()
-                            .blur(46.dp)
-                            .alpha(0.62f),
-                )
+                if (preBlurredBitmap != null) {
+                    androidx.compose.foundation.Image(
+                        bitmap = preBlurredBitmap.asImageBitmap(),
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier =
+                            Modifier
+                                .fillMaxSize()
+                                .alpha(0.62f),
+                    )
+                } else {
+                    AsyncImage(
+                        model = thumbnailUrl,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier =
+                            Modifier
+                                .fillMaxSize()
+                                .blur(46.dp)
+                                .alpha(0.62f),
+                    )
+                }
             }
         }
         Box(
@@ -800,7 +847,7 @@ private fun AppleMusicTrackHeader(
             )
             if (mediaMetadata.thumbnailUrl == null) {
                 Icon(
-                    painter = painterResource(R.drawable.music_note),
+                    painter = painterResource(R.drawable.player_music_note),
                     contentDescription = null,
                     tint = foregroundColor.copy(alpha = 0.72f),
                     modifier = Modifier.size(26.dp),
@@ -833,7 +880,7 @@ private fun AppleMusicTrackHeader(
         Spacer(modifier = Modifier.width(12.dp))
 
         AppleMusicHeaderIconButton(
-            iconRes = R.drawable.close,
+            iconRes = R.drawable.player_close,
             contentDescription = stringResource(R.string.close),
             foregroundColor = foregroundColor,
             onClick = onDismissClick,
@@ -842,7 +889,7 @@ private fun AppleMusicTrackHeader(
         Spacer(modifier = Modifier.width(4.dp))
 
         AppleMusicHeaderIconButton(
-            iconRes = R.drawable.more_horiz,
+            iconRes = R.drawable.player_more_horiz,
             contentDescription = stringResource(R.string.more_options),
             foregroundColor = foregroundColor,
             onClick = onMoreClick,
@@ -978,8 +1025,8 @@ private fun AppleMusicControls(
 
         AnimatedVisibility(
             visible = controlsExpanded,
-            enter = fadeIn(tween(180)) + expandVertically(tween(220)),
-            exit = fadeOut(tween(120)) + shrinkVertically(tween(180)),
+            enter = fadeIn(tween(120)) + slideInVertically(tween(160)) { fullHeight -> fullHeight / 8 },
+            exit = fadeOut(tween(90)) + slideOutVertically(tween(120)) { fullHeight -> fullHeight / 10 },
             label = "lyrics-expanded-player-controls",
         ) {
             Column(
@@ -998,11 +1045,12 @@ private fun AppleMusicControls(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     AppleMusicTransportButton(
-                        iconRes = R.drawable.skip_previous,
+                        iconRes = R.drawable.player_fast_forward,
                         contentDescription = stringResource(R.string.widget_previous),
                         iconSize = 44.dp,
                         touchSize = 68.dp,
                         foregroundColor = foregroundColor,
+                        mirrored = true,
                         onClick = onPreviousClick,
                     )
                     IconButton(
@@ -1016,7 +1064,7 @@ private fun AppleMusicControls(
                             )
                         } else {
                             Icon(
-                                painter = painterResource(if (isPlaying) R.drawable.pause else R.drawable.play),
+                                painter = painterResource(if (isPlaying) R.drawable.player_pause else R.drawable.player_play),
                                 contentDescription =
                                     if (isPlaying) {
                                         stringResource(R.string.widget_pause)
@@ -1029,11 +1077,12 @@ private fun AppleMusicControls(
                         }
                     }
                     AppleMusicTransportButton(
-                        iconRes = R.drawable.skip_next,
+                        iconRes = R.drawable.player_fast_forward,
                         contentDescription = stringResource(R.string.next),
                         iconSize = 44.dp,
                         touchSize = 68.dp,
                         foregroundColor = foregroundColor,
+                        mirrored = false,
                         onClick = onNextClick,
                     )
                 }
@@ -1046,7 +1095,7 @@ private fun AppleMusicControls(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Icon(
-                        painter = painterResource(R.drawable.volume_off),
+                        painter = painterResource(R.drawable.player_volume_min),
                         contentDescription = stringResource(R.string.minimum_volume),
                         tint = foregroundColor.copy(alpha = 0.66f),
                         modifier = Modifier.size(17.dp),
@@ -1065,7 +1114,7 @@ private fun AppleMusicControls(
                                 .padding(horizontal = 16.dp),
                     )
                     Icon(
-                        painter = painterResource(R.drawable.volume_up),
+                        painter = painterResource(R.drawable.player_volume_up),
                         contentDescription = stringResource(R.string.maximum_volume),
                         tint = foregroundColor.copy(alpha = 0.66f),
                         modifier = Modifier.size(19.dp),
@@ -1083,6 +1132,7 @@ private fun AppleMusicTransportButton(
     iconSize: Dp,
     touchSize: Dp,
     foregroundColor: Color,
+    mirrored: Boolean = false,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -1094,7 +1144,10 @@ private fun AppleMusicTransportButton(
             painter = painterResource(iconRes),
             contentDescription = contentDescription,
             tint = foregroundColor,
-            modifier = Modifier.size(iconSize),
+            modifier =
+                Modifier
+                    .size(iconSize)
+                    .graphicsLayer { if (mirrored) scaleX = -1f },
         )
     }
 }

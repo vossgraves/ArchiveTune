@@ -432,38 +432,6 @@ fun SpotifyPlaylistScreen(
                                             }
                                         }
                                     }
-
-                                    MediaDetailAction(
-                                        contentDescription = R.string.download,
-                                        contentColor = contentColor,
-                                        onClick = {
-                                            navController.navigate(
-                                                "auto_playlist/downloaded?tab=progress",
-                                            )
-                                        },
-                                    ) {
-                                        val globalProgress = (globalDownloadState as? HeaderDownloadState.Partial)?.progress ?: 0f
-                                        val globalPaused = (globalDownloadState as? HeaderDownloadState.Partial)?.paused ?: false
-                                        HeaderDownloadProgressIndicator(
-                                            progress = globalProgress,
-                                            paused = globalPaused,
-                                            icon = R.drawable.list,
-                                        )
-                                    }
-                                }
-                                MediaDetailIconAction(
-                                    icon = R.drawable.sync,
-                                    contentDescription = R.string.spotify_reload_playlist,
-                                    contentColor = contentColor,
-                                    onClick = viewModel::reload,
-                                )
-                                if (tracks.isNotEmpty()) {
-                                    MediaDetailIconAction(
-                                        icon = R.drawable.mix,
-                                        contentDescription = R.string.start_mix,
-                                        contentColor = contentColor,
-                                        onClick = { playPlaylist(shuffled = true) },
-                                    )
                                 }
                             },
                         )

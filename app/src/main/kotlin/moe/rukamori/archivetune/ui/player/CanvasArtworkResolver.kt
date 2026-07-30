@@ -11,7 +11,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.canvas.ArchiveTuneCanvas
 import moe.rukamori.archivetune.canvas.models.CanvasArtwork
+import moe.rukamori.archivetune.canvas.models.looselyMatchesSongIdentity
 import moe.rukamori.archivetune.canvas.models.matchesSongIdentity
+import moe.rukamori.archivetune.telegram.isTelegramMediaId
+import moe.rukamori.archivetune.utils.isLocalMediaId
 import timber.log.Timber
 
 internal suspend fun resolveCanvasArtworkForPlayback(
@@ -21,18 +24,27 @@ internal suspend fun resolveCanvasArtworkForPlayback(
     storefront: String,
     requireVertical: Boolean,
     allowNetwork: Boolean,
+    albumTitle: String? = null,
 ): CanvasArtwork? {
+    // Telegram/local files have tag-derived (often noisy) metadata — use fuzzy identity matching
+    // so a real canvas isn't discarded over a "(2019)" suffix or a channel-name artist.
+    val strictIdentity = !(mediaId.isTelegramMediaId() || mediaId.isLocalMediaId())
+    // Fast path: try the cache with preferCachedOnly=true via getCachedOnlyFast,
+    // which skips the expensive MediaExtractor probe (~50-200ms per file).
+    // The probe was the dominant contributor to canvas startup latency on
+    // cache hits — see CanvasArtworkPlaybackCache.getCachedOnlyFast for details.
     val cachedArtwork =
         withContext(Dispatchers.IO) {
-            CanvasArtworkPlaybackCache.get(
-                mediaId = mediaId,
-                preferCachedOnly = true,
-            )
+            CanvasArtworkPlaybackCache.getCachedOnlyFast(mediaId)
+                ?: CanvasArtworkPlaybackCache.get(
+                    mediaId = mediaId,
+                    preferCachedOnly = true,
+                )
         }
     if (cachedArtwork != null) {
         val isValid =
             cachedArtwork.hasRequiredCanvasVariant(requireVertical) &&
-                cachedArtwork.matchesSongIdentity(songTitleRaw, artistNameRaw)
+                cachedArtwork.matchesIdentity(songTitleRaw, artistNameRaw, strictIdentity)
         if (isValid) return cachedArtwork
         withContext(Dispatchers.IO) {
             CanvasArtworkPlaybackCache.remove(mediaId)
@@ -51,6 +63,8 @@ internal suspend fun resolveCanvasArtworkForPlayback(
                 artistNameRaw = artistNameRaw,
                 storefront = storefront,
                 requireVertical = requireVertical,
+                strictIdentity = strictIdentity,
+                albumTitle = albumTitle,
             )
 
         if (fetched == null) {
@@ -68,6 +82,8 @@ internal suspend fun fetchCanvasArtworkForPlayback(
     storefront: String,
     requireVertical: Boolean,
     forceRefresh: Boolean = false,
+    strictIdentity: Boolean = true,
+    albumTitle: String? = null,
 ): CanvasArtwork? {
     val songTitle = normalizeCanvasSongTitle(songTitleRaw)
     val artistName = normalizeCanvasArtistName(artistNameRaw)
@@ -88,8 +104,10 @@ internal suspend fun fetchCanvasArtworkForPlayback(
                 artist = artist,
                 storefront = storefront,
                 forceRefresh = forceRefresh,
+                strict = strictIdentity,
+                album = albumTitle,
             )?.takeIf { artwork ->
-                artwork.matchesSongIdentity(songTitleRaw, artistNameRaw) &&
+                artwork.matchesIdentity(songTitleRaw, artistNameRaw, strictIdentity) &&
                     artwork.hasRequiredCanvasVariant(requireVertical)
             }
     }
@@ -101,6 +119,7 @@ internal suspend fun refetchCanvasArtworkForPlayback(
     artistNameRaw: String,
     storefront: String,
     requireVertical: Boolean,
+    albumTitle: String? = null,
 ): CanvasArtwork? {
     if (mediaId.isBlank()) return null
 
@@ -112,11 +131,26 @@ internal suspend fun refetchCanvasArtworkForPlayback(
                 storefront = storefront,
                 requireVertical = requireVertical,
                 forceRefresh = true,
+                strictIdentity = !(mediaId.isTelegramMediaId() || mediaId.isLocalMediaId()),
+                albumTitle = albumTitle,
             ) ?: return@withContext null
 
         CanvasArtworkPlaybackCache.replace(mediaId, fetched)
     }
 }
+
+private fun CanvasArtwork.matchesIdentity(
+    songTitleRaw: String,
+    artistNameRaw: String,
+    strict: Boolean,
+): Boolean =
+    if (strict) {
+        matchesSongIdentity(songTitleRaw, artistNameRaw)
+    } else {
+        // Album-level motion artwork carries the album name in `name`, so an exact/fuzzy song
+        // match may legitimately fail; accept it when the song lookup already vouched for it.
+        looselyMatchesSongIdentity(songTitleRaw, artistNameRaw) || !albumName.isNullOrBlank()
+    }
 
 private fun CanvasArtwork.hasRequiredCanvasVariant(requireVertical: Boolean): Boolean =
     if (requireVertical) {
@@ -130,6 +164,8 @@ private const val CanvasArtworkLogTag = "CanvasArtwork"
 private fun normalizeCanvasSongTitle(raw: String): String {
     val stripped =
         raw
+            // Leading track numbers ("01. ", "12 - ") common in files shared on Telegram.
+            .replace(Regex("^\\s*\\d{1,3}\\s*[.\\-]\\s*"), "")
             .replace(Regex("\\s*\\[[^]]*]"), "")
             .replace(
                 Regex(

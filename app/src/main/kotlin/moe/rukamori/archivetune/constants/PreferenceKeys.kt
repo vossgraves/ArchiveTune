@@ -60,6 +60,17 @@ val AodHorizontalPaddingKey = floatPreferencesKey("aodHorizontalPadding")
 val AodVerticalSpacingKey = floatPreferencesKey("aodVerticalSpacing")
 val AodTitleMaxLinesKey = intPreferencesKey("aodTitleMaxLines")
 val AodAmbientIntensityKey = floatPreferencesKey("aodAmbientIntensity")
+// Show a compact, dimmed lyrics line on the AOD screen while music plays.
+val AodShowLyricsKey = booleanPreferencesKey("aodShowLyrics")
+// When > 0, automatically enter AOD mode after this many seconds of the player sheet being
+// collapsed (i.e. the user is no longer actively interacting with the player). 0 disables.
+val AodAutoTimerSecondsKey = intPreferencesKey("aodAutoTimerSeconds")
+// When true, AOD mode auto-triggers when the screen is about to turn off due to inactivity
+// (driven via the system lock intent). Disabled by default to avoid surprises.
+val AodAutoOnScreenDimKey = booleanPreferencesKey("aodAutoOnScreenDim")
+// Experimental native Musixmatch provider (token.get + macro.subtitles + richsync→TTML).
+// Off by default; toggle surfaces in Lyrics settings under "Experimental".
+val EnableMusixmatchExperimentalKey = booleanPreferencesKey("enableMusixmatchExperimental")
 val SeekExtraSeconds = booleanPreferencesKey("seekExtraSeconds")
 val DisableBlurKey = booleanPreferencesKey("disableBlur")
 val BlurRadiusKey = floatPreferencesKey("blurRadius")
@@ -163,9 +174,36 @@ val EnablePaxsenixYouTubeLyricsKey = booleanPreferencesKey("enablePaxsenixYouTub
 val EnableUnisonLyricsKey = booleanPreferencesKey("enableUnisonLyrics")
 val HideExplicitKey = booleanPreferencesKey("hideExplicit")
 val HideVideoKey = booleanPreferencesKey("hideVideo")
+val AllowAgeRestrictedKey = booleanPreferencesKey("allowAgeRestricted")
+enum class DownloadSource {
+    /**
+     * Picks the best available source per song: tries Qobuz → Tidal → Deezer
+     * (lossless FLAC) and falls back to YouTube Music (lossy MP3/AAC) only
+     * when none of the lossless backends can resolve the track. This is the
+     * default and the recommended setting — it guarantees FLAC whenever a
+     * configured lossless provider has the track, without forcing the user
+     * to manually switch sources.
+     */
+    AUTO,
+
+    QOBUZ,
+    TIDAL,
+
+    /**
+     * Deezer lookup — uses Deezer's public catalogue API to resolve a FLAC
+     * stream URL. Falls back to the next source in [AUTO] order when the
+     * track isn't on Deezer or the API can't resolve a full stream.
+     */
+    DEEZER,
+
+    YOUTUBE_MUSIC,
+}
+
+val DownloadSourceKey = stringPreferencesKey("downloadSource")
 val AiContentFilterEnabledKey = booleanPreferencesKey("aiContentFilterEnabled")
 val AiContentFilterIncludeModerateKey = booleanPreferencesKey("aiContentFilterIncludeModerate")
 val AiContentFilterLastUpdatedKey = longPreferencesKey("aiContentFilterLastUpdated")
+val AiMixLastGeneratedAtKey = longPreferencesKey("aiMixLastGeneratedAt")
 val ProxyEnabledKey = booleanPreferencesKey("proxyEnabled")
 val ProxyHostKey = stringPreferencesKey("proxyHost")
 val ProxyPortKey = intPreferencesKey("proxyPort")
@@ -205,6 +243,9 @@ val AiApiKeyKey = stringPreferencesKey("ai_api_key")
 val AiApiValidationStatusKey = stringPreferencesKey("ai_api_validation_status")
 val AiSelectedModelKey = stringPreferencesKey("ai_selected_model")
 val AiCustomModelKey = stringPreferencesKey("ai_custom_model")
+
+// Hides the AI-generated "Top mixes" section in the library Mix tab (and stops auto-generation).
+val HideAiMixKey = booleanPreferencesKey("hide_ai_mix")
 
 enum class AiProvider {
     CHATGPT,
@@ -642,6 +683,7 @@ enum class PlayerDesignStyle {
     V7,
     V8,
     V9,
+    APPLE_MUSIC,
 }
 
 enum class PlayerBackgroundStyle {
@@ -673,7 +715,22 @@ enum class MiniPlayerBackgroundStyle {
     THEME,
     GRADIENT,
     GLOW,
+    FROSTED,
 }
+
+// Bottom navigation bar look: DEFAULT keeps the docked full-width bar; FLOATING detaches it into
+// a pill with larger margins that never pairs with the mini player.
+enum class NavigationBarStyle {
+    DEFAULT,
+    FLOATING,
+}
+
+val NavigationBarStyleKey = stringPreferencesKey("navigationBarStyle")
+
+// Draws a frosted (blurred app content) backdrop behind the navigation bar. True backdrop blur on
+// Android 12+; a translucent surface fallback below that.
+val NavigationBarFrostedBlurKey = booleanPreferencesKey("navigationBarFrostedBlur")
+val HideNavigationBarLabelsKey = booleanPreferencesKey("hideNavigationBarLabels")
 
 // Keys for customized background
 val PlayerCustomImageUriKey = stringPreferencesKey("playerCustomImageUri")
@@ -888,6 +945,21 @@ fun QobuzAudioQuality.toFormatId(): Int =
         QobuzAudioQuality.HI_RES -> 7
         QobuzAudioQuality.MAX -> 27
     }
+
+// ---------------------------------------------------------------------------
+// Telegram channel streaming integration
+// ---------------------------------------------------------------------------
+// Streams audio files (lossless-first) directly from Telegram channels via TDLib. The user logs in
+// with their own Telegram account (phone + code + optional 2FA password); the app's api_id/api_hash
+// are baked in at build time (BuildConfig.TELEGRAM_API_ID/HASH), so no developer credentials are
+// entered in-app. The session lives in TDLib's encrypted database under filesDir; these keys only
+// hold display metadata for the settings screen.
+val TelegramAccountNameKey = stringPreferencesKey("telegramAccountName")
+val TelegramAccountPhoneKey = stringPreferencesKey("telegramAccountPhone")
+
+// When ON (default) the channel browser only materialises lossless files (FLAC/WAV/AIFF/APE/ALAC/…)
+// into the channel's playlist; when OFF every audio message and audio-typed document is included.
+val TelegramLosslessOnlyKey = booleanPreferencesKey("telegramLosslessOnly")
 
 // ---------------------------------------------------------------------------
 // Multi-source audio framework

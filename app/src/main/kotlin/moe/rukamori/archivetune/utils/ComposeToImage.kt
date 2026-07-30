@@ -778,3 +778,39 @@ object ComposeToImage {
         }
     }
 }
+
+/**
+ * Fetches the image at [thumbnailUrl] via Coil and saves it to
+ * `Pictures/ArchiveTune/<fileName>.png` via MediaStore (Android 10+) or
+ * the app's cache dir + FileProvider (pre-Q). Returns the saved [Uri] on
+ * success, or null if the URL was null/blank, the network fetch failed,
+ * or the decoded bitmap was null.
+ *
+ * Used by the "Download cover" overflow-menu action in song menus —
+ * gives users a one-tap way to save the album art for any song to their
+ * gallery without needing to grant runtime permissions.
+ *
+ * Must be called on a background dispatcher (it does network I/O + disk
+ * writes); callers typically wrap it in `withContext(Dispatchers.IO)`.
+ */
+suspend fun saveCoverArtworkFromUrl(
+    context: Context,
+    thumbnailUrl: String?,
+    fileName: String,
+): Uri? {
+    if (thumbnailUrl.isNullOrBlank()) return null
+    return withContext(Dispatchers.IO) {
+        runCatching {
+            val loader = coil3.SingletonImageLoader.get(context)
+            val request =
+                ImageRequest
+                    .Builder(context)
+                    .data(thumbnailUrl)
+                    .allowHardware(false)
+                    .build()
+            val result = loader.execute(request)
+            val bitmap = result.image?.toBitmap() ?: return@runCatching null
+            ComposeToImage.saveBitmapAsFile(context, bitmap, fileName)
+        }.getOrNull()
+    }
+}

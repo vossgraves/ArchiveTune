@@ -135,6 +135,7 @@ fun AlbumScreen(
     val albumWithSongs by viewModel.albumWithSongs.collectAsStateWithLifecycle()
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val otherVersions by viewModel.otherVersions.collectAsStateWithLifecycle()
+    val canvasArtwork by viewModel.canvasArtwork.collectAsStateWithLifecycle()
     val hideExplicit by rememberPreference(key = HideExplicitKey, defaultValue = false)
 
     // System bars padding
@@ -280,6 +281,14 @@ fun AlbumScreen(
                         isAdded = isBookmarked,
                         addContentDescription = R.string.add_to_library,
                         removeContentDescription = R.string.remove_from_library,
+                        // Pass the album's looping animated canvas (Apple Music
+                        // animated cover art) so the album thumbnail animates
+                        // the same way the song player's thumbnail does. Only
+                        // mounted when the canvas feature is enabled and the
+                        // album actually has a canvas (see AlbumViewModel).
+                        canvasPrimaryUrl = canvasArtwork?.animated ?: canvasArtwork?.videoUrl,
+                        canvasFallbackUrl = canvasArtwork?.videoUrl,
+                        canvasIsPlaying = isPlaying,
                         onShuffle =
                             if (albumWithSongs.songs.isEmpty()) {
                                 null
@@ -302,11 +311,7 @@ fun AlbumScreen(
                                     playerConnection.playQueue(LocalAlbumRadio(albumWithSongs))
                                 }
                             },
-                        onToggleAdd = {
-                            database.query {
-                                update(albumWithSongs.album.toggleLike())
-                            }
-                        },
+                        onToggleAdd = null,
                         additionalPrimaryActions = { contentColor ->
                             if (albumWithSongs.songs.isNotEmpty()) {
                                 MediaDetailAction(
@@ -375,24 +380,6 @@ fun AlbumScreen(
                                             )
                                         }
                                     }
-                                }
-
-                                MediaDetailAction(
-                                    contentDescription = R.string.download,
-                                    contentColor = contentColor,
-                                    onClick = {
-                                        navController.navigate(
-                                            "auto_playlist/downloaded?tab=progress",
-                                        )
-                                    },
-                                ) {
-                                    val globalProgress = (globalDownloadState as? HeaderDownloadState.Partial)?.progress ?: 0f
-                                    val globalPaused = (globalDownloadState as? HeaderDownloadState.Partial)?.paused ?: false
-                                    HeaderDownloadProgressIndicator(
-                                        progress = globalProgress,
-                                        paused = globalPaused,
-                                        icon = R.drawable.list,
-                                    )
                                 }
                             }
                         },

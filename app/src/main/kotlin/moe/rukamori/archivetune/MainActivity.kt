@@ -84,6 +84,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -92,21 +93,16 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MenuDefaults
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
-import androidx.compose.material3.PlainTooltip
-import androidx.compose.material3.RichTooltip
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SearchBarDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextFieldDefaults
-import androidx.compose.material3.TooltipBox
-import androidx.compose.material3.TooltipDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.material3.contentColorFor
-import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -125,6 +121,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.graphics.rememberGraphicsLayer
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
@@ -173,6 +176,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.window.core.layout.WindowSizeClass
+import coil3.compose.AsyncImage
 import coil3.imageLoader
 import coil3.request.ImageRequest
 import coil3.request.SuccessResult
@@ -195,6 +199,8 @@ import moe.rukamori.archivetune.aod.ACTION_AOD_MODE
 import moe.rukamori.archivetune.constants.AppBarHeight
 import moe.rukamori.archivetune.constants.AppFontPreference
 import moe.rukamori.archivetune.constants.AppLanguageKey
+import moe.rukamori.archivetune.constants.AodAutoOnScreenDimKey
+import moe.rukamori.archivetune.constants.AodAutoTimerSecondsKey
 import moe.rukamori.archivetune.constants.CustomFontUriKey
 import moe.rukamori.archivetune.constants.CustomThemeColorKey
 import moe.rukamori.archivetune.constants.DarkModeKey
@@ -210,6 +216,8 @@ import moe.rukamori.archivetune.constants.MiniPlayerBottomSpacing
 import moe.rukamori.archivetune.constants.MiniPlayerHeight
 import moe.rukamori.archivetune.constants.MiniPlayerLastAnchorKey
 import moe.rukamori.archivetune.constants.NavigationBarAnimationSpec
+import moe.rukamori.archivetune.constants.FloatingNavigationBarBottomPadding
+import moe.rukamori.archivetune.constants.FloatingNavigationBarHorizontalPadding
 import moe.rukamori.archivetune.constants.NavigationBarBottomPadding
 import moe.rukamori.archivetune.constants.NavigationBarHeight
 import moe.rukamori.archivetune.constants.NavigationBarHorizontalPadding
@@ -218,6 +226,9 @@ import moe.rukamori.archivetune.constants.PlayerBackgroundStyle
 import moe.rukamori.archivetune.constants.PlayerBackgroundStyleKey
 import moe.rukamori.archivetune.constants.PlayerDesignStyle
 import moe.rukamori.archivetune.constants.PlayerDesignStyleKey
+import moe.rukamori.archivetune.constants.NavigationBarFrostedBlurKey
+import moe.rukamori.archivetune.constants.NavigationBarStyle
+import moe.rukamori.archivetune.constants.NavigationBarStyleKey
 import moe.rukamori.archivetune.constants.PureBlackKey
 import moe.rukamori.archivetune.constants.RemindAfterKey
 import moe.rukamori.archivetune.constants.SYSTEM_DEFAULT
@@ -260,6 +271,10 @@ import moe.rukamori.archivetune.ui.component.COLLAPSED_ANCHOR
 import moe.rukamori.archivetune.ui.component.DISMISSED_ANCHOR
 import moe.rukamori.archivetune.ui.component.EXPANDED_ANCHOR
 import moe.rukamori.archivetune.ui.component.FloatingNavigationToolbar
+import moe.rukamori.archivetune.constants.MiniPlayerBackgroundStyle
+import moe.rukamori.archivetune.constants.MiniPlayerBackgroundStyleKey
+import moe.rukamori.archivetune.ui.component.LocalNavigationBarBackdrop
+import moe.rukamori.archivetune.ui.component.NavigationBarBackdrop
 import moe.rukamori.archivetune.ui.component.AutoResizeText
 import moe.rukamori.archivetune.ui.component.FontSizeRange
 import moe.rukamori.archivetune.ui.component.IconButton
@@ -512,6 +527,15 @@ class MainActivity : ComponentActivity() {
         window.decorView.layoutDirection = View.LAYOUT_DIRECTION_LTR
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
+        // Pre-warm DNS + TLS connections to the most common download/stream
+        // hosts so the first song download of the session doesn't pay the
+        // ~300-800ms DNS+TCP+TLS handshake cost. Fires off a single HEAD
+        // request per host on a background IO coroutine; failures are
+        // silently swallowed (it's just an optimization).
+        lifecycleScope.launch(Dispatchers.IO) {
+            runCatching { downloadUtil.prewarmDownloadConnections() }
+        }
+
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
             val initialLocale =
                 PreferenceStore
@@ -718,6 +742,14 @@ class MainActivity : ComponentActivity() {
                 }
             val pureBlackEnabled by rememberPreference(PureBlackKey, defaultValue = false)
             val pureBlack = pureBlackEnabled && useDarkTheme
+            val navigationBarStyle by rememberEnumPreference(
+                NavigationBarStyleKey,
+                defaultValue = NavigationBarStyle.DEFAULT,
+            )
+            val navigationBarFrostedBlur by rememberPreference(
+                NavigationBarFrostedBlurKey,
+                defaultValue = false,
+            )
 
             val customThemeSeedPalette =
                 remember(customThemeColorValue) {
@@ -883,6 +915,8 @@ class MainActivity : ComponentActivity() {
                     val newsViewModel: NewsViewModel = hiltViewModel()
                     val allLocalItems by homeViewModel.allLocalItems.collectAsState()
                     val allYtItems by homeViewModel.allYtItems.collectAsState()
+                    val accountImageUrl by homeViewModel.accountImageUrl.collectAsStateWithLifecycle()
+                    val accountName by homeViewModel.accountName.collectAsStateWithLifecycle()
                     val networkBannerState by networkBannerViewModel.bannerState.collectAsStateWithLifecycle()
                     val hasUnreadNews by newsViewModel.hasUnreadNews.collectAsStateWithLifecycle()
                     val navBackStackEntry by navController.currentBackStackEntryAsState()
@@ -1001,8 +1035,32 @@ class MainActivity : ComponentActivity() {
                             0.dp
                         }
 
-                    val floatingBarsBottomPadding = NavigationBarBottomPadding
+                    // FLOATING detaches the bar into a pill: bigger bottom margin, tighter width.
+                    // Every consumer below (collapsed player anchor, slide distance, insets, FAB
+                    // padding) derives from these two values so the styles stay in sync.
+                    val isFloatingNavBar = navigationBarStyle == NavigationBarStyle.FLOATING
+                    val floatingBarsBottomPadding =
+                        if (isFloatingNavBar) FloatingNavigationBarBottomPadding else NavigationBarBottomPadding
                     val navVisibleHeight = NavigationBarHeight
+                    val navBarHorizontalPadding =
+                        if (isFloatingNavBar) FloatingNavigationBarHorizontalPadding else NavigationBarHorizontalPadding
+
+                    // Frosted backdrop (nav bar + mini player): only allocated when some frosted
+                    // surface can actually run (setting on, RenderEffect available, bottom bar in use).
+                    val miniPlayerBgStyle by rememberEnumPreference(
+                        MiniPlayerBackgroundStyleKey,
+                        defaultValue = MiniPlayerBackgroundStyle.THEME,
+                    )
+                    val navBarFrostedBackdrop =
+                        if ((navigationBarFrostedBlur || miniPlayerBgStyle == MiniPlayerBackgroundStyle.FROSTED) &&
+                            !useRail &&
+                            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+                        ) {
+                            val frostedLayer = rememberGraphicsLayer()
+                            remember(frostedLayer) { NavigationBarBackdrop(frostedLayer) }
+                        } else {
+                            null
+                        }
 
                     val bottomNavigationBarHeight by animateDpAsState(
                         targetValue = if (shouldShowNavigationBar && !useRail) navVisibleHeight else 0.dp,
@@ -1075,6 +1133,68 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
+                    // Auto-enter AOD after N seconds of inactivity (player sheet collapsed while
+                    // music is playing). The user picks N via the AOD auto-timer slider in
+                    // AodCustomizedScreen; 0 disables. Cancellation is automatic when the user
+                    // expands the player sheet again or when playback stops — both invalidate
+                    // the LaunchedEffect keys.
+                    val aodAutoTimerSeconds by rememberPreference(AodAutoTimerSecondsKey, defaultValue = 0)
+                    val aodAutoOnScreenDim by rememberPreference(AodAutoOnScreenDimKey, defaultValue = false)
+                    val isPlayingNow by (playerConnection?.isPlaying ?: MutableStateFlow(false))
+                        .collectAsStateWithLifecycle()
+                    LaunchedEffect(
+                        aodAutoTimerSeconds,
+                        isPlayingNow,
+                        playerBottomSheetState.isExpanded,
+                        playerBottomSheetState.isDismissed,
+                        aodModeEnabled,
+                    ) {
+                        if (aodModeEnabled) return@LaunchedEffect
+                        if (aodAutoTimerSeconds <= 0) return@LaunchedEffect
+                        if (!isPlayingNow) return@LaunchedEffect
+                        if (playerBottomSheetState.isExpanded) return@LaunchedEffect
+                        if (playerBottomSheetState.isDismissed) return@LaunchedEffect
+                        // Wait the configured number of seconds; if the user opens the player
+                        // or pauses playback during the wait, the keys above change and the
+                        // effect is cancelled (delay throws CancellationException internally).
+                        delay(aodAutoTimerSeconds * 1000L)
+                        requestAodMode()
+                    }
+
+                    // Convenience: when "Enter AOD when screen dims" is ON, register a system
+                    // receiver for ACTION_SCREEN_OFF. When the screen turns off while music is
+                    // playing and the player sheet isn't expanded, queue an AOD request — the
+                    // activity will pick it up on the next resume (onStart → openPendingAodModeIfReady).
+                    // We can't actually prevent the screen-off (that needs system-level access), but
+                    // queueing the request means AOD opens immediately when the user wakes the device,
+                    // instead of showing the regular player first.
+                    //
+                    // The receiver is intentionally only registered while `aodAutoOnScreenDim` is
+                    // true — the DisposableEffect key re-runs registration on toggle.
+                    val screenOffReceiver = remember {
+                        object : android.content.BroadcastReceiver() {
+                            override fun onReceive(context: android.content.Context?, intent: android.content.Intent?) {
+                                if (intent?.action != android.content.Intent.ACTION_SCREEN_OFF) return
+                                if (!isPlayingNow) return
+                                if (playerBottomSheetState.isExpanded) return
+                                requestAodMode()
+                            }
+                        }
+                    }
+                    DisposableEffect(aodAutoOnScreenDim) {
+                        if (aodAutoOnScreenDim) {
+                            val filter = android.content.IntentFilter(android.content.Intent.ACTION_SCREEN_OFF)
+                            registerReceiver(screenOffReceiver, filter)
+                        }
+                        onDispose {
+                            try {
+                                unregisterReceiver(screenOffReceiver)
+                            } catch (_: Exception) {
+                                // Receiver wasn't registered (e.g. toggle was off).
+                            }
+                        }
+                    }
+
                     LaunchedEffect(useDarkTheme, playerBottomSheetState.isExpanded, playerBackground, aodModeEnabled) {
                         if (aodModeEnabled) return@LaunchedEffect
                         val isDarkStatusBar =
@@ -1110,9 +1230,22 @@ class MainActivity : ComponentActivity() {
 
                     var yearInMusicSavedPlayerAnchor by rememberSaveable { mutableStateOf(-1) }
 
+                    var isPlayerLyricsFullScreen by remember { mutableStateOf(false) }
+
+                    // Status bar is hidden when:
+                    //  - The Year-in-Music screen is open, OR
+                    //  - The player sheet is expanded AND the layout is one of the "full-bleed" styles
+                    //    (Immersive V7 or Apple Music) that extend artwork to the top edge, OR
+                    //  - The player sheet is expanded AND the lyrics overlay is open (any style —
+                    //    the lyrics overlay covers the whole sheet so the status bar would draw on
+                    //    top of lyric text otherwise).
                     val shouldHideStatusBars =
                         isYearInMusicScreen ||
-                            (playerBottomSheetState.isExpandedOrExpanding && playerDesignStyle == PlayerDesignStyle.V7)
+                            (
+                                playerBottomSheetState.isExpandedOrExpanding &&
+                                    (playerDesignStyle == PlayerDesignStyle.V7 || playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC)
+                            ) ||
+                            (playerBottomSheetState.isExpandedOrExpanding && isPlayerLyricsFullScreen)
 
                     LaunchedEffect(shouldHideStatusBars, aodModeEnabled) {
                         if (aodModeEnabled) return@LaunchedEffect
@@ -1160,6 +1293,7 @@ class MainActivity : ComponentActivity() {
                             bottomInset,
                             shouldShowNavigationBar,
                             playerBottomSheetState.isDismissed,
+                            navigationBarStyle,
                         ) {
                             var bottom = bottomInset
                             if (shouldShowNavigationBar && !useRail) {
@@ -1524,6 +1658,7 @@ class MainActivity : ComponentActivity() {
                         LocalSyncUtils provides syncUtils,
                         moe.rukamori.archivetune.ui.component.LocalBottomSheetPageState provides bottomSheetPageState,
                         moe.rukamori.archivetune.ui.component.LocalMenuState provides menuState,
+                        LocalNavigationBarBackdrop provides navBarFrostedBackdrop,
                     ) {
                         Row {
                             AnimatedVisibility(
@@ -1764,75 +1899,143 @@ class MainActivity : ComponentActivity() {
                                                     }
                                                 },
                                                 actions = {
-                                                    TranslucentTopAppBarIconButton(
-                                                        onClick = { navController.navigate("history") },
+                                                    var profileMenuExpanded by remember { mutableStateOf(false) }
+                                                    Box(
+                                                        modifier = Modifier.padding(end = 4.dp),
                                                     ) {
-                                                        Icon(
-                                                            painter = painterResource(R.drawable.history),
-                                                            contentDescription = stringResource(R.string.history),
-                                                        )
-                                                    }
-                                                    TooltipBox(
-                                                        positionProvider =
-                                                            if (hasUnreadNews) {
-                                                                TooltipDefaults.rememberRichTooltipPositionProvider()
-                                                            } else {
-                                                                TooltipDefaults.rememberPlainTooltipPositionProvider()
-                                                            },
-                                                        tooltip = {
-                                                            if (hasUnreadNews) {
-                                                                RichTooltip(
-                                                                    title = { Text(stringResource(R.string.news_tooltip_title)) },
-                                                                ) {
-                                                                    Text(stringResource(R.string.news_tooltip_body))
-                                                                }
-                                                            } else {
-                                                                PlainTooltip {
-                                                                    Text(stringResource(R.string.news))
-                                                                }
-                                                            }
-                                                        },
-                                                        state = rememberTooltipState(),
-                                                    ) {
-                                                        TranslucentTopAppBarIconButton(
-                                                            onClick = { navController.navigate("news") },
+                                                        IconButton(
+                                                            onClick = { profileMenuExpanded = true },
+                                                            colors = IconButtonDefaults.iconButtonColors(
+                                                                containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
+                                                                    .copy(alpha = TopAppBarIconButtonContainerAlpha),
+                                                                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                            ),
                                                         ) {
-                                                            BadgedBox(badge = {
-                                                                if (hasUnreadNews) {
-                                                                    Badge()
+                                                            Surface(
+                                                                modifier = Modifier.size(28.dp),
+                                                                shape = CircleShape,
+                                                                color = MaterialTheme.colorScheme.primaryContainer,
+                                                            ) {
+                                                                if (!accountImageUrl.isNullOrBlank()) {
+                                                                    AsyncImage(
+                                                                        model = accountImageUrl,
+                                                                        contentDescription = stringResource(R.string.account),
+                                                                        modifier = Modifier
+                                                                            .fillMaxSize()
+                                                                            .clip(CircleShape),
+                                                                        contentScale = ContentScale.Crop,
+                                                                    )
+                                                                } else {
+                                                                    Box(contentAlignment = Alignment.Center) {
+                                                                        Icon(
+                                                                            painter = painterResource(R.drawable.account),
+                                                                            contentDescription = stringResource(R.string.account),
+                                                                            modifier = Modifier.size(20.dp),
+                                                                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                                        )
+                                                                    }
                                                                 }
-                                                            }) {
-                                                                Icon(
-                                                                    painter = painterResource(R.drawable.newspaper),
-                                                                    contentDescription = stringResource(R.string.news),
-                                                                )
                                                             }
                                                         }
-                                                    }
-                                                    TranslucentTopAppBarIconButton(
-                                                        onClick = { navController.navigate("new_release") },
-                                                    ) {
-                                                        Icon(
-                                                            painter = painterResource(R.drawable.new_release),
-                                                            contentDescription = stringResource(R.string.new_release_albums),
-                                                        )
-                                                    }
-                                                    TranslucentTopAppBarIconButton(
-                                                        onClick = { navController.navigate("settings") },
-                                                    ) {
-                                                        BadgedBox(badge = {
-                                                            if (
-                                                                BuildConfig.UPDATER_AVAILABLE &&
-                                                                latestUpdateChannel == updateChannel &&
-                                                                Updater.isUpdateAvailable(latestVersionName, BuildConfig.VERSION_NAME)
-                                                            ) {
-                                                                Badge()
+                                                        DropdownMenu(
+                                                            expanded = profileMenuExpanded,
+                                                            onDismissRequest = { profileMenuExpanded = false },
+                                                            shape = RoundedCornerShape(20.dp),
+                                                        ) {
+                                                            // Optional header line showing the signed-in account name (or "Not signed in")
+                                                            if (accountName.isNotBlank()) {
+                                                                Text(
+                                                                    text = accountName,
+                                                                    style = MaterialTheme.typography.titleSmall,
+                                                                    fontWeight = FontWeight.SemiBold,
+                                                                    color = MaterialTheme.colorScheme.onSurface,
+                                                                    modifier = Modifier.padding(
+                                                                        start = 16.dp,
+                                                                        end = 16.dp,
+                                                                        top = 8.dp,
+                                                                        bottom = 4.dp,
+                                                                    ),
+                                                                    maxLines = 1,
+                                                                    overflow = TextOverflow.Ellipsis,
+                                                                )
+                                                                HorizontalDivider()
                                                             }
-                                                        }) {
-                                                            Icon(
-                                                                painter = painterResource(R.drawable.settings),
-                                                                contentDescription = stringResource(R.string.settings),
-                                                                modifier = Modifier.size(24.dp),
+                                                            DropdownMenuItem(
+                                                                text = { Text(stringResource(R.string.history)) },
+                                                                onClick = {
+                                                                    profileMenuExpanded = false
+                                                                    navController.navigate("history")
+                                                                },
+                                                                leadingIcon = {
+                                                                    Icon(
+                                                                        painter = painterResource(R.drawable.history),
+                                                                        contentDescription = null,
+                                                                    )
+                                                                },
+                                                            )
+                                                            DropdownMenuItem(
+                                                                text = { Text(stringResource(R.string.news)) },
+                                                                onClick = {
+                                                                    profileMenuExpanded = false
+                                                                    navController.navigate("news")
+                                                                },
+                                                                leadingIcon = {
+                                                                    BadgedBox(badge = {
+                                                                        if (hasUnreadNews) Badge()
+                                                                    }) {
+                                                                        Icon(
+                                                                            painter = painterResource(R.drawable.newspaper),
+                                                                            contentDescription = null,
+                                                                        )
+                                                                    }
+                                                                },
+                                                            )
+                                                            DropdownMenuItem(
+                                                                text = { Text(stringResource(R.string.new_release_albums)) },
+                                                                onClick = {
+                                                                    profileMenuExpanded = false
+                                                                    navController.navigate("new_release")
+                                                                },
+                                                                leadingIcon = {
+                                                                    Icon(
+                                                                        painter = painterResource(R.drawable.new_release),
+                                                                        contentDescription = null,
+                                                                    )
+                                                                },
+                                                            )
+                                                            DropdownMenuItem(
+                                                                text = { Text(stringResource(R.string.lastfm_dashboard)) },
+                                                                onClick = {
+                                                                    profileMenuExpanded = false
+                                                                    navController.navigate("lastfm_dashboard")
+                                                                },
+                                                                leadingIcon = {
+                                                                    Icon(
+                                                                        painter = painterResource(R.drawable.stats),
+                                                                        contentDescription = null,
+                                                                    )
+                                                                },
+                                                            )
+                                                            DropdownMenuItem(
+                                                                text = { Text(stringResource(R.string.settings)) },
+                                                                onClick = {
+                                                                    profileMenuExpanded = false
+                                                                    navController.navigate("settings")
+                                                                },
+                                                                leadingIcon = {
+                                                                    BadgedBox(badge = {
+                                                                        if (
+                                                                            BuildConfig.UPDATER_AVAILABLE &&
+                                                                            latestUpdateChannel == updateChannel &&
+                                                                            Updater.isUpdateAvailable(latestVersionName, BuildConfig.VERSION_NAME)
+                                                                        ) Badge()
+                                                                    }) {
+                                                                        Icon(
+                                                                            painter = painterResource(R.drawable.settings),
+                                                                            contentDescription = null,
+                                                                        )
+                                                                    }
+                                                                },
                                                             )
                                                         }
                                                     }
@@ -2072,9 +2275,11 @@ class MainActivity : ComponentActivity() {
                                 },
                                 bottomBar = {
                                     Box {
+                                        // A floating pill never docks with the mini player.
                                         val areBottomBarsPaired =
                                             shouldShowNavigationBar &&
                                                 !useRail &&
+                                                !isFloatingNavBar &&
                                                 playerBottomSheetState.isCollapsed
 
                                         BottomSheetPlayer(
@@ -2082,6 +2287,7 @@ class MainActivity : ComponentActivity() {
                                             navController = navController,
                                             pureBlack = pureBlack,
                                             isMiniPlayerPairedWithNavigation = areBottomBarsPaired,
+                                            onLyricsVisibilityChange = { isPlayerLyricsFullScreen = it },
                                         )
 
                                         if (useRail) return@Box
@@ -2125,12 +2331,15 @@ class MainActivity : ComponentActivity() {
                                                 items = navigationItems,
                                                 pureBlack = pureBlack,
                                                 isPairedWithMiniPlayer = areBottomBarsPaired,
+                                                style = navigationBarStyle,
+                                                frostedBlur = navigationBarFrostedBlur,
+                                                frostedBackdrop = navBarFrostedBackdrop,
                                                 modifier =
                                                     Modifier
                                                         .align(Alignment.BottomCenter)
                                                         .padding(
-                                                            start = NavigationBarHorizontalPadding,
-                                                            end = NavigationBarHorizontalPadding,
+                                                            start = navBarHorizontalPadding,
+                                                            end = navBarHorizontalPadding,
                                                             bottom = bottomInset + floatingBarsBottomPadding,
                                                         ).height(navVisibleHeight),
                                                 isSelected = { screen ->
@@ -2369,6 +2578,23 @@ class MainActivity : ComponentActivity() {
                                                         .focusRequester(contentAreaFocusRequester)
                                                         .focusGroup()
                                                         .focusable()
+                                                } else {
+                                                    Modifier
+                                                },
+                                            ).then(
+                                                // Frosted nav bar: capture the app content into a
+                                                // layer each frame so the bar can draw it blurred.
+                                                if (navBarFrostedBackdrop != null) {
+                                                    Modifier
+                                                        .onGloballyPositioned { coordinates ->
+                                                            navBarFrostedBackdrop.contentOffsetInRoot =
+                                                                coordinates.positionInRoot()
+                                                        }.drawWithContent {
+                                                            navBarFrostedBackdrop.layer.record {
+                                                                this@drawWithContent.drawContent()
+                                                            }
+                                                            drawLayer(navBarFrostedBackdrop.layer)
+                                                        }
                                                 } else {
                                                     Modifier
                                                 },
@@ -3064,25 +3290,6 @@ private fun HomeOverflowMenuIcon(
 }
 
 private const val TopAppBarIconButtonContainerAlpha = 0.48f
-
-@Composable
-private fun TranslucentTopAppBarIconButton(
-    onClick: () -> Unit,
-    content: @Composable () -> Unit,
-) {
-    IconButton(
-        onClick = onClick,
-        colors =
-            IconButtonDefaults.iconButtonColors(
-                containerColor =
-                    MaterialTheme.colorScheme.surfaceContainerHighest.copy(
-                        alpha = TopAppBarIconButtonContainerAlpha,
-                    ),
-                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-            ),
-        content = content,
-    )
-}
 
 @Composable
 private fun OnlineSearchSortMenu(

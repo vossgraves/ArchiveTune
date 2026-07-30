@@ -33,7 +33,11 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -54,6 +58,8 @@ import androidx.media3.common.C
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.allowHardware
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.AodAccentStyle
 import moe.rukamori.archivetune.constants.AodAccentStyleKey
@@ -71,6 +77,7 @@ import moe.rukamori.archivetune.constants.AodShowAlbumKey
 import moe.rukamori.archivetune.constants.AodShowArtistKey
 import moe.rukamori.archivetune.constants.AodShowControlsKey
 import moe.rukamori.archivetune.constants.AodShowExitButtonKey
+import moe.rukamori.archivetune.constants.AodShowLyricsKey
 import moe.rukamori.archivetune.constants.AodShowProgressKey
 import moe.rukamori.archivetune.constants.AodShowThumbnailKey
 import moe.rukamori.archivetune.constants.AodShowTimeLabelsKey
@@ -83,6 +90,12 @@ import moe.rukamori.archivetune.constants.AodThumbnailSizeKey
 import moe.rukamori.archivetune.constants.AodTitleMaxLinesKey
 import moe.rukamori.archivetune.constants.AodVerticalSpacingKey
 import moe.rukamori.archivetune.constants.EnableHapticFeedbackKey
+import moe.rukamori.archivetune.lyrics.LyricsEntry
+import moe.rukamori.archivetune.lyrics.LyricsUtils.findCurrentLineIndex
+import moe.rukamori.archivetune.lyrics.LyricsUtils.isLineSyncedLrc
+import moe.rukamori.archivetune.lyrics.LyricsUtils.isTtml
+import moe.rukamori.archivetune.lyrics.LyricsUtils.parseLyrics
+import moe.rukamori.archivetune.lyrics.LyricsUtils.parseTtml
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.ui.utils.supportsArtworkGlowShadow
 import moe.rukamori.archivetune.ui.utils.toComposeShape
@@ -106,6 +119,7 @@ fun AodPlayerScreen(
     canSkipPrevious: Boolean,
     canSkipNext: Boolean,
     thumbnailCornerRadius: Float,
+    lyricsText: String?,
     onPlayPause: () -> Unit,
     onSkipPrevious: () -> Unit,
     onSkipNext: () -> Unit,
@@ -126,6 +140,7 @@ fun AodPlayerScreen(
     val (showTimeLabels) = rememberPreference(AodShowTimeLabelsKey, true)
     val (showControls) = rememberPreference(AodShowControlsKey, true)
     val (showExitButton) = rememberPreference(AodShowExitButtonKey, true)
+    val (showLyrics) = rememberPreference(AodShowLyricsKey, true)
     val (artworkGlow) = rememberPreference(AodArtworkGlowKey, true)
     val (backgroundStyle) = rememberEnumPreference(AodBackgroundStyleKey, AodBackgroundStyle.PURE_BLACK)
     val (accentStyle) = rememberEnumPreference(AodAccentStyleKey, AodAccentStyle.MONOCHROME)
@@ -164,6 +179,32 @@ fun AodPlayerScreen(
     val textHorizontalAlignment = textAlignment.toHorizontalAlignment()
     val textAlign = textAlignment.toTextAlign()
 
+    // Parse lyrics once per lyrics-text change. We don't render the full lyrics tree here (that
+    // would defeat the "always-on, dim, low-power" point of AOD) — we only surface the single
+    // line that matches the current playback position. Falls through to a tiny placeholder when
+    // the lyrics aren't synced or haven't loaded yet.
+    val parsedLines: List<LyricsEntry> =
+        remember(lyricsText) {
+            if (lyricsText.isNullOrBlank()) return@remember emptyList()
+            when {
+                isTtml(lyricsText) -> parseTtml(lyricsText)
+                isLineSyncedLrc(lyricsText) -> parseLyrics(lyricsText)
+                else -> emptyList()
+            }
+        }
+    var currentLyricLine by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(parsedLines, position) {
+        if (parsedLines.isEmpty()) {
+            currentLyricLine = null
+            return@LaunchedEffect
+        }
+        // Reuse the same lead-aware line finder that the main lyrics screen uses so the
+        // AOD line highlight transitions in lockstep with the full lyrics view.
+        val idx = findCurrentLineIndex(parsedLines, position, leadMs = 0L)
+        val entry = parsedLines.getOrNull(idx)
+        currentLyricLine = entry?.text?.takeIf { it.isNotBlank() }
+    }
+
     Box(
         modifier =
             modifier
@@ -185,7 +226,7 @@ fun AodPlayerScreen(
                         .padding(8.dp),
             ) {
                 Icon(
-                    painter = painterResource(R.drawable.close),
+                    painter = painterResource(R.drawable.player_close),
                     contentDescription = stringResource(R.string.aod_mode_exit),
                     tint = White70,
                 )
@@ -260,6 +301,18 @@ fun AodPlayerScreen(
                         style = MaterialTheme.typography.labelMedium,
                         color = White65.copy(alpha = 0.78f),
                         maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        textAlign = textAlign,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                if (showLyrics) {
+                    val lyricDisplay = currentLyricLine
+                    Text(
+                        text = lyricDisplay ?: stringResource(R.string.aod_lyrics_loading),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (lyricDisplay != null) White70 else White35,
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                         textAlign = textAlign,
                         modifier = Modifier.fillMaxWidth(),
@@ -408,7 +461,7 @@ private fun AodControls(
             modifier = Modifier.size(skipButtonSize),
         ) {
             Icon(
-                painter = painterResource(R.drawable.skip_previous),
+                painter = painterResource(R.drawable.player_skip_previous),
                 contentDescription = null,
                 tint = if (canSkipPrevious) Color.White else White35,
                 modifier = Modifier.size(skipIconSize),
@@ -434,7 +487,7 @@ private fun AodControls(
                     colors = playButtonColors,
                 ) {
                     Icon(
-                        painter = painterResource(if (isPlaying) R.drawable.pause else R.drawable.play),
+                        painter = painterResource(if (isPlaying) R.drawable.player_pause else R.drawable.player_play),
                         contentDescription = null,
                         modifier = Modifier.size(playIconSize),
                     )
@@ -459,7 +512,7 @@ private fun AodControls(
                     colors = tonalButtonColors,
                 ) {
                     Icon(
-                        painter = painterResource(if (isPlaying) R.drawable.pause else R.drawable.play),
+                        painter = painterResource(if (isPlaying) R.drawable.player_pause else R.drawable.player_play),
                         contentDescription = null,
                         modifier = Modifier.size(playIconSize),
                     )
@@ -480,7 +533,7 @@ private fun AodControls(
                     modifier = Modifier.size(playButtonSize),
                 ) {
                     Icon(
-                        painter = painterResource(if (isPlaying) R.drawable.pause else R.drawable.play),
+                        painter = painterResource(if (isPlaying) R.drawable.player_pause else R.drawable.player_play),
                         contentDescription = null,
                         tint = Color.White,
                         modifier = Modifier.size(playIconSize),
@@ -503,7 +556,7 @@ private fun AodControls(
             modifier = Modifier.size(skipButtonSize),
         ) {
             Icon(
-                painter = painterResource(R.drawable.skip_next),
+                painter = painterResource(R.drawable.player_skip_next),
                 contentDescription = null,
                 tint = if (canSkipNext) Color.White else White35,
                 modifier = Modifier.size(skipIconSize),

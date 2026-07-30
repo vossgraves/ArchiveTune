@@ -63,7 +63,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -98,6 +97,7 @@ import com.mocharealm.accompanist.lyrics.core.model.karaoke.KaraokeLine
 import com.mocharealm.accompanist.lyrics.core.model.karaoke.KaraokeSyllable
 import com.mocharealm.accompanist.lyrics.core.model.synced.SyncedLine
 import com.mocharealm.accompanist.lyrics.ui.composable.lyrics.KaraokeLyricsView
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
@@ -105,6 +105,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalAnimationsDisabled
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
@@ -122,6 +123,7 @@ import moe.rukamori.archivetune.db.entities.LyricsEntity
 import moe.rukamori.archivetune.db.entities.LyricsEntity.Companion.LYRICS_NOT_FOUND
 import moe.rukamori.archivetune.lyrics.LyricsEntry
 import moe.rukamori.archivetune.lyrics.LyricsRomanizationPreferences
+import moe.rukamori.archivetune.lyrics.LyricsUtils.hasTrueWordSync
 import moe.rukamori.archivetune.lyrics.LyricsUtils.isLineSyncedLrc
 import moe.rukamori.archivetune.lyrics.LyricsUtils.isTtml
 import moe.rukamori.archivetune.lyrics.LyricsUtils.parseLyrics
@@ -265,14 +267,14 @@ fun LyricsEnhanced(
     var syncedLyrics by remember(lyricsEntries, isTtmlFormat) {
         mutableStateOf(buildSyncedLyrics(lyricsEntries, isTtmlFormat, emptyMap()))
     }
-    var syncedLyricsRenderVersion by remember(lyricsEntries, isTtmlFormat) {
-        mutableIntStateOf(0)
-    }
 
     LaunchedEffect(lyricsEntries, romanizationPreferences) {
+        // Everything below (scanning + romanizing every line, often one job per word for TTML)
+        // used to inherit the main dispatcher and could stutter the karaoke animation on track
+        // change; run the whole batch on Default and only publish the results back.
+        withContext(Dispatchers.Default) {
         syncedLyrics = buildSyncedLyrics(lyricsEntries, isTtmlFormat, emptyMap())
-        syncedLyricsRenderVersion += 1
-        if (!romanizationPreferences.isEnabled) return@LaunchedEffect
+        if (!romanizationPreferences.isEnabled) return@withContext
 
         val toRomanize =
             lyricsEntries.mapIndexedNotNull { index, entry ->
@@ -284,7 +286,7 @@ fun LyricsEnhanced(
                     null
                 }
             }
-        if (toRomanize.isEmpty()) return@LaunchedEffect
+        if (toRomanize.isEmpty()) return@withContext
 
         val jobs =
             toRomanize.map { (index, entry) ->
@@ -320,8 +322,10 @@ fun LyricsEnhanced(
         jobs.awaitAll().forEach { (index, romanized) ->
             tempMap[index] = romanized
         }
+        // Publishing new lyrics as state (instead of bumping a key that tears the whole karaoke
+        // subtree down mid-playback) lets the view pick up romanization without a re-layout hitch.
         syncedLyrics = buildSyncedLyrics(lyricsEntries, isTtmlFormat, tempMap)
-        syncedLyricsRenderVersion += 1
+        }
     }
 
     val leadMs = if (isTtmlFormat) TTML_LEAD_MS else LRC_LEAD_MS
@@ -523,22 +527,31 @@ fun LyricsEnhanced(
         }
     }
 
+    // Remembered: fresh TextStyle identities every recomposition forced the karaoke view to
+    // re-measure all lines on unrelated state changes (scroll flags, selection, etc.).
+    val typography = MaterialTheme.typography
     val normalTextStyle =
-        MaterialTheme.typography.headlineMedium.copy(
-            fontSize = lyricsTextSize.sp,
-            fontWeight = FontWeight.Bold,
-            fontFamily = lyricsFontFamily ?: MaterialTheme.typography.headlineMedium.fontFamily,
-        )
+        remember(typography, lyricsTextSize, lyricsFontFamily) {
+            typography.headlineMedium.copy(
+                fontSize = lyricsTextSize.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = lyricsFontFamily ?: typography.headlineMedium.fontFamily,
+            )
+        }
     val accompanimentTextStyle =
-        MaterialTheme.typography.titleLarge.copy(
-            fontSize = (lyricsTextSize * 0.82f).sp,
-            fontFamily = lyricsFontFamily ?: MaterialTheme.typography.titleLarge.fontFamily,
-        )
+        remember(typography, lyricsTextSize, lyricsFontFamily) {
+            typography.titleLarge.copy(
+                fontSize = (lyricsTextSize * 0.82f).sp,
+                fontFamily = lyricsFontFamily ?: typography.titleLarge.fontFamily,
+            )
+        }
     val phoneticTextStyle =
-        MaterialTheme.typography.bodyMedium.copy(
-            fontSize = (lyricsTextSize * 0.55f).sp,
-            fontWeight = FontWeight.Normal,
-        )
+        remember(typography, lyricsTextSize) {
+            typography.bodyMedium.copy(
+                fontSize = (lyricsTextSize * 0.55f).sp,
+                fontWeight = FontWeight.Normal,
+            )
+        }
     val plainLyrics =
         remember(lyricsEntries, isSynced) {
             PlainLyrics(
@@ -704,7 +717,9 @@ fun LyricsEnhanced(
                 ) {
                     val lyricsViewportOffset = remember(maxHeight) { maxHeight * 0.38f }
 
-                    key(lyricsSessionKey, syncedLyricsRenderVersion) {
+                    // Keyed on the session only: romanization updates flow in as new state instead
+                    // of disposing and rebuilding the whole karaoke view mid-playback.
+                    key(lyricsSessionKey) {
                         KaraokeLyricsView(
                             listState = listState,
                             lyrics = syncedLyrics,
@@ -732,7 +747,9 @@ fun LyricsEnhanced(
                             accompanimentLineTextStyle = accompanimentTextStyle,
                             phoneticTextStyle = phoneticTextStyle,
                             blendMode = BlendMode.SrcOver,
-                            useBlurEffect = lyricsLineBlur,
+                            // Per-line RenderEffect blur is the single heaviest per-frame cost in
+                            // this view; drop it when animations are disabled (low-RAM default).
+                            useBlurEffect = lyricsLineBlur && !animationsDisabled,
                             showTranslation = showTranslations,
                             showPhonetic = romanizationPreferences.isEnabled,
                             offset = lyricsViewportOffset,
@@ -1241,7 +1258,7 @@ private fun buildSyncedLyrics(
         if (entry.isInstrumental) return@forEachIndexed
         if (entry.text.isBlank() && entry.words.isNullOrEmpty()) return@forEachIndexed
 
-        if (isTtml && entry.words != null) {
+        if (isTtml && entry.words != null && hasTrueWordSync(entry)) {
             val translation = providedTranslationTextForEntry(entry)
             val mainWords = entry.words!!.filter { !it.isBackground }
             val bgWords = entry.words!!.filter { it.isBackground }

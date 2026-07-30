@@ -133,7 +133,7 @@ fun LogcatScreen(
                     context.startActivity(
                         Intent.createChooser(
                             exportIntent,
-                            context.getString(R.string.export),
+                            context.getString(R.string.export_logs),
                         ),
                     )
                 }
@@ -398,7 +398,7 @@ private fun LogcatTopBar(
                         },
                     )
                     DropdownMenuItem(
-                        text = { Text(stringResource(R.string.export)) },
+                        text = { Text(stringResource(R.string.export_logs)) },
                         onClick = onExport,
                         enabled =
                             model?.let { currentModel ->

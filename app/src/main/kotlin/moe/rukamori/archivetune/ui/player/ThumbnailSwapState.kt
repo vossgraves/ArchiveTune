@@ -44,11 +44,19 @@ fun rememberThumbnailSwapState(
     var ytUrl by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(videoId, ytmUrl) {
-        displayUrl = ytmUrl
         isYTReady = false
         ytUrl = null
 
-        if (!shouldAttemptYT || videoId == null) return@LaunchedEffect
+        if (!shouldAttemptYT || videoId == null) {
+            displayUrl = ytmUrl
+            return@LaunchedEffect
+        }
+
+        // Immediately set the highest quality URL so the image loader
+        // starts fetching MAXRES right away, avoiding the brief display of
+        // the low-quality metadata URL while the verification loop runs.
+        val maxresUrl = buildYTThumbnailUrl(videoId, YTThumbQuality.MAXRES)
+        displayUrl = maxresUrl
 
         val imageLoader = context.imageLoader
 
@@ -78,6 +86,8 @@ fun rememberThumbnailSwapState(
                 continue
             }
         }
+        // All YT thumbnail qualities failed — fall back to the metadata URL.
+        displayUrl = ytmUrl
     }
 
     return ThumbnailSwapState(displayUrl, isYTReady, ytUrl)

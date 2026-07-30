@@ -136,6 +136,12 @@ translator = { module = "com.github.therealbush:translator", version.ref = "tran
 
 kuromoji-ipadic = { module = "com.atilika.kuromoji:kuromoji-ipadic", version.ref = "kuromojiIpadic" }
 
+# PRDownloader — lightweight (~45 KB) file download library with pause/resume,
+# retry, and progress callbacks. Used by PRDownloaderDataSource (a Media3
+# DataSource wrapper) as the HTTP fetcher for downloads. Initialized in
+# App.kt with tuned timeouts. Pinned to 1.0.2 (1.0.1's JitPack build failed).
+prdownloader = { module = "com.github.amitshekhariitbhu:PRDownloader", version = "1.0.2" }
+
 markwon-core = { module = "io.noties.markwon:core", version.ref = "markwon" }
 markwon-ext-strikethrough = { module = "io.noties.markwon:ext-strikethrough", version.ref = "markwon" }
 markwon-ext-tables = { module = "io.noties.markwon:ext-tables", version.ref = "markwon" }

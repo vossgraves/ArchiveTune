@@ -117,7 +117,8 @@ fun YouTubeSongMenu(
     val database = LocalDatabase.current
     val playerConnection = LocalPlayerConnection.current ?: return
     val librarySong by database.song(song.id).collectAsState(initial = null)
-    val download by LocalDownloadUtil.current.getDownload(song.id).collectAsState(initial = null)
+    val downloadUtil = LocalDownloadUtil.current
+    val download by downloadUtil.getDownload(song.id).collectAsState(initial = null)
     val coroutineScope = rememberCoroutineScope()
     val syncUtils = LocalSyncUtils.current
     val artists =
@@ -629,18 +630,36 @@ fun YouTubeSongMenu(
                                         database.transaction {
                                             insert(song.toMediaMetadata())
                                         }
-                                        val downloadRequest =
-                                            DownloadRequest
-                                                .Builder(song.id, song.id.toUri())
-                                                .setCustomCacheKey(song.id)
-                                                .setData(song.title.toByteArray())
-                                                .build()
-                                        DownloadService.sendAddDownload(
-                                            context,
-                                            ExoDownloadService::class.java,
-                                            downloadRequest,
-                                            false,
-                                        )
+                                        // Pre-warm the player cache before handing off
+                                        // to Media3 DownloadManager. This implements the
+                                        // "cache-first" download workflow:
+                                        //   1. Resolve the highest-quality stream available
+                                        //      (Qobuz FLAC → Tidal FLAC → YT M4A).
+                                        //   2. Stream the bytes into playerCache under the
+                                        //      source-prefixed key (e.g. "qobuz:$songId").
+                                        //   3. Then DownloadManager.open() hits the cache
+                                        //      and serves bytes locally (no second fetch).
+                                        // The prewarm runs on Dispatchers.IO; the actual
+                                        // DownloadRequest is enqueued only after it
+                                        // completes (or fails — downloads still work
+                                        // without prewarm, just slower + lossy fallback).
+                                        coroutineScope.launch {
+                                            runCatching {
+                                                downloadUtil.prewarmSongForDownload(song.id)
+                                            }
+                                            val downloadRequest =
+                                                DownloadRequest
+                                                    .Builder(song.id, song.id.toUri())
+                                                    .setCustomCacheKey(song.id)
+                                                    .setData(song.title.toByteArray())
+                                                    .build()
+                                            DownloadService.sendAddDownload(
+                                                context,
+                                                ExoDownloadService::class.java,
+                                                downloadRequest,
+                                                false,
+                                            )
+                                        }
                                     },
                                 colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                             )
@@ -763,23 +782,78 @@ fun YouTubeSongMenu(
 
         item {
             MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
-                ListItem(
-                    headlineContent = { Text(text = stringResource(R.string.details)) },
-                    leadingContent = {
-                        Icon(
-                            painter = painterResource(R.drawable.info),
-                            contentDescription = null,
-                        )
-                    },
-                    modifier =
-                        Modifier.clickable {
-                            onDismiss()
-                            bottomSheetPageState.show {
-                                ShowMediaInfo(song.id)
-                            }
+                Column {
+                    ListItem(
+                        headlineContent = { Text(text = stringResource(R.string.download_cover)) },
+                        leadingContent = {
+                            Icon(
+                                painter = painterResource(R.drawable.image),
+                                contentDescription = null,
+                            )
                         },
-                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                )
+                        modifier =
+                            Modifier.clickable {
+                                val url = song.thumbnail
+                                if (url.isNullOrBlank()) {
+                                    android.widget.Toast
+                                        .makeText(
+                                            context,
+                                            context.getString(R.string.cover_save_no_artwork),
+                                            android.widget.Toast.LENGTH_SHORT,
+                                        ).show()
+                                    return@clickable
+                                }
+                                android.widget.Toast
+                                    .makeText(
+                                        context,
+                                        context.getString(R.string.cover_saving),
+                                        android.widget.Toast.LENGTH_SHORT,
+                                    ).show()
+                                coroutineScope.launch(Dispatchers.IO) {
+                                    val fileName = "cover_${song.id}".replace(Regex("[^A-Za-z0-9_\\-]"), "_")
+                                    val saved = moe.rukamori.archivetune.utils.saveCoverArtworkFromUrl(
+                                        context = context,
+                                        thumbnailUrl = url,
+                                        fileName = fileName,
+                                    )
+                                    val msgRes = if (saved != null) {
+                                        R.string.cover_saved
+                                    } else {
+                                        R.string.cover_save_failed
+                                    }
+                                    withContext(Dispatchers.Main) {
+                                        android.widget.Toast
+                                            .makeText(context, context.getString(msgRes), android.widget.Toast.LENGTH_SHORT)
+                                            .show()
+                                    }
+                                }
+                            },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    )
+
+                    HorizontalDivider(
+                        modifier = Modifier.padding(start = 56.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant,
+                    )
+
+                    ListItem(
+                        headlineContent = { Text(text = stringResource(R.string.details)) },
+                        leadingContent = {
+                            Icon(
+                                painter = painterResource(R.drawable.info),
+                                contentDescription = null,
+                            )
+                        },
+                        modifier =
+                            Modifier.clickable {
+                                onDismiss()
+                                bottomSheetPageState.show {
+                                    ShowMediaInfo(song.id)
+                                }
+                            },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    )
+                }
             }
         }
     }

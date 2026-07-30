@@ -188,6 +188,11 @@ grep -q "resolveMultiSourceDataSpec" \
   || die "tidal package missing after merge"
 [ -d app/src/main/kotlin/moe/rukamori/archivetune/audiosource ] \
   || die "audiosource package missing after merge"
+[ -d app/src/main/kotlin/moe/rukamori/archivetune/telegram ] \
+  || die "telegram package missing after merge"
+grep -q "TelegramDataSource" \
+  app/src/main/kotlin/moe/rukamori/archivetune/playback/MusicService.kt \
+  || die "telegram data source no longer wired in MusicService.kt"
 grep -q "persistent-debug.keystore" .github/workflows/build.yml \
   || die "fork CI signing patch (persistent-debug.keystore) lost in build.yml"
 

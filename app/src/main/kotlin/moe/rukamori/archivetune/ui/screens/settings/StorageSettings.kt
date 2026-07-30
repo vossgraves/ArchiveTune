@@ -30,9 +30,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -60,15 +62,22 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import moe.rukamori.archivetune.LocalDatabase
+import moe.rukamori.archivetune.LocalDownloadUtil
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import coil3.annotation.ExperimentalCoilApi
 import coil3.imageLoader
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
-import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
@@ -76,6 +85,8 @@ import moe.rukamori.archivetune.constants.MaxCanvasCacheSizeKey
 import moe.rukamori.archivetune.constants.MaxImageCacheSizeKey
 import moe.rukamori.archivetune.constants.MaxSongCacheSizeKey
 import moe.rukamori.archivetune.constants.SmartTrimmerKey
+import moe.rukamori.archivetune.db.entities.detectAudioExtensionFromSpans
+import moe.rukamori.archivetune.db.entities.extensionToMimeType
 import moe.rukamori.archivetune.extensions.directorySizeBytes
 import moe.rukamori.archivetune.extensions.tryOrNull
 import moe.rukamori.archivetune.storage.StorageFolderKind
@@ -106,6 +117,7 @@ import moe.rukamori.archivetune.viewmodels.StorageSettingsViewModel
 fun StorageSettings(
     navController: NavController,
     viewModel: StorageSettingsViewModel = hiltViewModel(),
+    scrollTo: String? = null,
 ) {
     val context = LocalContext.current
     val imageDiskCache = context.imageLoader.diskCache ?: return
@@ -315,12 +327,16 @@ fun StorageSettings(
         },
     ) { innerPadding ->
         val topPadding = innerPadding.calculateTopPadding()
+        val scrollState = rememberScrollState()
+        val positions = rememberPreferencePositions()
+
+        LaunchedEffect(scrollTo) { positions.scrollToKey(scrollTo, scrollState) }
 
         Column(
             Modifier
                 .padding(top = topPadding)
                 .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom))
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scrollState)
                 .padding(
                     start = 12.dp,
                     top = 12.dp,
@@ -334,9 +350,13 @@ fun StorageSettings(
                 isSmartTrimmerAvailable = isSmartTrimmerAvailable,
                 onSmartTrimmerChange = onSmartTrimmerChange,
                 onSelectFolder = viewModel::openStorageLocationPicker,
+                positions = positions,
             )
 
-            PreferenceGroup(title = stringResource(R.string.downloaded_songs)) {
+            PreferenceGroup(
+                modifier = positions.modifierFor("downloaded_songs"),
+                title = stringResource(R.string.downloaded_songs),
+            ) {
                 item {
                     PreferenceEntry(
                         title = { Text(stringResource(R.string.clear_all_downloads)) },
@@ -348,6 +368,19 @@ fun StorageSettings(
                             )
                         },
                         onClick = { clearDownloads = true },
+                    )
+                }
+                item {
+                    PreferenceEntry(
+                        title = { Text(stringResource(R.string.export_downloaded_songs)) },
+                        description = stringResource(R.string.export_downloaded_songs_description),
+                        icon = {
+                            Icon(
+                                painter = painterResource(R.drawable.send),
+                                contentDescription = null,
+                            )
+                        },
+                        onClick = { navController.navigate("settings/storage/export_songs") },
                     )
                 }
             }
@@ -367,7 +400,10 @@ fun StorageSettings(
                 )
             }
 
-            PreferenceGroup(title = stringResource(R.string.song_cache)) {
+            PreferenceGroup(
+                modifier = positions.modifierFor("song_cache_size"),
+                title = stringResource(R.string.song_cache),
+            ) {
                 item {
                     ListPreference(
                         title = { Text(stringResource(R.string.max_song_cache_size)) },
@@ -425,7 +461,10 @@ fun StorageSettings(
                 )
             }
 
-            PreferenceGroup(title = stringResource(R.string.image_cache)) {
+            PreferenceGroup(
+                modifier = positions.modifierFor("image_cache_size"),
+                title = stringResource(R.string.image_cache),
+            ) {
                 item {
                     ListPreference(
                         title = { Text(stringResource(R.string.max_image_cache_size)) },
@@ -491,7 +530,10 @@ fun StorageSettings(
                 )
             }
 
-            PreferenceGroup(title = stringResource(R.string.canvas_cache)) {
+            PreferenceGroup(
+                modifier = positions.modifierFor("canvas_cache"),
+                title = stringResource(R.string.canvas_cache),
+            ) {
                 item {
                     ListPreference(
                         title = { Text(stringResource(R.string.max_cache_size)) },
@@ -585,8 +627,12 @@ private fun StorageFolderSection(
     isSmartTrimmerAvailable: Boolean,
     onSmartTrimmerChange: (Boolean) -> Unit,
     onSelectFolder: () -> Unit,
+    positions: PreferencePositions,
 ) {
-    PreferenceGroup(title = stringResource(R.string.storage_folder)) {
+    PreferenceGroup(
+        modifier = positions.modifierFor("storage_folder"),
+        title = stringResource(R.string.storage_folder),
+    ) {
         when (state) {
             StorageSettingsScreenState.Loading -> {
                 item {

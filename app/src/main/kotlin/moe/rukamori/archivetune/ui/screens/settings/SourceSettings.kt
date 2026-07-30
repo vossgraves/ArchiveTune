@@ -27,6 +27,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -53,7 +54,7 @@ import moe.rukamori.archivetune.utils.PoolAccountManager
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SourceSettings(navController: NavController) {
+fun SourceSettings(navController: NavController, scrollTo: String? = null) {
     Scaffold(
         topBar = {
             TopAppBar(
@@ -73,6 +74,10 @@ fun SourceSettings(navController: NavController) {
         },
     ) { innerPadding ->
         val topPadding = innerPadding.calculateTopPadding()
+        val scrollState = rememberScrollState()
+        val positions = rememberPreferencePositions()
+
+        LaunchedEffect(scrollTo) { positions.scrollToKey(scrollTo, scrollState) }
 
         Column(
             Modifier
@@ -82,13 +87,13 @@ fun SourceSettings(navController: NavController) {
                         WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
                     ),
                 )
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scrollState)
                 .padding(bottom = SettingsDimensions.ScreenBottomPadding),
         ) {
             // Manual "refresh from pool" — pulls the latest shared accounts and instances on demand
             // (the app also does this automatically on startup). Only shown when a source pool is
             // configured at build time.
-            PoolRefreshSection()
+            PoolRefreshSection(positions)
 
             // Preferred-source picker, per-source enable toggles and quality. Account/instance
             // management remains in Integration (behind the manual-source-login toggle).
@@ -104,14 +109,16 @@ fun SourceSettings(navController: NavController) {
  * pool URL is baked in, since there is nothing to refresh.
  */
 @Composable
-private fun PoolRefreshSection() {
+private fun PoolRefreshSection(positions: PreferencePositions) {
     if (!PoolAccountManager.isEnabled) return
 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var refreshing by remember { mutableStateOf(false) }
 
-    PreferenceGroup {
+    PreferenceGroup(
+        modifier = positions.modifierFor("youtube_music"),
+    ) {
         item {
             PreferenceEntry(
                 title = {

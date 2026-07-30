@@ -404,6 +404,18 @@ fun Thumbnail(
                             }
                         }
 
+                        // Apply manual "Refetch canvas" results — without this the refetch menu
+                        // action silently no-ops on the pager styles (V1–V6).
+                        LaunchedEffect(shouldUseCanvas, item.mediaId) {
+                            if (!shouldUseCanvas) return@LaunchedEffect
+                            playerConnection.canvasArtworkUpdates.collect { update ->
+                                if (update.mediaId != item.mediaId) return@collect
+                                if (!update.artwork.preferredAnimationUrl.isNullOrBlank()) {
+                                    canvasArtwork = update.artwork
+                                }
+                            }
+                        }
+
                         LaunchedEffect(shouldUseCanvas, shouldFetchCanvas, item.mediaId) {
                             if (!shouldUseCanvas) return@LaunchedEffect
 
@@ -436,6 +448,7 @@ fun Thumbnail(
                                         storefront = storefront,
                                         requireVertical = false,
                                         allowNetwork = shouldFetchCanvas,
+                                        albumTitle = itemMetadata?.album?.title,
                                     )
                             } finally {
                                 canvasFetchInFlight = false

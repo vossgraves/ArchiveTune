@@ -439,80 +439,7 @@ fun OnlinePlaylistScreen(
                                             )
                                         }
                                     },
-                                onToggleAdd =
-                                    if (playlist.id == "LM") {
-                                        null
-                                    } else {
-                                        {
-                                            if (dbPlaylist?.playlist == null) {
-                                                database.transaction {
-                                                    val existingPlaylist =
-                                                        playlistEntityByBrowseId(playlist.id)
-                                                    val targetPlaylistId =
-                                                        if (existingPlaylist == null) {
-                                                            val playlistEntity =
-                                                                PlaylistEntity(
-                                                                    name = playlist.title,
-                                                                    browseId = playlist.id,
-                                                                    thumbnailUrl = playlist.thumbnail,
-                                                                    isEditable = playlist.isEditable,
-                                                                    playEndpointParams =
-                                                                        playlist.playEndpoint?.params,
-                                                                    shuffleEndpointParams =
-                                                                        playlist.shuffleEndpoint?.params,
-                                                                    radioEndpointParams =
-                                                                        playlist.radioEndpoint?.params,
-                                                                ).toggleLike()
-                                                            insert(playlistEntity)
-                                                            playlistEntityByBrowseId(playlist.id)?.id
-                                                                ?: playlistEntity.id
-                                                        } else {
-                                                            val refreshedPlaylist =
-                                                                existingPlaylist.copy(
-                                                                    name = playlist.title,
-                                                                    browseId = playlist.id,
-                                                                    thumbnailUrl = playlist.thumbnail,
-                                                                    isEditable = playlist.isEditable,
-                                                                    playEndpointParams =
-                                                                        playlist.playEndpoint?.params,
-                                                                    shuffleEndpointParams =
-                                                                        playlist.shuffleEndpoint?.params,
-                                                                    radioEndpointParams =
-                                                                        playlist.radioEndpoint?.params,
-                                                                )
-                                                            update(
-                                                                if (existingPlaylist.bookmarkedAt == null) {
-                                                                    refreshedPlaylist.toggleLike()
-                                                                } else {
-                                                                    refreshedPlaylist
-                                                                },
-                                                            )
-                                                            existingPlaylist.id
-                                                        }
-                                                    if (songs.isNotEmpty()) {
-                                                        clearPlaylist(targetPlaylistId)
-                                                        songs
-                                                            .onEach { song ->
-                                                                insert(song.toMediaMetadata())
-                                                            }.mapIndexed { index, song ->
-                                                                PlaylistSongMap(
-                                                                    songId = song.id,
-                                                                    playlistId = targetPlaylistId,
-                                                                    position = index,
-                                                                    setVideoId = song.setVideoId,
-                                                                )
-                                                            }.forEach(::insert)
-                                                    }
-                                                }
-                                            } else {
-                                                database.transaction {
-                                                    val currentPlaylist = dbPlaylist!!.playlist
-                                                    update(currentPlaylist, playlist)
-                                                    update(currentPlaylist.toggleLike())
-                                                }
-                                            }
-                                        }
-                                    },
+                                onToggleAdd = null,
                                 additionalPrimaryActions = { contentColor ->
                                     if (songs.isNotEmpty()) {
                                         MediaDetailAction(
@@ -582,52 +509,8 @@ fun OnlinePlaylistScreen(
                                                         modifier = Modifier.size(22.dp),
                                                     )
                                                 }
+                                            }
                                         }
-                                    }
-
-                                    MediaDetailAction(
-                                        contentDescription = R.string.download,
-                                        contentColor = contentColor,
-                                        onClick = {
-                                            navController.navigate(
-                                                "auto_playlist/downloaded?tab=progress",
-                                            )
-                                        },
-                                    ) {
-                                        val globalProgress = (globalDownloadState as? HeaderDownloadState.Partial)?.progress ?: 0f
-                                        val globalPaused = (globalDownloadState as? HeaderDownloadState.Partial)?.paused ?: false
-                                        HeaderDownloadProgressIndicator(
-                                            progress = globalProgress,
-                                            paused = globalPaused,
-                                            icon = R.drawable.list,
-                                        )
-                                    }
-                                }
-
-                                    playlist.shuffleEndpoint?.let { mixEndpoint ->
-                                        MediaDetailIconAction(
-                                            icon = R.drawable.mix,
-                                            contentDescription = R.string.start_mix,
-                                            contentColor = contentColor,
-                                            onClick = {
-                                                playerConnection.playQueue(
-                                                    YouTubeQueue.playlist(mixEndpoint),
-                                                )
-                                            },
-                                        )
-                                    }
-
-                                    playlist.radioEndpoint?.let { radioEndpoint ->
-                                        MediaDetailIconAction(
-                                            icon = R.drawable.radio,
-                                            contentDescription = R.string.start_radio,
-                                            contentColor = contentColor,
-                                            onClick = {
-                                                playerConnection.playQueue(
-                                                    YouTubeQueue(radioEndpoint),
-                                                )
-                                            },
-                                        )
                                     }
                                 },
                                 modifier = Modifier.animateItem(),

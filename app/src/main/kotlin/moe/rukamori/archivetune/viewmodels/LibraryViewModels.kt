@@ -42,6 +42,7 @@ import moe.rukamori.archivetune.constants.AiApiValidationStatus
 import moe.rukamori.archivetune.constants.AiApiValidationStatusKey
 import moe.rukamori.archivetune.constants.AiCustomEndpointKey
 import moe.rukamori.archivetune.constants.AiProvider
+import moe.rukamori.archivetune.constants.HideAiMixKey
 import moe.rukamori.archivetune.constants.AiProviderKey
 import moe.rukamori.archivetune.constants.AlbumFilter
 import moe.rukamori.archivetune.constants.AlbumFilterKey
@@ -506,6 +507,8 @@ class LibraryMixViewModel
                 .map { prefs ->
                     val provider = prefs[AiProviderKey].toEnum(AiProvider.NONE)
                     provider != AiProvider.NONE &&
+                        // The user hid AI Mix — also stop auto-generating mixes in the background.
+                        !(prefs[HideAiMixKey] ?: false) &&
                         prefs[AiApiKeyKey].orEmpty().isNotBlank() &&
                         (provider != AiProvider.CUSTOM || prefs[AiCustomEndpointKey].orEmpty().isNotBlank()) &&
                         prefs[AiApiValidationStatusKey].toEnum(AiApiValidationStatus.UNKNOWN) != AiApiValidationStatus.FAILED
@@ -688,6 +691,10 @@ class LibraryMixViewModel
 
                 TopMixGenerationFailure.NO_VALID_MIXES -> {
                     context.getString(R.string.library_top_mixes_no_valid_mixes)
+                }
+
+                TopMixGenerationFailure.RATE_LIMITED -> {
+                    context.getString(R.string.library_top_mixes_rate_limited)
                 }
 
                 TopMixGenerationFailure.AI_REQUEST_FAILED -> {
