@@ -58,6 +58,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -196,7 +197,7 @@ fun AppleMusicPlayerContent(
 
         if (isPreS && preBlurredBitmap != null) {
             androidx.compose.foundation.Image(
-                bitmap = androidx.compose.ui.graphics.asImageBitmap(preBlurredBitmap),
+                bitmap = preBlurredBitmap.asImageBitmap(),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier =
