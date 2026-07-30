@@ -1258,7 +1258,7 @@ private fun buildSyncedLyrics(
         if (entry.isInstrumental) return@forEachIndexed
         if (entry.text.isBlank() && entry.words.isNullOrEmpty()) return@forEachIndexed
 
-        if (isTtml && entry.words != null && LyricsUtils.hasTrueWordSync(entry)) {
+        if (isTtml && entry.words != null && hasTrueWordSync(entry)) {
             val translation = providedTranslationTextForEntry(entry)
             val mainWords = entry.words!!.filter { !it.isBackground }
             val bgWords = entry.words!!.filter { it.isBackground }

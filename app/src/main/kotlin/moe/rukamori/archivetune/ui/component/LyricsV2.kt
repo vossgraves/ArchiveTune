@@ -889,7 +889,7 @@ fun LyricsV2(
                             )
                         }
 
-                        if (item.words != null && isSynced && LyricsUtils.hasTrueWordSync(item)) {
+                        if (item.words != null && isSynced && hasTrueWordSync(item)) {
                             LyricsLineV2(
                                 words = item.words!!,
                                 isActive = isActive,
