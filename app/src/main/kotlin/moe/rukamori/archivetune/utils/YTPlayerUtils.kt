@@ -1364,17 +1364,49 @@ object YTPlayerUtils {
             if (preferM4A) codecRankPreferM4A(codec) else codecRank(codec)
         }
 
+        // When preferM4A is true (downloads), we MUST prefer the codec rank
+        // BEFORE bitrate so MP4A/AAC always wins over OPUS regardless of the
+        // relative bitrates. YouTube Music typically serves OPUS at 150-160
+        // kbps inside a .webm container and MP4A/AAC at 128 kbps inside a
+        // .m4a container. The previous version ranked by bitrate first,
+        // which meant OPUS (160kbps) beat AAC (128kbps) and the file was
+        // cached as .webm — jaudiotagger cannot read WebM, so the export
+        // pipeline silently skipped tagging and the user got "unknown
+        // artist / unknown album / no artwork" files.
+        //
+        // Putting codec rank first when preferM4A=true ensures AAC is
+        // always selected for downloads → .m4a cache → jaudiotagger can
+        // tag it correctly → exported files have full metadata.
+        //
+        // When preferM4A is false (playback), keep the original order
+        // (bitrate first, codec second) so the highest-bitrate stream
+        // wins for live playback (where container format doesn't matter
+        // because ExoPlayer handles both).
         val preferHigher =
-            compareByDescending<PlayerResponse.StreamingData.Format> { it.url != null }
-                .thenByDescending { it.bitrate }
-                .thenByDescending { resolvedCodecRank(extractCodec(it.mimeType)) }
-                .thenByDescending { it.audioSampleRate ?: 0 }
+            if (preferM4A) {
+                compareByDescending<PlayerResponse.StreamingData.Format> { it.url != null }
+                    .thenByDescending { resolvedCodecRank(extractCodec(it.mimeType)) }
+                    .thenByDescending { it.bitrate }
+                    .thenByDescending { it.audioSampleRate ?: 0 }
+            } else {
+                compareByDescending<PlayerResponse.StreamingData.Format> { it.url != null }
+                    .thenByDescending { it.bitrate }
+                    .thenByDescending { resolvedCodecRank(extractCodec(it.mimeType)) }
+                    .thenByDescending { it.audioSampleRate ?: 0 }
+            }
 
         val preferLowerAboveTarget =
-            compareByDescending<PlayerResponse.StreamingData.Format> { it.url != null }
-                .thenBy { it.bitrate }
-                .thenByDescending { resolvedCodecRank(extractCodec(it.mimeType)) }
-                .thenByDescending { it.audioSampleRate ?: 0 }
+            if (preferM4A) {
+                compareByDescending<PlayerResponse.StreamingData.Format> { it.url != null }
+                    .thenByDescending { resolvedCodecRank(extractCodec(it.mimeType)) }
+                    .thenBy { it.bitrate }
+                    .thenByDescending { it.audioSampleRate ?: 0 }
+            } else {
+                compareByDescending<PlayerResponse.StreamingData.Format> { it.url != null }
+                    .thenBy { it.bitrate }
+                    .thenByDescending { resolvedCodecRank(extractCodec(it.mimeType)) }
+                    .thenByDescending { it.audioSampleRate ?: 0 }
+            }
 
         val candidates =
             when {
