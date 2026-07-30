@@ -37,6 +37,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -70,6 +71,7 @@ import moe.rukamori.archivetune.constants.EnableBetterLyricsPortatoKey
 import moe.rukamori.archivetune.constants.EnableKugouKey
 import moe.rukamori.archivetune.constants.EnableLrcLibKey
 import moe.rukamori.archivetune.constants.EnableMegalobizLyricsKey
+import moe.rukamori.archivetune.constants.EnableMusixmatchExperimentalKey
 import moe.rukamori.archivetune.constants.EnablePaxsenixAppleMusicLyricsKey
 import moe.rukamori.archivetune.constants.EnablePaxsenixLyricsKey
 import moe.rukamori.archivetune.constants.EnablePaxsenixMusixmatchLyricsKey
@@ -195,6 +197,8 @@ fun LyricsSettings(
             defaultValue = true,
         )
     val (enableUnisonLyrics, onEnableUnisonLyricsChange) = rememberPreference(key = EnableUnisonLyricsKey, defaultValue = true)
+    val (enableMusixmatchExperimental, onEnableMusixmatchExperimentalChange) =
+        rememberPreference(key = EnableMusixmatchExperimentalKey, defaultValue = false)
     val (providerOrderStr, onProviderOrderStrChange) =
         rememberPreference(
             key = LyricsProviderOrderKey,
@@ -602,6 +606,35 @@ fun LyricsSettings(
                     icon = { Icon(painterResource(R.drawable.lyrics), null) },
                     onClick = { showProviderOrderDialog = true },
                 )
+            }
+        }
+
+        PreferenceGroup(
+            modifier = positions.modifierFor("lyrics_experimental"),
+            title = stringResource(R.string.musixmatch_experimental_section),
+        ) {
+            item {
+                SwitchPreference(
+                    title = { Text(stringResource(R.string.enable_musixmatch_experimental)) },
+                    description = stringResource(R.string.enable_musixmatch_experimental_desc),
+                    icon = { Icon(painterResource(R.drawable.lyrics), null) },
+                    checked = enableMusixmatchExperimental,
+                    onCheckedChange = onEnableMusixmatchExperimentalChange,
+                )
+            }
+            item(visible = enableMusixmatchExperimental) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = MaterialTheme.shapes.large,
+                    color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.4f),
+                ) {
+                    Text(
+                        text = stringResource(R.string.musixmatch_experimental_warning),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                    )
+                }
             }
         }
 

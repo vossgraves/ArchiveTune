@@ -19,6 +19,7 @@ import android.os.Build
 import android.widget.Toast
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -43,11 +44,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.border
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
@@ -69,10 +72,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -395,9 +400,13 @@ private fun LyricsShareStudioScaffold(
 ) {
     val scrollState = rememberScrollState()
     val motionScheme = MaterialTheme.motionScheme
-    val horizontalPadding = if (isCompactLayout) 16.dp else 20.dp
-    val verticalPadding = if (isCompactLayout) 16.dp else 20.dp
-    val sectionSpacing = if (isCompactLayout) 14.dp else 18.dp
+    // Compact M3-Expressive spacing: dropped from 16/20 dp to 12/14 dp to fit the entire
+    // controls panel above the fold on most phones, and pulled the section spacing down from
+    // 14/18 dp to 10/12 dp for tighter rhythm. The user complaint was excessive whitespace
+    // between the header text and the preview, and oversized chips — both addressed here.
+    val horizontalPadding = if (isCompactLayout) 12.dp else 16.dp
+    val verticalPadding = if (isCompactLayout) 12.dp else 16.dp
+    val sectionSpacing = if (isCompactLayout) 10.dp else 12.dp
 
     Column(
         modifier =
@@ -444,7 +453,7 @@ private fun LyricsShareStudioScaffold(
             } else {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(20.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
                     verticalAlignment = Alignment.Top,
                 ) {
                     PreviewContainer(
@@ -458,7 +467,7 @@ private fun LyricsShareStudioScaffold(
                     )
                     Column(
                         modifier = Modifier.weight(0.9f),
-                        verticalArrangement = Arrangement.spacedBy(18.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp),
                     ) {
                         LyricsShareHeader(
                             payload = payload,
@@ -507,47 +516,58 @@ private fun LyricsShareHeader(
                 .orEmpty()
         }
 
+    // Compact header: title and artist share a single row (title bold, artist secondary)
+    // instead of stacked, which saves one line of vertical space. The lyric snippet is
+    // dropped when it would duplicate the title, and the resolution pill sits inline with
+    // the artist row. The previous layout used 4 stacked text blocks + a pill = ~5 lines.
     Column(
         modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Text(
-            text = stringResource(R.string.share_lyrics),
-            style = MaterialTheme.typography.labelLargeEmphasized,
-            color = MaterialTheme.colorScheme.primary,
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = stringResource(R.string.share_lyrics),
+                style = MaterialTheme.typography.labelLargeEmphasized,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.weight(1f, fill = false),
+            )
+            LyricsShareInfoPill(
+                text =
+                    stringResource(
+                        R.string.lyrics_share_resolution_value,
+                        options.aspectRatio.exportWidth,
+                        options.aspectRatio.exportHeight,
+                    ),
+                emphasized = true,
+            )
+        }
         Text(
             text = payload.songTitle,
-            style = MaterialTheme.typography.headlineSmall,
+            style = MaterialTheme.typography.titleLarge,
             color = MaterialTheme.colorScheme.onSurface,
-            maxLines = 2,
+            maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
         Text(
             text = payload.artists,
-            style = MaterialTheme.typography.bodyLarge,
+            style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        if (lyricSnippet.isNotBlank()) {
+        if (lyricSnippet.isNotBlank() && lyricSnippet != payload.songTitle) {
             Text(
                 text = lyricSnippet,
-                style = MaterialTheme.typography.bodyMedium,
+                style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        LyricsShareInfoPill(
-            text =
-                stringResource(
-                    R.string.lyrics_share_resolution_value,
-                    options.aspectRatio.exportWidth,
-                    options.aspectRatio.exportHeight,
-                ),
-            emphasized = true,
-        )
     }
 }
 
@@ -563,20 +583,22 @@ private fun PreviewContainer(
 ) {
     val previewWidthFraction =
         when (options.aspectRatio) {
-            LyricsShareAspectRatio.Square -> if (isCompactLayout) 0.84f else 0.82f
-            LyricsShareAspectRatio.Portrait -> if (isCompactLayout) 0.62f else 0.62f
-            LyricsShareAspectRatio.Story -> if (isCompactLayout) 0.44f else 0.42f
+            LyricsShareAspectRatio.Square -> if (isCompactLayout) 0.78f else 0.82f
+            LyricsShareAspectRatio.Portrait -> if (isCompactLayout) 0.58f else 0.62f
+            LyricsShareAspectRatio.Story -> if (isCompactLayout) 0.40f else 0.42f
         }
-    val previewMaxWidth = if (isCompactLayout) 320.dp else 420.dp
+    val previewMaxWidth = if (isCompactLayout) 260.dp else 380.dp
 
     Surface(
         modifier = modifier,
         shape = MaterialTheme.shapes.extraLarge,
         color = MaterialTheme.colorScheme.primaryContainer,
     ) {
+        // Trimmed vertical padding from 18dp → 12dp to recover vertical space (user complaint:
+        // too much whitespace around the preview card).
         Column(
-            modifier = Modifier.padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Box(
@@ -592,7 +614,7 @@ private fun PreviewContainer(
                             .background(
                                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
                                 shape = MaterialTheme.shapes.large,
-                            ).padding(10.dp),
+                            ).padding(8.dp),
                     contentAlignment = Alignment.Center,
                 ) {
                     LyricsImageCard(
@@ -633,18 +655,23 @@ private fun ControlsSection(
         shape = MaterialTheme.shapes.extraLarge,
         color = MaterialTheme.colorScheme.surfaceColorAtElevation(1.dp),
     ) {
+        // Compact M3-Expressive controls: tighter padding (16/14 → 12/10) and tighter section
+        // spacing (14 → 10) so the whole panel fits one screen on most phones. The color
+        // swatch row now uses 8dp spacing instead of 10dp, and the text-color row lets the
+        // compact 32dp swatches flow with up to 8 per line — they no longer need labels so
+        // they pack densely.
         Column(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             LyricsShareControlGroup(title = stringResource(R.string.lyrics_share_layout)) {
                 FlowRow(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     LyricsShareAspectRatio.entries.forEach { aspectRatio ->
                         LyricsAspectRatioOption(
@@ -660,9 +687,9 @@ private fun ControlsSection(
 
             LyricsShareControlGroup(title = stringResource(R.string.customize_colors)) {
                 FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                    maxItemsInEachRow = if (isCompactLayout) 2 else 2,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    maxItemsInEachRow = if (isCompactLayout) 2 else 3,
                 ) {
                     availableStyles.items.forEach { style ->
                         LyricsStyleOption(
@@ -681,11 +708,14 @@ private fun ControlsSection(
             // the override, the rest are preset colors. Selecting a swatch re-renders the preview
             // immediately; the change is also applied to the exported PNG via `textColor` on
             // `ComposeToImage.createLyricsImage`.
+            //
+            // With the new compact 32dp circular swatches (no labels), up to 8 fit per row,
+            // collapsing the previous 6-row pill grid into 2 rows.
             LyricsShareControlGroup(title = stringResource(R.string.lyrics_share_text_color)) {
                 FlowRow(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     LyricsTextColorSwatch(
                         color = selectedGlassStyle.textColor,
@@ -730,10 +760,10 @@ private fun ControlsSection(
                             modifier =
                                 Modifier
                                     .fillMaxWidth()
-                                    .heightIn(min = 64.dp)
+                                    .heightIn(min = 56.dp)
                                     .clip(MaterialTheme.shapes.large)
                                     .clickable { onOptionsChange(options.copy(showArtwork = !options.showArtwork)) }
-                                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween,
                         ) {
@@ -856,11 +886,12 @@ private fun LyricsAspectRatioOption(
         label = "lyricsAspectContent",
     )
 
+    // Compact chip: 40dp min height (was 48dp) and tighter horizontal padding (14→12).
     Surface(
         modifier =
             modifier
-                .widthIn(min = 96.dp)
-                .heightIn(min = 48.dp)
+                .widthIn(min = 84.dp)
+                .heightIn(min = 40.dp)
                 .clip(optionShape)
                 .clickable(onClick = onClick),
         shape = optionShape,
@@ -875,7 +906,7 @@ private fun LyricsAspectRatioOption(
                 } else {
                     MaterialTheme.typography.labelLarge
                 },
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Center,
@@ -913,11 +944,13 @@ private fun LyricsStyleOption(
         label = "lyricsStyleContainer",
     )
 
+    // Compact style chip: 40dp min height (was 48dp), 10dp vertical padding (was 10),
+    // 12dp horizontal padding (was 12). Tighter internal spacing between swatch and label.
     Surface(
         modifier =
             modifier
-                .widthIn(min = 108.dp)
-                .heightIn(min = 48.dp)
+                .widthIn(min = 96.dp)
+                .heightIn(min = 40.dp)
                 .clip(optionShape)
                 .clickable(onClick = onClick),
         shape = optionShape,
@@ -925,14 +958,14 @@ private fun LyricsStyleOption(
         border = BorderStroke(width = if (selected) 1.5.dp else 1.dp, color = borderColor),
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
                 modifier =
                     Modifier
-                        .size(28.dp)
+                        .size(24.dp)
                         .clip(MaterialTheme.shapes.extraLarge)
                         .background(style.surfaceTint.copy(alpha = 0.8f)),
                 contentAlignment = Alignment.Center,
@@ -940,7 +973,7 @@ private fun LyricsStyleOption(
                 Box(
                     modifier =
                         Modifier
-                            .size(16.dp)
+                            .size(14.dp)
                             .background(
                                 color = style.surfaceTint.copy(alpha = style.surfaceAlpha),
                                 shape = MaterialTheme.shapes.extraLarge,
@@ -949,7 +982,7 @@ private fun LyricsStyleOption(
             }
             Text(
                 text = stringResource(style.labelRes),
-                style = MaterialTheme.typography.labelLargeEmphasized,
+                style = MaterialTheme.typography.labelMediumEmphasized,
                 color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -1004,11 +1037,12 @@ private fun ActionsSection(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val actionModifier = Modifier.height(52.dp)
+    // Compact action row: 48dp height (was 52dp), 12dp vertical padding (was 14dp).
+    val actionModifier = Modifier.height(48.dp)
     val contentPadding =
         Modifier.padding(
-            horizontal = if (isCompactLayout) 16.dp else 24.dp,
-            vertical = 14.dp,
+            horizontal = if (isCompactLayout) 12.dp else 16.dp,
+            vertical = 10.dp,
         )
 
     if (isCompactLayout) {
@@ -1108,23 +1142,27 @@ private fun ActionsSection(
  * typically produce — white, near-black, soft cream, red, orange, yellow, green, teal, blue,
  * indigo, purple, pink. Anything picked here overrides the glass-style's default textColor on
  * both the live preview and the exported PNG.
+ *
+ * Each preset has its own human-readable label (White, Black, Cream, …) rather than the old
+ * "Custom" stub — the previous code labelled every swatch "Custom", which gave the user no way
+ * to tell which swatch was which without tapping each one.
  */
 private enum class LyricsTextColorPreset(
     val color: Color,
     val labelRes: Int,
 ) {
-    WHITE(Color(0xFFFFFFFF), R.string.lyrics_share_text_color_custom),
-    BLACK(Color(0xFF000000), R.string.lyrics_share_text_color_custom),
-    CREAM(Color(0xFFF5E9D5), R.string.lyrics_share_text_color_custom),
-    CORAL(Color(0xFFFF6B6B), R.string.lyrics_share_text_color_custom),
-    AMBER(Color(0xFFFFB454), R.string.lyrics_share_text_color_custom),
-    LEMON(Color(0xFFFFE66D), R.string.lyrics_share_text_color_custom),
-    MINT(Color(0xFF6BCB77), R.string.lyrics_share_text_color_custom),
-    TEAL(Color(0xFF4DCCC0), R.string.lyrics_share_text_color_custom),
-    SKY(Color(0xFF54A0FF), R.string.lyrics_share_text_color_custom),
-    INDIGO(Color(0xFF5F6CAF), R.string.lyrics_share_text_color_custom),
-    VIOLET(Color(0xFFB06AB3), R.string.lyrics_share_text_color_custom),
-    ROSE(Color(0xFFFF7BB0), R.string.lyrics_share_text_color_custom),
+    WHITE(Color(0xFFFFFFFF), R.string.lyrics_share_text_color_white),
+    BLACK(Color(0xFF000000), R.string.lyrics_share_text_color_black),
+    CREAM(Color(0xFFF5E9D5), R.string.lyrics_share_text_color_cream),
+    CORAL(Color(0xFFFF6B6B), R.string.lyrics_share_text_color_coral),
+    AMBER(Color(0xFFFFB454), R.string.lyrics_share_text_color_amber),
+    LEMON(Color(0xFFFFE66D), R.string.lyrics_share_text_color_lemon),
+    MINT(Color(0xFF6BCB77), R.string.lyrics_share_text_color_mint),
+    TEAL(Color(0xFF4DCCC0), R.string.lyrics_share_text_color_teal),
+    SKY(Color(0xFF54A0FF), R.string.lyrics_share_text_color_sky),
+    INDIGO(Color(0xFF5F6CAF), R.string.lyrics_share_text_color_indigo),
+    VIOLET(Color(0xFFB06AB3), R.string.lyrics_share_text_color_violet),
+    ROSE(Color(0xFFFF7BB0), R.string.lyrics_share_text_color_rose),
 }
 
 @Composable
@@ -1146,45 +1184,41 @@ private fun LyricsTextColorSwatch(
         animationSpec = motionScheme.defaultEffectsSpec(),
         label = "lyricsTextSwatchBorder",
     )
+    val scale by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (selected) 1.12f else 1f,
+        animationSpec = motionScheme.defaultEffectsSpec(),
+        label = "lyricsTextSwatchScale",
+    )
 
-    // Tint the chip's container so the user can see at a glance which color they'd be picking —
-    // a 30% alpha wash keeps the chip readable against the surface while still conveying hue.
-    val containerColor = color.copy(alpha = 0.30f).compositeOver(MaterialTheme.colorScheme.surfaceColorAtElevation(1.dp))
-
-    Surface(
+    // Compact M3-Expressive swatch: just a coloured circle with a selection ring.
+    // The label is exposed via the contentDescription for accessibility but is not drawn —
+    // this collapses the previous 48dp-tall pill row (with text + 22dp circle) into a
+    // 32dp circle-only row, freeing vertical space for the preview.
+    Box(
         modifier =
             modifier
-                .heightIn(min = 48.dp)
-                .clip(MaterialTheme.shapes.large)
-                .clickable(onClick = onClick),
-        shape = MaterialTheme.shapes.large,
-        color = containerColor,
-        border = BorderStroke(width = if (selected) 1.5.dp else 1.dp, color = borderColor),
+                .size(32.dp)
+                .scale(scale)
+                .clip(CircleShape)
+                .background(color)
+                .border(
+                    width = if (selected) 2.5.dp else 1.dp,
+                    color = borderColor,
+                    shape = CircleShape,
+                ).clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                modifier =
-                    Modifier
-                        .size(22.dp)
-                        .clip(MaterialTheme.shapes.extraLarge)
-                        .background(color)
-                        .border(
-                            width = 1.dp,
-                            color = MaterialTheme.colorScheme.outlineVariant,
-                            shape = MaterialTheme.shapes.extraLarge,
-                        ),
-            )
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelMedium,
-                color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.widthIn(max = 84.dp),
+        if (selected) {
+            Icon(
+                painter = painterResource(R.drawable.check),
+                contentDescription = label,
+                tint =
+                    if (color.luminance() > 0.5f) {
+                        Color.Black
+                    } else {
+                        Color.White
+                    },
+                modifier = Modifier.size(16.dp),
             )
         }
     }

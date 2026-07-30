@@ -60,6 +60,17 @@ val AodHorizontalPaddingKey = floatPreferencesKey("aodHorizontalPadding")
 val AodVerticalSpacingKey = floatPreferencesKey("aodVerticalSpacing")
 val AodTitleMaxLinesKey = intPreferencesKey("aodTitleMaxLines")
 val AodAmbientIntensityKey = floatPreferencesKey("aodAmbientIntensity")
+// Show a compact, dimmed lyrics line on the AOD screen while music plays.
+val AodShowLyricsKey = booleanPreferencesKey("aodShowLyrics")
+// When > 0, automatically enter AOD mode after this many seconds of the player sheet being
+// collapsed (i.e. the user is no longer actively interacting with the player). 0 disables.
+val AodAutoTimerSecondsKey = intPreferencesKey("aodAutoTimerSeconds")
+// When true, AOD mode auto-triggers when the screen is about to turn off due to inactivity
+// (driven via the system lock intent). Disabled by default to avoid surprises.
+val AodAutoOnScreenDimKey = booleanPreferencesKey("aodAutoOnScreenDim")
+// Experimental native Musixmatch provider (token.get + macro.subtitles + richsync→TTML).
+// Off by default; toggle surfaces in Lyrics settings under "Experimental".
+val EnableMusixmatchExperimentalKey = booleanPreferencesKey("enableMusixmatchExperimental")
 val SeekExtraSeconds = booleanPreferencesKey("seekExtraSeconds")
 val DisableBlurKey = booleanPreferencesKey("disableBlur")
 val BlurRadiusKey = floatPreferencesKey("blurRadius")

@@ -592,6 +592,10 @@
     <string name="enable_simpmusic_lyrics">Enable SimpMusic lyrics</string>
     <string name="enable_megalobiz_lyrics">Enable Megalobiz lyrics</string>
     <string name="enable_paxsenix_lyrics">Enable Paxsenix lyrics</string>
+    <string name="enable_musixmatch_experimental">Musixmatch (experimental)</string>
+    <string name="enable_musixmatch_experimental_desc">Native Musixmatch provider using token.get + richsync. Fetches word-synced TTML when available, falls back to line-synced LRC and plain lyrics. No hardcoded token; runtime-fetched only.</string>
+    <string name="musixmatch_experimental_section">Experimental</string>
+    <string name="musixmatch_experimental_warning">This provider uses Musixmatch\'s internal app endpoint. It may break without notice if Musixmatch changes their API, requires the user token, or rate-limits requests. Disable and re-enable to refresh the token if lyrics stop returning.</string>
     <string name="player_and_audio">Player and audio</string>
     <string name="audio_quality">Audio quality</string>
     <string name="audio_quality_auto">Auto</string>
@@ -1411,6 +1415,7 @@
     <string name="google_drive_sync_provider_local">Local storage</string>
     <string name="google_drive_sync_provider_unknown">Cloud folder</string>
     <string name="google_drive_sync_provider_suffix_local">(local — not cloud)</string>
+    <string name="google_drive_sync_cloud_app_disclaimer">A cloud storage app (Google Drive, Dropbox, Nextcloud, or OneDrive) must be installed on this phone for backups to reach the cloud. Without one, the system folder picker only shows local storage and backups stay on this device.</string>
     <string name="gatekeeper_connection_blocked">ArchiveTune could not verify network access. Connections are blocked.</string>
     <string name="language_packs">Language packs</string>
     <string name="language_pack_english">English</string>

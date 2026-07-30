@@ -199,6 +199,8 @@ import moe.rukamori.archivetune.aod.ACTION_AOD_MODE
 import moe.rukamori.archivetune.constants.AppBarHeight
 import moe.rukamori.archivetune.constants.AppFontPreference
 import moe.rukamori.archivetune.constants.AppLanguageKey
+import moe.rukamori.archivetune.constants.AodAutoOnScreenDimKey
+import moe.rukamori.archivetune.constants.AodAutoTimerSecondsKey
 import moe.rukamori.archivetune.constants.CustomFontUriKey
 import moe.rukamori.archivetune.constants.CustomThemeColorKey
 import moe.rukamori.archivetune.constants.DarkModeKey
@@ -1128,6 +1130,68 @@ class MainActivity : ComponentActivity() {
                             controller.systemBarsBehavior =
                                 WindowInsetsControllerCompat.BEHAVIOR_DEFAULT
                             window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                        }
+                    }
+
+                    // Auto-enter AOD after N seconds of inactivity (player sheet collapsed while
+                    // music is playing). The user picks N via the AOD auto-timer slider in
+                    // AodCustomizedScreen; 0 disables. Cancellation is automatic when the user
+                    // expands the player sheet again or when playback stops — both invalidate
+                    // the LaunchedEffect keys.
+                    val aodAutoTimerSeconds by rememberPreference(AodAutoTimerSecondsKey, defaultValue = 0)
+                    val aodAutoOnScreenDim by rememberPreference(AodAutoOnScreenDimKey, defaultValue = false)
+                    val isPlayingNow by (playerConnection?.isPlaying ?: MutableStateFlow(false))
+                        .collectAsStateWithLifecycle()
+                    LaunchedEffect(
+                        aodAutoTimerSeconds,
+                        isPlayingNow,
+                        playerBottomSheetState.isExpanded,
+                        playerBottomSheetState.isDismissed,
+                        aodModeEnabled,
+                    ) {
+                        if (aodModeEnabled) return@LaunchedEffect
+                        if (aodAutoTimerSeconds <= 0) return@LaunchedEffect
+                        if (!isPlayingNow) return@LaunchedEffect
+                        if (playerBottomSheetState.isExpanded) return@LaunchedEffect
+                        if (playerBottomSheetState.isDismissed) return@LaunchedEffect
+                        // Wait the configured number of seconds; if the user opens the player
+                        // or pauses playback during the wait, the keys above change and the
+                        // effect is cancelled (delay throws CancellationException internally).
+                        delay(aodAutoTimerSeconds * 1000L)
+                        requestAodMode()
+                    }
+
+                    // Convenience: when "Enter AOD when screen dims" is ON, register a system
+                    // receiver for ACTION_SCREEN_OFF. When the screen turns off while music is
+                    // playing and the player sheet isn't expanded, queue an AOD request — the
+                    // activity will pick it up on the next resume (onStart → openPendingAodModeIfReady).
+                    // We can't actually prevent the screen-off (that needs system-level access), but
+                    // queueing the request means AOD opens immediately when the user wakes the device,
+                    // instead of showing the regular player first.
+                    //
+                    // The receiver is intentionally only registered while `aodAutoOnScreenDim` is
+                    // true — the DisposableEffect key re-runs registration on toggle.
+                    val screenOffReceiver = remember {
+                        object : android.content.BroadcastReceiver() {
+                            override fun onReceive(context: android.content.Context?, intent: android.content.Intent?) {
+                                if (intent?.action != android.content.Intent.ACTION_SCREEN_OFF) return
+                                if (!isPlayingNow) return
+                                if (playerBottomSheetState.isExpanded) return
+                                requestAodMode()
+                            }
+                        }
+                    }
+                    DisposableEffect(aodAutoOnScreenDim) {
+                        if (aodAutoOnScreenDim) {
+                            val filter = android.content.IntentFilter(android.content.Intent.ACTION_SCREEN_OFF)
+                            registerReceiver(screenOffReceiver, filter)
+                        }
+                        onDispose {
+                            try {
+                                unregisterReceiver(screenOffReceiver)
+                            } catch (_: Exception) {
+                                // Receiver wasn't registered (e.g. toggle was off).
+                            }
                         }
                     }
 

@@ -881,6 +881,37 @@ private fun GoogleDriveSyncSection(
         modifier = positions.modifierFor("google_drive_sync"),
         title = stringResource(R.string.google_drive_sync),
     ) {
+        // Cloud-storage-app disclaimer. The SAF picker can only show cloud folders (Google
+        // Drive, Dropbox, Nextcloud, OneDrive) when the corresponding app is installed on
+        // the device. Without any cloud app, the picker falls back to local storage only
+        // and backups stay on-device — which the user might not realise until they try to
+        // restore after a reinstall. Surface this up front rather than burying it in the
+        // folder-pick help dialog.
+        item {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.large,
+                color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f),
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.info),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                        modifier = Modifier.size(22.dp),
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        text = stringResource(R.string.google_drive_sync_cloud_app_disclaimer),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    )
+                }
+            }
+        }
         item {
             PreferenceEntry(
                 title = { Text(stringResource(R.string.google_drive_sync_remote_folder)) },

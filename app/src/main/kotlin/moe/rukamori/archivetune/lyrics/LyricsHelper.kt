@@ -55,6 +55,10 @@ class LyricsHelper
                 PaxsenixYouTubeLyricsProvider,
                 YouTubeSubtitleLyricsProvider,
                 YouTubeLyricsProvider,
+                // Experimental native Musixmatch provider — gated by
+                // EnableMusixmatchExperimentalKey (off by default). When the toggle
+                // is off, isEnabled() returns false and LyricsHelper skips it.
+                MusixmatchExperimentalLyricsProvider,
             )
 
         private val cache = LruCache<String, List<LyricsResult>>(MAX_CACHE_SIZE)
