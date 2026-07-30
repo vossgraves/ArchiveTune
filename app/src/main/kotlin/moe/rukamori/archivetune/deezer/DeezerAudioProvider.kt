@@ -36,7 +36,27 @@ import java.util.concurrent.TimeUnit
  * All calls run blocking network I/O and must not be made from the main thread.
  */
 object DeezerAudioProvider {
+    data class Query(
+        val mediaId: String,
+        val title: String,
+        val artists: List<String>,
+        val album: String?,
+        val durationMs: Long?,
+    )
+
+    data class Resolved(
+        val trackId: String,
+        val title: String,
+        val artist: String?,
+        val album: String?,
+        val isrc: String?,
+        val durationMs: Long?,
+        val previewUrl: String?,
+        val coverUrl: String?,
+    )
+
     private const val TAG = "Deezer"
+    private const val MIN_MATCH_SCORE = 0.55
     private const val SEARCH_LIMIT = 10
     private const val SEARCH_CACHE_MS = 10 * 60 * 1000L
     private const val STREAM_CACHE_MS = 30 * 60 * 1000L
@@ -534,4 +554,117 @@ object DeezerAudioProvider {
     }
 
     private val JSON_MEDIA = "application/json; charset=utf-8".toMediaTypeOrNull()
+
+    /**
+     * Searches Deezer's public catalogue for [query] and returns the best-matching track's metadata.
+     * Returns null when no match is found or the Deezer API is unreachable.
+     *
+     * This does NOT return a streamable URL — full-track streaming requires Deezer Premium
+     * credentials. The returned [Resolved] is used for ISRC lookup, artwork fallback, and
+     * downloaded-song metadata enrichment.
+     */
+    suspend fun lookup(query: Query): Resolved? =
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching {
+                val q = buildSearchQuery(query)
+                val req =
+                    Request
+                        .Builder()
+                        .url("https://api.deezer.com/search?q=${java.net.URLEncoder.encode(q, "UTF-8")}&limit=10")
+                        .header("Accept", "application/json")
+                        .build()
+                client.newCall(req).execute().use { res ->
+                    if (!res.isSuccessful) {
+                        Timber.tag(TAG).w("search HTTP %d for '%s'", res.code, q)
+                        return@use null
+                    }
+                    val body = res.body?.string() ?: return@use null
+                    val root = JSONObject(body)
+                    val data = root.optJSONArray("data") ?: return@use null
+                    if (data.length() == 0) return@use null
+
+                    val candidates =
+                        (0 until data.length()).mapNotNull { i ->
+                            val obj = data.optJSONObject(i) ?: return@mapNotNull null
+                            val title = obj.optString("title").ifBlank { return@mapNotNull null }
+                            val artist = obj.optJSONObject("artist")?.optString("name")?.ifBlank { null }
+                            val album = obj.optJSONObject("album")?.optString("title")?.ifBlank { null }
+                            val durationSec = obj.optLong("duration", 0L).takeIf { it > 0 }
+                            val isrc = obj.optString("isrc").ifBlank { null }
+                            val preview = obj.optString("preview").ifBlank { null }
+                            val cover = obj.optJSONObject("album")?.optString("cover_big")?.ifBlank { null }
+                            val score = scoreCandidate(query, title, artist, album, durationSec)
+                            Resolved(
+                                trackId = obj.optLong("id").toString(),
+                                title = title,
+                                artist = artist,
+                                album = album,
+                                isrc = isrc,
+                                durationMs = durationSec?.times(1000L),
+                                previewUrl = preview,
+                                coverUrl = cover,
+                            ) to score
+                        }
+                    val best = candidates.maxByOrNull { it.second } ?: return@use null
+                    if (best.second < MIN_MATCH_SCORE) {
+                        Timber.tag(TAG).d("best candidate score %.2f below threshold for '%s'", best.second, q)
+                        return@use null
+                    }
+                    best.first
+                }
+            }.getOrNull()
+        }
+
+    private fun buildSearchQuery(query: Query): String {
+        val parts = mutableListOf<String>()
+        query.artists.firstOrNull()?.takeIf(String::isNotBlank)?.let { parts.add("artist:\"$it\"") }
+        parts.add("track:\"${query.title}\"")
+        query.album?.takeIf(String::isNotBlank)?.let { parts.add("album:\"$it\"") }
+        return parts.joinToString(" ")
+    }
+
+    private fun scoreCandidate(
+        query: Query,
+        candidateTitle: String,
+        candidateArtist: String?,
+        candidateAlbum: String?,
+        candidateDurationSec: Long?,
+    ): Double {
+        val titleScore = normalizedSimilarity(query.title, candidateTitle)
+        val artistScore =
+            query.artists.firstOrNull()?.let { a ->
+                candidateArtist?.let { c -> normalizedSimilarity(a, c) }
+            } ?: 0.0
+        val albumScore =
+            query.album?.let { q ->
+                candidateAlbum?.let { c -> normalizedSimilarity(q, c) }
+            } ?: 0.5
+        val durationScore =
+            query.durationMs?.let { qd ->
+                candidateDurationSec?.let { cs ->
+                    val cd = cs * 1000L
+                    val diff = kotlin.math.abs(qd - cd)
+                    when {
+                        diff < 2_000L -> 1.0
+                        diff < 5_000L -> 0.85
+                        diff < 10_000L -> 0.6
+                        else -> 0.2
+                    }
+                }
+            } ?: 0.5
+
+        return titleScore * 0.45 + artistScore * 0.30 + albumScore * 0.15 + durationScore * 0.10
+    }
+
+    private fun normalizedSimilarity(a: String, b: String): Double {
+        val na = a.lowercase().trim().replace(Regex("[^a-z0-9 ]"), "")
+        val nb = b.lowercase().trim().replace(Regex("[^a-z0-9 ]"), "")
+        if (na == nb) return 1.0
+        if (na.isBlank() || nb.isBlank()) return 0.0
+        val sa = na.split(" ").toSet()
+        val sb = nb.split(" ").toSet()
+        val inter = sa.intersect(sb).size.toDouble()
+        val union = sa.union(sb).size.toDouble()
+        return if (union == 0.0) 0.0 else inter / union
+    }
 }
