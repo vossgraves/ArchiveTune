@@ -215,6 +215,12 @@ class App :
                 prefs[ContentLanguageKey]?.takeIf { it != SYSTEM_DEFAULT }?.let { lang ->
                     YouTube.locale = YouTube.locale.copy(hl = lang)
                 }
+                // Region spoofer from Internet Settings — applied AFTER ContentCountryKey so
+                // the Internet/region setting wins when both are set. SYSTEM_DEFAULT falls back
+                // to whatever the device locale or ContentCountryKey resolved to above.
+                prefs[YouTubeMusicRegionKey]?.takeIf { it != SYSTEM_DEFAULT }?.let { country ->
+                    YouTube.locale = YouTube.locale.copy(gl = country)
+                }
 
                 LastFmServiceConfig.fromPreferences(prefs).apply(prefs[LastFMSessionKey])
 

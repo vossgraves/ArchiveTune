@@ -74,6 +74,7 @@ import moe.rukamori.archivetune.utils.rememberPreference
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.net.Proxy
+import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 @Composable
@@ -161,6 +162,10 @@ fun InternetSettings(navController: NavController, scrollTo: String? = null) {
     var refreshingIpRotation by remember { mutableStateOf(false) }
     val activeProxyCount by YouTube.ipRotationActiveCount.collectAsStateWithLifecycle()
 
+    val (ytMusicRegion, onYtMusicRegionChange) =
+        rememberPreference(key = YouTubeMusicRegionKey, defaultValue = SYSTEM_DEFAULT)
+    val ytRegionValues = remember { listOf(SYSTEM_DEFAULT) + CountryCodeToName.keys.toList() }
+
     var testingProxy by remember { mutableStateOf(false) }
     var testResult by remember { mutableStateOf<String?>(null) }
 
@@ -206,6 +211,42 @@ fun InternetSettings(navController: NavController, scrollTo: String? = null) {
                 .padding(bottom = SettingsDimensions.ScreenBottomPadding),
         ) {
             InternetWarningBox()
+
+            PreferenceGroup(
+                modifier = positions.modifierFor("yt_music_region"),
+                title = stringResource(R.string.youtube_music_region),
+            ) {
+                item {
+                    ListPreference(
+                        title = { Text(stringResource(R.string.youtube_music_region)) },
+                        description = stringResource(R.string.youtube_music_region_desc),
+                        icon = { Icon(painterResource(R.drawable.location_on), null) },
+                        selectedValue = ytMusicRegion,
+                        values = ytRegionValues,
+                        valueText = { code ->
+                            if (code == SYSTEM_DEFAULT) {
+                                stringResource(R.string.system_default)
+                            } else {
+                                CountryCodeToName.getOrElse(code) { code }
+                            }
+                        },
+                        onValueSelected = { newValue ->
+                            // Apply immediately — `gl` is in the JSON body of every YT Music
+                            // request, so the next call (search / player / browse / next /
+                            // suggestions) will use the new region. `SYSTEM_DEFAULT` falls
+                            // back to the device locale (or, if that's not in
+                            // CountryCodeToName, to "US"), matching the App.kt startup logic.
+                            val deviceLocale = Locale.getDefault()
+                            val resolvedGl =
+                                newValue.takeIf { it != SYSTEM_DEFAULT }
+                                    ?: deviceLocale.country.takeIf { it in CountryCodeToName }
+                                    ?: "US"
+                            YouTube.locale = YouTube.locale.copy(gl = resolvedGl)
+                            onYtMusicRegionChange(newValue)
+                        },
+                    )
+                }
+            }
 
             PreferenceGroup(
                 modifier = positions.modifierFor("enable_tor"),

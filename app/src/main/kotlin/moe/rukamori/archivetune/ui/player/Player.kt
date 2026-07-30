@@ -22,8 +22,8 @@ import android.provider.Settings
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -2037,34 +2037,51 @@ private fun MikoLyricsTransition(
     // fades in behind it. All derived transforms are read inside graphicsLayer/draw lambdas so the
     // animation runs entirely in the draw phase — zero recomposition per frame.
     //
-    // Spring tuning: soft critically-damped spring (dampingRatio=1f / stiffness=160f) — the same
-    // tuning that was in place before commit 4ca3014fb. The ~500ms glide is what feels premium on
-    // touch and matches the user's explicit request to keep the slow lyrics opening animation.
-    // The fast snap (0.9 / 420, ~150ms) was too abrupt and the user asked for the previous
-    // (slower) tuning back.
+    // Direction-aware spring: the OPEN glide is the soft critically-damped spring (dampingRatio=1f
+    // / stiffness=160f, ~500 ms settle) that the user explicitly asked to keep. The CLOSE glide is
+    // ~40% slower (stiffness=80f, ~700 ms settle) per the user's follow-up request to slow down
+    // the lyrics UI closing transition. Critically-damped (no overshoot) on both sides so the
+    // close doesn't feel bouncy.
+    //
+    // We use an `Animatable` driven by `LaunchedEffect(visible)` (rather than `animateFloatAsState`)
+    // because `animateFloatAsState` is direction-symmetric — the same spec applies whether the
+    // target is going 0→1 or 1→0 — and we need separate specs per direction.
     val animationsDisabled = LocalAnimationsDisabled.current
-    val progressState =
-        animateFloatAsState(
-            targetValue = if (visible) 1f else 0f,
-            animationSpec =
-                if (animationsDisabled) {
-                    snap()
-                } else {
-                    spring(
-                        dampingRatio = 1f,
-                        stiffness = 160f,
-                        visibilityThreshold = 0.001f,
-                    )
-                },
-            label = "mikoLyricsTransition",
-        )
+    val progress = remember { Animatable(initialValue = 0f) }
+    LaunchedEffect(visible, animationsDisabled) {
+        if (animationsDisabled) {
+            progress.snapTo(if (visible) 1f else 0f)
+        } else {
+            progress.animateTo(
+                targetValue = if (visible) 1f else 0f,
+                animationSpec =
+                    if (visible) {
+                        // OPEN — keep the premium slow glide (~500 ms).
+                        spring(
+                            dampingRatio = 1f,
+                            stiffness = 160f,
+                            visibilityThreshold = 0.001f,
+                        )
+                    } else {
+                        // CLOSE — slower by ~40% (~700 ms) per user request.
+                        spring(
+                            dampingRatio = 1f,
+                            stiffness = 80f,
+                            visibilityThreshold = 0.001f,
+                        )
+                    },
+            )
+        }
+    }
+    val progressState = progress.asState()
     val showContent by remember {
         // Defer composing the heavy LyricsScreen tree until the sheet has crossed the halfway
-        // mark (progress > 0.5). The slow spring takes ~250ms to reach this point, which is
-        // enough time for the slide-up to visually "commit" before the lyrics tree is composed
-        // — this avoids jank on low-end devices and avoids the "blank panel then pop-in"
-        // artifact that immediate composition introduced on devices where the first frame of
-        // the lyrics tree takes longer than 16ms to compute.
+        // mark (progress > 0.5). On open, the slow spring takes ~250 ms to reach this point,
+        // which is enough time for the slide-up to visually "commit" before the lyrics tree is
+        // composed — this avoids jank on low-end devices and avoids the "blank panel then
+        // pop-in" artifact that immediate composition introduced on devices where the first
+        // frame of the lyrics tree takes longer than 16ms to compute. On close, the lyrics
+        // tree stays composed until progress drops back below 0.5, so the slide-down is smooth.
         derivedStateOf { visible || progressState.value > 0.5f }
     }
 

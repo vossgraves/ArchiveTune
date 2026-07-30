@@ -156,7 +156,7 @@
     <string name="aod_customize_auto_timer_off">Off</string>
     <string name="aod_customize_auto_timer_seconds">%1$d s</string>
     <string name="aod_customize_auto_on_screen_dim">Enter AOD when screen dims</string>
-    <string name="aod_customize_auto_on_screen_dim_desc">Automatically switch to AOD mode right before the screen turns off due to system inactivity. Useful while driving.</string>
+    <string name="aod_customize_auto_on_screen_dim_desc">Holds the screen on past the system screen-off timeout and switches to AOD mode 2 seconds before the screen would have turned off. Useful while driving — AOD appears while the screen is still lit, so you can see what\'s playing without waking the device.</string>
     <string name="aod_lyrics_loading">Loading lyrics…</string>
     <string name="aod_lyrics_unavailable">No lyrics available</string>
     <string name="aod_shape_rounded">Rounded</string>
@@ -263,6 +263,7 @@
     <string name="lyrics_share_show_advanced">Show advanced options</string>
     <string name="lyrics_share_hide_advanced">Hide advanced options</string>
     <string name="more_options">More options</string>
+    <string name="lyrics_share_less_options">Less options</string>
     <string name="remove_from_cache">Remove from cache</string>
     <string name="select">Select all</string>
     <string name="manage_tags">Manage Tags</string>
