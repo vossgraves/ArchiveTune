@@ -132,6 +132,7 @@ import moe.rukamori.archivetune.ui.component.LyricsEnhanced
 import moe.rukamori.archivetune.ui.component.LyricsV2
 import moe.rukamori.archivetune.ui.component.PlayerSliderTrack
 import moe.rukamori.archivetune.ui.menu.LyricsMenu
+import moe.rukamori.archivetune.ui.utils.rememberPreBlurredBitmap
 import moe.rukamori.archivetune.ui.theme.PlayerColorExtractor
 import moe.rukamori.archivetune.ui.theme.PlayerPaletteCache
 import moe.rukamori.archivetune.playback.artwork.PlayerPaletteCacheKey
@@ -736,22 +737,38 @@ private fun AppleMusicBackground(
                 .fillMaxSize()
                 .background(AppleMusicFallbackGradient.last()),
     ) {
+        // Pre-blurred bitmap for the lyrics background. On Android 12+ this is null and we fall
+        // through to AsyncImage + Modifier.blur. On older Android it returns a CPU-blurred bitmap
+        // that we render directly, because Modifier.blur is a silent no-op below API 31.
+        val preBlurredBitmap = rememberPreBlurredBitmap(imageUrl = mediaMetadata.thumbnailUrl, radiusDp = 46.dp)
         AnimatedContent(
             targetState = mediaMetadata.thumbnailUrl,
             transitionSpec = { fadeIn(tween(700)) togetherWith fadeOut(tween(700)) },
             label = "lyrics-apple-background",
         ) { thumbnailUrl ->
             if (thumbnailUrl != null) {
-                AsyncImage(
-                    model = thumbnailUrl,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier =
-                        Modifier
-                            .fillMaxSize()
-                            .blur(46.dp)
-                            .alpha(0.62f),
-                )
+                if (preBlurredBitmap != null) {
+                    androidx.compose.foundation.Image(
+                        bitmap = androidx.compose.ui.graphics.asImageBitmap(preBlurredBitmap),
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier =
+                            Modifier
+                                .fillMaxSize()
+                                .alpha(0.62f),
+                    )
+                } else {
+                    AsyncImage(
+                        model = thumbnailUrl,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier =
+                            Modifier
+                                .fillMaxSize()
+                                .blur(46.dp)
+                                .alpha(0.62f),
+                    )
+                }
             }
         }
         Box(
