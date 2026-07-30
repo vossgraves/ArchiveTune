@@ -7,6 +7,7 @@
 
 package moe.rukamori.archivetune.ui.utils
 
+import android.content.Context
 import android.graphics.Bitmap
 import android.os.Build
 import androidx.compose.runtime.Composable
@@ -66,19 +67,19 @@ fun rememberPreBlurredBitmap(
     var bitmap by remember(imageUrl, radiusDp, maxDimensionPx) { mutableStateOf<Bitmap?>(null) }
 
     LaunchedEffect(imageUrl, radiusDp, maxDimensionPx) {
-        bitmap = blurArtworkOffscreen(imageLoader, imageUrl, radiusDp, maxDimensionPx)
+        bitmap = blurArtworkOffscreen(context, imageLoader, imageUrl, radiusDp, maxDimensionPx)
     }
 
     return bitmap
 }
 
 private suspend fun blurArtworkOffscreen(
+    context: Context,
     imageLoader: coil3.ImageLoader,
     imageUrl: String,
     radiusDp: Dp,
     maxDimensionPx: Int,
 ): Bitmap? = withContext(Dispatchers.IO) {
-    val context = imageLoader.context
     val request =
         ImageRequest
             .Builder(context)

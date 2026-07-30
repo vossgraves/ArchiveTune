@@ -701,6 +701,7 @@
     <string name="export_downloaded_songs_pick_folder_first">Select at least one song and pick a folder</string>
     <string name="export_downloaded_songs_progress">Exporting %1$d of %2$d…</string>
     <string name="export_downloaded_songs_complete">Exported %1$d song(s) successfully%2$s</string>
+    <string name="export_downloaded_songs_skipped_incompatible">%1$d song(s) skipped (legacy WebM/Opus format — please re-download to enable export)</string>
     <string name="export_downloaded_songs_delete">Delete selected</string>
     <string name="export_downloaded_songs_delete_confirm_title">Delete downloaded songs?</string>
     <string name="export_downloaded_songs_delete_confirm_message">Remove the cached download for %1$d selected song(s)? This removes them from the offline cache but keeps the song entry in your library.</string>
