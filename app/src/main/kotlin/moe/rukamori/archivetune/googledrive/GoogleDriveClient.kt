@@ -112,14 +112,18 @@ class GoogleDriveClient
                     } catch (e: Exception) {
                         return@withContext UploadResult.PermanentFailure("Invalid folder URI: ${e.message}")
                     }
-                // Defensive: reject non-Drive URIs at the upload boundary. The UI picker
-                // validates this too, but a pre-fix user (or one who cleared app data and
-                // restored a backup that pre-dates this check) may still have a local-storage
-                // URI saved. Letting the upload proceed would silently write the backup to
-                // local storage instead of Drive — exactly the bug this fix addresses.
+                // Soft log: if the configured folder isn't a Google Drive URI (e.g. it's
+                // local storage, Dropbox, Nextcloud), backups will still be written to it via
+                // SAF — this is by design, since the user may have intentionally picked a
+                // non-Drive folder (Drive folders aren't reachable via SAF without the Drive
+                // app installed). We log a warning so any future debugging knows the upload
+                // didn't go to Drive. We don't reject — that would break the feature entirely
+                // for users without the Drive app, which was the bug report that motivated
+                // this revision.
                 if (!isGoogleDriveAuthority(treeUri)) {
-                    return@withContext UploadResult.PermanentFailure(
-                        "The configured folder is not on Google Drive. Please re-pick a Drive folder.",
+                    Timber.w(
+                        "GoogleDriveClient.uploadBackup: folder URI authority '%s' is not Google Drive — uploading via SAF anyway (user-picked folder)",
+                        treeUri.authority,
                     )
                 }
                 val folderDocUri =
@@ -265,9 +269,11 @@ class GoogleDriveClient
 
             /**
              * Returns true iff [uri]'s authority matches the Google Drive DocumentsProvider.
-             * Used at the upload boundary to reject non-Drive URIs (e.g. local-storage picks
-             * from before the picker gained validation) so backups never silently land on
-             * local storage.
+             * Used by [uploadBackup] for a soft warning log when the configured folder isn't
+             * a Drive URI (e.g. the user picked a local-storage or Nextcloud folder because
+             * the Drive app isn't installed). The upload proceeds anyway — this is by design,
+             * since rejecting non-Drive URIs would break the feature entirely for users
+             * without the Drive app.
              */
             fun isGoogleDriveAuthority(uri: Uri): Boolean {
                 val authority = uri.authority ?: return false
