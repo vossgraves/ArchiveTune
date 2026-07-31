@@ -8370,6 +8370,8 @@ class MusicService :
                             matchedArtist = resolved.matchedArtist,
                             matchedAlbum = resolved.matchedAlbum,
                             matchedDurationMs = resolved.matchedDurationMs,
+                            sampleRate = resolved.sampleRate,
+                            bitDepth = resolved.bitDepth,
                         )
                     }
             }
