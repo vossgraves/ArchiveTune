@@ -399,16 +399,6 @@ fun Queue(
         }
     }
     var scrollToCurrentRequested by remember { mutableStateOf(true) }
-    val openQueue =
-        remember(playerBottomSheetState, state) {
-            {
-                scrollToCurrentRequested = true
-                if (!playerBottomSheetState.isExpandedOrExpanding) {
-                    playerBottomSheetState.expandSoft()
-                }
-                state.expandSoft()
-            }
-        }
 
     BottomSheet(
         state = state,
@@ -427,7 +417,6 @@ fun Queue(
                         sleepTimerTimeLeft = sleepTimerTimeLeft,
                         repeatMode = repeatMode,
                         mediaMetadata = mediaMetadata,
-                        onExpandQueue = openQueue,
                         onSleepTimerClick = {
                             if (sleepTimerEnabled) {
                                 playerConnection.service.sleepTimer.clear()
@@ -435,7 +424,6 @@ fun Queue(
                                 showSleepTimerDialog = true
                             }
                         },
-                        onShowLyrics = onShowLyrics,
                         onRepeatModeClick = { playerConnection.player.toggleRepeatMode() },
                         onMenuClick = {
                             menuState.show {
@@ -464,7 +452,6 @@ fun Queue(
                         textBackgroundColor = TextBackgroundColor,
                         sleepTimerEnabled = sleepTimerEnabled,
                         sleepTimerTimeLeft = sleepTimerTimeLeft,
-                        onExpandQueue = openQueue,
                         onSleepTimerClick = {
                             if (sleepTimerEnabled) {
                                 playerConnection.service.sleepTimer.clear()
@@ -472,7 +459,6 @@ fun Queue(
                                 showSleepTimerDialog = true
                             }
                         },
-                        onShowLyrics = onShowLyrics,
                         onMenuClick = {
                             menuState.show {
                                 PlayerMenu(
@@ -514,7 +500,6 @@ fun Queue(
                         sleepTimerEnabled = sleepTimerEnabled,
                         sleepTimerTimeLeft = sleepTimerTimeLeft,
                         mediaMetadata = mediaMetadata,
-                        onExpandQueue = openQueue,
                         onSleepTimerClick = {
                             if (sleepTimerEnabled) {
                                 playerConnection.service.sleepTimer.clear()
@@ -522,7 +507,6 @@ fun Queue(
                                 showSleepTimerDialog = true
                             }
                         },
-                        onShowLyrics = onShowLyrics,
                     )
                 }
 
@@ -533,7 +517,6 @@ fun Queue(
                         textBackgroundColor = TextBackgroundColor,
                         sleepTimerEnabled = sleepTimerEnabled,
                         sleepTimerTimeLeft = sleepTimerTimeLeft,
-                        onExpandQueue = openQueue,
                         onSleepTimerClick = {
                             if (sleepTimerEnabled) {
                                 playerConnection.service.sleepTimer.clear()
@@ -541,7 +524,6 @@ fun Queue(
                                 showSleepTimerDialog = true
                             }
                         },
-                        onShowLyrics = onShowLyrics,
                     )
                 }
 
@@ -555,7 +537,6 @@ fun Queue(
                         sleepTimerEnabled = sleepTimerEnabled,
                         sleepTimerTimeLeft = sleepTimerTimeLeft,
                         mediaMetadata = mediaMetadata,
-                        onExpandQueue = openQueue,
                         onSleepTimerClick = {
                             if (sleepTimerEnabled) {
                                 playerConnection.service.sleepTimer.clear()
@@ -563,7 +544,6 @@ fun Queue(
                                 showSleepTimerDialog = true
                             }
                         },
-                        onShowLyrics = onShowLyrics,
                     )
                 }
 
@@ -632,8 +612,6 @@ fun Queue(
                         textBackgroundColor = TextBackgroundColor,
                         sleepTimerEnabled = sleepTimerEnabled,
                         sleepTimerTimeLeft = sleepTimerTimeLeft,
-                        onExpandQueue = openQueue,
-                        onShowLyrics = onShowLyrics,
                         onSleepTimerClick = {
                             if (sleepTimerEnabled) {
                                 playerConnection.service.sleepTimer.clear()

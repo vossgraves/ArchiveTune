@@ -534,13 +534,14 @@ fun QueueCollapsedContentV2(
     sleepTimerTimeLeft: Long,
     repeatMode: Int,
     mediaMetadata: MediaMetadata?,
-    onExpandQueue: () -> Unit,
     onSleepTimerClick: () -> Unit,
-    onShowLyrics: () -> Unit,
     onRepeatModeClick: () -> Unit,
     onMenuClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // Lyrics + queue buttons used to live in this peek. They have been moved to
+    // PlayerBottomActionsRow at the bottom of the V2 player content so the V2 layout
+    // matches every other non-Apple-Music style.
     val view = LocalView.current
     val (enableHapticFeedback) = rememberPreference(EnableHapticFeedbackKey, true)
 
@@ -597,38 +598,6 @@ fun QueueCollapsedContentV2(
             val iconSize = 24.dp
             val borderColor = textBackgroundColor.copy(alpha = 0.35f)
 
-            // Queue button
-            Box(
-                modifier =
-                    Modifier
-                        .size(buttonSize)
-                        .clip(
-                            RoundedCornerShape(
-                                topStart = 50.dp,
-                                bottomStart = 50.dp,
-                                topEnd = 10.dp,
-                                bottomEnd = 10.dp,
-                            ),
-                        ).border(
-                            1.dp,
-                            borderColor,
-                            RoundedCornerShape(
-                                topStart = 50.dp,
-                                bottomStart = 50.dp,
-                                topEnd = 10.dp,
-                                bottomEnd = 10.dp,
-                            ),
-                        ).clickable { onExpandQueue() },
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    painter = painterResource(id = R.drawable.player_queue_music),
-                    contentDescription = null,
-                    modifier = Modifier.size(iconSize),
-                    tint = textBackgroundColor,
-                )
-            }
-
             // Sleep timer button
             Box(
                 modifier =
@@ -665,24 +634,6 @@ fun QueueCollapsedContentV2(
                         )
                     }
                 }
-            }
-
-            // Lyrics button
-            Box(
-                modifier =
-                    Modifier
-                        .size(buttonSize)
-                        .clip(RoundedCornerShape(10.dp))
-                        .border(1.dp, borderColor, RoundedCornerShape(10.dp))
-                        .clickable { onShowLyrics() },
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    painter = painterResource(id = R.drawable.player_lyrics),
-                    contentDescription = null,
-                    modifier = Modifier.size(iconSize),
-                    tint = textBackgroundColor,
-                )
             }
 
             // Repeat mode button
@@ -769,15 +720,13 @@ fun QueueCollapsedContentV3(
     textBackgroundColor: Color,
     sleepTimerEnabled: Boolean,
     sleepTimerTimeLeft: Long,
-    onExpandQueue: () -> Unit,
     onSleepTimerClick: () -> Unit,
-    onShowLyrics: () -> Unit,
     onMenuClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val view = LocalView.current
-    val (enableHapticFeedback) = rememberPreference(EnableHapticFeedbackKey, true)
-
+    // Lyrics + queue buttons used to live in this peek. They have been moved to
+    // PlayerBottomActionsRow at the bottom of the V3 player content so the V3 layout
+    // matches every other non-Apple-Music style.
     Column(modifier = modifier.fillMaxWidth()) {
         if (showCodecOnPlayer && currentFormat != null) {
             val container = currentFormat.containerLabel()
@@ -792,7 +741,7 @@ fun QueueCollapsedContentV3(
         }
 
         Row(
-            horizontalArrangement = Arrangement.SpaceEvenly,
+            horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically,
             modifier =
                 Modifier
@@ -804,37 +753,6 @@ fun QueueCollapsedContentV3(
                         ),
                     ),
         ) {
-            // Queue button — enlarged touch target to 48dp (Material minimum) by increasing
-            // vertical padding from 8dp to 14dp. The previous ~34dp touch zone (18dp icon +
-            // 8dp+8dp padding) was below the 48dp minimum and contributed to missed taps,
-            // especially on V3 and (previously) V5 which used this composable.
-            Box(
-                modifier =
-                    Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .clickable { onExpandQueue() }
-                        .padding(horizontal = 12.dp, vertical = 14.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    Icon(
-                        painter = painterResource(id = R.drawable.player_queue_music),
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp),
-                        tint = textBackgroundColor.copy(alpha = 0.7f),
-                    )
-                    Text(
-                        text = stringResource(id = R.string.queue),
-                        color = textBackgroundColor.copy(alpha = 0.7f),
-                        style = MaterialTheme.typography.labelMedium,
-                        maxLines = 1,
-                    )
-                }
-            }
-
             // Sleep timer button
             Box(
                 modifier =
@@ -866,33 +784,7 @@ fun QueueCollapsedContentV3(
                 }
             }
 
-            // Lyrics button
-            Box(
-                modifier =
-                    Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .clickable { onShowLyrics() }
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    Icon(
-                        painter = painterResource(id = R.drawable.player_lyrics),
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                        tint = textBackgroundColor.copy(alpha = 0.7f),
-                    )
-                    Text(
-                        text = stringResource(id = R.string.lyrics),
-                        color = textBackgroundColor.copy(alpha = 0.7f),
-                        style = MaterialTheme.typography.labelMedium,
-                        maxLines = 1,
-                    )
-                }
-            }
+            Spacer(modifier = Modifier.width(24.dp))
 
             // Menu button
             Box(
@@ -924,11 +816,12 @@ fun QueueCollapsedContentV1(
     textBackgroundColor: Color,
     sleepTimerEnabled: Boolean,
     sleepTimerTimeLeft: Long,
-    onExpandQueue: () -> Unit,
     onSleepTimerClick: () -> Unit,
-    onShowLyrics: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // Lyrics + queue buttons used to live in this peek. They have been moved to
+    // PlayerBottomActionsRow at the bottom of the V1 player content so the V1 layout
+    // matches every other non-Apple-Music style.
     Column(modifier = modifier.fillMaxWidth()) {
         if (showCodecOnPlayer && currentFormat != null) {
             val container = currentFormat.containerLabel()
@@ -944,7 +837,7 @@ fun QueueCollapsedContentV1(
         }
 
         Row(
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically,
             modifier =
                 Modifier
@@ -956,36 +849,7 @@ fun QueueCollapsedContentV1(
                     ),
         ) {
             TextButton(
-                onClick = onExpandQueue,
-                modifier = Modifier.weight(1f),
-                shapes = ButtonDefaults.shapes(),
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Icon(
-                        painter = painterResource(id = R.drawable.player_queue_music),
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp),
-                        tint = textBackgroundColor,
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = stringResource(id = R.string.queue),
-                        color = textBackgroundColor,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.basicMarquee(),
-                    )
-                }
-            }
-
-            TextButton(
                 onClick = onSleepTimerClick,
-                modifier = Modifier.weight(1.2f),
                 shapes = ButtonDefaults.shapes(),
             ) {
                 Row(
@@ -1026,34 +890,6 @@ fun QueueCollapsedContentV1(
                     }
                 }
             }
-
-            TextButton(
-                onClick = onShowLyrics,
-                modifier = Modifier.weight(1f),
-                shapes = ButtonDefaults.shapes(),
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Icon(
-                        painter = painterResource(id = R.drawable.player_lyrics),
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp),
-                        tint = textBackgroundColor,
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = stringResource(id = R.string.lyrics),
-                        color = textBackgroundColor,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.basicMarquee(),
-                    )
-                }
-            }
         }
     }
 }
@@ -1071,11 +907,12 @@ fun QueueCollapsedContentV4(
     sleepTimerEnabled: Boolean,
     sleepTimerTimeLeft: Long,
     mediaMetadata: MediaMetadata?,
-    onExpandQueue: () -> Unit,
     onSleepTimerClick: () -> Unit,
-    onShowLyrics: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // Lyrics + queue buttons used to live in this peek. They have been moved to
+    // PlayerBottomActionsRow at the bottom of the V4/V6 player content so the layout
+    // matches every other non-Apple-Music style.
     Column(modifier = modifier.fillMaxWidth()) {
         if (showCodecOnPlayer && currentFormat != null) {
             val container = currentFormat.containerLabel()
@@ -1091,7 +928,7 @@ fun QueueCollapsedContentV4(
         }
 
         Row(
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically,
             modifier =
                 Modifier
@@ -1105,40 +942,6 @@ fun QueueCollapsedContentV4(
         ) {
             val buttonSize = 48.dp
             val iconSize = 22.dp
-
-            // Queue button (pill)
-            Box(
-                modifier =
-                    Modifier
-                        .height(buttonSize)
-                        .weight(1f)
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(textBackgroundColor.copy(alpha = 0.1f))
-                        .clickable { onExpandQueue() },
-                contentAlignment = Alignment.Center,
-            ) {
-                Row(
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxSize(),
-                ) {
-                    Icon(
-                        painter = painterResource(id = R.drawable.player_queue_music),
-                        contentDescription = null,
-                        modifier = Modifier.size(iconSize),
-                        tint = textBackgroundColor,
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = stringResource(id = R.string.queue),
-                        color = textBackgroundColor,
-                        style = MaterialTheme.typography.labelLarge,
-                        maxLines = 1,
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.width(10.dp))
 
             // Sleep timer button (circle)
             Box(
@@ -1182,40 +985,6 @@ fun QueueCollapsedContentV4(
                     }
                 }
             }
-
-            Spacer(modifier = Modifier.width(10.dp))
-
-            // Lyrics button (pill)
-            Box(
-                modifier =
-                    Modifier
-                        .height(buttonSize)
-                        .weight(1f)
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(textBackgroundColor.copy(alpha = 0.1f))
-                        .clickable { onShowLyrics() },
-                contentAlignment = Alignment.Center,
-            ) {
-                Row(
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxSize(),
-                ) {
-                    Icon(
-                        painter = painterResource(id = R.drawable.player_lyrics),
-                        contentDescription = null,
-                        modifier = Modifier.size(iconSize),
-                        tint = textBackgroundColor,
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = stringResource(id = R.string.lyrics),
-                        color = textBackgroundColor,
-                        style = MaterialTheme.typography.labelLarge,
-                        maxLines = 1,
-                    )
-                }
-            }
         }
     }
 }
@@ -1227,13 +996,14 @@ fun QueueCollapsedContentV7(
     textBackgroundColor: Color,
     sleepTimerEnabled: Boolean,
     sleepTimerTimeLeft: Long,
-    onExpandQueue: () -> Unit,
-    onShowLyrics: () -> Unit,
     onSleepTimerClick: () -> Unit,
     onDeviceClick: () -> Unit,
     device: ActiveOutputDevice,
     modifier: Modifier = Modifier,
 ) {
+    // Lyrics + queue buttons used to live in this peek. They have been moved to
+    // PlayerBottomActionsRow at the bottom of the V7/V8 player content so the layout
+    // matches every other non-Apple-Music style.
     Column(modifier = modifier.fillMaxWidth()) {
         if (showCodecOnPlayer && currentFormat != null) {
             val container = currentFormat.containerLabel()
@@ -1267,44 +1037,6 @@ fun QueueCollapsedContentV7(
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Surface(
-                    onClick = onExpandQueue,
-                    shape = CircleShape,
-                    color = textBackgroundColor.copy(alpha = 0.08f),
-                    modifier = Modifier.size(42.dp),
-                ) {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(
-                            painter = painterResource(id = R.drawable.player_queue_music),
-                            contentDescription = null,
-                            modifier = Modifier.size(iconSize),
-                            tint = textBackgroundColor,
-                        )
-                    }
-                }
-
-                Surface(
-                    onClick = onShowLyrics,
-                    shape = CircleShape,
-                    color = textBackgroundColor.copy(alpha = 0.08f),
-                    modifier = Modifier.size(42.dp),
-                ) {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(
-                            painter = painterResource(id = R.drawable.player_lyrics),
-                            contentDescription = null,
-                            modifier = Modifier.size(iconSize),
-                            tint = textBackgroundColor,
-                        )
-                    }
-                }
-
                 Surface(
                     onClick = onSleepTimerClick,
                     shape = if (sleepTimerEnabled) RoundedCornerShape(20.dp) else CircleShape,
