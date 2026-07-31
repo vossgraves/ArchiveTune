@@ -22,7 +22,8 @@ import android.provider.Settings
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -88,7 +89,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
@@ -214,7 +214,6 @@ import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberLowDataModeActive
 import moe.rukamori.archivetune.utils.rememberPreference
 import java.util.Locale
-import timber.log.Timber
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
@@ -231,14 +230,6 @@ private const val V7BackdropOverlapDp = 72
 private const val V7SharpStageBottomScrimStartFraction = 0.40f
 private const val V7BackdropFloorBlackStartFraction = 0.88f
 private const val V8BackdropArtworkSizePx = 1_024
-
-/**
- * Separation between the queue sheet's dismissed and collapsed anchors for designs that draw no
- * peek bar. [BottomSheet] treats `value == collapsedBound` as "collapsed" and skips composing its
- * content, so the two anchors must not coincide or the sheet can never open. Sub-pixel on every
- * supported density, therefore invisible.
- */
-private val CollapsedAnchorEpsilon = 0.5.dp
 
 @Stable
 internal class DeviceMusicVolumeController(
@@ -462,6 +453,10 @@ fun BottomSheetPlayer(
     val currentSongLiked = currentSong?.song?.liked == true
     val queueTitle by playerConnection.queueTitle.collectAsState()
     val currentFormat by playerConnection.currentFormat.collectAsState(initial = null)
+    // Snapshot the lyrics entity for the AOD screen — AOD shows only the current line, so we
+    // pass the raw text down rather than the full Lyrics composable tree (cheaper to render,
+    // and matches the "dim, low-power" goal of always-on display).
+    val currentLyricsEntity by playerConnection.currentLyrics.collectAsState(initial = null)
     val queueWindows by playerConnection.queueWindows.collectAsState()
     val currentWindowIndex by playerConnection.currentWindowIndex.collectAsState()
     val deviceMusicVolumeController = rememberDeviceMusicVolumeController()
@@ -843,25 +838,11 @@ fun BottomSheetPlayer(
 
     val dismissedBound = dynamicQueuePeekHeight + WindowInsets.systemBars.asPaddingValues().calculateBottomPadding()
 
-    // The queue sheet rests at `collapsedBound`. BottomSheet gates its content on
-    // `!state.isCollapsed` (value == collapsedBound) and scales the background alpha by `progress`,
-    // which is 0 at the collapsed anchor. Designs with a 0.dp peek (V5, Apple Music) previously
-    // passed the same value for both bounds, so the sheet was permanently "collapsed": expanding it
-    // composed no content and drew a fully transparent background, which is why the queue button
-    // appeared completely dead. Keep the resting position visually hidden but make the collapsed
-    // anchor a hair below the dismissed one so the two states stay distinguishable.
-    val collapsedBound =
-        if (dynamicQueuePeekHeight == 0.dp) {
-            dismissedBound + CollapsedAnchorEpsilon
-        } else {
-            dismissedBound
-        }
-
     val queueSheetState =
         rememberBottomSheetState(
             dismissedBound = dismissedBound,
             expandedBound = state.expandedBound,
-            collapsedBound = collapsedBound,
+            collapsedBound = dismissedBound,
             initialAnchor = 0,
         )
 
@@ -887,35 +868,8 @@ fun BottomSheetPlayer(
                     state.expandSoft()
                 }
                 queueSheetState.expandSoft()
-                // TODO(v0): temporary diagnostics for the Apple Music queue button, remove once fixed.
-                Timber.tag("v0").d(
-                    "openQueue: style=%s dismissed=%s collapsed=%s expanded=%s value=%s " +
-                        "isCollapsed=%s isDismissed=%s progress=%s targetAnchor=%s",
-                    playerDesignStyle,
-                    queueSheetState.dismissedBound,
-                    queueSheetState.collapsedBound,
-                    queueSheetState.expandedBound,
-                    queueSheetState.value,
-                    queueSheetState.isCollapsed,
-                    queueSheetState.isDismissed,
-                    queueSheetState.progress,
-                    queueSheetState.targetAnchor,
-                )
             }
         }
-
-    // TODO(v0): temporary diagnostics; reports where the queue sheet actually settles after a tap.
-    LaunchedEffect(queueSheetState.targetAnchor) {
-        snapshotFlow { queueSheetState.value }
-            .collect { current ->
-                Timber.tag("v0").d(
-                    "queueSheet settle: value=%s isCollapsed=%s progress=%s",
-                    current,
-                    queueSheetState.isCollapsed,
-                    queueSheetState.progress,
-                )
-            }
-    }
 
     BackHandler(
         enabled =
@@ -1183,6 +1137,34 @@ fun BottomSheetPlayer(
         }
         var canvasArtworkRevision by remember(mediaMetadata?.id) {
             mutableIntStateOf(0)
+        }
+
+        // Prefetch the canvas artwork for the next-up song in the background
+        // so when the user skips, the canvas starts animating within ~100ms
+        // instead of waiting for the ArchiveTuneCanvas API lookup (~200-800ms).
+        // Skipped if the next-up canvas is already cached (cheap in-memory
+        // check) or if low-data mode is on (respect the user's data-saver).
+        LaunchedEffect(nextUpMetadata?.id, shouldUseV7Canvas, shouldUseArtworkCanvas, lowDataModeActive) {
+            val next = nextUpMetadata ?: return@LaunchedEffect
+            val nextMediaId = next.id.trim().takeIf { it.isNotBlank() } ?: return@LaunchedEffect
+            if (!shouldUseV7Canvas && !shouldUseArtworkCanvas) return@LaunchedEffect
+            if (lowDataModeActive) return@LaunchedEffect
+            // Skip if already cached — CanvasArtworkPlaybackCache.hasEntry is
+            // a cheap in-memory map lookup, no I/O.
+            if (CanvasArtworkPlaybackCache.hasEntry(nextMediaId)) return@LaunchedEffect
+            kotlinx.coroutines.withContext(Dispatchers.IO) {
+                runCatching {
+                    resolveCanvasArtworkForPlayback(
+                        mediaId = nextMediaId,
+                        songTitleRaw = next.title,
+                        artistNameRaw = next.artists.firstOrNull()?.name.orEmpty(),
+                        storefront = storefront,
+                        requireVertical = shouldUseV7Canvas,
+                        allowNetwork = true,
+                        albumTitle = next.album?.title,
+                    )
+                }
+            }
         }
 
         LaunchedEffect(playerConnection, mediaMetadata?.id) {
@@ -2004,6 +1986,7 @@ fun BottomSheetPlayer(
                     canSkipPrevious = canSkipPrevious,
                     canSkipNext = canSkipNext,
                     thumbnailCornerRadius = thumbnailCornerRadius,
+                    lyricsText = currentLyricsEntity?.lyrics,
                     onPlayPause = { playerConnection.player.togglePlayPause() },
                     onSkipPrevious = playerConnection::seekToPrevious,
                     onSkipNext = playerConnection::seekToNext,
@@ -2053,27 +2036,53 @@ private fun MikoLyricsTransition(
     // interruptible spring, staying fully opaque the whole way (no cross-fade), while a dim scrim
     // fades in behind it. All derived transforms are read inside graphicsLayer/draw lambdas so the
     // animation runs entirely in the draw phase — zero recomposition per frame.
+    //
+    // Direction-aware spring: the OPEN glide is the soft critically-damped spring (dampingRatio=1f
+    // / stiffness=160f, ~500 ms settle) that the user explicitly asked to keep. The CLOSE glide is
+    // ~40% slower (stiffness=80f, ~700 ms settle) per the user's follow-up request to slow down
+    // the lyrics UI closing transition. Critically-damped (no overshoot) on both sides so the
+    // close doesn't feel bouncy.
+    //
+    // We use an `Animatable` driven by `LaunchedEffect(visible)` (rather than `animateFloatAsState`)
+    // because `animateFloatAsState` is direction-symmetric — the same spec applies whether the
+    // target is going 0→1 or 1→0 — and we need separate specs per direction.
     val animationsDisabled = LocalAnimationsDisabled.current
-    val progressState =
-        animateFloatAsState(
-            targetValue = if (visible) 1f else 0f,
-            animationSpec =
-                if (animationsDisabled) {
-                    snap()
-                } else {
-                    spring(
-                        // Critically damped and deliberately soft: the sheet glides up over roughly
-                        // half a second and eases into place with no overshoot, instead of snapping
-                        // open.
-                        dampingRatio = 1f,
-                        stiffness = 160f,
-                        visibilityThreshold = 0.001f,
-                    )
-                },
-            label = "mikoLyricsTransition",
-        )
+    val progress = remember { Animatable(initialValue = 0f) }
+    LaunchedEffect(visible, animationsDisabled) {
+        if (animationsDisabled) {
+            progress.snapTo(if (visible) 1f else 0f)
+        } else {
+            progress.animateTo(
+                targetValue = if (visible) 1f else 0f,
+                animationSpec =
+                    if (visible) {
+                        // OPEN — keep the premium slow glide (~500 ms).
+                        spring(
+                            dampingRatio = 1f,
+                            stiffness = 160f,
+                            visibilityThreshold = 0.001f,
+                        )
+                    } else {
+                        // CLOSE — slower by ~40% (~700 ms) per user request.
+                        spring(
+                            dampingRatio = 1f,
+                            stiffness = 80f,
+                            visibilityThreshold = 0.001f,
+                        )
+                    },
+            )
+        }
+    }
+    val progressState = progress.asState()
     val showContent by remember {
-        derivedStateOf { visible || progressState.value > 0.001f }
+        // Defer composing the heavy LyricsScreen tree until the sheet has crossed the halfway
+        // mark (progress > 0.5). On open, the slow spring takes ~250 ms to reach this point,
+        // which is enough time for the slide-up to visually "commit" before the lyrics tree is
+        // composed — this avoids jank on low-end devices and avoids the "blank panel then
+        // pop-in" artifact that immediate composition introduced on devices where the first
+        // frame of the lyrics tree takes longer than 16ms to compute. On close, the lyrics
+        // tree stays composed until progress drops back below 0.5, so the slide-down is smooth.
+        derivedStateOf { visible || progressState.value > 0.5f }
     }
 
     if (showContent) {
@@ -2208,13 +2217,8 @@ private fun V8PlayerBackdrop(
     }
 }
 
-// internal, not private: the Apple Music design reuses this instead of Modifier.blur(). A live
-// Modifier.blur() on a full-screen image re-runs the gaussian every frame, which made the lyrics
-// transition visibly choppy in that style only. This blurs once into a cached 500px bitmap off the
-// main thread, so per-frame cost is zero. Despite the name it is not API-gated — ImageBlurUtils is
-// a software blur, so it also gives older devices a backdrop they previously never got.
 @Composable
-internal fun BackdropBlurApi30(
+private fun BackdropBlurApi30(
     model: String?,
     blurAmount: Int,
     modifier: Modifier = Modifier,
@@ -2846,19 +2850,30 @@ private fun LittlePlayerContent(
 
                 Spacer(Modifier.width((18f * scale).dp))
 
-                Icon(
-                    painter = painterResource(R.drawable.player_queue_music),
-                    contentDescription = null,
-                    tint = textColor.copy(alpha = 0.78f),
+                // Queue button — wrapped in a 48dp Box (Material minimum touch target) so the
+                // tap is reliably registerable even on dense layouts. The previous version put
+                // .clickable directly on the 26dp Icon, which (combined with indication=null)
+                // made taps very easy to miss — one of the root causes of the "queue button
+                // doesn't work at all" report. The Icon itself stays at iconSize for visual
+                // consistency; only the touch target grows.
+                Box(
+                    contentAlignment = Alignment.Center,
                     modifier =
                         Modifier
-                            .size(iconSize)
+                            .size(48.dp)
                             .clickable(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null,
                                 onClick = onExpandQueue,
                             ),
-                )
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.player_queue_music),
+                        contentDescription = null,
+                        tint = textColor.copy(alpha = 0.78f),
+                        modifier = Modifier.size(iconSize),
+                    )
+                }
 
                 Spacer(Modifier.width((18f * scale).dp))
 

@@ -75,6 +75,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.constants.DisableAnimationsKey
 import moe.rukamori.archivetune.constants.FloatingNavigationBarMaxWidth
+import moe.rukamori.archivetune.constants.HideNavigationBarLabelsKey
 import moe.rukamori.archivetune.constants.NavigationBarHeight
 import moe.rukamori.archivetune.constants.NavigationBarMaxWidth
 import moe.rukamori.archivetune.constants.NavigationBarStyle
@@ -167,6 +168,7 @@ fun FloatingNavigationToolbar(
         if (pureBlack) Color.Black else MaterialTheme.colorScheme.surfaceContainer
     val motionScheme = MaterialTheme.motionScheme
     val (disableAnimations) = rememberPreference(DisableAnimationsKey, defaultValue = false)
+    val (hideNavigationLabels) = rememberPreference(HideNavigationBarLabelsKey, defaultValue = false)
     val density = LocalDensity.current
 
     // Color of the custom sliding pill that sits behind the selected item's icon. The floating
@@ -412,11 +414,15 @@ fun FloatingNavigationToolbar(
                                         }
                                     }
                                 },
-                                label = {
-                                    Text(
-                                        text = stringResource(screen.titleId),
-                                        maxLines = 1,
-                                    )
+                                label = if (hideNavigationLabels) {
+                                    null
+                                } else {
+                                    {
+                                        Text(
+                                            text = stringResource(screen.titleId),
+                                            maxLines = 1,
+                                        )
+                                    }
                                 },
                             )
                         }

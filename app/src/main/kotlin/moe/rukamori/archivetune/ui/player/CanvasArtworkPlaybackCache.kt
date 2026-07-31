@@ -50,6 +50,16 @@ object CanvasArtworkPlaybackCache {
     private const val DOWNLOAD_MAX_ATTEMPTS = 4
     private const val DOWNLOAD_RETRY_DELAY_MS = 750L
     private const val CACHE_SIZE_BYTES_PER_MEGABYTE = 1024L * 1024L
+    /**
+     * Re-validate cached canvas videos with [File.isValidCanvasVideo] at most
+     * once per day. The probe is expensive (~50-200ms per file via
+     * MediaExtractor) and was the dominant contributor to canvas startup
+     * latency on cache hits. Since [cacheCanvasVideo] already validates the
+     * file at download time, the only way a cached file becomes invalid is
+     * if the user or OS truncates it — rare enough that a daily re-check is
+     * plenty.
+     */
+    private const val STALE_AFTER_MS = 24L * 60L * 60L * 1000L
 
     private val map = LinkedHashMap<String, CanvasCacheEntry>(DEFAULT_MAX_SIZE_MEGABYTES, 0.75f, true)
     private val cacheJobs = LinkedHashMap<String, Job>()
@@ -134,6 +144,114 @@ object CanvasArtworkPlaybackCache {
         map[mediaId] = entry.copy(lastAccessedAtMs = System.currentTimeMillis())
         schedulePersist()
         return playable
+    }
+
+    /**
+     * Returns true if the cache has a (potentially playable) canvas entry for [mediaId].
+     * This is cheaper than [get] because it skips the full [CanvasCacheEntry.toPlayableArtwork]
+     * resolution and file-existence checks — it only verifies that an in-memory entry exists.
+     */
+    @Synchronized
+    fun hasEntry(mediaId: String): Boolean {
+        if (mediaId.isBlank()) return false
+        return map.containsKey(mediaId)
+    }
+
+    /**
+     * Fast-path variant of [get] that skips the expensive [File.isValidCanvasVideo]
+     * MediaExtractor probe. Use this for hot paths like the player's "refetch
+     * canvas" menu visibility check and the canvas LaunchedEffect — those run
+     * on every media-item transition and the ~50-200ms MediaExtractor probe
+     * per file (regular + vertical) was the dominant contributor to canvas
+     * startup latency.
+     *
+     * The probe was originally there to catch partially-downloaded or corrupt
+     * canvas files, but we already validate the file right after download in
+     * [cacheCanvasVideo] (which throws and discards if validation fails). The
+     * only way a file can become invalid post-download is if the user or OS
+     * truncates it — a rare enough event that we can defer the probe to the
+     * actual ExoPlayer.open() call (which will throw on a corrupt file and
+     * trigger the existing fallback chain).
+     *
+     * Falls back to [get] (with the full probe) if the cached entry's
+     * [CanvasCacheEntry.lastValidatedAtMs] is older than [STALE_AFTER_MS] —
+     * this re-validates entries that haven't been touched in a while without
+     * taxing the hot path.
+     */
+    @Synchronized
+    fun getCachedOnlyFast(mediaId: String): CanvasArtwork? {
+        if (maxSizeBytes == 0L || mediaId.isBlank()) return null
+        val entry = map[mediaId] ?: return null
+        val directory = cacheDirectory ?: return null
+        val now = System.currentTimeMillis()
+        val isStale = now - entry.lastValidatedAtMs > STALE_AFTER_MS
+
+        // Fast path: trust the cache. Only check file existence (cheap) — skip
+        // the MediaExtractor probe. The file's existence + non-zero size is
+        // sufficient given that cacheCanvasVideo already validated it on write.
+        val regularUri = entry.regularFileName
+            ?.let(directory::resolve)
+            ?.takeIf { file -> file.isUsableFile() }
+            ?.let { file -> Uri.fromFile(file).toString() }
+        val verticalUri = entry.verticalFileName
+            ?.let(directory::resolve)
+            ?.takeIf { file -> file.isUsableFile() }
+            ?.let { file -> Uri.fromFile(file).toString() }
+
+        // If both files are missing, the entry is stale — let the regular get()
+        // path clean it up. This catches the rare case where the file was
+        // deleted out from under us (e.g., the user manually cleared the
+        // canvas cache directory).
+        if (regularUri == null && verticalUri == null) {
+            if (isStale) {
+                map.remove(mediaId)
+                schedulePersist()
+            }
+            return null
+        }
+
+        // For stale entries (older than STALE_AFTER_MS), do the full probe
+        // in the background to refresh lastValidatedAtMs — but still return
+        // the playable artwork immediately so we don't block the UI.
+        if (isStale) {
+            persistScope.launch {
+                runCatching {
+                    val current = synchronized(this@CanvasArtworkPlaybackCache) { map[mediaId] } ?: return@launch
+                    val regularValid = current.regularFileName
+                        ?.let(directory::resolve)
+                        ?.takeIf(File::isUsableFile)
+                        ?.isValidCanvasVideo() == true
+                    val verticalValid = current.verticalFileName
+                        ?.let(directory::resolve)
+                        ?.takeIf(File::isUsableFile)
+                        ?.isValidCanvasVideo() == true
+                    if (!regularValid && !verticalValid) {
+                        // Both files turned out to be invalid — evict.
+                        synchronized(this@CanvasArtworkPlaybackCache) {
+                            map.remove(mediaId)
+                            schedulePersist()
+                        }
+                        return@launch
+                    }
+                    synchronized(this@CanvasArtworkPlaybackCache) {
+                        map[mediaId] = current.copy(
+                            lastValidatedAtMs = now,
+                            lastAccessedAtMs = now,
+                        )
+                        schedulePersist()
+                    }
+                }
+            }
+        }
+
+        map[mediaId] = entry.copy(lastAccessedAtMs = now)
+        schedulePersist()
+        return entry.artwork.copy(
+            animated = regularUri ?: entry.artwork.animated,
+            videoUrl = regularUri ?: entry.artwork.videoUrl,
+            animatedVertical = verticalUri ?: entry.artwork.animatedVertical,
+            videoUrlVertical = verticalUri ?: entry.artwork.videoUrlVertical,
+        )
     }
 
     suspend fun put(
@@ -233,6 +351,10 @@ object CanvasArtworkPlaybackCache {
                 url = artwork.downloadableRegularUrl(),
                 currentFileName = current?.regularFileName,
             )
+        // cacheCanvasVideo already validates the file via isValidCanvasVideo()
+        // before returning its name, so we set lastValidatedAtMs to now to
+        // skip the re-probe on the next get()/getCachedOnlyFast() call.
+        val nowAfterRegular = System.currentTimeMillis()
         persistEntry(
             directory = directory,
             entry =
@@ -241,8 +363,9 @@ object CanvasArtworkPlaybackCache {
                     artwork = artwork,
                     regularFileName = regularFileName,
                     verticalFileName = current?.verticalFileName,
-                    createdAtMs = current?.createdAtMs ?: System.currentTimeMillis(),
-                    lastAccessedAtMs = System.currentTimeMillis(),
+                    createdAtMs = current?.createdAtMs ?: nowAfterRegular,
+                    lastAccessedAtMs = nowAfterRegular,
+                    lastValidatedAtMs = nowAfterRegular,
                 ),
         )
         val verticalFileName =
@@ -263,6 +386,7 @@ object CanvasArtworkPlaybackCache {
                 verticalFileName = verticalFileName,
                 createdAtMs = current?.createdAtMs ?: now,
                 lastAccessedAtMs = now,
+                lastValidatedAtMs = now,
             )
 
         if (regularFileName == null && verticalFileName == null) {
@@ -614,6 +738,14 @@ object CanvasArtworkPlaybackCache {
         val verticalFileName: String? = null,
         val createdAtMs: Long,
         val lastAccessedAtMs: Long,
+        /**
+         * Timestamp of the last full [File.isValidCanvasVideo] probe. Used by
+         * [getCachedOnlyFast] to skip the expensive MediaExtractor call on
+         * cache hits that were validated recently. Defaults to 0 for legacy
+         * entries loaded from disk, which forces a single re-validation on
+         * first access (and then never again until the entry is replaced).
+         */
+        val lastValidatedAtMs: Long = 0L,
     ) {
         fun byteSize(directory: File): Long =
             listOfNotNull(regularFileName, verticalFileName)

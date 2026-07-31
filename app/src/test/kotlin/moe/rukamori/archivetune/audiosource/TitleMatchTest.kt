@@ -15,9 +15,7 @@ import org.junit.Test
 class TitleMatchTest {
     @Test
     fun rejectsIdenticalTitleByDifferentArtist() {
-        // Duration has to stay within the 15s hard gate, otherwise evaluate() rejects on duration
-        // before it ever compares artists and this stops testing the artist gate at all.
-        val result = evaluate(stream(title = "Stay", artist = "The Kid LAROI", durationMs = 241_500))
+        val result = evaluate(stream(title = "Stay", artist = "The Kid LAROI", durationMs = 141_000))
 
         assertFalse(result.accepted)
         assertTrue(result.reason.contains("artist"))

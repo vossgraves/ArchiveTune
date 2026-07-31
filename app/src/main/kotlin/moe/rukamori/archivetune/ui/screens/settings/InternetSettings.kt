@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -42,6 +43,7 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -58,7 +60,6 @@ import androidx.compose.ui.unit.dp
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
@@ -70,10 +71,10 @@ import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.ProxyUtils
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
-import moe.rukamori.archivetune.utils.reportException
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.net.Proxy
+import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 @Composable
@@ -141,8 +142,7 @@ fun InternetWarningBox(modifier: Modifier = Modifier) {
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-fun InternetSettings(navController: NavController) {
-    val anchors = rememberSettingsAnchorState(SettingsAnchorScreens.INTERNET)
+fun InternetSettings(navController: NavController, scrollTo: String? = null) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -161,6 +161,10 @@ fun InternetSettings(navController: NavController) {
     var loadingIpRotation by remember { mutableStateOf(false) }
     var refreshingIpRotation by remember { mutableStateOf(false) }
     val activeProxyCount by YouTube.ipRotationActiveCount.collectAsStateWithLifecycle()
+
+    val (ytMusicRegion, onYtMusicRegionChange) =
+        rememberPreference(key = YouTubeMusicRegionKey, defaultValue = SYSTEM_DEFAULT)
+    val ytRegionValues = remember { listOf(SYSTEM_DEFAULT) + CountryCodeToName.keys.toList() }
 
     var testingProxy by remember { mutableStateOf(false) }
     var testResult by remember { mutableStateOf<String?>(null) }
@@ -194,21 +198,75 @@ fun InternetSettings(navController: NavController) {
         },
     ) { innerPadding ->
         val topPadding = innerPadding.calculateTopPadding()
+        val scrollState = rememberScrollState()
+        val positions = rememberPreferencePositions()
+
+        LaunchedEffect(scrollTo) { positions.scrollToKey(scrollTo, scrollState) }
 
         Column(
             Modifier
                 .padding(top = topPadding)
                 .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom))
-                .verticalScroll(anchors.scrollState)
-                .padding(bottom = SettingsDimensions.ScreenBottomPadding)
-                .then(anchors.containerModifier),
+                .verticalScroll(scrollState)
+                .padding(bottom = SettingsDimensions.ScreenBottomPadding),
         ) {
             InternetWarningBox()
 
-            PreferenceGroup(title = stringResource(R.string.dns_over_https)) {
+            PreferenceGroup(
+                modifier = positions.modifierFor("yt_music_region"),
+                title = stringResource(R.string.youtube_music_region),
+            ) {
+                item {
+                    ListPreference(
+                        title = { Text(stringResource(R.string.youtube_music_region)) },
+                        description = stringResource(R.string.youtube_music_region_desc),
+                        icon = { Icon(painterResource(R.drawable.location_on), null) },
+                        selectedValue = ytMusicRegion,
+                        values = ytRegionValues,
+                        valueText = { code ->
+                            if (code == SYSTEM_DEFAULT) {
+                                stringResource(R.string.system_default)
+                            } else {
+                                CountryCodeToName.getOrElse(code) { code }
+                            }
+                        },
+                        onValueSelected = { newValue ->
+                            // Apply immediately — `gl` is in the JSON body of every YT Music
+                            // request (browse/search/player/next/suggestions/queue), so the
+                            // next call will use the new region. `SYSTEM_DEFAULT` falls back
+                            // to the device locale (or, if that's not in CountryCodeToName,
+                            // to "US"), matching the App.kt startup logic.
+                            //
+                            // We also clear visitorData: that token is minted by YouTube with
+                            // an implicit region baked in (derived from the IP/locale at the
+                            // time of the sw.js_data scrape). Without rotation, YouTube can
+                            // keep serving content pinned to the *old* region for personalized
+                            // endpoints like FEmusic_home, even though context.client.gl says
+                            // otherwise. Setting it to null forces the next request to re-fetch
+                            // a fresh, region-pinned token.
+                            //
+                            // The locale assignment emits YouTube.localeChanges, which
+                            // HomeViewModel collects to trigger an immediate home-feed refresh
+                            // (no manual pull-to-refresh required).
+                            val deviceLocale = Locale.getDefault()
+                            val resolvedGl =
+                                newValue.takeIf { it != SYSTEM_DEFAULT }
+                                    ?: deviceLocale.country.takeIf { it in CountryCodeToName }
+                                    ?: "US"
+                            YouTube.visitorData = null
+                            YouTube.locale = YouTube.locale.copy(gl = resolvedGl)
+                            onYtMusicRegionChange(newValue)
+                        },
+                    )
+                }
+            }
+
+            PreferenceGroup(
+                modifier = positions.modifierFor("enable_tor"),
+                title = stringResource(R.string.dns_over_https),
+            ) {
                 item {
                     SwitchPreference(
-                        modifier = anchors.anchor(SettingsAnchors.DNS_OVER_HTTPS),
                         title = { Text(stringResource(R.string.dns_over_https)) },
                         description = stringResource(R.string.dns_over_https_desc),
                         icon = { Icon(painterResource(R.drawable.security), null) },
@@ -237,10 +295,12 @@ fun InternetSettings(navController: NavController) {
                 }
             }
 
-            PreferenceGroup(title = stringResource(R.string.proxy)) {
+            PreferenceGroup(
+                modifier = positions.modifierFor("proxy_settings"),
+                title = stringResource(R.string.proxy),
+            ) {
                 item {
                     SwitchPreference(
-                        modifier = anchors.anchor(SettingsAnchors.PROXY),
                         title = { Text(stringResource(R.string.enable_proxy)) },
                         icon = { Icon(painterResource(R.drawable.wifi_proxy), null) },
                         checked = proxyEnabled,
@@ -390,7 +450,10 @@ fun InternetSettings(navController: NavController) {
                 }
             }
 
-            PreferenceGroup(title = stringResource(R.string.ip_rotation)) {
+            PreferenceGroup(
+                modifier = positions.modifierFor("download_speed_limit"),
+                title = stringResource(R.string.ip_rotation),
+            ) {
                 item {
                     IpRotationPreference(
                         title = { Text(stringResource(R.string.ip_rotation)) },
@@ -405,13 +468,7 @@ fun InternetSettings(navController: NavController) {
                                     loadingIpRotation = true
                                     try {
                                         YouTube.enableIpRotation()
-                                    } catch (e: CancellationException) {
-                                        // Leaving the screen cancels this scope. Treating that as a
-                                        // failure silently flipped the user's toggle back off, so
-                                        // rethrow and only revert on a genuine error.
-                                        throw e
-                                    } catch (e: Exception) {
-                                        reportException(e)
+                                    } catch (_: Exception) {
                                         onIpRotationEnabledChange(false)
                                     } finally {
                                         loadingIpRotation = false
@@ -427,10 +484,7 @@ fun InternetSettings(navController: NavController) {
                                 refreshingIpRotation = true
                                 try {
                                     YouTube.refreshIpRotation()
-                                } catch (e: CancellationException) {
-                                    throw e
-                                } catch (e: Exception) {
-                                    reportException(e)
+                                } catch (_: Exception) {
                                 } finally {
                                     refreshingIpRotation = false
                                 }

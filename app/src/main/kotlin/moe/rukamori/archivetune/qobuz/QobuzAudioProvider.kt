@@ -22,7 +22,6 @@ import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import kotlin.math.abs
-import kotlin.math.roundToInt
 
 /**
  * Streaming/playback provider for user-provided Qobuz-DL proxy instances (squid.wtf / kennyy /
@@ -124,53 +123,6 @@ object QobuzAudioProvider {
             .callTimeout(8, TimeUnit.SECONDS)
             .build()
 
-    /**
-     * Asks the CDN how big the file is, since Qobuz's getFileUrl response never says.
-     *
-     * Without this the details sheet shows a blank file size, and more importantly the offline check
-     * in MusicService (`downloadCache.isCached(mediaId, 0, contentLength)`) is handed 0 and always
-     * reports "not cached", so Qobuz tracks re-download every play.
-     *
-     * Tries HEAD first and falls back to a one-byte ranged GET, because some CDN edges reject HEAD
-     * on signed URLs but still answer a Range request with a Content-Range total. Returns null on any
-     * failure: a missing size is recoverable, a resolve that throws is not.
-     */
-    private fun probeContentLength(url: String): Long? {
-        // Sits directly on the path to first audio frame, and both probes can run back to back, so
-        // healthClient's 8s call timeout would allow a 16s stall before playback starts. A size we
-        // failed to learn only costs a blank row and a re-download; making the user wait is worse.
-        val probeClient = healthClient.newBuilder().callTimeout(3, TimeUnit.SECONDS).build()
-        val builder =
-            Request
-                .Builder()
-                .url(url)
-                // Identity encoding, or a gzipping edge would report the compressed size.
-                .header("Accept-Encoding", "identity")
-
-        runCatching {
-            probeClient.newCall(builder.head().build()).execute().use { response ->
-                if (!response.isSuccessful) return@use null
-                response.header("Content-Length")?.toLongOrNull()?.takeIf { it > 0L }
-            }
-        }.getOrNull()?.let { return it }
-
-        return runCatching {
-            probeClient
-                .newCall(builder.get().header("Range", "bytes=0-0").build())
-                .execute()
-                .use { response ->
-                    // Read the total out of "bytes 0-0/12345678". Deliberately ignore Content-Length
-                    // on this response: we asked for one byte, so it reports 1, not the file size.
-                    // A "bytes 0-0/*" reply means the edge does not know the total, and parses to null.
-                    response
-                        .header("Content-Range")
-                        ?.substringAfterLast('/', missingDelimiterValue = "")
-                        ?.toLongOrNull()
-                        ?.takeIf { it > 0L }
-                }
-        }.getOrNull()
-    }
-
     private data class CachedSearch(val match: Match?, val expiresAt: Long)
 
     /** Search metadata carried through to the final cross-provider safety gate. */
@@ -180,15 +132,6 @@ object QobuzAudioProvider {
         val artist: String?,
         val album: String?,
         val durationMs: Long?,
-        /**
-         * From the search hit's `maximum_sampling_rate` / `maximum_bit_depth`, in Hz and bits.
-         *
-         * Used only as a fallback when the download response omits them. Note "maximum" is the best
-         * the track is available at, which can exceed what the requested format tier actually
-         * delivers, so a value from the download call always wins.
-         */
-        val sampleRate: Int? = null,
-        val bitDepth: Int? = null,
     )
 
     private data class CachedStream(val stream: DirectStream, val expiresAt: Long)
@@ -385,23 +328,6 @@ object QobuzAudioProvider {
         if (healthy) markInstanceHealthy(normalized) else markInstanceFailed(normalized, hardFailure = true)
     }
 
-    /**
-     * Drops any cached stream/failure entry for [query], forcing the next [resolve] to hit the
-     * network.
-     *
-     * Needed by the download path: proxy URLs are signed with a short `etsp` expiry, so a cached URL
-     * can be syntactically fine but already dead. Without this, retrying a download would keep
-     * replaying the same expired link until the cache aged out on its own.
-     */
-    fun invalidate(
-        query: Query,
-        formatId: Int,
-    ) {
-        val key = query.cacheKey() + ":" + formatId
-        streamCache.remove(key)
-        failureCache.remove(key)
-    }
-
     /** Lookup metadata for a track, matching Tidal's [TidalAudioProvider.Query] shape. */
     data class Query(
         val mediaId: String,
@@ -467,20 +393,13 @@ object QobuzAudioProvider {
                     uri = download.url,
                     mimeType = download.mimeType,
                     codecs = download.codecs,
-                    // Ask the CDN only when the API withheld the size, which is the usual case. The
-                    // result is cached with this stream, so it costs one small request per resolve
-                    // rather than one per play.
-                    contentLength = download.contentLength ?: probeContentLength(download.url),
+                    contentLength = null,
                     label = "Qobuz ${qualityLabel(formatId)}",
                     source = AudioSourceType.QOBUZ,
                     matchedTitle = match.title,
                     matchedArtist = match.artist,
                     matchedAlbum = match.album,
                     matchedDurationMs = match.durationMs,
-                    // Prefer what the API reported; fall back to the search hit, which carries
-                    // maximum_* for the track. Both beat guessing from the quality tier.
-                    sampleRate = download.sampleRate ?: match.sampleRate,
-                    bitDepth = download.bitDepth ?: match.bitDepth,
                 )
             streamCache[cacheKey] = CachedStream(stream, now + STREAM_CACHE_MS)
             Timber.tag("Qobuz").i("resolved \"%s\" via %s [%s]", query.title, backend.label, stream.label)
@@ -562,8 +481,6 @@ object QobuzAudioProvider {
         var bestArtist: String? = null
         var bestAlbum: String? = null
         var bestDurationMs: Long? = null
-        var bestSampleRate: Int? = null
-        var bestBitDepth: Int? = null
         var bestScore = Int.MIN_VALUE
         for (index in 0 until items.length()) {
             val item = items.optJSONObject(index) ?: continue
@@ -593,13 +510,11 @@ object QobuzAudioProvider {
                 bestArtist = candidateArtist.takeIf { it.isNotBlank() }
                 bestAlbum = candidateAlbum
                 bestDurationMs = candidateDurationMs
-                bestSampleRate = item.samplingRateHz()
-                bestBitDepth = item.bitDepthOrNull()
             }
         }
         val id = bestId
         return if (bestScore >= MIN_MATCH_SCORE && id != null) {
-            Match(id, bestTitle, bestArtist, bestAlbum, bestDurationMs, bestSampleRate, bestBitDepth)
+            Match(id, bestTitle, bestArtist, bestAlbum, bestDurationMs)
         } else {
             null
         }
@@ -652,31 +567,7 @@ object QobuzAudioProvider {
         val mimeType: String,
         val codecs: String,
         val isPreview: Boolean,
-        /** Hz / bits / bytes as reported by the API. Null when the response omitted the field. */
-        val sampleRate: Int? = null,
-        val bitDepth: Int? = null,
-        val contentLength: Long? = null,
     )
-
-    /**
-     * Reads Qobuz's sampling rate, which the API reports in kHz as a float ("44.1", "96", "192").
-     *
-     * Some proxies pass it through already converted to Hz, so treat any value above 1000 as Hz and
-     * anything smaller as kHz. Without that check a 96 kHz track would be stored as 96 Hz.
-     */
-    private fun JSONObject.samplingRateHz(): Int? {
-        val raw =
-            optDouble("sampling_rate", Double.NaN)
-                .takeIf { !it.isNaN() && it > 0 }
-                ?: optDouble("maximum_sampling_rate", Double.NaN).takeIf { !it.isNaN() && it > 0 }
-                ?: return null
-        // Round rather than truncate: 44.1 and 88.2 have no exact binary representation, so scaling
-        // by 1000 can land just under the integer and toInt() would report 44099 Hz.
-        return if (raw > 1000) raw.roundToInt() else (raw * 1000).roundToInt()
-    }
-
-    private fun JSONObject.bitDepthOrNull(): Int? =
-        (optInt("bit_depth", 0).takeIf { it > 0 } ?: optInt("maximum_bit_depth", 0).takeIf { it > 0 })
 
     /** Calls download-music and extracts the direct URL + a best-effort preview flag. */
     private fun fetchDownload(
@@ -715,21 +606,7 @@ object QobuzAudioProvider {
                     else -> AUDIO_FLAC_MIME_TYPE
                 }
             val codecs = if (mime == AUDIO_FLAC_MIME_TYPE) "flac" else "mp4a.40.2"
-            // Proxies wrap the Qobuz payload, so the technical fields may sit at the root or one
-            // level down under "data". Check both before giving up and letting the caller guess.
-            val meta = root.optJSONObject("data") ?: root
-            return DownloadResult(
-                url = streamUrl,
-                mimeType = mime,
-                codecs = codecs,
-                isPreview = isPreview,
-                sampleRate = meta.samplingRateHz() ?: root.samplingRateHz(),
-                bitDepth = meta.bitDepthOrNull() ?: root.bitDepthOrNull(),
-                contentLength =
-                    meta.longOrNull("file_size")
-                        ?: meta.longOrNull("size")
-                        ?: root.longOrNull("file_size"),
-            )
+            return DownloadResult(streamUrl, mime, codecs, isPreview)
         }
     }
 
@@ -815,16 +692,7 @@ object QobuzAudioProvider {
                 else -> AUDIO_FLAC_MIME_TYPE
             }
         val codecs = if (mime == AUDIO_FLAC_MIME_TYPE) "flac" else "mp4a.40.2"
-        return DownloadResult(
-            url = streamUrl,
-            mimeType = mime,
-            codecs = codecs,
-            isPreview = isPreview,
-            sampleRate = root.samplingRateHz(),
-            bitDepth = root.bitDepthOrNull(),
-            // getFileUrl does not include a size; a proxy mirroring the payload sometimes does.
-            contentLength = root.longOrNull("file_size") ?: root.longOrNull("size"),
-        )
+        return DownloadResult(streamUrl, mime, codecs, isPreview)
     }
 
     private fun directRequest(

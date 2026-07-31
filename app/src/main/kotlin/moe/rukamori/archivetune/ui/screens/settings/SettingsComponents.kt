@@ -63,7 +63,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import moe.rukamori.archivetune.R
-
 @Composable
 fun SettingsProfileHeader(
     state: SettingsProfileState,
@@ -797,6 +796,81 @@ fun SettingsFlatItem(
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                     )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun SettingsSearchResultItem(
+    result: SearchResultItem,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val effectiveAccent =
+        if (result.parentAccentColor.isSpecified) {
+            result.parentAccentColor
+        } else {
+            MaterialTheme.colorScheme.primary
+        }
+
+    Card(
+        onClick = onClick,
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .heightIn(min = 64.dp),
+        shape = RoundedCornerShape(16.dp),
+        colors =
+            CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+            ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+    ) {
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier =
+                    Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(effectiveAccent.copy(alpha = 0.12f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    painter = result.parentIcon,
+                    contentDescription = null,
+                    tint = effectiveAccent,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+            Spacer(Modifier.width(16.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = result.title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (result.parentTitle.isNotBlank()) {
+                    Text(
+                        text = result.parentTitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            result.switchControl?.let { switchControl ->
+                Spacer(Modifier.width(12.dp))
+                switchControl()
             }
         }
     }

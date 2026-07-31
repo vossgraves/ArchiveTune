@@ -51,7 +51,6 @@ object PoolAccountManager {
 
     private val CACHE_TIDAL_KEY = stringPreferencesKey("poolTidalAccounts")
     private val CACHE_QOBUZ_KEY = stringPreferencesKey("poolQobuzAccounts")
-    private val CACHE_DEEZER_KEY = stringPreferencesKey("poolDeezerAccounts")
 
     /** A shared Tidal subscriber token contributed to the pool. */
     data class TidalPoolAccount(
@@ -69,27 +68,11 @@ object PoolAccountManager {
         val premium: Boolean,
     )
 
-    /**
-     * A shared Deezer subscriber credential.
-     *
-     * Deezer authenticates with the `arl` cookie rather than a bearer token, and [premium] false means
-     * the account has no lossless entitlement, so it can still serve MP3 but will refuse FLAC.
-     */
-    data class DeezerPoolAccount(
-        val arl: String,
-        val premium: Boolean,
-        /** Optional override for the Blowfish key salt; null means use the salt the app ships with. */
-        val masterSecret: String? = null,
-    )
-
     @Volatile
     private var tidalCache: List<TidalPoolAccount> = emptyList()
 
     @Volatile
     private var qobuzCache: List<QobuzPoolAccount> = emptyList()
-
-    @Volatile
-    private var deezerCache: List<DeezerPoolAccount> = emptyList()
 
     @Volatile
     private var lastRefreshAt = 0L
@@ -124,9 +107,7 @@ object PoolAccountManager {
 
     fun qobuzAccounts(): List<QobuzPoolAccount> = qobuzCache.sortedByDescending { it.premium }
 
-    fun deezerAccounts(): List<DeezerPoolAccount> = deezerCache.sortedByDescending { it.premium }
-
-    fun hasAccounts(): Boolean = tidalCache.isNotEmpty() || qobuzCache.isNotEmpty() || deezerCache.isNotEmpty()
+    fun hasAccounts(): Boolean = tidalCache.isNotEmpty() || qobuzCache.isNotEmpty()
 
     /**
      * Loads the persisted account cache into memory (cheap, no network). Safe to call repeatedly;
@@ -143,16 +124,8 @@ object PoolAccountManager {
                 context.dataStore.getAsync(CACHE_QOBUZ_KEY)?.takeIf { it.isNotBlank() }?.let {
                     qobuzCache = parseQobuz(JSONArray(it))
                 }
-                context.dataStore.getAsync(CACHE_DEEZER_KEY)?.takeIf { it.isNotBlank() }?.let {
-                    deezerCache = parseDeezer(JSONArray(it))
-                }
                 loadedFromDisk = true
-                Timber.tag(TAG).d(
-                    "Loaded cached accounts: tidal=%d qobuz=%d deezer=%d",
-                    tidalCache.size,
-                    qobuzCache.size,
-                    deezerCache.size,
-                )
+                Timber.tag(TAG).d("Loaded cached accounts: tidal=%d qobuz=%d", tidalCache.size, qobuzCache.size)
             }.onFailure { Timber.tag(TAG).w(it, "Failed to load cached pool accounts") }
         }
     }
@@ -194,18 +167,11 @@ object PoolAccountManager {
                         val root = JSONObject(response.body?.string().orEmpty())
                         val tidal = parseTidal(root.optJSONObject("tidal")?.optJSONArray("accounts"))
                         val qobuz = parseQobuz(root.optJSONObject("qobuz")?.optJSONArray("accounts"))
-                        val deezer = parseDeezer(root.optJSONObject("deezer")?.optJSONArray("accounts"))
                         tidalCache = tidal
                         qobuzCache = qobuz
-                        deezerCache = deezer
                         lastRefreshAt = System.currentTimeMillis()
-                        persist(context, tidal, qobuz, deezer)
-                        Timber.tag(TAG).i(
-                            "Pool accounts refreshed: tidal=%d qobuz=%d deezer=%d",
-                            tidal.size,
-                            qobuz.size,
-                            deezer.size,
-                        )
+                        persist(context, tidal, qobuz)
+                        Timber.tag(TAG).i("Pool accounts refreshed: tidal=%d qobuz=%d", tidal.size, qobuz.size)
                     }
                 }.onFailure { Timber.tag(TAG).w(it, "Pool account refresh failed") }
                 hasAccounts()
@@ -216,7 +182,6 @@ object PoolAccountManager {
         context: Context,
         tidal: List<TidalPoolAccount>,
         qobuz: List<QobuzPoolAccount>,
-        deezer: List<DeezerPoolAccount>,
     ) {
         val tidalJson =
             JSONArray().apply {
@@ -242,22 +207,10 @@ object PoolAccountManager {
                     )
                 }
             }.toString()
-        val deezerJson =
-            JSONArray().apply {
-                deezer.forEach {
-                    put(
-                        JSONObject()
-                            .put("arl", it.arl)
-                            .put("masterSecret", it.masterSecret)
-                            .put("premium", it.premium),
-                    )
-                }
-            }.toString()
         runCatching {
             context.dataStore.edit { prefs ->
                 prefs[CACHE_TIDAL_KEY] = tidalJson
                 prefs[CACHE_QOBUZ_KEY] = qobuzJson
-                prefs[CACHE_DEEZER_KEY] = deezerJson
             }
         }.onFailure { Timber.tag(TAG).w(it, "Failed to persist pool accounts") }
     }
@@ -305,22 +258,6 @@ object PoolAccountManager {
                     appId = appId,
                     appSecret = appSecret,
                     premium = obj.optBoolean("premium", false),
-                )
-        }
-        return out
-    }
-
-    private fun parseDeezer(arr: JSONArray?): List<DeezerPoolAccount> {
-        if (arr == null) return emptyList()
-        val out = mutableListOf<DeezerPoolAccount>()
-        for (i in 0 until arr.length()) {
-            val obj = arr.optJSONObject(i) ?: continue
-            val arl = field(obj, "arl") ?: continue
-            out +=
-                DeezerPoolAccount(
-                    arl = arl,
-                    premium = obj.optBoolean("premium", false),
-                    masterSecret = field(obj, "masterSecret"),
                 )
         }
         return out

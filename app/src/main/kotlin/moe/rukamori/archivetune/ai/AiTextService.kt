@@ -16,6 +16,7 @@ import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
+import moe.rukamori.archivetune.BuildConfig
 import moe.rukamori.archivetune.constants.AiProvider
 import org.json.JSONArray
 import org.json.JSONObject

@@ -494,39 +494,14 @@ fun Queue(
                 }
 
                 PlayerDesignStyle.V5 -> {
-                    QueueCollapsedContentV3(
-                        showCodecOnPlayer = showCodecOnPlayer,
-                        currentFormat = currentFormat,
-                        textBackgroundColor = TextBackgroundColor,
-                        sleepTimerEnabled = sleepTimerEnabled,
-                        sleepTimerTimeLeft = sleepTimerTimeLeft,
-                        onExpandQueue = openQueue,
-                        onSleepTimerClick = {
-                            if (sleepTimerEnabled) {
-                                playerConnection.service.sleepTimer.clear()
-                            } else {
-                                showSleepTimerDialog = true
-                            }
-                        },
-                        onShowLyrics = onShowLyrics,
-                        onMenuClick = {
-                            menuState.show {
-                                PlayerMenu(
-                                    mediaMetadata = mediaMetadata,
-                                    navController = navController,
-                                    playerBottomSheetState = playerBottomSheetState,
-                                    onShowDetailsDialog = {
-                                        mediaMetadata?.id?.let {
-                                            bottomSheetPageState.show {
-                                                ShowMediaInfo(it)
-                                            }
-                                        }
-                                    },
-                                    onDismiss = menuState::dismiss,
-                                )
-                            }
-                        },
-                    )
+                    // V5 keeps its collapsed peek bar empty, matching the APPLE_MUSIC approach.
+                    // The LittlePlayer (rendered inside Player.kt) already exposes queue, like,
+                    // and more-menu buttons with proper 48dp touch targets. Previously this
+                    // branch rendered QueueCollapsedContentV3 inside a 0dp-tall peek Box —
+                    // the button row overflowed the parent and its touch zone was clipped/
+                    // competed-for by the BottomSheet wrapper's own clickable, which caused
+                    // "queue button doesn't work at all" reports on V5. Sleep timer, lyrics,
+                    // and other controls remain reachable via the LittlePlayer's more-menu.
                 }
 
                 PlayerDesignStyle.V4 -> {
@@ -812,22 +787,49 @@ fun Queue(
             }
         }
 
+        // Tracks the previous collapsed state so we can detect the exact
+        // moment the queue sheet transitions from collapsed → expanded
+        // (whether via the queue button or a swipe-up gesture) and scroll
+        // to the currently playing song. Without this, the queue opens
+        // scrolled to the top, forcing the user to manually find what's
+        // playing. We avoid re-scrolling on every `currentPlayingUid`
+        // change so the user is free to browse the queue after opening it
+        // without being yanked back to the current song mid-scroll.
+        var prevIsCollapsed by remember { mutableStateOf(state.isCollapsed) }
+
         LaunchedEffect(
             state.isCollapsed,
             scrollToCurrentRequested,
             currentPlayingUid,
             reorderableState.isAnyItemDragging,
         ) {
-            if (
+            val justOpened = prevIsCollapsed && !state.isCollapsed
+            prevIsCollapsed = state.isCollapsed
+            val shouldScroll =
                 !state.isCollapsed &&
-                scrollToCurrentRequested &&
-                currentPlayingUid != null &&
-                !reorderableState.isAnyItemDragging
-            ) {
-                val indexInMutableList = mutableQueueWindows.indexOfFirst { it.uid == currentPlayingUid }
-                if (indexInMutableList != -1) {
-                    lazyListState.scrollToItem(indexInMutableList + headerItems)
-                    scrollToCurrentRequested = false
+                    (justOpened || scrollToCurrentRequested) &&
+                    currentPlayingUid != null &&
+                    !reorderableState.isAnyItemDragging
+            if (shouldScroll) {
+                // Wait briefly for the queue windows to populate after the
+                // sheet expands. The first composition after expand often has
+                // an empty `mutableQueueWindows` (the Snapshot.withMutableSnapshot
+                // that copies `queueWindows` into `mutableQueueWindows` runs
+                // in a separate LaunchedEffect that hasn't fired yet). A short
+                // retry loop lets the index lookup succeed.
+                var attempts = 0
+                while (attempts < 8) {
+                    val indexInMutableList =
+                        mutableQueueWindows.indexOfFirst { it.uid == currentPlayingUid }
+                    if (indexInMutableList != -1) {
+                        lazyListState.scrollToItem(
+                            (indexInMutableList + headerItems).coerceAtLeast(0),
+                        )
+                        scrollToCurrentRequested = false
+                        break
+                    }
+                    kotlinx.coroutines.delay(50L)
+                    attempts++
                 }
             }
         }

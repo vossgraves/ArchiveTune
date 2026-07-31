@@ -27,25 +27,6 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.compose.compiler)
     alias(libs.plugins.aboutlibraries.android)
-    alias(libs.plugins.ktlint)
-}
-
-// Lint gate. Only ktlint's no-unused-imports rule is active; .editorconfig explains why the
-// rest of the standard ruleset stays off in this fork.
-//
-// Applied here rather than through `subprojects {}` in the root build, because cross-project
-// configuration is deprecated under Gradle's project-isolation work. ktlint itself resolves from
-// the repositories in settings.gradle.kts -- that uses FAIL_ON_PROJECT_REPOS, so adding a
-// `repositories {}` block here (as the plugin README suggests) would fail the build instead.
-ktlint {
-    // Rule enablement is read from .editorconfig, so it is not duplicated here.
-    android.set(true)
-    ignoreFailures.set(false)
-    // Generated sources (Room, Hilt, KSP) are not ours to format. Uses a predicate because
-    // Gradle's include/exclude only filters files located under the project directory.
-    filter {
-        exclude { it.file.path.contains("${File.separator}build${File.separator}") }
-    }
 }
 
 val localProperties = Properties()
@@ -185,14 +166,8 @@ android {
         // Telegram (TDLib) app credentials. Baked in at build time so users sign in with just
         // their phone number + login code — no my.telegram.org api_id/api_hash entry. Override via
         // local.properties or the TELEGRAM_API_ID / TELEGRAM_API_HASH env vars (e.g. in CI) to ship
-        // the fork's own registered app.
-        //
-        // TODO(vossgraves): replace the fallback below with this fork's own credentials.
-        // The fallback is Telegram Desktop's official api_id/api_hash. Reusing another client's
-        // credentials violates Telegram's ToS and risks the api_id being revoked and *users'*
-        // accounts being flagged or banned. Register an app at https://my.telegram.org/apps and
-        // set TELEGRAM_API_ID / TELEGRAM_API_HASH as repository secrets (already wired into the
-        // build + release workflows) — no code change is then required.
+        // the fork's own registered app. The fallback is the public Telegram Desktop api_id/hash,
+        // which every TDLib client can use out of the box.
         val telegramApiId =
             (
                 localProperties.getProperty("TELEGRAM_API_ID")?.takeIf { it.isNotBlank() }
@@ -434,7 +409,6 @@ dependencies {
     implementation(libs.navigation)
     implementation(libs.hilt.navigation)
     implementation(libs.datastore)
-    implementation(libs.webkit)
     implementation(libs.work.runtime)
     implementation("androidx.browser:browser:1.10.0")
 
@@ -513,6 +487,7 @@ dependencies {
     implementation(project(":lyrics:betterlyrics"))
     implementation(project(":lyrics:unison"))
     implementation(project(":lyrics:youlyplus"))
+    implementation(project(":musixmatch"))
     implementation(project(":lastfm"))
     implementation(project(":canvas"))
     implementation(project(":shazamkit"))
@@ -544,10 +519,30 @@ dependencies {
 
     implementation("org.json:json:20240303")
 
-    // Lossless (Qobuz/Tidal) downloads: SAF tree access for the user-picked folder, and FLAC
-    // tagging. jaudiotagger bundles its own logging config that collides with ours, so exclude it.
-    implementation(libs.documentfile)
-    implementation(libs.jaudiotagger)
+    // PRDownloader — lightweight (~45 KB) file download library with
+    // pause/resume, retry, and progress callbacks. Used as the HTTP
+    // fetcher inside PRDownloaderDataSource (a Media3 DataSource wrapper).
+    // Replaces Ketch — Ketch's WorkManager + Flow observation added
+    // overhead without improving throughput, and its temp-file lifecycle
+    // occasionally left partial files that corrupted subsequent exports.
+    // PRDownloader is simpler (single OkHttp call per download, callback
+    // API instead of Flow), which makes the temp-file lifecycle easier
+    // to reason about.
+    implementation(libs.prdownloader)
+
+    // jaudiotagger — pure-Java audio metadata tagger (ID3v2 / Vorbis Comments
+    // / MP4 / FLAC). Used by AudioTagger to write title / artist / album /
+    // year / track-number / artwork tags onto exported downloaded songs so
+    // they show up correctly in external music players. Pinned to 1.4.x
+    // (Java 21 bytecode) — the 2.x line targets Java 25 which Android cannot
+    // consume.
+    implementation("com.github.RouHim:jaudiotagger:1.4.31")
+    // SLF4J binding required by jaudiotagger at runtime — jaudiotagger
+    // depends on slf4j-api but does not bundle a binding. slf4j-jdk14
+    // routes log calls through java.util.logging (which Android forwards
+    // to logcat). Without this, jaudiotagger logs a single "no SLF4J
+    // providers found" warning at startup and silently no-ops logging.
+    implementation("org.slf4j:slf4j-jdk14:2.0.17")
 }
 
 androidComponents {

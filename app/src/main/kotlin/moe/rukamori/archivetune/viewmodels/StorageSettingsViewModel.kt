@@ -7,7 +7,6 @@
 
 package moe.rukamori.archivetune.viewmodels
 
-import android.net.Uri
 import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -28,9 +27,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.R
-import moe.rukamori.archivetune.download.CacheExporter
 import moe.rukamori.archivetune.storage.ClearStorageCacheUseCase
-import moe.rukamori.archivetune.storage.ExportDownloadsUseCase
 import moe.rukamori.archivetune.storage.ObserveStorageFoldersUseCase
 import moe.rukamori.archivetune.storage.SetStorageFolderUseCase
 import moe.rukamori.archivetune.storage.StorageCacheClearProgress
@@ -143,7 +140,6 @@ class StorageSettingsViewModel
         observeStorageFolders: ObserveStorageFoldersUseCase,
         private val setStorageFolder: SetStorageFolderUseCase,
         private val clearStorageCache: ClearStorageCacheUseCase,
-        private val exportDownloads: ExportDownloadsUseCase,
     ) : ViewModel() {
         private val _effects = MutableSharedFlow<StorageSettingsEffect>(extraBufferCapacity = 1)
         val effects = _effects.asSharedFlow()
@@ -240,36 +236,6 @@ class StorageSettingsViewModel
 
         fun clearCanvasCache(showFeedback: Boolean = true) {
             clearCache(StorageCacheKind.CANVAS, showFeedback)
-        }
-
-        /**
-         * Exports every downloaded song into [treeUri].
-         *
-         * Only reports the cases the user cannot see for themselves — nothing downloaded, or an
-         * export already in flight. Success is reported by [CacheExporter.progress], which the screen
-         * observes directly, because the run outlives this ViewModel.
-         */
-        fun exportDownloadedSongs(treeUri: Uri) {
-            viewModelScope.launch {
-                if (CacheExporter.isRunning) {
-                    _effects.emit(
-                        StorageSettingsEffect(
-                            messageResId = R.string.export_already_running,
-                            restartApp = false,
-                        ),
-                    )
-                    return@launch
-                }
-                val queued = exportDownloads(treeUri)
-                if (queued == 0) {
-                    _effects.emit(
-                        StorageSettingsEffect(
-                            messageResId = R.string.export_nothing_to_do,
-                            restartApp = false,
-                        ),
-                    )
-                }
-            }
         }
 
         private fun selectStorageLocation(optionId: String) {

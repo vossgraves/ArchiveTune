@@ -29,12 +29,17 @@ internal suspend fun resolveCanvasArtworkForPlayback(
     // Telegram/local files have tag-derived (often noisy) metadata — use fuzzy identity matching
     // so a real canvas isn't discarded over a "(2019)" suffix or a channel-name artist.
     val strictIdentity = !(mediaId.isTelegramMediaId() || mediaId.isLocalMediaId())
+    // Fast path: try the cache with preferCachedOnly=true via getCachedOnlyFast,
+    // which skips the expensive MediaExtractor probe (~50-200ms per file).
+    // The probe was the dominant contributor to canvas startup latency on
+    // cache hits — see CanvasArtworkPlaybackCache.getCachedOnlyFast for details.
     val cachedArtwork =
         withContext(Dispatchers.IO) {
-            CanvasArtworkPlaybackCache.get(
-                mediaId = mediaId,
-                preferCachedOnly = true,
-            )
+            CanvasArtworkPlaybackCache.getCachedOnlyFast(mediaId)
+                ?: CanvasArtworkPlaybackCache.get(
+                    mediaId = mediaId,
+                    preferCachedOnly = true,
+                )
         }
     if (cachedArtwork != null) {
         val isValid =

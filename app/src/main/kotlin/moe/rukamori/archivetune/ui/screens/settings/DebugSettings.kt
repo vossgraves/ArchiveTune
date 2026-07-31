@@ -68,9 +68,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.media3.common.Player
+import androidx.media3.datasource.cache.Cache
 import androidx.navigation.NavController
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import moe.rukamori.archivetune.LocalDownloadUtil
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
@@ -83,6 +85,32 @@ import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.makeTimeString
 import moe.rukamori.archivetune.utils.rememberPreference
 import kotlin.math.roundToInt
+
+/**
+ * Best-effort: sum the cached bytes for a song across all source-prefixed
+ * cache keys (qobuz:, tidal:, deezer:, and the bare mediaId). Used as a
+ * fallback when the persisted FormatEntity has contentLength == 0 — common
+ * for FLAC streams where the upstream provider doesn't expose
+ * Content-Length on the resolved stream URL. Returns 0 if no cache entries
+ * exist for the song yet (e.g. before playback starts).
+ *
+ * This is intentionally a thin reflection of what's on disk — it does not
+ * distinguish between partial and complete caches, just sums span sizes.
+ */
+private fun sumCachedBytesForSong(
+    downloadUtil: moe.rukamori.archivetune.playback.DownloadUtil?,
+    songId: String,
+): Long {
+    val cache = downloadUtil?.playerCache ?: return 0L
+    var total = 0L
+    for (key in listOf("qobuz:$songId", "tidal:$songId", "deezer:$songId", songId)) {
+        total += runCatching { sumCacheSpans(cache, key) }.getOrDefault(0L)
+    }
+    return total
+}
+
+private fun sumCacheSpans(cache: Cache, key: String): Long =
+    runCatching { cache.getCachedSpans(key) }.getOrNull()?.sumOf { it.length } ?: 0L
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -422,11 +450,21 @@ private fun NerdStatsSection(playerConnection: moe.rukamori.archivetune.playback
     val currentFormat by playerConnection.currentFormat.collectAsState(initial = null)
     val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
     val player = playerConnection.player
+    val downloadUtil = LocalDownloadUtil.current
 
     var bufferPercentage by remember { mutableStateOf(0) }
     var bufferedPosition by remember { mutableStateOf(0L) }
     var currentPosition by remember { mutableStateOf(0L) }
     var playbackSpeed by remember { mutableStateOf(1.0f) }
+    // Best-effort fallback size when the persisted FormatEntity has
+    // contentLength == 0 (common for FLAC streams where the upstream
+    // provider doesn't expose Content-Length on the stream URL). We sum
+    // the bytes held under all source-prefixed cache keys (qobuz:,
+    // tidal:, deezer:, and the bare mediaId) so the card shows e.g.
+    // "32.45 MB" once the playerCache has the bytes, even before the
+    // HEAD-request backfill in MusicService.persistDirectStreamFormat
+    // completes.
+    var fallbackSizeBytes by remember { mutableStateOf<Long?>(null) }
 
     LaunchedEffect(Unit) {
         while (isActive) {
@@ -434,6 +472,18 @@ private fun NerdStatsSection(playerConnection: moe.rukamori.archivetune.playback
             bufferedPosition = player.bufferedPosition
             currentPosition = player.currentPosition
             playbackSpeed = player.playbackParameters.speed
+            // Refresh the fallback size every poll. Cheap once the cache is
+            // fully populated (a few ConcurrentHashMap lookups); expensive
+            // only when the cache is mid-write, in which case we want the
+            // updated number anyway.
+            val songId = mediaMetadata?.id
+            if (songId != null && (currentFormat?.contentLength ?: 0L) <= 0L) {
+                fallbackSizeBytes = runCatching {
+                    sumCachedBytesForSong(downloadUtil, songId)
+                }.getOrNull()?.takeIf { it > 0L }
+            } else {
+                fallbackSizeBytes = null
+            }
             delay(500)
         }
     }
@@ -539,7 +589,9 @@ private fun NerdStatsSection(playerConnection: moe.rukamori.archivetune.playback
                                     if (it > 0) {
                                         "${String.format("%.2f", it / 1024.0 / 1024.0)} MB"
                                     } else {
-                                        stringResource(R.string.unknown_content_length)
+                                        fallbackSizeBytes?.let { bytes ->
+                                            "${String.format("%.2f", bytes / 1024.0 / 1024.0)} MB"
+                                        } ?: stringResource(R.string.unknown_content_length)
                                     }
                                 } ?: stringResource(R.string.unknown_content_length),
                             modifier = Modifier.weight(1f),

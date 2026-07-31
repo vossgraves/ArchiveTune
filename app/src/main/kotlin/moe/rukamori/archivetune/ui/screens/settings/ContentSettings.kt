@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
@@ -61,8 +62,8 @@ import java.util.Locale
 fun ContentSettings(
     navController: NavController,
     viewModel: ContentSettingsViewModel = hiltViewModel(),
+    scrollTo: String? = null,
 ) {
-    val anchors = rememberSettingsAnchorState(SettingsAnchorScreens.CONTENT)
     val context = LocalContext.current
     val aiContentFilterState by viewModel.aiContentFilterState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -97,14 +98,21 @@ fun ContentSettings(
     val (lengthTop, onLengthTopChange) = rememberPreference(key = TopSize, defaultValue = "50")
     val (quickPicks, onQuickPicksChange) = rememberEnumPreference(key = QuickPicksKey, defaultValue = QuickPicks.QUICK_PICKS)
 
+    val scrollState = rememberScrollState()
+    val positions = rememberPreferencePositions()
+
+    LaunchedEffect(scrollTo) { positions.scrollToKey(scrollTo, scrollState) }
+
     Column(
         Modifier
             .windowInsetsPadding(LocalPlayerAwareWindowInsets.current)
-            .verticalScroll(anchors.scrollState)
-            .padding(bottom = SettingsDimensions.ScreenBottomPadding)
-            .then(anchors.containerModifier),
+            .verticalScroll(scrollState)
+            .padding(bottom = SettingsDimensions.ScreenBottomPadding),
     ) {
-        PreferenceGroup(title = stringResource(R.string.general)) {
+        PreferenceGroup(
+            modifier = positions.modifierFor("content_language"),
+            title = stringResource(R.string.general),
+        ) {
             item {
                 ListPreference(
                     title = { Text(stringResource(R.string.content_language)) },
@@ -181,7 +189,6 @@ fun ContentSettings(
 
             item {
                 SwitchPreference(
-                    modifier = anchors.anchor(SettingsAnchors.HIDE_EXPLICIT),
                     title = { Text(stringResource(R.string.hide_explicit)) },
                     icon = { Icon(painterResource(R.drawable.explicit), null) },
                     checked = hideExplicit,
@@ -191,7 +198,6 @@ fun ContentSettings(
 
             item {
                 SwitchPreference(
-                    modifier = anchors.anchor(SettingsAnchors.HIDE_VIDEO),
                     title = { Text(stringResource(R.string.hide_video)) },
                     icon = { Icon(painterResource(R.drawable.slow_motion_video), null) },
                     checked = hideVideo,
@@ -201,7 +207,6 @@ fun ContentSettings(
 
             item {
                 SwitchPreference(
-                    modifier = anchors.anchor(SettingsAnchors.ALLOW_AGE_RESTRICTED),
                     title = { Text(stringResource(R.string.allow_age_restricted)) },
                     description = stringResource(R.string.allow_age_restricted_summary),
                     icon = { Icon(painterResource(R.drawable.login), null) },
@@ -219,11 +224,13 @@ fun ContentSettings(
             onOpenSource = viewModel::openAiContentFilterSource,
         )
 
-        PreferenceGroup(title = stringResource(R.string.app_language)) {
+        PreferenceGroup(
+            modifier = positions.modifierFor("app_language"),
+            title = stringResource(R.string.app_language),
+        ) {
             item {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     PreferenceEntry(
-                        modifier = anchors.anchor(SettingsAnchors.APP_LANGUAGE),
                         title = { Text(stringResource(R.string.app_language)) },
                         icon = { Icon(painterResource(R.drawable.language), null) },
                         onClick = {
@@ -237,7 +244,6 @@ fun ContentSettings(
                     )
                 } else {
                     ListPreference(
-                        modifier = anchors.anchor(SettingsAnchors.APP_LANGUAGE),
                         title = { Text(stringResource(R.string.app_language)) },
                         icon = { Icon(painterResource(R.drawable.language), null) },
                         selectedValue = appLanguage,
@@ -260,7 +266,10 @@ fun ContentSettings(
             }
         }
 
-        PreferenceGroup(title = stringResource(R.string.misc)) {
+        PreferenceGroup(
+            modifier = positions.modifierFor("quick_picks"),
+            title = stringResource(R.string.misc),
+        ) {
             item {
                 EditTextPreference(
                     title = { Text(stringResource(R.string.top_length)) },

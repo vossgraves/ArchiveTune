@@ -37,6 +37,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -70,6 +71,7 @@ import moe.rukamori.archivetune.constants.EnableBetterLyricsPortatoKey
 import moe.rukamori.archivetune.constants.EnableKugouKey
 import moe.rukamori.archivetune.constants.EnableLrcLibKey
 import moe.rukamori.archivetune.constants.EnableMegalobizLyricsKey
+import moe.rukamori.archivetune.constants.EnableMusixmatchExperimentalKey
 import moe.rukamori.archivetune.constants.EnablePaxsenixAppleMusicLyricsKey
 import moe.rukamori.archivetune.constants.EnablePaxsenixLyricsKey
 import moe.rukamori.archivetune.constants.EnablePaxsenixMusixmatchLyricsKey
@@ -121,8 +123,8 @@ import kotlin.math.roundToInt
 fun LyricsSettings(
     navController: NavController,
     viewModel: ContentSettingsViewModel = hiltViewModel(),
+    scrollTo: String? = null,
 ) {
-    val anchors = rememberSettingsAnchorState(SettingsAnchorScreens.LYRICS)
     var showClearLyricsDialog by remember { mutableStateOf(false) }
     var showPaxsenixStatsDialog by remember { mutableStateOf(false) }
 
@@ -195,6 +197,8 @@ fun LyricsSettings(
             defaultValue = true,
         )
     val (enableUnisonLyrics, onEnableUnisonLyricsChange) = rememberPreference(key = EnableUnisonLyricsKey, defaultValue = true)
+    val (enableMusixmatchExperimental, onEnableMusixmatchExperimentalChange) =
+        rememberPreference(key = EnableMusixmatchExperimentalKey, defaultValue = false)
     val (providerOrderStr, onProviderOrderStrChange) =
         rememberPreference(
             key = LyricsProviderOrderKey,
@@ -235,12 +239,16 @@ fun LyricsSettings(
         )
     }
 
+    val scrollState = rememberScrollState()
+    val positions = rememberPreferencePositions()
+
+    LaunchedEffect(scrollTo) { positions.scrollToKey(scrollTo, scrollState) }
+
     Column(
         Modifier
             .windowInsetsPadding(LocalPlayerAwareWindowInsets.current)
-            .verticalScroll(anchors.scrollState)
-            .padding(bottom = SettingsDimensions.ScreenBottomPadding)
-            .then(anchors.containerModifier),
+            .verticalScroll(scrollState)
+            .padding(bottom = SettingsDimensions.ScreenBottomPadding),
     ) {
         var showLyricsTextSizeDialog by rememberSaveable { mutableStateOf(false) }
 
@@ -376,10 +384,12 @@ fun LyricsSettings(
             }
         }
 
-        PreferenceGroup(title = stringResource(R.string.display)) {
+        PreferenceGroup(
+            modifier = positions.modifierFor("lyrics_font_size"),
+            title = stringResource(R.string.display),
+        ) {
             item {
                 EnumListPreference(
-                    modifier = anchors.anchor(SettingsAnchors.LYRICS_MODE),
                     title = { Text(stringResource(R.string.lyrics_mode)) },
                     icon = { Icon(painterResource(R.drawable.lyrics), null) },
                     selectedValue = lyricsMode,
@@ -397,7 +407,6 @@ fun LyricsSettings(
                 val animationSettingsEnabled = lyricsMode == LyricsMode.V2
 
                 PreferenceEntry(
-                    modifier = anchors.anchor(SettingsAnchors.LYRICS_ANIMATION),
                     title = { Text(stringResource(R.string.lyrics_animation_style)) },
                     description = if (animationSettingsEnabled) null else stringResource(R.string.lyrics_animation_style_v2_only),
                     icon = { Icon(painterResource(R.drawable.animation), null) },
@@ -417,7 +426,6 @@ fun LyricsSettings(
 
             item {
                 SwitchPreference(
-                    modifier = anchors.anchor(SettingsAnchors.LYRICS_AUTO_SCROLL),
                     title = { Text(stringResource(R.string.lyrics_auto_scroll)) },
                     icon = { Icon(painterResource(R.drawable.lyrics), null) },
                     checked = lyricsScroll,
@@ -427,7 +435,6 @@ fun LyricsSettings(
 
             item {
                 SwitchPreference(
-                    modifier = anchors.anchor(SettingsAnchors.LYRICS_LINE_BLUR),
                     title = { Text(stringResource(R.string.lyrics_line_blur)) },
                     icon = { Icon(painterResource(R.drawable.lyrics), null) },
                     checked = lyricsLineBlur,
@@ -454,7 +461,10 @@ fun LyricsSettings(
             }
         }
 
-        PreferenceGroup(title = stringResource(R.string.providers)) {
+        PreferenceGroup(
+            modifier = positions.modifierFor("lyrics_provider"),
+            title = stringResource(R.string.providers),
+        ) {
             item {
                 SwitchPreference(
                     title = { Text(stringResource(R.string.enable_betterlyrics)) },
@@ -599,7 +609,39 @@ fun LyricsSettings(
             }
         }
 
-        PreferenceGroup(title = stringResource(R.string.romanization)) {
+        PreferenceGroup(
+            modifier = positions.modifierFor("lyrics_experimental"),
+            title = stringResource(R.string.musixmatch_experimental_section),
+        ) {
+            item {
+                SwitchPreference(
+                    title = { Text(stringResource(R.string.enable_musixmatch_experimental)) },
+                    description = stringResource(R.string.enable_musixmatch_experimental_desc),
+                    icon = { Icon(painterResource(R.drawable.lyrics), null) },
+                    checked = enableMusixmatchExperimental,
+                    onCheckedChange = onEnableMusixmatchExperimentalChange,
+                )
+            }
+            item(visible = enableMusixmatchExperimental) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = MaterialTheme.shapes.large,
+                    color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.4f),
+                ) {
+                    Text(
+                        text = stringResource(R.string.musixmatch_experimental_warning),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                    )
+                }
+            }
+        }
+
+        PreferenceGroup(
+            modifier = positions.modifierFor("lyrics_romanize"),
+            title = stringResource(R.string.romanization),
+        ) {
             item {
                 SwitchPreference(
                     title = { Text(stringResource(R.string.lyrics_romanize_japanese)) },
@@ -653,7 +695,10 @@ fun LyricsSettings(
             }
         }
 
-        PreferenceGroup(title = stringResource(R.string.queue)) {
+        PreferenceGroup(
+            modifier = positions.modifierFor("lyrics_preload"),
+            title = stringResource(R.string.queue),
+        ) {
             item {
                 SwitchPreference(
                     title = { Text(stringResource(R.string.preload_queue_lyrics)) },
@@ -676,7 +721,10 @@ fun LyricsSettings(
             }
         }
 
-        PreferenceGroup(title = stringResource(R.string.cache)) {
+        PreferenceGroup(
+            modifier = positions.modifierFor("lyrics_cache_size"),
+            title = stringResource(R.string.cache),
+        ) {
             item {
                 PreferenceEntry(
                     title = { Text(stringResource(R.string.clear_lyrics_cache)) },
@@ -720,6 +768,7 @@ private fun PreferredLyricsProvider.displayName(): String =
         PreferredLyricsProvider.PAXSENIX_MUSIXMATCH -> "Paxsenix: Musixmatch"
         PreferredLyricsProvider.PAXSENIX_YOUTUBE -> "Paxsenix: YouTube"
         PreferredLyricsProvider.UNISON -> "Unison"
+        PreferredLyricsProvider.MUSIXMATCH_EXPERIMENTAL -> "Musixmatch (experimental)"
     }
 
 @Composable

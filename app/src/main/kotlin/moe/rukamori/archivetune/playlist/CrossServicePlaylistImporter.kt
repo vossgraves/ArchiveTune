@@ -14,10 +14,15 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.innertube.models.SongItem
-import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import moe.rukamori.archivetune.innertube.utils.completed
+import moe.rukamori.archivetune.models.MediaMetadata
+import moe.rukamori.archivetune.models.toMediaMetadata
+import moe.rukamori.archivetune.spotify.Spotify
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import org.json.JSONArray
 import org.json.JSONObject
+import org.json.JSONTokener
 import java.util.concurrent.TimeUnit
 import java.util.regex.Pattern
 
@@ -66,12 +71,31 @@ object CrossServicePlaylistImporter {
 
     enum class ImportSource(val displayName: String) {
         YOUTUBE_MUSIC("YouTube Music"),
+        SPOTIFY("Spotify"),
         APPLE_MUSIC("Apple Music"),
         AMAZON_MUSIC("Amazon Music"),
         TIDAL("Tidal"),
+        QOBUZ("Qobuz"),
         DEEZER("Deezer"),
         UNKNOWN("Unknown"),
     }
+
+    /**
+     * Credentials for the services whose playlist APIs are not publicly
+     * readable. Tidal and Qobuz both reject anonymous playlist reads, so the
+     * caller supplies whatever the user already has configured (own account
+     * or a community Source Pool account) — see
+     * `CrossServiceImportCredentials.load`.
+     *
+     * Both fields are optional: an import from a service with no credentials
+     * fails with a friendly "sign in first" message rather than a 401.
+     */
+    data class Credentials(
+        val tidalAccessToken: String? = null,
+        val tidalCountryCode: String = "US",
+        val qobuzAppId: String? = null,
+        val qobuzAuthToken: String? = null,
+    )
 
     private val client: OkHttpClient by lazy {
         OkHttpClient.Builder()
@@ -85,31 +109,15 @@ object CrossServicePlaylistImporter {
      * Detects the source service from a URL. Returns [ImportSource.UNKNOWN]
      * for unrecognized URLs so the caller can show a friendly error.
      */
-    fun detectSource(url: String): ImportSource {
-        // Match on the parsed *host*, never on a substring of the whole URL:
-        // `https://evil.example/?ref=tidal.com` contains "tidal.com" but is not
-        // Tidal, and we hand this URL straight to an HTTP GET further down.
-        // Parsed with OkHttp's HttpUrl — the same parser that performs the
-        // request — so validation can't disagree with what actually gets fetched
-        // (it also strips userinfo, so `https://tidal.com@evil.example` resolves
-        // to host `evil.example` and is correctly rejected).
-        val parsed = url.trim().toHttpUrlOrNull() ?: return ImportSource.UNKNOWN
-
-        // Only https:// is accepted so a playlist link can't downgrade the fetch.
-        if (parsed.scheme != "https") return ImportSource.UNKNOWN
-
-        val host = parsed.host.lowercase().removePrefix("www.")
-
-        fun matches(domain: String) = host == domain || host.endsWith(".$domain")
-
-        return when {
-            matches("music.youtube.com") || matches("youtube.com") -> ImportSource.YOUTUBE_MUSIC
-            matches("music.apple.com") -> ImportSource.APPLE_MUSIC
-            matches("music.amazon.com") -> ImportSource.AMAZON_MUSIC
-            matches("tidal.com") -> ImportSource.TIDAL
-            matches("deezer.com") -> ImportSource.DEEZER
-            else -> ImportSource.UNKNOWN
-        }
+    fun detectSource(url: String): ImportSource = when {
+        url.contains("music.youtube.com") || url.contains("youtube.com/playlist") -> ImportSource.YOUTUBE_MUSIC
+        url.contains("spotify.com") || url.startsWith("spotify:") -> ImportSource.SPOTIFY
+        url.contains("music.apple.com") -> ImportSource.APPLE_MUSIC
+        url.contains("music.amazon.com") -> ImportSource.AMAZON_MUSIC
+        url.contains("tidal.com") -> ImportSource.TIDAL
+        url.contains("qobuz.com") -> ImportSource.QOBUZ
+        url.contains("deezer.com") -> ImportSource.DEEZER
+        else -> ImportSource.UNKNOWN
     }
 
     /**
@@ -119,7 +127,10 @@ object CrossServicePlaylistImporter {
      * skip the [resolveToYouTubeMusic] step). For all other services the
      * tracks are `(title, artist)` tuples that need to be looked up.
      */
-    suspend fun fetchPlaylist(url: String): Result<ResolvedImport> = withContext(Dispatchers.IO) {
+    suspend fun fetchPlaylist(
+        url: String,
+        credentials: Credentials = Credentials(),
+    ): Result<ResolvedImport> = withContext(Dispatchers.IO) {
         runCatching {
             val source = detectSource(url)
             when (source) {
@@ -143,11 +154,16 @@ object CrossServicePlaylistImporter {
                         },
                     )
                 }
+                ImportSource.SPOTIFY -> fetchSpotifyPlaylist(url)
                 ImportSource.APPLE_MUSIC -> fetchAppleMusicPlaylist(url)
                 ImportSource.AMAZON_MUSIC -> fetchAmazonMusicPlaylist(url)
-                ImportSource.TIDAL -> fetchTidalPlaylist(url)
+                ImportSource.TIDAL -> fetchTidalPlaylist(url, credentials)
+                ImportSource.QOBUZ -> fetchQobuzPlaylist(url, credentials)
                 ImportSource.DEEZER -> fetchDeezerPlaylist(url)
-                ImportSource.UNKNOWN -> error("Unrecognized URL — supported: YouTube Music, Apple Music, Amazon Music, Tidal, Deezer")
+                ImportSource.UNKNOWN -> error(
+                    "Unrecognized URL — supported: YouTube Music, Spotify, Apple Music, " +
+                        "Amazon Music, Tidal, Qobuz, Deezer",
+                )
             }
         }
     }
@@ -187,6 +203,176 @@ object CrossServicePlaylistImporter {
             onProgress?.invoke(completed, total)
         }
         results
+    }
+
+    /**
+     * Same as [resolveToYouTubeMusic] but returns the fully-resolved
+     * [MediaMetadata] for each matched track (instead of just the song id).
+     *
+     * Callers that need to insert the resolved songs into the local `song`
+     * table — e.g. before linking them to a playlist via
+     * `addSongToPlaylist` — should prefer this overload so they have the
+     * title / artists / thumbnailUrl / album fields required to populate
+     * the `song` row. Otherwise the `playlist_song_map.songId` FOREIGN KEY
+     * → `song.id` constraint will reject the insert.
+     *
+     * Tracks that can't be matched on YouTube Music are skipped.
+     *
+     * @param onProgress optional callback invoked with (resolved, total)
+     *        after each track resolves. Lets the UI show a live counter.
+     */
+    suspend fun resolveToYouTubeMusicMetadata(
+        tracks: List<ForeignTrack>,
+        onProgress: ((Int, Int) -> Unit)? = null,
+    ): List<MediaMetadata> = coroutineScope {
+        val total = tracks.size
+        if (total == 0) return@coroutineScope emptyList()
+        val results = mutableListOf<MediaMetadata>()
+        var completed = 0
+
+        // Process in bounded-concurrency batches so we don't hammer
+        // InnerTube with 100+ parallel searches for a 100-track playlist.
+        tracks.chunked(MAX_PARALLEL_SEARCHES).forEach { batch ->
+            val resolved = batch.map { track ->
+                async {
+                    val term = listOfNotNull(track.artist?.takeIf(String::isNotBlank), track.title)
+                        .joinToString(" ")
+                        .ifBlank { return@async null }
+                    val search = YouTube.search(term, YouTube.SearchFilter.FILTER_SONG).getOrNull()
+                    val first = search?.items?.firstOrNull { it is SongItem } as? SongItem
+                    first?.toMediaMetadata()
+                }
+            }.awaitAll()
+            resolved.filterNotNull().forEach { results.add(it) }
+            completed += batch.size
+            onProgress?.invoke(completed, total)
+        }
+        results
+    }
+
+    /**
+     * Fetches a YouTube Music playlist (following continuation pages)
+     * and returns the fully-resolved [MediaMetadata] for every song.
+     *
+     * Use this instead of `YouTubePlaylistImportFetcher.fetch(...)` when
+     * the caller needs to insert the song rows into the local `song`
+     * table before linking them to a playlist — otherwise the
+     * `playlist_song_map.songId` FOREIGN KEY → `song.id` constraint
+     * will reject the insert.
+     */
+    suspend fun fetchYouTubePlaylistSongs(playlistId: String): List<MediaMetadata> =
+        withContext(Dispatchers.IO) {
+            val page = YouTube.playlist(playlistId).completed().getOrNull() ?: return@withContext emptyList()
+            page.songs.map { it.toMediaMetadata() }
+        }
+
+    // ─── Spotify ──────────────────────────────────────────────────────────
+    // URL pattern: https://open.spotify.com/playlist/{base62-id}
+    //
+    // Two paths, in order of preference:
+    //
+    //  1. **Authenticated GQL** — when the user has linked their Spotify
+    //     account (`Spotify.accessToken` set by `SpotifyLibraryRepository`),
+    //     we page through `Spotify.playlistTracks` and get the *whole*
+    //     playlist plus private/collaborative ones.
+    //  2. **Anonymous embed** — otherwise we read the public embed page's
+    //     `__NEXT_DATA__` blob, which carries up to 100 tracks with no
+    //     credentials at all. Good enough for public playlists and keeps the
+    //     feature usable for users who never sign in.
+    private suspend fun fetchSpotifyPlaylist(url: String): ResolvedImport {
+        val id = extractSpotifyPlaylistId(url)
+            ?: error("Couldn't extract Spotify playlist id from URL")
+
+        if (Spotify.isAuthenticated()) {
+            val viaApi = runCatching { fetchSpotifyPlaylistViaApi(id) }.getOrNull()
+            if (viaApi != null && viaApi.tracks.isNotEmpty()) return viaApi
+        }
+        return fetchSpotifyPlaylistViaEmbed(id)
+    }
+
+    /** Pages through the authenticated GQL endpoint until every track is collected. */
+    private suspend fun fetchSpotifyPlaylistViaApi(id: String): ResolvedImport {
+        val meta = Spotify.playlist(id).getOrNull()
+        val tracks = mutableListOf<ForeignTrack>()
+        var offset = 0
+        while (true) {
+            val page = Spotify.playlistTracks(id, limit = SPOTIFY_PAGE_SIZE, offset = offset)
+                .getOrNull() ?: break
+            val items = page.items.mapNotNull { item ->
+                val track = item.track ?: return@mapNotNull null
+                val title = track.name.ifBlank { return@mapNotNull null }
+                ForeignTrack(
+                    title = title,
+                    artist = track.artists.firstOrNull()?.name,
+                    album = track.album?.name,
+                    durationMs = track.durationMs.toLong().takeIf { it > 0 },
+                )
+            }
+            tracks.addAll(items)
+            offset += SPOTIFY_PAGE_SIZE
+            // Stop when we've drained the playlist or the API stopped
+            // returning rows (guards against an off-by-one `total`).
+            if (page.items.isEmpty() || offset >= page.total || tracks.size >= SPOTIFY_MAX_TRACKS) break
+        }
+        return ResolvedImport(
+            source = ImportSource.SPOTIFY,
+            sourcePlaylistId = id,
+            title = meta?.name?.takeIf { it.isNotBlank() } ?: "Spotify Playlist",
+            thumbnailUrl = meta?.images?.firstOrNull()?.url?.takeIf { it.isNotBlank() },
+            tracks = tracks,
+        )
+    }
+
+    /**
+     * Reads the public `open.spotify.com/embed/playlist/{id}` page. The page
+     * embeds a `__NEXT_DATA__` script whose
+     * `props.pageProps.state.data.entity` holds `name`, `coverArt.sources`
+     * and a `trackList` of `{title, subtitle, duration}` — `subtitle` is the
+     * artist name.
+     */
+    private suspend fun fetchSpotifyPlaylistViaEmbed(id: String): ResolvedImport {
+        val html = fetchText("https://open.spotify.com/embed/playlist/$id")
+        val nextData = extractNextData(html)
+            ?: error("Spotify playlist is private or unavailable")
+        val entity = JSONObject(nextData)
+            .optJSONObject("props")
+            ?.optJSONObject("pageProps")
+            ?.optJSONObject("state")
+            ?.optJSONObject("data")
+            ?.optJSONObject("entity")
+            ?: error("Spotify playlist is private or unavailable")
+
+        val trackList = entity.optJSONArray("trackList")
+        val tracks = (0 until (trackList?.length() ?: 0)).mapNotNull { i ->
+            val obj = trackList?.optJSONObject(i) ?: return@mapNotNull null
+            val title = obj.optString("title").ifBlank { return@mapNotNull null }
+            ForeignTrack(
+                title = title,
+                artist = obj.optString("subtitle").ifBlank { null },
+                durationMs = obj.optLong("duration").takeIf { it > 0 },
+            )
+        }
+        val cover = entity.optJSONObject("coverArt")
+            ?.optJSONArray("sources")
+            ?.optJSONObject(0)
+            ?.optString("url")
+            ?.ifBlank { null }
+
+        return ResolvedImport(
+            source = ImportSource.SPOTIFY,
+            sourcePlaylistId = id,
+            title = entity.optString("name").ifBlank { "Spotify Playlist" },
+            thumbnailUrl = cover,
+            tracks = tracks,
+        )
+    }
+
+    /** Accepts web URLs, `spotify:playlist:` URIs, and embed links. */
+    internal fun extractSpotifyPlaylistId(url: String): String? {
+        val uri = Pattern.compile("spotify:playlist:([A-Za-z0-9]+)").matcher(url)
+        if (uri.find()) return uri.group(1)
+        val web = Pattern.compile("playlist[/:]([A-Za-z0-9]{16,})").matcher(url)
+        return if (web.find()) web.group(1) else null
     }
 
     // ─── Apple Music ──────────────────────────────────────────────────────
@@ -230,8 +416,22 @@ object CrossServicePlaylistImporter {
     private fun parseAppleMusicTracks(html: String): List<ForeignTrack> {
         val tracks = mutableListOf<ForeignTrack>()
 
-        // Strategy 1: the schema:music-playlist JSON blob — most reliable.
-        // Each track looks like {"name":"...","artistName":"..."}.
+        // Strategy 1: the `serialized-server-data` script block — this is what
+        // current Apple Music pages server-render. Track rows appear nested
+        // several levels deep (data[].data.sections[].items[]) and each carries
+        // a `title` + `artistName`, so we walk the whole tree rather than
+        // hardcoding indices that Apple reshuffles between redesigns.
+        extractScriptJson(html, "serialized-server-data")?.let { raw ->
+            runCatching {
+                collectAppleMusicTracks(JSONTokener(raw).nextValue(), tracks)
+            }
+        }
+        if (tracks.isNotEmpty()) {
+            return tracks.distinctBy { it.title to it.artist }
+        }
+
+        // Strategy 2: the older schema:music-playlist JSON blob, where each
+        // track looks like {"name":"...","artistName":"..."}.
         val schemaRegex = Pattern.compile("\\{\"name\":\"([^\"]{2,200})\",\"artistName\":\"([^\"]{2,200})\"")
         val sm = schemaRegex.matcher(html)
         while (sm.find()) {
@@ -244,7 +444,7 @@ object CrossServicePlaylistImporter {
             return tracks.distinctBy { it.title to it.artist }
         }
 
-        // Strategy 2: JSON-LD MusicRecording entries.
+        // Strategy 3: JSON-LD MusicRecording entries.
         val itemRegex = Pattern.compile("\\{\"@type\":\"MusicRecording\",\"name\":\"([^\"]+)\"[^}]*?(?:\"byArtist\":\\{\"@type\":\"MusicGroup\",\"name\":\"([^\"]+)\"\\})?")
         val m = itemRegex.matcher(html)
         while (m.find()) {
@@ -265,6 +465,33 @@ object CrossServicePlaylistImporter {
             }
         }
         return tracks.distinctBy { it.title to it.artist }
+    }
+
+    /**
+     * Depth-first walk over the Apple Music server-data tree, collecting any
+     * object that carries both a `title` and an `artistName`. Order is
+     * preserved because Apple serialises the track rows in playlist order.
+     */
+    private fun collectAppleMusicTracks(node: Any?, into: MutableList<ForeignTrack>) {
+        when (node) {
+            is JSONObject -> {
+                val title = node.optString("title").takeIf { it.isNotBlank() }
+                val artist = node.optString("artistName").takeIf { it.isNotBlank() }
+                if (title != null && artist != null) {
+                    into.add(
+                        ForeignTrack(
+                            title = title,
+                            artist = artist,
+                            durationMs = node.optLong("durationInMillis").takeIf { it > 0 },
+                        ),
+                    )
+                }
+                node.keys().forEach { key -> collectAppleMusicTracks(node.opt(key), into) }
+            }
+            is JSONArray -> {
+                for (i in 0 until node.length()) collectAppleMusicTracks(node.opt(i), into)
+            }
+        }
     }
 
     // ─── Amazon Music ─────────────────────────────────────────────────────
@@ -332,63 +559,143 @@ object CrossServicePlaylistImporter {
 
     // ─── Tidal ────────────────────────────────────────────────────────────
     // URL pattern: https://tidal.com/browse/playlist/{uuid}
-    // Tidal's public page embeds a Next.js __NEXT_DATA__ JSON blob that
-    // includes the track list. We extract from there.
-    private suspend fun fetchTidalPlaylist(url: String): ResolvedImport {
-        val html = fetchText(url)
-        val id = extractTidalPlaylistId(url) ?: url
-        val title = extractTidalTitle(html)
-        val tracks = parseTidalTracks(html)
+    //
+    // tidal.com is a client-rendered SPA — the served HTML contains no track
+    // data at all, so scraping it can't work. Instead we call the same
+    // `api.tidal.com/v1` endpoints the app's playback path already uses, with
+    // the user's own OAuth token or a community Source Pool account. Playlist
+    // reads are paginated 100 items at a time.
+    private suspend fun fetchTidalPlaylist(url: String, credentials: Credentials): ResolvedImport {
+        val id = extractTidalPlaylistId(url) ?: error("Couldn't extract Tidal playlist id from URL")
+        val accessToken = credentials.tidalAccessToken?.takeIf { it.isNotBlank() }
+            ?: error("Tidal import needs a signed-in Tidal account (Settings → Integration → Tidal)")
+        val country = credentials.tidalCountryCode.ifBlank { "US" }
+
+        val meta = runCatching {
+            JSONObject(
+                fetchText(
+                    url = "$TIDAL_API_BASE/playlists/$id?countryCode=$country",
+                    headers = mapOf("Authorization" to "Bearer $accessToken"),
+                ),
+            )
+        }.getOrNull()
+
+        val tracks = mutableListOf<ForeignTrack>()
+        var offset = 0
+        while (tracks.size < TIDAL_MAX_TRACKS) {
+            val body = fetchText(
+                url = "$TIDAL_API_BASE/playlists/$id/items" +
+                    "?countryCode=$country&limit=$TIDAL_PAGE_SIZE&offset=$offset",
+                headers = mapOf("Authorization" to "Bearer $accessToken"),
+            )
+            val root = JSONObject(body)
+            val items = root.optJSONArray("items") ?: break
+            if (items.length() == 0) break
+            for (i in 0 until items.length()) {
+                // Each row wraps the payload as {"item": {...}, "type": "track"}.
+                val wrapper = items.optJSONObject(i) ?: continue
+                if (wrapper.optString("type").let { it.isNotBlank() && it != "track" }) continue
+                val item = wrapper.optJSONObject("item") ?: wrapper
+                val title = item.optString("title")
+                if (title.isBlank()) continue
+                tracks.add(
+                    ForeignTrack(
+                        title = title,
+                        artist = item.optJSONObject("artist")?.optString("name")?.ifBlank { null }
+                            ?: item.optJSONArray("artists")?.optJSONObject(0)?.optString("name")?.ifBlank { null },
+                        album = item.optJSONObject("album")?.optString("title")?.ifBlank { null },
+                        durationMs = item.optLong("duration").takeIf { it > 0 }?.times(1000L),
+                    ),
+                )
+            }
+            offset += TIDAL_PAGE_SIZE
+            if (offset >= root.optInt("totalNumberOfItems", offset)) break
+        }
+
         return ResolvedImport(
             source = ImportSource.TIDAL,
             sourcePlaylistId = id,
-            title = title,
-            thumbnailUrl = null,
+            title = meta?.optString("title")?.ifBlank { null } ?: "Tidal Playlist",
+            thumbnailUrl = meta?.optString("squareImage")?.ifBlank { null }
+                ?.let { "https://resources.tidal.com/images/${it.replace('-', '/')}/640x640.jpg" },
             tracks = tracks,
         )
+    }
+
+    // ─── Qobuz ────────────────────────────────────────────────────────────
+    // URL patterns: https://open.qobuz.com/playlist/{id}
+    //               https://www.qobuz.com/{cc}/playlists/{slug}/{id}
+    //
+    // Qobuz rejects anonymous playlist reads (401), so we sign the request
+    // with an app_id + user auth token — the user's own pasted Qobuz token or
+    // a community Source Pool account, exactly like the playback path does.
+    private suspend fun fetchQobuzPlaylist(url: String, credentials: Credentials): ResolvedImport {
+        val id = extractQobuzPlaylistId(url) ?: error("Couldn't extract Qobuz playlist id from URL")
+        val appId = credentials.qobuzAppId?.takeIf { it.isNotBlank() }
+        val authToken = credentials.qobuzAuthToken?.takeIf { it.isNotBlank() }
+        if (appId == null || authToken == null) {
+            error("Qobuz import needs a Qobuz token (Settings → Integration → Qobuz)")
+        }
+
+        val tracks = mutableListOf<ForeignTrack>()
+        var title = "Qobuz Playlist"
+        var thumbnail: String? = null
+        var offset = 0
+        while (tracks.size < QOBUZ_MAX_TRACKS) {
+            val body = fetchText(
+                url = "$QOBUZ_API_BASE/playlist/get?playlist_id=$id&extra=tracks" +
+                    "&limit=$QOBUZ_PAGE_SIZE&offset=$offset&app_id=$appId",
+                headers = mapOf(
+                    "X-App-Id" to appId,
+                    "X-User-Auth-Token" to authToken,
+                ),
+            )
+            val root = JSONObject(body)
+            if (offset == 0) {
+                title = root.optString("name").ifBlank { title }
+                thumbnail = root.optJSONObject("image")?.optString("large")?.ifBlank { null }
+            }
+            val trackObj = root.optJSONObject("tracks")
+            val items = trackObj?.optJSONArray("items") ?: break
+            if (items.length() == 0) break
+            for (i in 0 until items.length()) {
+                val item = items.optJSONObject(i) ?: continue
+                val trackTitle = item.optString("title")
+                if (trackTitle.isBlank()) continue
+                tracks.add(
+                    ForeignTrack(
+                        title = trackTitle,
+                        artist = item.optJSONObject("performer")?.optString("name")?.ifBlank { null }
+                            ?: item.optJSONObject("album")?.optJSONObject("artist")
+                                ?.optString("name")?.ifBlank { null },
+                        album = item.optJSONObject("album")?.optString("title")?.ifBlank { null },
+                        durationMs = item.optLong("duration").takeIf { it > 0 }?.times(1000L),
+                    ),
+                )
+            }
+            offset += QOBUZ_PAGE_SIZE
+            if (offset >= trackObj.optInt("total", offset)) break
+        }
+
+        return ResolvedImport(
+            source = ImportSource.QOBUZ,
+            sourcePlaylistId = id,
+            title = title,
+            thumbnailUrl = thumbnail,
+            tracks = tracks,
+        )
+    }
+
+    /** Qobuz playlist ids are numeric and always the last path segment. */
+    internal fun extractQobuzPlaylistId(url: String): String? {
+        val m = Pattern.compile("playlists?/(?:[^/?#]+/)*?(\\d{3,})").matcher(url)
+        return if (m.find()) m.group(1) else null
     }
 
     private fun extractTidalPlaylistId(url: String): String? {
         // Tidal ids are UUIDs.
         val m = Pattern.compile("playlist/([a-f0-9\\-]{20,40})").matcher(url)
         return if (m.find()) m.group(1) else null
-    }
-
-    private fun extractTidalTitle(html: String): String {
-        val og = Pattern.compile("<meta[^>]+property=\"og:title\"[^>]+content=\"([^\"]+)\"").matcher(html)
-        if (og.find()) return unescapeJson(og.group(1))
-        val title = Pattern.compile("<title>([^<]+)</title>").matcher(html)
-        if (title.find()) {
-            val raw = title.group(1).trim()
-            return raw.substringBefore(" |").ifBlank { raw }
-        }
-        return "Tidal Playlist"
-    }
-
-    private fun parseTidalTracks(html: String): List<ForeignTrack> {
-        val tracks = mutableListOf<ForeignTrack>()
-        // Tidal embeds tracks as `{"title":"...","artists":[{"name":"..."}]}`
-        val regex = Pattern.compile("\\{\"title\":\"([^\"]{2,120})\",\"artists\":\\[\\{\"name\":\"([^\"]+)\"")
-        val m = regex.matcher(html)
-        while (m.find()) {
-            tracks.add(ForeignTrack(
-                title = unescapeJson(m.group(1)),
-                artist = unescapeJson(m.group(2)),
-            ))
-        }
-        // Fallback: search for `{"name":"...","artist":"..."}` pairs (older
-        // Tidal serializations).
-        if (tracks.isEmpty()) {
-            val alt = Pattern.compile("\\{\"name\":\"([^\"]{2,120})\",\"artist\":\"([^\"]+)\"")
-            val am = alt.matcher(html)
-            while (am.find()) {
-                tracks.add(ForeignTrack(
-                    title = unescapeJson(am.group(1)),
-                    artist = unescapeJson(am.group(2)),
-                ))
-            }
-        }
-        return tracks.distinctBy { it.title to it.artist }
     }
 
     // ─── Deezer ───────────────────────────────────────────────────────────
@@ -429,38 +736,48 @@ object CrossServicePlaylistImporter {
     }
 
     // ─── Shared helpers ───────────────────────────────────────────────────
-    private suspend fun fetchText(url: String): String = withContext(Dispatchers.IO) {
+    private suspend fun fetchText(
+        url: String,
+        headers: Map<String, String> = emptyMap(),
+    ): String = withContext(Dispatchers.IO) {
         val req = Request.Builder()
             .url(url)
-            .header("User-Agent", "Mozilla/5.0 (Linux; Android 14; ArchiveTune) AppleWebKit/537.36")
+            // Spotify's embed page varies its markup by client; a desktop UA
+            // reliably returns the __NEXT_DATA__ payload we parse.
+            .header("User-Agent", BROWSER_USER_AGENT)
             .header("Accept", "text/html,application/json,application/xhtml+xml")
             .header("Accept-Language", "en-US,en;q=0.9")
+            .apply { headers.forEach { (name, value) -> header(name, value) } }
             .build()
         client.newCall(req).execute().use { res ->
-            if (!res.isSuccessful) error("HTTP ${res.code} fetching $url")
-            // Redirects are followed, so re-validate where we actually landed:
-            // a trusted host must not be able to bounce us to an arbitrary one.
-            if (detectSource(res.request.url.toString()) == ImportSource.UNKNOWN) {
-                error("Playlist URL redirected to an untrusted host")
+            if (!res.isSuccessful) {
+                // Surface auth problems in words the user can act on — a bare
+                // "HTTP 401" in a toast tells them nothing.
+                when (res.code) {
+                    401, 403 -> error("Not authorised (HTTP ${res.code}) — the account or token may have expired")
+                    404 -> error("Playlist not found (HTTP 404) — it may be private or the URL is wrong")
+                    429 -> error("Rate limited by the service (HTTP 429) — try again in a minute")
+                    else -> error("HTTP ${res.code} fetching $url")
+                }
             }
-            // Playlist pages are HTML/JSON; cap the body so a hostile or
-            // mis-routed response can't stream until the app runs out of memory.
-            // peekBody reads at most MAX_RESPONSE_BYTES and truncates beyond it.
-            res.peekBody(MAX_RESPONSE_BYTES).string()
-                .ifBlank { error("Empty response from $url") }
+            res.body?.string() ?: error("Empty response from $url")
         }
     }
+
+    /** Pulls the raw JSON body out of a `<script id="...">…</script>` block. */
+    internal fun extractScriptJson(html: String, scriptId: String): String? {
+        val m = Pattern
+            .compile("<script[^>]*id=\"$scriptId\"[^>]*>(.*?)</script>", Pattern.DOTALL)
+            .matcher(html)
+        return if (m.find()) m.group(1)?.trim()?.takeIf { it.isNotEmpty() } else null
+    }
+
+    /** Convenience for Next.js pages (Spotify's embed). */
+    private fun extractNextData(html: String): String? = extractScriptJson(html, "__NEXT_DATA__")
 
     private fun extractQuery(url: String, key: String): String? {
         val m = Pattern.compile("[?&]$key=([^&]+)").matcher(url)
         return if (m.find()) java.net.URLDecoder.decode(m.group(1), "UTF-8") else null
-    }
-
-    private fun extractFromTag(html: String, tag: String): String? {
-        val idx = html.indexOf(tag)
-        if (idx < 0) return null
-        val after = html.substring(idx + tag.length)
-        return after
     }
 
     private fun unescapeJson(s: String): String =
@@ -476,6 +793,20 @@ object CrossServicePlaylistImporter {
 
     private const val MAX_PARALLEL_SEARCHES = 6
 
-    /** Upper bound on a fetched playlist page. Real pages are well under 8 MB. */
-    private const val MAX_RESPONSE_BYTES = 8L * 1024 * 1024
+    private const val BROWSER_USER_AGENT =
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+            "(KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
+
+    private const val TIDAL_API_BASE = "https://api.tidal.com/v1"
+    private const val QOBUZ_API_BASE = "https://www.qobuz.com/api.json/0.2"
+
+    private const val SPOTIFY_PAGE_SIZE = 100
+    private const val TIDAL_PAGE_SIZE = 100
+    private const val QOBUZ_PAGE_SIZE = 500
+
+    // Hard ceilings so a pathological playlist can't spin the importer forever
+    // (each track also costs one YouTube Music search downstream).
+    private const val SPOTIFY_MAX_TRACKS = 2000
+    private const val TIDAL_MAX_TRACKS = 2000
+    private const val QOBUZ_MAX_TRACKS = 2000
 }

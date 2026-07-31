@@ -51,7 +51,7 @@ private const val CanvasPlaybackStallCheckIntervalMs = 1_000L
 private const val CanvasPlaybackStallTimeoutMs = 5_000L
 
 @Composable
-internal fun CanvasArtworkPlayer(
+fun CanvasArtworkPlayer(
     primaryUrl: String?,
     fallbackUrl: String?,
     isPlaying: Boolean,

@@ -60,6 +60,17 @@ val AodHorizontalPaddingKey = floatPreferencesKey("aodHorizontalPadding")
 val AodVerticalSpacingKey = floatPreferencesKey("aodVerticalSpacing")
 val AodTitleMaxLinesKey = intPreferencesKey("aodTitleMaxLines")
 val AodAmbientIntensityKey = floatPreferencesKey("aodAmbientIntensity")
+// Show a compact, dimmed lyrics line on the AOD screen while music plays.
+val AodShowLyricsKey = booleanPreferencesKey("aodShowLyrics")
+// When > 0, automatically enter AOD mode after this many seconds of the player sheet being
+// collapsed (i.e. the user is no longer actively interacting with the player). 0 disables.
+val AodAutoTimerSecondsKey = intPreferencesKey("aodAutoTimerSeconds")
+// When true, AOD mode auto-triggers when the screen is about to turn off due to inactivity
+// (driven via the system lock intent). Disabled by default to avoid surprises.
+val AodAutoOnScreenDimKey = booleanPreferencesKey("aodAutoOnScreenDim")
+// Experimental native Musixmatch provider (token.get + macro.subtitles + richsync→TTML).
+// Off by default; toggle surfaces in Lyrics settings under "Experimental".
+val EnableMusixmatchExperimentalKey = booleanPreferencesKey("enableMusixmatchExperimental")
 val SeekExtraSeconds = booleanPreferencesKey("seekExtraSeconds")
 val DisableBlurKey = booleanPreferencesKey("disableBlur")
 val BlurRadiusKey = floatPreferencesKey("blurRadius")
@@ -146,6 +157,14 @@ enum class PlaylistSuggestionSource {
 val AppLanguageKey = stringPreferencesKey("appLanguage")
 val ContentLanguageKey = stringPreferencesKey("contentLanguage")
 val ContentCountryKey = stringPreferencesKey("contentCountry")
+// Region spoofer for YouTube Music — overrides `YouTube.locale.gl` independently of
+// `ContentCountryKey`. Set from Internet Settings so users can keep their content
+// language/culture but pretend to YouTube Music that they are connecting from a
+// different country (e.g. to play region-locked songs). Applied AFTER
+// `ContentCountryKey` in `App.initializeDeferredAsync()` so the more specific
+// Internet/region setting wins. `SYSTEM_DEFAULT` means "fall back to device locale
+// or `ContentCountryKey`".
+val YouTubeMusicRegionKey = stringPreferencesKey("youtubeMusicRegion")
 val PlaylistSuggestionSourceKey = stringPreferencesKey("playlistSuggestionSource")
 val EnableKugouKey = booleanPreferencesKey("enableKugou")
 val EnableLrcLibKey = booleanPreferencesKey("enableLrclib")
@@ -164,36 +183,28 @@ val EnableUnisonLyricsKey = booleanPreferencesKey("enableUnisonLyrics")
 val HideExplicitKey = booleanPreferencesKey("hideExplicit")
 val HideVideoKey = booleanPreferencesKey("hideVideo")
 val AllowAgeRestrictedKey = booleanPreferencesKey("allowAgeRestricted")
-/**
- * Which provider an offline download pulls its bytes from.
- *
- * Older builds stored lowercase strings ("qobuz") in [DownloadSourceKey] while nothing consumed the
- * value, so downloads always came from YouTube Music regardless of the setting. `toEnum` maps those
- * stale values to [YOUTUBE_MUSIC], which matches what those builds actually did.
- */
 enum class DownloadSource {
-    /** Try each lossless provider in [losslessChain] order, then fall back to YouTube Music. */
+    /**
+     * Picks the best available source per song: tries Qobuz → Tidal → Deezer
+     * (lossless FLAC) and falls back to YouTube Music (lossy MP3/AAC) only
+     * when none of the lossless backends can resolve the track. This is the
+     * default and the recommended setting — it guarantees FLAC whenever a
+     * configured lossless provider has the track, without forcing the user
+     * to manually switch sources.
+     */
     AUTO,
+
     QOBUZ,
     TIDAL,
-    DEEZER,
-    YOUTUBE_MUSIC,
-    ;
 
     /**
-     * Lossless providers to attempt, in order. Empty for [YOUTUBE_MUSIC] (nothing to resolve) and
-     * for [AUTO] it is the full chain; a single explicit source resolves only itself.
+     * Deezer lookup — uses Deezer's public catalogue API to resolve a FLAC
+     * stream URL. Falls back to the next source in [AUTO] order when the
+     * track isn't on Deezer or the API can't resolve a full stream.
      */
-    fun losslessChain(): List<DownloadSource> =
-        when (this) {
-            // Deezer is tried last: it is inert without pooled accounts, so putting it ahead of
-            // Qobuz/Tidal would just add a wasted round trip for the many users who have none.
-            AUTO -> listOf(QOBUZ, TIDAL, DEEZER)
-            QOBUZ -> listOf(QOBUZ)
-            TIDAL -> listOf(TIDAL)
-            DEEZER -> listOf(DEEZER)
-            YOUTUBE_MUSIC -> emptyList()
-        }
+    DEEZER,
+
+    YOUTUBE_MUSIC,
 }
 
 val DownloadSourceKey = stringPreferencesKey("downloadSource")
@@ -359,6 +370,11 @@ val PauseSearchHistoryKey = booleanPreferencesKey("pauseSearchHistory")
 // without affecting the local play-count/history DB (governed by PauseListenHistoryKey).
 val SyncPlaybackToYouTubeHistoryKey = booleanPreferencesKey("syncPlaybackToYouTubeHistory")
 val DisableScreenshotKey = booleanPreferencesKey("disableScreenshot")
+
+// Integration screen: account cards. YouTube is always shown; Last.fm and Discord
+// cards can be pinned to the top of the Integration screen by the user.
+val PinLastFmCardKey = booleanPreferencesKey("pinLastFmCard")
+val PinDiscordCardKey = booleanPreferencesKey("pinDiscordCard")
 
 val DiscordTokenKey = stringPreferencesKey("discordToken")
 val DiscordRefreshTokenKey = stringPreferencesKey("discordRefreshToken")
@@ -614,6 +630,7 @@ enum class PreferredLyricsProvider {
     PAXSENIX_SPOTIFY,
     PAXSENIX_MUSIXMATCH,
     PAXSENIX_YOUTUBE,
+    MUSIXMATCH_EXPERIMENTAL,
 }
 
 val DefaultLyricsProviderOrder =
@@ -631,6 +648,7 @@ val DefaultLyricsProviderOrder =
         PreferredLyricsProvider.PAXSENIX_SPOTIFY,
         PreferredLyricsProvider.PAXSENIX_MUSIXMATCH,
         PreferredLyricsProvider.PAXSENIX_YOUTUBE,
+        PreferredLyricsProvider.MUSIXMATCH_EXPERIMENTAL,
     )
 
 fun deserializeLyricsProviderOrder(orderStr: String?): List<PreferredLyricsProvider> {
@@ -722,6 +740,7 @@ val NavigationBarStyleKey = stringPreferencesKey("navigationBarStyle")
 // Draws a frosted (blurred app content) backdrop behind the navigation bar. True backdrop blur on
 // Android 12+; a translucent surface fallback below that.
 val NavigationBarFrostedBlurKey = booleanPreferencesKey("navigationBarFrostedBlur")
+val HideNavigationBarLabelsKey = booleanPreferencesKey("hideNavigationBarLabels")
 
 // Keys for customized background
 val PlayerCustomImageUriKey = stringPreferencesKey("playerCustomImageUri")
@@ -905,21 +924,6 @@ val ManualSourceLoginEnabledKey = booleanPreferencesKey("dev_manual_source_login
 // a fully-working instance from a reachable-but-preview-only one.
 val QobuzLastProbeTrackKey = stringPreferencesKey("qobuzLastProbeTrack")
 
-// ---------------------------------------------------------------------------
-// Lossless downloads (Qobuz/Tidal direct file download)
-// ---------------------------------------------------------------------------
-// Downloading is a different mechanism from streaming: the proxy's download-music endpoint returns a
-// URL to a COMPLETE .flac file, so we fetch it straight to disk instead of going through ExoPlayer.
-//
-// Persisted SAF tree Uri of the user-picked destination folder. Empty => not chosen yet, so the UI
-// must prompt with OpenDocumentTree before the first lossless download. We keep the tree Uri (not a
-// file path) because scoped storage gives us no filesystem path, and we take a persistable
-// permission so the grant survives reboots.
-val LosslessDownloadFolderKey = stringPreferencesKey("losslessDownloadFolder")
-
-// When ON, write Vorbis comments + embedded cover art into the downloaded FLAC.
-val LosslessDownloadTagKey = booleanPreferencesKey("losslessDownloadTag")
-
 // JSON list of direct Qobuz API token entries (user_auth_token + user_id + app_id + app_secret +
 // metadata). These call www.qobuz.com/api.json/0.2 directly with an MD5 request signature, so they
 // need no proxy instance. Tried before proxy URLs during resolution (direct = highest fidelity).
@@ -945,64 +949,11 @@ val QobuzAudioQualityOptions =
 
 val QobuzAudioQualityKey = stringPreferencesKey("qobuzAudioQuality")
 
-/**
- * Whether a download prompts for its quality tier instead of silently using
- * [QobuzAudioQualityKey]. Cleared when the user ticks "remember this choice", so the prompt can be
- * turned off without digging through settings.
- */
-val AskDownloadQualityKey = booleanPreferencesKey("askDownloadQuality")
-
 fun QobuzAudioQuality.toFormatId(): Int =
     when (this) {
         QobuzAudioQuality.FLAC -> 6
         QobuzAudioQuality.HI_RES -> 7
         QobuzAudioQuality.MAX -> 27
-    }
-
-// ---------------------------------------------------------------------------
-// Deezer source
-// ---------------------------------------------------------------------------
-// Unlike Tidal/Qobuz there is no self-hosted proxy tier: Deezer streams come from accounts
-// authenticated with an `arl` cookie, supplied by the pool or by a manual sign-in. Defaults OFF
-// because the source is inert without accounts.
-val DeezerEnabledKey = booleanPreferencesKey("deezerEnabled")
-
-// A manually captured `arl` cookie. Kept separate from the pool cache: the pool is wiped and
-// rewritten on every refresh and is gated behind PoolAccountManager.isEnabled, so storing a
-// user's own credential there would lose it on the next sync.
-val DeezerArlKey = stringPreferencesKey("deezerArl")
-
-// Display label for the manually signed-in account, so the settings row can say who is signed in
-// without keeping the ARL itself anywhere near the UI.
-val DeezerAccountNameKey = stringPreferencesKey("deezerAccountName")
-
-// Whether the manual account reported a lossless-capable plan. Only orders resolution attempts;
-// the provider still verifies the real tier per track.
-val DeezerAccountPremiumKey = booleanPreferencesKey("deezerAccountPremium")
-
-// Deezer serves three tiers. FLAC needs a lossless plan, so the provider walks down from the
-// requested tier and a free account silently lands on MP3 rather than failing the track.
-enum class DeezerAudioQuality {
-    FLAC,
-    MP3_320,
-    MP3_128,
-}
-
-val DeezerAudioQualityOptions =
-    listOf(
-        DeezerAudioQuality.FLAC,
-        DeezerAudioQuality.MP3_320,
-        DeezerAudioQuality.MP3_128,
-    )
-
-val DeezerAudioQualityKey = stringPreferencesKey("deezerAudioQuality")
-
-/** The `format` string Deezer's media endpoint expects for each tier. */
-fun DeezerAudioQuality.toFormatName(): String =
-    when (this) {
-        DeezerAudioQuality.FLAC -> "FLAC"
-        DeezerAudioQuality.MP3_320 -> "MP3_320"
-        DeezerAudioQuality.MP3_128 -> "MP3_128"
     }
 
 // ---------------------------------------------------------------------------
@@ -1030,9 +981,6 @@ val TelegramLosslessOnlyKey = booleanPreferencesKey("telegramLosslessOnly")
 enum class AudioSourceType {
     TIDAL,
     QOBUZ,
-    DEEZER,
-
-    // Must stay last: the resolution chain treats everything after YOUTUBE as "not an override".
     YOUTUBE,
 }
 

@@ -9,10 +9,7 @@
 
 package moe.rukamori.archivetune.ui.screens.playlist
 
-import android.widget.Toast
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -51,6 +48,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Alignment
@@ -70,18 +68,21 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
-import moe.rukamori.archivetune.LocalDownloadUtil
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import moe.rukamori.archivetune.LocalDatabase
+import moe.rukamori.archivetune.LocalDownloadUtil
 import moe.rukamori.archivetune.constants.AppBarHeight
 import moe.rukamori.archivetune.constants.HideExplicitKey
-import moe.rukamori.archivetune.constants.LosslessDownloadTagKey
+import moe.rukamori.archivetune.db.entities.detectAudioExtensionFromSpans
+import moe.rukamori.archivetune.db.entities.extensionToMimeType
 import moe.rukamori.archivetune.constants.SongSortDescendingKey
 import moe.rukamori.archivetune.constants.SongSortType
 import moe.rukamori.archivetune.constants.SongSortTypeKey
-import moe.rukamori.archivetune.db.entities.Song
-import moe.rukamori.archivetune.download.CacheExporter
 import moe.rukamori.archivetune.extensions.toMediaItem
 import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.playback.queues.ListQueue
@@ -99,7 +100,10 @@ import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.CachePlaylistViewModel
-
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.time.LocalDateTime
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
@@ -115,53 +119,66 @@ fun CachePlaylistScreen(
     val downloadUtil = LocalDownloadUtil.current
     val haptic = LocalHapticFeedback.current
     val focusManager = LocalFocusManager.current
+    val coroutineScope = rememberCoroutineScope()
     val cachedSongs by viewModel.cachedSongs.collectAsState()
 
-    val embedExportTags by rememberPreference(LosslessDownloadTagKey, defaultValue = true)
-    val exportProgress by CacheExporter.progress.collectAsState()
-
-    // SAF folder picker for "Export all"
+    // SAF folder picker for "Export all".
+    // Exports songs in their original audio format (FLAC, OPUS, M4A, etc.)
+    // based on the FormatEntity codec metadata, instead of hardcoded .mp3.
+    val database = LocalDatabase.current
     val exportAllLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { treeUri ->
             if (treeUri == null) return@rememberLauncherForActivityResult
-            // The work itself belongs to CacheExporter, on a process-lived scope: exporting a large
-            // library takes minutes, and this composition's scope dies the moment the user navigates
-            // away, which used to abandon the run partway through.
-            CacheExporter.export(
-                context = context,
-                cache = downloadUtil.downloadCache,
-                treeUri = treeUri,
-                songs = cachedSongs,
-                embedTags = embedExportTags,
-            )
+            coroutineScope.launch {
+                var exported = 0
+                var failed = 0
+                for ((index, song) in cachedSongs.withIndex()) {
+                    val result = runCatching {
+                        withContext(Dispatchers.IO) {
+                            val cache = downloadUtil.downloadCache
+                            val spans = getCachedSpansForKey(cache, song.id)
+                            if (spans.isEmpty()) {
+                                throw IllegalStateException("No cache")
+                            }
+                            val safeTitle = song.title.trim()
+                                .replace(Regex("[\\\\/:*?\"<>|]"), "_").ifBlank { "audio" }
+                            // Detect the actual audio format from cached data's
+                            // magic bytes so the exported file gets the correct
+                            // extension (e.g. .opus instead of wrongly .flac).
+                            val detectedExt = detectAudioExtensionFromSpans(spans)
+                            val mime = extensionToMimeType(detectedExt)
+                            // createDocument() requires a document URI (representing the
+                            // parent directory as a document), NOT the tree URI returned by
+                            // OpenDocumentTree. Convert via getTreeDocumentId + buildDocumentUriUsingTree.
+                            val parentDocUri = android.provider.DocumentsContract.buildDocumentUriUsingTree(
+                                treeUri,
+                                android.provider.DocumentsContract.getTreeDocumentId(treeUri),
+                            )
+                            val destUri = android.provider.DocumentsContract.createDocument(
+                                context.contentResolver,
+                                parentDocUri,
+                                mime,
+                                "$safeTitle.$detectedExt",
+                            ) ?: throw IllegalStateException("Could not create file")
+                            context.contentResolver.openOutputStream(destUri, "w")?.use { output ->
+                                spans.sortedBy { it.position }.forEach { span ->
+                                    java.io.FileInputStream(span.file).use { input ->
+                                        input.copyTo(output)
+                                    }
+                                }
+                                output.flush()
+                            } ?: throw IllegalStateException("Could not open stream")
+                        }
+                    }
+                    if (result.isSuccess) exported++ else failed++
+                }
+                Toast.makeText(
+                    context,
+                    "Exported $exported song(s)${if (failed > 0) ", $failed failed" else ""}",
+                    Toast.LENGTH_LONG,
+                ).show()
+            }
         }
-
-    // "Export selected" needs the chosen songs to survive the trip through the folder picker,
-    // which tears down the selection UI, so latch them here rather than reading selection state
-    // back in the result callback.
-    var pendingExportSongs by remember { mutableStateOf<List<Song>>(emptyList()) }
-    val exportSelectedLauncher =
-        rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { treeUri ->
-            val songs = pendingExportSongs
-            pendingExportSongs = emptyList()
-            if (treeUri == null || songs.isEmpty()) return@rememberLauncherForActivityResult
-            CacheExporter.export(
-                context = context,
-                cache = downloadUtil.downloadCache,
-                treeUri = treeUri,
-                songs = songs,
-                embedTags = embedExportTags,
-            )
-        }
-
-    // Report the outcome once, when a run finishes, rather than from inside the export loop.
-    LaunchedEffect(exportProgress?.running) {
-        val finished = exportProgress?.takeIf { !it.running && it.processed > 0 } ?: return@LaunchedEffect
-        Toast
-            .makeText(context, finished.summary(context), Toast.LENGTH_LONG)
-            .show()
-        CacheExporter.clearProgress()
-    }
 
     val isPlaying by playerConnection.isPlaying.collectAsState()
     val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
@@ -598,10 +615,6 @@ fun CachePlaylistScreen(
                                 onRemoveFromCache = { songs ->
                                     songs.forEach { viewModel.removeSongFromCache(it.id) }
                                 },
-                                onExportSelected = { songs ->
-                                    pendingExportSongs = songs
-                                    exportSelectedLauncher.launch(null)
-                                },
                             )
                         }
                     }) {
@@ -645,4 +658,22 @@ fun CachePlaylistScreen(
     }
 }
 
-
+/**
+ * Resolves cached spans for a given [songId]. Tries the key directly first,
+ * then falls back to searching all cache keys for a matching entry.
+ */
+private fun getCachedSpansForKey(
+    cache: androidx.media3.datasource.cache.Cache,
+    songId: String,
+): java.util.NavigableSet<androidx.media3.datasource.cache.CacheSpan> {
+    var spans = cache.getCachedSpans(songId)
+    if (spans.isNotEmpty()) return spans
+    for (key in cache.keys) {
+        val cleanKey = key.substringAfterLast("/")
+        if (cleanKey == songId || key == songId) {
+            spans = cache.getCachedSpans(key)
+            if (spans.isNotEmpty()) return spans
+        }
+    }
+    return spans
+}

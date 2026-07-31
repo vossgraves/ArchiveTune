@@ -27,6 +27,42 @@ data class FormatEntity(
 
 fun FormatEntity.containerLabel(): String = mimeType.substringAfter("/").substringBefore(";").uppercase()
 
+/**
+ * Returns the appropriate file extension for this format's audio codec.
+ * Used when exporting cached songs so lossless FLAC files get a .flac
+ * extension instead of the generic .mp3 that was previously hardcoded.
+ */
+fun FormatEntity.fileExtension(): String {
+    val rawCodec = codecs.ifBlank { mimeType.substringAfter("/") }.lowercase()
+    val rawMime = mimeType.substringAfter("/").substringBefore(";").lowercase()
+    return when {
+        rawCodec.contains("flac") || rawCodec.contains("alac") -> "flac"
+        rawCodec.contains("opus") || rawMime.contains("opus") -> "opus"
+        rawCodec.contains("aac") || rawCodec.contains("mp4a") || rawMime.contains("mp4") -> "m4a"
+        rawCodec.contains("vorbis") -> "ogg"
+        rawCodec.contains("mp3") || rawMime.contains("mpeg") -> "mp3"
+        rawMime.contains("wav") || rawCodec.contains("pcm") -> "wav"
+        else -> "bin"
+    }
+}
+
+/**
+ * Returns the MIME type corresponding to this format's audio codec,
+ * suitable for use with SAF DocumentsContract.createDocument().
+ */
+fun FormatEntity.exportMimeType(): String {
+    val ext = fileExtension()
+    return when (ext) {
+        "flac" -> "audio/flac"
+        "opus" -> "audio/opus"
+        "m4a" -> "audio/mp4"
+        "ogg" -> "audio/ogg"
+        "wav" -> "audio/wav"
+        "mp3" -> "audio/mpeg"
+        else -> "application/octet-stream"
+    }
+}
+
 fun FormatEntity.codecLabel(): String {
     val rawCodec = codecs.ifBlank { mimeType.substringAfter("/") }.uppercase()
     val rawMime = mimeType.substringAfter("/").substringBefore(";").uppercase()
@@ -50,17 +86,6 @@ fun FormatEntity.formattedSampleRate(): String? =
     sampleRate?.takeIf { it > 0 }?.let {
         "${(it / 100.0).roundToInt() / 10.0} kHz"
     }
-
-/**
- * Compact single-line codec summary for player chrome, e.g. `Lossless • 96 kHz` or `AAC • 256 kbps`.
- * Prefers sample rate because it is the more meaningful figure for lossless streams, and falls back
- * to bitrate for lossy ones where the sample rate is usually unremarkable.
- */
-fun FormatEntity.codecBadgeLabel(): String =
-    listOfNotNull(
-        codecLabel().takeIf { it.isNotBlank() },
-        formattedSampleRate() ?: formattedBitrate(),
-    ).joinToString(separator = " • ")
 
 fun FormatEntity.formattedFileSize(): String =
     contentLength.takeIf { it > 0 }?.let {
@@ -91,6 +116,65 @@ fun FormatEntity.formattedFileSize(): String =
             String.format(java.util.Locale.US, "%.1f %s", rounded, units[unitIndex])
         }
     } ?: ""
+
+/**
+ * Detects the actual audio container format by reading magic bytes from the first
+ * cached span file. This is used when exporting downloaded songs to ensure the
+ * file extension matches the real data (e.g. a FormatEntity may claim FLAC while the
+ * cached bytes are actually Opus from YouTube Music).
+ *
+ * @return a file extension string: "flac", "opus", "m4a", "wav", "ogg", "webm", or "mp3"
+ */
+fun detectAudioExtensionFromSpans(
+    spans: java.util.NavigableSet<androidx.media3.datasource.cache.CacheSpan>,
+): String {
+    val firstSpan = spans.firstOrNull() ?: return "mp3"
+    val file = firstSpan.file ?: return "mp3"
+    if (!file.exists() || file.length() < 12) return "mp3"
+    val header = ByteArray(12)
+    file.inputStream().use { if (it.read(header) < 4) return "mp3" }
+    return when {
+        // FLAC: "fLaC" marker
+        header[0] == 0x66.toByte() && header[1] == 0x4C.toByte() &&
+            header[2] == 0x61.toByte() && header[3] == 0x43.toByte() -> "flac"
+        // OGG/Opus: "OggS" marker
+        header[0] == 0x4F.toByte() && header[1] == 0x67.toByte() &&
+            header[2] == 0x67.toByte() && header[3] == 0x53.toByte() -> "opus"
+        // M4A/AAC: "ftyp" at offset 4
+        header.size >= 8 && header[4] == 0x66.toByte() && header[5] == 0x74.toByte() &&
+            header[6] == 0x79.toByte() && header[7] == 0x70.toByte() -> "m4a"
+        // WAV: "RIFF" marker
+        header[0] == 0x52.toByte() && header[1] == 0x49.toByte() &&
+            header[2] == 0x46.toByte() && header[3] == 0x46.toByte() -> "wav"
+        // WebM/Matroska: EBML header magic 0x1A 0x45 0xDF 0xA3
+        // YouTube Music serves Opus audio in a WebM container for many
+        // streams — detecting this correctly prevents the file from being
+        // misnamed .mp3 (which would cause jaudiotagger to fail at read
+        // time and silently skip metadata tagging).
+        header[0] == 0x1A.toByte() && header[1] == 0x45.toByte() &&
+            header[2] == 0xDF.toByte() && header[3] == 0xA3.toByte() -> "webm"
+        // MP3: ID3 tag header or MPEG sync word
+        header[0] == 0x49.toByte() && header[1] == 0x44.toByte() &&
+            header[2] == 0x33.toByte() -> "mp3"
+        (header[0].toInt() and 0xFF) == 0xFF &&
+            (header[1].toInt() and 0xE0) == 0xE0 -> "mp3"
+        else -> "mp3"
+    }
+}
+
+/**
+ * Returns the MIME type corresponding to the given audio file extension.
+ */
+fun extensionToMimeType(ext: String): String = when (ext) {
+    "flac" -> "audio/flac"
+    "opus" -> "audio/opus"
+    "m4a" -> "audio/mp4"
+    "ogg" -> "audio/ogg"
+    "wav" -> "audio/wav"
+    "mp3" -> "audio/mpeg"
+    "webm" -> "audio/webm"
+    else -> "application/octet-stream"
+}
 
 enum class RatePriority {
     BITRATE_FIRST,

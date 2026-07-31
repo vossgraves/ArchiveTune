@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -25,6 +26,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -51,8 +53,7 @@ import moe.rukamori.archivetune.utils.rememberPreference
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PrivacySettings(navController: NavController) {
-    val anchors = rememberSettingsAnchorState(SettingsAnchorScreens.PRIVACY)
+fun PrivacySettings(navController: NavController, scrollTo: String? = null) {
     val database = LocalDatabase.current
     val (pauseListenHistory, onPauseListenHistoryChange) =
         rememberPreference(
@@ -168,19 +169,24 @@ fun PrivacySettings(navController: NavController) {
         },
     ) { innerPadding ->
         val topPadding = innerPadding.calculateTopPadding()
+        val scrollState = rememberScrollState()
+        val positions = rememberPreferencePositions()
+
+        LaunchedEffect(scrollTo) { positions.scrollToKey(scrollTo, scrollState) }
 
         Column(
             Modifier
                 .padding(top = topPadding)
                 .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom))
-                .verticalScroll(anchors.scrollState)
-                .padding(bottom = SettingsDimensions.ScreenBottomPadding)
-                .then(anchors.containerModifier),
+                .verticalScroll(scrollState)
+                .padding(bottom = SettingsDimensions.ScreenBottomPadding),
         ) {
-            PreferenceGroup(title = stringResource(R.string.listen_history)) {
+            PreferenceGroup(
+                modifier = positions.modifierFor("pause_listen_history"),
+                title = stringResource(R.string.listen_history),
+            ) {
                 item {
                     SwitchPreference(
-                        modifier = anchors.anchor(SettingsAnchors.PAUSE_LISTEN_HISTORY),
                         title = { Text(stringResource(R.string.pause_listen_history)) },
                         icon = { Icon(painterResource(R.drawable.history), null) },
                         checked = pauseListenHistory,
@@ -197,10 +203,12 @@ fun PrivacySettings(navController: NavController) {
                 }
             }
 
-            PreferenceGroup(title = stringResource(R.string.search_history)) {
+            PreferenceGroup(
+                modifier = positions.modifierFor("pause_search_history"),
+                title = stringResource(R.string.search_history),
+            ) {
                 item {
                     SwitchPreference(
-                        modifier = anchors.anchor(SettingsAnchors.PAUSE_SEARCH_HISTORY),
                         title = { Text(stringResource(R.string.pause_search_history)) },
                         icon = { Icon(painterResource(R.drawable.search_off), null) },
                         checked = pauseSearchHistory,
@@ -217,10 +225,12 @@ fun PrivacySettings(navController: NavController) {
                 }
             }
 
-            PreferenceGroup(title = stringResource(R.string.misc)) {
+            PreferenceGroup(
+                modifier = positions.modifierFor("haptics"),
+                title = stringResource(R.string.misc),
+            ) {
                 item {
                     SwitchPreference(
-                        modifier = anchors.anchor(SettingsAnchors.HAPTICS),
                         title = { Text(stringResource(R.string.haptics)) },
                         description = stringResource(R.string.haptics_desc),
                         icon = { Icon(painterResource(R.drawable.vibration), null) },
@@ -231,7 +241,6 @@ fun PrivacySettings(navController: NavController) {
 
                 item {
                     SwitchPreference(
-                        modifier = anchors.anchor(SettingsAnchors.DISABLE_SCREENSHOT),
                         title = { Text(stringResource(R.string.disable_screenshot)) },
                         description = stringResource(R.string.disable_screenshot_desc),
                         icon = { Icon(painterResource(R.drawable.screenshot), null) },

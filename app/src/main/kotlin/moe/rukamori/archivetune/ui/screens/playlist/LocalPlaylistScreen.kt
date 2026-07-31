@@ -605,22 +605,8 @@ fun LocalPlaylistScreen(
                                             )
                                         }
                                     },
-                                onToggleAdd = {
-                                    database.transaction {
-                                        update(playlist.playlist.toggleLike())
-                                    }
-                                },
+                                onToggleAdd = null,
                                 additionalPrimaryActions = { contentColor ->
-                                    if (editable) {
-                                        MediaDetailIconAction(
-                                            icon = R.drawable.delete,
-                                            contentDescription = R.string.delete,
-                                            contentColor = contentColor,
-                                            onClick = { showDeletePlaylistDialog = true },
-                                            isDestructive = true,
-                                        )
-                                    }
-
                                     if (songs.isNotEmpty()) {
                                         MediaDetailAction(
                                             contentDescription =
@@ -645,7 +631,7 @@ fun LocalPlaylistScreen(
                                                         sendAddMissingDownloads(
                                                             context = context,
                                                             songs =
-                                                                songs.map {
+                                                songs.map {
                                                                     HeaderDownloadItem(
                                                                         id = it.song.id,
                                                                         title = it.song.song.title,
@@ -681,77 +667,6 @@ fun LocalPlaylistScreen(
                                                 }
                                             }
                                         }
-
-                                        MediaDetailAction(
-                                            contentDescription = R.string.download,
-                                            contentColor = contentColor,
-                                            onClick = {
-                                                navController.navigate(
-                                                    "auto_playlist/downloaded?tab=progress",
-                                                )
-                                            },
-                                        ) {
-                                            val globalProgress = (globalDownloadState as? HeaderDownloadState.Partial)?.progress ?: 0f
-                                            val globalPaused = (globalDownloadState as? HeaderDownloadState.Partial)?.paused ?: false
-                                            HeaderDownloadProgressIndicator(
-                                                progress = globalProgress,
-                                                paused = globalPaused,
-                                                icon = R.drawable.list,
-                                            )
-                                        }
-
-                                        MediaDetailIconAction(
-                                            icon = R.drawable.mix,
-                                            contentDescription = R.string.start_mix,
-                                            contentColor = contentColor,
-                                            onClick = {
-                                                playerConnection.playQueue(
-                                                    LocalMixQueue(
-                                                        database = database,
-                                                        playlistId = playlist.id,
-                                                        maxMixSize = 50,
-                                                    ),
-                                                )
-                                            },
-                                        )
-
-                                        MediaDetailIconAction(
-                                            icon = R.drawable.radio,
-                                            contentDescription = R.string.start_radio,
-                                            contentColor = contentColor,
-                                            onClick = {
-                                                val browseId = playlist.playlist.browseId
-                                                if (browseId != null) {
-                                                    playerConnection.playQueue(
-                                                        YouTubeQueue(
-                                                            WatchEndpoint(
-                                                                playlistId = "RDAMPL$browseId",
-                                                                params =
-                                                                    playlist.playlist
-                                                                        .radioEndpointParams,
-                                                            ),
-                                                        ),
-                                                    )
-                                                } else {
-                                                    playerConnection.playQueue(
-                                                        LocalMixQueue(
-                                                            database = database,
-                                                            playlistId = playlist.id,
-                                                            maxMixSize = 50,
-                                                        ),
-                                                    )
-                                                }
-                                            },
-                                        )
-                                    }
-
-                                    if (editable) {
-                                        MediaDetailIconAction(
-                                            icon = R.drawable.edit,
-                                            contentDescription = R.string.edit_playlist,
-                                            contentColor = contentColor,
-                                            onClick = { showEditDialog = true },
-                                        )
                                     }
                                 },
                                 modifier = Modifier.animateItem(),

@@ -37,7 +37,6 @@ import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.innertube.utils.hasYouTubeLoginCookie
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.utils.backToMain
-import moe.rukamori.archivetune.utils.WebViewProxyController
 import moe.rukamori.archivetune.utils.resetAuthWebViewSession
 import moe.rukamori.archivetune.viewmodels.LoginScreenState
 import moe.rukamori.archivetune.viewmodels.LoginViewModel
@@ -82,15 +81,6 @@ fun LoginScreen(
         if (screenState is LoginScreenState.Success) {
             Toast.makeText(context, loginSuccessMessage, Toast.LENGTH_SHORT).show()
             navController.navigateUp()
-        }
-    }
-
-    // WebView's ProxyController cannot supply proxy credentials, so an authenticated proxy would
-    // fail here with an opaque timeout. Say so instead.
-    val proxyAuthWarning = stringResource(R.string.login_proxy_auth_unsupported)
-    LaunchedEffect(Unit) {
-        if (WebViewProxyController.requiresUnsupportedAuth()) {
-            Toast.makeText(context, proxyAuthWarning, Toast.LENGTH_LONG).show()
         }
     }
 
@@ -140,23 +130,8 @@ fun LoginScreen(
                     "Android",
                 )
                 webView = this
-                // Must be installed before the first load, otherwise sign-in connects directly and
-                // times out wherever YouTube is only reachable through the configured proxy.
-                WebViewProxyController.apply()
-                val targetUrl = startUrl?.takeIf { it.isNotBlank() } ?: DEFAULT_LOGIN_URL
-                // Only wipe cookies when the user is deliberately starting over. Clearing them on
-                // every entry forced a fresh TLS + redirect chain and discarded partially
-                // completed Google sessions, which is worst on slow or throttled links.
-                val hasExistingSession =
-                    YOUTUBE_COOKIE_URLS.any { url ->
-                        hasYouTubeLoginCookie(cookieManager.getCookie(url))
-                    }
-                if (hasExistingSession) {
-                    loadUrl(targetUrl)
-                } else {
-                    resetAuthWebViewSession(context, this, clearCookies = true) {
-                        loadUrl(targetUrl)
-                    }
+                resetAuthWebViewSession(context, this, clearCookies = true) {
+                    loadUrl(startUrl?.takeIf { it.isNotBlank() } ?: DEFAULT_LOGIN_URL)
                 }
             }
         },
@@ -165,7 +140,6 @@ fun LoginScreen(
             releasedWebView.removeJavascriptInterface("Android")
             releasedWebView.stopLoading()
             releasedWebView.destroy()
-            WebViewProxyController.clear()
             if (webView === releasedWebView) {
                 webView = null
             }

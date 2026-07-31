@@ -5,39 +5,31 @@
  * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
  *
  * Singleton wrapper around TDLib (org.drinkless.tdlib) that powers the Telegram channel streaming
- * integration: account login (phone → code → optional 2FA password), channel search across both the
- * public directory and the user's joined (including private) chats, paging through a channel's
- * audio/document messages, and partial-file access for streaming playback (see TelegramDataSource).
+ * integration: account login (phone → code → optional 2FA password), public channel search,
+ * paging through a channel's audio/document messages, and partial-file access for streaming
+ * playback (see TelegramDataSource).
  *
- * The api_id/api_hash are baked in at build time (BuildConfig, see app/build.gradle.kts), so users
- * sign in with just a phone number. The session lives in TDLib's own database under
- * filesDir/telegram and survives restarts, so login is a one-time flow — but note that a cold start
- * needs a moment to restore it, so playback paths must use [awaitReady] rather than [isReady].
+ * The user supplies their own api_id/api_hash from https://my.telegram.org (stored in DataStore);
+ * the actual session lives in TDLib's own database under filesDir/telegram and survives restarts,
+ * so login is a one-time flow.
  */
 
 package moe.rukamori.archivetune.telegram
 
 import android.content.Context
 import android.os.Build
-import kotlinx.coroutines.TimeoutCancellationException
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.coroutines.withTimeout
 import moe.rukamori.archivetune.BuildConfig
 import org.drinkless.tdlib.Client
 import org.drinkless.tdlib.TdApi
 import timber.log.Timber
 import java.io.File
 import java.io.IOException
-import java.io.InterruptedIOException
-import java.util.Collections
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
@@ -88,14 +80,6 @@ class TelegramApiException(
     message: String,
 ) : IOException("Telegram error $code: $message")
 
-/**
- * Raised when an invite link needs an admin to approve the join before the channel can be read.
- * Distinct from a plain failure so the UI can say the channel is pending rather than missing.
- */
-class TelegramJoinRequestPendingException(
-    val chatTitle: String,
-) : IOException("Join request required for \"$chatTitle\"")
-
 object TelegramClient {
     private const val TAG = "TelegramClient"
 
@@ -113,48 +97,8 @@ object TelegramClient {
     private val _authState = MutableStateFlow<TelegramAuthState>(TelegramAuthState.Idle)
     val authState: StateFlow<TelegramAuthState> = _authState.asStateFlow()
 
-    /** Default per-request timeout. TDLib can silently stall on a dead network. */
-    private const val REQUEST_TIMEOUT_MS = 30_000L
-
-    /** How long a cold start may take to reach an authorized session before callers give up. */
-    private const val READY_TIMEOUT_MS = 20_000L
-
-    /**
-     * Upper bound on cached chats. TDLib pushes UpdateNewChat for every chat in the user's list, so
-     * an unbounded map grows with the account's chat count (tens of thousands for heavy users) and
-     * is never trimmed until logout. This is a synchronized access-ordered LinkedHashMap, so reads
-     * count as uses and the least-recently-used chat is evicted past the cap; on a miss we simply
-     * fall back to a GetChat round trip.
-     */
-    private const val CHAT_CACHE_MAX = 256
-
-    /** Chats fetched per LoadChats call, and the page cap that bounds [ensureChatsLoaded]. */
-    private const val CHAT_LIST_PAGE_SIZE = 500
-    private const val CHAT_LIST_PAGES = 20
-
-    /**
-     * Whether the user's chat list has been loaded into TDLib this session. Reset on logout, since a
-     * new account starts with nothing loaded.
-     */
-    @Volatile
-    private var chatsLoaded = false
-
     /** Chats TDLib has pushed via UpdateNewChat, so channel lookups avoid extra round trips. */
-    private val chatCache: MutableMap<Long, TdApi.Chat> =
-        Collections.synchronizedMap(
-            object : LinkedHashMap<Long, TdApi.Chat>(64, 0.75f, true) {
-                override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Long, TdApi.Chat>): Boolean =
-                    size > CHAT_CACHE_MAX
-            },
-        )
-
-    /**
-     * File-download progress pushed by TDLib's UpdateFile, keyed by file id. Streaming reads observe
-     * this instead of polling GetFile on a fixed interval: TDLib already reports every change, so a
-     * read wakes exactly when new bytes land rather than up to one poll interval later.
-     */
-    private val _fileUpdates = MutableSharedFlow<TdApi.File>(extraBufferCapacity = 64)
-    val fileUpdates: SharedFlow<TdApi.File> = _fileUpdates.asSharedFlow()
+    private val chatCache = ConcurrentHashMap<Long, TdApi.Chat>()
 
     val isReady: Boolean
         get() = _authState.value is TelegramAuthState.Ready
@@ -229,15 +173,8 @@ object TelegramClient {
     // ------------------------------------------------------------------
 
     /**
-     * Searches for channels the user can actually read, keeping only channels/supergroups. Accepts
-     * plain queries, @usernames, t.me links (including private `t.me/c/...` and `t.me/+invite`
-     * links) and matches against the user's own joined chats.
-     *
-     * Ordering matters: the user's joined chats come first, because private channels are invisible
-     * to Telegram's public directory. A private channel has no username and is not indexed, so
-     * SearchPublicChat(s) can never return it — searching only the public directory made every
-     * private channel unreachable even when the user was a member. SearchChatsOnServer covers the
-     * user's memberships (public and private alike) and needs no invite link.
+     * Searches public chats and keeps only channels/supergroups. Accepts plain queries, @usernames,
+     * t.me links, and Telegram invite links (t.me/+hash or t.me/joinchat/hash).
      */
     suspend fun searchChannels(query: String): List<TelegramChannel> {
         val trimmed = query.trim()
@@ -245,77 +182,35 @@ object TelegramClient {
 
         val chatIds = linkedSetOf<Long>()
 
-        // A t.me/c/<internalId> link points at a private channel by internal id; convert it to a
-        // supergroup chat id directly, since no username lookup can resolve it.
-        privateChannelChatId(trimmed)?.let { chatIds += it }
+        // Check for invite link first — private channels require a different TDLib API.
+        extractInviteLink(trimmed)?.let { inviteLink ->
+            runCatching {
+                val inviteInfo = send<TdApi.ChatInviteLinkInfo>(TdApi.CheckChatInviteLink(inviteLink))
+                // If the invite link is valid, try to join the chat.
+                // If already a member, JoinChatByInviteLink returns the chat id anyway.
+                val joinedChatId = runCatching {
+                    send<TdApi.Chat>(TdApi.JoinChatByInviteLink(inviteLink)).id
+                }.getOrNull()
+                val chatId = joinedChatId ?: inviteInfo.chatId
+                if (chatId != 0L) {
+                    chatIds += chatId
+                }
+            }.onFailure { e ->
+                Timber.w(e, "Failed to resolve Telegram invite link")
+            }
+        }
 
-        // Exact username / t.me link lookup so pasting a public link always works.
+        // Exact username / t.me link lookup first so pasting a link always works.
         extractUsername(trimmed)?.let { username ->
             runCatching { send(TdApi.SearchPublicChat(username)) }
                 .onSuccess { chatIds += it.id }
         }
-
-        // Make sure TDLib knows the user's chats, otherwise the local search below has nothing to
-        // match against and private channels stay invisible.
-        ensureChatsLoaded()
-
-        // The user's own joined chats — the only way to reach private channels.
-        runCatching { send(TdApi.SearchChatsOnServer(trimmed, 50)) }
-            .onSuccess { chatIds += it.chatIds.toList() }
-        // Locally-known chats too, so results still appear when offline.
-        runCatching { send(TdApi.SearchChats(trimmed, 50)) }
-            .onSuccess { chatIds += it.chatIds.toList() }
-
-        // Public directory last: least specific, and already-added ids keep their earlier position.
         runCatching { send(TdApi.SearchPublicChats(trimmed)) }
             .onSuccess { chatIds += it.chatIds.toList() }
 
         return chatIds.mapNotNull { chatId ->
             runCatching { toChannel(getChat(chatId)) }.getOrNull()
         }
-    }
-
-    /**
-     * Resolves a private channel invite link to a chat id. `t.me/c/<internalId>/<messageId>` encodes
-     * the supergroup's internal id, which maps to a chat id by the documented -100 prefix rule.
-     * `t.me/+hash` / `t.me/joinchat/<hash>` links are resolved through TDLib.
-     */
-    private suspend fun privateChannelChatId(query: String): Long? {
-        Regex("t(?:elegram)?\\.me/c/(\\d{1,19})", RegexOption.IGNORE_CASE)
-            .find(query)
-            ?.groupValues
-            ?.get(1)
-            ?.toLongOrNull()
-            ?.let { internalId ->
-                // Supergroup/channel chat ids are the internal id negated behind a -100 prefix.
-                return "-100$internalId".toLongOrNull()
-            }
-
-        // `add/` is accepted as well as `+`/`joinchat/`: Telegram hands out all three shapes.
-        val inviteHash =
-            Regex(
-                "t(?:elegram)?\\.me/(?:\\+|joinchat/|add/)([A-Za-z0-9_-]+)",
-                RegexOption.IGNORE_CASE,
-            ).find(query)
-                ?.groupValues
-                ?.get(1)
-                ?: return null
-        val inviteLink = "https://t.me/+$inviteHash"
-
-        val info = send(TdApi.CheckChatInviteLink(inviteLink))
-        // Per TDLib, chatId is "0 if the user has no access to the chat before joining", so a
-        // non-zero id means the account is already a member and can read the channel as-is.
-        info.chatId.takeIf { it != 0L }?.let { return it }
-
-        // Otherwise inspecting the link is not enough. CheckChatInviteLink alone never grants read
-        // access, so returning here — as this used to — left every unjoined private channel
-        // unreachable, which is the bug this fixes: joining is the only way in.
-        if (info.createsJoinRequest) {
-            // An approval-required link cannot be joined unilaterally. Joining would only queue a
-            // request, so report it instead of failing as "no channels found".
-            throw TelegramJoinRequestPendingException(info.title)
-        }
-        return send(TdApi.JoinChatByInviteLink(inviteLink)).id
     }
 
     suspend fun getChat(chatId: Long): TdApi.Chat = chatCache[chatId] ?: send(TdApi.GetChat(chatId))
@@ -412,77 +307,17 @@ object TelegramClient {
      * Re-resolves a track's file id from its message, for when a stored file id has gone stale
      * (TDLib file ids are only valid per database generation).
      */
-    /**
-     * Resolves the audio file behind a channel message, throwing [IOException] with TDLib's actual
-     * reason when it cannot be reached.
-     *
-     * TDLib only answers GetMessage for chats it currently knows. Chats are learned either implicitly
-     * (a public username lookup) or explicitly via LoadChats — so a **private** channel, which has no
-     * username and never appears in the public directory, was simply unknown, GetChat/GetMessage
-     * failed with "Chat not found", the failure was swallowed into null, and playback surfaced only
-     * "Telegram file unavailable" even though the user was a member of the channel.
-     *
-     * So on a miss we load the user's chat list and retry once, which teaches TDLib every joined
-     * chat including private ones.
-     */
     suspend fun resolveTrackFile(
         chatId: Long,
         messageId: Long,
     ): TdApi.File? {
-        val message =
-            runCatching { send(TdApi.GetMessage(chatId, messageId)) }
-                .recoverCatching { firstError ->
-                    Timber.tag(TAG).i(
-                        "Telegram message %d in chat %d not immediately available (%s); loading chat list",
-                        messageId,
-                        chatId,
-                        firstError.message,
-                    )
-                    ensureChatsLoaded()
-                    // Force the chat into TDLib's memory before retrying the message lookup.
-                    runCatching { getChat(chatId) }
-                    send(TdApi.GetMessage(chatId, messageId))
-                }.getOrElse { error ->
-                    throw IOException(
-                        "Telegram could not open message $messageId in chat $chatId: " +
-                            (error.message ?: error::class.java.simpleName) +
-                            ". If this is a private channel, make sure this account has joined it.",
-                        error,
-                    )
-                }
-
+        runCatching { getChat(chatId) }
+        val message = runCatching { send(TdApi.GetMessage(chatId, messageId)) }.getOrNull() ?: return null
         return when (val content = message.content) {
             is TdApi.MessageAudio -> content.audio.audio
             is TdApi.MessageDocument -> content.document.document
             else -> null
         }
-    }
-
-    /**
-     * Asks TDLib to load the user's main chat list, which is what makes joined **private** chats
-     * addressable by id. Idempotent and cheap after the first successful pass.
-     *
-     * TDLib signals "nothing left to load" with error 404, which is a success condition here, not a
-     * failure. Capped by [CHAT_LIST_PAGES] so an unusually large account cannot spin here forever.
-     */
-    private suspend fun ensureChatsLoaded() {
-        if (chatsLoaded) return
-        repeat(CHAT_LIST_PAGES) {
-            val result =
-                runCatching {
-                    send(TdApi.LoadChats(TdApi.ChatListMain(), CHAT_LIST_PAGE_SIZE))
-                }
-            val error = result.exceptionOrNull()
-            if (error == null) return@repeat
-            // 404 => the full list is loaded; anything else is a real failure worth reporting.
-            if (error is TelegramApiException && error.code == 404) {
-                chatsLoaded = true
-                return
-            }
-            Timber.tag(TAG).w(error, "LoadChats failed")
-            return
-        }
-        chatsLoaded = true
     }
 
     suspend fun startDownload(
@@ -565,87 +400,24 @@ object TelegramClient {
     // Internals
     // ------------------------------------------------------------------
 
-    /**
-     * Sends a TDLib request and awaits its reply, failing with [InterruptedIOException] after
-     * [timeoutMs] instead of suspending forever. TDLib does not time out its own requests: if a
-     * response is never delivered (dropped connection, killed network) the continuation would never
-     * resume, permanently wedging the caller — for streaming reads that means playback hangs with no
-     * error and no recovery.
-     */
-    suspend fun <T : TdApi.Object> send(
-        function: TdApi.Function<T>,
-        timeoutMs: Long = REQUEST_TIMEOUT_MS,
-    ): T {
+    suspend fun <T : TdApi.Object> send(function: TdApi.Function<T>): T {
         val currentClient =
             client ?: throw IOException("Telegram client is not running")
-        return try {
-            withTimeout(timeoutMs) {
-                suspendCancellableCoroutine { continuation ->
-                    currentClient.send(function) { result ->
-                        when (result) {
-                            is TdApi.Error ->
-                                continuation.resumeWithException(
-                                    TelegramApiException(result.code, result.message),
-                                )
+        return suspendCancellableCoroutine { continuation ->
+            currentClient.send(function) { result ->
+                when (result) {
+                    is TdApi.Error ->
+                        continuation.resumeWithException(
+                            TelegramApiException(result.code, result.message),
+                        )
 
-                            else -> {
-                                @Suppress("UNCHECKED_CAST")
-                                continuation.resume(result as T)
-                            }
-                        }
+                    else -> {
+                        @Suppress("UNCHECKED_CAST")
+                        continuation.resume(result as T)
                     }
                 }
             }
-        } catch (e: TimeoutCancellationException) {
-            throw InterruptedIOException(
-                "Telegram request ${function.javaClass.simpleName} timed out after ${timeoutMs}ms",
-            ).apply { initCause(e) }
         }
-    }
-
-    /**
-     * Starts the client if needed and suspends until the session is authorized, returning false if
-     * the build has no credentials, the user is not logged in, or the session does not become ready
-     * within [timeoutMs].
-     *
-     * Playback entry points must use this rather than reading [isReady]: after a cold start (process
-     * death, or the first play after boot) TDLib needs a moment to load its database and reconnect,
-     * so an already-logged-in user would otherwise get a spurious "not logged in" failure simply
-     * because the check ran before the session finished restoring.
-     */
-    /**
-     * [awaitReady] for callers with no Context of their own (e.g. a Media3 DataSource created by a
-     * long-lived factory). Relies on the application Context captured by a previous [ensureStarted];
-     * returns false when the client has never been started, since without a Context TDLib cannot be
-     * initialized here. Deliberately does not retain a Context of its own, so nothing is leaked.
-     */
-    suspend fun awaitReady(timeoutMs: Long = READY_TIMEOUT_MS): Boolean {
-        val ctx = appContext ?: return false
-        return awaitReady(ctx, timeoutMs)
-    }
-
-    suspend fun awaitReady(
-        context: Context,
-        timeoutMs: Long = READY_TIMEOUT_MS,
-    ): Boolean {
-        if (!ensureStarted(context)) return false
-        if (isReady) return true
-        return runCatching {
-            withTimeout(timeoutMs) {
-                authState
-                    .first { state ->
-                        state is TelegramAuthState.Ready ||
-                            // Terminal states: waiting on user input or an unusable session. Stop
-                            // waiting rather than burn the full timeout on a session that cannot
-                            // become ready without the user acting.
-                            state is TelegramAuthState.WaitPhoneNumber ||
-                            state is TelegramAuthState.WaitCode ||
-                            state is TelegramAuthState.WaitPassword ||
-                            state is TelegramAuthState.LoggingOut ||
-                            state is TelegramAuthState.Unsupported
-                    } is TelegramAuthState.Ready
-            }
-        }.getOrDefault(false)
     }
 
     private fun onUpdate(update: TdApi.Object) {
@@ -654,10 +426,6 @@ object TelegramClient {
             is TdApi.UpdateNewChat -> chatCache[update.chat.id] = update.chat
             is TdApi.UpdateChatTitle -> chatCache[update.chatId]?.title = update.title
             is TdApi.UpdateChatPhoto -> chatCache[update.chatId]?.photo = update.photo
-            // Drives streaming reads. tryEmit (not emit) because this runs on TDLib's update
-            // thread, which must never block; a dropped tick is harmless since readers re-check
-            // the current file state on every wake and also time out independently.
-            is TdApi.UpdateFile -> _fileUpdates.tryEmit(update.file)
         }
     }
 
@@ -685,8 +453,6 @@ object TelegramClient {
             is TdApi.AuthorizationStateClosed -> {
                 synchronized(lock) { client = null }
                 chatCache.clear()
-                // A new session starts with nothing loaded, so the next lookup must re-load chats.
-                chatsLoaded = false
                 _authState.value = TelegramAuthState.Idle
             }
 
@@ -732,43 +498,19 @@ object TelegramClient {
         }
     }
 
-    /**
-     * Maps a TDLib chat to a channel entry, or null for chat types that cannot hold a browsable
-     * audio archive (private 1:1 chats and secret chats).
-     *
-     * Basic groups are included: small private groups used to share music are a common source, and
-     * rejecting every non-supergroup silently dropped them from results.
-     */
-    private suspend fun toChannel(chat: TdApi.Chat): TelegramChannel? =
-        when (val type = chat.type) {
-            is TdApi.ChatTypeSupergroup -> {
-                val supergroup = runCatching { chatSupergroup(type.supergroupId) }.getOrNull()
-                TelegramChannel(
-                    chatId = chat.id,
-                    title = chat.title,
-                    // Null for private channels — they have no public username, which the UI uses
-                    // to distinguish them rather than treating the absence as an error.
-                    username = supergroup?.username,
-                    memberCount = supergroup?.memberCount ?: 0,
-                    isBroadcastChannel = type.isChannel,
-                    photoMinithumbnail = chat.photo?.minithumbnail?.data,
-                    photoFileId = chat.photo?.small?.id ?: 0,
-                )
-            }
-
-            is TdApi.ChatTypeBasicGroup ->
-                TelegramChannel(
-                    chatId = chat.id,
-                    title = chat.title,
-                    username = null,
-                    memberCount = 0,
-                    isBroadcastChannel = false,
-                    photoMinithumbnail = chat.photo?.minithumbnail?.data,
-                    photoFileId = chat.photo?.small?.id ?: 0,
-                )
-
-            else -> null
-        }
+    private suspend fun toChannel(chat: TdApi.Chat): TelegramChannel? {
+        val type = chat.type as? TdApi.ChatTypeSupergroup ?: return null
+        val supergroup = runCatching { chatSupergroup(type.supergroupId) }.getOrNull()
+        return TelegramChannel(
+            chatId = chat.id,
+            title = chat.title,
+            username = supergroup?.username,
+            memberCount = supergroup?.memberCount ?: 0,
+            isBroadcastChannel = type.isChannel,
+            photoMinithumbnail = chat.photo?.minithumbnail?.data,
+            photoFileId = chat.photo?.small?.id ?: 0,
+        )
+    }
 
     private data class SupergroupInfo(
         val username: String?,
@@ -797,5 +539,24 @@ object TelegramClient {
             return trimmed.removePrefix("@").takeIf { it.matches(Regex("[A-Za-z0-9_]{3,}")) }
         }
         return null
+    }
+
+    /**
+     * Extracts the full invite link from a Telegram invite URL.
+     * Supports formats: t.me/+hash, t.me/joinchat/hash, t.me/add/1234hash.
+     * Returns the full URL including the https:// scheme, which TDLib requires
+     * for CheckChatInviteLink and JoinChatByInviteLink.
+     */
+    private fun extractInviteLink(query: String): String? {
+        val trimmed = query.trim()
+        val inviteRegex =
+            Regex(
+                "((?:https?://)?t(?:elegram)?\\.me/(?:\\+|joinchat/|add/)[A-Za-z0-9_-]+)",
+                RegexOption.IGNORE_CASE,
+            )
+        val match = inviteRegex.find(trimmed) ?: return null
+        val link = match.groupValues[1]
+        // Ensure the link has a scheme so TDLib can parse it correctly.
+        return if (link.startsWith("http")) link else "https://$link"
     }
 }

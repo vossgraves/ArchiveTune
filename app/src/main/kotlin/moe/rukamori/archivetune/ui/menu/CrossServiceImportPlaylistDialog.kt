@@ -9,10 +9,12 @@
 
 package moe.rukamori.archivetune.ui.menu
 
+import android.widget.Toast
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -21,100 +23,70 @@ import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import moe.rukamori.archivetune.LocalDatabase
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.db.entities.PlaylistEntity
+import moe.rukamori.archivetune.models.MediaMetadata
+import moe.rukamori.archivetune.playlist.CrossServiceImportCredentials
 import moe.rukamori.archivetune.playlist.CrossServicePlaylistImporter
 import moe.rukamori.archivetune.ui.component.DefaultDialog
+import java.time.LocalDateTime
 
 /**
- * Imports a playlist from another streaming service (Apple Music, Amazon Music, Tidal, Deezer, or
- * YouTube Music) by URL.
+ * Dialog that imports a playlist from a foreign music service URL
+ * (Apple Music, Amazon Music, Tidal, Deezer, or YouTube Music). The user
+ * pastes a URL, we resolve the source playlist's tracks, then look up
+ * each track on YouTube Music and add the resolved song ids to a new
+ * (or existing, if the URL was previously imported) local playlist.
  *
- * This dialog owns only the *resolution* half of the flow: take a URL, work out which service it
- * came from, pull the tracklist, and match each track to a YouTube Music song id. Once it has ids
- * it hands off to [ImportPlaylistDialog], which already owns the *persistence* half -- letting the
- * user rename the playlist, detecting a playlist that was already imported, and writing the rows.
- * Reimplementing that here would leave two copies of the same duplicate-detection logic to drift
- * apart, and would silently drop the rename step.
+ * This entry point lives in the Integration settings screen so the user
+ * can pull their library into ArchiveTune without leaving the app.
  */
 @Composable
 fun CrossServiceImportPlaylistDialog(
     isVisible: Boolean,
     onDismiss: () -> Unit,
-    snackbarHostState: SnackbarHostState? = null,
 ) {
+    val database = LocalDatabase.current
+    val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
     var urlValue by remember { mutableStateOf(TextFieldValue("")) }
     var isLoading by remember { mutableStateOf(false) }
     var statusMessage by remember { mutableStateOf<String?>(null) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
-    var resolvedCount by remember { mutableIntStateOf(0) }
-    var totalCount by remember { mutableIntStateOf(0) }
+    var resolvedCount by remember { mutableStateOf(0) }
+    var totalCount by remember { mutableStateOf(0) }
 
-    // Non-null once resolution succeeds, which advances the flow to stage 2.
-    var resolvedTitle by remember { mutableStateOf<String?>(null) }
-    var resolvedSongIds by remember { mutableStateOf<List<String>>(emptyList()) }
-    var resolvedBrowseId by remember { mutableStateOf<String?>(null) }
+    if (!isVisible) return
 
     fun resetState() {
         urlValue = TextFieldValue("")
         isLoading = false
         statusMessage = null
-        errorMessage = null
         resolvedCount = 0
         totalCount = 0
-        resolvedTitle = null
-        resolvedSongIds = emptyList()
-        resolvedBrowseId = null
     }
 
-    // Stage 2: ids in hand, so reuse the standard import dialog for naming and persistence.
-    val pendingTitle = resolvedTitle
-    if (pendingTitle != null) {
-        ImportPlaylistDialog(
-            isVisible = true,
-            onGetSong = { resolvedSongIds },
-            playlistTitle = pendingTitle,
-            browseId = resolvedBrowseId,
-            snackbarHostState = snackbarHostState,
-            onDismiss = {
-                resetState()
-                onDismiss()
-            },
-        )
-        return
-    }
-
-    if (!isVisible) return
-
-    // Resolved eagerly: these are read inside a coroutine, where stringResource is unavailable.
-    val unsupportedMessage = stringResource(R.string.cross_service_import_unsupported)
-    val noTracksMessage = stringResource(R.string.cross_service_import_no_tracks)
-    val noMatchesMessage = stringResource(R.string.cross_service_import_no_matches)
-    val resolvingMessage = stringResource(R.string.cross_service_import_resolving_playlist)
-
-    // Stage 1: URL entry and resolution progress.
     DefaultDialog(
         onDismiss = {
             if (!isLoading) {
@@ -131,20 +103,14 @@ fun CrossServiceImportPlaylistDialog(
             ) {
                 OutlinedTextField(
                     value = urlValue,
-                    onValueChange = {
-                        urlValue = it
-                        errorMessage = null
-                    },
+                    onValueChange = { urlValue = it },
                     label = { Text(stringResource(R.string.cross_service_import_playlist_url_label)) },
                     placeholder = { Text(stringResource(R.string.cross_service_import_playlist_url_placeholder)) },
                     singleLine = true,
                     enabled = !isLoading,
-                    isError = errorMessage != null,
                     modifier = Modifier.fillMaxWidth(),
                 )
-
                 Spacer(modifier = Modifier.height(12.dp))
-
                 Text(
                     text = stringResource(R.string.cross_service_import_playlist_supported),
                     style = MaterialTheme.typography.bodySmall,
@@ -152,33 +118,19 @@ fun CrossServiceImportPlaylistDialog(
                     textAlign = TextAlign.Start,
                     modifier = Modifier.fillMaxWidth(),
                 )
-
-                errorMessage?.let { message ->
+                if (statusMessage != null) {
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
-                        text = message,
+                        text = statusMessage!!,
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.error,
+                        color = MaterialTheme.colorScheme.primary,
                         textAlign = TextAlign.Center,
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
-
                 if (isLoading) {
                     Spacer(modifier = Modifier.height(16.dp))
                     CircularWavyProgressIndicator(modifier = Modifier.size(36.dp))
-
-                    statusMessage?.let { message ->
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = message,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.primary,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                    }
-
                     if (totalCount > 0) {
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
@@ -205,80 +157,171 @@ fun CrossServiceImportPlaylistDialog(
             ) {
                 Text(text = stringResource(android.R.string.cancel))
             }
-
             Button(
                 enabled = !isLoading && urlValue.text.isNotBlank(),
                 onClick = {
                     val url = urlValue.text.trim()
-
-                    // Validate before any network work, so a typo gives an instant localized
-                    // message rather than a failed request several seconds later.
-                    if (CrossServicePlaylistImporter.detectSource(url) ==
-                        CrossServicePlaylistImporter.ImportSource.UNKNOWN
-                    ) {
-                        errorMessage = unsupportedMessage
-                        return@Button
-                    }
-
+                    if (url.isBlank()) return@Button
                     isLoading = true
-                    errorMessage = null
-                    statusMessage = resolvingMessage
-
+                    statusMessage = context.getString(R.string.cross_service_import_resolving_playlist)
                     coroutineScope.launch(Dispatchers.IO) {
-                        val outcome = runCatching {
-                            val resolved = CrossServicePlaylistImporter.fetchPlaylist(url).getOrThrow()
-                            if (resolved.tracks.isEmpty()) error(noTracksMessage)
+                        try {
+                            // Tidal/Qobuz playlist reads need an account token;
+                            // the other services resolve anonymously.
+                            val credentials = CrossServiceImportCredentials.load(context)
+                            val resolved = CrossServicePlaylistImporter.fetchPlaylist(url, credentials)
+                                .getOrElse { e ->
+                                    withContext(Dispatchers.Main) {
+                                        statusMessage = null
+                                        isLoading = false
+                                        Toast.makeText(
+                                            context,
+                                            context.getString(
+                                                R.string.cross_service_import_failed,
+                                                e.message ?: "Unknown error",
+                                            ),
+                                            Toast.LENGTH_LONG,
+                                        ).show()
+                                    }
+                                    return@launch
+                                }
 
-                            withContext(Dispatchers.Main) {
-                                statusMessage = null
-                                totalCount = resolved.tracks.size
-                                resolvedCount = 0
+                            if (resolved.tracks.isEmpty()) {
+                                withContext(Dispatchers.Main) {
+                                    statusMessage = null
+                                    isLoading = false
+                                    Toast.makeText(
+                                        context,
+                                        context.getString(R.string.cross_service_import_no_tracks),
+                                        Toast.LENGTH_LONG,
+                                    ).show()
+                                }
+                                return@launch
                             }
 
-                            // YouTube Music tracks already carry their song ids, so this returns
-                            // straight away for that source instead of re-searching every title.
-                            val ids = CrossServicePlaylistImporter.resolveToYouTubeMusic(
-                                tracks = resolved.tracks,
-                                // Invoked from the importer's IO dispatcher, so hop back to Main:
-                                // Compose state must not be written from a background thread.
-                                onProgress = { done, total ->
-                                    coroutineScope.launch(Dispatchers.Main) {
-                                        resolvedCount = done
-                                        totalCount = total
+                            // Resolve tracks all the way to fully-populated
+                            // MediaMetadata (title/artists/album/thumbnail)
+                            // so we can insert them into the `song` table
+                            // BEFORE linking them to a playlist. Without this,
+                            // addSongToPlaylist() trips the
+                            // playlist_song_map.songId → song.id FOREIGN KEY
+                            // constraint and the whole import fails with
+                            // "FOREIGN KEY constraint failed (code 787)".
+                            //
+                            // YouTube Music already has the song ids natively
+                            // (no per-track search needed) but we still fetch
+                            // the full SongItems via fetchYouTubePlaylistSongs
+                            // so we have the metadata to populate the song row.
+                            val songs: List<MediaMetadata> =
+                                if (resolved.source == CrossServicePlaylistImporter.ImportSource.YOUTUBE_MUSIC) {
+                                    CrossServicePlaylistImporter.fetchYouTubePlaylistSongs(resolved.sourcePlaylistId)
+                                } else {
+                                    withContext(Dispatchers.Main) {
+                                        statusMessage = context.getString(
+                                            R.string.cross_service_import_searching_yt,
+                                            resolved.tracks.size,
+                                        )
+                                        totalCount = resolved.tracks.size
+                                        resolvedCount = 0
                                     }
-                                },
-                            )
-                            if (ids.isEmpty()) error(noMatchesMessage)
-
-                            resolved to ids
-                        }
-
-                        withContext(Dispatchers.Main) {
-                            isLoading = false
-                            statusMessage = null
-                            outcome
-                                .onSuccess { (resolved, ids) ->
-                                    resolvedSongIds = ids
-                                    // Only YouTube Music has a browseId the rest of the app can
-                                    // use: browseId drives "online_playlist/$browseId" navigation
-                                    // and YouTube cover lookups, so a synthetic value would break
-                                    // both. Leaving it null also marks the playlist editable, which
-                                    // is right for a one-off import from a foreign service.
-                                    resolvedBrowseId = resolved.sourcePlaylistId.takeIf {
-                                        resolved.source ==
-                                            CrossServicePlaylistImporter.ImportSource.YOUTUBE_MUSIC
-                                    }
-                                    // Assigned last: this is what advances the dialog to stage 2.
-                                    resolvedTitle = resolved.title.ifBlank { resolved.source.displayName }
+                                    CrossServicePlaylistImporter.resolveToYouTubeMusicMetadata(
+                                        tracks = resolved.tracks,
+                                        onProgress = { done, total ->
+                                            resolvedCount = done
+                                            totalCount = total
+                                        },
+                                    )
                                 }
-                                .onFailure { throwable ->
-                                    // runCatching also catches CancellationException. If this
-                                    // coroutine was cancelled (dialog dismissed, screen left) the
-                                    // composable is gone and there is no failure to report, so
-                                    // rethrow rather than surfacing a bogus error.
-                                    if (throwable is CancellationException) throw throwable
-                                    errorMessage = throwable.message ?: unsupportedMessage
+
+                            if (songs.isEmpty()) {
+                                withContext(Dispatchers.Main) {
+                                    statusMessage = null
+                                    isLoading = false
+                                    Toast.makeText(
+                                        context,
+                                        context.getString(R.string.cross_service_import_no_matches),
+                                        Toast.LENGTH_LONG,
+                                    ).show()
                                 }
+                                return@launch
+                            }
+
+                            // === Foreign-key-safe insert ===
+                            // Insert every resolved song into the `song` table
+                            // (plus its artist rows via the @Transaction insert
+                            // overload) inside a single transaction so a
+                            // mid-import crash doesn't leave half the songs
+                            // behind. After this, addSongToPlaylist() can
+                            // safely create the playlist_song_map rows.
+                            database.withTransaction {
+                                songs.forEach { meta -> insert(meta) }
+                            }
+                            val songIds = songs.map { it.id }
+
+                            // Create the local playlist and insert the song ids.
+                            val playlistName = resolved.title.ifBlank {
+                                "${resolved.source.displayName} Import"
+                            }
+                            val browseId = "import:${resolved.source.name}:${resolved.sourcePlaylistId}"
+                            // Re-use an existing playlist if we've imported this URL before.
+                            val existing = database.playlistByBrowseId(browseId).firstOrNull()
+                            val targetPlaylistId = if (existing != null) {
+                                database.query {
+                                    update(
+                                        existing.playlist.copy(
+                                            name = playlistName,
+                                            bookmarkedAt = existing.playlist.bookmarkedAt ?: LocalDateTime.now(),
+                                            lastUpdateTime = LocalDateTime.now(),
+                                        ),
+                                    )
+                                }
+                                existing.playlist.id
+                            } else {
+                                val newPlaylist = PlaylistEntity(
+                                    name = playlistName,
+                                    browseId = browseId,
+                                    isEditable = true,
+                                    bookmarkedAt = LocalDateTime.now(),
+                                    thumbnailUrl = resolved.thumbnailUrl,
+                                )
+                                database.query { insert(newPlaylist) }
+                                newPlaylist.id
+                            }
+
+                            val playlist = database.playlist(targetPlaylistId).firstOrNull()
+                            if (playlist != null) {
+                                database.addSongToPlaylist(playlist, songIds)
+                            }
+
+                            withContext(Dispatchers.Main) {
+                                isLoading = false
+                                statusMessage = null
+                                Toast.makeText(
+                                    context,
+                                    context.getString(
+                                        R.string.cross_service_import_success,
+                                        songIds.size,
+                                        resolved.tracks.size,
+                                        playlistName,
+                                    ),
+                                    Toast.LENGTH_LONG,
+                                ).show()
+                                resetState()
+                                onDismiss()
+                            }
+                        } catch (e: Exception) {
+                            withContext(Dispatchers.Main) {
+                                statusMessage = null
+                                isLoading = false
+                                Toast.makeText(
+                                    context,
+                                    context.getString(
+                                        R.string.cross_service_import_failed,
+                                        e.message ?: "Unknown error",
+                                    ),
+                                    Toast.LENGTH_LONG,
+                                ).show()
+                            }
                         }
                     }
                 },

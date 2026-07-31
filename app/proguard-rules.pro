@@ -63,13 +63,6 @@
 -dontwarn org.openjsse.net.ssl.OpenJSSE
 -dontwarn org.slf4j.impl.StaticLoggerBinder
 
-## jaudiotagger (com.github.Adonai fork) — used for lossless download tagging.
-# Its LogFormatter is desktop-JVM code that reads system properties through
-# sun.security.action.GetPropertyAction, an internal JDK class that does not exist on
-# Android. R8 fails the release build on the missing reference even though the code path
-# is never reached: we only call the tag reader/writer, never its java.util.logging setup.
--dontwarn sun.security.action.**
-
 ## Rules for NewPipeExtractor
 -keep class org.schabi.newpipe.extractor.services.youtube.protos.** { *; }
 -keep class org.schabi.newpipe.extractor.timeago.patterns.** { *; }

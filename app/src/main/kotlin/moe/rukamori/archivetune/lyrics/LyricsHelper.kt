@@ -12,8 +12,12 @@ import android.util.Log
 import android.util.LruCache
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.selects.select
+import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.constants.LyricsProviderOrderKey
 import moe.rukamori.archivetune.constants.PreferredLyricsProvider
@@ -51,6 +55,10 @@ class LyricsHelper
                 PaxsenixYouTubeLyricsProvider,
                 YouTubeSubtitleLyricsProvider,
                 YouTubeLyricsProvider,
+                // Experimental native Musixmatch provider — gated by
+                // EnableMusixmatchExperimentalKey (off by default). When the toggle
+                // is off, isEnabled() returns false and LyricsHelper skips it.
+                MusixmatchExperimentalLyricsProvider,
             )
 
         private val cache = LruCache<String, List<LyricsResult>>(MAX_CACHE_SIZE)
@@ -171,32 +179,21 @@ class LyricsHelper
             if (providers.isEmpty()) return LYRICS_NOT_FOUND
 
             val artist = mediaMetadata.artists.joinToString { it.name }
-
-            // Walk providers in priority order rather than firing every one at once and awaiting
-            // all of them. The old fan-out always paid the slowest provider's latency and held one
-            // in-flight request per provider, which is what made playback stutter on low-end
-            // devices. Word-synced is the top tier, so the first provider to return it wins and the
-            // rest are never contacted; otherwise we keep the best result seen so far. Because the
-            // scan follows provider order, the chosen lyrics are identical to before.
-            var bestLineSynced: String? = null
-            var bestPlain: String? = null
-
-            for (provider in providers) {
-                val candidate =
-                    withContext(Dispatchers.IO) {
-                        fetchProviderLyrics(provider, mediaMetadata, artist)
-                    } ?: continue
-
-                when {
-                    LyricsUtils.hasWordSyncedLyrics(candidate) -> return candidate
-                    LyricsUtils.isLineSyncedLrc(candidate) -> {
-                        if (bestLineSynced == null) bestLineSynced = candidate
-                    }
-                    else -> if (bestPlain == null) bestPlain = candidate
+            val results =
+                supervisorScope {
+                    providers
+                        .map { provider ->
+                            async(Dispatchers.IO) {
+                                fetchProviderLyrics(provider, mediaMetadata, artist)
+                            }
+                        }.mapNotNull { it.await() }
                 }
-            }
 
-            return bestLineSynced ?: bestPlain ?: LYRICS_NOT_FOUND
+            if (results.isEmpty()) return LYRICS_NOT_FOUND
+
+            results.firstOrNull { LyricsUtils.hasWordSyncedLyrics(it) }?.let { return it }
+            results.firstOrNull { LyricsUtils.isLineSyncedLrc(it) }?.let { return it }
+            return results.first()
         }
 
         private suspend fun fetchProviderLyrics(
@@ -246,6 +243,7 @@ class LyricsHelper
                     PreferredLyricsProvider.PAXSENIX_MUSIXMATCH to PaxsenixMusixmatchLyricsProvider,
                     PreferredLyricsProvider.PAXSENIX_YOUTUBE to PaxsenixYouTubeLyricsProvider,
                     PreferredLyricsProvider.UNISON to UnisonLyricsProvider,
+                    PreferredLyricsProvider.MUSIXMATCH_EXPERIMENTAL to MusixmatchExperimentalLyricsProvider,
                 )
             val userOrdered = orderedEnums.mapNotNull { providerMap[it] }
             val rest = baseProviders.filterNot { it in userOrdered }

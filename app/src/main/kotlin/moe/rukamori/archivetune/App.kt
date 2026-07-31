@@ -33,11 +33,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeoutOrNull
 import moe.rukamori.archivetune.canvas.ArchiveTuneCanvas
 import moe.rukamori.archivetune.constants.*
-import moe.rukamori.archivetune.deezer.DeezerAudioProvider
 import moe.rukamori.archivetune.extensions.*
 import moe.rukamori.archivetune.gatekeeper.GatekeeperResult
 import moe.rukamori.archivetune.gatekeeper.RunGatekeeperCheckUseCase
@@ -158,37 +155,38 @@ class App :
             ),
         )
         MoriCipherUpdateScheduler.schedule(this)
+        // PRDownloader is the file downloader used by PRDownloaderDataSource
+        // (the upstream HTTP fetcher inside Media3's download CacheDataSource
+        // chain). Initialized once at app start with tuned timeouts so
+        // downloads benefit from PRDownloader's pause/resume + retry support
+        // without paying init cost on the first download. Replaces Ketch —
+        // see PRDownloaderDataSource.kt for the rationale.
+        //
+        // Tuned for parallel-throughput: PRDownloader internally caps each
+        // download at 1 concurrent connection (it's a sequential fetcher),
+        // but it can run many downloads in parallel — the OkHttp dispatcher
+        // inside PRDownloader honors `setUserAgent` for proper HTTP/2
+        // connection reuse, and the read/connect timeouts are generous
+        // enough for large FLAC files on slow links.
+        runCatching {
+            val config = com.downloader.PRDownloaderConfig.newBuilder()
+                .setReadTimeout(60_000)
+                .setConnectTimeout(15_000)
+                .setUserAgent("ArchiveTune/${BuildConfig.VERSION_NAME}")
+                .build()
+            com.downloader.PRDownloader.initialize(this, config)
+        }
         CanvasArtworkPlaybackCache.init(this)
         ArchiveTuneCanvas.initialize(BuildConfig.CANVAS_BEARER_TOKEN)
         PaxsenixLyrics.setUserAgent("ArchiveTune", BuildConfig.VERSION_NAME)
 
         val locale = Locale.getDefault()
         val languageTag = locale.toLanguageTag().replace("-Hant", "")
-
-        // The content country/language overrides must be folded in *here*, synchronously, before
-        // any request can go out. Applying them later from a background coroutine raced with the
-        // first browse/search calls, which then went out tagged with the SIM country (e.g. gl=RU)
-        // and got region-restricted responses.
-        val storedPrefs =
-            runCatching {
-                runBlocking(Dispatchers.IO) {
-                    withTimeoutOrNull(LOCALE_PREFS_READ_TIMEOUT_MILLIS) { dataStore.data.first() }
-                }
-            }.onFailure { Timber.w(it, "Could not read locale overrides synchronously") }
-                .getOrNull()
-
-        val countryOverride = storedPrefs?.get(ContentCountryKey)?.takeIf { it != SYSTEM_DEFAULT }
-        val languageOverride = storedPrefs?.get(ContentLanguageKey)?.takeIf { it != SYSTEM_DEFAULT }
-
         YouTube.locale =
             YouTubeLocale(
-                gl =
-                    countryOverride
-                        ?: locale.country.takeIf { it in CountryCodeToName }
-                        ?: "US",
+                gl = locale.country.takeIf { it in CountryCodeToName } ?: "US",
                 hl =
-                    languageOverride
-                        ?: locale.language.takeIf { it in LanguageCodeToName }
+                    locale.language.takeIf { it in LanguageCodeToName }
                         ?: languageTag.takeIf { it in LanguageCodeToName }
                         ?: "en",
             )
@@ -211,8 +209,18 @@ class App :
             try {
                 val prefs = dataStore.data.first()
 
-                // Content country/language are applied synchronously in initializeCriticalSync().
-                // Re-applying them here would reintroduce the startup race.
+                prefs[ContentCountryKey]?.takeIf { it != SYSTEM_DEFAULT }?.let { country ->
+                    YouTube.locale = YouTube.locale.copy(gl = country)
+                }
+                prefs[ContentLanguageKey]?.takeIf { it != SYSTEM_DEFAULT }?.let { lang ->
+                    YouTube.locale = YouTube.locale.copy(hl = lang)
+                }
+                // Region spoofer from Internet Settings — applied AFTER ContentCountryKey so
+                // the Internet/region setting wins when both are set. SYSTEM_DEFAULT falls back
+                // to whatever the device locale or ContentCountryKey resolved to above.
+                prefs[YouTubeMusicRegionKey]?.takeIf { it != SYSTEM_DEFAULT }?.let { country ->
+                    YouTube.locale = YouTube.locale.copy(gl = country)
+                }
 
                 LastFmServiceConfig.fromPreferences(prefs).apply(prefs[LastFMSessionKey])
 
@@ -346,18 +354,6 @@ class App :
                 }
         }
 
-        // Mirrors the manually signed-in Deezer account into the provider. A collector rather than a
-        // one-shot read so signing in or out takes effect immediately, and so the value survives the
-        // pool refresh that replaces the pooled account cache.
-        applicationScope.launch(Dispatchers.IO) {
-            dataStore.data
-                .map { (it[DeezerArlKey] ?: "") to (it[DeezerAccountPremiumKey] ?: false) }
-                .distinctUntilChanged()
-                .collect { (arl, premium) ->
-                    DeezerAudioProvider.setManualArl(arl, premium)
-                }
-        }
-
         applicationScope.launch(Dispatchers.IO) {
             dataStore.data
                 .map { it.toPlaybackAuthState() }
@@ -367,11 +363,10 @@ class App :
                     YouTube.authState = authState
                     if (previousFingerprint != authState.fingerprint) {
                         YTPlayerUtils.clearPlaybackAuthCaches()
-                        // Deliberately no preWarm() here. It spins up a WebView and runs the
-                        // BotGuard bootstrap, which is one of the heaviest things the app can do
-                        // and it fired on every cold start even when nothing was ever played.
-                        // mintToken() calls getOrCreateEngine() itself, so the engine is built on
-                        // first actual use instead; only the first playback pays for it.
+                        val sessionId = authState.sessionId
+                        if (!sessionId.isNullOrBlank()) {
+                            BotGuardTokenGenerator.preWarm(sessionId)
+                        }
                     }
                 }
         }
@@ -489,12 +484,6 @@ class App :
 
     companion object {
         private const val GATEKEEPER_RETRY_INTERVAL_MILLIS = 30_000L
-
-        /**
-         * Bounded budget for the one synchronous preferences read done during startup so the
-         * content country/language overrides are known before the first network call.
-         */
-        private const val LOCALE_PREFS_READ_TIMEOUT_MILLIS = 1_500L
 
         lateinit var instance: App
             private set

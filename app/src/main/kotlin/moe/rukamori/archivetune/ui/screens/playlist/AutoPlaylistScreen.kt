@@ -442,22 +442,6 @@ fun AutoPlaylistScreen(
                                         }
                                     }
                                 }
-
-                                MediaDetailAction(
-                                    contentDescription = R.string.download,
-                                    contentColor = contentColor,
-                                    onClick = {
-                                        navController.navigate("auto_playlist/downloaded?tab=progress")
-                                    },
-                                ) {
-                                    val globalProgress = (globalDownloadState as? HeaderDownloadState.Partial)?.progress ?: 0f
-                                    val globalPaused = (globalDownloadState as? HeaderDownloadState.Partial)?.paused ?: false
-                                    HeaderDownloadProgressIndicator(
-                                        progress = globalProgress,
-                                        paused = globalPaused,
-                                        icon = R.drawable.list,
-                                    )
-                                }
                             },
                         )
                     }

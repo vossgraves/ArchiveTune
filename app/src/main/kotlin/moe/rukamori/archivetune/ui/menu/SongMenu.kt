@@ -84,30 +84,23 @@ import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.LocalSyncUtils
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.ArtistSeparatorsKey
-import moe.rukamori.archivetune.constants.AskDownloadQualityKey
 import moe.rukamori.archivetune.constants.ExternalDownloaderEnabledKey
 import moe.rukamori.archivetune.constants.ExternalDownloaderPackageKey
 import moe.rukamori.archivetune.constants.ListThumbnailSize
-import moe.rukamori.archivetune.constants.LosslessDownloadFolderKey
-import moe.rukamori.archivetune.constants.LosslessDownloadTagKey
-import moe.rukamori.archivetune.constants.QobuzAudioQuality
-import moe.rukamori.archivetune.constants.QobuzAudioQualityKey
-import moe.rukamori.archivetune.constants.toFormatId
 import moe.rukamori.archivetune.constants.SpeedDialSongIdsKey
 import moe.rukamori.archivetune.db.entities.ArtistEntity
 import moe.rukamori.archivetune.db.entities.Event
+import moe.rukamori.archivetune.db.entities.fileExtension
+import moe.rukamori.archivetune.db.entities.detectAudioExtensionFromSpans
+import moe.rukamori.archivetune.db.entities.extensionToMimeType
 import moe.rukamori.archivetune.db.entities.PlaylistSong
 import moe.rukamori.archivetune.db.entities.Song
-import moe.rukamori.archivetune.download.LosslessDownloader
 import moe.rukamori.archivetune.extensions.toMediaItem
 import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.models.toMediaMetadata
 import moe.rukamori.archivetune.playback.ExoDownloadService
 import moe.rukamori.archivetune.playback.queues.YouTubeQueue
 import moe.rukamori.archivetune.telegram.isTelegramMediaId
-import moe.rukamori.archivetune.ui.component.DownloadQualityChoice
-import moe.rukamori.archivetune.ui.component.DownloadQualityDialog
-import moe.rukamori.archivetune.ui.component.ExportFormatDialog
 import moe.rukamori.archivetune.ui.component.ListDialog
 import moe.rukamori.archivetune.ui.component.LocalBottomSheetPageState
 import moe.rukamori.archivetune.ui.component.MenuSurfaceSection
@@ -153,131 +146,29 @@ fun SongMenu(
 
     val downloadUtil = LocalDownloadUtil.current
 
-    // ---- Lossless (Qobuz) download -------------------------------------------------------------
-    // Separate from the ExoPlayer download above: this fetches a complete .flac over plain HTTP into
-    // a folder the user owns, so the result is a real file other apps can read.
-    var losslessFolder by rememberPreference(LosslessDownloadFolderKey, "")
-    val embedTags by rememberPreference(LosslessDownloadTagKey, defaultValue = true)
-    var qobuzQuality by rememberPreference(QobuzAudioQualityKey, QobuzAudioQuality.FLAC.name)
-    // The result callback fires after the download finishes, which may be long after this sheet is
-    // gone, so the toast must not hold the Activity context.
-    val appContext = remember(context) { context.applicationContext }
-
-    // Observed from the downloader rather than held locally, so the spinner stays correct even if the
-    // menu is closed and reopened while the download is still running.
-    val activeLosslessDownloads by LosslessDownloader.active.collectAsState()
-    val losslessInProgress = song.id in activeLosslessDownloads
-
-    // The global preference is the starting point for the per-download prompt, and the fallback when
-    // the user has asked not to be prompted.
-    val globalQobuzQuality =
-        remember(qobuzQuality) {
-            runCatching { QobuzAudioQuality.valueOf(qobuzQuality) }
-                .getOrDefault(QobuzAudioQuality.FLAC)
-        }
-
-    // Set when the user picks a tier in the dialog; null means "use the global preference".
-    var chosenDownloadQuality by remember { mutableStateOf<DownloadQualityChoice?>(null) }
-    var showDownloadQualityDialog by rememberSaveable { mutableStateOf(false) }
-    var askDownloadQuality by rememberPreference(AskDownloadQualityKey, defaultValue = true)
-
-    // Export: the real container is sniffed from the cached bytes before the dialog opens, so the
-    // dialog can grey out targets the app cannot honestly produce.
-    var showExportFormatDialog by rememberSaveable { mutableStateOf(false) }
-    var exportSourceExtension by rememberSaveable { mutableStateOf<String?>(null) }
-    var exportBaseName by rememberSaveable { mutableStateOf("audio") }
-
-    // Runs the download; shared by the "already have a folder" and "just picked one" paths.
-    val startLosslessDownload: (Uri) -> Unit = { folderUri ->
-        Toast
-            .makeText(context, context.getString(R.string.lossless_download_started), Toast.LENGTH_SHORT)
-            .show()
-        val formatId =
-            (chosenDownloadQuality?.qobuzQuality ?: globalQobuzQuality).toFormatId()
-        // enqueue, not launch: this must outlive the bottom sheet. A 100MB hi-res FLAC would
-        // otherwise be cancelled the moment the user dismisses the menu.
-        LosslessDownloader.enqueue(
-            context = context,
-            request =
-                LosslessDownloader.Request(
-                    mediaId = song.id,
-                    title = song.song.title,
-                    artists = song.artists.map { it.name },
-                    album = song.song.albumName,
-                    durationMs = song.song.duration.takeIf { it > 0 }?.times(1000L),
-                    year = song.song.year?.toString(),
-                    artworkUrl = song.song.thumbnailUrl,
-                ),
-            folderUri = folderUri,
-            formatId = formatId,
-            embedTags = embedTags,
-        ) { result ->
-            val message =
-                when (result) {
-                    is LosslessDownloader.Result.Success ->
-                        appContext.getString(R.string.lossless_download_saved, result.fileName)
-                    LosslessDownloader.Result.NotAvailable ->
-                        appContext.getString(R.string.lossless_download_unavailable)
-                    is LosslessDownloader.Result.Failed ->
-                        appContext.getString(R.string.lossless_download_failed, result.reason)
-                }
-            Toast.makeText(appContext, message, Toast.LENGTH_LONG).show()
-        }
-    }
-
-    // SAF folder picker. Scoped storage gives no real path, so we persist the tree Uri and take a
-    // persistable grant so the choice survives reboots and we only ask once.
-    val pickLosslessFolderLauncher =
-        rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { treeUri ->
-            if (treeUri == null) return@rememberLauncherForActivityResult
-            runCatching {
-                context.contentResolver.takePersistableUriPermission(
-                    treeUri,
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
-                )
-            }
-            losslessFolder = treeUri.toString()
-            startLosslessDownload(treeUri)
-        }
-
-    // Resolves the destination folder, then downloads. Re-prompts if the saved grant was revoked,
-    // otherwise the write would fail with a confusing permission error.
-    val resolveFolderAndDownload: () -> Unit = {
-        val saved = losslessFolder
-        val usable =
-            saved.isNotEmpty() &&
-                context.contentResolver
-                    .persistedUriPermissions
-                    .any { it.uri.toString() == saved && it.isWritePermission }
-        if (usable) {
-            startLosslessDownload(saved.toUri())
-        } else {
-            pickLosslessFolderLauncher.launch(null)
-        }
-    }
-
-    if (showDownloadQualityDialog) {
-        DownloadQualityDialog(
-            initialChoice = DownloadQualityChoice.forQobuzQuality(globalQobuzQuality),
-            onDismiss = { showDownloadQualityDialog = false },
-            onConfirm = { choice, rememberChoice ->
-                chosenDownloadQuality = choice
-                if (rememberChoice) {
-                    // Make the choice the new global default and stop prompting, so opting out of
-                    // the dialog does not silently revert to a different tier next time.
-                    qobuzQuality = choice.qobuzQuality.name
-                    askDownloadQuality = false
-                }
-                resolveFolderAndDownload()
-            },
-        )
-    }
-
     // Direct export to the device's Downloads folder (via SAF CreateDocument).
-    // "audio/*" rather than a concrete type: the real container is sniffed from the cached bytes at
-    // launch time, so committing to audio/mpeg here would contradict the extension we pass in.
+    // The MIME type hint is derived from the *actual* cached audio bytes
+    // (preferred) or the FormatEntity stored at download time, so a FLAC
+    // stream from Qobuz exports with audio/flac rather than the previous
+    // audio/mpeg fallback. The file extension is always detected from
+    // magic bytes to avoid exporting lossy data with a .flac extension
+    // (and vice versa).
+    val songFormat by database.format(song.id).collectAsState(initial = null)
+    val detectedExt by produceState(
+        initialValue = songFormat?.fileExtension() ?: "mp3",
+        song.id,
+    ) {
+        withContext(Dispatchers.IO) {
+            val cache = downloadUtil.downloadCache
+            val spans = getCachedSpansForKey(cache, song.id)
+            if (spans.isNotEmpty()) {
+                value = detectAudioExtensionFromSpans(spans)
+            }
+        }
+    }
+    val exportMimeType = extensionToMimeType(detectedExt)
     val exportToDownloadsLauncher =
-        rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("audio/*")) { destUri ->
+        rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(exportMimeType)) { destUri ->
             if (destUri == null) return@rememberLauncherForActivityResult
             val songId = song.id
             val songTitle = song.song.title
@@ -290,26 +181,6 @@ fun SongMenu(
                 Toast.makeText(context, context.getString(msgResId), Toast.LENGTH_SHORT).show()
             }
         }
-
-    if (showExportFormatDialog) {
-        ExportFormatDialog(
-            sourceExtension = exportSourceExtension,
-            onDismiss = { showExportFormatDialog = false },
-            onConfirm = { format ->
-                exportToDownloadsLauncher.launch("$exportBaseName.${format.extension}")
-            },
-            // Re-downloading from a lossless provider is the only honest route to a real FLAC, so
-            // hand the user straight over to the existing lossless download flow.
-            onRedownloadLossless = {
-                showExportFormatDialog = false
-                if (askDownloadQuality) {
-                    showDownloadQualityDialog = true
-                } else {
-                    resolveFolderAndDownload()
-                }
-            },
-        )
-    }
 
     val rotationAnimation by animateFloatAsState(
         targetValue = refetchIconDegree,
@@ -1010,17 +881,16 @@ fun SongMenu(
                                         },
                                         modifier =
                                             Modifier.clickable {
-                                                // Clear any failed/queued download and its partial
-                                                // bytes before starting a fresh one. A stale cache
-                                                // entry makes the server reject the resumed range
-                                                // with HTTP 416 (Range Not Satisfiable) once the
-                                                // stream URL or content-length changes between
-                                                // attempts, so the retry can never succeed.
-                                                //
-                                                // Copied into a local because `download` is a
-                                                // delegated property and cannot be smart-cast.
-                                                val existing = download
-                                                if (existing != null && existing.state != Download.STATE_COMPLETED) {
+                                                // Remove any existing failed/queued download
+                                                // before starting a fresh one. Stale entries
+                                                // in the download cache can cause HTTP 416
+                                                // (Range Not Satisfiable) errors when the
+                                                // stream URL or content-length changes
+                                                // between attempts.
+                                                val dl = download
+                                                if (dl != null &&
+                                                    dl.state != Download.STATE_COMPLETED
+                                                ) {
                                                     DownloadService.sendRemoveDownload(
                                                         context,
                                                         ExoDownloadService::class.java,
@@ -1028,9 +898,11 @@ fun SongMenu(
                                                         false,
                                                     )
                                                 }
-                                                // Wrapped, as elsewhere in the app: removeResource
-                                                // throws if the resource is still held open.
-                                                runCatching { downloadUtil.downloadCache.removeResource(song.id) }
+                                                // Also clear any partial cached data from the
+                                                // download cache. Stale bytes can cause HTTP 416
+                                                // (Range Not Satisfiable) when the stream URL or
+                                                // content-length changes between attempts.
+                                                downloadUtil.downloadCache.removeResource(song.id)
                                                 val downloadRequest =
                                                     DownloadRequest
                                                         .Builder(song.id, song.id.toUri())
@@ -1048,43 +920,13 @@ fun SongMenu(
                                     )
                                 }
                             }
-                            // Lossless download. Hidden for Telegram tracks, which are already a
-                            // direct file source and are not resolvable through the Qobuz proxies.
-                            if (!isTelegramSong) {
-                                ListItem(
-                                    headlineContent = {
-                                        Text(text = stringResource(R.string.action_download_lossless))
-                                    },
-                                    supportingContent = {
-                                        Text(text = stringResource(R.string.action_download_lossless_desc))
-                                    },
-                                    leadingContent = {
-                                        if (losslessInProgress) {
-                                            CircularWavyProgressIndicator(modifier = Modifier.size(24.dp))
-                                        } else {
-                                            Icon(
-                                                painter = painterResource(R.drawable.download),
-                                                contentDescription = null,
-                                            )
-                                        }
-                                    },
-                                    modifier =
-                                        Modifier.clickable(enabled = !losslessInProgress) {
-                                            // Ask which tier to fetch, unless the user opted out of
-                                            // the prompt, in which case the global preference wins.
-                                            if (askDownloadQuality) {
-                                                showDownloadQualityDialog = true
-                                            } else {
-                                                resolveFolderAndDownload()
-                                            }
-                                        },
-                                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                                )
-                            }
                             // Export — only shown when the download has actually completed.
+                            // Uses the correct file extension based on the audio codec
+                            // (FLAC for lossless, OPUS/M4A for lossy, etc.).
                             if (download?.state == Download.STATE_COMPLETED) {
                                 val safeTitle = song.song.title.trim()
                                     .replace(Regex("[\\\\/:*?\"<>|]"), "_").ifBlank { "audio" }
+                                val ext = detectedExt
                                 ListItem(
                                     headlineContent = {
                                         Text(text = stringResource(R.string.export))
@@ -1097,19 +939,7 @@ fun SongMenu(
                                     },
                                     modifier =
                                         Modifier.clickable {
-                                            // Sniffing reads the cache off disk, so keep it off the
-                                            // main thread, then let the user confirm the container.
-                                            coroutineScope.launch {
-                                                exportSourceExtension =
-                                                    withContext(Dispatchers.IO) {
-                                                        detectCachedExtension(
-                                                            downloadUtil.downloadCache,
-                                                            song.id,
-                                                        )
-                                                    }
-                                                exportBaseName = safeTitle
-                                                showExportFormatDialog = true
-                                            }
+                                            exportToDownloadsLauncher.launch("$safeTitle.$ext")
                                         },
                                     colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                                 )
@@ -1226,6 +1056,59 @@ fun SongMenu(
         item {
             MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
                 Column {
+                    ListItem(
+                        headlineContent = { Text(text = stringResource(R.string.download_cover)) },
+                        leadingContent = {
+                            Icon(
+                                painter = painterResource(R.drawable.image),
+                                contentDescription = null,
+                            )
+                        },
+                        modifier =
+                            Modifier.clickable {
+                                val url = song.song.thumbnailUrl
+                                if (url.isNullOrBlank()) {
+                                    android.widget.Toast
+                                        .makeText(
+                                            context,
+                                            context.getString(R.string.cover_save_no_artwork),
+                                            android.widget.Toast.LENGTH_SHORT,
+                                        ).show()
+                                    return@clickable
+                                }
+                                android.widget.Toast
+                                    .makeText(
+                                        context,
+                                        context.getString(R.string.cover_saving),
+                                        android.widget.Toast.LENGTH_SHORT,
+                                    ).show()
+                                coroutineScope.launch(Dispatchers.IO) {
+                                    val fileName = "cover_${song.id}".replace(Regex("[^A-Za-z0-9_\\-]"), "_")
+                                    val saved = moe.rukamori.archivetune.utils.saveCoverArtworkFromUrl(
+                                        context = context,
+                                        thumbnailUrl = url,
+                                        fileName = fileName,
+                                    )
+                                    val msgRes = if (saved != null) {
+                                        R.string.cover_saved
+                                    } else {
+                                        R.string.cover_save_failed
+                                    }
+                                    withContext(Dispatchers.Main) {
+                                        android.widget.Toast
+                                            .makeText(context, context.getString(msgRes), android.widget.Toast.LENGTH_SHORT)
+                                            .show()
+                                    }
+                                }
+                            },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    )
+
+                    HorizontalDivider(
+                        modifier = Modifier.padding(start = 56.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant,
+                    )
+
                     if (!isLocalSong) {
                         ListItem(
                             headlineContent = { Text(text = stringResource(R.string.refetch)) },
@@ -1306,49 +1189,38 @@ private suspend fun exportDownloadedSongToUri(
 
 /**
  * Resolves cached spans for a given [songId]. Tries the key directly first,
- * then falls back to searching all cache keys for a matching entry.
+ * then checks the source-prefixed keys used by Qobuz/Tidal downloads
+ * ("qobuz:<songId>" and "tidal:<songId>") so lossless exports pull the
+ * actual FLAC bytes instead of falling through to a YouTube Music stream,
+ * and finally falls back to scanning all cache keys for any entry that
+ * ends with the songId.
  */
 private fun getCachedSpansForKey(
     cache: androidx.media3.datasource.cache.Cache,
     songId: String,
 ): java.util.NavigableSet<androidx.media3.datasource.cache.CacheSpan> {
-    var spans = cache.getCachedSpans(songId)
-    if (spans.isNotEmpty()) return spans
-    // Fallback: the download may have been stored under a slightly different
-    // key (e.g. with a URI prefix). Search all keys for one that ends with
-    // the songId or equals it after URI decoding.
+    cache.getCachedSpans(songId)
+        .takeIf { it.isNotEmpty() }
+        ?.let { return it }
+
+    // Source-prefixed cache keys (set by DownloadUtil.resolvePreferredDownloadDataSpec).
+    for (prefix in listOf("qobuz:", "tidal:")) {
+        val sourceKey = "$prefix$songId"
+        cache.getCachedSpans(sourceKey)
+            .takeIf { it.isNotEmpty() }
+            ?.let { return it }
+    }
+
+    // Last-resort scan: the download may have been stored under a URI-derived
+    // key. Match any key whose final path segment equals the songId.
     for (key in cache.keys) {
         val cleanKey = key.substringAfterLast("/")
-        if (cleanKey == songId || key == songId) {
-            spans = cache.getCachedSpans(key)
+        if (cleanKey == songId || key == songId || key.endsWith(":$songId")) {
+            val spans = cache.getCachedSpans(key)
             if (spans.isNotEmpty()) return spans
         }
     }
-    return spans
-}
-
-/**
- * Sniffs the container of a cached download so the exported file gets a truthful extension.
- *
- * Reads only the first span's header — every span after it is mid-stream and has no magic bytes.
- * Falls back to "m4a" because YouTube audio is overwhelmingly AAC/Opus in an MP4 container, which is
- * a far better default than the ".mp3" this used to hardcode.
- */
-private fun detectCachedExtension(
-    cache: androidx.media3.datasource.cache.Cache,
-    songId: String,
-): String {
-    val spans = getCachedSpansForKey(cache, songId)
-    val first = spans.sortedBy { it.position }.firstOrNull { it.position == 0L } ?: return "m4a"
-    val header = ByteArray(moe.rukamori.archivetune.download.AudioContainer.PROBE_BYTES)
-    val read =
-        runCatching {
-            java.io.FileInputStream(first.file).use { it.read(header) }
-        }.getOrDefault(0)
-    if (read <= 0) return "m4a"
-    return moe.rukamori.archivetune.download.AudioContainer
-        .detect(header.copyOf(read))
-        ?.extension ?: "m4a"
+    return java.util.TreeSet()
 }
 
 /**

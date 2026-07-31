@@ -16,12 +16,17 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import moe.rukamori.archivetune.canvas.AppleMusicProvider
+import moe.rukamori.archivetune.canvas.ArchiveTuneCanvas
+import moe.rukamori.archivetune.canvas.models.CanvasArtwork
+import moe.rukamori.archivetune.constants.ArchiveTuneCanvasKey
 import moe.rukamori.archivetune.constants.HideVideoKey
 import moe.rukamori.archivetune.db.MusicDatabase
 import moe.rukamori.archivetune.extensions.filterBlockedArtists
@@ -29,6 +34,8 @@ import moe.rukamori.archivetune.extensions.filterVideo
 import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.innertube.models.AlbumItem
 import moe.rukamori.archivetune.utils.dataStore
+import moe.rukamori.archivetune.utils.get
+import moe.rukamori.archivetune.utils.isLowDataModeActive
 import moe.rukamori.archivetune.utils.reportException
 import javax.inject.Inject
 
@@ -84,6 +91,19 @@ class AlbumViewModel
             }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
         var otherVersions = MutableStateFlow<List<AlbumItem>>(emptyList())
 
+        // Looping animated canvas (Apple Music-style animated cover art) for
+        // the album thumbnail. Fetched once per albumId via
+        // `ArchiveTuneCanvas.getByAlbumId` (which delegates to Apple Music's
+        // animated-art API) with a fallback to `getByAlbumArtist` when the
+        // album id isn't an Apple Music id (e.g. a YouTube `MPRE…` id).
+        // Gated on the same `ArchiveTuneCanvasKey` preference the song
+        // player uses, plus LowDataMode (skip the network fetch on metered
+        // connections). Null until the fetch completes (or fails silently —
+        // failures leave the value at null so the album hero renders the
+        // static thumbnail with no canvas overlay).
+        private val _canvasArtwork = MutableStateFlow<CanvasArtwork?>(null)
+        val canvasArtwork: StateFlow<CanvasArtwork?> = _canvasArtwork.asStateFlow()
+
         private val _fetchState = MutableStateFlow<FetchState>(FetchState.Pending)
 
         val uiState: StateFlow<AlbumUiState> =
@@ -100,6 +120,7 @@ class AlbumViewModel
 
         init {
             retry()
+            fetchAlbumCanvas(context)
         }
 
         fun retry() {
@@ -133,6 +154,57 @@ class AlbumViewModel
                         }
                         _fetchState.value = FetchState.Failed(isNotFound = isNotFound)
                     }
+            }
+        }
+
+        /**
+         * Fetches the album's looping animated canvas (Apple Music animated
+         * cover art) and exposes it via [canvasArtwork]. Best-effort: any
+         * failure (network, no canvas for this album, user has the feature
+         * disabled, low-data mode) leaves the value at null, which causes
+         * the album hero to render only the static thumbnail — no canvas
+         * overlay.
+         *
+         * We try `ArchiveTuneCanvas.getByAlbumId` first (direct id lookup,
+         * fast for Apple Music ids), then fall back to
+         * `getByAlbumArtist` (title + artist name lookup) for YouTube
+         * `MPRE…` ids that aren't Apple Music ids. The fetch runs on
+         * Dispatchers.IO via `viewModelScope.launch` so it doesn't block
+         * the UI thread.
+         */
+        private fun fetchAlbumCanvas(context: Context) {
+            viewModelScope.launch {
+                // Skip when the user has the canvas feature disabled, or
+                // when LowDataMode is active on a metered connection (the
+                // canvas is a short video loop — non-trivial bandwidth).
+                val enabled = context.dataStore.data
+                    .map { it[ArchiveTuneCanvasKey] ?: false }
+                    .first()
+                if (!enabled) return@launch
+                if (context.isLowDataModeActive()) return@launch
+
+                // Wait for the album to load in the DB (it might not be
+                // there yet on first open — `albumWithSongs` starts at null
+                // and is populated by `retry()` running in parallel).
+                val loaded = albumWithSongs.first { it != null } ?: return@launch
+                val album = loaded.album
+                val firstArtist = loaded.artists.firstOrNull()?.name
+
+                val artwork = runCatching {
+                    ArchiveTuneCanvas.getByAlbumId(album.id)
+                }.getOrNull()
+                    ?: runCatching {
+                        if (!firstArtist.isNullOrBlank()) {
+                            AppleMusicProvider.getByAlbumArtist(
+                                album = album.title,
+                                artist = firstArtist,
+                            )
+                        } else {
+                            null
+                        }
+                    }.getOrNull()
+
+                _canvasArtwork.value = artwork
             }
         }
     }

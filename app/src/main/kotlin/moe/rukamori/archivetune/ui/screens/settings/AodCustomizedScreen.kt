@@ -74,6 +74,8 @@ import moe.rukamori.archivetune.constants.AodAccentStyle
 import moe.rukamori.archivetune.constants.AodAccentStyleKey
 import moe.rukamori.archivetune.constants.AodAmbientIntensityKey
 import moe.rukamori.archivetune.constants.AodArtworkGlowKey
+import moe.rukamori.archivetune.constants.AodAutoOnScreenDimKey
+import moe.rukamori.archivetune.constants.AodAutoTimerSecondsKey
 import moe.rukamori.archivetune.constants.AodBackgroundStyle
 import moe.rukamori.archivetune.constants.AodBackgroundStyleKey
 import moe.rukamori.archivetune.constants.AodContentPosition
@@ -86,6 +88,7 @@ import moe.rukamori.archivetune.constants.AodShowAlbumKey
 import moe.rukamori.archivetune.constants.AodShowArtistKey
 import moe.rukamori.archivetune.constants.AodShowControlsKey
 import moe.rukamori.archivetune.constants.AodShowExitButtonKey
+import moe.rukamori.archivetune.constants.AodShowLyricsKey
 import moe.rukamori.archivetune.constants.AodShowProgressKey
 import moe.rukamori.archivetune.constants.AodShowThumbnailKey
 import moe.rukamori.archivetune.constants.AodShowTimeLabelsKey
@@ -124,6 +127,7 @@ private data class AodPreviewSettings(
     val showTimeLabels: Boolean,
     val showControls: Boolean,
     val showExitButton: Boolean,
+    val showLyrics: Boolean,
     val artworkGlow: Boolean,
     val backgroundStyle: AodBackgroundStyle,
     val accentStyle: AodAccentStyle,
@@ -156,6 +160,7 @@ fun AodCustomizedScreen(navController: NavController) {
     val (showTimeLabels, onShowTimeLabelsChange) = rememberPreference(AodShowTimeLabelsKey, defaultValue = true)
     val (showControls, onShowControlsChange) = rememberPreference(AodShowControlsKey, defaultValue = true)
     val (showExitButton, onShowExitButtonChange) = rememberPreference(AodShowExitButtonKey, defaultValue = true)
+    val (showLyrics, onShowLyricsChange) = rememberPreference(AodShowLyricsKey, defaultValue = true)
     val (artworkGlow, onArtworkGlowChange) = rememberPreference(AodArtworkGlowKey, defaultValue = true)
     val (backgroundStyle, onBackgroundStyleChange) =
         rememberEnumPreference(
@@ -187,6 +192,8 @@ fun AodCustomizedScreen(navController: NavController) {
     val (verticalSpacing, onVerticalSpacingChange) = rememberPreference(AodVerticalSpacingKey, defaultValue = 20f)
     val (titleMaxLines, onTitleMaxLinesChange) = rememberPreference(AodTitleMaxLinesKey, defaultValue = 1)
     val (ambientIntensity, onAmbientIntensityChange) = rememberPreference(AodAmbientIntensityKey, defaultValue = 0.18f)
+    val (aodAutoTimerSeconds, onAodAutoTimerSecondsChange) = rememberPreference(AodAutoTimerSecondsKey, defaultValue = 0)
+    val (aodAutoOnScreenDim, onAodAutoOnScreenDimChange) = rememberPreference(AodAutoOnScreenDimKey, defaultValue = false)
 
     val previewSettings =
         remember(
@@ -201,6 +208,7 @@ fun AodCustomizedScreen(navController: NavController) {
             showTimeLabels,
             showControls,
             showExitButton,
+            showLyrics,
             artworkGlow,
             backgroundStyle,
             accentStyle,
@@ -225,6 +233,7 @@ fun AodCustomizedScreen(navController: NavController) {
                 showTimeLabels = showTimeLabels,
                 showControls = showControls,
                 showExitButton = showExitButton,
+                showLyrics = showLyrics,
                 artworkGlow = artworkGlow,
                 backgroundStyle = backgroundStyle,
                 accentStyle = accentStyle,
@@ -362,6 +371,15 @@ fun AodCustomizedScreen(navController: NavController) {
                             icon = { Icon(painterResource(R.drawable.close), null) },
                             checked = showExitButton,
                             onCheckedChange = onShowExitButtonChange,
+                        )
+                    }
+                    item {
+                        SwitchPreference(
+                            title = { Text(stringResource(R.string.aod_customize_show_lyrics)) },
+                            description = stringResource(R.string.aod_customize_show_lyrics_desc),
+                            icon = { Icon(painterResource(R.drawable.lyrics), null) },
+                            checked = showLyrics,
+                            onCheckedChange = onShowLyricsChange,
                         )
                     }
                 }
@@ -535,6 +553,40 @@ fun AodCustomizedScreen(navController: NavController) {
             }
 
             item(
+                key = "aod_behavior",
+                contentType = "preference_group",
+            ) {
+                PreferenceGroup(title = stringResource(R.string.aod_customize_lyrics)) {
+                    item {
+                        AodIntSliderPreference(
+                            title = stringResource(R.string.aod_customize_auto_timer),
+                            icon = { Icon(painterResource(R.drawable.timer), null) },
+                            value = aodAutoTimerSeconds,
+                            valueRange = 0..180,
+                            steps = 35,
+                            valueLabel = { v ->
+                                if (v == 0) {
+                                    stringResource(R.string.aod_customize_auto_timer_off)
+                                } else {
+                                    stringResource(R.string.aod_customize_auto_timer_seconds, v)
+                                }
+                            },
+                            onValueChange = onAodAutoTimerSecondsChange,
+                        )
+                    }
+                    item {
+                        SwitchPreference(
+                            title = { Text(stringResource(R.string.aod_customize_auto_on_screen_dim)) },
+                            description = stringResource(R.string.aod_customize_auto_on_screen_dim_desc),
+                            icon = { Icon(painterResource(R.drawable.bedtime), null) },
+                            checked = aodAutoOnScreenDim,
+                            onCheckedChange = onAodAutoOnScreenDimChange,
+                        )
+                    }
+                }
+            }
+
+            item(
                 key = "aod_bottom_space",
                 contentType = "spacer",
             ) {
@@ -671,6 +723,20 @@ private fun AodPreviewCard(
                                 overflow = TextOverflow.Ellipsis,
                                 textAlign = textAlign,
                                 modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
+                        if (settings.showLyrics) {
+                            Text(
+                                text = "♪ " + stringResource(R.string.aod_customize_sample_title),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color.White.copy(alpha = 0.72f),
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                                textAlign = textAlign,
+                                modifier =
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 4.dp),
                             )
                         }
                     }

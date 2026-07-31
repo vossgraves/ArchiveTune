@@ -21,6 +21,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
 import android.provider.OpenableColumns
+import android.provider.Settings
 import android.view.View
 import android.view.WindowManager
 import android.webkit.MimeTypeMap
@@ -199,6 +200,8 @@ import moe.rukamori.archivetune.aod.ACTION_AOD_MODE
 import moe.rukamori.archivetune.constants.AppBarHeight
 import moe.rukamori.archivetune.constants.AppFontPreference
 import moe.rukamori.archivetune.constants.AppLanguageKey
+import moe.rukamori.archivetune.constants.AodAutoOnScreenDimKey
+import moe.rukamori.archivetune.constants.AodAutoTimerSecondsKey
 import moe.rukamori.archivetune.constants.CustomFontUriKey
 import moe.rukamori.archivetune.constants.CustomThemeColorKey
 import moe.rukamori.archivetune.constants.DarkModeKey
@@ -524,6 +527,15 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         window.decorView.layoutDirection = View.LAYOUT_DIRECTION_LTR
         WindowCompat.setDecorFitsSystemWindows(window, false)
+
+        // Pre-warm DNS + TLS connections to the most common download/stream
+        // hosts so the first song download of the session doesn't pay the
+        // ~300-800ms DNS+TCP+TLS handshake cost. Fires off a single HEAD
+        // request per host on a background IO coroutine; failures are
+        // silently swallowed (it's just an optimization).
+        lifecycleScope.launch(Dispatchers.IO) {
+            runCatching { downloadUtil.prewarmDownloadConnections() }
+        }
 
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
             val initialLocale =
@@ -1122,6 +1134,97 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
+                    // Auto-enter AOD after N seconds of inactivity (player sheet collapsed while
+                    // music is playing). The user picks N via the AOD auto-timer slider in
+                    // AodCustomizedScreen; 0 disables. Cancellation is automatic when the user
+                    // expands the player sheet again or when playback stops — both invalidate
+                    // the LaunchedEffect keys.
+                    val aodAutoTimerSeconds by rememberPreference(AodAutoTimerSecondsKey, defaultValue = 0)
+                    val aodAutoOnScreenDim by rememberPreference(AodAutoOnScreenDimKey, defaultValue = false)
+                    val isPlayingNow by (playerConnection?.isPlaying ?: MutableStateFlow(false))
+                        .collectAsStateWithLifecycle()
+                    LaunchedEffect(
+                        aodAutoTimerSeconds,
+                        isPlayingNow,
+                        playerBottomSheetState.isExpanded,
+                        playerBottomSheetState.isDismissed,
+                        aodModeEnabled,
+                    ) {
+                        if (aodModeEnabled) return@LaunchedEffect
+                        if (aodAutoTimerSeconds <= 0) return@LaunchedEffect
+                        if (!isPlayingNow) return@LaunchedEffect
+                        if (playerBottomSheetState.isExpanded) return@LaunchedEffect
+                        if (playerBottomSheetState.isDismissed) return@LaunchedEffect
+                        // Wait the configured number of seconds; if the user opens the player
+                        // or pauses playback during the wait, the keys above change and the
+                        // effect is cancelled (delay throws CancellationException internally).
+                        delay(aodAutoTimerSeconds * 1000L)
+                        requestAodMode()
+                    }
+
+                    // Convenience: when "Enter AOD when screen dims" is ON, hold the screen on
+                    // past the system's screen-off timeout, then trigger AOD 2 seconds *before*
+                    // the system would have turned the screen off. This actually delivers on the
+                    // user-visible copy ("right before the screen turns off") and is what makes
+                    // the feature useful while driving — the driver sees AOD appear while the
+                    // screen is still lit, instead of seeing nothing until they manually wake
+                    // the device.
+                    //
+                    // Why this replaces the previous ACTION_SCREEN_OFF receiver:
+                    //   1. Android does NOT broadcast a "screen dimming" event. ACTION_SCREEN_OFF
+                    //      fires *after* the screen is already off — at that point the activity
+                    //      is in onStop() and any UI we flip on isn't drawn until the user wakes
+                    //      the device, which contradicts the in-app description.
+                    //   2. By holding FLAG_KEEP_SCREEN_ON we keep the window drawable, and by
+                    //      firing 2 s before the system timeout we ensure AOD appears while the
+                    //      user can still see it.
+                    //   3. The timer cancels automatically when the player sheet expands, when
+                    //      playback pauses, when AOD turns on, or when the toggle is turned off —
+                    //      all of which invalidate the LaunchedEffect keys.
+                    LaunchedEffect(
+                        aodAutoOnScreenDim,
+                        isPlayingNow,
+                        playerBottomSheetState.isExpanded,
+                        playerBottomSheetState.isDismissed,
+                        aodModeEnabled,
+                    ) {
+                        if (!aodAutoOnScreenDim) return@LaunchedEffect
+                        if (aodModeEnabled) return@LaunchedEffect
+                        if (!isPlayingNow) return@LaunchedEffect
+                        if (playerBottomSheetState.isExpanded) return@LaunchedEffect
+                        if (playerBottomSheetState.isDismissed) return@LaunchedEffect
+
+                        // Read the system screen-off timeout (e.g. 30 s). On most phones this is
+                        // 15 s – 2 min. Clamp to a sane range so a misconfigured device doesn't
+                        // either fire instantly or wait forever.
+                        val systemTimeoutMs =
+                            Settings.System
+                                .getLong(
+                                    contentResolver,
+                                    Settings.System.SCREEN_OFF_TIMEOUT,
+                                    30_000L,
+                                ).coerceIn(5_000L, 600_000L)
+
+                        // Fire 2 s before the system would have turned the screen off. This
+                        // window is what gives AOD time to fade in while the screen is still
+                        // lit. We also hold FLAG_KEEP_SCREEN_ON so the OS doesn't race us to
+                        // screen-off — AOD itself adds FLAG_KEEP_SCREEN_ON once it's enabled
+                        // (see the LaunchedEffect(aodModeEnabled) above), so the handoff is
+                        // seamless.
+                        val triggerDelayMs = (systemTimeoutMs - 2_000L).coerceAtLeast(2_000L)
+                        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                        try {
+                            delay(triggerDelayMs)
+                            requestAodMode()
+                        } finally {
+                            // Release the flag so the OS can manage screen-off normally again.
+                            // AOD's own LaunchedEffect(aodModeEnabled) will re-add it if AOD
+                            // actually engaged; if the timer was cancelled (e.g. the user
+                            // expanded the player sheet), we want the OS to dim/off normally.
+                            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                        }
+                    }
+
                     LaunchedEffect(useDarkTheme, playerBottomSheetState.isExpanded, playerBackground, aodModeEnabled) {
                         if (aodModeEnabled) return@LaunchedEffect
                         val isDarkStatusBar =
@@ -1159,9 +1262,19 @@ class MainActivity : ComponentActivity() {
 
                     var isPlayerLyricsFullScreen by remember { mutableStateOf(false) }
 
+                    // Status bar is hidden when:
+                    //  - The Year-in-Music screen is open, OR
+                    //  - The player sheet is expanded AND the layout is one of the "full-bleed" styles
+                    //    (Immersive V7 or Apple Music) that extend artwork to the top edge, OR
+                    //  - The player sheet is expanded AND the lyrics overlay is open (any style —
+                    //    the lyrics overlay covers the whole sheet so the status bar would draw on
+                    //    top of lyric text otherwise).
                     val shouldHideStatusBars =
                         isYearInMusicScreen ||
-                            (playerBottomSheetState.isExpandedOrExpanding && playerDesignStyle == PlayerDesignStyle.V7) ||
+                            (
+                                playerBottomSheetState.isExpandedOrExpanding &&
+                                    (playerDesignStyle == PlayerDesignStyle.V7 || playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC)
+                            ) ||
                             (playerBottomSheetState.isExpandedOrExpanding && isPlayerLyricsFullScreen)
 
                     LaunchedEffect(shouldHideStatusBars, aodModeEnabled) {
@@ -2605,12 +2718,7 @@ class MainActivity : ComponentActivity() {
                             try {
                                 delay(100)
                                 searchBarFocusRequester.requestFocus()
-                            } catch (e: CancellationException) {
-                                // delay() cancels whenever this effect leaves composition. Catching
-                                // it broke structured concurrency; only requestFocus() on a
-                                // not-yet-attached FocusRequester is a real, ignorable failure.
-                                throw e
-                            } catch (_: IllegalStateException) {
+                            } catch (_: Exception) {
                             }
                             openSearchImmediately = false
                         }

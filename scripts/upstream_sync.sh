@@ -8,8 +8,7 @@
 #   4. Merge upstream/dev into dev (AI resolves conflicts per the constitution)
 #   5. Verify: no markers, protected files untouched, fork features intact
 #   6. Build gate: assembleGmsMobileUniversalDebug must succeed
-#   7. Deliver: clean merge -> push dev; AI-resolved, or clean but dev moved mid-run ->
-#      push sync/auto-* branch (PR opened by workflow, self-merges when CI is green)
+#   7. Deliver: clean merge -> push dev; AI-resolved -> push sync branch (PR opened by workflow)
 #
 # Required env: SYNC_PAT, GH_TOKEN
 # Optional env: AI_API_KEY, AI_BASE_URL, AI_MODEL, MODELS_TOKEN
@@ -225,34 +224,16 @@ log "build OK"
 log "Phase 6: deliver"
 # =============================================================================
 SYNC_BRANCH=""
-RESULT=""
 if $AI_USED; then
   SYNC_BRANCH="sync/auto-$(date -u +%Y%m%d-%H%M)"
   git push --quiet origin "HEAD:$SYNC_BRANCH" || die "could not push $SYNC_BRANCH"
-  RESULT="ai"
   out "result" "ai"
   out "branch" "$SYNC_BRANCH"
   log "AI-resolved merge pushed to $SYNC_BRANCH (PR will self-merge when CI passes)"
-elif git push --quiet origin HEAD:dev 2>/dev/null; then
-  RESULT="clean"
+else
+  git push --quiet origin HEAD:dev || die "could not push to dev"
   out "result" "clean"
   log "clean merge pushed straight to dev"
-else
-  # dev moved while this run was in flight. The build gate above takes ~10 minutes and this
-  # job fires hourly, so any human push or PR merge inside that window used to land here and
-  # `die`, discarding a merge that had already passed the contract tests AND assembled. The
-  # merge was never wrong; it was just built on a dev tip that no longer exists.
-  #
-  # Re-merging the new tip here and pushing anyway would put an unverified tree on dev,
-  # because the build gate has already run. So deliver it exactly like an AI-resolved merge:
-  # a sync/auto-* branch plus a PR, which re-runs CI against the current dev and self-merges
-  # when green. The sync/auto- prefix is what Upstream Sync Merge keys on, so it must stay.
-  SYNC_BRANCH="sync/auto-$(date -u +%Y%m%d-%H%M)"
-  git push --quiet origin "HEAD:$SYNC_BRANCH" || die "could not push $SYNC_BRANCH after dev moved"
-  RESULT="raced"
-  out "result" "raced"
-  out "branch" "$SYNC_BRANCH"
-  log "dev moved mid-run; delivered as $SYNC_BRANCH (PR will self-merge when CI passes)"
 fi
 
 # =============================================================================
@@ -261,11 +242,7 @@ log "Phase 7: report"
 {
   echo "## Upstream sync report ($(date -u +%Y-%m-%dT%H:%MZ))"
   echo
-  case "$RESULT" in
-    ai)    echo "- **Result:** AI-resolved, delivered as self-merging PR" ;;
-    raced) echo "- **Result:** clean merge, but \`dev\` advanced mid-run — delivered as a self-merging PR instead of pushing to \`dev\`" ;;
-    *)     echo "- **Result:** clean, pushed to dev" ;;
-  esac
+  echo "- **Result:** $($AI_USED && echo 'AI-resolved, delivered as self-merging PR' || echo 'clean, pushed to dev')"
   echo "- **Pulled in:** $BEHIND commit(s) from [rukamori/ArchiveTune@dev](https://github.com/rukamori/ArchiveTune/tree/dev)"
   echo "- **Backup branch:** \`$BACKUP_BRANCH\`"
   [ -n "$SYNC_BRANCH" ] && echo "- **Sync branch:** \`$SYNC_BRANCH\`"
@@ -302,5 +279,5 @@ log "Phase 7: report"
   echo '```'
 } > "$REPORT"
 
-log "done ($RESULT)"
+log "done ($($AI_USED && echo ai || echo clean))"
 exit 0

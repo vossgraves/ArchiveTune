@@ -148,6 +148,17 @@
     <string name="aod_customize_sample_album">Always On Sessions</string>
     <string name="aod_customize_sample_elapsed">1:24</string>
     <string name="aod_customize_sample_duration">3:48</string>
+    <string name="aod_customize_show_lyrics">Show lyrics</string>
+    <string name="aod_customize_show_lyrics_desc">Display the current lyric line beneath the title while music plays.</string>
+    <string name="aod_customize_lyrics">Lyrics</string>
+    <string name="aod_customize_auto_timer">Auto-enter AOD</string>
+    <string name="aod_customize_auto_timer_desc">Seconds of inactivity before AOD mode turns on automatically. Set to 0 to disable.</string>
+    <string name="aod_customize_auto_timer_off">Off</string>
+    <string name="aod_customize_auto_timer_seconds">%1$d s</string>
+    <string name="aod_customize_auto_on_screen_dim">Enter AOD when screen dims</string>
+    <string name="aod_customize_auto_on_screen_dim_desc">Holds the screen on past the system screen-off timeout and switches to AOD mode 2 seconds before the screen would have turned off. Useful while driving — AOD appears while the screen is still lit, so you can see what\'s playing without waking the device.</string>
+    <string name="aod_lyrics_loading">Loading lyrics…</string>
+    <string name="aod_lyrics_unavailable">No lyrics available</string>
     <string name="aod_shape_rounded">Rounded</string>
     <string name="aod_shape_square">Square</string>
     <string name="aod_shape_circle">Circle</string>
@@ -228,9 +239,31 @@
     <string name="lyrics_share_style_clear_glass">Clear glass</string>
     <string name="lyrics_share_style_deep_blur">Deep blur</string>
     <string name="lyrics_share_style_vivid_glow">Vivid glow</string>
+    <string name="lyrics_share_text_color">Lyrics text color</string>
+    <string name="lyrics_share_text_color_default">Style default</string>
+    <string name="lyrics_share_text_color_custom">Custom</string>
+    <string name="lyrics_share_text_color_white">White</string>
+    <string name="lyrics_share_text_color_black">Black</string>
+    <string name="lyrics_share_text_color_cream">Cream</string>
+    <string name="lyrics_share_text_color_coral">Coral</string>
+    <string name="lyrics_share_text_color_amber">Amber</string>
+    <string name="lyrics_share_text_color_lemon">Lemon</string>
+    <string name="lyrics_share_text_color_mint">Mint</string>
+    <string name="lyrics_share_text_color_teal">Teal</string>
+    <string name="lyrics_share_text_color_sky">Sky</string>
+    <string name="lyrics_share_text_color_indigo">Indigo</string>
+    <string name="lyrics_share_text_color_violet">Violet</string>
+    <string name="lyrics_share_text_color_rose">Rose</string>
     <string name="lyrics_share_export_failed">Failed to create image: %1$s</string>
     <string name="lyrics_share_export_not_supported">Image sharing requires Android 6.0 or newer</string>
+    <string name="lyrics_share_options">Options</string>
+    <string name="lyrics_share_aspect_ratio">Aspect ratio</string>
+    <string name="lyrics_share_style">Style</string>
+    <string name="lyrics_share_advanced">Advanced</string>
+    <string name="lyrics_share_show_advanced">Show advanced options</string>
+    <string name="lyrics_share_hide_advanced">Hide advanced options</string>
     <string name="more_options">More options</string>
+    <string name="lyrics_share_less_options">Less options</string>
     <string name="remove_from_cache">Remove from cache</string>
     <string name="select">Select all</string>
     <string name="manage_tags">Manage Tags</string>
@@ -255,7 +288,6 @@
     <string name="close">Close</string>
     <string name="minimum_volume">Minimum Volume</string>
     <string name="maximum_volume">Maximum Volume</string>
-    <string name="muted">Muted</string>
     <string name="hide_player_thumbnail">Hide Player Thumbnail</string>
     <string name="hide_player_thumbnail_desc">Replace album artwork with app logo in player</string>
     <string name="crop_thumbnail_to_square">Crop thumbnails to 1:1</string>
@@ -645,7 +677,4 @@
     <string name="about_content_desc_discord">Discord</string>
     <string name="about_content_desc_telegram">Telegram</string>
     <string name="about_content_desc_donate">Donate</string>
-    <!-- Subtitle on a settings search result that points at one preference inside a sub-screen,
-         e.g. "in Player and audio". %1$s is the name of the screen holding that preference. -->
-    <string name="settings_search_located_in">in %1$s</string>
 </resources>

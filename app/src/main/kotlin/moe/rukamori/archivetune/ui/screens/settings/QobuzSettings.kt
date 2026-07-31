@@ -12,10 +12,7 @@
 
 package moe.rukamori.archivetune.ui.screens.settings
 
-import android.content.Intent
 import android.widget.Toast
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.only
@@ -36,9 +33,12 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialogDefaults
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Surface
@@ -47,6 +47,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -56,8 +57,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.core.net.toUri
-import androidx.documentfile.provider.DocumentFile
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -67,8 +66,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
-import moe.rukamori.archivetune.constants.LosslessDownloadFolderKey
-import moe.rukamori.archivetune.constants.LosslessDownloadTagKey
 import moe.rukamori.archivetune.constants.QobuzAudioQuality
 import moe.rukamori.archivetune.constants.QobuzAudioQualityKey
 import moe.rukamori.archivetune.constants.QobuzEnabledKey
@@ -107,7 +104,7 @@ private object QobuzHealthUiCache {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun QobuzSettings(navController: NavController) {
+fun QobuzSettings(navController: NavController, scrollTo: String? = null) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
@@ -141,34 +138,6 @@ fun QobuzSettings(navController: NavController) {
 
     // Direct-API tokens, stored as a JSON list. Tried before proxy instances during resolution.
     val (storedTokens, onStoredTokensChange) = rememberPreference(QobuzTokensKey, "")
-
-    // Destination + tagging options for the "Download lossless" action in the song menu.
-    val (losslessFolder, onLosslessFolderChange) = rememberPreference(LosslessDownloadFolderKey, "")
-    val (embedTags, onEmbedTagsChange) = rememberPreference(LosslessDownloadTagKey, true)
-
-    // Resolve the tree Uri to the folder's display name. Falls back to "not set" when nothing has
-    // been picked yet, or when a previously granted folder was deleted or had its grant revoked.
-    val losslessFolderLabel =
-        remember(losslessFolder) {
-            losslessFolder
-                .takeIf { it.isNotEmpty() }
-                ?.let { stored ->
-                    runCatching { DocumentFile.fromTreeUri(context, stored.toUri())?.name }.getOrNull()
-                }
-        } ?: stringResource(R.string.lossless_download_folder_unset)
-
-    val pickLosslessFolderLauncher =
-        rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { treeUri ->
-            if (treeUri == null) return@rememberLauncherForActivityResult
-            // Persist the grant so the choice survives reboots and we only have to ask once.
-            runCatching {
-                context.contentResolver.takePersistableUriPermission(
-                    treeUri,
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
-                )
-            }
-            onLosslessFolderChange(treeUri.toString())
-        }
     val tokens = remember(storedTokens) { QobuzToken.listFromJson(storedTokens) }
     fun persistTokens(list: List<QobuzToken>) {
         val deduped = list.distinctBy { it.token }
@@ -584,6 +553,10 @@ fun QobuzSettings(navController: NavController) {
         },
     ) { innerPadding ->
         val topPadding = innerPadding.calculateTopPadding()
+        val scrollState = rememberScrollState()
+        val positions = rememberPreferencePositions()
+
+        LaunchedEffect(scrollTo) { positions.scrollToKey(scrollTo, scrollState) }
 
         Column(
             Modifier
@@ -593,10 +566,13 @@ fun QobuzSettings(navController: NavController) {
                         WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
                     ),
                 )
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scrollState)
                 .padding(bottom = SettingsDimensions.ScreenBottomPadding),
         ) {
-            PreferenceGroup(title = stringResource(R.string.qobuz_integration)) {
+            PreferenceGroup(
+                modifier = positions.modifierFor("qobuz_account"),
+                title = stringResource(R.string.qobuz_integration),
+            ) {
                 item {
                     SwitchPreference(
                         title = { Text(stringResource(R.string.qobuz_enable)) },
@@ -625,28 +601,10 @@ fun QobuzSettings(navController: NavController) {
                 }
             }
 
-            PreferenceGroup(title = stringResource(R.string.lossless_download_group)) {
-                item {
-                    PreferenceEntry(
-                        title = { Text(stringResource(R.string.lossless_download_folder)) },
-                        description = losslessFolderLabel,
-                        icon = { Icon(painterResource(R.drawable.snippet_folder), null) },
-                        onClick = { pickLosslessFolderLauncher.launch(null) },
-                    )
-                }
-
-                item {
-                    SwitchPreference(
-                        title = { Text(stringResource(R.string.lossless_download_tag)) },
-                        description = stringResource(R.string.lossless_download_tag_description),
-                        icon = { Icon(painterResource(R.drawable.info), null) },
-                        checked = embedTags,
-                        onCheckedChange = onEmbedTagsChange,
-                    )
-                }
-            }
-
-            PreferenceGroup(title = stringResource(R.string.qobuz_tokens)) {
+            PreferenceGroup(
+                modifier = positions.modifierFor("qobuz_tokens"),
+                title = stringResource(R.string.qobuz_tokens),
+            ) {
                 item {
                     PreferenceEntry(
                         title = { Text(stringResource(R.string.qobuz_login_web)) },
@@ -792,7 +750,10 @@ fun QobuzSettings(navController: NavController) {
                 }
             }
 
-            PreferenceGroup(title = stringResource(R.string.qobuz_instances)) {
+            PreferenceGroup(
+                modifier = positions.modifierFor("qobuz_instances"),
+                title = stringResource(R.string.qobuz_instances),
+            ) {
                 item {
                     PreferenceEntry(
                         title = {

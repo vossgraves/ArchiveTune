@@ -72,6 +72,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
@@ -132,6 +133,7 @@ import moe.rukamori.archivetune.ui.component.LyricsEnhanced
 import moe.rukamori.archivetune.ui.component.LyricsV2
 import moe.rukamori.archivetune.ui.component.PlayerSliderTrack
 import moe.rukamori.archivetune.ui.menu.LyricsMenu
+import moe.rukamori.archivetune.ui.utils.rememberPreBlurredBitmap
 import moe.rukamori.archivetune.ui.theme.PlayerColorExtractor
 import moe.rukamori.archivetune.ui.theme.PlayerPaletteCache
 import moe.rukamori.archivetune.playback.artwork.PlayerPaletteCacheKey
@@ -320,6 +322,17 @@ fun LyricsScreen(
     val darkTheme = isSystemInDarkTheme()
 
     LaunchedEffect(mediaMetadata.id, mediaMetadata.thumbnailUrl, lyricsBackground, darkTheme) {
+        // Yield one frame before kicking off Palette extraction. The lyrics
+        // sheet's slide-up animation runs in the draw phase (graphicsLayer)
+        // and doesn't recompose per frame on its own, but the *first*
+        // composition of LyricsScreen still runs heavy code on the IO/Default
+        // dispatchers (Palette generate + image decode) that competes with
+        // the spring animation for CPU on low/mid-range phones. A 120ms
+        // delay lets the spring get ~60% of the way through its travel
+        // before Palette work starts — invisible to the user (the blurred
+        // background thumbnail covers the unextracted state) but noticeably
+        // smoother on devices where the open animation was laggy.
+        kotlinx.coroutines.delay(120)
         if (lyricsBackground != LyricsBackgroundStyle.DEFAULT && lyricsBackground != LyricsBackgroundStyle.COLORING) {
             gradientColors = AppleMusicFallbackGradient
             hasValidPalette = false
@@ -466,17 +479,7 @@ fun LyricsScreen(
     Box(
         modifier =
             modifier
-                .fillMaxSize()
-                // Sits on the ROOT box, so it is a parent of both the scrim below and the lyrics
-                // Column above and therefore sees touches that land on either. The previous
-                // full-screen scrim was a SIBLING stacked underneath the lyrics, so the lyrics list
-                // won hit testing and swallowed every tap on a line -- only the narrow gaps around
-                // the text revealed the controls. This observes on the Initial pass and consumes
-                // nothing, so lyric scrolling and line seeking keep working untouched.
-                .observeAnyPointerDown(
-                    enabled = showPlayerControlsEnabled && autoHidePlayerControls,
-                    onDown = { pokePlayerControlsVisibility() },
-                ),
+                .fillMaxSize(),
     ) {
         LyricsScreenBackground(
             style = lyricsBackground,
@@ -490,14 +493,18 @@ fun LyricsScreen(
             playerCustomBrightness = playerCustomBrightness,
         )
 
-        // Still needed to swallow taps that fall through to the background, so they do not reach
-        // whatever sits behind the lyrics sheet. The reveal poke it used to own now lives on the
-        // root Box above, which can actually see touches on the lyrics themselves.
         Box(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .consumeUnhandledPointerInput(),
+                    .consumeUnhandledPointerInput()
+                    .pointerInput(showPlayerControlsEnabled, autoHidePlayerControls) {
+                        if (!showPlayerControlsEnabled || !autoHidePlayerControls) return@pointerInput
+                        awaitEachGesture {
+                            awaitFirstDown(requireUnconsumed = false)
+                            pokePlayerControlsVisibility()
+                        }
+                    },
         )
 
         Column(
@@ -731,22 +738,38 @@ private fun AppleMusicBackground(
                 .fillMaxSize()
                 .background(AppleMusicFallbackGradient.last()),
     ) {
+        // Pre-blurred bitmap for the lyrics background. On Android 12+ this is null and we fall
+        // through to AsyncImage + Modifier.blur. On older Android it returns a CPU-blurred bitmap
+        // that we render directly, because Modifier.blur is a silent no-op below API 31.
+        val preBlurredBitmap = rememberPreBlurredBitmap(imageUrl = mediaMetadata.thumbnailUrl, radiusDp = 46.dp)
         AnimatedContent(
             targetState = mediaMetadata.thumbnailUrl,
             transitionSpec = { fadeIn(tween(700)) togetherWith fadeOut(tween(700)) },
             label = "lyrics-apple-background",
         ) { thumbnailUrl ->
             if (thumbnailUrl != null) {
-                AsyncImage(
-                    model = thumbnailUrl,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier =
-                        Modifier
-                            .fillMaxSize()
-                            .blur(46.dp)
-                            .alpha(0.62f),
-                )
+                if (preBlurredBitmap != null) {
+                    androidx.compose.foundation.Image(
+                        bitmap = preBlurredBitmap.asImageBitmap(),
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier =
+                            Modifier
+                                .fillMaxSize()
+                                .alpha(0.62f),
+                    )
+                } else {
+                    AsyncImage(
+                        model = thumbnailUrl,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier =
+                            Modifier
+                                .fillMaxSize()
+                                .blur(46.dp)
+                                .alpha(0.62f),
+                    )
+                }
             }
         }
         Box(
@@ -1064,19 +1087,39 @@ private fun AppleMusicControls(
                     )
                 }
 
-                // Shared with the Apple Music player itself so the two screens read as one
-                // control: animated fill, track that grows while held, and a muted glyph at zero.
-                AppleMusicVolumeRow(
-                    volume = volume.coerceIn(0f, 1f),
-                    onVolumeChange = onVolumeChange,
-                    iconTint = foregroundColor.copy(alpha = 0.66f),
-                    trackColor = foregroundColor.copy(alpha = 0.24f),
-                    fillColor = foregroundColor.copy(alpha = 0.88f),
+                Row(
                     modifier =
                         Modifier
                             .fillMaxWidth()
                             .padding(top = 26.dp),
-                )
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.player_volume_min),
+                        contentDescription = stringResource(R.string.minimum_volume),
+                        tint = foregroundColor.copy(alpha = 0.66f),
+                        modifier = Modifier.size(17.dp),
+                    )
+                    AppleMusicSlider(
+                        value = volume.coerceIn(0f, 1f),
+                        valueRange = 0f..1f,
+                        activeColor = foregroundColor.copy(alpha = 0.88f),
+                        inactiveColor = foregroundColor.copy(alpha = 0.24f),
+                        trackHeight = 8.dp,
+                        onValueChange = onVolumeChange,
+                        onValueChangeFinished = {},
+                        modifier =
+                            Modifier
+                                .weight(1f)
+                                .padding(horizontal = 16.dp),
+                    )
+                    Icon(
+                        painter = painterResource(R.drawable.player_volume_up),
+                        contentDescription = stringResource(R.string.maximum_volume),
+                        tint = foregroundColor.copy(alpha = 0.66f),
+                        modifier = Modifier.size(19.dp),
+                    )
+                }
             }
         }
     }

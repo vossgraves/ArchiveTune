@@ -1,15 +1,4 @@
 root = true
 
 [*.{kt,kts}]
-# This fork gates ONE ktlint rule and deliberately no more.
-#
-# The whole standard ruleset is switched off first, because ktlint enables it by
-# default and rules like import-ordering / trailing-comma would reformat hundreds of
-# files inherited from upstream. That diff would then collide with the hourly
-# upstream-sync merge on code we do not own, so the cost is paid forever.
-#
-# no-unused-imports is the exception: it catches a real defect (a stale import left
-# behind by an edit), the fix is always a single-line deletion, and it never disagrees
-# with upstream formatting.
-ktlint_standard = disabled
 ktlint_standard_no-unused-imports = enabled

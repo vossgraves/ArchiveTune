@@ -47,7 +47,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.Player
@@ -86,7 +85,6 @@ fun SelectionSongMenu(
     songPosition: List<PlaylistSongMap>? = emptyList(),
     isFromCache: Boolean = false,
     onRemoveFromCache: ((List<Song>) -> Unit)? = null,
-    onExportSelected: ((List<Song>) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val database = LocalDatabase.current
@@ -601,44 +599,6 @@ fun SelectionSongMenu(
                                         }
                                     }
                                 }
-                            },
-                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                    )
-                }
-            }
-        }
-
-        if (onExportSelected != null && songSelection.isNotEmpty()) {
-            item {
-                Spacer(modifier = Modifier.height(12.dp))
-            }
-
-            item {
-                MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
-                    ListItem(
-                        headlineContent = {
-                            Text(
-                                text =
-                                    pluralStringResource(
-                                        R.plurals.export_selected_songs,
-                                        songSelection.size,
-                                        songSelection.size,
-                                    ),
-                            )
-                        },
-                        leadingContent = {
-                            Icon(
-                                painter = painterResource(R.drawable.download),
-                                contentDescription = null,
-                            )
-                        },
-                        modifier =
-                            Modifier.clickable {
-                                // The caller owns the folder picker and the export run: this menu is
-                                // dismissed immediately, and a large export outlives it.
-                                onDismiss()
-                                onExportSelected(songSelection)
-                                clearAction()
                             },
                         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                     )
