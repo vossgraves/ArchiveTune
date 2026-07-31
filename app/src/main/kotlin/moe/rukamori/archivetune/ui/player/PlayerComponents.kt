@@ -1798,6 +1798,9 @@ fun PlayerControlsContent(
     context: Context,
     onSliderValueChange: (Long) -> Unit,
     onSliderValueChangeFinished: () -> Unit,
+    onLyricsClick: () -> Unit = {},
+    onQueueClick: () -> Unit = {},
+    onOutputClick: () -> Unit = {},
     currentFormat: FormatEntity? = null,
 ) {
     val currentSong by playerConnection.currentSong.collectAsState(initial = null)
@@ -1924,6 +1927,18 @@ fun PlayerControlsContent(
         playerConnection = playerConnection,
         currentSongLiked = currentSongLiked,
     )
+
+    Spacer(Modifier.height(8.dp))
+
+    // Mirror the Apple Music player's bottom utility strip so the lyrics /
+    // AirPlay / queue buttons are reachable from the bottom of every default
+    // (V1–V4, V6) player layout, not just the Apple Music design.
+    PlayerBottomActionsRow(
+        onLyricsClick = onLyricsClick,
+        onOutputClick = onOutputClick,
+        onQueueClick = onQueueClick,
+        iconColor = textBackgroundColor,
+    )
 }
 
 @Composable
@@ -1950,6 +1965,9 @@ fun V8PlayerControlsContent(
     onSliderValueChange: (Long) -> Unit,
     onSliderValueChangeFinished: () -> Unit,
     onVolumeChange: (Float) -> Unit,
+    onLyricsClick: () -> Unit = {},
+    onQueueClick: () -> Unit = {},
+    onOutputClick: () -> Unit = {},
     modifier: Modifier = Modifier,
     landscape: Boolean = false,
 ) {
@@ -2086,6 +2104,18 @@ fun V8PlayerControlsContent(
                     onVolumeChange = onVolumeChange,
                 )
             }
+
+            Spacer(Modifier.height(transportToVolumeGap))
+
+            // Mirror the Apple Music player's bottom utility strip so the lyrics /
+            // AirPlay / queue buttons are reachable from the bottom of the V7/V8
+            // landscape immersive controls variant.
+            PlayerBottomActionsRow(
+                onLyricsClick = onLyricsClick,
+                onOutputClick = onOutputClick,
+                onQueueClick = onQueueClick,
+                iconColor = foreground,
+            )
         }
     }
 }
@@ -2116,6 +2146,9 @@ fun V8PlayerContent(
     onSliderValueChange: (Long) -> Unit,
     onSliderValueChangeFinished: () -> Unit,
     onVolumeChange: (Float) -> Unit,
+    onLyricsClick: () -> Unit = {},
+    onQueueClick: () -> Unit = {},
+    onOutputClick: () -> Unit = {},
     modifier: Modifier = Modifier,
     landscape: Boolean = false,
 ) {
@@ -2190,6 +2223,9 @@ fun V8PlayerContent(
             onSliderValueChange = onSliderValueChange,
             onSliderValueChangeFinished = onSliderValueChangeFinished,
             onVolumeChange = onVolumeChange,
+            onLyricsClick = onLyricsClick,
+            onQueueClick = onQueueClick,
+            onOutputClick = onOutputClick,
             modifier = modifier,
         )
     } else {
@@ -2231,6 +2267,9 @@ fun V8PlayerContent(
             onSliderValueChange = onSliderValueChange,
             onSliderValueChangeFinished = onSliderValueChangeFinished,
             onVolumeChange = onVolumeChange,
+            onLyricsClick = onLyricsClick,
+            onQueueClick = onQueueClick,
+            onOutputClick = onOutputClick,
             modifier = modifier,
         )
     }
@@ -2268,6 +2307,9 @@ private fun V8PortraitContent(
     onVolumeChange: (Float) -> Unit,
     onTitleClick: () -> Unit,
     onArtistClick: (artistId: String) -> Unit,
+    onLyricsClick: () -> Unit = {},
+    onQueueClick: () -> Unit = {},
+    onOutputClick: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
@@ -2395,6 +2437,18 @@ private fun V8PortraitContent(
                 )
             }
 
+            Spacer(Modifier.height(transportToVolumeGap))
+
+            // Mirror the Apple Music player's bottom utility strip so the lyrics /
+            // AirPlay / queue buttons are reachable from the bottom of the V8
+            // immersive layout (also used by V7 in landscape).
+            PlayerBottomActionsRow(
+                onLyricsClick = onLyricsClick,
+                onOutputClick = onOutputClick,
+                onQueueClick = onQueueClick,
+                iconColor = foreground,
+            )
+
             Spacer(Modifier.height(bottomGap))
         }
     }
@@ -2432,6 +2486,9 @@ private fun V8LandscapeContent(
     onVolumeChange: (Float) -> Unit,
     onTitleClick: () -> Unit,
     onArtistClick: (artistId: String) -> Unit,
+    onLyricsClick: () -> Unit = {},
+    onQueueClick: () -> Unit = {},
+    onOutputClick: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
@@ -2523,6 +2580,18 @@ private fun V8LandscapeContent(
                         onVolumeChange = onVolumeChange,
                     )
                 }
+
+                Spacer(Modifier.height(18.dp))
+
+                // Mirror the Apple Music player's bottom utility strip so the lyrics /
+                // AirPlay / queue buttons are reachable from the bottom of the V8
+                // immersive landscape layout.
+                PlayerBottomActionsRow(
+                    onLyricsClick = onLyricsClick,
+                    onOutputClick = onOutputClick,
+                    onQueueClick = onQueueClick,
+                    iconColor = foreground,
+                )
             }
         }
     }
@@ -3022,6 +3091,7 @@ fun V9PlayerContent(
     onCollapseClick: () -> Unit,
     onQueueClick: () -> Unit,
     onLyricsClick: () -> Unit,
+    onOutputClick: () -> Unit = {},
     onSliderValueChange: (Long) -> Unit,
     onSliderValueChangeFinished: () -> Unit,
     modifier: Modifier = Modifier,
@@ -3070,6 +3140,7 @@ fun V9PlayerContent(
             onCollapseClick = onCollapseClick,
             onQueueClick = onQueueClick,
             onLyricsClick = onLyricsClick,
+            onOutputClick = onOutputClick,
             onTitleClick = onTitleClick,
             onArtistClick = onArtistClick,
             onPreviousClick = playerConnection::seekToPrevious,
@@ -3101,6 +3172,7 @@ fun V9PlayerContent(
             onCollapseClick = onCollapseClick,
             onQueueClick = onQueueClick,
             onLyricsClick = onLyricsClick,
+            onOutputClick = onOutputClick,
             onTitleClick = onTitleClick,
             onArtistClick = onArtistClick,
             onPreviousClick = playerConnection::seekToPrevious,
@@ -3135,6 +3207,7 @@ private fun V9PortraitContent(
     onCollapseClick: () -> Unit,
     onQueueClick: () -> Unit,
     onLyricsClick: () -> Unit,
+    onOutputClick: () -> Unit = {},
     onPreviousClick: () -> Unit,
     onPlayPauseClick: () -> Unit,
     onNextClick: () -> Unit,
@@ -3258,6 +3331,19 @@ private fun V9PortraitContent(
             )
 
             Spacer(Modifier.weight(1f))
+
+            // Mirror the Apple Music player's bottom utility strip so the lyrics /
+            // AirPlay / queue buttons are reachable from the bottom of the V9
+            // layout (V9 also exposes lyrics + queue from the header for users who
+            // prefer the top placement — both paths invoke the same callbacks).
+            PlayerBottomActionsRow(
+                onLyricsClick = onLyricsClick,
+                onOutputClick = onOutputClick,
+                onQueueClick = onQueueClick,
+                iconColor = textBackgroundColor,
+            )
+
+            Spacer(Modifier.height(if (compactHeight) 8.dp else 14.dp))
         }
     }
 }
@@ -3284,6 +3370,7 @@ private fun V9LandscapeContent(
     onCollapseClick: () -> Unit,
     onQueueClick: () -> Unit,
     onLyricsClick: () -> Unit,
+    onOutputClick: () -> Unit = {},
     onPreviousClick: () -> Unit,
     onPlayPauseClick: () -> Unit,
     onNextClick: () -> Unit,
@@ -3372,6 +3459,18 @@ private fun V9LandscapeContent(
                     onPreviousClick = onPreviousClick,
                     onPlayPauseClick = onPlayPauseClick,
                     onNextClick = onNextClick,
+                )
+
+                Spacer(Modifier.height(20.dp))
+
+                // Mirror the Apple Music player's bottom utility strip so the
+                // lyrics / AirPlay / queue buttons are reachable from the bottom
+                // of the V9 landscape layout.
+                PlayerBottomActionsRow(
+                    onLyricsClick = onLyricsClick,
+                    onOutputClick = onOutputClick,
+                    onQueueClick = onQueueClick,
+                    iconColor = textBackgroundColor,
                 )
             }
         }
@@ -4260,5 +4359,81 @@ fun PlayerBackground(
                 // DEFAULT or other modes - no background
             }
         }
+    }
+}
+
+/**
+ * Bottom action row that mirrors the Apple Music player's bottom utility strip:
+ * lyrics / media output (AirPlay on gms, system media-output panel on foss) / queue.
+ *
+ * Added to every non-Apple-Music player design style (V1–V4, V6, V7, V8, V9) so the
+ * secondary action buttons are reachable from the bottom of the player regardless of
+ * which design the user has selected. Apple Music style already has its own
+ * [AppleMusicPlayer] bottom row baked into [AppleMusicControlsColumn] and is therefore
+ * intentionally not a consumer of this composable.
+ *
+ * The button tint is parameterised so each caller can match its own foreground palette
+ * (V8/V9 use Color.White over the artwork-tinted backdrop; the default V1–V6 design
+ * uses [textBackgroundColor] which already adapts to the active background style).
+ */
+@Composable
+fun PlayerBottomActionsRow(
+    onLyricsClick: () -> Unit,
+    onOutputClick: () -> Unit,
+    onQueueClick: () -> Unit,
+    iconColor: Color,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        PlayerBottomActionButton(
+            iconRes = R.drawable.player_lyrics,
+            contentDescription = stringResource(R.string.lyrics),
+            iconColor = iconColor,
+            onClick = onLyricsClick,
+        )
+        PlayerBottomActionButton(
+            iconRes = R.drawable.player_airplay,
+            contentDescription = stringResource(R.string.cast),
+            iconColor = iconColor,
+            onClick = onOutputClick,
+        )
+        PlayerBottomActionButton(
+            iconRes = R.drawable.player_queue_music,
+            contentDescription = stringResource(R.string.queue),
+            iconColor = iconColor,
+            onClick = onQueueClick,
+        )
+    }
+}
+
+@Composable
+private fun PlayerBottomActionButton(
+    iconRes: Int,
+    contentDescription: String,
+    iconColor: Color,
+    onClick: () -> Unit,
+) {
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier =
+            Modifier
+                .size(48.dp)
+                .clip(CircleShape)
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onClick,
+                ),
+    ) {
+        Icon(
+            painter = painterResource(iconRes),
+            contentDescription = contentDescription,
+            tint = iconColor,
+            modifier = Modifier.size(24.dp),
+        )
     }
 }
