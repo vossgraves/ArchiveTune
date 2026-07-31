@@ -81,6 +81,7 @@ import moe.rukamori.archivetune.constants.AodShowLyricsKey
 import moe.rukamori.archivetune.constants.AodShowProgressKey
 import moe.rukamori.archivetune.constants.AodShowThumbnailKey
 import moe.rukamori.archivetune.constants.AodShowTimeLabelsKey
+import moe.rukamori.archivetune.constants.AodSliderStyleKey
 import moe.rukamori.archivetune.constants.AodTextAlignment
 import moe.rukamori.archivetune.constants.AodTextAlignmentKey
 import moe.rukamori.archivetune.constants.AodThumbnailShape
@@ -90,6 +91,7 @@ import moe.rukamori.archivetune.constants.AodThumbnailSizeKey
 import moe.rukamori.archivetune.constants.AodTitleMaxLinesKey
 import moe.rukamori.archivetune.constants.AodVerticalSpacingKey
 import moe.rukamori.archivetune.constants.EnableHapticFeedbackKey
+import moe.rukamori.archivetune.constants.SliderStyle
 import moe.rukamori.archivetune.lyrics.LyricsEntry
 import moe.rukamori.archivetune.lyrics.LyricsUtils.findCurrentLineIndex
 import moe.rukamori.archivetune.lyrics.LyricsUtils.isLineSyncedLrc
@@ -147,6 +149,7 @@ fun AodPlayerScreen(
     val (contentPosition) = rememberEnumPreference(AodContentPositionKey, AodContentPosition.CENTER)
     val (textAlignment) = rememberEnumPreference(AodTextAlignmentKey, AodTextAlignment.CENTER)
     val (controlStyle) = rememberEnumPreference(AodControlStyleKey, AodControlStyle.FILLED)
+    val (sliderStyle) = rememberEnumPreference(AodSliderStyleKey, SliderStyle.Standard)
     val (controlSize) = rememberPreference(AodControlSizeKey, 64f)
     val (horizontalPadding) = rememberPreference(AodHorizontalPaddingKey, 40f)
     val (verticalSpacing) = rememberPreference(AodVerticalSpacingKey, 20f)
@@ -327,6 +330,8 @@ fun AodPlayerScreen(
                     sliderPosition = sliderPosition,
                     accentColor = accentColor,
                     showTimeLabels = showTimeLabels,
+                    sliderStyle = sliderStyle,
+                    isPlaying = isPlaying,
                     onSeek = onSeek,
                     onSeekFinished = onSeekFinished,
                 )
@@ -356,6 +361,8 @@ private fun AodSliderSection(
     sliderPosition: Long?,
     accentColor: Color,
     showTimeLabels: Boolean,
+    sliderStyle: SliderStyle,
+    isPlaying: Boolean,
     onSeek: (Long) -> Unit,
     onSeekFinished: () -> Unit,
 ) {
@@ -381,15 +388,32 @@ private fun AodSliderSection(
         )
 
     Column(modifier = Modifier.fillMaxWidth()) {
-        Slider(
-            value = sliderValue,
-            onValueChange = { onSeek(it.toLong()) },
-            onValueChangeFinished = onSeekFinished,
-            valueRange = 0f..(if (seekEnabled) duration.toFloat() else 1f),
-            enabled = seekEnabled,
-            colors = sliderColors,
-            modifier = Modifier.fillMaxWidth(),
-        )
+        if (sliderStyle == SliderStyle.Standard) {
+            // Standard style keeps the original AOD slider colors (with the
+            // dimmed disabled states tuned for the AOD dark surface). The
+            // StyledPlaybackSlider uses PlayerSliderColors which assumes a
+            // light-themed surface and would look wrong on AOD.
+            Slider(
+                value = sliderValue,
+                onValueChange = { onSeek(it.toLong()) },
+                onValueChangeFinished = onSeekFinished,
+                valueRange = 0f..(if (seekEnabled) duration.toFloat() else 1f),
+                enabled = seekEnabled,
+                colors = sliderColors,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        } else {
+            StyledPlaybackSlider(
+                sliderStyle = sliderStyle,
+                value = sliderValue,
+                valueRange = 0f..(if (seekEnabled) duration.toFloat() else 1f),
+                onValueChange = { onSeek(it.toLong()) },
+                onValueChangeFinished = onSeekFinished,
+                activeColor = accentColor,
+                isPlaying = isPlaying,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
         if (showTimeLabels) {
             Row(
                 horizontalArrangement = Arrangement.SpaceBetween,

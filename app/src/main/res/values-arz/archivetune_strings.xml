@@ -100,6 +100,13 @@
     <string name="aod_customize_thumbnail_shape">شكل الصورة المصغرة</string>
     <string name="aod_customize_thumbnail_shape_desc">استخدام أشكال لقناع الغلاف في الشاشة الدائمة.</string>
     <string name="aod_customize_layout">التخطيط</string>
+    <string name="aod_customize_progress">التقدم</string>
+    <string name="aod_customize_slider_style">نمط شريط التمرير</string>
+    <string name="aod_slider_style_standard">قياسي</string>
+    <string name="aod_slider_style_wavy">متموج</string>
+    <string name="aod_slider_style_thick">سميك</string>
+    <string name="aod_slider_style_circular">دائري</string>
+    <string name="aod_slider_style_simple">بسيط</string>
     <string name="aod_customize_background_style">شكل الخلفية</string>
     <string name="aod_customize_accent_style">شكل اللون الأساسي</string>
     <string name="aod_customize_content_position">موضع المحتوى</string>

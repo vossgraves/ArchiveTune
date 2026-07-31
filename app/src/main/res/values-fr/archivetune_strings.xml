@@ -459,6 +459,13 @@
     <string name="ai_integration_desc">Configurer la traduction par IA et les automatisations personnalisées pour les utilisateurs.</string>
     <string name="singles">Singles</string>
     <string name="aod_customize_layout">Mise en page</string>
+    <string name="aod_customize_progress">Progression</string>
+    <string name="aod_customize_slider_style">Style du curseur</string>
+    <string name="aod_slider_style_standard">Standard</string>
+    <string name="aod_slider_style_wavy">Ondulé</string>
+    <string name="aod_slider_style_thick">Épais</string>
+    <string name="aod_slider_style_circular">Circulaire</string>
+    <string name="aod_slider_style_simple">Simple</string>
     <string name="playlist_sync_failed">Échec de la synchronisation de la playlist : %1$s</string>
     <string name="storage_location_sheet_title">Lieu de stockage</string>
     <string name="music_recognition_history_empty_title">Aucun titre n\'a encore été reconnu</string>

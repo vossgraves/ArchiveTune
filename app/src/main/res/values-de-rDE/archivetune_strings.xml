@@ -262,6 +262,13 @@
     <string name="aod_customize_show_controls">Zeige Steuerung an</string>
     <string name="aod_customize_thumbnail_shape">Miniaturansichtsform</string>
     <string name="aod_customize_layout">Layout</string>
+    <string name="aod_customize_progress">Fortschritt</string>
+    <string name="aod_customize_slider_style">Schieberegler-Stil</string>
+    <string name="aod_slider_style_standard">Standard</string>
+    <string name="aod_slider_style_wavy">Wellig</string>
+    <string name="aod_slider_style_thick">Dick</string>
+    <string name="aod_slider_style_circular">Rund</string>
+    <string name="aod_slider_style_simple">Einfach</string>
     <string name="aod_customize_background_style">Hintergrundstil</string>
     <string name="aod_customize_accent_style">Akzentstil</string>
     <string name="aod_customize_content_position">Inhaltsposition</string>

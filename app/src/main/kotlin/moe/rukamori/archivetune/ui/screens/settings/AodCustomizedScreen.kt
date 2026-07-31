@@ -92,6 +92,7 @@ import moe.rukamori.archivetune.constants.AodShowLyricsKey
 import moe.rukamori.archivetune.constants.AodShowProgressKey
 import moe.rukamori.archivetune.constants.AodShowThumbnailKey
 import moe.rukamori.archivetune.constants.AodShowTimeLabelsKey
+import moe.rukamori.archivetune.constants.AodSliderStyleKey
 import moe.rukamori.archivetune.constants.AodTextAlignment
 import moe.rukamori.archivetune.constants.AodTextAlignmentKey
 import moe.rukamori.archivetune.constants.AodThumbnailShape
@@ -100,12 +101,14 @@ import moe.rukamori.archivetune.constants.AodThumbnailShapeRotationKey
 import moe.rukamori.archivetune.constants.AodThumbnailSizeKey
 import moe.rukamori.archivetune.constants.AodTitleMaxLinesKey
 import moe.rukamori.archivetune.constants.AodVerticalSpacingKey
+import moe.rukamori.archivetune.constants.SliderStyle
 import moe.rukamori.archivetune.constants.ThumbnailCornerRadiusKey
 import moe.rukamori.archivetune.ui.component.EnumListPreference
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.SwitchPreference
+import moe.rukamori.archivetune.ui.player.StyledPlaybackSlider
 import moe.rukamori.archivetune.ui.utils.appBarScrollBehavior
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.ui.utils.supportsArtworkGlowShadow
@@ -139,6 +142,7 @@ private data class AodPreviewSettings(
     val verticalSpacing: Float,
     val titleMaxLines: Int,
     val ambientIntensity: Float,
+    val sliderStyle: SliderStyle = SliderStyle.Standard,
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -187,6 +191,11 @@ fun AodCustomizedScreen(navController: NavController) {
             AodControlStyleKey,
             defaultValue = AodControlStyle.FILLED,
         )
+    val (sliderStyle, onSliderStyleChange) =
+        rememberEnumPreference(
+            AodSliderStyleKey,
+            defaultValue = SliderStyle.Standard,
+        )
     val (controlSize, onControlSizeChange) = rememberPreference(AodControlSizeKey, defaultValue = 64f)
     val (horizontalPadding, onHorizontalPaddingChange) = rememberPreference(AodHorizontalPaddingKey, defaultValue = 40f)
     val (verticalSpacing, onVerticalSpacingChange) = rememberPreference(AodVerticalSpacingKey, defaultValue = 20f)
@@ -215,6 +224,7 @@ fun AodCustomizedScreen(navController: NavController) {
             contentPosition,
             textAlignment,
             controlStyle,
+            sliderStyle,
             controlSize,
             horizontalPadding,
             verticalSpacing,
@@ -240,6 +250,7 @@ fun AodCustomizedScreen(navController: NavController) {
                 contentPosition = contentPosition,
                 textAlignment = textAlignment,
                 controlStyle = controlStyle,
+                sliderStyle = sliderStyle,
                 controlSize = controlSize,
                 horizontalPadding = horizontalPadding,
                 verticalSpacing = verticalSpacing,
@@ -446,6 +457,24 @@ fun AodCustomizedScreen(navController: NavController) {
                             value = titleMaxLines,
                             valueRange = 1..3,
                             onValueChange = onTitleMaxLinesChange,
+                        )
+                    }
+                }
+            }
+
+            item(
+                key = "aod_progress",
+                contentType = "preference_group",
+            ) {
+                PreferenceGroup(title = stringResource(R.string.aod_customize_progress)) {
+                    item {
+                        EnumListPreference(
+                            title = { Text(stringResource(R.string.aod_customize_slider_style)) },
+                            icon = { Icon(painterResource(R.drawable.style), null) },
+                            selectedValue = sliderStyle,
+                            valueText = { it.label() },
+                            onValueSelected = onSliderStyleChange,
+                            isEnabled = showProgress,
                         )
                     }
                 }
@@ -745,6 +774,7 @@ private fun AodPreviewCard(
                         PreviewProgress(
                             accentColor = accentColor,
                             showTimeLabels = settings.showTimeLabels,
+                            sliderStyle = settings.sliderStyle,
                         )
                     }
 
@@ -804,28 +834,26 @@ private fun PreviewArtwork(
 private fun PreviewProgress(
     accentColor: Color,
     showTimeLabels: Boolean,
+    sliderStyle: SliderStyle = SliderStyle.Standard,
 ) {
+    // Static 46% preview value — gives the user a feel for what each slider
+    // style looks like at a glance, without animating in the customize screen.
+    var previewValue by remember { mutableFloatStateOf(0.46f) }
+
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(5.dp),
     ) {
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .height(4.dp)
-                    .clip(MaterialTheme.shapes.extraSmall)
-                    .background(Color.White.copy(alpha = 0.22f)),
-        ) {
-            Box(
-                modifier =
-                    Modifier
-                        .fillMaxWidth(0.46f)
-                        .height(4.dp)
-                        .clip(MaterialTheme.shapes.extraSmall)
-                        .background(accentColor),
-            )
-        }
+        StyledPlaybackSlider(
+            sliderStyle = sliderStyle,
+            value = previewValue,
+            valueRange = 0f..1f,
+            onValueChange = { previewValue = it },
+            onValueChangeFinished = {},
+            activeColor = accentColor,
+            isPlaying = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
         if (showTimeLabels) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1241,6 +1269,16 @@ private fun AodControlStyle.label(): String =
         AodControlStyle.FILLED -> stringResource(R.string.aod_control_filled)
         AodControlStyle.TONAL -> stringResource(R.string.aod_control_tonal)
         AodControlStyle.MINIMAL -> stringResource(R.string.aod_control_minimal)
+    }
+
+@Composable
+private fun SliderStyle.label(): String =
+    when (this) {
+        SliderStyle.Standard -> stringResource(R.string.aod_slider_style_standard)
+        SliderStyle.Wavy -> stringResource(R.string.aod_slider_style_wavy)
+        SliderStyle.Thick -> stringResource(R.string.aod_slider_style_thick)
+        SliderStyle.Circular -> stringResource(R.string.aod_slider_style_circular)
+        SliderStyle.Simple -> stringResource(R.string.aod_slider_style_simple)
     }
 
 private fun AodContentPosition.toBoxAlignment(): Alignment =

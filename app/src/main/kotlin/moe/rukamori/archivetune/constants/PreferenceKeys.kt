@@ -56,6 +56,14 @@ val AodContentPositionKey = stringPreferencesKey("aodContentPosition")
 val AodTextAlignmentKey = stringPreferencesKey("aodTextAlignment")
 val AodControlStyleKey = stringPreferencesKey("aodControlStyle")
 val AodControlSizeKey = floatPreferencesKey("aodControlSize")
+
+/**
+ * Slider style for the AOD progress bar. Reuses the [SliderStyle] enum so the
+ * same five styles (Standard / Wavy / Thick / Circular / Simple) are available
+ * as for the main player. Stored separately from [SliderStyleKey] so users can
+ * pick a different style for AOD without affecting the main player.
+ */
+val AodSliderStyleKey = stringPreferencesKey("aodSliderStyle")
 val AodHorizontalPaddingKey = floatPreferencesKey("aodHorizontalPadding")
 val AodVerticalSpacingKey = floatPreferencesKey("aodVerticalSpacing")
 val AodTitleMaxLinesKey = intPreferencesKey("aodTitleMaxLines")

@@ -335,6 +335,13 @@
     <string name="aod_customize_thumbnail_shape">Hình dạng thumbnail</string>
     <string name="aod_customize_thumbnail_shape_desc">Sử dụng hình dạng cho mặt nạ artwork AOD.</string>
     <string name="aod_customize_layout">Bố cục</string>
+    <string name="aod_customize_progress">Tiến trình</string>
+    <string name="aod_customize_slider_style">Kiểu thanh trượt</string>
+    <string name="aod_slider_style_standard">Tiêu chuẩn</string>
+    <string name="aod_slider_style_wavy">Lượn sóng</string>
+    <string name="aod_slider_style_thick">Dày</string>
+    <string name="aod_slider_style_circular">Tròn</string>
+    <string name="aod_slider_style_simple">Đơn giản</string>
     <string name="aod_customize_background_style">Kiểu nền</string>
     <string name="aod_customize_accent_style">Kiểu điểm nhấn</string>
     <string name="aod_customize_content_position">Vị trí nội dung</string>

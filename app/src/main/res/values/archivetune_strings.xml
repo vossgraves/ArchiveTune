@@ -130,6 +130,13 @@
     <string name="aod_customize_content_position">Content position</string>
     <string name="aod_customize_text_alignment">Text alignment</string>
     <string name="aod_customize_title_max_lines">Title max lines</string>
+    <string name="aod_customize_progress">Progress</string>
+    <string name="aod_customize_slider_style">Slider style</string>
+    <string name="aod_slider_style_standard">Standard</string>
+    <string name="aod_slider_style_wavy">Wavy</string>
+    <string name="aod_slider_style_thick">Thick</string>
+    <string name="aod_slider_style_circular">Circular</string>
+    <string name="aod_slider_style_simple">Simple</string>
     <string name="aod_customize_scale_and_spacing">Scale and spacing</string>
     <string name="aod_customize_thumbnail_size">Thumbnail size</string>
     <string name="aod_customize_shape_rotation">Shape rotation</string>

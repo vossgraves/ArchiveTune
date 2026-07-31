@@ -100,6 +100,13 @@
     <string name="aod_customize_thumbnail_shape">サムネイル形状</string>
     <string name="aod_customize_thumbnail_shape_desc">AODアートワークのマスクにShapesを使用。</string>
     <string name="aod_customize_layout">レイアウト</string>
+    <string name="aod_customize_progress">進行</string>
+    <string name="aod_customize_slider_style">スライダースタイル</string>
+    <string name="aod_slider_style_standard">標準</string>
+    <string name="aod_slider_style_wavy">波状</string>
+    <string name="aod_slider_style_thick">太い</string>
+    <string name="aod_slider_style_circular">円形</string>
+    <string name="aod_slider_style_simple">シンプル</string>
     <string name="aod_customize_background_style">背景スタイル</string>
     <string name="aod_customize_accent_style">アクセントスタイル</string>
     <string name="aod_customize_content_position">コンテンツ位置</string>
