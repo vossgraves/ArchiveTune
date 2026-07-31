@@ -13,6 +13,7 @@ import androidx.compose.animation.core.RepeatableSpec
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -99,8 +100,14 @@ import moe.rukamori.archivetune.ui.utils.backToMain
 import javax.inject.Inject
 
 private val DashboardAccentColor = Color(0xFFBE123C)
-private val DashboardCardBackground = Color(0xFFFFF5F5)
-private val DashboardIconBackground = Color(0xFFFFE4E6)
+
+@Composable
+private fun dashboardCardColor(): Color =
+    if (isSystemInDarkTheme()) Color(0xFF1F1416) else Color(0xFFFFF5F5)
+
+@Composable
+private fun dashboardIconBackgroundColor(): Color =
+    if (isSystemInDarkTheme()) Color(0xFF3A1F23) else Color(0xFFFFE4E6)
 
 private enum class LastFmTab { RECENTS, TOP_PLAYED }
 
@@ -228,10 +235,8 @@ fun LastFmDashboardScreen(
         val top = topTracks?.getOrNull().orEmpty()
         val recentArtworkByTrack = remember(recent) { recent.associateArtworkByTrack() }
 
-        // Seed the live map from the process-wide in-memory cache so that
-        // navigating away from and back to the dashboard doesn't trigger
-        // another round of network resolutions for tracks we've already
-        // resolved this session.
+        
+
         val seedMap = remember(allTracksForArtworkSeedKey(recent, top)) {
             val snapshot = HashMap<String, String>()
             for (lookup in buildAllArtworkLookups(recent, top)) {
@@ -241,29 +246,24 @@ fun LastFmDashboardScreen(
         }
         var catalogueArtworkByTrack by remember { mutableStateOf<Map<String, String>>(seedMap) }
 
-        // Combine recent + top tracks into a single de-duplicated list so we can
-        // resolve covers for both tabs in one LaunchedEffect pass. Without this,
-        // the Recents tab would fall through to the placeholder icon whenever
-        // Last.fm didn't return an image (which is most of the time).
+        
+
         val allTracksForArtwork = remember(recent, top) {
             buildAllArtworkLookups(recent, top)
         }
 
         LaunchedEffect(allTracksForArtwork) {
             if (allTracksForArtwork.isEmpty()) return@LaunchedEffect
-            // Resolve covers concurrently with a bounded parallelism of 12.
-            // We stream resolved URLs into the live state map as soon as each
-            // chunk finishes so the user sees thumbnails appearing in waves
-            // instead of waiting for the whole batch to complete.
-            //
-            // Per-IP rate limits on iTunes / Deezer are well above 12 rps,
-            // so we don't need additional throttling.
+
+            
+
+            
+            
             val snapshot = HashMap<String, String>(catalogueArtworkByTrack)
             val chunks = allTracksForArtwork.chunked(LASTFM_ARTWORK_CONCURRENCY)
             for (chunk in chunks) {
-                // Skip lookups we've already resolved this session — saves
-                // network calls when the user pulls-to-refresh and only
-                // a few new tracks came in.
+
+                
                 val toResolve = chunk.filter { lookup -> snapshot[lookup.key].isNullOrBlank() }
                 if (toResolve.isEmpty()) continue
                 val resolved = withContext(Dispatchers.IO) {
@@ -281,20 +281,17 @@ fun LastFmDashboardScreen(
                 }
                 if (resolved.isEmpty()) continue
                 resolved.forEach { (k, u) -> snapshot[k] = u }
-                // Publish a new map so Compose sees a new reference and
-                // recomposes the rows that now have artwork. Mutating the
-                // existing map wouldn't trigger recomposition.
+
+                
                 catalogueArtworkByTrack = snapshot.toMap()
             }
         }
 
         val playerAwareInsets = LocalPlayerAwareWindowInsets.current
         val density = LocalDensity.current
-        // Bottom inset (mini player + nav bar) in dp — computed directly from
-        // WindowInsets.getBottom(Density) because `WindowInsets.calculateBottomPadding()`
-        // is a @Composable extension that requires its own import path which
-        // isn't always resolvable across Compose versions. Going through
-        // Density.toDp() is the stable API.
+
+        
+
         val bottomInsetDp = with(density) { playerAwareInsets.getBottom(density).toDp() }
         LazyColumn(
             modifier = Modifier
@@ -305,17 +302,15 @@ fun LastFmDashboardScreen(
             contentPadding =
                 PaddingValues(
                     top = innerPadding.calculateTopPadding(),
-                    // Reserve space for the mini player + nav bar so the last
-                    // dashboard card isn't overlapped. The window-insets padding
-                    // handles the horizontal + bottom system bars; we add the
-                    // mini-player height explicitly here (via getBottom which
-                    // already folds in MiniPlayerHeight when the player isn't
-                    // dismissed) plus a small visual breathing margin.
+
+                    
+
+                    
                     bottom = bottomInsetDp + 16.dp,
                 ),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            // User profile card — history-style with accent tint
+            
             item(key = "user_card") {
                 UserCard(
                     userInfo = userInfo,
@@ -325,7 +320,6 @@ fun LastFmDashboardScreen(
                 )
             }
 
-            // Tab selector — Recents / Top Played (like History Local/Remote pills)
             item(key = "tab_selector") {
                 LastFmTabSelector(
                     selectedTab = selectedTab,
@@ -335,7 +329,6 @@ fun LastFmDashboardScreen(
                 )
             }
 
-            // Tab content
             when (selectedTab) {
                 LastFmTab.RECENTS -> {
                     if (recent.isEmpty() && recentTracks != null && !isRefreshing) {
@@ -368,9 +361,6 @@ fun LastFmDashboardScreen(
     }
 }
 
-/**
- * Pill-style tab selector matching the History page's Local/Remote ToggleButtons.
- */
 @Composable
 private fun LastFmTabSelector(
     selectedTab: LastFmTab,
@@ -435,7 +425,7 @@ private fun NotSignedIn(
         Surface(
             modifier = Modifier.size(72.dp),
             shape = CircleShape,
-            color = DashboardIconBackground,
+            color = dashboardIconBackgroundColor(),
         ) {
             Box(contentAlignment = Alignment.Center) {
                 Icon(
@@ -475,7 +465,7 @@ private fun UserCard(
     Surface(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
         shape = RoundedCornerShape(20.dp),
-        color = DashboardCardBackground,
+        color = dashboardCardColor(),
     ) {
         when {
             userInfo == null && isRefreshing -> {
@@ -494,7 +484,7 @@ private fun UserCard(
                     Surface(
                         modifier = Modifier.size(72.dp),
                         shape = CircleShape,
-                        color = DashboardIconBackground,
+                        color = dashboardIconBackgroundColor(),
                     ) {
                         if (!avatar.isNullOrBlank()) {
                             AsyncImage(
@@ -543,7 +533,7 @@ private fun UserCard(
                 }
             }
             else -> {
-                // Error or not loaded — show placeholder
+                
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(20.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -551,7 +541,7 @@ private fun UserCard(
                     Surface(
                         modifier = Modifier.size(48.dp),
                         shape = CircleShape,
-                        color = DashboardIconBackground,
+                        color = dashboardIconBackgroundColor(),
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(
@@ -573,10 +563,6 @@ private fun UserCard(
     }
 }
 
-/**
- * Section header styled like the History page: filled dot + title on the left,
- * count on the right.
- */
 @Composable
 private fun DashboardSectionHeader(
     text: String,
@@ -631,27 +617,12 @@ private fun TopTrack.trackArtworkKey(): String = "${name.orEmpty().trim().lowerc
 private fun List<RecentTrack>.associateArtworkByTrack(): Map<String, String> =
     mapNotNull { track -> bestArtwork(track.image)?.let { track.trackArtworkKey() to it } }.toMap()
 
-/**
- * Lightweight lookup key for the catalogue artwork resolution pass — avoids
- * pulling TopTrack / RecentTrack into the artwork coroutine scope.
- */
 private data class ArtworkLookup(
     val key: String,
     val title: String,
     val artist: String?,
 )
 
-/**
- * Process-wide LRU cache of resolved Last.fm dashboard artwork URLs. Keyed by
- * `title::artist` (the same key used by the [ArtworkLookup]). Capped at 256
- * entries — enough for the typical Last.fm dashboard page (50 recents + 50
- * top tracks) plus a few prior sessions' worth of resolved tracks.
- *
- * This is intentionally process-lived (not persisted to disk) because cover
- * URLs from third-party catalogues can expire or change, and re-resolving
- * once per app session is cheap (under a minute for 100 tracks at 12
- * parallel requests).
- */
 private object CachedArtworkStore {
     private const val MAX_ENTRIES = 256
     private val map = object : LinkedHashMap<String, String>(MAX_ENTRIES, 0.75f, true) {
@@ -671,10 +642,6 @@ private object CachedArtworkStore {
 
 private const val LASTFM_ARTWORK_CONCURRENCY = 12
 
-/**
- * Builds the combined list of artwork lookups (top + recent, deduped) used
- * to seed the LaunchedEffect that resolves catalogue covers.
- */
 private fun buildAllArtworkLookups(
     recent: List<RecentTrack>,
     top: List<TopTrack>,
@@ -692,10 +659,6 @@ private fun buildAllArtworkLookups(
     return combined
 }
 
-/**
- * Stable seed key derived from the recent + top tracks lists so the seed map
- * only recomputes when the actual track set changes (not on every recomposition).
- */
 private fun allTracksForArtworkSeedKey(
     recent: List<RecentTrack>,
     top: List<TopTrack>,
@@ -707,19 +670,6 @@ private fun allTracksForArtworkSeedKey(
     return builder.toString()
 }
 
-/**
- * Full fallback chain for resolving a track's cover URL when Last.fm doesn't
- * return an image. Tries, in order:
- *  1. TelegramCoverProvider (only useful if the user has Telegram configured)
- *  2. iTunes catalogue (free, great for western pop / rock / K-pop with
- *     international distribution)
- *  3. Deezer catalogue (free, strong European / Asian coverage; often has
- *     covers iTunes lacks)
- *  4. YouTube Music search (last-resort fallback so anime / indie tracks that
- *     aren't in either catalogue still get a thumbnail)
- *
- * Returns null on total failure — caller falls through to the placeholder icon.
- */
 private suspend fun resolveCatalogueCover(lookup: ArtworkLookup): String? {
     if (lookup.title.isBlank()) return null
     val title = lookup.title
@@ -729,17 +679,10 @@ private suspend fun resolveCatalogueCover(lookup: ArtworkLookup): String? {
         ?: resolveYtThumbnail(title, artist)
 }
 
-/**
- * Resolves a thumbnail URL for [title]/[artist] by searching YouTube Music and
- * taking the first song result's thumbnail. Used as a last-resort fallback when
- * Last.fm and iTunes both come up empty (common for anime/Japanese/indie tracks).
- * Returns null on any failure — the caller falls through to a placeholder icon.
- */
 private suspend fun resolveYtThumbnail(title: String, artist: String?): String? {
     if (title.isBlank()) return null
     val term = listOfNotNull(artist?.takeIf(String::isNotBlank), title).joinToString(" ")
-    // YouTube.search already returns Result<SearchResult>; don't wrap in runCatching
-    // (that would produce Result<Result<SearchResult>> and break type inference).
+
     val searchResult =
         YouTube.search(term, YouTube.SearchFilter.FILTER_SONG).getOrNull()
             ?: return null
@@ -760,11 +703,6 @@ private fun List<RecentTrack>.dedupeNowPlayingEchoes(): List<RecentTrack> {
     }
 }
 
-/**
- * A card-style track row matching the History page design.
- * Uses a rounded card with larger album art (56 dp), bold title,
- * and metadata row with artist and optional play count.
- */
 @Composable
 private fun DashboardTrackCard(
     track: RecentTrack,
@@ -785,7 +723,7 @@ private fun DashboardTrackCard(
             modifier = Modifier.padding(12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            // Album art thumbnail
+            
             Surface(
                 modifier = Modifier.size(56.dp),
                 shape = RoundedCornerShape(12.dp),
@@ -812,12 +750,11 @@ private fun DashboardTrackCard(
 
             Spacer(Modifier.width(12.dp))
 
-            // Rank badge (for top tracks)
             if (rank != null) {
                 Surface(
                     modifier = Modifier.size(28.dp),
                     shape = CircleShape,
-                    color = DashboardIconBackground,
+                    color = dashboardIconBackgroundColor(),
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Text(
@@ -849,11 +786,10 @@ private fun DashboardTrackCard(
                 )
             }
 
-            // Now playing badge or play count
             if (track.isNowPlaying) {
                 Surface(
                     shape = RoundedCornerShape(8.dp),
-                    color = DashboardIconBackground,
+                    color = dashboardIconBackgroundColor(),
                 ) {
                     Text(
                         text = stringResource(R.string.lastfm_now_playing),
@@ -874,9 +810,6 @@ private fun DashboardTrackCard(
     }
 }
 
-/**
- * Wrapper for TopTrack to match the DashboardTrackCard interface.
- */
 @Composable
 private fun DashboardTrackCard(
     track: TopTrack,
@@ -927,7 +860,7 @@ private fun DashboardTrackCard(
                 Surface(
                     modifier = Modifier.size(28.dp),
                     shape = CircleShape,
-                    color = DashboardIconBackground,
+                    color = dashboardIconBackgroundColor(),
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Text(

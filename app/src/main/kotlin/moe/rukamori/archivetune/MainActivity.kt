@@ -1279,15 +1279,10 @@ class MainActivity : ComponentActivity() {
 
                     var isPlayerLyricsFullScreen by remember { mutableStateOf(false) }
 
-                    // Status bar is hidden when:
-                    //  - The Year-in-Music screen is open, OR
-                    //  - The player sheet is expanded AND the layout is one of the "full-bleed" styles
-                    //    (Immersive V7 or Apple Music) that extend artwork to the top edge, OR
-                    //  - The player sheet is expanded AND the lyrics overlay is open (any style —
-                    //    the lyrics overlay covers the whole sheet so the status bar would draw on
-                    //    top of lyric text otherwise).
                     val shouldHideStatusBars =
                         isYearInMusicScreen ||
+                            bottomSheetPageState.isVisible ||
+                            menuState.isVisible ||
                             (
                                 playerBottomSheetState.isExpandedOrExpanding &&
                                     (playerDesignStyle == PlayerDesignStyle.V7 || playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC)

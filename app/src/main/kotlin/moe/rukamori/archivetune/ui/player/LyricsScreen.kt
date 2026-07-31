@@ -273,16 +273,13 @@ fun LyricsScreen(
         }
 
     LaunchedEffect(mediaMetadata.id, currentLyrics?.lyrics) {
-        // Only fetch manually here if the background MusicService fetch hasn't
-        // populated anything yet, OR if it populated a LYRICS_NOT_FOUND (so the
-        // user gets an automatic retry when they open the lyrics panel instead
-        // of being forced to use the manual search menu).
-        //
-        // NOTE: snapshot `currentLyrics` into a local val so the compiler can
-        // smart-cast it to non-null. `currentLyrics` itself is a delegated
-        // property (State<LyricsEntity?>) and cannot be smart-cast across the
-        // `||` because it could be invalidated between the null-check and the
-        // member-access.
+
+        
+
+        
+
+        
+        
         val snapshot = currentLyrics
         val needsFetch =
             snapshot == null ||
@@ -293,23 +290,23 @@ fun LyricsScreen(
                 withContext(Dispatchers.IO) {
                     database.lyrics(mediaMetadata.id).first()
                 }
-            // Skip only if we already have real lyrics. LYRICS_NOT_FOUND triggers
-            // a retry below (mirrors MusicService behavior).
+
             if (existingLyrics != null &&
                 existingLyrics.lyrics != LyricsEntity.LYRICS_NOT_FOUND
             ) {
                 return@LaunchedEffect
             }
 
-            val lyrics =
+            val lyricsResult =
                 withContext(Dispatchers.IO) {
-                    lyricsHelper.getLyrics(mediaMetadata)
+                    lyricsHelper.getLyricsWithProvider(mediaMetadata)
                 }
             withContext(Dispatchers.IO) {
                 database.query {
                     replaceLyricsIfAbsentOrNotFound(
                         id = mediaMetadata.id,
-                        lyrics = lyrics,
+                        lyrics = lyricsResult.lyrics,
+                        providerName = lyricsResult.providerName,
                     )
                 }
             }
@@ -322,8 +319,7 @@ fun LyricsScreen(
     val positionState = remember(mediaMetadata.id) { mutableLongStateOf(0L) }
     val durationState = remember(mediaMetadata.id) { mutableLongStateOf(C.TIME_UNSET) }
     var sliderPosition by remember(mediaMetadata.id) { mutableStateOf<Long?>(null) }
-    // Keep the previous valid palette while the next artwork loads; the grey fallback is
-    // only the initial state, not the response to every track change or transient failure.
+
     var gradientColors by remember { mutableStateOf(AppleMusicFallbackGradient) }
     var hasValidPalette by remember { mutableStateOf(false) }
 
@@ -331,16 +327,13 @@ fun LyricsScreen(
     val darkTheme = isSystemInDarkTheme()
 
     LaunchedEffect(mediaMetadata.id, mediaMetadata.thumbnailUrl, lyricsBackground, darkTheme) {
-        // Yield one frame before kicking off Palette extraction. The lyrics
-        // sheet's slide-up animation runs in the draw phase (graphicsLayer)
-        // and doesn't recompose per frame on its own, but the *first*
-        // composition of LyricsScreen still runs heavy code on the IO/Default
-        // dispatchers (Palette generate + image decode) that competes with
-        // the spring animation for CPU on low/mid-range phones. A 120ms
-        // delay lets the spring get ~60% of the way through its travel
-        // before Palette work starts — invisible to the user (the blurred
-        // background thumbnail covers the unextracted state) but noticeably
-        // smoother on devices where the open animation was laggy.
+
+        
+
+        
+
+        
+        
         kotlinx.coroutines.delay(120)
         if (lyricsBackground != LyricsBackgroundStyle.DEFAULT &&
             lyricsBackground != LyricsBackgroundStyle.COLORING &&
@@ -411,8 +404,7 @@ fun LyricsScreen(
                 null
             }
 
-        // On failure keep the previous valid palette; only a never-successful state falls
-        // back to the neutral gradient.
+        
         if (extractedColors != null) {
             val stillCurrent =
                 mediaMetadata.thumbnailUrl == thumbnailUrl
@@ -724,33 +716,6 @@ private fun LyricsScreenBackground(
     }
 }
 
-/**
- * "Moving Blur" lyrics background — replicates Apple Music's signature animated
- * blur effect. The album art is rendered at ~1.4× the screen size, heavily
- * blurred, and slowly drifts along a Lissajous-like path (two sinusoidal
- * offsets with coprime periods so the drift doesn't loop too obviously).
- *
- * On top of the drifting art we lay:
- *   - a vertical gradient built from the song's Palette (same gradient source
- *     as [AppleMusicBackground], so palette-extraction logic is reused)
- *   - a flat black scrim to keep lyric contrast stable regardless of art brightness
- *   - a subtle bottom vignette so the lower controls stay readable
- *
- * Implementation notes:
- *   - The drift uses [rememberInfiniteTransition] + [animateFloat]s with
- *     `RepeatMode.Reverse` so the artwork eases back and forth instead of
- *     jumping when the loop wraps. Periods of 23s and 31s are coprime, so the
- *     combined path repeats every ~713s — long enough that users won't notice.
- *   - We render the AsyncImage at fixed `IntSize`-independent offsets via
- *     [Modifier.offset] (px units) rather than [Modifier.padding] so layout
- *     measure passes aren't invalidated every frame.
- *   - `Modifier.blur(64.dp)` is the main visual cost — comparable to the
- *     existing `AppleMusicBackground` (46.dp). Hardware-accelerated on
- *     Android 12+, gated to S+ in AppearanceSettings.
- *   - We scale the image to 1.4× of the screen's largest dimension before
- *     blurring so the blurred edges never reveal transparent pixels as the
- *     art drifts.
- */
 @Composable
 private fun MovingBlurBackground(
     mediaMetadata: MediaMetadata,
@@ -758,9 +723,8 @@ private fun MovingBlurBackground(
     modifier: Modifier = Modifier,
 ) {
     val colors = if (gradientColors.isNotEmpty()) gradientColors else AppleMusicFallbackGradient
-    // Reduced scrim alphas — the previous 0.78/0.66/0.86 stack left only ~5% of
-    // the artwork visible, so the drift was imperceptible. These still keep
-    // lyric contrast stable but actually let the blurred artwork read through.
+
+    
     val backgroundBrush =
         remember(colors) {
             Brush.verticalGradient(
@@ -781,10 +745,8 @@ private fun MovingBlurBackground(
             )
         }
 
-    // Wider drift range + FastOutSlowInEasing so motion is actually perceptible
-    // under a 64-dp blur kernel. The previous ±32dp / ±28dp range with linear
-    // easing produced sub-perceptual motion that users reported as "not working".
-    // Periods of 19s and 27s are coprime so the combined path rarely repeats.
+    
+
     val transition = rememberInfiniteTransition(label = "moving-blur-drift")
     val driftX by transition.animateFloat(
         initialValue = -120f,
@@ -822,11 +784,9 @@ private fun MovingBlurBackground(
         ) { thumbnailUrl ->
             if (thumbnailUrl != null) {
                 if (isPreS) {
-                    // Pre-S fallback (PR #924 approach): Modifier.blur is a silent
-                    // no-op below API 31, so we pre-blur the bitmap on a
-                    // background thread via ImageBlurUtils.blur and render it
-                    // directly. The drift is applied via Modifier.offset so the
-                    // animation runs every frame without re-blurring.
+
+                    
+
                     val blurredBitmap by produceState<Bitmap?>(null, thumbnailUrl) {
                         value = withContext(Dispatchers.IO) {
                             try {
@@ -865,10 +825,9 @@ private fun MovingBlurBackground(
                         )
                     }
                 } else {
-                    // S+ path: AsyncImage + Modifier.blur + drift. Single
-                    // graphicsLayer block so blur operates on the already-scaled
-                    // content (avoids faded-edge bleed from the inner offset
-                    // revealing transparent pixels).
+
+                    
+                    
                     AsyncImage(
                         model = thumbnailUrl,
                         contentDescription = null,
@@ -886,13 +845,13 @@ private fun MovingBlurBackground(
                 }
             }
         }
-        // Tonal gradient — gives the background depth and ties it to the palette.
+        
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(backgroundBrush),
         )
-        // Subtle bottom vignette for control readability.
+        
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -944,10 +903,9 @@ private fun AppleMusicBackground(
         ) { thumbnailUrl ->
             if (thumbnailUrl != null) {
                 if (isPreS) {
-                    // Pre-S fallback (PR #924 approach): inline produceState that
-                    // pre-blurs the bitmap on a background thread via
-                    // ImageBlurUtils.blur and renders it directly. Modifier.blur
-                    // is a silent no-op below API 31.
+
+                    
+                    
                     val blurredBitmap by produceState<Bitmap?>(null, thumbnailUrl) {
                         value = withContext(Dispatchers.IO) {
                             try {

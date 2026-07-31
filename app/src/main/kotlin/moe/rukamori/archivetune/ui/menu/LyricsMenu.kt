@@ -310,6 +310,7 @@ fun LyricsMenu(
                     mediaMetadata = searchMediaMetadata,
                     lyrics = result.lyrics,
                     source = LyricsEntity.Source.USER_SELECTION,
+                    providerName = result.providerName,
                 )
             },
             onDismiss = {

@@ -1895,6 +1895,7 @@ interface DatabaseDao {
         id: String,
         lyrics: String,
         source: String = LyricsEntity.Source.REMOTE.value,
+        providerName: String = "",
         updatedAt: Long = System.currentTimeMillis(),
     ) {
         insert(
@@ -1902,6 +1903,7 @@ interface DatabaseDao {
                 id = id,
                 lyrics = lyrics,
                 source = source,
+                providerName = providerName,
                 updatedAt = updatedAt,
             ),
         )
@@ -1910,7 +1912,7 @@ interface DatabaseDao {
     @Query(
         """
         UPDATE lyrics
-        SET lyrics = :lyrics, source = :source, updatedAt = :updatedAt
+        SET lyrics = :lyrics, source = :source, providerName = :providerName, updatedAt = :updatedAt
         WHERE id = :id AND lyrics = :notFoundLyrics
         """,
     )
@@ -1918,6 +1920,7 @@ interface DatabaseDao {
         id: String,
         lyrics: String,
         source: String,
+        providerName: String,
         updatedAt: Long,
         notFoundLyrics: String,
     ): Int
@@ -1927,6 +1930,7 @@ interface DatabaseDao {
         id: String,
         lyrics: String,
         source: String = LyricsEntity.Source.REMOTE.value,
+        providerName: String = "",
         updatedAt: Long = System.currentTimeMillis(),
     ) {
         val insertedRowId =
@@ -1935,6 +1939,7 @@ interface DatabaseDao {
                     id = id,
                     lyrics = lyrics,
                     source = source,
+                    providerName = providerName,
                     updatedAt = updatedAt,
                 ),
             )
@@ -1943,6 +1948,7 @@ interface DatabaseDao {
                 id = id,
                 lyrics = lyrics,
                 source = source,
+                providerName = providerName,
                 updatedAt = updatedAt,
                 notFoundLyrics = LyricsEntity.LYRICS_NOT_FOUND,
             )
@@ -1954,6 +1960,7 @@ interface DatabaseDao {
         id: String,
         lyrics: String,
         source: String,
+        providerName: String = "",
         updatedAt: Long = System.currentTimeMillis(),
     ) {
         upsert(
@@ -1961,6 +1968,7 @@ interface DatabaseDao {
                 id = id,
                 lyrics = lyrics,
                 source = source,
+                providerName = providerName,
                 updatedAt = updatedAt,
             ),
         )

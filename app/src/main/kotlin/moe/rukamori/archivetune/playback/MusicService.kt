@@ -1362,11 +1362,12 @@ class MusicService :
             val shouldFetch =
                 stored == null || stored.lyrics == LyricsEntity.LYRICS_NOT_FOUND
             if (shouldFetch) {
-                val lyrics = lyricsHelper.getLyrics(mediaMetadata)
+                val result = lyricsHelper.getLyricsWithProvider(mediaMetadata)
                 database.query {
                     replaceLyricsIfAbsentOrNotFound(
                         id = mediaMetadata.id,
-                        lyrics = lyrics,
+                        lyrics = result.lyrics,
+                        providerName = result.providerName,
                     )
                 }
             }

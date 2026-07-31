@@ -341,6 +341,7 @@
     <string name="playlist_synced">Playlist synced</string>
     <string name="undo">Undo</string>
     <string name="lyrics_not_found">Lyrics not found</string>
+    <string name="lyrics_from_source">Lyrics from %1$s</string>
     <string name="lyrics_word_sync">Word Sync</string>
     <string name="sleep_timer">Sleep timer</string>
     <string name="end_of_song">End of song</string>
@@ -1364,7 +1365,7 @@
     <string name="scheduled_backup_update_failed">Scheduled backup settings could not be saved</string>
     <string name="google_drive_sync">Cloud storage sync</string>
     <string name="google_drive_sync_description">Automatically upload backups to your cloud storage provider.</string>
-    <string name="google_drive_sync_enabled">Enable Google Drive sync</string>
+    <string name="google_drive_sync_enabled">Enable cloud sync</string>
     <string name="google_drive_sync_enabled_description_on">Auto-sync to Google Drive is active.</string>
     <string name="google_drive_sync_enabled_description_off">Auto-sync to Google Drive is paused.</string>
     <string name="google_drive_sync_sign_in">Sign in with Google</string>

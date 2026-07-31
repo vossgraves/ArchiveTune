@@ -55,9 +55,8 @@ class LyricsHelper
                 PaxsenixYouTubeLyricsProvider,
                 YouTubeSubtitleLyricsProvider,
                 YouTubeLyricsProvider,
-                // Experimental native Musixmatch provider — gated by
-                // EnableMusixmatchExperimentalKey (off by default). When the toggle
-                // is off, isEnabled() returns false and LyricsHelper skips it.
+
+                
                 MusixmatchExperimentalLyricsProvider,
             )
 
@@ -68,20 +67,30 @@ class LyricsHelper
             mediaMetadata: MediaMetadata,
             preferredProviderOnly: Boolean = false,
             forceRefresh: Boolean = false,
-        ): String {
+        ): String = getLyricsWithProvider(
+            mediaMetadata = mediaMetadata,
+            preferredProviderOnly = preferredProviderOnly,
+            forceRefresh = forceRefresh,
+        ).lyrics
+
+        suspend fun getLyricsWithProvider(
+            mediaMetadata: MediaMetadata,
+            preferredProviderOnly: Boolean = false,
+            forceRefresh: Boolean = false,
+        ): LyricsResult {
             val cacheKey = mediaMetadata.lyricsCacheKey
             if (forceRefresh) {
                 invalidateCache(cacheKey)
             } else {
                 singleLyricsCache.get(cacheKey)?.let { lyrics ->
                     GlobalLog.append(Log.DEBUG, "LyricsHelper", "Found lyrics in cache for ${mediaMetadata.title}")
-                    return lyrics
+                    return LyricsResult(providerName = "", lyrics = lyrics)
                 }
 
                 val cached = cache.get(cacheKey)?.firstOrNull()
                 if (cached != null) {
                     GlobalLog.append(Log.DEBUG, "LyricsHelper", "Found lyrics in cache for ${mediaMetadata.title}")
-                    return cached.lyrics
+                    return cached
                 }
             }
 
@@ -102,7 +111,7 @@ class LyricsHelper
 
             if (!isNetworkAvailable) {
                 GlobalLog.append(Log.WARN, "LyricsHelper", "Network unavailable, aborting lyrics fetch")
-                return LYRICS_NOT_FOUND
+                return LyricsResult(providerName = "", lyrics = LYRICS_NOT_FOUND)
             }
 
             val ordered =
@@ -110,12 +119,13 @@ class LyricsHelper
                     .filter { it.isEnabled(context) }
                     .filter { supportsMediaId(it, mediaMetadata.id) }
             val providers = if (preferredProviderOnly) ordered.take(1) else ordered
+            val providerName = fetchPriorityProviderName(providers, mediaMetadata)
             val lyrics = fetchPriorityLyrics(providers, mediaMetadata)
             if (isMeaningfulLyrics(lyrics)) {
                 singleLyricsCache.put(cacheKey, lyrics)
             }
 
-            return lyrics
+            return LyricsResult(providerName = providerName, lyrics = lyrics)
         }
 
         suspend fun getAllLyrics(
@@ -175,8 +185,18 @@ class LyricsHelper
         private suspend fun fetchPriorityLyrics(
             providers: List<LyricsProvider>,
             mediaMetadata: MediaMetadata,
-        ): String {
-            if (providers.isEmpty()) return LYRICS_NOT_FOUND
+        ): String = fetchPriorityLyricsResult(providers, mediaMetadata).lyrics
+
+        private suspend fun fetchPriorityProviderName(
+            providers: List<LyricsProvider>,
+            mediaMetadata: MediaMetadata,
+        ): String = fetchPriorityLyricsResult(providers, mediaMetadata).providerName
+
+        private suspend fun fetchPriorityLyricsResult(
+            providers: List<LyricsProvider>,
+            mediaMetadata: MediaMetadata,
+        ): LyricsResult {
+            if (providers.isEmpty()) return LyricsResult(providerName = "", lyrics = LYRICS_NOT_FOUND)
 
             val artist = mediaMetadata.artists.joinToString { it.name }
             val results =
@@ -184,16 +204,22 @@ class LyricsHelper
                     providers
                         .map { provider ->
                             async(Dispatchers.IO) {
-                                fetchProviderLyrics(provider, mediaMetadata, artist)
+                                val lyrics = fetchProviderLyrics(provider, mediaMetadata, artist)
+                                if (lyrics == null) null else provider.name to lyrics
                             }
                         }.mapNotNull { it.await() }
                 }
 
-            if (results.isEmpty()) return LYRICS_NOT_FOUND
+            if (results.isEmpty()) return LyricsResult(providerName = "", lyrics = LYRICS_NOT_FOUND)
 
-            results.firstOrNull { LyricsUtils.hasWordSyncedLyrics(it) }?.let { return it }
-            results.firstOrNull { LyricsUtils.isLineSyncedLrc(it) }?.let { return it }
-            return results.first()
+            val wordSynced = results.firstOrNull { LyricsUtils.hasWordSyncedLyrics(it.second) }
+            if (wordSynced != null) return LyricsResult(providerName = wordSynced.first, lyrics = wordSynced.second)
+
+            val lineSynced = results.firstOrNull { LyricsUtils.isLineSyncedLrc(it.second) }
+            if (lineSynced != null) return LyricsResult(providerName = lineSynced.first, lyrics = lineSynced.second)
+
+            val first = results.first()
+            return LyricsResult(providerName = first.first, lyrics = first.second)
         }
 
         private suspend fun fetchProviderLyrics(
@@ -252,10 +278,6 @@ class LyricsHelper
 
         private fun isMeaningfulLyrics(lyrics: String): Boolean = LyricsUtils.hasMeaningfulLyricsContent(lyrics)
 
-        /**
-         * Providers that treat the media id as a YouTube video id can never match local or
-         * Telegram tracks — skip them so the priority race isn't padded with guaranteed misses.
-         */
         private fun supportsMediaId(
             provider: LyricsProvider,
             mediaId: String,
