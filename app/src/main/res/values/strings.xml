@@ -1491,4 +1491,23 @@
     <string name="telegram_unavailable">Telegram support is unavailable in this build</string>
     <string name="telegram_error">Telegram error: %1$s</string>
     <string name="telegram_error_generic">Couldn\'t open this Telegram channel</string>
+    <!-- Download quality / export format pickers (AudioQualityDialogs.kt) -->
+    <string name="download_quality_title">Download quality</string>
+    <string name="download_quality_max">Max</string>
+    <string name="download_quality_max_description">Best the source offers, up to 24-bit/192 kHz</string>
+    <string name="download_quality_hi_res">Hi-Res</string>
+    <string name="download_quality_hi_res_description">24-bit, usually 96 kHz</string>
+    <string name="download_quality_lossless">Lossless</string>
+    <string name="download_quality_lossless_description">CD quality, 16-bit/44.1 kHz</string>
+    <string name="download_quality_remember">Remember this choice and stop asking</string>
+    <string name="export_format_title">Export format</string>
+    <string name="export_format_flac">FLAC</string>
+    <string name="export_format_wav">WAV</string>
+    <string name="export_format_m4a">M4A (AAC)</string>
+    <string name="export_format_webm">WebM (Opus)</string>
+    <string name="export_format_ogg">Ogg</string>
+    <string name="export_format_mp3">MP3</string>
+    <string name="export_format_unavailable_lossy_source">Source is lossy — exporting as FLAC would not add quality</string>
+    <string name="export_format_redownload_lossless">Re-download as lossless, then export</string>
+    <string name="export_format_redownload_lossless_description">Fetches a real lossless file from Qobuz or Tidal first</string>
 </resources>
