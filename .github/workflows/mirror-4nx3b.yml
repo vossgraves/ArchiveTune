@@ -247,6 +247,27 @@ jobs:
           rm -rf .github
           cp -a /tmp/keep_github .github
 
+          # Repoint the in-app updater at this fork.
+          #
+          # Upstream hardcodes their own repo in Updater.OWNER, correctly for them. Mirroring it
+          # verbatim ships an app that offers users an APK signed with upstream's keystore, and
+          # since applicationId is identical across ArchiveTune forks Android rejects that install
+          # as INSTALL_FAILED_UPDATE_INCOMPATIBLE -- the download succeeds and the install fails,
+          # so it looks like a broken updater. Preserving .github/ is not enough; this line is app
+          # source, and the mirror has already reverted it once.
+          UPDATER=app/src/main/kotlin/moe/rukamori/archivetune/utils/Updater.kt
+          if [ ! -f "$UPDATER" ]; then
+            echo "::error::${UPDATER} not found -- upstream moved it. Repoint Updater.OWNER before mirroring."
+            exit 1
+          fi
+          sed -i -E 's|^(\s*private const val OWNER = ")[^"]+(")|\1'"${GITHUB_REPOSITORY}"'\2|' "$UPDATER"
+          if ! grep -q "private const val OWNER = \"${GITHUB_REPOSITORY}\"" "$UPDATER"; then
+            echo "::error::Failed to repoint Updater.OWNER -- the declaration changed shape upstream."
+            echo "Found: $(grep -n 'const val OWNER' "$UPDATER" || echo '<none>')"
+            exit 1
+          fi
+          echo "Updater.OWNER repointed to ${GITHUB_REPOSITORY}."
+
           git add -A
 
           # `git add -A` must not have re-flattened the gitlinks staged above. Assert against the
