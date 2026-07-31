@@ -331,35 +331,38 @@ fun CrossServiceImportPlaylistDialog(
                             val isYtSyncEnabled = preferences == null || (preferences[YtmSyncKey] ?: true)
 
                             if (isSignedIn && isYtSyncEnabled && songIds.isNotEmpty()) {
-                                runCatching {
-                                    YouTube.createPlaylist(playlistName, songIds)
-                                }.onSuccess { remoteBrowseId ->
-                                    if (!remoteBrowseId.isNullOrBlank()) {
-                                        val toUpdate = database.playlist(targetPlaylistId).firstOrNull()
-                                        if (toUpdate != null) {
-                                            database.query {
-                                                update(
-                                                    toUpdate.playlist.copy(
-                                                        browseId = remoteBrowseId,
-                                                        isEditable = true,
-                                                        bookmarkedAt = toUpdate.playlist.bookmarkedAt ?: LocalDateTime.now(),
-                                                        lastUpdateTime = LocalDateTime.now(),
-                                                    ),
-                                                )
+                                // YouTube.createPlaylist already returns Result<String> (it is
+                                // defined as `= runCatching { ... }`), so we call .onSuccess /
+                                // .onFailure directly on it. Wrapping it in another runCatching
+                                // would produce Result<Result<String>> and break compilation.
+                                YouTube.createPlaylist(playlistName, songIds)
+                                    .onSuccess { remoteBrowseId ->
+                                        if (remoteBrowseId.isNotBlank()) {
+                                            val toUpdate = database.playlist(targetPlaylistId).firstOrNull()
+                                            if (toUpdate != null) {
+                                                database.query {
+                                                    update(
+                                                        toUpdate.playlist.copy(
+                                                            browseId = remoteBrowseId,
+                                                            isEditable = true,
+                                                            bookmarkedAt = toUpdate.playlist.bookmarkedAt ?: LocalDateTime.now(),
+                                                            lastUpdateTime = LocalDateTime.now(),
+                                                        ),
+                                                    )
+                                                }
                                             }
                                         }
+                                    }.onFailure { error ->
+                                        // Don't fail the whole import — the local playlist is
+                                        // already created and populated. The user just doesn't get
+                                        // server-side sync this time. They can pull-to-refresh on
+                                        // the playlist later to retry, or sign in and re-import.
+                                        Timber.w(
+                                            error,
+                                            "Remote YT Music playlist creation failed during import; " +
+                                                "playlist remains local-only.",
+                                        )
                                     }
-                                }.onFailure { error ->
-                                    // Don't fail the whole import — the local playlist is
-                                    // already created and populated. The user just doesn't get
-                                    // server-side sync this time. They can pull-to-refresh on
-                                    // the playlist later to retry, or sign in and re-import.
-                                    Timber.w(
-                                        error,
-                                        "Remote YT Music playlist creation failed during import; " +
-                                            "playlist remains local-only.",
-                                    )
-                                }
                             }
 
                             withContext(Dispatchers.Main) {
