@@ -990,6 +990,7 @@ val TelegramLosslessOnlyKey = booleanPreferencesKey("telegramLosslessOnly")
 enum class AudioSourceType {
     TIDAL,
     QOBUZ,
+    DEEZER,
     YOUTUBE,
 }
 

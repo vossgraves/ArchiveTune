@@ -35,6 +35,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.canvas.ArchiveTuneCanvas
 import moe.rukamori.archivetune.constants.*
+import moe.rukamori.archivetune.deezer.DeezerAudioProvider
 import moe.rukamori.archivetune.extensions.*
 import moe.rukamori.archivetune.gatekeeper.GatekeeperResult
 import moe.rukamori.archivetune.gatekeeper.RunGatekeeperCheckUseCase
@@ -357,6 +358,18 @@ class App :
                     } else {
                         YouTube.dns = Dns.SYSTEM
                     }
+                }
+        }
+
+        // Mirrors the manually signed-in Deezer account into the provider. A collector rather than a
+        // one-shot read so signing in or out takes effect immediately, and so the value survives the
+        // pool refresh that replaces the pooled account cache.
+        applicationScope.launch(Dispatchers.IO) {
+            dataStore.data
+                .map { (it[DeezerArlKey] ?: "") to (it[DeezerAccountPremiumKey] ?: false) }
+                .distinctUntilChanged()
+                .collect { (arl, premium) ->
+                    DeezerAudioProvider.setManualArl(arl, premium)
                 }
         }
 

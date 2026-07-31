@@ -48,8 +48,15 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.audiosource.AudioSourceConfig
+import android.widget.Toast
 import moe.rukamori.archivetune.constants.AudioSourceOrderKey
 import moe.rukamori.archivetune.constants.AudioSourceType
+import moe.rukamori.archivetune.constants.DeezerAccountNameKey
+import moe.rukamori.archivetune.constants.DeezerAccountPremiumKey
+import moe.rukamori.archivetune.constants.DeezerArlKey
+import moe.rukamori.archivetune.constants.DeezerAudioQuality
+import moe.rukamori.archivetune.constants.DeezerAudioQualityKey
+import moe.rukamori.archivetune.constants.DeezerEnabledKey
 import moe.rukamori.archivetune.constants.QobuzAudioQuality
 import moe.rukamori.archivetune.constants.QobuzAudioQualityKey
 import moe.rukamori.archivetune.constants.QobuzEnabledKey
@@ -83,6 +90,7 @@ private fun AudioSourceType.displayName(context: android.content.Context): Strin
     when (this) {
         AudioSourceType.TIDAL -> context.getString(R.string.source_tidal)
         AudioSourceType.QOBUZ -> context.getString(R.string.source_qobuz)
+        AudioSourceType.DEEZER -> context.getString(R.string.source_deezer)
         AudioSourceType.YOUTUBE -> context.getString(R.string.source_youtube)
     }
 
@@ -90,6 +98,7 @@ private fun AudioSourceType.iconRes(): Int =
     when (this) {
         AudioSourceType.TIDAL -> R.drawable.provider_tidal
         AudioSourceType.QOBUZ -> R.drawable.provider_qobuz
+        AudioSourceType.DEEZER -> R.drawable.provider_deezer
         AudioSourceType.YOUTUBE -> R.drawable.play
     }
 
@@ -105,6 +114,13 @@ fun PlaybackSourceSections(navController: NavController) {
     val (sourceOrderRaw, onSourceOrderChange) = rememberPreference(AudioSourceOrderKey, "")
     val (tidalEnabled, onTidalEnabledChange) = rememberPreference(TidalEnabledKey, true)
     val (qobuzEnabled, onQobuzEnabledChange) = rememberPreference(QobuzEnabledKey, false)
+    val (deezerEnabled, onDeezerEnabledChange) = rememberPreference(DeezerEnabledKey, false)
+    val (deezerQuality, onDeezerQualityChange) =
+        rememberEnumPreference(DeezerAudioQualityKey, DeezerAudioQuality.FLAC)
+    // Only the setters are needed here; the ARL and tier themselves are never shown in settings.
+    val (_, onDeezerArlChange) = rememberPreference(DeezerArlKey, "")
+    val (deezerAccountName, onDeezerAccountNameChange) = rememberPreference(DeezerAccountNameKey, "")
+    val (_, onDeezerAccountPremiumChange) = rememberPreference(DeezerAccountPremiumKey, false)
 
     val (tidalAccountFirst, onTidalAccountFirstChange) = rememberPreference(TidalAccountFirstKey, true)
     val (audioQuality, onAudioQualityChange) =
@@ -160,6 +176,7 @@ fun PlaybackSourceSections(navController: NavController) {
         when (source) {
             AudioSourceType.TIDAL -> tidalEnabled
             AudioSourceType.QOBUZ -> qobuzEnabled
+            AudioSourceType.DEEZER -> deezerEnabled
             AudioSourceType.YOUTUBE -> true
         }
 
@@ -346,6 +363,70 @@ fun PlaybackSourceSections(navController: NavController) {
                 icon = { Icon(painterResource(R.drawable.integration), null) },
                 onClick = { navController.navigate("settings/integration") },
             )
+        }
+    }
+
+    PreferenceGroup(title = stringResource(R.string.deezer_specific)) {
+        item {
+            SwitchPreference(
+                title = { Text(stringResource(R.string.deezer_enable)) },
+                description = stringResource(R.string.deezer_enable_description),
+                icon = { Icon(painterResource(R.drawable.provider_deezer), null) },
+                checked = deezerEnabled,
+                onCheckedChange = onDeezerEnabledChange,
+            )
+        }
+
+        item {
+            EnumListPreference(
+                title = { Text(stringResource(R.string.deezer_audio_quality)) },
+                icon = { Icon(painterResource(R.drawable.play), null) },
+                selectedValue = deezerQuality,
+                onValueSelected = onDeezerQualityChange,
+                isEnabled = deezerEnabled,
+                valueText = { quality ->
+                    when (quality) {
+                        DeezerAudioQuality.FLAC -> stringResource(R.string.deezer_quality_flac)
+                        DeezerAudioQuality.MP3_320 -> stringResource(R.string.deezer_quality_mp3_320)
+                        DeezerAudioQuality.MP3_128 -> stringResource(R.string.deezer_quality_mp3_128)
+                    }
+                },
+            )
+        }
+
+        // A manual sign-in is offered regardless of `manualSourceLogin`: that flag gates self-hosted
+        // proxy instances, which Deezer does not have. Signing in here is the only way to use Deezer
+        // without waiting on the shared pool.
+        if (deezerAccountName.isEmpty()) {
+            item {
+                PreferenceEntry(
+                    title = { Text(stringResource(R.string.deezer_login)) },
+                    description = stringResource(R.string.deezer_login_description),
+                    icon = { Icon(painterResource(R.drawable.token), null) },
+                    isEnabled = deezerEnabled,
+                    onClick = { navController.navigate(DEEZER_LOGIN_ROUTE) },
+                )
+            }
+        } else {
+            item {
+                PreferenceEntry(
+                    title = { Text(stringResource(R.string.deezer_sign_out)) },
+                    description = stringResource(R.string.deezer_signed_in_as, deezerAccountName),
+                    icon = { Icon(painterResource(R.drawable.logout), null) },
+                    onClick = {
+                        // Clearing the ARL is what actually signs out; App.kt's collector observes it
+                        // and drops the provider's session. Name/premium are display state only.
+                        onDeezerArlChange("")
+                        onDeezerAccountNameChange("")
+                        onDeezerAccountPremiumChange(false)
+                        // The row swapping back to "Sign in" is easy to miss on its own as
+                        // confirmation that anything happened.
+                        Toast
+                            .makeText(context, R.string.deezer_signed_out, Toast.LENGTH_SHORT)
+                            .show()
+                    },
+                )
+            }
         }
     }
 }

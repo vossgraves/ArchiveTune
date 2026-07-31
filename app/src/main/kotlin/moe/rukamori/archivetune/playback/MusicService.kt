@@ -200,6 +200,13 @@ import moe.rukamori.archivetune.constants.QobuzAudioQualityKey
 import moe.rukamori.archivetune.constants.QobuzLastProbeTrackKey
 import moe.rukamori.archivetune.constants.QobuzTokensKey
 import moe.rukamori.archivetune.constants.toFormatId
+import moe.rukamori.archivetune.constants.DeezerAudioQuality
+import moe.rukamori.archivetune.constants.DeezerAudioQualityKey
+import moe.rukamori.archivetune.constants.DeezerEnabledKey
+import moe.rukamori.archivetune.constants.toFormatName
+import moe.rukamori.archivetune.deezer.DeezerAudioProvider
+import moe.rukamori.archivetune.deezer.DeezerCrypto
+import moe.rukamori.archivetune.deezer.DeezerDecryptingDataSource
 import moe.rukamori.archivetune.qobuz.QobuzAudioProvider
 import moe.rukamori.archivetune.qobuz.QobuzToken
 import moe.rukamori.archivetune.audiosource.AudioSourceConfig
@@ -7596,12 +7603,26 @@ class MusicService :
             }
         val directFactory = createResolvedUpstreamDataSourceFactory()
         val telegramFactory = TelegramDataSource.Factory()
+        // Deezer needs its own chain rather than cachedFactory's: that one runs the YouTube
+        // resolver over the dataSpec, which would rewrite our deezer:// URI. Decryption sits below
+        // the cache so what gets cached is already-decrypted audio, letting a replay skip both the
+        // CDN fetch and the Blowfish work.
+        val deezerFactory =
+            CacheDataSource
+                .Factory()
+                .setCache(playerCache)
+                .setUpstreamDataSourceFactory(
+                    DeezerDecryptingDataSource.Factory(OkHttpDataSource.Factory(mediaOkHttpClient)),
+                ).setCacheWriteDataSinkFactory(
+                    CacheDataSink.Factory().setCache(playerCache).setFragmentSize(C.LENGTH_UNSET.toLong()),
+                ).setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
 
         return DataSource.Factory {
             SchemeRoutingDataSource(
                 cachedFactory = cachedFactory,
                 directFactory = directFactory,
                 telegramFactory = telegramFactory,
+                deezerFactory = deezerFactory,
             )
         }
     }
@@ -7690,6 +7711,7 @@ class MusicService :
                 // UI and the resolver agree on which sources are active out of the box.
                 AudioSourceType.TIDAL to dataStore.get(TidalEnabledKey, true),
                 AudioSourceType.QOBUZ to dataStore.get(QobuzEnabledKey, false),
+                AudioSourceType.DEEZER to dataStore.get(DeezerEnabledKey, false),
                 AudioSourceType.YOUTUBE to true,
             )
         // The single stored order is authoritative (top = preferred). Only sources listed BEFORE
@@ -7881,6 +7903,7 @@ class MusicService :
                 when (source) {
                     AudioSourceType.TIDAL -> resolveTidalStream(query)
                     AudioSourceType.QOBUZ -> resolveQobuzStream(query)
+                    AudioSourceType.DEEZER -> resolveDeezerStream(query)
                     AudioSourceType.YOUTUBE -> null
                 }
             if (stream == null) {
@@ -8299,6 +8322,66 @@ class MusicService :
     private fun parseQobuzAudioQuality(): QobuzAudioQuality {
         val stored = dataStore.get(QobuzAudioQualityKey, QobuzAudioQuality.FLAC.name)
         return runCatching { QobuzAudioQuality.valueOf(stored) }.getOrDefault(QobuzAudioQuality.FLAC)
+    }
+
+    /**
+     * Resolves a Deezer stream. Unlike Tidal/Qobuz there is no proxy-instance tier, so the pool is the
+     * only credential source and the whole source is a no-op until the pool has accounts.
+     */
+    private fun resolveDeezerStream(query: SourceQuery): DirectStream? {
+        val accounts = PoolAccountManager.deezerAccounts()
+        if (accounts.isEmpty()) {
+            Timber.tag("MusicService").d("Deezer skip: no pool accounts available")
+            return null
+        }
+        val quality = parseDeezerAudioQuality()
+        Timber.tag("MusicService").d(
+            "Deezer resolve start | quality=%s accounts=%d",
+            quality.name,
+            accounts.size,
+        )
+        // No setAccounts equivalent to Qobuz's setTokens: Deezer credentials come only from the pool,
+        // so the provider reads PoolAccountManager itself. The count above is logged for diagnostics.
+        return runCatching {
+            runBlocking(Dispatchers.IO) {
+                DeezerAudioProvider
+                    .resolve(
+                        query =
+                            DeezerAudioProvider.Query(
+                                mediaId = query.mediaId,
+                                title = query.title,
+                                artists = query.artists,
+                                album = query.album,
+                                durationMs = query.durationMs,
+                            ),
+                        format = quality.toFormatName(),
+                    )?.let { resolved ->
+                        // The provider deliberately returns its own type so it stays independent of the
+                        // playback layer; map it here, at the single point where the two meet.
+                        DirectStream(
+                            uri = resolved.uri,
+                            mimeType = resolved.mimeType,
+                            codecs = resolved.codecs,
+                            contentLength = resolved.contentLength,
+                            label = resolved.label,
+                            source = AudioSourceType.DEEZER,
+                            matchedTitle = resolved.matchedTitle,
+                            matchedArtist = resolved.matchedArtist,
+                            matchedAlbum = resolved.matchedAlbum,
+                            matchedDurationMs = resolved.matchedDurationMs,
+                            sampleRate = resolved.sampleRate,
+                            bitDepth = resolved.bitDepth,
+                        )
+                    }
+            }
+        }.onFailure { error ->
+            Timber.tag("MusicService").w(error, "DEEZER stream resolution failed for %s", query.mediaId)
+        }.getOrNull()
+    }
+
+    private fun parseDeezerAudioQuality(): DeezerAudioQuality {
+        val stored = dataStore.get(DeezerAudioQualityKey, DeezerAudioQuality.FLAC.name)
+        return runCatching { DeezerAudioQuality.valueOf(stored) }.getOrDefault(DeezerAudioQuality.FLAC)
     }
 
     /**
@@ -9001,6 +9084,7 @@ class MusicService :
         private val cachedFactory: DataSource.Factory,
         private val directFactory: DataSource.Factory,
         private val telegramFactory: DataSource.Factory,
+        private val deezerFactory: DataSource.Factory,
     ) : DataSource {
         private val transferListeners = mutableListOf<TransferListener>()
         private var delegate: DataSource? = null
@@ -9017,6 +9101,9 @@ class MusicService :
                     // Telegram tracks stream through TDLib's own partial-file cache; Media3's
                     // caches and the YouTube resolver chain must both stay out of the way.
                     telegramFactory
+                } else if (normalizedScheme == DeezerCrypto.SCHEME) {
+                    // Carries its own cache; the YouTube resolver would rewrite the URI.
+                    deezerFactory
                 } else if (
                     normalizedScheme == "content" ||
                     normalizedScheme == "file" ||
