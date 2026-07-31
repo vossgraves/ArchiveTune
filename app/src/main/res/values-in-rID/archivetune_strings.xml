@@ -87,6 +87,13 @@
     <string name="aod_customize_thumbnail_shape">Bentuk thumbnail</string>
     <string name="aod_customize_thumbnail_shape_desc">Gunakan bentuk untuk mask sampul AOD.</string>
     <string name="aod_customize_layout">Tata Letak</string>
+    <string name="aod_customize_progress">Progres</string>
+    <string name="aod_customize_slider_style">Gaya slider</string>
+    <string name="aod_slider_style_standard">Standar</string>
+    <string name="aod_slider_style_wavy">Bergelombang</string>
+    <string name="aod_slider_style_thick">Tebal</string>
+    <string name="aod_slider_style_circular">Melingkar</string>
+    <string name="aod_slider_style_simple">Sederhana</string>
     <string name="aod_customize_background_style">Gaya latar belakang</string>
     <string name="aod_customize_accent_style">Gaya aksen</string>
     <string name="aod_customize_content_position">Posisi konten</string>

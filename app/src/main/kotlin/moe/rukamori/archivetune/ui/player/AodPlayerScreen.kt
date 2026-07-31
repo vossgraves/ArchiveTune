@@ -33,7 +33,11 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -54,6 +58,8 @@ import androidx.media3.common.C
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.allowHardware
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.AodAccentStyle
 import moe.rukamori.archivetune.constants.AodAccentStyleKey
@@ -71,9 +77,11 @@ import moe.rukamori.archivetune.constants.AodShowAlbumKey
 import moe.rukamori.archivetune.constants.AodShowArtistKey
 import moe.rukamori.archivetune.constants.AodShowControlsKey
 import moe.rukamori.archivetune.constants.AodShowExitButtonKey
+import moe.rukamori.archivetune.constants.AodShowLyricsKey
 import moe.rukamori.archivetune.constants.AodShowProgressKey
 import moe.rukamori.archivetune.constants.AodShowThumbnailKey
 import moe.rukamori.archivetune.constants.AodShowTimeLabelsKey
+import moe.rukamori.archivetune.constants.AodSliderStyleKey
 import moe.rukamori.archivetune.constants.AodTextAlignment
 import moe.rukamori.archivetune.constants.AodTextAlignmentKey
 import moe.rukamori.archivetune.constants.AodThumbnailShape
@@ -83,6 +91,13 @@ import moe.rukamori.archivetune.constants.AodThumbnailSizeKey
 import moe.rukamori.archivetune.constants.AodTitleMaxLinesKey
 import moe.rukamori.archivetune.constants.AodVerticalSpacingKey
 import moe.rukamori.archivetune.constants.EnableHapticFeedbackKey
+import moe.rukamori.archivetune.constants.SliderStyle
+import moe.rukamori.archivetune.lyrics.LyricsEntry
+import moe.rukamori.archivetune.lyrics.LyricsUtils.findCurrentLineIndex
+import moe.rukamori.archivetune.lyrics.LyricsUtils.isLineSyncedLrc
+import moe.rukamori.archivetune.lyrics.LyricsUtils.isTtml
+import moe.rukamori.archivetune.lyrics.LyricsUtils.parseLyrics
+import moe.rukamori.archivetune.lyrics.LyricsUtils.parseTtml
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.ui.utils.supportsArtworkGlowShadow
 import moe.rukamori.archivetune.ui.utils.toComposeShape
@@ -106,6 +121,7 @@ fun AodPlayerScreen(
     canSkipPrevious: Boolean,
     canSkipNext: Boolean,
     thumbnailCornerRadius: Float,
+    lyricsText: String?,
     onPlayPause: () -> Unit,
     onSkipPrevious: () -> Unit,
     onSkipNext: () -> Unit,
@@ -126,12 +142,14 @@ fun AodPlayerScreen(
     val (showTimeLabels) = rememberPreference(AodShowTimeLabelsKey, true)
     val (showControls) = rememberPreference(AodShowControlsKey, true)
     val (showExitButton) = rememberPreference(AodShowExitButtonKey, true)
+    val (showLyrics) = rememberPreference(AodShowLyricsKey, true)
     val (artworkGlow) = rememberPreference(AodArtworkGlowKey, true)
     val (backgroundStyle) = rememberEnumPreference(AodBackgroundStyleKey, AodBackgroundStyle.PURE_BLACK)
     val (accentStyle) = rememberEnumPreference(AodAccentStyleKey, AodAccentStyle.MONOCHROME)
     val (contentPosition) = rememberEnumPreference(AodContentPositionKey, AodContentPosition.CENTER)
     val (textAlignment) = rememberEnumPreference(AodTextAlignmentKey, AodTextAlignment.CENTER)
     val (controlStyle) = rememberEnumPreference(AodControlStyleKey, AodControlStyle.FILLED)
+    val (sliderStyle) = rememberEnumPreference(AodSliderStyleKey, SliderStyle.Standard)
     val (controlSize) = rememberPreference(AodControlSizeKey, 64f)
     val (horizontalPadding) = rememberPreference(AodHorizontalPaddingKey, 40f)
     val (verticalSpacing) = rememberPreference(AodVerticalSpacingKey, 20f)
@@ -163,6 +181,32 @@ fun AodPlayerScreen(
     val contentAlignment = contentPosition.toBoxAlignment()
     val textHorizontalAlignment = textAlignment.toHorizontalAlignment()
     val textAlign = textAlignment.toTextAlign()
+
+    // Parse lyrics once per lyrics-text change. We don't render the full lyrics tree here (that
+    // would defeat the "always-on, dim, low-power" point of AOD) — we only surface the single
+    // line that matches the current playback position. Falls through to a tiny placeholder when
+    // the lyrics aren't synced or haven't loaded yet.
+    val parsedLines: List<LyricsEntry> =
+        remember(lyricsText) {
+            if (lyricsText.isNullOrBlank()) return@remember emptyList()
+            when {
+                isTtml(lyricsText) -> parseTtml(lyricsText)
+                isLineSyncedLrc(lyricsText) -> parseLyrics(lyricsText)
+                else -> emptyList()
+            }
+        }
+    var currentLyricLine by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(parsedLines, position) {
+        if (parsedLines.isEmpty()) {
+            currentLyricLine = null
+            return@LaunchedEffect
+        }
+        // Reuse the same lead-aware line finder that the main lyrics screen uses so the
+        // AOD line highlight transitions in lockstep with the full lyrics view.
+        val idx = findCurrentLineIndex(parsedLines, position, leadMs = 0L)
+        val entry = parsedLines.getOrNull(idx)
+        currentLyricLine = entry?.text?.takeIf { it.isNotBlank() }
+    }
 
     Box(
         modifier =
@@ -265,6 +309,18 @@ fun AodPlayerScreen(
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
+                if (showLyrics) {
+                    val lyricDisplay = currentLyricLine
+                    Text(
+                        text = lyricDisplay ?: stringResource(R.string.aod_lyrics_loading),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (lyricDisplay != null) White70 else White35,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        textAlign = textAlign,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
             }
 
             if (showProgress) {
@@ -274,6 +330,8 @@ fun AodPlayerScreen(
                     sliderPosition = sliderPosition,
                     accentColor = accentColor,
                     showTimeLabels = showTimeLabels,
+                    sliderStyle = sliderStyle,
+                    isPlaying = isPlaying,
                     onSeek = onSeek,
                     onSeekFinished = onSeekFinished,
                 )
@@ -303,6 +361,8 @@ private fun AodSliderSection(
     sliderPosition: Long?,
     accentColor: Color,
     showTimeLabels: Boolean,
+    sliderStyle: SliderStyle,
+    isPlaying: Boolean,
     onSeek: (Long) -> Unit,
     onSeekFinished: () -> Unit,
 ) {
@@ -328,15 +388,32 @@ private fun AodSliderSection(
         )
 
     Column(modifier = Modifier.fillMaxWidth()) {
-        Slider(
-            value = sliderValue,
-            onValueChange = { onSeek(it.toLong()) },
-            onValueChangeFinished = onSeekFinished,
-            valueRange = 0f..(if (seekEnabled) duration.toFloat() else 1f),
-            enabled = seekEnabled,
-            colors = sliderColors,
-            modifier = Modifier.fillMaxWidth(),
-        )
+        if (sliderStyle == SliderStyle.Standard) {
+            // Standard style keeps the original AOD slider colors (with the
+            // dimmed disabled states tuned for the AOD dark surface). The
+            // StyledPlaybackSlider uses PlayerSliderColors which assumes a
+            // light-themed surface and would look wrong on AOD.
+            Slider(
+                value = sliderValue,
+                onValueChange = { onSeek(it.toLong()) },
+                onValueChangeFinished = onSeekFinished,
+                valueRange = 0f..(if (seekEnabled) duration.toFloat() else 1f),
+                enabled = seekEnabled,
+                colors = sliderColors,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        } else {
+            StyledPlaybackSlider(
+                sliderStyle = sliderStyle,
+                value = sliderValue,
+                valueRange = 0f..(if (seekEnabled) duration.toFloat() else 1f),
+                onValueChange = { onSeek(it.toLong()) },
+                onValueChangeFinished = onSeekFinished,
+                activeColor = accentColor,
+                isPlaying = isPlaying,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
         if (showTimeLabels) {
             Row(
                 horizontalArrangement = Arrangement.SpaceBetween,

@@ -74,6 +74,8 @@ import moe.rukamori.archivetune.constants.AodAccentStyle
 import moe.rukamori.archivetune.constants.AodAccentStyleKey
 import moe.rukamori.archivetune.constants.AodAmbientIntensityKey
 import moe.rukamori.archivetune.constants.AodArtworkGlowKey
+import moe.rukamori.archivetune.constants.AodAutoOnScreenDimKey
+import moe.rukamori.archivetune.constants.AodAutoTimerSecondsKey
 import moe.rukamori.archivetune.constants.AodBackgroundStyle
 import moe.rukamori.archivetune.constants.AodBackgroundStyleKey
 import moe.rukamori.archivetune.constants.AodContentPosition
@@ -86,9 +88,11 @@ import moe.rukamori.archivetune.constants.AodShowAlbumKey
 import moe.rukamori.archivetune.constants.AodShowArtistKey
 import moe.rukamori.archivetune.constants.AodShowControlsKey
 import moe.rukamori.archivetune.constants.AodShowExitButtonKey
+import moe.rukamori.archivetune.constants.AodShowLyricsKey
 import moe.rukamori.archivetune.constants.AodShowProgressKey
 import moe.rukamori.archivetune.constants.AodShowThumbnailKey
 import moe.rukamori.archivetune.constants.AodShowTimeLabelsKey
+import moe.rukamori.archivetune.constants.AodSliderStyleKey
 import moe.rukamori.archivetune.constants.AodTextAlignment
 import moe.rukamori.archivetune.constants.AodTextAlignmentKey
 import moe.rukamori.archivetune.constants.AodThumbnailShape
@@ -97,12 +101,14 @@ import moe.rukamori.archivetune.constants.AodThumbnailShapeRotationKey
 import moe.rukamori.archivetune.constants.AodThumbnailSizeKey
 import moe.rukamori.archivetune.constants.AodTitleMaxLinesKey
 import moe.rukamori.archivetune.constants.AodVerticalSpacingKey
+import moe.rukamori.archivetune.constants.SliderStyle
 import moe.rukamori.archivetune.constants.ThumbnailCornerRadiusKey
 import moe.rukamori.archivetune.ui.component.EnumListPreference
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.SwitchPreference
+import moe.rukamori.archivetune.ui.player.StyledPlaybackSlider
 import moe.rukamori.archivetune.ui.utils.appBarScrollBehavior
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.ui.utils.supportsArtworkGlowShadow
@@ -124,6 +130,7 @@ private data class AodPreviewSettings(
     val showTimeLabels: Boolean,
     val showControls: Boolean,
     val showExitButton: Boolean,
+    val showLyrics: Boolean,
     val artworkGlow: Boolean,
     val backgroundStyle: AodBackgroundStyle,
     val accentStyle: AodAccentStyle,
@@ -135,6 +142,7 @@ private data class AodPreviewSettings(
     val verticalSpacing: Float,
     val titleMaxLines: Int,
     val ambientIntensity: Float,
+    val sliderStyle: SliderStyle = SliderStyle.Standard,
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -156,6 +164,7 @@ fun AodCustomizedScreen(navController: NavController) {
     val (showTimeLabels, onShowTimeLabelsChange) = rememberPreference(AodShowTimeLabelsKey, defaultValue = true)
     val (showControls, onShowControlsChange) = rememberPreference(AodShowControlsKey, defaultValue = true)
     val (showExitButton, onShowExitButtonChange) = rememberPreference(AodShowExitButtonKey, defaultValue = true)
+    val (showLyrics, onShowLyricsChange) = rememberPreference(AodShowLyricsKey, defaultValue = true)
     val (artworkGlow, onArtworkGlowChange) = rememberPreference(AodArtworkGlowKey, defaultValue = true)
     val (backgroundStyle, onBackgroundStyleChange) =
         rememberEnumPreference(
@@ -182,11 +191,18 @@ fun AodCustomizedScreen(navController: NavController) {
             AodControlStyleKey,
             defaultValue = AodControlStyle.FILLED,
         )
+    val (sliderStyle, onSliderStyleChange) =
+        rememberEnumPreference(
+            AodSliderStyleKey,
+            defaultValue = SliderStyle.Standard,
+        )
     val (controlSize, onControlSizeChange) = rememberPreference(AodControlSizeKey, defaultValue = 64f)
     val (horizontalPadding, onHorizontalPaddingChange) = rememberPreference(AodHorizontalPaddingKey, defaultValue = 40f)
     val (verticalSpacing, onVerticalSpacingChange) = rememberPreference(AodVerticalSpacingKey, defaultValue = 20f)
     val (titleMaxLines, onTitleMaxLinesChange) = rememberPreference(AodTitleMaxLinesKey, defaultValue = 1)
     val (ambientIntensity, onAmbientIntensityChange) = rememberPreference(AodAmbientIntensityKey, defaultValue = 0.18f)
+    val (aodAutoTimerSeconds, onAodAutoTimerSecondsChange) = rememberPreference(AodAutoTimerSecondsKey, defaultValue = 0)
+    val (aodAutoOnScreenDim, onAodAutoOnScreenDimChange) = rememberPreference(AodAutoOnScreenDimKey, defaultValue = false)
 
     val previewSettings =
         remember(
@@ -201,12 +217,14 @@ fun AodCustomizedScreen(navController: NavController) {
             showTimeLabels,
             showControls,
             showExitButton,
+            showLyrics,
             artworkGlow,
             backgroundStyle,
             accentStyle,
             contentPosition,
             textAlignment,
             controlStyle,
+            sliderStyle,
             controlSize,
             horizontalPadding,
             verticalSpacing,
@@ -225,12 +243,14 @@ fun AodCustomizedScreen(navController: NavController) {
                 showTimeLabels = showTimeLabels,
                 showControls = showControls,
                 showExitButton = showExitButton,
+                showLyrics = showLyrics,
                 artworkGlow = artworkGlow,
                 backgroundStyle = backgroundStyle,
                 accentStyle = accentStyle,
                 contentPosition = contentPosition,
                 textAlignment = textAlignment,
                 controlStyle = controlStyle,
+                sliderStyle = sliderStyle,
                 controlSize = controlSize,
                 horizontalPadding = horizontalPadding,
                 verticalSpacing = verticalSpacing,
@@ -364,6 +384,15 @@ fun AodCustomizedScreen(navController: NavController) {
                             onCheckedChange = onShowExitButtonChange,
                         )
                     }
+                    item {
+                        SwitchPreference(
+                            title = { Text(stringResource(R.string.aod_customize_show_lyrics)) },
+                            description = stringResource(R.string.aod_customize_show_lyrics_desc),
+                            icon = { Icon(painterResource(R.drawable.lyrics), null) },
+                            checked = showLyrics,
+                            onCheckedChange = onShowLyricsChange,
+                        )
+                    }
                 }
             }
 
@@ -428,6 +457,24 @@ fun AodCustomizedScreen(navController: NavController) {
                             value = titleMaxLines,
                             valueRange = 1..3,
                             onValueChange = onTitleMaxLinesChange,
+                        )
+                    }
+                }
+            }
+
+            item(
+                key = "aod_progress",
+                contentType = "preference_group",
+            ) {
+                PreferenceGroup(title = stringResource(R.string.aod_customize_progress)) {
+                    item {
+                        EnumListPreference(
+                            title = { Text(stringResource(R.string.aod_customize_slider_style)) },
+                            icon = { Icon(painterResource(R.drawable.style), null) },
+                            selectedValue = sliderStyle,
+                            valueText = { it.label() },
+                            onValueSelected = onSliderStyleChange,
+                            isEnabled = showProgress,
                         )
                     }
                 }
@@ -529,6 +576,40 @@ fun AodCustomizedScreen(navController: NavController) {
                             valueLabel = { stringResource(R.string.aod_customize_dp_value, it.roundToInt()) },
                             onValueChange = onControlSizeChange,
                             isEnabled = showControls,
+                        )
+                    }
+                }
+            }
+
+            item(
+                key = "aod_behavior",
+                contentType = "preference_group",
+            ) {
+                PreferenceGroup(title = stringResource(R.string.aod_customize_lyrics)) {
+                    item {
+                        AodIntSliderPreference(
+                            title = stringResource(R.string.aod_customize_auto_timer),
+                            icon = { Icon(painterResource(R.drawable.timer), null) },
+                            value = aodAutoTimerSeconds,
+                            valueRange = 0..180,
+                            steps = 35,
+                            valueLabel = { v ->
+                                if (v == 0) {
+                                    stringResource(R.string.aod_customize_auto_timer_off)
+                                } else {
+                                    stringResource(R.string.aod_customize_auto_timer_seconds, v)
+                                }
+                            },
+                            onValueChange = onAodAutoTimerSecondsChange,
+                        )
+                    }
+                    item {
+                        SwitchPreference(
+                            title = { Text(stringResource(R.string.aod_customize_auto_on_screen_dim)) },
+                            description = stringResource(R.string.aod_customize_auto_on_screen_dim_desc),
+                            icon = { Icon(painterResource(R.drawable.bedtime), null) },
+                            checked = aodAutoOnScreenDim,
+                            onCheckedChange = onAodAutoOnScreenDimChange,
                         )
                     }
                 }
@@ -673,12 +754,27 @@ private fun AodPreviewCard(
                                 modifier = Modifier.fillMaxWidth(),
                             )
                         }
+                        if (settings.showLyrics) {
+                            Text(
+                                text = "♪ " + stringResource(R.string.aod_customize_sample_title),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color.White.copy(alpha = 0.72f),
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                                textAlign = textAlign,
+                                modifier =
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 4.dp),
+                            )
+                        }
                     }
 
                     if (settings.showProgress) {
                         PreviewProgress(
                             accentColor = accentColor,
                             showTimeLabels = settings.showTimeLabels,
+                            sliderStyle = settings.sliderStyle,
                         )
                     }
 
@@ -738,28 +834,26 @@ private fun PreviewArtwork(
 private fun PreviewProgress(
     accentColor: Color,
     showTimeLabels: Boolean,
+    sliderStyle: SliderStyle = SliderStyle.Standard,
 ) {
+    // Static 46% preview value — gives the user a feel for what each slider
+    // style looks like at a glance, without animating in the customize screen.
+    var previewValue by remember { mutableFloatStateOf(0.46f) }
+
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(5.dp),
     ) {
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .height(4.dp)
-                    .clip(MaterialTheme.shapes.extraSmall)
-                    .background(Color.White.copy(alpha = 0.22f)),
-        ) {
-            Box(
-                modifier =
-                    Modifier
-                        .fillMaxWidth(0.46f)
-                        .height(4.dp)
-                        .clip(MaterialTheme.shapes.extraSmall)
-                        .background(accentColor),
-            )
-        }
+        StyledPlaybackSlider(
+            sliderStyle = sliderStyle,
+            value = previewValue,
+            valueRange = 0f..1f,
+            onValueChange = { previewValue = it },
+            onValueChangeFinished = {},
+            activeColor = accentColor,
+            isPlaying = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
         if (showTimeLabels) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1175,6 +1269,16 @@ private fun AodControlStyle.label(): String =
         AodControlStyle.FILLED -> stringResource(R.string.aod_control_filled)
         AodControlStyle.TONAL -> stringResource(R.string.aod_control_tonal)
         AodControlStyle.MINIMAL -> stringResource(R.string.aod_control_minimal)
+    }
+
+@Composable
+private fun SliderStyle.label(): String =
+    when (this) {
+        SliderStyle.Standard -> stringResource(R.string.aod_slider_style_standard)
+        SliderStyle.Wavy -> stringResource(R.string.aod_slider_style_wavy)
+        SliderStyle.Thick -> stringResource(R.string.aod_slider_style_thick)
+        SliderStyle.Circular -> stringResource(R.string.aod_slider_style_circular)
+        SliderStyle.Simple -> stringResource(R.string.aod_slider_style_simple)
     }
 
 private fun AodContentPosition.toBoxAlignment(): Alignment =

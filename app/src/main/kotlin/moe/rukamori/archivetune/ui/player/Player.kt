@@ -22,8 +22,8 @@ import android.provider.Settings
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -453,6 +453,10 @@ fun BottomSheetPlayer(
     val currentSongLiked = currentSong?.song?.liked == true
     val queueTitle by playerConnection.queueTitle.collectAsState()
     val currentFormat by playerConnection.currentFormat.collectAsState(initial = null)
+    // Snapshot the lyrics entity for the AOD screen — AOD shows only the current line, so we
+    // pass the raw text down rather than the full Lyrics composable tree (cheaper to render,
+    // and matches the "dim, low-power" goal of always-on display).
+    val currentLyricsEntity by playerConnection.currentLyrics.collectAsState(initial = null)
     val queueWindows by playerConnection.queueWindows.collectAsState()
     val currentWindowIndex by playerConnection.currentWindowIndex.collectAsState()
     val deviceMusicVolumeController = rememberDeviceMusicVolumeController()
@@ -832,13 +836,33 @@ fun BottomSheetPlayer(
             QueuePeekHeight
         }
 
-    val dismissedBound = dynamicQueuePeekHeight + WindowInsets.systemBars.asPaddingValues().calculateBottomPadding()
+    val systemBarsBottom = WindowInsets.systemBars.asPaddingValues().calculateBottomPadding()
+
+    // Queue sheet anchors. The previous code set collapsedBound == dismissedBound,
+    // which collapsed the sheet onto the dismissed anchor. At that anchor
+    // `isDismissed == true`, so per BottomSheet.kt the collapsedContent was NOT
+    // rendered (and neither was expandedContent since `isCollapsed == true`).
+    // Net effect: dragging the queue down made it vanish instantly — the user
+    // saw an empty strip with no controls and no way to drag it back up.
+    //
+    // The fix separates the two anchors:
+    //   - dismissedBound = 0.dp → sheet is fully off-screen (below the viewport)
+    //   - collapsedBound = peek + systemBarsBottom → sheet shows the peek/mini
+    //     controls just above the system bar
+    //
+    // Now dragging down snaps to collapsedBound (peek visible, controls tappable),
+    // and a hard downward fling past collapsedBound goes to dismissedBound only
+    // if `onDismiss != null` — which it isn't for Queue — so the sheet stays at
+    // the peek instead of vanishing. The user can tap the queue button to
+    // re-expand at any time.
+    val dismissedBound = 0.dp
+    val collapsedBound = dynamicQueuePeekHeight + systemBarsBottom
 
     val queueSheetState =
         rememberBottomSheetState(
             dismissedBound = dismissedBound,
             expandedBound = state.expandedBound,
-            collapsedBound = dismissedBound,
+            collapsedBound = collapsedBound,
             initialAnchor = 0,
         )
 
@@ -1564,6 +1588,7 @@ fun BottomSheetPlayer(
                             onVolumeChange = onPlayerVolumeChange,
                             canvasPrimaryUrl = artworkCanvas?.animated,
                             canvasFallbackUrl = artworkCanvas?.videoUrl,
+                            currentFormat = currentFormat,
                             contentBottomPadding = queueSheetState.collapsedBound,
                             onQueueClick = openQueue,
                             onLyricsClick = { isLyricsScreenVisible = true },
@@ -1870,6 +1895,7 @@ fun BottomSheetPlayer(
                             onVolumeChange = onPlayerVolumeChange,
                             canvasPrimaryUrl = artworkCanvas?.animated,
                             canvasFallbackUrl = artworkCanvas?.videoUrl,
+                            currentFormat = currentFormat,
                             contentBottomPadding = queueSheetState.collapsedBound,
                             onQueueClick = openQueue,
                             onLyricsClick = { isLyricsScreenVisible = true },
@@ -1982,6 +2008,7 @@ fun BottomSheetPlayer(
                     canSkipPrevious = canSkipPrevious,
                     canSkipNext = canSkipNext,
                     thumbnailCornerRadius = thumbnailCornerRadius,
+                    lyricsText = currentLyricsEntity?.lyrics,
                     onPlayPause = { playerConnection.player.togglePlayPause() },
                     onSkipPrevious = playerConnection::seekToPrevious,
                     onSkipNext = playerConnection::seekToNext,
@@ -2032,34 +2059,51 @@ private fun MikoLyricsTransition(
     // fades in behind it. All derived transforms are read inside graphicsLayer/draw lambdas so the
     // animation runs entirely in the draw phase — zero recomposition per frame.
     //
-    // Spring tuning: soft critically-damped spring (dampingRatio=1f / stiffness=160f) — the same
-    // tuning that was in place before commit 4ca3014fb. The ~500ms glide is what feels premium on
-    // touch and matches the user's explicit request to keep the slow lyrics opening animation.
-    // The fast snap (0.9 / 420, ~150ms) was too abrupt and the user asked for the previous
-    // (slower) tuning back.
+    // Direction-aware spring: the OPEN glide is the soft critically-damped spring (dampingRatio=1f
+    // / stiffness=160f, ~500 ms settle) that the user explicitly asked to keep. The CLOSE glide is
+    // ~40% slower (stiffness=80f, ~700 ms settle) per the user's follow-up request to slow down
+    // the lyrics UI closing transition. Critically-damped (no overshoot) on both sides so the
+    // close doesn't feel bouncy.
+    //
+    // We use an `Animatable` driven by `LaunchedEffect(visible)` (rather than `animateFloatAsState`)
+    // because `animateFloatAsState` is direction-symmetric — the same spec applies whether the
+    // target is going 0→1 or 1→0 — and we need separate specs per direction.
     val animationsDisabled = LocalAnimationsDisabled.current
-    val progressState =
-        animateFloatAsState(
-            targetValue = if (visible) 1f else 0f,
-            animationSpec =
-                if (animationsDisabled) {
-                    snap()
-                } else {
-                    spring(
-                        dampingRatio = 1f,
-                        stiffness = 160f,
-                        visibilityThreshold = 0.001f,
-                    )
-                },
-            label = "mikoLyricsTransition",
-        )
+    val progress = remember { Animatable(initialValue = 0f) }
+    LaunchedEffect(visible, animationsDisabled) {
+        if (animationsDisabled) {
+            progress.snapTo(if (visible) 1f else 0f)
+        } else {
+            progress.animateTo(
+                targetValue = if (visible) 1f else 0f,
+                animationSpec =
+                    if (visible) {
+                        // OPEN — keep the premium slow glide (~500 ms).
+                        spring(
+                            dampingRatio = 1f,
+                            stiffness = 160f,
+                            visibilityThreshold = 0.001f,
+                        )
+                    } else {
+                        // CLOSE — slower by ~40% (~700 ms) per user request.
+                        spring(
+                            dampingRatio = 1f,
+                            stiffness = 80f,
+                            visibilityThreshold = 0.001f,
+                        )
+                    },
+            )
+        }
+    }
+    val progressState = progress.asState()
     val showContent by remember {
         // Defer composing the heavy LyricsScreen tree until the sheet has crossed the halfway
-        // mark (progress > 0.5). The slow spring takes ~250ms to reach this point, which is
-        // enough time for the slide-up to visually "commit" before the lyrics tree is composed
-        // — this avoids jank on low-end devices and avoids the "blank panel then pop-in"
-        // artifact that immediate composition introduced on devices where the first frame of
-        // the lyrics tree takes longer than 16ms to compute.
+        // mark (progress > 0.5). On open, the slow spring takes ~250 ms to reach this point,
+        // which is enough time for the slide-up to visually "commit" before the lyrics tree is
+        // composed — this avoids jank on low-end devices and avoids the "blank panel then
+        // pop-in" artifact that immediate composition introduced on devices where the first
+        // frame of the lyrics tree takes longer than 16ms to compute. On close, the lyrics
+        // tree stays composed until progress drops back below 0.5, so the slide-down is smooth.
         derivedStateOf { visible || progressState.value > 0.5f }
     }
 
@@ -2828,19 +2872,30 @@ private fun LittlePlayerContent(
 
                 Spacer(Modifier.width((18f * scale).dp))
 
-                Icon(
-                    painter = painterResource(R.drawable.player_queue_music),
-                    contentDescription = null,
-                    tint = textColor.copy(alpha = 0.78f),
+                // Queue button — wrapped in a 48dp Box (Material minimum touch target) so the
+                // tap is reliably registerable even on dense layouts. The previous version put
+                // .clickable directly on the 26dp Icon, which (combined with indication=null)
+                // made taps very easy to miss — one of the root causes of the "queue button
+                // doesn't work at all" report. The Icon itself stays at iconSize for visual
+                // consistency; only the touch target grows.
+                Box(
+                    contentAlignment = Alignment.Center,
                     modifier =
                         Modifier
-                            .size(iconSize)
+                            .size(48.dp)
                             .clickable(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null,
                                 onClick = onExpandQueue,
                             ),
-                )
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.player_queue_music),
+                        contentDescription = null,
+                        tint = textColor.copy(alpha = 0.78f),
+                        modifier = Modifier.size(iconSize),
+                    )
+                }
 
                 Spacer(Modifier.width((18f * scale).dp))
 

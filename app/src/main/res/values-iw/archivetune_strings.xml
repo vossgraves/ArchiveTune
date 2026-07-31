@@ -100,6 +100,13 @@
     <string name="aod_customize_thumbnail_shape">צורת תמונה ממוזערת</string>
     <string name="aod_customize_thumbnail_shape_desc">משתמש בצורות עבור מסיכת הגרפיקה AOD.</string>
     <string name="aod_customize_layout">פריסה</string>
+    <string name="aod_customize_progress">התקדמות</string>
+    <string name="aod_customize_slider_style">סגנון המחוון</string>
+    <string name="aod_slider_style_standard">רגיל</string>
+    <string name="aod_slider_style_wavy">גלי</string>
+    <string name="aod_slider_style_thick">עבה</string>
+    <string name="aod_slider_style_circular">עגול</string>
+    <string name="aod_slider_style_simple">פשוט</string>
     <string name="aod_customize_background_style">סגנון רקע</string>
     <string name="aod_customize_accent_style">סגנון הדגשה</string>
     <string name="aod_customize_content_position">מיקום התוכן</string>

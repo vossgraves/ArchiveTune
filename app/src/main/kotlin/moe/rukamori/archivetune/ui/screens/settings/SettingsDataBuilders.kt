@@ -264,7 +264,6 @@ fun buildSettingsGroups(
                 SettingsChild("Megalobiz Lyrics", "megalobiz_lyrics", listOf("megalobiz", "megalobiz lyrics", "megalobiz provider")),
                 SettingsChild("Paxsenix Lyrics", "paxsenix_lyrics", listOf("paxsenix", "paxsenix lyrics", "paxsenix provider")),
                 SettingsChild("Paxsenix Stats", "paxsenix_stats", listOf("paxsenix stats", "paxsenix statistics", "paxsenix analytics")),
-                SettingsChild("Clear lyrics cache", "clear_lyrics_cache", listOf("clear lyrics cache", "delete lyrics cache", "wipe lyrics cache")),
                 SettingsChild("First lyrics provider", "first_lyrics_provider", listOf("first lyrics", "lyrics priority", "primary lyrics provider", "lyrics order")),
             ),
         )
@@ -348,6 +347,7 @@ fun buildSettingsGroups(
                 SettingsChild("Qobuz account", "qobuz_account", listOf("qobuz account", "qobuz login", "qobuz email", "qobuz session")),
                 SettingsChild("Qobuz tokens", "qobuz_tokens", listOf("qobuz token", "qobuz app secret", "qobuz credential")),
                 SettingsChild("Qobuz instances", "qobuz_instances", listOf("qobuz instance", "qobuz server", "qobuz url", "qobuz endpoint")),
+                SettingsChild("Deezer", "deezer", listOf("deezer", "deezer login", "deezer premium", "deezer account", "deezer session")),
                 SettingsChild("Telegram", "telegram", listOf("telegram", "telegram channel", "channel sync", "telegram music", "telegram bot")),
                 SettingsChild("Telegram login", "telegram_login", listOf("telegram login", "telegram session", "telegram account", "sign in telegram")),
                 SettingsChild("Telegram browse channels", "telegram_browse_channels", listOf("browse channels", "channels", "telegram channels", "music channels")),
@@ -381,9 +381,10 @@ fun buildSettingsGroups(
             title = stringResource(R.string.internet),
             subtitle = stringResource(R.string.settings_internet_subtitle),
             accentColor = MaterialTheme.colorScheme.tertiary,
-            keywords = listOf("internet", "proxy", "vpn", "network", "wifi", "connection", "traffic", "tor", "dns", "dns over https"),
+            keywords = listOf("internet", "proxy", "vpn", "network", "wifi", "connection", "traffic", "tor", "dns", "dns over https", "region", "country", "spoof", "geobypass", "geo bypass"),
             onClick = { navController.navigate("settings/internet") },
             children = listOf(
+                SettingsChild("YouTube Music region", "yt_music_region", listOf("region", "country", "gl", "geo", "location", "spoof", "youtube region", "youtube music country", "geobypass", "geo bypass")),
                 SettingsChild("Proxy", "proxy_settings", listOf("proxy", "http proxy", "socks", "vpn")) { SearchResultSwitch(ProxyEnabledKey, false) },
                 SettingsChild("Proxy host", "proxy_host", listOf("proxy host", "proxy address", "proxy server")),
                 SettingsChild("Proxy port", "proxy_port", listOf("proxy port", "port", "proxy port number")),

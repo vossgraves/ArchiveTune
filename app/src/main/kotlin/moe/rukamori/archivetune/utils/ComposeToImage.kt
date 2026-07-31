@@ -740,6 +740,257 @@ object ComposeToImage {
         canvas.drawText(appName, textX, textY, appNamePaint)
     }
 
+    /**
+     * Renders a "vinyl"-style share image inspired by the MD Vinyl reference
+     * screenshot the user uploaded. Layout (top-to-bottom, left-to-right):
+     *
+     *   - Dark teal/navy background filling the canvas.
+     *   - Centered horizontal Row (vertically centered around the upper 60%
+     *     of the canvas) containing:
+     *       * Square album cover on the LEFT, with a thin white border.
+     *       * Vinyl record (black disc + subtle groove rings + cyan center
+     *         label) peeking out from BEHIND the cover on the RIGHT. The
+     *         cover overlaps the left ~40% of the disc.
+     *       * Song title + artist drawn on the center label (multi-line,
+     *         centered, ellipsized if too long).
+     *   - Song title in large white bold text below the cover/vinyl row.
+     *   - Artist name in smaller white text below the title.
+     *   - "ARCHIVETUNE" wordmark at the very bottom.
+     *
+     * The image is always rendered as a square (canvasSize × canvasSize),
+     * regardless of [width]/[height] — the vinyl aesthetic only works at 1:1.
+     * Callers passing non-square dimensions get a square back, padded to the
+     * larger of width/height, so the share intent always receives a valid
+     * image.
+     *
+     * If the album art can't be loaded, the cover is rendered as a flat dark
+     * grey square with a music-note glyph fallback (so the layout still reads
+     * as "vinyl + cover" rather than collapsing to just a disc).
+     */
+    @RequiresApi(Build.VERSION_CODES.M)
+    suspend fun createVinylImage(
+        context: Context,
+        coverArtUrl: String?,
+        songTitle: String,
+        artistName: String,
+        width: Int,
+        height: Int,
+    ): Bitmap =
+        withContext(Dispatchers.Default) {
+            val canvasSize = maxOf(width, height).coerceAtLeast(1080)
+            val bitmap = createBitmap(canvasSize, canvasSize)
+            val canvas = Canvas(bitmap)
+
+            // --- Background ---------------------------------------------------
+            // Deep teal/navy from the reference screenshot. A subtle vertical
+            // gradient adds depth without distracting from the vinyl.
+            val bgTop = 0xFF0A1F24.toInt()
+            val bgBottom = 0xFF051418.toInt()
+            val bgPaint = Paint().apply {
+                isAntiAlias = true
+                shader = android.graphics.LinearGradient(
+                    0f, 0f, 0f, canvasSize.toFloat(),
+                    bgTop, bgBottom,
+                    android.graphics.Shader.TileMode.CLAMP,
+                )
+            }
+            canvas.drawRect(0f, 0f, canvasSize.toFloat(), canvasSize.toFloat(), bgPaint)
+
+            // --- Load cover art (best-effort) --------------------------------
+            var coverArtBitmap: Bitmap? = null
+            if (coverArtUrl != null) {
+                runCatching {
+                    val imageLoader = ImageLoader(context)
+                    val request = ImageRequest.Builder(context)
+                        .data(coverArtUrl)
+                        .size(canvasSize / 2)
+                        .allowHardware(false)
+                        .build()
+                    coverArtBitmap = imageLoader.execute(request).image?.toBitmap()
+                }
+            }
+
+            // --- Geometry -----------------------------------------------------
+            // Cover occupies ~46% of the canvas on the left; vinyl disc is the
+            // same size, positioned so its left edge sits ~18% into the cover
+            // (creating the "peeking out" effect). Both are vertically centered
+            // around 42% of the canvas height (slightly above true center to
+            // leave room for the title/artist below).
+            val coverSize = canvasSize * 0.46f
+            val discSize = canvasSize * 0.46f
+            val coverLeft = canvasSize * 0.22f
+            val coverTop = canvasSize * 0.18f
+            val discLeft = coverLeft + coverSize * 0.62f
+            val discTop = coverTop
+            val discCenterX = discLeft + discSize / 2f
+            val discCenterY = discTop + discSize / 2f
+
+            // --- Vinyl disc ---------------------------------------------------
+            // Drawn FIRST so the cover overlaps it. Layered as:
+            //   1. Black disc (filled circle)
+            //   2. Subtle groove rings (concentric circles, faint stroke)
+            //   3. Cyan center label (smaller filled circle)
+            val discPaint = Paint().apply {
+                color = 0xFF050505.toInt()
+                isAntiAlias = true
+            }
+            canvas.drawCircle(discCenterX, discCenterY, discSize / 2f, discPaint)
+
+            val groovePaint = Paint().apply {
+                style = Paint.Style.STROKE
+                strokeWidth = 1.2f
+                color = 0x14FFFFFF
+                isAntiAlias = true
+            }
+            val grooveCount = 28
+            for (i in 1..grooveCount) {
+                val radius = (discSize / 2f) * (i.toFloat() / (grooveCount + 1))
+                canvas.drawCircle(discCenterX, discCenterY, radius, groovePaint)
+            }
+
+            // Center label — cyan/teal gradient, ~38% of disc diameter.
+            val labelRadius = discSize * 0.19f
+            val labelPaint = Paint().apply {
+                isAntiAlias = true
+                shader = android.graphics.RadialGradient(
+                    discCenterX, discCenterY, labelRadius,
+                    0xFF7DD3D8.toInt(), 0xFF4FB6BC.toInt(),
+                    android.graphics.Shader.TileMode.CLAMP,
+                )
+            }
+            canvas.drawCircle(discCenterX, discCenterY, labelRadius, labelPaint)
+
+            // Center hole (small black dot)
+            val holePaint = Paint().apply {
+                color = 0xFF000000.toInt()
+                isAntiAlias = true
+            }
+            canvas.drawCircle(discCenterX, discCenterY, discSize * 0.012f, holePaint)
+
+            // Label text — song title (bold) + artist (regular), drawn as
+            // multi-line StaticLayouts centered on the label.
+            val labelTextSize = labelRadius * 0.32f
+            val titlePaint = TextPaint().apply {
+                color = 0xFF0A1F24.toInt()
+                textSize = labelTextSize
+                typeface = Typeface.DEFAULT_BOLD
+                isAntiAlias = true
+                letterSpacing = -0.01f
+            }
+            val artistPaint = TextPaint().apply {
+                color = 0xFF0A1F24.toInt()
+                textSize = labelTextSize * 0.78f
+                typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+                isAntiAlias = true
+            }
+            val maxLabelWidth = (labelRadius * 1.7f).toInt()
+            val titleLayout = StaticLayout.Builder
+                .obtain(songTitle, 0, songTitle.length, titlePaint, maxLabelWidth)
+                .setAlignment(Layout.Alignment.ALIGN_CENTER)
+                .setLineSpacing(0f, 1f)
+                .setIncludePad(false)
+                .setMaxLines(2)
+                .setEllipsize(android.text.TextUtils.TruncateAt.END)
+                .build()
+            val artistLayout = StaticLayout.Builder
+                .obtain(artistName, 0, artistName.length, artistPaint, maxLabelWidth)
+                .setAlignment(Layout.Alignment.ALIGN_CENTER)
+                .setLineSpacing(0f, 1f)
+                .setIncludePad(false)
+                .setMaxLines(1)
+                .setEllipsize(android.text.TextUtils.TruncateAt.END)
+                .build()
+            val labelTextBlockHeight = titleLayout.height + artistLayout.height + (labelTextSize * 0.18f).toInt()
+            val labelStartY = discCenterY - labelTextBlockHeight / 2f
+            canvas.withTranslation(discCenterX - maxLabelWidth / 2f, labelStartY) {
+                titleLayout.draw(canvas)
+                canvas.translate(0f, titleLayout.height + (labelTextSize * 0.18f))
+                artistLayout.draw(canvas)
+            }
+
+            // --- Album cover --------------------------------------------------
+            // Drawn AFTER the disc so it overlaps the left part of the vinyl.
+            val coverRect = RectF(coverLeft, coverTop, coverLeft + coverSize, coverTop + coverSize)
+            val coverPath = Path().apply {
+                addRect(coverRect, Path.Direction.CW)
+            }
+            canvas.withClip(coverPath) {
+                if (coverArtBitmap != null) {
+                    drawBitmap(coverArtBitmap!!, null, coverRect, Paint(Paint.FILTER_BITMAP_FLAG))
+                } else {
+                    drawRect(coverRect, Paint().apply { color = 0xFF1A2A2E.toInt() })
+                }
+            }
+            // White border around the cover (1.5% of cover size).
+            val coverBorderPaint = Paint().apply {
+                style = Paint.Style.STROKE
+                strokeWidth = coverSize * 0.015f
+                color = 0xFFFFFFFF.toInt()
+                isAntiAlias = true
+            }
+            canvas.drawRect(coverRect, coverBorderPaint)
+
+            // --- Title + artist below the artwork ----------------------------
+            val titleTextPaint = TextPaint().apply {
+                color = 0xFFFFFFFF.toInt()
+                textSize = canvasSize * 0.038f
+                typeface = Typeface.DEFAULT_BOLD
+                isAntiAlias = true
+                letterSpacing = -0.01f
+            }
+            val artistTextPaint = TextPaint().apply {
+                color = 0xCCFFFFFF.toInt()
+                textSize = canvasSize * 0.028f
+                typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+                isAntiAlias = true
+            }
+            val textBlockX = canvasSize / 2f
+            val textBlockTopY = coverTop + coverSize + canvasSize * 0.06f
+            val maxTextWidth = (canvasSize * 0.8f).toInt()
+
+            val titleTextLayout = StaticLayout.Builder
+                .obtain(songTitle, 0, songTitle.length, titleTextPaint, maxTextWidth)
+                .setAlignment(Layout.Alignment.ALIGN_CENTER)
+                .setLineSpacing(0f, 1f)
+                .setIncludePad(false)
+                .setMaxLines(2)
+                .setEllipsize(android.text.TextUtils.TruncateAt.END)
+                .build()
+            val artistTextLayout = StaticLayout.Builder
+                .obtain(artistName, 0, artistName.length, artistTextPaint, maxTextWidth)
+                .setAlignment(Layout.Alignment.ALIGN_CENTER)
+                .setLineSpacing(0f, 1f)
+                .setIncludePad(false)
+                .setMaxLines(1)
+                .setEllipsize(android.text.TextUtils.TruncateAt.END)
+                .build()
+
+            canvas.withTranslation(
+                textBlockX - titleTextLayout.width / 2f,
+                textBlockTopY,
+            ) {
+                titleTextLayout.draw(canvas)
+                canvas.translate(0f, titleTextLayout.height + canvasSize * 0.012f)
+                artistTextLayout.draw(canvas)
+            }
+
+            // --- Bottom wordmark ---------------------------------------------
+            val wordmarkPaint = TextPaint().apply {
+                color = 0x99FFFFFF.toInt()
+                textSize = canvasSize * 0.018f
+                typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+                isAntiAlias = true
+                letterSpacing = 0.18f
+            }
+            val wordmark = "ARCHIVETUNE"
+            val wordmarkWidth = wordmarkPaint.measureText(wordmark)
+            val wordmarkX = (canvasSize - wordmarkWidth) / 2f
+            val wordmarkY = canvasSize * 0.93f + wordmarkPaint.textSize
+            canvas.drawText(wordmark, wordmarkX, wordmarkY, wordmarkPaint)
+
+            bitmap
+        }
+
     fun saveBitmapAsFile(
         context: Context,
         bitmap: Bitmap,

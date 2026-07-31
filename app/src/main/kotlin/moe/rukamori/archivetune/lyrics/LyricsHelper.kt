@@ -55,6 +55,10 @@ class LyricsHelper
                 PaxsenixYouTubeLyricsProvider,
                 YouTubeSubtitleLyricsProvider,
                 YouTubeLyricsProvider,
+                // Experimental native Musixmatch provider — gated by
+                // EnableMusixmatchExperimentalKey (off by default). When the toggle
+                // is off, isEnabled() returns false and LyricsHelper skips it.
+                MusixmatchExperimentalLyricsProvider,
             )
 
         private val cache = LruCache<String, List<LyricsResult>>(MAX_CACHE_SIZE)
@@ -239,6 +243,7 @@ class LyricsHelper
                     PreferredLyricsProvider.PAXSENIX_MUSIXMATCH to PaxsenixMusixmatchLyricsProvider,
                     PreferredLyricsProvider.PAXSENIX_YOUTUBE to PaxsenixYouTubeLyricsProvider,
                     PreferredLyricsProvider.UNISON to UnisonLyricsProvider,
+                    PreferredLyricsProvider.MUSIXMATCH_EXPERIMENTAL to MusixmatchExperimentalLyricsProvider,
                 )
             val userOrdered = orderedEnums.mapNotNull { providerMap[it] }
             val rest = baseProviders.filterNot { it in userOrdered }

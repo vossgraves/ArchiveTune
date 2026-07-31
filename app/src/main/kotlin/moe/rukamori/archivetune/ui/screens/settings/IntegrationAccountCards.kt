@@ -35,13 +35,10 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
 import moe.rukamori.archivetune.R
-import moe.rukamori.archivetune.constants.AccountChannelHandleKey
-import moe.rukamori.archivetune.constants.AccountNameKey
 import moe.rukamori.archivetune.constants.DiscordAvatarUrlKey
 import moe.rukamori.archivetune.constants.DiscordNameKey
 import moe.rukamori.archivetune.constants.DiscordTokenKey
 import moe.rukamori.archivetune.constants.DiscordUsernameKey
-import moe.rukamori.archivetune.constants.InnerTubeCookieKey
 import moe.rukamori.archivetune.constants.LastFMSessionKey
 import moe.rukamori.archivetune.constants.LastFMUsernameKey
 import moe.rukamori.archivetune.utils.rememberPreference
@@ -49,15 +46,13 @@ import moe.rukamori.archivetune.utils.rememberPreference
 /**
  * "Accounts" section for the Integration screen.
  *
- * Shows a card per connected service. YouTube Music is always first;
- * Last.fm and Discord appear below it when connected.
+ * Shows a card per connected service. YouTube Music is intentionally NOT
+ * listed here — the YT Music account is managed via the top-right profile
+ * icon in the app header, not via Integration. Last.fm and Discord appear
+ * below when connected.
  */
 @Composable
 fun IntegrationAccountCards(navController: NavController) {
-    val (innerTubeCookie) = rememberPreference(InnerTubeCookieKey, "")
-    val (accountName) = rememberPreference(AccountNameKey, "")
-    val (accountHandle) = rememberPreference(AccountChannelHandleKey, "")
-
     val (lastFmSession) = rememberPreference(LastFMSessionKey, "")
     val (lastFmUsername) = rememberPreference(LastFMUsernameKey, "")
 
@@ -66,7 +61,6 @@ fun IntegrationAccountCards(navController: NavController) {
     val (discordUsername) = rememberPreference(DiscordUsernameKey, "")
     val (discordAvatarUrl) = rememberPreference(DiscordAvatarUrlKey, "")
 
-    val youtubeConnected = innerTubeCookie.isNotBlank()
     val lastFmConnected = lastFmSession.isNotBlank()
     val discordConnected = discordToken.isNotBlank()
 
@@ -74,20 +68,6 @@ fun IntegrationAccountCards(navController: NavController) {
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        AccountCard(
-            iconRes = R.drawable.music_note,
-            title = stringResource(R.string.youtube_music_account),
-            connected = youtubeConnected,
-            detail =
-                when {
-                    !youtubeConnected -> null
-                    accountName.isNotBlank() -> stringResource(R.string.account_signed_in_as, accountName)
-                    accountHandle.isNotBlank() -> stringResource(R.string.account_signed_in_as, accountHandle)
-                    else -> null
-                },
-            onClick = { navController.navigate("settings/account") },
-        )
-
         if (lastFmConnected) {
             AccountCard(
                 iconRes = R.drawable.token,

@@ -215,6 +215,18 @@ class App :
                 prefs[ContentLanguageKey]?.takeIf { it != SYSTEM_DEFAULT }?.let { lang ->
                     YouTube.locale = YouTube.locale.copy(hl = lang)
                 }
+                // Region spoofer from Internet Settings — applied AFTER ContentCountryKey so
+                // the Internet/region setting wins when both are set. SYSTEM_DEFAULT falls back
+                // to whatever the device locale or ContentCountryKey resolved to above.
+                // Also set the regionSpooferActive flag so region-sensitive endpoints
+                // (home, search, charts, etc.) go anonymous and YouTube honors `gl`.
+                prefs[YouTubeMusicRegionKey]?.let { regionValue ->
+                    val spooferActive = regionValue != SYSTEM_DEFAULT
+                    YouTube.regionSpooferActive = spooferActive
+                    if (spooferActive) {
+                        YouTube.locale = YouTube.locale.copy(gl = regionValue)
+                    }
+                }
 
                 LastFmServiceConfig.fromPreferences(prefs).apply(prefs[LastFMSessionKey])
 

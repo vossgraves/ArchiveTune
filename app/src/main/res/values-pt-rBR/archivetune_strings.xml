@@ -101,6 +101,13 @@
     <string name="aod_customize_thumbnail_shape">Forma da miniatura</string>
     <string name="aod_customize_thumbnail_shape_desc">Usa formas para a máscara da arte no AOD.</string>
     <string name="aod_customize_layout">Layout</string>
+    <string name="aod_customize_progress">Progresso</string>
+    <string name="aod_customize_slider_style">Estilo do slider</string>
+    <string name="aod_slider_style_standard">Padrão</string>
+    <string name="aod_slider_style_wavy">Ondulado</string>
+    <string name="aod_slider_style_thick">Grosso</string>
+    <string name="aod_slider_style_circular">Circular</string>
+    <string name="aod_slider_style_simple">Simples</string>
     <string name="aod_customize_background_style">Estilo de fundo</string>
     <string name="aod_customize_accent_style">Estilo de destaque</string>
     <string name="aod_customize_content_position">Posição do conteúdo</string>
@@ -564,7 +571,7 @@
     <string name="about_license_unknown">Licença desconhecida</string>
     <string name="about_position_lead_dev">Eh?</string>
     <string name="about_position_developers">Desenvolvedor | Equipe</string>
-    <string name="about_position_yuki">reze idiota | Admin</string>
+    <string name="about_position_yuki">dummy reze | admin</string>
     <string name="about_position_mo_agamy">Framework base | Metrolist</string>
     <string name="about_position_zion_huang">Criador do InnerTune · Fundação do Metrolist, ArchiveTune e outros forks</string>
     <string name="about_content_desc_github">GitHub</string>

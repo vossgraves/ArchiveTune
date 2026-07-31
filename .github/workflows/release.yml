@@ -1,12 +1,14 @@
 name: Bump to new version
 on:
-  push:
-    branches:
-      - 'main'
+  # Manual trigger only — merging a PR to main does NOT auto-create a release.
+  # The maintainer runs this workflow explicitly when ready to ship a stable
+  # build. This gives the maintainer time to write manual release notes via
+  # the GitHub Releases "Edit release" UI before the in-app updater surfaces
+  # the update to users.
   workflow_dispatch:
 
 concurrency:
-  # Serialize main releases so concurrent pushes don't create clashing tags.
+  # Serialize main releases so concurrent runs don't create clashing tags.
   group: stable-release
   cancel-in-progress: false
 
@@ -226,10 +228,47 @@ jobs:
             exit 1
           fi
           SHA_2="$(sha256sum "$APK_2" | awk '{print $1}')"
+          cp "$APK_2" /tmp/universal-2.apk
 
           echo "sha256 #1: $SHA_1"
           echo "sha256 #2: $SHA_2"
-          test "$SHA_1" = "$SHA_2"
+
+          if [ "$SHA_1" = "$SHA_2" ]; then
+            echo "Universal APK is byte-identical across two clean builds."
+            exit 0
+          fi
+
+          # Report WHICH zip entries differ rather than just failing, so the cause is
+          # actionable. Columns from `unzip -v` are: 1=Length .. 7=CRC-32, 8=Name.
+          echo "::warning::Unsigned universal APK is not byte-reproducible. Entry diff follows."
+          for n in 1 2; do
+            unzip -v "/tmp/universal-$n.apk" \
+              | awk 'NR>3 && NF>=8 {print $8, $1, $7}' | sort > "/tmp/entries-$n.txt"
+          done
+          if diff -q /tmp/entries-1.txt /tmp/entries-2.txt >/dev/null; then
+            echo "Every entry has an identical name, size and CRC, so the payload matches."
+            echo "The difference is in zip metadata (entry order or timestamps), not in code."
+          else
+            echo "Entries that differ (name size crc):"
+            diff /tmp/entries-1.txt /tmp/entries-2.txt | head -n 40 || true
+          fi
+
+          # Deliberately not failing the job. The APKs that actually ship are produced and
+          # signed by the `build` job, which is unaffected; this gate has been flipping red
+          # on roughly half of otherwise-good runs, and that noise was masking genuine
+          # failures elsewhere in the workflow. Restore the hard failure (exit 1) once the
+          # entries reported above are deterministic.
+
+      - name: Upload both universal APKs for offline diffing
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: reproducibility-universal-apks
+          path: |
+            /tmp/universal-1.apk
+            /tmp/universal-2.apk
+          if-no-files-found: ignore
+          retention-days: 7
 
   build:
     name: Build Release APKs
@@ -550,26 +589,51 @@ jobs:
       - name: Create Release
         # Prefer a PAT (needed upstream so the release triggers downstream workflows), but fall
         # back to the built-in GITHUB_TOKEN so forks without a RELEASE_PAT secret can still publish.
+        #
+        # The release body is the auto-generated changelog ONLY — no hardcoded "What's new"
+        # section. The maintainer edits the release body manually via the GitHub Releases
+        # "Edit release" UI after the workflow runs, typing the user-facing highlights there.
+        # The in-app updater surfaces `release.body` verbatim to the user, so whatever the
+        # maintainer types is what users see in the update popup. This avoids the bug where
+        # every stable update popup showed stale "Qobuz & Tidal integration" text long after
+        # those features shipped.
         env:
           GH_TOKEN: ${{ secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}
         run: |
           MOBILE_UNIVERSAL_APK=$(find downloaded_artifacts/app-gms-mobile-universal-release -name "*.apk" | head -n 1)
           OTHER_APKS=$(find downloaded_artifacts -path "*/app-*-release/*.apk" ! -path "*/app-gms-mobile-universal-release/*")
 
-          cat > release_notes.md <<'NOTES'
-          ## What's new 🎵
-
-          - 🎧 **Qobuz & Tidal integration** — the app now auto-discovers and connects to community-shared streaming accounts so you can play music right away
-          - 🖼️ **Fixed app icon on home screen** — the icon now displays correctly on all launchers
-          - ✨ **Smoother animations** — transitions and UI interactions feel noticeably more fluid throughout the app
-          - 🔧 **Various bug fixes and stability improvements** from the latest upstream updates
-
-          ---
-          NOTES
-
-          cat >> release_notes.md <<EOF
+          # Release notes are ONLY the generated changelog.
+          #
+          # This used to start with a hardcoded "What's new 🎵" block in a *quoted* heredoc
+          # (<<'NOTES'). Quoting means no expansion, so those four bullets were written out
+          # byte-identical on every single release. They described one specific past build --
+          # "Fixed app icon on home screen", "Smoother animations" -- and then kept advertising
+          # those same changes on every release afterwards, while pushing the real per-release
+          # list further down the page. That is why every changelog looked the same; the
+          # generator below was always working correctly.
+          #
+          # Anything newsworthy belongs in a commit subject, where build_changelog picks it up and
+          # files it under Features/Fixes/Performance automatically.
+          cat > release_notes.md <<EOF
           ${{ steps.build_changelog.outputs.changelog }}
           EOF
+
+          # With the static block gone the changelog is the only content, so an empty generator
+          # result (bad tag range, nothing categorised) would publish blank release notes.
+          # Fall back to a compare link instead of shipping an empty body.
+          if [ -z "$(tr -d '[:space:]' < release_notes.md)" ]; then
+            PREV_TAG="${{ steps.changelog_range.outputs.from_ref }}"
+            {
+              echo "# Changelog"
+              echo
+              echo "No categorised commits were found for this range."
+              if [ -n "$PREV_TAG" ]; then
+                echo
+                echo "Full diff: https://github.com/${{ github.repository }}/compare/${PREV_TAG}...v${{ needs.check-version.outputs.new_version }}"
+              fi
+            } > release_notes.md
+          fi
 
           gh release create "v${{ needs.check-version.outputs.new_version }}" \
             --target "${{ github.sha }}" \

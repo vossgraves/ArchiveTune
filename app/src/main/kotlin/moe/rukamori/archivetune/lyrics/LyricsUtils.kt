@@ -675,7 +675,9 @@ object LyricsUtils {
     ): Int {
         if (lines.isEmpty()) return -1
 
-        val target = position + leadMs
+        // Find the last line whose start time is <= position (no lead). This is the
+        // "candidate current line" — we then decide whether to advance to the next line.
+        val exactTarget = position
         var low = 0
         var high = lines.lastIndex
 
@@ -683,62 +685,168 @@ object LyricsUtils {
             val mid = (low + high).ushr(1)
             val midTime = lines[mid].time
 
-            if (midTime < target) {
+            if (midTime < exactTarget) {
                 low = mid + 1
             } else {
                 high = mid - 1
             }
         }
+        val currentIdx = high.coerceIn(0, lines.lastIndex)
 
-        return high.coerceIn(0, lines.lastIndex)
+        // If there's no next line, the current line is the answer.
+        val nextIdx = currentIdx + 1
+        if (nextIdx > lines.lastIndex) return currentIdx
+
+        val currentLine = lines[currentIdx]
+        val nextLine = lines[nextIdx]
+
+        // Fix for "next line becomes active while the previous line is still being sung" —
+        // when the current line has an explicit durationMs (TTML), do not advance to the next
+        // line until we're past the current line's end. The previous behaviour unconditionally
+        // applied `leadMs` and could highlight N+1 up to 300ms before N finished singing,
+        // which was jarring on lines with tight tail gaps.
+        if (currentLine.durationMs > 0L) {
+            val currentLineEndMs = currentLine.time + currentLine.durationMs
+            if (position < currentLineEndMs) {
+                return currentIdx
+            }
+        }
+
+        // For line-synced LRC (no durationMs), the previous behaviour applied a flat 300ms lead
+        // regardless of how big the gap to the next line was. That made the next line highlight
+        // 300ms early even when there was a long instrumental break — and when the actual singing
+        // of the next line was still slightly delayed by the singer, the highlight felt premature.
+        //
+        // We now only apply the lead when lines are back-to-back (gap between line starts <= 2s).
+        // For longer gaps (slow ballads, instrumental interludes), we transition exactly at the
+        // next line's start time — no read-ahead. This preserves smooth transitions on rapid
+        // lyrics while avoiding the premature highlight on long-gap tracks.
+        val gapBetweenLineStartsMs = nextLine.time - currentLine.time
+        val effectiveLeadMs = if (gapBetweenLineStartsMs > 2_000L) 0L else leadMs
+
+        return if (position + effectiveLeadMs >= nextLine.time) {
+            nextIdx
+        } else {
+            currentIdx
+        }
     }
 
     /**
-     * Converts a Katakana string to Romaji.
-     * This optimized version uses a pre-defined map and StringBuilder for better performance
-     * compared to chained regex replacements.
-     * Expected impact: Significant reduction in object creation (Regex, String) and faster execution.
+     * Returns true when [entry] has real, per-word timing information that should drive
+     * word-by-word (karaoke) animation. Returns false when the [LyricsEntry.words] list
+     * is missing, empty, or contains only fake/synthetic timing patterns — namely:
+     *
+     *   - All word start times identical (line start sprayed onto every word).
+     *   - All word end times identical (line end sprayed onto every word).
+     *   - All word durations <= 0 (zero-duration spans).
+     *   - Word start times that perfectly match an even linear distribution across the
+     *     line (the classic "provider computed timing by dividing line duration by N"
+     *     pattern) AND word durations are also near-identical (low stddev relative to
+     *     mean). Real human singing has timing variation; mathematically-perfect even
+     *     distribution with identical word durations is the signature of a fake.
+     *
+     * This catches the case where providers like Better Lyrics / YouLyPlus / similar
+     * emit TTML with a `<span>` per word but the spans inherit the line's begin/end with
+     * no actual per-word offsets — which previously made Lyrics.kt animate each word
+     * in lockstep even though the lyric wasn't truly word-synced.
      */
-    fun katakanaToRomaji(katakana: String?): String {
-        if (katakana.isNullOrEmpty()) return ""
+    fun hasTrueWordSync(entry: LyricsEntry): Boolean {
+        val raw = entry.words ?: return false
+        val words = raw.filter { it.text.isNotBlank() }
+        if (words.size < 2) return false
 
-        val romajiBuilder = StringBuilder(katakana.length) // Initial capacity
-        var i = 0
-        val n = katakana.length
-        while (i < n) {
-            var consumed = false
-            // Prioritize 2-character sequences from the map (e.g., "キャ" before "キ")
-            if (i + 1 < n) {
-                val twoCharCandidate = katakana.substring(i, i + 2)
-                val mappedTwoChar = KANA_ROMAJI_MAP[twoCharCandidate]
-                if (mappedTwoChar != null) {
-                    romajiBuilder.append(mappedTwoChar)
-                    i += 2
-                    consumed = true
-                }
+        val startTimes = words.map { it.startTime }
+        val endTimes = words.map { it.endTime }
+
+        // All start times identical → no per-word timing.
+        if (startTimes.distinct().size == 1) return false
+        // All end times identical → no per-word timing.
+        if (endTimes.distinct().size == 1) return false
+
+        val durations = words.map { (it.endTime - it.startTime).coerceAtLeast(0.0) }
+        // All durations zero → no real word spans.
+        if (durations.all { it <= 0.0 }) return false
+
+        val lineStart = startTimes.min()
+        val lineEnd = endTimes.max()
+        val lineDuration = lineEnd - lineStart
+
+        // Detect perfectly even linear distribution of start times across the line.
+        // This is what providers produce when they fake word sync by computing
+        //   word[i].start = lineStart + i * (lineEnd - lineStart) / (N - 1)
+        // We tolerate up to 50ms deviation per word; real word sync deviates more.
+        if (lineDuration > 0.0 && words.size > 2) {
+            val tolerance = 0.05 // 50ms
+            val isEvenlyDistributed = startTimes.indices.all { i ->
+                val expected = lineStart + (lineDuration * i / (words.size - 1))
+                kotlin.math.abs(startTimes[i] - expected) < tolerance
             }
-
-            if (!consumed) {
-                // If no 2-character sequence matched, try 1-character
-                val oneCharCandidate = katakana[i].toString()
-                val mappedOneChar = KANA_ROMAJI_MAP[oneCharCandidate]
-                if (mappedOneChar != null) {
-                    romajiBuilder.append(mappedOneChar)
-                } else {
-                    // If the character is not in Katakana map, append it as is.
-                    romajiBuilder.append(oneCharCandidate)
+            if (isEvenlyDistributed) {
+                // Even distribution could still be real singing that happens to be very
+                // regular. Require word durations to also have meaningful variation —
+                // fake providers typically give every word the same duration too.
+                val positiveDurations = durations.filter { it > 0.0 }
+                if (positiveDurations.size >= 3) {
+                    val avg = positiveDurations.average()
+                    if (avg > 0.0) {
+                        val variance = positiveDurations.map { (it - avg) * (it - avg) }.average()
+                        val stddev = kotlin.math.sqrt(variance)
+                        if (stddev / avg < 0.1) {
+                            // Durations are essentially identical AND start times are perfectly
+                            // evenly spaced — this is almost certainly synthetic timing.
+                            return false
+                        }
+                    }
                 }
-                i += 1
             }
         }
-        return romajiBuilder.toString().lowercase()
+
+        return true
+    }
+
+    /**
+     * Converts any Hiragana characters in [text] to their Katakana equivalents.
+     * Hiragana and Katakana share the same Unicode ordering — every Hiragana codepoint
+     * has a Katakana counterpart at offset 0x60 (e.g. あ U+3042 → ア U+30A2). This lets
+     * the existing Katakana-only [KANA_ROMAJI_MAP] handle both scripts after a single
+     * cheap pre-pass.
+     *
+     * Characters outside the Hiragana block (Katakana, Kanji, Latin, punctuation, etc.)
+     * are passed through unchanged.
+     */
+    private fun hiraganaToKatakana(text: String): String {
+        if (text.isEmpty()) return text
+        val sb = StringBuilder(text.length)
+        for (ch in text) {
+            sb.append(
+                if (ch in '\u3041'..'\u3096') {
+                    (ch.code + 0x60).toChar()
+                } else {
+                    ch
+                },
+            )
+        }
+        return sb.toString()
     }
 
     /**
      * Romanizes Japanese text using Kuromoji Tokenizer and the optimized katakanaToRomaji function.
      * Runs on Dispatchers.Default for CPU-intensive work.
-     * Expected impact: Faster tokenization due to reused Tokenizer instance and faster
-     * per-token romanization.
+     *
+     * Pipeline:
+     *   1. Tokenize the input with Kuromoji (kanji + kana boundaries, readings).
+     *   2. For each token, pick the reading if Kuromoji provides one (usually Katakana);
+     *      otherwise fall back to the surface form (which may contain Hiragana).
+     *   3. Convert any Hiragana in the reading to Katakana via [hiraganaToKatakana] —
+     *      this is the critical fix. Previously, Hiragana characters in the surface form
+     *      passed through [katakanaToRomaji] unchanged because [KANA_ROMAJI_MAP] only
+     *      contains Katakana keys, so lyrics like "くさはねぇ" stayed as "くさはねぇ"
+     *      instead of becoming "kusahane-".
+     *   4. Run [katakanaToRomaji] on the normalized Katakana string. Sokuon (ッ) and
+     *      chōonpu (ー) are handled inside that function.
+     *   5. Pass the next token's Katakana-normalized reading as `nextKatakana` so
+     *      sokuon at a token boundary can still geminate the next token's initial
+     *      consonant.
      */
     suspend fun romanizeJapanese(text: String): String =
         withContext(Dispatchers.Default) {
@@ -753,26 +861,52 @@ object LyricsUtils {
                         } else {
                             token.reading
                         }
+                    // Normalize Hiragana → Katakana so KANA_ROMAJI_MAP can handle both.
+                    val katakanaReading = hiraganaToKatakana(currentReading)
 
-                    // Pass the next token's reading for sokuon handling if applicable
+                    // Pass the next token's reading for sokuon handling at token boundaries.
+                    // Also normalized to Katakana for consistency.
                     val nextTokenReading =
                         if (index + 1 < tokens.size) {
-                            tokens[index + 1].reading?.takeIf { it.isNotEmpty() && it != "*" } ?: tokens[index + 1].surface
+                            val nextReading =
+                                tokens[index + 1].reading?.takeIf { it.isNotEmpty() && it != "*" }
+                                    ?: tokens[index + 1].surface
+                            hiraganaToKatakana(nextReading)
                         } else {
                             null
                         }
-                    katakanaToRomaji(currentReading, nextTokenReading)
+                    katakanaToRomaji(katakanaReading, nextTokenReading)
                 }
             romanizedTokens.joinToString(" ")
         }
 
     /**
-     * Converts a Katakana string to Romaji.
-     * This optimized version uses a pre-defined map and StringBuilder for better performance
-     * compared to chained regex replacements.
-     * Expected impact: Significant reduction in object creation (Regex, String) and faster execution.
-     * @param katakana The Katakana string to convert.
-     * @param nextKatakana Optional: The next Katakana string (from the next token) to help with sokuon (ッ) gemination.
+     * Converts a Katakana string to Romaji using the pre-defined [KANA_ROMAJI_MAP].
+     *
+     * Handles three classes of characters specially beyond the map lookup:
+     *
+     *   1. Yōon (拗音) — 2-character sequences like "キャ" (kya). These are matched
+     *      BEFORE single-character lookups so the small y-vowel (ャ/ュ/ョ) combines
+     *      with the preceding consonant instead of being treated as a standalone
+     *      (and unmapped) character.
+     *
+     *   2. Sokuon (ッ) — gemination marker. Doubles the consonant of the NEXT
+     *      character. The next character is looked up WITHIN the current string
+     *      first (`katakana[i + 1]`); only if sokuon appears at the end of the
+     *      string do we fall back to the first character of [nextKatakana] (the
+     *      next token's reading). This fixes the previous bug where sokuon
+     *      mid-token (e.g. "がっこう" → "gakkou") was silently dropped because
+     *      the code only inspected the next TOKEN, not the next CHARACTER.
+     *
+     *   3. Chōonpu (ー) — long vowel mark. Extends the previous vowel instead of
+     *      being dropped (the old map entry `"ー" to ""` lost the long-vowel
+     *      information, turning "カー" (kaa) into "ka").
+     *
+     * @param katakana The Katakana string to convert. Hiragana should be
+     *     pre-converted with [hiraganaToKatakana]; any remaining non-Katakana
+     *     characters are passed through as-is.
+     * @param nextKatakana Optional: the next token's Katakana reading, used only
+     *     for sokuon-at-end-of-token gemination. Most tokens don't need this.
      */
     fun katakanaToRomaji(
         katakana: String?,
@@ -780,7 +914,7 @@ object LyricsUtils {
     ): String {
         if (katakana.isNullOrEmpty()) return ""
 
-        val romajiBuilder = StringBuilder(katakana.length) // Initial capacity
+        val romajiBuilder = StringBuilder(katakana.length)
         var i = 0
         val n = katakana.length
         while (i < n) {
@@ -796,18 +930,49 @@ object LyricsUtils {
                 }
             }
 
-            // Handle sokuon (ッ) - gemination
+            // Handle sokuon (ッ) — gemination. Doubles the consonant of the next
+            // character. Look INSIDE the current string first; only fall back to
+            // the next token's first character when sokuon is at the end of the
+            // current string (rare; usually a tokenizer artifact).
             if (!consumed && katakana[i] == 'ッ') {
-                val nextCharToDouble = nextKatakana?.getOrNull(0)
+                val nextCharInSameString = katakana.getOrNull(i + 1)
+                val nextCharToDouble = nextCharInSameString ?: nextKatakana?.getOrNull(0)
                 if (nextCharToDouble != null) {
                     val nextCharRomaji =
-                        KANA_ROMAJI_MAP[nextCharToDouble.toString()]?.getOrNull(0)?.toString()
+                        KANA_ROMAJI_MAP[nextCharToDouble.toString()]
                             ?: nextCharToDouble.toString()
-                    romajiBuilder.append(nextCharRomaji.lowercase().trim())
+                    // Take the first letter (the consonant to geminate) and double it.
+                    // For vowel-initial kana (あ, い, う, え, お) the first letter is the
+                    // vowel itself — geminating a vowel is unusual but renders as the
+                    // vowel doubled (e.g. っあ → "aa"), which matches common romaji
+                    // conventions for emphatic speech.
+                    val firstLetter = nextCharRomaji.firstOrNull()?.lowercase()?.trim()
+                    if (firstLetter != null && firstLetter.isNotEmpty()) {
+                        romajiBuilder.append(firstLetter)
+                    }
                 }
-                // Sokuon itself doesn't have a direct romaji representation other than geminating the next consonant.
-                // We just consume 'ッ' and let the next character (if any within the current token) be processed normally.
                 i += 1 // Consume the 'ッ'
+                consumed = true
+            }
+
+            // Handle chōonpu (ー) — long vowel mark. Extends the previous vowel
+            // instead of being silently dropped. Maps to the same vowel as the last
+            // emitted character (e.g. "カ" + "ー" → "ka" + "a" = "kaa"). If there's
+            // no previous vowel (start of string, or previous char was a consonant),
+            // we emit nothing — same as the old `"ー" to ""` map entry, but without
+            // losing information when a vowel IS present.
+            if (!consumed && katakana[i] == 'ー') {
+                val lastChar = romajiBuilder.lastOrNull()
+                val extension = when (lastChar) {
+                    'a' -> "a"
+                    'i' -> "i"
+                    'u' -> "u"
+                    'e' -> "e"
+                    'o' -> "o"
+                    else -> ""
+                }
+                romajiBuilder.append(extension)
+                i += 1
                 consumed = true
             }
 
@@ -877,6 +1042,180 @@ object LyricsUtils {
 
             romajaBuilder.toString()
         }
+
+    // region Hindi (Devanagari) romanization
+    //
+    // A hand-written Devanagari→Latin mapper that produces intuitive, pronounceable
+    // romanization for Hindi lyrics (e.g. "नमस्ते" → "namaste", "आदित्य" → "aaditya",
+    // "क्षमा" → "kshama"). This replaces the previous ICU "Any-Latin; Latin-ASCII" path
+    // which produced ISO-15919 with diacritics (e.g. "namastē") and then stripped them
+    // (e.g. "namaste" — but lost length distinctions and palatal/retroflex contrasts).
+    //
+    // The mapper handles:
+    //   - Independent vowels (अ, आ, इ, …) and their vowel signs (matras: ा, ि, ी, …)
+    //   - Consonants with inherent "a" (क → "ka"), suppressed by virama (क् → "k")
+    //   - Conjunct consonants (क + ् + ष → "ksh")
+    //   - Anusvara (ं) → "n" before vowels/semivowels, "m" before labials, otherwise "n"
+    //   - Visarga (ः) → "h"
+    //   - Candrabindu (ँ) → "n" (nasalization marker, simplified)
+    //   - Common special conjuncts: ज्ञ → "gyan", त्र → "tra", श्र → "shra", क्ष → "ksha"
+    //   - Devanagari numerals (०-९) → 0-9
+    //   - Danda (।) → "."
+    private val DEVANAGARI_INDEPENDENT_VOWELS =
+        mapOf(
+            'अ' to "a", 'आ' to "aa", 'इ' to "i", 'ई' to "ii", 'उ' to "u", 'ऊ' to "uu",
+            'ऋ' to "ri", 'ॠ' to "rii", 'ऌ' to "lri", 'ॡ' to "lrii",
+            'ए' to "e", 'ऐ' to "ai", 'ओ' to "o", 'औ' to "au",
+        )
+
+    private val DEVANAGARI_MATRAS =
+        mapOf(
+            'ा' to "aa", 'ि' to "i", 'ी' to "ii", 'ु' to "u", 'ू' to "uu",
+            'ृ' to "ri", 'ॄ' to "rii", 'े' to "e", 'ै' to "ai", 'ो' to "o", 'ौ' to "au",
+            'ॅ' to "e", 'ॉ' to "o", 'ॢ' to "lri", 'ॣ' to "lrii",
+        )
+
+    private val DEVANAGARI_CONSONANTS =
+        mapOf(
+            'क' to "k", 'ख' to "kh", 'ग' to "g", 'घ' to "gh", 'ङ' to "ng",
+            'च' to "ch", 'छ' to "chh", 'ज' to "j", 'झ' to "jh", 'ञ' to "ny",
+            'ट' to "t", 'ठ' to "th", 'ड' to "d", 'ढ' to "dh", 'ण' to "n",
+            'त' to "t", 'थ' to "th", 'द' to "d", 'ध' to "dh", 'न' to "n",
+            'प' to "p", 'फ' to "ph", 'ब' to "b", 'भ' to "bh", 'म' to "m",
+            'य' to "y", 'र' to "r", 'ल' to "l", 'व' to "v",
+            'श' to "sh", 'ष' to "sh", 'स' to "s", 'ह' to "h",
+            'ळ' to "l",
+            // Note: common conjuncts (क्ष, ज्ञ, त्र, श्र) are NOT single Unicode
+            // codepoints — they're consonant + virama + consonant sequences, so they
+            // can't be map keys here. They are handled naturally by the main loop's
+            // consonant + virama + consonant flow, which produces the same result
+            // (e.g. क + ् + ष → "k" + "" + "sh" + "a" = "ksha").
+        )
+
+    // Approximations for less-common letters / chillu characters (Malayalam-in-Devanagari etc.)
+    private val DEVANAGARI_OTHER =
+        mapOf(
+            'ॐ' to "om",
+            '।' to ".", '॥' to "..",
+            'ऽ' to "'",  // avagraha
+            'ं' to "n",  // anusvara (default; refined by context below)
+            'ः' to "h",  // visarga
+            'ँ' to "n",  // candrabindu (nasalization, simplified)
+            '्' to "",   // virama (halant) — suppresses inherent "a"; handled by loop
+        )
+
+    private val DEVANAGARI_NUMERALS =
+        mapOf(
+            '०' to "0", '१' to "1", '२' to "2", '३' to "3", '४' to "4",
+            '५' to "5", '६' to "6", '७' to "7", '८' to "8", '९' to "9",
+        )
+
+    private val LABIALS = setOf('प', 'फ', 'ब', 'भ', 'म')
+
+    suspend fun romanizeHindi(text: String): String =
+        withContext(Dispatchers.Default) {
+            val sb = StringBuilder(text.length * 2)
+            var i = 0
+            val n = text.length
+            while (i < n) {
+                val ch = text[i]
+
+                // Devanagari numerals
+                if (DEVANAGARI_NUMERALS[ch] != null) {
+                    sb.append(DEVANAGARI_NUMERALS[ch])
+                    i++
+                    continue
+                }
+
+                // Anusvara (ं) — context-sensitive:
+                //   before labials (प फ ब भ म) → "m"
+                //   otherwise → "n"
+                if (ch == 'ं') {
+                    val next = text.getOrNull(i + 1)
+                    sb.append(if (next != null && next in LABIALS) "m" else "n")
+                    i++
+                    continue
+                }
+
+                // Candrabindu (ँ) — nasalization marker, simplified to "n"
+                if (ch == 'ँ') {
+                    sb.append("n")
+                    i++
+                    continue
+                }
+
+                // Visarga (ः)
+                if (ch == 'ः') {
+                    sb.append("h")
+                    i++
+                    continue
+                }
+
+                // Virama (्) — suppresses inherent "a" of preceding consonant.
+                // The preceding consonant was already emitted WITHOUT inherent "a"
+                // (see consonant branch below), so we just skip the virama here.
+                if (ch == '्') {
+                    i++
+                    continue
+                }
+
+                // Matras (vowel signs) — replace the inherent "a" of the preceding
+                // consonant. The preceding consonant was emitted WITHOUT "a" in
+                // anticipation (see consonant branch below).
+                val matra = DEVANAGARI_MATRAS[ch]
+                if (matra != null) {
+                    sb.append(matra)
+                    i++
+                    continue
+                }
+
+                // Independent vowels
+                val independentVowel = DEVANAGARI_INDEPENDENT_VOWELS[ch]
+                if (independentVowel != null) {
+                    sb.append(independentVowel)
+                    i++
+                    continue
+                }
+
+                // Consonants — look ahead to decide whether to emit inherent "a":
+                //   - If next char is a matra, virama, anusvara, visarga, or
+                //     candrabindu, emit just the consonant base (no "a").
+                //   - Otherwise emit consonant + "a" (inherent vowel).
+                val consonant = DEVANAGARI_CONSONANTS[ch]
+                if (consonant != null) {
+                    val next = text.getOrNull(i + 1)
+                    val suppressInherentA =
+                        next != null && (
+                            next in DEVANAGARI_MATRAS ||
+                                next == '्' ||
+                                next == 'ं' ||
+                                next == 'ः' ||
+                                next == 'ँ'
+                        )
+                    sb.append(consonant)
+                    if (!suppressInherentA) {
+                        sb.append('a')
+                    }
+                    i++
+                    continue
+                }
+
+                // Other Devanagari signs (ॐ, ।, ॥, ऽ)
+                val other = DEVANAGARI_OTHER[ch]
+                if (other != null) {
+                    sb.append(other)
+                    i++
+                    continue
+                }
+
+                // Non-Devanagari character — pass through as-is (spaces, punctuation,
+                // Latin letters, etc.)
+                sb.append(ch)
+                i++
+            }
+            sb.toString()
+        }
+    // endregion
 
     /**
      * Checks if the given text contains any Japanese characters (Hiragana, Katakana, or common Kanji).
@@ -1033,7 +1372,7 @@ object LyricsUtils {
             when {
                 preferences.romanizeJapanese && looksJapanese(text) -> romanizeJapanese(text)
                 preferences.romanizeKorean && isKorean(text) -> romanizeKorean(text)
-                preferences.romanizeHindi && isHindi(text) -> romanizeWithIcu(text)
+                preferences.romanizeHindi && isHindi(text) -> romanizeHindi(text)
                 preferences.romanizeChinese && isChinese(text) -> romanizeWithIcu(text)
                 preferences.romanizeOther && hasOtherRomanizableScript(text) -> romanizeWithIcu(text)
                 else -> null
@@ -1052,7 +1391,7 @@ object LyricsUtils {
             when {
                 preferences.romanizeJapanese && looksJapanese(lineText) -> romanizeJapanese(word)
                 preferences.romanizeKorean && isKorean(lineText) -> romanizeKorean(word)
-                preferences.romanizeHindi && isHindi(lineText) -> romanizeWithIcu(word)
+                preferences.romanizeHindi && isHindi(lineText) -> romanizeHindi(word)
                 preferences.romanizeChinese && isChinese(lineText) -> romanizeWithIcu(word)
                 preferences.romanizeOther && hasOtherRomanizableScript(lineText) -> romanizeWithIcu(word)
                 else -> null
@@ -1079,14 +1418,29 @@ object LyricsUtils {
         return normalized.takeUnless { it.equals(original.trim(), ignoreCase = true) }
     }
 
-    private fun looksJapanese(text: String): Boolean =
-        text.any {
-            hasScript(it, UnicodeScript.HIRAGANA) ||
-                hasScript(it, UnicodeScript.KATAKANA) ||
-                it == '々' ||
-                it == '〆' ||
-                it == 'ヶ'
+    private fun looksJapanese(text: String): Boolean {
+        // Fast path: kana (Hiragana/Katakana) or iteration marks always indicate
+        // Japanese. This matches the previous behavior.
+        if (
+            text.any {
+                hasScript(it, UnicodeScript.HIRAGANA) ||
+                    hasScript(it, UnicodeScript.KATAKANA) ||
+                    it == '々' ||
+                    it == '〆' ||
+                    it == 'ヶ'
+            }
+        ) {
+            return true
         }
+        // Kanji-only text: ambiguous between Japanese and Chinese. Treat it as
+        // Japanese ONLY when the Kuromoji language pack is installed — otherwise
+        // `romanizeJapanese` would silently return the original text unchanged
+        // (a no-op), and the user would see no romanization at all. When the
+        // pack isn't installed, fall through so the Chinese ICU path can attempt
+        // romanization instead.
+        val hasKanji = text.any { it in '\u4E00'..'\u9FFF' }
+        return hasKanji && JapaneseLanguagePackManager.tokenizerOrNull() != null
+    }
 
     private fun hasScript(
         char: Char,

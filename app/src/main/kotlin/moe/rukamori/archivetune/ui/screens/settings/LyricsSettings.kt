@@ -37,6 +37,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -70,6 +71,7 @@ import moe.rukamori.archivetune.constants.EnableBetterLyricsPortatoKey
 import moe.rukamori.archivetune.constants.EnableKugouKey
 import moe.rukamori.archivetune.constants.EnableLrcLibKey
 import moe.rukamori.archivetune.constants.EnableMegalobizLyricsKey
+import moe.rukamori.archivetune.constants.EnableMusixmatchExperimentalKey
 import moe.rukamori.archivetune.constants.EnablePaxsenixAppleMusicLyricsKey
 import moe.rukamori.archivetune.constants.EnablePaxsenixLyricsKey
 import moe.rukamori.archivetune.constants.EnablePaxsenixMusixmatchLyricsKey
@@ -100,7 +102,6 @@ import moe.rukamori.archivetune.lyrics.JapaneseLanguagePackManager
 import moe.rukamori.archivetune.lyrics.JapaneseLanguagePackState
 import moe.rukamori.archivetune.paxsenix.models.PaxsenixStats
 import moe.rukamori.archivetune.paxsenix.models.ProviderStats
-import moe.rukamori.archivetune.ui.component.ActionPromptDialog
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.EnumListPreference
 import moe.rukamori.archivetune.ui.component.IconButton
@@ -123,22 +124,7 @@ fun LyricsSettings(
     viewModel: ContentSettingsViewModel = hiltViewModel(),
     scrollTo: String? = null,
 ) {
-    var showClearLyricsDialog by remember { mutableStateOf(false) }
     var showPaxsenixStatsDialog by remember { mutableStateOf(false) }
-
-    if (showClearLyricsDialog) {
-        ActionPromptDialog(
-            title = stringResource(R.string.clear_lyrics_cache),
-            onDismiss = { showClearLyricsDialog = false },
-            onConfirm = {
-                viewModel.clearLyricsCache()
-                showClearLyricsDialog = false
-            },
-            onCancel = { showClearLyricsDialog = false },
-        ) {
-            Text(stringResource(R.string.clear_lyrics_cache_confirm))
-        }
-    }
 
     if (showPaxsenixStatsDialog) {
         val statsState by viewModel.paxsenixStatsState.collectAsStateWithLifecycle()
@@ -195,6 +181,8 @@ fun LyricsSettings(
             defaultValue = true,
         )
     val (enableUnisonLyrics, onEnableUnisonLyricsChange) = rememberPreference(key = EnableUnisonLyricsKey, defaultValue = true)
+    val (enableMusixmatchExperimental, onEnableMusixmatchExperimentalChange) =
+        rememberPreference(key = EnableMusixmatchExperimentalKey, defaultValue = false)
     val (providerOrderStr, onProviderOrderStrChange) =
         rememberPreference(
             key = LyricsProviderOrderKey,
@@ -606,6 +594,35 @@ fun LyricsSettings(
         }
 
         PreferenceGroup(
+            modifier = positions.modifierFor("lyrics_experimental"),
+            title = stringResource(R.string.musixmatch_experimental_section),
+        ) {
+            item {
+                SwitchPreference(
+                    title = { Text(stringResource(R.string.enable_musixmatch_experimental)) },
+                    description = stringResource(R.string.enable_musixmatch_experimental_desc),
+                    icon = { Icon(painterResource(R.drawable.lyrics), null) },
+                    checked = enableMusixmatchExperimental,
+                    onCheckedChange = onEnableMusixmatchExperimentalChange,
+                )
+            }
+            item(visible = enableMusixmatchExperimental) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = MaterialTheme.shapes.large,
+                    color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.4f),
+                ) {
+                    Text(
+                        text = stringResource(R.string.musixmatch_experimental_warning),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                    )
+                }
+            }
+        }
+
+        PreferenceGroup(
             modifier = positions.modifierFor("lyrics_romanize"),
             title = stringResource(R.string.romanization),
         ) {
@@ -688,18 +705,6 @@ fun LyricsSettings(
             }
         }
 
-        PreferenceGroup(
-            modifier = positions.modifierFor("lyrics_cache_size"),
-            title = stringResource(R.string.cache),
-        ) {
-            item {
-                PreferenceEntry(
-                    title = { Text(stringResource(R.string.clear_lyrics_cache)) },
-                    icon = { Icon(painterResource(R.drawable.delete), null) },
-                    onClick = { showClearLyricsDialog = true },
-                )
-            }
-        }
     }
 
     TopAppBar(
@@ -735,6 +740,7 @@ private fun PreferredLyricsProvider.displayName(): String =
         PreferredLyricsProvider.PAXSENIX_MUSIXMATCH -> "Paxsenix: Musixmatch"
         PreferredLyricsProvider.PAXSENIX_YOUTUBE -> "Paxsenix: YouTube"
         PreferredLyricsProvider.UNISON -> "Unison"
+        PreferredLyricsProvider.MUSIXMATCH_EXPERIMENTAL -> "Musixmatch (experimental)"
     }
 
 @Composable

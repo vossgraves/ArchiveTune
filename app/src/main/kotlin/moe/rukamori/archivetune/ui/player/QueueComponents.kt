@@ -804,13 +804,16 @@ fun QueueCollapsedContentV3(
                         ),
                     ),
         ) {
-            // Queue button
+            // Queue button — enlarged touch target to 48dp (Material minimum) by increasing
+            // vertical padding from 8dp to 14dp. The previous ~34dp touch zone (18dp icon +
+            // 8dp+8dp padding) was below the 48dp minimum and contributed to missed taps,
+            // especially on V3 and (previously) V5 which used this composable.
             Box(
                 modifier =
                     Modifier
                         .clip(RoundedCornerShape(8.dp))
                         .clickable { onExpandQueue() }
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                        .padding(horizontal = 12.dp, vertical = 14.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 Row(
@@ -820,7 +823,7 @@ fun QueueCollapsedContentV3(
                     Icon(
                         painter = painterResource(id = R.drawable.player_queue_music),
                         contentDescription = null,
-                        modifier = Modifier.size(18.dp),
+                        modifier = Modifier.size(20.dp),
                         tint = textBackgroundColor.copy(alpha = 0.7f),
                     )
                     Text(

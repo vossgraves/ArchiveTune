@@ -26,7 +26,6 @@ import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.canvas.AppleMusicProvider
 import moe.rukamori.archivetune.canvas.ArchiveTuneCanvas
 import moe.rukamori.archivetune.canvas.models.CanvasArtwork
-import moe.rukamori.archivetune.constants.ArchiveTuneCanvasKey
 import moe.rukamori.archivetune.constants.HideVideoKey
 import moe.rukamori.archivetune.db.MusicDatabase
 import moe.rukamori.archivetune.extensions.filterBlockedArtists
@@ -174,13 +173,17 @@ class AlbumViewModel
          */
         private fun fetchAlbumCanvas(context: Context) {
             viewModelScope.launch {
-                // Skip when the user has the canvas feature disabled, or
-                // when LowDataMode is active on a metered connection (the
-                // canvas is a short video loop — non-trivial bandwidth).
-                val enabled = context.dataStore.data
-                    .map { it[ArchiveTuneCanvasKey] ?: false }
-                    .first()
-                if (!enabled) return@launch
+                // Album-page animated art is fetched regardless of the
+                // player-level `ArchiveTuneCanvasKey` toggle. That toggle
+                // controls whether the *song player* mounts a canvas overlay
+                // over the now-playing thumbnail — but on the album page the
+                // user expects the album cover to animate the moment they
+                // open the page (matching Apple Music's behaviour), not only
+                // when they've flipped a separate switch in Player settings.
+                //
+                // We still respect LowDataMode (skip the network fetch on
+                // metered connections) since the canvas is a short video
+                // loop with non-trivial bandwidth.
                 if (context.isLowDataModeActive()) return@launch
 
                 // Wait for the album to load in the DB (it might not be

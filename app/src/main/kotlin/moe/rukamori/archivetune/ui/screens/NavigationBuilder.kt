@@ -67,10 +67,13 @@ import moe.rukamori.archivetune.ui.screens.settings.IntegrationScreen
 import moe.rukamori.archivetune.ui.screens.settings.InternetSettings
 import moe.rukamori.archivetune.ui.screens.settings.TidalSettings
 import moe.rukamori.archivetune.ui.screens.settings.QobuzSettings
+import moe.rukamori.archivetune.ui.screens.settings.DeezerSettings
 import moe.rukamori.archivetune.ui.screens.settings.TidalLoginScreen
 import moe.rukamori.archivetune.ui.screens.settings.TIDAL_LOGIN_ROUTE
 import moe.rukamori.archivetune.ui.screens.settings.QobuzLoginScreen
 import moe.rukamori.archivetune.ui.screens.settings.QOBUZ_LOGIN_ROUTE
+import moe.rukamori.archivetune.ui.screens.settings.DeezerLoginScreen
+import moe.rukamori.archivetune.ui.screens.settings.DEEZER_LOGIN_ROUTE
 import moe.rukamori.archivetune.ui.screens.settings.TELEGRAM_LOGIN_ROUTE
 import moe.rukamori.archivetune.ui.screens.settings.TelegramLoginScreen
 import moe.rukamori.archivetune.ui.screens.settings.TelegramSettings
@@ -500,11 +503,17 @@ fun NavGraphBuilder.navigationBuilder(
     ) {
         QobuzSettings(navController, it.savedStateHandle["scrollTo"])
     }
+    composable("settings/deezer") {
+        DeezerSettings(navController)
+    }
     composable(TIDAL_LOGIN_ROUTE) {
         TidalLoginScreen(navController)
     }
     composable(QOBUZ_LOGIN_ROUTE) {
         QobuzLoginScreen(navController)
+    }
+    composable(DEEZER_LOGIN_ROUTE) {
+        DeezerLoginScreen(navController)
     }
     composable("settings/telegram") {
         TelegramSettings(navController)

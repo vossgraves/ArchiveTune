@@ -194,7 +194,7 @@ android {
             (
                 localProperties.getProperty("SOURCE_PROVIDER_URL")?.takeIf { it.isNotBlank() }
                     ?: System.getenv("SOURCE_PROVIDER_URL")?.takeIf { it.isNotBlank() }
-                    ?: "https://archivepool.up.railway.app"
+                    ?: "https://archivepool.vercel.app"
                 ).trim().trimEnd('/')
         buildConfigField("String", "SOURCE_PROVIDER_URL", "\"$sourceProviderUrl\"")
 
@@ -239,7 +239,7 @@ android {
                 .equals("true", ignoreCase = true)
         buildConfigField("boolean", "IS_NIGHTLY", "$isNightlyBuild")
         buildConfigField("String", "DISTRIBUTION", "\"gms\"")
-        buildConfigField("boolean", "UPDATER_AVAILABLE", "false")
+        buildConfigField("boolean", "UPDATER_AVAILABLE", "true")
     }
 
     flavorDimensions += listOf("distribution", "device", "abi")
@@ -248,7 +248,7 @@ android {
             dimension = "distribution"
             isDefault = true
             buildConfigField("String", "DISTRIBUTION", "\"gms\"")
-            buildConfigField("boolean", "UPDATER_AVAILABLE", "false")
+            buildConfigField("boolean", "UPDATER_AVAILABLE", "true")
             buildConfigField("String", "DISCORD_APPLICATION_ID", "\"$discordApplicationId\"")
             buildConfigField("long", "DISCORD_APPLICATION_ID_LONG", "${discordApplicationIdLong}L")
             buildConfigField("String", "DISCORD_REDIRECT_SCHEME", "\"$discordRedirectScheme\"")
@@ -257,7 +257,7 @@ android {
         create("foss") {
             dimension = "distribution"
             buildConfigField("String", "DISTRIBUTION", "\"foss\"")
-            buildConfigField("boolean", "UPDATER_AVAILABLE", "false")
+            buildConfigField("boolean", "UPDATER_AVAILABLE", "true")
             buildConfigField("String", "DISCORD_APPLICATION_ID", "\"$discordApplicationId\"")
             buildConfigField("long", "DISCORD_APPLICATION_ID_LONG", "${discordApplicationIdLong}L")
             buildConfigField("String", "DISCORD_REDIRECT_SCHEME", "\"$discordRedirectScheme\"")
@@ -487,6 +487,7 @@ dependencies {
     implementation(project(":lyrics:betterlyrics"))
     implementation(project(":lyrics:unison"))
     implementation(project(":lyrics:youlyplus"))
+    implementation(project(":musixmatch"))
     implementation(project(":lastfm"))
     implementation(project(":canvas"))
     implementation(project(":shazamkit"))

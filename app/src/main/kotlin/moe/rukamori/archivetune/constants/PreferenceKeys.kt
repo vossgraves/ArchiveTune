@@ -56,10 +56,29 @@ val AodContentPositionKey = stringPreferencesKey("aodContentPosition")
 val AodTextAlignmentKey = stringPreferencesKey("aodTextAlignment")
 val AodControlStyleKey = stringPreferencesKey("aodControlStyle")
 val AodControlSizeKey = floatPreferencesKey("aodControlSize")
+
+/**
+ * Slider style for the AOD progress bar. Reuses the [SliderStyle] enum so the
+ * same five styles (Standard / Wavy / Thick / Circular / Simple) are available
+ * as for the main player. Stored separately from [SliderStyleKey] so users can
+ * pick a different style for AOD without affecting the main player.
+ */
+val AodSliderStyleKey = stringPreferencesKey("aodSliderStyle")
 val AodHorizontalPaddingKey = floatPreferencesKey("aodHorizontalPadding")
 val AodVerticalSpacingKey = floatPreferencesKey("aodVerticalSpacing")
 val AodTitleMaxLinesKey = intPreferencesKey("aodTitleMaxLines")
 val AodAmbientIntensityKey = floatPreferencesKey("aodAmbientIntensity")
+// Show a compact, dimmed lyrics line on the AOD screen while music plays.
+val AodShowLyricsKey = booleanPreferencesKey("aodShowLyrics")
+// When > 0, automatically enter AOD mode after this many seconds of the player sheet being
+// collapsed (i.e. the user is no longer actively interacting with the player). 0 disables.
+val AodAutoTimerSecondsKey = intPreferencesKey("aodAutoTimerSeconds")
+// When true, AOD mode auto-triggers when the screen is about to turn off due to inactivity
+// (driven via the system lock intent). Disabled by default to avoid surprises.
+val AodAutoOnScreenDimKey = booleanPreferencesKey("aodAutoOnScreenDim")
+// Experimental native Musixmatch provider (token.get + macro.subtitles + richsync→TTML).
+// Off by default; toggle surfaces in Lyrics settings under "Experimental".
+val EnableMusixmatchExperimentalKey = booleanPreferencesKey("enableMusixmatchExperimental")
 val SeekExtraSeconds = booleanPreferencesKey("seekExtraSeconds")
 val DisableBlurKey = booleanPreferencesKey("disableBlur")
 val BlurRadiusKey = floatPreferencesKey("blurRadius")
@@ -146,6 +165,14 @@ enum class PlaylistSuggestionSource {
 val AppLanguageKey = stringPreferencesKey("appLanguage")
 val ContentLanguageKey = stringPreferencesKey("contentLanguage")
 val ContentCountryKey = stringPreferencesKey("contentCountry")
+// Region spoofer for YouTube Music — overrides `YouTube.locale.gl` independently of
+// `ContentCountryKey`. Set from Internet Settings so users can keep their content
+// language/culture but pretend to YouTube Music that they are connecting from a
+// different country (e.g. to play region-locked songs). Applied AFTER
+// `ContentCountryKey` in `App.initializeDeferredAsync()` so the more specific
+// Internet/region setting wins. `SYSTEM_DEFAULT` means "fall back to device locale
+// or `ContentCountryKey`".
+val YouTubeMusicRegionKey = stringPreferencesKey("youtubeMusicRegion")
 val PlaylistSuggestionSourceKey = stringPreferencesKey("playlistSuggestionSource")
 val EnableKugouKey = booleanPreferencesKey("enableKugou")
 val EnableLrcLibKey = booleanPreferencesKey("enableLrclib")
@@ -611,6 +638,7 @@ enum class PreferredLyricsProvider {
     PAXSENIX_SPOTIFY,
     PAXSENIX_MUSIXMATCH,
     PAXSENIX_YOUTUBE,
+    MUSIXMATCH_EXPERIMENTAL,
 }
 
 val DefaultLyricsProviderOrder =
@@ -628,6 +656,7 @@ val DefaultLyricsProviderOrder =
         PreferredLyricsProvider.PAXSENIX_SPOTIFY,
         PreferredLyricsProvider.PAXSENIX_MUSIXMATCH,
         PreferredLyricsProvider.PAXSENIX_YOUTUBE,
+        PreferredLyricsProvider.MUSIXMATCH_EXPERIMENTAL,
     )
 
 fun deserializeLyricsProviderOrder(orderStr: String?): List<PreferredLyricsProvider> {
@@ -690,6 +719,7 @@ enum class LyricsBackgroundStyle {
     DEFAULT,
     FOLLOW_THEME,
     COLORING,
+    MOVING_BLUR,
     CUSTOM;
 
     fun resolveFor(playerBackgroundStyle: PlayerBackgroundStyle): LyricsBackgroundStyle =
@@ -977,6 +1007,27 @@ val AudioSearchSourceKey = stringPreferencesKey("audioSearchSource")
 
 // When logged in, try the user's own Tidal account (official API) before the public instances.
 val TidalAccountFirstKey = booleanPreferencesKey("tidalAccountFirst")
+
+// ---------------------------------------------------------------------------
+// Deezer source
+// ---------------------------------------------------------------------------
+// Unlike Tidal/Qobuz there is no self-hosted proxy tier: Deezer streams come from accounts
+// authenticated with an `arl` cookie, supplied by the pool or by a manual sign-in. Defaults OFF
+// because the source is inert without accounts.
+val DeezerEnabledKey = booleanPreferencesKey("deezerEnabled")
+
+// A manually captured `arl` cookie. Kept separate from the pool cache: the pool is wiped and
+// rewritten on every refresh and is gated behind PoolAccountManager.isEnabled, so storing a
+// user's own credential there would lose it on the next sync.
+val DeezerArlKey = stringPreferencesKey("deezerArl")
+
+// Display label for the manually signed-in account, so the settings row can say who is signed in
+// without keeping the ARL itself anywhere near the UI.
+val DeezerAccountNameKey = stringPreferencesKey("deezerAccountName")
+
+// Whether the manual account reported a lossless-capable plan. Only orders resolution attempts;
+// the provider still verifies the real tier per track.
+val DeezerAccountPremiumKey = booleanPreferencesKey("deezerAccountPremium")
 
 val WebClientPoTokenEnabledKey = booleanPreferencesKey("webClientPoTokenEnabled")
 val PoTokenGvsKey = stringPreferencesKey("poTokenGvs")

@@ -480,6 +480,13 @@
     <string name="aod_customize_dp_value">%1$d dp</string>
     <string name="about_respecter">존경 및 명예 기여자</string>
     <string name="aod_customize_layout">레이아웃</string>
+    <string name="aod_customize_progress">진행</string>
+    <string name="aod_customize_slider_style">슬라이더 스타일</string>
+    <string name="aod_slider_style_standard">표준</string>
+    <string name="aod_slider_style_wavy">물결</string>
+    <string name="aod_slider_style_thick">두꺼운</string>
+    <string name="aod_slider_style_circular">원형</string>
+    <string name="aod_slider_style_simple">단순</string>
     <string name="playlist_sync_failed">재생목록 동기화 실패: %1$s</string>
     <string name="storage_location_sheet_title">저장 위치</string>
     <string name="music_recognition_history_empty_title">인식된 곡이 아직 없습니다.</string>
@@ -563,5 +570,5 @@
     <string name="about_license">오픈소스 라이선스</string>
     <string name="about_license_unknown">알 수 없는 라이선스</string>
     <string name="about_position_developers">개발자</string>
-    <string name="about_position_yuki">공동 개발자</string>
+    <string name="about_position_yuki">dummy reze | admin</string>
 </resources>

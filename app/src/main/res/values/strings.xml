@@ -559,6 +559,9 @@
     <string name="system_default">System default</string>
     <string name="enable_proxy">Enable proxy</string>
     <string name="internet">Internet</string>
+    <string name="youtube_music_region">YouTube Music region</string>
+    <string name="youtube_music_region_desc">Spoofs the country YouTube Music thinks you\'re connecting from. The home feed, recommendations, search, new releases, and radio queues will all reflect the chosen country. Also bypasses geo-restrictions on specific songs. System default falls back to your device locale.</string>
+    <string name="youtube_music_region_restarting">Applying new region… restarting app</string>
     <string name="internet_warning_title">Security &amp; Usage Warning</string>
     <string name="internet_warning_doh">DNS over HTTPS only works if your country blocks YouTube. If YouTube actively blocks your region, consider using a Proxy or VPN.</string>
     <string name="internet_warning_proxy">Please only use Proxies that you are sure are safe. Free Proxies are convenient but not always safe, so be careful. You have been warned, and we are not responsible for your security.</string>
@@ -592,6 +595,10 @@
     <string name="enable_simpmusic_lyrics">Enable SimpMusic lyrics</string>
     <string name="enable_megalobiz_lyrics">Enable Megalobiz lyrics</string>
     <string name="enable_paxsenix_lyrics">Enable Paxsenix lyrics</string>
+    <string name="enable_musixmatch_experimental">Musixmatch (experimental)</string>
+    <string name="enable_musixmatch_experimental_desc">Native Musixmatch provider using token.get + richsync. Fetches word-synced TTML when available, falls back to line-synced LRC and plain lyrics. No hardcoded token; runtime-fetched only.</string>
+    <string name="musixmatch_experimental_section">Experimental</string>
+    <string name="musixmatch_experimental_warning">This provider uses Musixmatch\'s internal app endpoint. It may break without notice if Musixmatch changes their API, requires the user token, or rate-limits requests. Disable and re-enable to refresh the token if lyrics stop returning.</string>
     <string name="player_and_audio">Player and audio</string>
     <string name="audio_quality">Audio quality</string>
     <string name="audio_quality_auto">Auto</string>
@@ -833,6 +840,11 @@
     <string name="source_qobuz">Qobuz</string>
     <string name="qobuz_integration">Qobuz</string>
     <string name="qobuz_integration_description">Manage Qobuz proxy instances and lossless quality</string>
+    <string name="deezer_integration">Deezer</string>
+    <string name="deezer_integration_description">Log in with Deezer Premium to stream lossless audio</string>
+    <string name="deezer_login">Sign in to Deezer</string>
+    <string name="deezer_login_description">Use your own Deezer account instead of the shared pool</string>
+    <string name="deezer_login_success">Signed in to Deezer as %1$s</string>
     <string name="qobuz_enable">Enable Qobuz source</string>
     <string name="qobuz_enable_description">Route playback through your Qobuz proxy instances when a matching track is found</string>
     <string name="qobuz_audio_quality">Audio quality</string>
@@ -1350,8 +1362,8 @@
     <string name="scheduled_backup_directory_saved">Backup directory saved</string>
     <string name="scheduled_backup_load_failed">Scheduled backup settings could not be loaded</string>
     <string name="scheduled_backup_update_failed">Scheduled backup settings could not be saved</string>
-    <string name="google_drive_sync">Google Drive sync</string>
-    <string name="google_drive_sync_description">Automatically upload backups to your Google Drive.</string>
+    <string name="google_drive_sync">Cloud storage sync</string>
+    <string name="google_drive_sync_description">Automatically upload backups to your cloud storage provider.</string>
     <string name="google_drive_sync_enabled">Enable Google Drive sync</string>
     <string name="google_drive_sync_enabled_description_on">Auto-sync to Google Drive is active.</string>
     <string name="google_drive_sync_enabled_description_off">Auto-sync to Google Drive is paused.</string>
@@ -1411,6 +1423,7 @@
     <string name="google_drive_sync_provider_local">Local storage</string>
     <string name="google_drive_sync_provider_unknown">Cloud folder</string>
     <string name="google_drive_sync_provider_suffix_local">(local — not cloud)</string>
+    <string name="google_drive_sync_cloud_app_disclaimer">A cloud storage app (Google Drive, Dropbox, Nextcloud, or OneDrive) must be installed on this phone for backups to reach the cloud. Without one, the system folder picker only shows local storage and backups stay on this device.</string>
     <string name="gatekeeper_connection_blocked">ArchiveTune could not verify network access. Connections are blocked.</string>
     <string name="language_packs">Language packs</string>
     <string name="language_pack_english">English</string>

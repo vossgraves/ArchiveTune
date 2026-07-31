@@ -7,6 +7,8 @@
 
 package moe.rukamori.archivetune.ui.screens.settings
 
+import android.content.Intent
+import android.widget.Toast
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -61,7 +63,9 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.*
@@ -74,7 +78,9 @@ import moe.rukamori.archivetune.utils.rememberPreference
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.net.Proxy
+import java.util.Locale
 import java.util.concurrent.TimeUnit
+import kotlin.system.exitProcess
 
 @Composable
 fun InternetWarningBox(modifier: Modifier = Modifier) {
@@ -161,6 +167,10 @@ fun InternetSettings(navController: NavController, scrollTo: String? = null) {
     var refreshingIpRotation by remember { mutableStateOf(false) }
     val activeProxyCount by YouTube.ipRotationActiveCount.collectAsStateWithLifecycle()
 
+    val (ytMusicRegion, onYtMusicRegionChange) =
+        rememberPreference(key = YouTubeMusicRegionKey, defaultValue = SYSTEM_DEFAULT)
+    val ytRegionValues = remember { listOf(SYSTEM_DEFAULT) + CountryCodeToName.keys.toList() }
+
     var testingProxy by remember { mutableStateOf(false) }
     var testResult by remember { mutableStateOf<String?>(null) }
 
@@ -206,6 +216,110 @@ fun InternetSettings(navController: NavController, scrollTo: String? = null) {
                 .padding(bottom = SettingsDimensions.ScreenBottomPadding),
         ) {
             InternetWarningBox()
+
+            PreferenceGroup(
+                modifier = positions.modifierFor("yt_music_region"),
+                title = stringResource(R.string.youtube_music_region),
+            ) {
+                item {
+                    ListPreference(
+                        title = { Text(stringResource(R.string.youtube_music_region)) },
+                        description = stringResource(R.string.youtube_music_region_desc),
+                        icon = { Icon(painterResource(R.drawable.location_on), null) },
+                        selectedValue = ytMusicRegion,
+                        values = ytRegionValues,
+                        valueText = { code ->
+                            if (code == SYSTEM_DEFAULT) {
+                                stringResource(R.string.system_default)
+                            } else {
+                                CountryCodeToName.getOrElse(code) { code }
+                            }
+                        },
+                        onValueSelected = { newValue ->
+                            // Apply immediately — `gl` is in the JSON body of every YT Music
+                            // request (browse/search/player/next/suggestions/queue), so the
+                            // next call will use the new region. `SYSTEM_DEFAULT` falls back
+                            // to the device locale (or, if that's not in CountryCodeToName,
+                            // to "US"), matching the App.kt startup logic.
+                            //
+                            // We also clear visitorData: that token is minted by YouTube with
+                            // an implicit region baked in (derived from the IP/locale at the
+                            // time of the sw.js_data scrape). Without rotation, YouTube can
+                            // keep serving content pinned to the *old* region for personalized
+                            // endpoints like FEmusic_home, even though context.client.gl says
+                            // otherwise. Setting it to null forces the next request to re-fetch
+                            // a fresh, region-pinned token.
+                            //
+                            // The regionSpooferActive flag forces region-sensitive endpoints
+                            // (home, search, charts, trending, new releases, moods & genres,
+                            // explore) to go ANONYMOUS — no cookie, no dataSyncId, no
+                            // visitorData in the body or X-Goog-Visitor-Id header. Without
+                            // this, a logged-in user's account region overrides `gl` and
+                            // YouTube keeps serving content from the account's home country,
+                            // defeating the spoofer. Login-required endpoints (library,
+                            // playlists, history) are unaffected and keep using the session.
+                            //
+                            // The locale assignment emits YouTube.localeChanges, which
+                            // HomeViewModel collects to trigger an immediate home-feed refresh
+                            // (no manual pull-to-refresh required).
+                            //
+                            // === App restart ===
+                            // The user explicitly requested that changing the region
+                            // automatically restarts the app. The reason: even though the
+                            // in-process YouTube state is updated synchronously above, a
+                            // bunch of long-lived caches and view-models (HomeViewModel's
+                            // queued home-feed refresh, BrowseViewModel's mood/genre chips,
+                            // SearchDiscoveryViewModel's suggestion cache, the Coil image
+                            // cache for region-pinned thumbnails, the queued
+                            // `YouTube.localeChanges` collection, etc.) hold snapshots from
+                            // the *old* region and only refresh on the next manual pull.
+                            // Restarting the process guarantees every region-sensitive
+                            // subsystem comes back cold against the new region — which is
+                            // exactly what users expect when they pick "Japan" in the
+                            // region picker: a Japan home feed, Japan search, Japan recs,
+                            // all at once, with no stale US/EU content lingering in any
+                            // tab.
+                            val deviceLocale = Locale.getDefault()
+                            val resolvedGl =
+                                newValue.takeIf { it != SYSTEM_DEFAULT }
+                                    ?: deviceLocale.country.takeIf { it in CountryCodeToName }
+                                    ?: "US"
+                            val spooferActive = newValue != SYSTEM_DEFAULT
+                            YouTube.regionSpooferActive = spooferActive
+                            YouTube.visitorData = null
+                            YouTube.locale = YouTube.locale.copy(gl = resolvedGl)
+                            onYtMusicRegionChange(newValue)
+
+                            // Schedule a process restart on a background coroutine so the
+                            // preference write (above) and the Toast land before we kill
+                            // the process. 400ms is enough for DataStore to flush and for
+                            // the Toast to animate in.
+                            scope.launch {
+                                withContext(Dispatchers.Main) {
+                                    Toast.makeText(
+                                        context,
+                                        context.getString(R.string.youtube_music_region_restarting),
+                                        Toast.LENGTH_SHORT,
+                                    ).show()
+                                }
+                                delay(400)
+                                withContext(Dispatchers.IO) {
+                                    val launchIntent =
+                                        context.packageManager.getLaunchIntentForPackage(context.packageName)
+                                    if (launchIntent != null) {
+                                        launchIntent.addFlags(
+                                            Intent.FLAG_ACTIVITY_NEW_TASK or
+                                                Intent.FLAG_ACTIVITY_CLEAR_TASK,
+                                        )
+                                        context.startActivity(launchIntent)
+                                    }
+                                    exitProcess(0)
+                                }
+                            }
+                        },
+                    )
+                }
+            }
 
             PreferenceGroup(
                 modifier = positions.modifierFor("enable_tor"),

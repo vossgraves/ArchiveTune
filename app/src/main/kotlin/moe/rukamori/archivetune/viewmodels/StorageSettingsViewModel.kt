@@ -27,6 +27,8 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.db.MusicDatabase
+import moe.rukamori.archivetune.lyrics.LyricsHelper
 import moe.rukamori.archivetune.storage.ClearStorageCacheUseCase
 import moe.rukamori.archivetune.storage.ObserveStorageFoldersUseCase
 import moe.rukamori.archivetune.storage.SetStorageFolderUseCase
@@ -140,6 +142,12 @@ class StorageSettingsViewModel
         observeStorageFolders: ObserveStorageFoldersUseCase,
         private val setStorageFolder: SetStorageFolderUseCase,
         private val clearStorageCache: ClearStorageCacheUseCase,
+        // Lyrics are not stored on disk under cacheDir/ (unlike songs/images/canvas);
+        // they live in an in-memory LruCache (LyricsHelper) + the Room `lyrics` table.
+        // We mirror ContentSettingsViewModel.clearLyricsCache() so the Storage screen
+        // can offer the same one-tap "Clear lyrics cache" action the Lyrics screen has.
+        private val lyricsHelper: LyricsHelper,
+        private val database: MusicDatabase,
     ) : ViewModel() {
         private val _effects = MutableSharedFlow<StorageSettingsEffect>(extraBufferCapacity = 1)
         val effects = _effects.asSharedFlow()
@@ -236,6 +244,18 @@ class StorageSettingsViewModel
 
         fun clearCanvasCache(showFeedback: Boolean = true) {
             clearCache(StorageCacheKind.CANVAS, showFeedback)
+        }
+
+        /**
+         * Evict the in-memory lyrics LruCache (LyricsHelper.cache + singleLyricsCache)
+         * and wipe the persistent Room `lyrics` table. No progress dialog — this is
+         * a fast in-process operation, unlike the disk-based cache clears above.
+         */
+        fun clearLyricsCache() {
+            viewModelScope.launch(Dispatchers.IO) {
+                lyricsHelper.clearCache()
+                database.query { clearAllLyrics() }
+            }
         }
 
         private fun selectStorageLocation(optionId: String) {

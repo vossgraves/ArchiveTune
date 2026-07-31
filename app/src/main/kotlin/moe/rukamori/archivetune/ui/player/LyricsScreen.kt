@@ -10,16 +10,24 @@
 package moe.rukamori.archivetune.ui.player
 
 import android.content.res.Configuration
+import android.graphics.Bitmap
+import android.os.Build
 import android.view.HapticFeedbackConstants
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -62,6 +70,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -133,11 +142,11 @@ import moe.rukamori.archivetune.ui.component.LyricsEnhanced
 import moe.rukamori.archivetune.ui.component.LyricsV2
 import moe.rukamori.archivetune.ui.component.PlayerSliderTrack
 import moe.rukamori.archivetune.ui.menu.LyricsMenu
-import moe.rukamori.archivetune.ui.utils.rememberPreBlurredBitmap
 import moe.rukamori.archivetune.ui.theme.PlayerColorExtractor
 import moe.rukamori.archivetune.ui.theme.PlayerPaletteCache
 import moe.rukamori.archivetune.playback.artwork.PlayerPaletteCacheKey
 import moe.rukamori.archivetune.playback.artwork.guessArtworkProvider
+import moe.rukamori.archivetune.utils.ImageBlurUtils
 import moe.rukamori.archivetune.utils.makeTimeString
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
@@ -333,7 +342,10 @@ fun LyricsScreen(
         // background thumbnail covers the unextracted state) but noticeably
         // smoother on devices where the open animation was laggy.
         kotlinx.coroutines.delay(120)
-        if (lyricsBackground != LyricsBackgroundStyle.DEFAULT && lyricsBackground != LyricsBackgroundStyle.COLORING) {
+        if (lyricsBackground != LyricsBackgroundStyle.DEFAULT &&
+            lyricsBackground != LyricsBackgroundStyle.COLORING &&
+            lyricsBackground != LyricsBackgroundStyle.MOVING_BLUR
+        ) {
             gradientColors = AppleMusicFallbackGradient
             hasValidPalette = false
             return@LaunchedEffect
@@ -679,6 +691,13 @@ private fun LyricsScreenBackground(
                 )
             }
 
+            LyricsBackgroundStyle.MOVING_BLUR -> {
+                MovingBlurBackground(
+                    mediaMetadata = mediaMetadata,
+                    gradientColors = gradientColors,
+                )
+            }
+
             LyricsBackgroundStyle.FOLLOW_THEME -> Unit
 
             LyricsBackgroundStyle.COLORING,
@@ -702,6 +721,183 @@ private fun LyricsScreenBackground(
                 )
             }
         }
+    }
+}
+
+/**
+ * "Moving Blur" lyrics background — replicates Apple Music's signature animated
+ * blur effect. The album art is rendered at ~1.4× the screen size, heavily
+ * blurred, and slowly drifts along a Lissajous-like path (two sinusoidal
+ * offsets with coprime periods so the drift doesn't loop too obviously).
+ *
+ * On top of the drifting art we lay:
+ *   - a vertical gradient built from the song's Palette (same gradient source
+ *     as [AppleMusicBackground], so palette-extraction logic is reused)
+ *   - a flat black scrim to keep lyric contrast stable regardless of art brightness
+ *   - a subtle bottom vignette so the lower controls stay readable
+ *
+ * Implementation notes:
+ *   - The drift uses [rememberInfiniteTransition] + [animateFloat]s with
+ *     `RepeatMode.Reverse` so the artwork eases back and forth instead of
+ *     jumping when the loop wraps. Periods of 23s and 31s are coprime, so the
+ *     combined path repeats every ~713s — long enough that users won't notice.
+ *   - We render the AsyncImage at fixed `IntSize`-independent offsets via
+ *     [Modifier.offset] (px units) rather than [Modifier.padding] so layout
+ *     measure passes aren't invalidated every frame.
+ *   - `Modifier.blur(64.dp)` is the main visual cost — comparable to the
+ *     existing `AppleMusicBackground` (46.dp). Hardware-accelerated on
+ *     Android 12+, gated to S+ in AppearanceSettings.
+ *   - We scale the image to 1.4× of the screen's largest dimension before
+ *     blurring so the blurred edges never reveal transparent pixels as the
+ *     art drifts.
+ */
+@Composable
+private fun MovingBlurBackground(
+    mediaMetadata: MediaMetadata,
+    gradientColors: List<Color>,
+    modifier: Modifier = Modifier,
+) {
+    val colors = if (gradientColors.isNotEmpty()) gradientColors else AppleMusicFallbackGradient
+    // Reduced scrim alphas — the previous 0.78/0.66/0.86 stack left only ~5% of
+    // the artwork visible, so the drift was imperceptible. These still keep
+    // lyric contrast stable but actually let the blurred artwork read through.
+    val backgroundBrush =
+        remember(colors) {
+            Brush.verticalGradient(
+                listOf(
+                    colors.getOrElse(0) { AppleMusicFallbackGradient[0] }.copy(alpha = 0.42f),
+                    colors.getOrElse(1) { AppleMusicFallbackGradient[1] }.copy(alpha = 0.34f),
+                    colors.getOrElse(2) { AppleMusicFallbackGradient[2] }.copy(alpha = 0.54f),
+                ),
+            )
+        }
+    val bottomScrim =
+        remember {
+            Brush.verticalGradient(
+                listOf(
+                    Color.Transparent,
+                    Color.Black.copy(alpha = 0.32f),
+                ),
+            )
+        }
+
+    // Wider drift range + FastOutSlowInEasing so motion is actually perceptible
+    // under a 64-dp blur kernel. The previous ±32dp / ±28dp range with linear
+    // easing produced sub-perceptual motion that users reported as "not working".
+    // Periods of 19s and 27s are coprime so the combined path rarely repeats.
+    val transition = rememberInfiniteTransition(label = "moving-blur-drift")
+    val driftX by transition.animateFloat(
+        initialValue = -120f,
+        targetValue = 120f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 19_000, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "moving-blur-x",
+    )
+    val driftY by transition.animateFloat(
+        initialValue = -90f,
+        targetValue = 90f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 27_000, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "moving-blur-y",
+    )
+
+    val context = LocalContext.current
+    val imageLoader = context.imageLoader
+    val isPreS = Build.VERSION.SDK_INT < Build.VERSION_CODES.S
+
+    Box(
+        modifier =
+            modifier
+                .fillMaxSize()
+                .background(AppleMusicFallbackGradient.last()),
+    ) {
+        AnimatedContent(
+            targetState = mediaMetadata.thumbnailUrl,
+            transitionSpec = { fadeIn(tween(700)) togetherWith fadeOut(tween(700)) },
+            label = "lyrics-moving-blur-bg",
+        ) { thumbnailUrl ->
+            if (thumbnailUrl != null) {
+                if (isPreS) {
+                    // Pre-S fallback (PR #924 approach): Modifier.blur is a silent
+                    // no-op below API 31, so we pre-blur the bitmap on a
+                    // background thread via ImageBlurUtils.blur and render it
+                    // directly. The drift is applied via Modifier.offset so the
+                    // animation runs every frame without re-blurring.
+                    val blurredBitmap by produceState<Bitmap?>(null, thumbnailUrl) {
+                        value = withContext(Dispatchers.IO) {
+                            try {
+                                val request = ImageRequest.Builder(context)
+                                    .data(thumbnailUrl)
+                                    .allowHardware(false)
+                                    .memoryCacheKey("$thumbnailUrl#movingblur")
+                                    .diskCacheKey("$thumbnailUrl#movingblur")
+                                    .size(Size(720, 720))
+                                    .build()
+                                val result = imageLoader.execute(request)
+                                if (result is SuccessResult) {
+                                    val bitmap = result.image.toBitmap()
+                                        .copy(Bitmap.Config.ARGB_8888, true)
+                                    val density = context.resources.displayMetrics.density
+                                    ImageBlurUtils.blur(bitmap, 64f * density)
+                                } else null
+                            } catch (_: Exception) {
+                                null
+                            }
+                        }
+                    }
+                    blurredBitmap?.let { bm ->
+                        Image(
+                            bitmap = bm.asImageBitmap(),
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .graphicsLayer {
+                                    scaleX = 1.4f
+                                    scaleY = 1.4f
+                                }
+                                .offset(x = driftX.dp, y = driftY.dp)
+                                .alpha(0.86f),
+                        )
+                    }
+                } else {
+                    // S+ path: AsyncImage + Modifier.blur + drift. Single
+                    // graphicsLayer block so blur operates on the already-scaled
+                    // content (avoids faded-edge bleed from the inner offset
+                    // revealing transparent pixels).
+                    AsyncImage(
+                        model = thumbnailUrl,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer {
+                                scaleX = 1.4f
+                                scaleY = 1.4f
+                            }
+                            .blur(64.dp)
+                            .offset(x = driftX.dp, y = driftY.dp)
+                            .alpha(0.86f),
+                    )
+                }
+            }
+        }
+        // Tonal gradient — gives the background depth and ties it to the palette.
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(backgroundBrush),
+        )
+        // Subtle bottom vignette for control readability.
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(bottomScrim),
+        )
     }
 }
 
@@ -738,26 +934,53 @@ private fun AppleMusicBackground(
                 .fillMaxSize()
                 .background(AppleMusicFallbackGradient.last()),
     ) {
-        // Pre-blurred bitmap for the lyrics background. On Android 12+ this is null and we fall
-        // through to AsyncImage + Modifier.blur. On older Android it returns a CPU-blurred bitmap
-        // that we render directly, because Modifier.blur is a silent no-op below API 31.
-        val preBlurredBitmap = rememberPreBlurredBitmap(imageUrl = mediaMetadata.thumbnailUrl, radiusDp = 46.dp)
+        val context = LocalContext.current
+        val imageLoader = context.imageLoader
+        val isPreS = Build.VERSION.SDK_INT < Build.VERSION_CODES.S
         AnimatedContent(
             targetState = mediaMetadata.thumbnailUrl,
             transitionSpec = { fadeIn(tween(700)) togetherWith fadeOut(tween(700)) },
             label = "lyrics-apple-background",
         ) { thumbnailUrl ->
             if (thumbnailUrl != null) {
-                if (preBlurredBitmap != null) {
-                    androidx.compose.foundation.Image(
-                        bitmap = preBlurredBitmap.asImageBitmap(),
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier =
-                            Modifier
-                                .fillMaxSize()
-                                .alpha(0.62f),
-                    )
+                if (isPreS) {
+                    // Pre-S fallback (PR #924 approach): inline produceState that
+                    // pre-blurs the bitmap on a background thread via
+                    // ImageBlurUtils.blur and renders it directly. Modifier.blur
+                    // is a silent no-op below API 31.
+                    val blurredBitmap by produceState<Bitmap?>(null, thumbnailUrl) {
+                        value = withContext(Dispatchers.IO) {
+                            try {
+                                val request = ImageRequest.Builder(context)
+                                    .data(thumbnailUrl)
+                                    .allowHardware(false)
+                                    .memoryCacheKey("$thumbnailUrl#lyricsbg")
+                                    .diskCacheKey("$thumbnailUrl#lyricsbg")
+                                    .size(Size(720, 720))
+                                    .build()
+                                val result = imageLoader.execute(request)
+                                if (result is SuccessResult) {
+                                    val bitmap = result.image.toBitmap()
+                                        .copy(Bitmap.Config.ARGB_8888, true)
+                                    val density = context.resources.displayMetrics.density
+                                    ImageBlurUtils.blur(bitmap, 46f * density)
+                                } else null
+                            } catch (_: Exception) {
+                                null
+                            }
+                        }
+                    }
+                    blurredBitmap?.let { bm ->
+                        Image(
+                            bitmap = bm.asImageBitmap(),
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier =
+                                Modifier
+                                    .fillMaxSize()
+                                    .alpha(0.62f),
+                        )
+                    }
                 } else {
                     AsyncImage(
                         model = thumbnailUrl,

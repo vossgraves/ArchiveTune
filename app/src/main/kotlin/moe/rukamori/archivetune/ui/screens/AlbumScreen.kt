@@ -65,8 +65,11 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.dp
@@ -243,10 +246,26 @@ fun AlbumScreen(
                         remember(albumWithSongs.artists) {
                             buildAnnotatedString {
                                 albumWithSongs.artists.fastForEachIndexed { index, artist ->
+                                    // Suppress the default link underline (Compose UI 1.7+
+                                    // styles Clickable links with an underline by default).
+                                    // The artist name should look like plain text — tap still
+                                    // navigates to the artist page via the
+                                    // linkInteractionListener below.
+                                    val linkStyles =
+                                        TextLinkStyles(
+                                            style = SpanStyle(textDecoration = TextDecoration.None),
+                                            focusedStyle = SpanStyle(textDecoration = TextDecoration.None),
+                                            hoveredStyle = SpanStyle(textDecoration = TextDecoration.None),
+                                            pressedStyle = SpanStyle(textDecoration = TextDecoration.None),
+                                        )
                                     withLink(
-                                        LinkAnnotation.Clickable(artist.id) {
-                                            navController.navigate("artist/${artist.id}")
-                                        },
+                                        LinkAnnotation.Clickable(
+                                            tag = artist.id,
+                                            styles = linkStyles,
+                                            linkInteractionListener = {
+                                                navController.navigate("artist/${artist.id}")
+                                            },
+                                        ),
                                     ) {
                                         append(artist.name)
                                     }
@@ -286,9 +305,18 @@ fun AlbumScreen(
                         // the same way the song player's thumbnail does. Only
                         // mounted when the canvas feature is enabled and the
                         // album actually has a canvas (see AlbumViewModel).
+                        //
+                        // `canvasIsPlaying = true` (not the main player's
+                        // `isPlaying`) because on the album page the user
+                        // expects the animated cover to loop the moment they
+                        // open the album, regardless of whether a song is
+                        // currently playing — matching Apple Music. The
+                        // canvas ExoPlayer is a separate audio-disabled
+                        // instance (see CanvasArtworkPlayer), so playing it
+                        // has no effect on the main playback queue.
                         canvasPrimaryUrl = canvasArtwork?.animated ?: canvasArtwork?.videoUrl,
                         canvasFallbackUrl = canvasArtwork?.videoUrl,
-                        canvasIsPlaying = isPlaying,
+                        canvasIsPlaying = true,
                         onShuffle =
                             if (albumWithSongs.songs.isEmpty()) {
                                 null

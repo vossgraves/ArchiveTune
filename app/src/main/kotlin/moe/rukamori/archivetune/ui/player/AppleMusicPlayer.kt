@@ -14,12 +14,16 @@
 package moe.rukamori.archivetune.ui.player
 
 import android.content.Intent
+import android.graphics.Bitmap
 import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -35,16 +39,19 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ripple
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -61,6 +68,10 @@ import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.changedToUp
+import kotlin.math.abs
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -73,7 +84,17 @@ import androidx.media3.common.Player.STATE_ENDED
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
+import coil3.imageLoader
+import coil3.request.ImageRequest
+import coil3.request.SuccessResult
+import coil3.request.allowHardware
+import coil3.size.Size as CoilSize
+import coil3.toBitmap
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.db.entities.FormatEntity
+import moe.rukamori.archivetune.db.entities.codecLabel
 import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.playback.PlayerConnection
@@ -84,7 +105,7 @@ import moe.rukamori.archivetune.ui.menu.PlayerMenu
 import moe.rukamori.archivetune.ui.menu.rememberCastPlayerMenuAction
 import moe.rukamori.archivetune.ui.utils.ShowMediaInfo
 import moe.rukamori.archivetune.ui.utils.highRes
-import moe.rukamori.archivetune.ui.utils.rememberPreBlurredBitmap
+import moe.rukamori.archivetune.utils.ImageBlurUtils
 import moe.rukamori.archivetune.utils.makeTimeString
 import moe.rukamori.archivetune.utils.rememberLowDataModeActive
 
@@ -114,6 +135,12 @@ fun AppleMusicPlayerContent(
     onVolumeChange: (Float) -> Unit,
     canvasPrimaryUrl: String?,
     canvasFallbackUrl: String?,
+    // Current stream format used to render the Lossless / AAC / OPUS quality
+    // chip between the seek-bar timestamps (mirrors the Immersive V8 player's
+    // V8QualityChip). Null when no format has been resolved yet (stream still
+    // loading, or local media without a format row) — in that case the chip
+    // is simply not rendered.
+    currentFormat: FormatEntity?,
     contentBottomPadding: Dp,
     onQueueClick: () -> Unit,
     onLyricsClick: () -> Unit,
@@ -175,6 +202,25 @@ fun AppleMusicPlayerContent(
     BoxWithConstraints(modifier = modifier) {
         val sharpArtworkHeight = if (landscape) maxHeight else maxHeight * 0.55f
 
+        // 0. Opaque black floor. On Android < 12 the pre-blur coroutine can take a beat to
+        //    resolve (and historically crashed on hardware bitmaps — see
+        //    rememberPreBlurredBitmap — now inlined as produceState per PR #924).
+        //    During that window the blurred-bitmap branch is
+        //    skipped and the sharp-artwork AsyncImage is still loading, leaving the
+        //    BoxWithConstraints with no opaque layer at all — so the screen behind the
+        //    player bottom sheet (e.g. the Appearance settings page text: "Lyrics
+        //    background style", "Mini player background style") bleeds through the
+        //    translucent vertical-gradient scrim and shows up as ghosted text behind the
+        //    playback controls. Painting Color.Black here guarantees the sheet is always
+        //    opaque, even before any bitmap has decoded, so the only thing the user ever
+        //    sees behind the controls is the artwork (sharp or blurred) on black.
+        Box(
+            modifier =
+                Modifier
+                    .matchParentSize()
+                    .background(Color.Black),
+        )
+
         // 1. Blurred artwork fills the whole player as the base layer.
         //
         //    On Android 12+ (API 31+) we use Compose's Modifier.blur — it's backed by the
@@ -182,22 +228,43 @@ fun AppleMusicPlayerContent(
         //
         //    On older Android (API < 31) Modifier.blur is a silent no-op: the artwork would
         //    render sharp, killing the Apple-Music-blurred-sheet aesthetic. As a fallback we
-        //    pre-blur the artwork bitmap on a background thread via rememberPreBlurredBitmap
-        //    (which uses ImageBlurUtils.stackBlur under the hood) and render that bitmap
-        //    directly. While the blur is in-flight (first frame after artwork change) we
-        //    render a slightly darker version of the sharp artwork + a heavier scrim so the
-        //    transition into the blurred version isn't jarring.
+        //    pre-blur the artwork bitmap on a background thread via ImageBlurUtils.blur
+        //    (PR #924 approach, inlined) and render that bitmap directly. While the blur is
+        //    in-flight (first frame after artwork change) we render a slightly darker version
+        //    of the sharp artwork + a heavier scrim so the transition isn't jarring.
         val isPreS = Build.VERSION.SDK_INT < Build.VERSION_CODES.S
-        val preBlurredBitmap =
-            if (isPreS) {
-                rememberPreBlurredBitmap(imageUrl = artworkUrl, radiusDp = 72.dp, maxDimensionPx = 720)
-            } else {
-                null
+        val context = LocalContext.current
+        val imageLoader = context.imageLoader
+        val preBlurredBitmap by produceState<Bitmap?>(null, artworkUrl) {
+            if (!isPreS || artworkUrl.isNullOrBlank()) {
+                value = null
+                return@produceState
             }
+            value = withContext(Dispatchers.IO) {
+                try {
+                    val request = ImageRequest.Builder(context)
+                        .data(artworkUrl)
+                        .allowHardware(false)
+                        .memoryCacheKey("$artworkUrl#amplayer")
+                        .diskCacheKey("$artworkUrl#amplayer")
+                        .size(CoilSize(720, 720))
+                        .build()
+                    val result = imageLoader.execute(request)
+                    if (result is SuccessResult) {
+                        val bitmap = result.image.toBitmap()
+                            .copy(Bitmap.Config.ARGB_8888, true)
+                        val density = context.resources.displayMetrics.density
+                        ImageBlurUtils.blur(bitmap, 72f * density)
+                    } else null
+                } catch (_: Exception) {
+                    null
+                }
+            }
+        }
 
         if (isPreS && preBlurredBitmap != null) {
-            androidx.compose.foundation.Image(
-                bitmap = preBlurredBitmap.asImageBitmap(),
+            Image(
+                bitmap = preBlurredBitmap!!.asImageBitmap(),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier =
@@ -285,6 +352,10 @@ fun AppleMusicPlayerContent(
                     onLyricsClick = onLyricsClick,
                     onSliderValueChange = onSliderValueChange,
                     onSliderValueChangeFinished = onSliderValueChangeFinished,
+                    currentFormat = currentFormat,
+                    onQualityChipClick = {
+                        bottomSheetPageState.show { ShowMediaInfo(mediaMetadata.id) }
+                    },
                     modifier =
                         Modifier
                             .weight(1f)
@@ -330,6 +401,10 @@ fun AppleMusicPlayerContent(
                 onLyricsClick = onLyricsClick,
                 onSliderValueChange = onSliderValueChange,
                 onSliderValueChangeFinished = onSliderValueChangeFinished,
+                currentFormat = currentFormat,
+                onQualityChipClick = {
+                    bottomSheetPageState.show { ShowMediaInfo(mediaMetadata.id) }
+                },
                 modifier =
                     Modifier
                         .fillMaxWidth()
@@ -414,10 +489,25 @@ private fun AppleMusicControlsColumn(
     onLyricsClick: () -> Unit,
     onSliderValueChange: (Long) -> Unit,
     onSliderValueChangeFinished: () -> Unit,
+    // Stream format for the quality chip. Null = no chip rendered.
+    currentFormat: FormatEntity?,
+    // Clicked when the user taps the quality chip — opens the song-detail
+    // bottom sheet (ShowMediaInfo), mirroring how tapping the title/artist
+    // in Apple Music's stock UI opens the song info page.
+    onQualityChipClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var swipeUpAccumulated by remember { mutableFloatStateOf(0f) }
     val swipeUpThreshold = 120f
+    // Activation threshold for the swipe-up gesture, in pixels. The previous implementation
+    // used detectVerticalDragGestures, which fires (and calls change.consume()) the moment
+    // the finger drifts past viewConfiguration.touchSlop (~8dp ≈ 24px on a 3x-density phone).
+    // That consume() call cancels every child clickable's tap gesture — so users whose taps
+    // drifted even slightly would see "queue button doesn't work at all". By requiring a
+    // much larger initial movement (72px ≈ 24dp on a 3x-density phone) before we treat it
+    // as a swipe and start consuming, small finger drifts on taps no longer activate the
+    // swipe detector and the child tap completes normally. Clear upward swipes still work.
+    val swipeActivationThreshold = 72f
     val resetSwipeUp = remember {
         {
             if (swipeUpAccumulated != 0f) swipeUpAccumulated = 0f
@@ -429,20 +519,48 @@ private fun AppleMusicControlsColumn(
         modifier = modifier
             .padding(horizontal = AppleMusicContentPadding)
             .pointerInput(Unit) {
-                detectVerticalDragGestures(
-                    onDragEnd = {
-                        if (swipeUpAccumulated < -swipeUpThreshold) {
-                            onQueueClick()
+                // Custom vertical-drag detector that only consumes events once the user has
+                // clearly started swiping upward (movement > swipeActivationThreshold).
+                // Before that point, we don't consume — so child clickables (queue, lyrics,
+                // output, play/pause, skip, like, more, title, artist) receive the full
+                // tap sequence and fire normally. This fixes the "queue button doesn't work
+                // at all" report for users whose taps drift a few pixels vertically.
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    var accumulated = 0f
+                    var swipeActivated = false
+                    while (true) {
+                        val event = awaitPointerEvent(PointerEventPass.Main)
+                        val change = event.changes.firstOrNull() ?: break
+                        if (change.changedToUp()) break
+
+                        val dragDelta = change.positionChange().y
+
+                        if (!swipeActivated) {
+                            // Track upward movement but don't consume yet — let child taps win.
+                            if (dragDelta < 0f) {
+                                accumulated += dragDelta
+                            }
+                            if (abs(accumulated) > swipeActivationThreshold) {
+                                swipeActivated = true
+                                swipeUpAccumulated = accumulated
+                                change.consume()
+                            }
+                        } else {
+                            // Swipe is confirmed — consume to prevent child handling.
+                            if (dragDelta < 0f) {
+                                swipeUpAccumulated =
+                                    (swipeUpAccumulated + dragDelta).coerceAtLeast(-swipeUpThreshold * 1.5f)
+                            }
+                            change.consume()
                         }
-                        swipeUpAccumulated = 0f
-                    },
-                    onVerticalDrag = { change, dragAmount ->
-                        change.consume()
-                        if (dragAmount < 0f) { // upward swipe
-                            swipeUpAccumulated = (swipeUpAccumulated + dragAmount).coerceAtLeast(-swipeUpThreshold * 1.5f)
-                        }
-                    },
-                )
+                    }
+
+                    if (swipeActivated && swipeUpAccumulated < -swipeUpThreshold) {
+                        onQueueClick()
+                    }
+                    swipeUpAccumulated = 0f
+                }
             },
         verticalArrangement = Arrangement.SpaceEvenly,
     ) {
@@ -503,17 +621,28 @@ private fun AppleMusicControlsColumn(
                 onScrubFinished = onSliderValueChangeFinished,
             )
             Spacer(Modifier.height(6.dp))
-            Row(Modifier.fillMaxWidth()) {
+            // Mirror the Immersive V8 layout: elapsed time on the left, quality
+            // chip (Lossless / AAC / OPUS) centered, -remaining on the right.
+            // The chip is tappable and opens the song-detail bottom sheet.
+            Box(Modifier.fillMaxWidth()) {
                 Text(
                     text = makeTimeString(sliderPosition ?: position),
                     style = MaterialTheme.typography.labelMedium,
                     color = Color.White.copy(alpha = 0.55f),
+                    modifier = Modifier.align(Alignment.CenterStart),
                 )
-                Spacer(Modifier.weight(1f))
+                if (currentFormat != null) {
+                    AppleMusicQualityChip(
+                        currentFormat = currentFormat,
+                        onClick = onQualityChipClick,
+                        modifier = Modifier.align(Alignment.Center),
+                    )
+                }
                 Text(
                     text = "-" + makeTimeString((duration - (sliderPosition ?: position)).coerceAtLeast(0L)),
                     style = MaterialTheme.typography.labelMedium,
                     color = Color.White.copy(alpha = 0.55f),
+                    modifier = Modifier.align(Alignment.CenterEnd),
                 )
             }
         }
@@ -797,4 +926,51 @@ private fun AppleMusicVolumeSlider(
                     )
                 },
     )
+}
+
+/**
+ * Quality chip rendered between the elapsed and -remaining timestamps on the
+ * Apple Music player's seek-bar row. Mirrors the Immersive V8 player's
+ * `V8QualityChip` (PlayerComponents.kt:2762) — same pill shape, same waveform
+ * icon (`R.drawable.player_graphic_eq`), same `codecLabel()` text — but uses
+ * `Color.White` as the foreground because the Apple Music player renders on
+ * top of artwork-on-black, not a themed surface.
+ *
+ * Tapping the chip opens the song-detail bottom sheet (`ShowMediaInfo`),
+ * matching how Apple Music's stock UI exposes the song info page.
+ */
+@Composable
+private fun AppleMusicQualityChip(
+    currentFormat: FormatEntity,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val label = remember(currentFormat.mimeType, currentFormat.codecs) {
+        currentFormat.codecLabel()
+    }
+    Surface(
+        shape = RoundedCornerShape(6.dp),
+        color = Color.White.copy(alpha = 0.1f),
+        border = BorderStroke(width = 1.dp, color = Color.White.copy(alpha = 0.13f)),
+        modifier = modifier.clickable(onClick = onClick),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(5.dp),
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.player_graphic_eq),
+                contentDescription = null,
+                tint = Color.White.copy(alpha = 0.72f),
+                modifier = Modifier.size(15.dp),
+            )
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                color = Color.White.copy(alpha = 0.72f),
+                maxLines = 1,
+            )
+        }
+    }
 }

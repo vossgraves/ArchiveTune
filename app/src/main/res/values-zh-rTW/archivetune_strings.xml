@@ -99,6 +99,13 @@
     <string name="aod_customize_thumbnail_shape">封面形狀</string>
     <string name="aod_customize_thumbnail_shape_desc">使用特定形狀裁剪AOD畫面上的專輯封面。</string>
     <string name="aod_customize_layout">佈局</string>
+    <string name="aod_customize_progress">進度</string>
+    <string name="aod_customize_slider_style">滑桿樣式</string>
+    <string name="aod_slider_style_standard">標準</string>
+    <string name="aod_slider_style_wavy">波浪</string>
+    <string name="aod_slider_style_thick">粗</string>
+    <string name="aod_slider_style_circular">圓形</string>
+    <string name="aod_slider_style_simple">簡單</string>
     <string name="aod_customize_background_style">背景樣式</string>
     <string name="aod_customize_accent_style">強調色風格</string>
     <string name="aod_customize_content_position">內容排列位置</string>

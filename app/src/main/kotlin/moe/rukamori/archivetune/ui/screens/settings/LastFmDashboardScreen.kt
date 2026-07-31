@@ -20,12 +20,15 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -63,6 +66,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -77,6 +81,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.R
@@ -283,12 +288,30 @@ fun LastFmDashboardScreen(
             }
         }
 
+        val playerAwareInsets = LocalPlayerAwareWindowInsets.current
+        val density = LocalDensity.current
+        // Bottom inset (mini player + nav bar) in dp — computed directly from
+        // WindowInsets.getBottom(Density) because `WindowInsets.calculateBottomPadding()`
+        // is a @Composable extension that requires its own import path which
+        // isn't always resolvable across Compose versions. Going through
+        // Density.toDp() is the stable API.
+        val bottomInsetDp = with(density) { playerAwareInsets.getBottom(density).toDp() }
         LazyColumn(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .windowInsetsPadding(
+                    playerAwareInsets.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom),
+                ),
             contentPadding =
                 PaddingValues(
                     top = innerPadding.calculateTopPadding(),
-                    bottom = 24.dp,
+                    // Reserve space for the mini player + nav bar so the last
+                    // dashboard card isn't overlapped. The window-insets padding
+                    // handles the horizontal + bottom system bars; we add the
+                    // mini-player height explicitly here (via getBottom which
+                    // already folds in MiniPlayerHeight when the player isn't
+                    // dismissed) plus a small visual breathing margin.
+                    bottom = bottomInsetDp + 16.dp,
                 ),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {

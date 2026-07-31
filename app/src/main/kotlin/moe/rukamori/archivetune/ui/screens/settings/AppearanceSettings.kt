@@ -323,11 +323,17 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
         }
     val availableLyricsBackgroundStyles =
         remember {
-            listOf(
-                LyricsBackgroundStyle.DEFAULT,
-                LyricsBackgroundStyle.FOLLOW_THEME,
-                LyricsBackgroundStyle.COLORING,
-            )
+            // MOVING_BLUR uses Modifier.blur on Android 12+ (hardware-accelerated)
+            // and falls back to a CPU pre-blurred bitmap (ImageBlurUtils.blur via
+            // inline produceState, PR #924 approach) on pre-S devices. The drift
+            // animation is applied via Modifier.offset on the pre-blurred bitmap,
+            // so it doesn't require per-frame blurs and works on all SDK levels.
+            buildList {
+                add(LyricsBackgroundStyle.DEFAULT)
+                add(LyricsBackgroundStyle.FOLLOW_THEME)
+                add(LyricsBackgroundStyle.COLORING)
+                add(LyricsBackgroundStyle.MOVING_BLUR)
+            }
         }
     val lyricsBackground = configuredLyricsBackground.resolveFor(playerBackground)
     val isPlayerStyleCustomizationEnabled =
@@ -760,6 +766,7 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                                     LyricsBackgroundStyle.DEFAULT -> stringResource(R.string.lyrics_background_default)
                                     LyricsBackgroundStyle.FOLLOW_THEME -> stringResource(R.string.follow_theme)
                                     LyricsBackgroundStyle.COLORING -> stringResource(R.string.coloring)
+                                    LyricsBackgroundStyle.MOVING_BLUR -> stringResource(R.string.lyrics_background_moving_blur)
                                     LyricsBackgroundStyle.CUSTOM -> stringResource(R.string.custom)
                                 }
                             },

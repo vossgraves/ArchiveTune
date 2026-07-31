@@ -477,21 +477,6 @@ class AboutViewModel
                                     ),
                                 ),
                         ),
-                        TeamMember(
-                            avatarUrl = "https://avatars.githubusercontent.com/vossgraves",
-                            name = "VossGraves",
-                            positionResId = R.string.about_position_vossgraves,
-                            profileUrl = "https://github.com/vossgraves",
-                            links =
-                                AboutLinkCollection.of(
-                                    AboutLinkUiModel(
-                                        id = "github",
-                                        iconResId = R.drawable.github,
-                                        labelResId = R.string.about_content_desc_github,
-                                        url = "https://github.com/vossgraves",
-                                    ),
-                                ),
-                        ),
                     ),
                 collaborators =
                     TeamMemberCollection.of(
@@ -507,6 +492,21 @@ class AboutViewModel
                                         iconResId = R.drawable.github,
                                         labelResId = R.string.about_content_desc_github,
                                         url = "https://github.com/mikooochi",
+                                    ),
+                                ),
+                        ),
+                        TeamMember(
+                            avatarUrl = "https://avatars.githubusercontent.com/vossgraves",
+                            name = "VossGraves",
+                            positionResId = R.string.about_position_vossgraves,
+                            profileUrl = "https://github.com/vossgraves",
+                            links =
+                                AboutLinkCollection.of(
+                                    AboutLinkUiModel(
+                                        id = "github",
+                                        iconResId = R.drawable.github,
+                                        labelResId = R.string.about_content_desc_github,
+                                        url = "https://github.com/vossgraves",
                                     ),
                                 ),
                         ),
@@ -533,7 +533,7 @@ class AboutViewModel
                         ),
                         TeamMember(
                             avatarUrl = "https://avatars.githubusercontent.com/u/203143605?v=4",
-                            name = "Yuki/Reze",
+                            name = "Reze",
                             positionResId = R.string.about_position_yuki,
                             profileUrl = "https://github.com/4nx3b",
                             links =

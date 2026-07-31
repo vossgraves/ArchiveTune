@@ -382,6 +382,13 @@
     <string name="ai_api_key">Clave API</string>
     <string name="aod_customize_thumbnail_shape_desc">Utiliza «Formas» para la pantalla siempre activa.</string>
     <string name="aod_customize_layout">Diseño</string>
+    <string name="aod_customize_progress">Progreso</string>
+    <string name="aod_customize_slider_style">Estilo del deslizador</string>
+    <string name="aod_slider_style_standard">Estándar</string>
+    <string name="aod_slider_style_wavy">Ondulado</string>
+    <string name="aod_slider_style_thick">Grueso</string>
+    <string name="aod_slider_style_circular">Circular</string>
+    <string name="aod_slider_style_simple">Simple</string>
     <string name="aod_customize_background_style">Estilo del fondo</string>
     <string name="aod_customize_accent_style">Tipografía</string>
     <string name="aod_customize_content_position">Posición del contenido</string>
@@ -635,5 +642,5 @@
     <string name="about_license_unknown">Licencia desconocida</string>
     <string name="about_position_developers">Desarrollador | Equipo</string>
     <string name="mori_cipher_status">Estado del motor de software / base de datos</string>
-    <string name="about_position_yuki">Cuenta de prueba de Reze | Admin</string>
+    <string name="about_position_yuki">dummy reze | admin</string>
 </resources>

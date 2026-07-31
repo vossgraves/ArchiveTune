@@ -494,39 +494,14 @@ fun Queue(
                 }
 
                 PlayerDesignStyle.V5 -> {
-                    QueueCollapsedContentV3(
-                        showCodecOnPlayer = showCodecOnPlayer,
-                        currentFormat = currentFormat,
-                        textBackgroundColor = TextBackgroundColor,
-                        sleepTimerEnabled = sleepTimerEnabled,
-                        sleepTimerTimeLeft = sleepTimerTimeLeft,
-                        onExpandQueue = openQueue,
-                        onSleepTimerClick = {
-                            if (sleepTimerEnabled) {
-                                playerConnection.service.sleepTimer.clear()
-                            } else {
-                                showSleepTimerDialog = true
-                            }
-                        },
-                        onShowLyrics = onShowLyrics,
-                        onMenuClick = {
-                            menuState.show {
-                                PlayerMenu(
-                                    mediaMetadata = mediaMetadata,
-                                    navController = navController,
-                                    playerBottomSheetState = playerBottomSheetState,
-                                    onShowDetailsDialog = {
-                                        mediaMetadata?.id?.let {
-                                            bottomSheetPageState.show {
-                                                ShowMediaInfo(it)
-                                            }
-                                        }
-                                    },
-                                    onDismiss = menuState::dismiss,
-                                )
-                            }
-                        },
-                    )
+                    // V5 keeps its collapsed peek bar empty, matching the APPLE_MUSIC approach.
+                    // The LittlePlayer (rendered inside Player.kt) already exposes queue, like,
+                    // and more-menu buttons with proper 48dp touch targets. Previously this
+                    // branch rendered QueueCollapsedContentV3 inside a 0dp-tall peek Box —
+                    // the button row overflowed the parent and its touch zone was clipped/
+                    // competed-for by the BottomSheet wrapper's own clickable, which caused
+                    // "queue button doesn't work at all" reports on V5. Sleep timer, lyrics,
+                    // and other controls remain reachable via the LittlePlayer's more-menu.
                 }
 
                 PlayerDesignStyle.V4 -> {

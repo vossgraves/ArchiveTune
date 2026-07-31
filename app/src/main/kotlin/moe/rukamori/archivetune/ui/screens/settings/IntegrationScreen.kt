@@ -112,11 +112,18 @@ fun IntegrationScreen(navController: NavController, scrollTo: String? = null) {
                 }
             }
 
-            if (manualSourceLogin) {
-                PreferenceGroup(
-                    modifier = positions.modifierFor("music_sources"),
-                    title = stringResource(R.string.music_sources),
-                ) {
+            // "Music Sources" groups every external streaming source together:
+            // Tidal, Qobuz, Deezer, and Telegram. Tidal/Qobuz/Deezer are
+            // gated behind the "Manual source sign-in" experimental toggle
+            // because their instance/token flows aren't useful for most users
+            // (the app auto-uses the community source pool by default).
+            // Telegram is NOT gated — its TDLib client is self-contained and
+            // doesn't share the manual-token flow.
+            PreferenceGroup(
+                modifier = positions.modifierFor("music_sources"),
+                title = stringResource(R.string.music_sources),
+            ) {
+                if (manualSourceLogin) {
                     item {
                         PreferenceEntry(
                             title = { Text(stringResource(R.string.tidal_integration)) },
@@ -138,6 +145,28 @@ fun IntegrationScreen(navController: NavController, scrollTo: String? = null) {
                             },
                         )
                     }
+
+                    item {
+                        PreferenceEntry(
+                            title = { Text(stringResource(R.string.deezer_integration)) },
+                            description = stringResource(R.string.deezer_integration_description),
+                            icon = { Icon(painterResource(R.drawable.provider_deezer), null) },
+                            onClick = {
+                                navController.navigate("settings/deezer")
+                            },
+                        )
+                    }
+                }
+
+                item {
+                    PreferenceEntry(
+                        title = { Text(stringResource(R.string.telegram_integration)) },
+                        description = stringResource(R.string.telegram_integration_description),
+                        icon = { Icon(painterResource(R.drawable.provider_telegram), null) },
+                        onClick = {
+                            navController.navigate("settings/telegram")
+                        },
+                    )
                 }
             }
 

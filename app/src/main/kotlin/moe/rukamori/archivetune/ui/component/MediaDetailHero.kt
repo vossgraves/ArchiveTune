@@ -49,6 +49,7 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.layoutId
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -365,6 +366,7 @@ public fun MediaDetailPrimaryActions(
         )
     val actionScrollState = rememberScrollState()
     val actionScrollMaxValue = actionScrollState.maxValue
+    val density = LocalDensity.current
 
     LaunchedEffect(actionScrollMaxValue) {
         if (
@@ -372,7 +374,23 @@ public fun MediaDetailPrimaryActions(
             actionScrollMaxValue != Int.MAX_VALUE &&
             actionScrollState.value == 0
         ) {
-            actionScrollState.scrollTo(actionScrollMaxValue / 2)
+            // When the row only barely overflows the viewport (common on the
+            // artist page where there are exactly 4 actions: Shuffle / Play /
+            // Add / Radio), centering the scroll cuts off equal pixels on each
+            // side — and because the balanced layout reserves more space on the
+            // side with more actions, the rightmost action (Radio) ends up
+            // flush against the right edge and gets visually clipped by the
+            // fadingEdge. Bias toward the right edge in that case so Radio
+            // keeps its full breathing room. For wide rows (playlists with
+            // many actions), keep the centered scroll so both sides preview.
+            val overflowDp = with(density) { actionScrollMaxValue.toDp() }
+            val target =
+                if (overflowDp < 80.dp) {
+                    actionScrollMaxValue
+                } else {
+                    actionScrollMaxValue / 2
+                }
+            actionScrollState.scrollTo(target)
         }
     }
 
@@ -389,7 +407,13 @@ public fun MediaDetailPrimaryActions(
                 Modifier
                     .fillMaxWidth()
                     .fadingEdge(horizontal = MediaDetailActionEdgeFade)
-                    .horizontalScroll(actionScrollState),
+                    .horizontalScroll(actionScrollState)
+                    // End padding ensures the rightmost action (e.g. Radio on the
+                    // artist page) always has visible breathing room even when the
+                    // balanced layout reserves more space on the opposite side.
+                    // Start padding mirrors it for symmetry so the auto-center
+                    // scroll position doesn't bias toward one edge.
+                    .padding(horizontal = MediaDetailActionHorizontalPadding),
         ) {
             MediaDetailBalancedActionLayout(
                 actionRowScope = this,
@@ -655,7 +679,15 @@ private val MediaDetailHeroMinHeight = 560.dp
 private val MediaDetailHorizontalPadding = 24.dp
 private val MediaDetailContentMaxWidth = 720.dp
 private val MediaDetailActionSpacing = 12.dp
-private val MediaDetailActionEdgeFade = 20.dp
+// Reduced from 20.dp — the previous fade was aggressive enough to make the
+// rightmost action (Radio on the artist page) look partially cut off even
+// when it was technically within the viewport. 8.dp preserves the visual
+// cue that more actions are scrollable without obscuring the edge icon.
+private val MediaDetailActionEdgeFade = 8.dp
+// Horizontal padding inside the scrollable Row so the first and last actions
+// have visible margin from the screen edge. Without this the balanced layout
+// can place the rightmost action flush against the viewport boundary.
+private val MediaDetailActionHorizontalPadding = 12.dp
 private val MediaDetailSecondaryActionSize = 52.dp
 private val MediaDetailActionSize = 48.dp
 

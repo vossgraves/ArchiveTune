@@ -186,6 +186,7 @@ fun StorageSettings(
     var clearDownloads by remember { mutableStateOf(false) }
     var clearImageCacheDialog by remember { mutableStateOf(false) }
     var clearCanvasCacheDialog by remember { mutableStateOf(false) }
+    var clearLyricsCacheDialog by remember { mutableStateOf(false) }
     var imageCacheSize by remember { mutableLongStateOf(0L) }
     var playerCacheSize by remember { mutableLongStateOf(0L) }
     var downloadCacheSize by remember { mutableLongStateOf(0L) }
@@ -595,6 +596,37 @@ fun StorageSettings(
                     onCancel = { clearCanvasCacheDialog = false },
                     content = {
                         Text(text = stringResource(R.string.clear_canvas_cache_dialog))
+                    },
+                )
+            }
+
+            // Lyrics cache lives in an in-process LruCache + the Room `lyrics` table
+            // (not on disk under cacheDir/ like the other caches above). This entry
+            // gives the user a one-tap way to wipe both from the Storage screen,
+            // mirroring the equivalent entry on the Lyrics settings screen.
+            PreferenceGroup(
+                modifier = positions.modifierFor("lyrics_cache"),
+                title = stringResource(R.string.lyrics),
+            ) {
+                item {
+                    PreferenceEntry(
+                        title = { Text(stringResource(R.string.clear_lyrics_cache)) },
+                        onClick = { clearLyricsCacheDialog = true },
+                    )
+                }
+            }
+
+            if (clearLyricsCacheDialog) {
+                ActionPromptDialog(
+                    title = stringResource(R.string.clear_lyrics_cache),
+                    onDismiss = { clearLyricsCacheDialog = false },
+                    onConfirm = {
+                        viewModel.clearLyricsCache()
+                        clearLyricsCacheDialog = false
+                    },
+                    onCancel = { clearLyricsCacheDialog = false },
+                    content = {
+                        Text(text = stringResource(R.string.clear_lyrics_cache_confirm))
                     },
                 )
             }
