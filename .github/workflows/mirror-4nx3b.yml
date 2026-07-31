@@ -38,15 +38,22 @@ name: Mirror 4nx3b stable releases
 # and release.yml prefers that over the commit count, so the version matches by construction.
 
 on:
-  schedule:
-    # Every two hours at :43, deliberately NOT :17.
-    #
-    # upstream-sync.yml runs hourly at :17 and merges rukamori/ArchiveTune into dev, while this
-    # workflow force-pushes 4nx3b's tree over dev. Sharing a minute would let them interleave and
-    # leave dev in whichever state finished last. The offset does not make them compatible -- see
-    # the note in the header about disabling upstream-sync -- it only stops them colliding
-    # mid-operation.
-    - cron: '43 */2 * * *'
+  # SCHEDULE INTENTIONALLY DISABLED.
+  #
+  # The first two scheduled runs pushed a main with every submodule gitlink deleted (see the
+  # gitlink restore step for why). That is fixed, but the fix has not yet been proven by a real
+  # run, and on a schedule this workflow force-pushes main every two hours -- so a second mistake
+  # would land unattended and repeatedly.
+  #
+  # Re-enable by uncommenting the cron below, but only after a `dry_run=true` dispatch shows the
+  # gitlink assertion passing and the diff containing no submodule deletions.
+  #
+  # When re-enabling, keep :43 and not :17 -- upstream-sync.yml runs hourly at :17 and merges
+  # rukamori into dev while this force-pushes 4nx3b over it. The offset only prevents a
+  # mid-operation collision, not the tug of war; see the header note about retiring that workflow.
+  #
+  # schedule:
+  #   - cron: '43 */2 * * *'
   workflow_dispatch:
     inputs:
       tag:
@@ -186,10 +193,52 @@ jobs:
 
           cp -a /tmp/upstream_tree/. .
 
+          # Restore submodule gitlinks.
+          #
+          # `git archive` silently omits submodules -- it emits an empty directory for each gitlink
+          # and no mode-160000 entries at all. Together with the `git rm --cached .` above, that
+          # staged the DELETION of all five (core, lyrics, IconPack, moriextractor,
+          # morideobfuscator) and pushed a main that cannot build: settings.gradle.kts includes
+          # :core, :lyrics et al, and Gradle fails when their directories do not exist.
+          #
+          # .gitmodules survives, being an ordinary file, which is what makes this easy to miss --
+          # the config looks intact while every pointer is gone.
+          #
+          # Gitlinks cannot be written through the worktree, so re-stage them into the index
+          # directly from upstream's tree, which is the authority for what each pointer should be.
+          GITLINKS="$(git ls-tree "refs/mirror/${TAG}" | awk '$2 == "commit" { print $3 "\t" $4 }')"
+          if [ -z "$GITLINKS" ]; then
+            echo "::error::No submodule gitlinks found in refs/mirror/${TAG}."
+            echo "Upstream has always had five; an empty list means the tag or fetch is wrong."
+            exit 1
+          fi
+
+          while IFS=$'\t' read -r sha path; do
+            [ -n "$path" ] || continue
+            rm -rf "$path"
+            git update-index --add --cacheinfo "160000,${sha},${path}"
+            echo "  gitlink ${path} -> ${sha:0:9}"
+          done <<< "$GITLINKS"
+
           rm -rf .github
           cp -a /tmp/keep_github .github
 
           git add -A
+
+          # `git add -A` must not have re-flattened the gitlinks staged above. Assert against the
+          # index rather than the worktree, since that is what actually gets committed, and compare
+          # to upstream's count so a submodule being added or removed upstream surfaces here rather
+          # than as a broken build.
+          WANT="$(printf '%s\n' "$GITLINKS" | grep -c . || true)"
+          HAVE="$(git ls-files --stage | awk '$1 == "160000"' | wc -l)"
+          if [ "$HAVE" -ne "$WANT" ]; then
+            echo "::error::Expected ${WANT} submodule gitlinks in the index, found ${HAVE}."
+            echo "Refusing to push a tree whose submodules would be deleted."
+            git ls-files --stage | awk '$1 == "160000" { print "  have: " $4 }'
+            exit 1
+          fi
+          echo "Verified ${HAVE} submodule gitlinks staged."
+
           echo "Staged $(git diff --cached --name-only | wc -l) changed paths."
 
       - name: Record their release for release.yml
