@@ -272,7 +272,6 @@ fun PlayerMenu(
                             ?.getOrNull()
                             ?.artist
                             ?.thumbnail
-                            ?.url
                     if (!fetched.isNullOrBlank()) {
                         result[artistId] = fetched
                         // Persist back to the DB so we don't re-fetch next time.
