@@ -180,6 +180,24 @@ fun AppleMusicPlayerContent(
     BoxWithConstraints(modifier = modifier) {
         val sharpArtworkHeight = if (landscape) maxHeight else maxHeight * 0.55f
 
+        // 0. Opaque black floor. On Android < 12 the pre-blur coroutine can take a beat to
+        //    resolve (and historically crashed on hardware bitmaps — see
+        //    rememberPreBlurredBitmap). During that window the blurred-bitmap branch is
+        //    skipped and the sharp-artwork AsyncImage is still loading, leaving the
+        //    BoxWithConstraints with no opaque layer at all — so the screen behind the
+        //    player bottom sheet (e.g. the Appearance settings page text: "Lyrics
+        //    background style", "Mini player background style") bleeds through the
+        //    translucent vertical-gradient scrim and shows up as ghosted text behind the
+        //    playback controls. Painting Color.Black here guarantees the sheet is always
+        //    opaque, even before any bitmap has decoded, so the only thing the user ever
+        //    sees behind the controls is the artwork (sharp or blurred) on black.
+        Box(
+            modifier =
+                Modifier
+                    .matchParentSize()
+                    .background(Color.Black),
+        )
+
         // 1. Blurred artwork fills the whole player as the base layer.
         //
         //    On Android 12+ (API 31+) we use Compose's Modifier.blur — it's backed by the

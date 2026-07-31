@@ -561,6 +561,7 @@
     <string name="internet">Internet</string>
     <string name="youtube_music_region">YouTube Music region</string>
     <string name="youtube_music_region_desc">Spoofs the country YouTube Music thinks you\'re connecting from. The home feed, recommendations, search, new releases, and radio queues will all reflect the chosen country. Also bypasses geo-restrictions on specific songs. System default falls back to your device locale.</string>
+    <string name="youtube_music_region_restarting">Applying new region… restarting app</string>
     <string name="internet_warning_title">Security &amp; Usage Warning</string>
     <string name="internet_warning_doh">DNS over HTTPS only works if your country blocks YouTube. If YouTube actively blocks your region, consider using a Proxy or VPN.</string>
     <string name="internet_warning_proxy">Please only use Proxies that you are sure are safe. Free Proxies are convenient but not always safe, so be careful. You have been warned, and we are not responsible for your security.</string>
@@ -1361,8 +1362,8 @@
     <string name="scheduled_backup_directory_saved">Backup directory saved</string>
     <string name="scheduled_backup_load_failed">Scheduled backup settings could not be loaded</string>
     <string name="scheduled_backup_update_failed">Scheduled backup settings could not be saved</string>
-    <string name="google_drive_sync">Google Drive sync</string>
-    <string name="google_drive_sync_description">Automatically upload backups to your Google Drive.</string>
+    <string name="google_drive_sync">Cloud storage sync</string>
+    <string name="google_drive_sync_description">Automatically upload backups to your cloud storage provider.</string>
     <string name="google_drive_sync_enabled">Enable Google Drive sync</string>
     <string name="google_drive_sync_enabled_description_on">Auto-sync to Google Drive is active.</string>
     <string name="google_drive_sync_enabled_description_off">Auto-sync to Google Drive is paused.</string>

@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import coil3.imageLoader
 import coil3.request.ImageRequest
 import coil3.request.SuccessResult
+import coil3.request.allowHardware
 import coil3.size.Precision
 import coil3.toBitmap
 import kotlinx.coroutines.Dispatchers
@@ -88,22 +89,35 @@ private suspend fun blurArtworkOffscreen(
             .diskCacheKey("$imageUrl#preblur")
             .size(maxDimensionPx)
             .precision(Precision.INEXACT)
+            // Force Coil to decode into a software bitmap (ARGB_8888) instead of HARDWARE.
+            // On Android < 12 we run a CPU stack-blur over the pixels (ImageBlurUtils.blur
+            // calls getPixels / setPixels), and hardware bitmaps back those calls with an
+            // "Software rendering doesn't support hardware bitmaps" IllegalArgumentException
+            // the moment we try to read or copy the pixels onto a software canvas — which is
+            // exactly what the old Canvas.drawBitmap copy path did, crashing pre-S devices
+            // like the motorola one power (SDK 29) whenever the Apple Music player style
+            // opened. allowHardware(false) makes Coil decode straight to ARGB_8888, so the
+            // subsequent Bitmap.copy(ARGB_8888) in the defensive `when` is a no-op and the
+            // stack-blur runs cleanly on a software pixel buffer.
+            .allowHardware(false)
             .build()
     val result = imageLoader.execute(request)
     if (result !is SuccessResult) return@withContext null
     val source = result.image.toBitmap()
-    // Source may be HARDWARE config (Coil returns these on API 26+) — copy to ARGB_8888
-    // before pixel-level manipulation, otherwise getPixels throws IllegalStateException.
+    // Defensive: even with bitmapConfig(ARGB_8888), some decoders (e.g. GIF) can still hand
+    // back a non-ARGB_8888 bitmap. Coerce to ARGB_8888 without ever drawing a hardware bitmap
+    // onto a software canvas — use Bitmap.copy, which is safe for any source config.
     val mutable =
-        if (source.config == Bitmap.Config.HARDWARE) {
-            Bitmap.createBitmap(source.width, source.height, Bitmap.Config.ARGB_8888).apply {
-                val canvas = android.graphics.Canvas(this)
-                canvas.drawBitmap(source, 0f, 0f, null)
+        when (source.config) {
+            Bitmap.Config.ARGB_8888 -> source
+            Bitmap.Config.HARDWARE -> {
+                // Bitmap.copy from HARDWARE → ARGB_8888 uses an internal PixelCopy path on
+                // API 26+ and does NOT route through Canvas.drawBitmap, so it can't throw
+                // the "software rendering doesn't support hardware bitmaps" exception that
+                // the previous Canvas-based copy did.
+                source.copy(Bitmap.Config.ARGB_8888, true) ?: return@withContext null
             }
-        } else if (source.config != Bitmap.Config.ARGB_8888) {
-            source.copy(Bitmap.Config.ARGB_8888, true)
-        } else {
-            source
+            else -> source.copy(Bitmap.Config.ARGB_8888, true) ?: source
         }
     val density = context.resources.displayMetrics.density
     val radiusPx = (radiusDp.value * density).coerceIn(1f, 48f)

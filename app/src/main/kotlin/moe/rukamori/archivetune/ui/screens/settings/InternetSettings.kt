@@ -7,6 +7,8 @@
 
 package moe.rukamori.archivetune.ui.screens.settings
 
+import android.content.Intent
+import android.widget.Toast
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -61,7 +63,9 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.*
@@ -76,6 +80,7 @@ import okhttp3.Request
 import java.net.Proxy
 import java.util.Locale
 import java.util.concurrent.TimeUnit
+import kotlin.system.exitProcess
 
 @Composable
 fun InternetWarningBox(modifier: Modifier = Modifier) {
@@ -257,6 +262,23 @@ fun InternetSettings(navController: NavController, scrollTo: String? = null) {
                             // The locale assignment emits YouTube.localeChanges, which
                             // HomeViewModel collects to trigger an immediate home-feed refresh
                             // (no manual pull-to-refresh required).
+                            //
+                            // === App restart ===
+                            // The user explicitly requested that changing the region
+                            // automatically restarts the app. The reason: even though the
+                            // in-process YouTube state is updated synchronously above, a
+                            // bunch of long-lived caches and view-models (HomeViewModel's
+                            // queued home-feed refresh, BrowseViewModel's mood/genre chips,
+                            // SearchDiscoveryViewModel's suggestion cache, the Coil image
+                            // cache for region-pinned thumbnails, the queued
+                            // `YouTube.localeChanges` collection, etc.) hold snapshots from
+                            // the *old* region and only refresh on the next manual pull.
+                            // Restarting the process guarantees every region-sensitive
+                            // subsystem comes back cold against the new region — which is
+                            // exactly what users expect when they pick "Japan" in the
+                            // region picker: a Japan home feed, Japan search, Japan recs,
+                            // all at once, with no stale US/EU content lingering in any
+                            // tab.
                             val deviceLocale = Locale.getDefault()
                             val resolvedGl =
                                 newValue.takeIf { it != SYSTEM_DEFAULT }
@@ -267,6 +289,33 @@ fun InternetSettings(navController: NavController, scrollTo: String? = null) {
                             YouTube.visitorData = null
                             YouTube.locale = YouTube.locale.copy(gl = resolvedGl)
                             onYtMusicRegionChange(newValue)
+
+                            // Schedule a process restart on a background coroutine so the
+                            // preference write (above) and the Toast land before we kill
+                            // the process. 400ms is enough for DataStore to flush and for
+                            // the Toast to animate in.
+                            scope.launch {
+                                withContext(Dispatchers.Main) {
+                                    Toast.makeText(
+                                        context,
+                                        context.getString(R.string.youtube_music_region_restarting),
+                                        Toast.LENGTH_SHORT,
+                                    ).show()
+                                }
+                                delay(400)
+                                withContext(Dispatchers.IO) {
+                                    val launchIntent =
+                                        context.packageManager.getLaunchIntentForPackage(context.packageName)
+                                    if (launchIntent != null) {
+                                        launchIntent.addFlags(
+                                            Intent.FLAG_ACTIVITY_NEW_TASK or
+                                                Intent.FLAG_ACTIVITY_CLEAR_TASK,
+                                        )
+                                        context.startActivity(launchIntent)
+                                    }
+                                    exitProcess(0)
+                                }
+                            }
                         },
                     )
                 }
