@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
-import androidx.compose.foundation.layout.calculateBottomPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -67,6 +66,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -289,6 +289,13 @@ fun LastFmDashboardScreen(
         }
 
         val playerAwareInsets = LocalPlayerAwareWindowInsets.current
+        val density = LocalDensity.current
+        // Bottom inset (mini player + nav bar) in dp — computed directly from
+        // WindowInsets.getBottom(Density) because `WindowInsets.calculateBottomPadding()`
+        // is a @Composable extension that requires its own import path which
+        // isn't always resolvable across Compose versions. Going through
+        // Density.toDp() is the stable API.
+        val bottomInsetDp = with(density) { playerAwareInsets.getBottom(density).toDp() }
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
@@ -301,10 +308,10 @@ fun LastFmDashboardScreen(
                     // Reserve space for the mini player + nav bar so the last
                     // dashboard card isn't overlapped. The window-insets padding
                     // handles the horizontal + bottom system bars; we add the
-                    // mini-player height explicitly here via calculateBottomPadding
-                    // (which already folds in MiniPlayerHeight when the player
-                    // isn't dismissed) plus a small visual breathing margin.
-                    bottom = playerAwareInsets.calculateBottomPadding() + 16.dp,
+                    // mini-player height explicitly here (via getBottom which
+                    // already folds in MiniPlayerHeight when the player isn't
+                    // dismissed) plus a small visual breathing margin.
+                    bottom = bottomInsetDp + 16.dp,
                 ),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
