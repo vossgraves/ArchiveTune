@@ -10,7 +10,6 @@
 package moe.rukamori.archivetune.ui.player
 
 import android.content.Context
-import android.content.Intent
 import android.content.res.Configuration
 import android.database.ContentObserver
 import android.graphics.Bitmap
@@ -197,7 +196,6 @@ import moe.rukamori.archivetune.ui.component.LocalBottomSheetPageState
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.rememberBottomSheetState
 import moe.rukamori.archivetune.ui.menu.PlayerMenu
-import moe.rukamori.archivetune.ui.menu.rememberCastPlayerMenuAction
 import moe.rukamori.archivetune.ui.screens.LOGIN_ROUTE
 import moe.rukamori.archivetune.ui.screens.buildLoginRoute
 import moe.rukamori.archivetune.ui.screens.settings.DarkMode
@@ -1279,19 +1277,6 @@ fun BottomSheetPlayer(
             }
         }
 
-        // Cast / media-output action for the bottom utility row. On gms flavors this opens
-        // the in-app Cast route picker; on foss flavors (no Cast) it falls back to the system
-        // MEDIA_OUTPUT panel so the user can still switch outputs. Mirrors the behaviour of
-        // AppleMusicPlayerContent's onOutputClick.
-        val castAction = rememberCastPlayerMenuAction()
-        val onOutputClick: () -> Unit = castAction?.onClick ?: {
-            runCatching {
-                context.startActivity(Intent("android.settings.panel.action.MEDIA_OUTPUT"))
-            }
-        }
-        val onLyricsClick: () -> Unit = { isLyricsScreenVisible = true }
-        val onQueueClick: () -> Unit = openQueue
-
         val controlsContent: @Composable ColumnScope.(MediaMetadata) -> Unit = { mediaMetadata ->
             PlayerControlsContent(
                 mediaMetadata = mediaMetadata,
@@ -1318,9 +1303,6 @@ fun BottomSheetPlayer(
                 context = context,
                 onSliderValueChange = onSliderValueChange,
                 onSliderValueChangeFinished = onSliderValueChangeFinished,
-                onLyricsClick = onLyricsClick,
-                onQueueClick = onQueueClick,
-                onOutputClick = onOutputClick,
                 currentFormat = if (playerDesignStyle == PlayerDesignStyle.V7) currentFormat else null,
             )
         }
@@ -1486,9 +1468,6 @@ fun BottomSheetPlayer(
                                     onSliderValueChange = onSliderValueChange,
                                     onSliderValueChangeFinished = onSliderValueChangeFinished,
                                     onVolumeChange = onPlayerVolumeChange,
-                                    onLyricsClick = onLyricsClick,
-                                    onQueueClick = onQueueClick,
-                                    onOutputClick = onOutputClick,
                                     landscape = true,
                                 )
                             }
@@ -1538,9 +1517,6 @@ fun BottomSheetPlayer(
                                 onSliderValueChange = onSliderValueChange,
                                 onSliderValueChangeFinished = onSliderValueChangeFinished,
                                 onVolumeChange = onPlayerVolumeChange,
-                                onLyricsClick = onLyricsClick,
-                                onQueueClick = onQueueClick,
-                                onOutputClick = onOutputClick,
                                 landscape = true,
                                 modifier =
                                     Modifier
@@ -1577,7 +1553,6 @@ fun BottomSheetPlayer(
                             onCollapseClick = { state.collapseSoft() },
                             onQueueClick = openQueue,
                             onLyricsClick = { isLyricsScreenVisible = true },
-                            onOutputClick = onOutputClick,
                             onSliderValueChange = onSliderValueChange,
                             onSliderValueChangeFinished = onSliderValueChangeFinished,
                             landscape = true,
@@ -1803,9 +1778,6 @@ fun BottomSheetPlayer(
                                     onSliderValueChange = onSliderValueChange,
                                     onSliderValueChangeFinished = onSliderValueChangeFinished,
                                     onVolumeChange = onPlayerVolumeChange,
-                                    onLyricsClick = onLyricsClick,
-                                    onQueueClick = onQueueClick,
-                                    onOutputClick = onOutputClick,
                                 )
                             }
 
@@ -1854,9 +1826,6 @@ fun BottomSheetPlayer(
                                 onSliderValueChange = onSliderValueChange,
                                 onSliderValueChangeFinished = onSliderValueChangeFinished,
                                 onVolumeChange = onPlayerVolumeChange,
-                                onLyricsClick = onLyricsClick,
-                                onQueueClick = onQueueClick,
-                                onOutputClick = onOutputClick,
                                 modifier =
                                     Modifier
                                         .fillMaxSize()
@@ -1892,7 +1861,6 @@ fun BottomSheetPlayer(
                             onCollapseClick = { state.collapseSoft() },
                             onQueueClick = openQueue,
                             onLyricsClick = { isLyricsScreenVisible = true },
-                            onOutputClick = onOutputClick,
                             onSliderValueChange = onSliderValueChange,
                             onSliderValueChangeFinished = onSliderValueChangeFinished,
                             modifier =
