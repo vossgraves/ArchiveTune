@@ -492,21 +492,6 @@ class AboutViewModel
                                     ),
                                 ),
                         ),
-                        TeamMember(
-                            avatarUrl = "https://avatars.githubusercontent.com/u/203143605?v=4",
-                            name = "Reze",
-                            positionResId = R.string.about_position_yuki,
-                            profileUrl = "https://github.com/4nx3b",
-                            links =
-                                AboutLinkCollection.of(
-                                    AboutLinkUiModel(
-                                        id = "github",
-                                        iconResId = R.drawable.github,
-                                        labelResId = R.string.about_content_desc_github,
-                                        url = "https://github.com/4nx3b",
-                                    ),
-                                ),
-                        ),
                     ),
                 collaborators =
                     TeamMemberCollection.of(
@@ -543,6 +528,21 @@ class AboutViewModel
                                         iconResId = R.drawable.alternate_email,
                                         labelResId = R.string.about_content_desc_discord,
                                         url = "https://discord.com/users/840839409640800258",
+                                    ),
+                                ),
+                        ),
+                        TeamMember(
+                            avatarUrl = "https://avatars.githubusercontent.com/u/203143605?v=4",
+                            name = "Reze",
+                            positionResId = R.string.about_position_yuki,
+                            profileUrl = "https://github.com/4nx3b",
+                            links =
+                                AboutLinkCollection.of(
+                                    AboutLinkUiModel(
+                                        id = "github",
+                                        iconResId = R.drawable.github,
+                                        labelResId = R.string.about_content_desc_github,
+                                        url = "https://github.com/4nx3b",
                                     ),
                                 ),
                         ),

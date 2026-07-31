@@ -556,7 +556,7 @@
     <string name="about_license">LICENCE</string>
     <string name="about_license_unknown">Licence inconnue</string>
     <string name="about_position_developers">Développeur | Équipe</string>
-    <string name="about_position_yuki">uwu</string>
+    <string name="about_position_yuki">dummy reze | admin</string>
     <string name="storage_clear_song_cache_progress">Effacement du cache des titres... %1$d %%</string>
     <string name="storage_clear_downloads_progress">Suppression des téléchargements... %1$d %%</string>
     <string name="storage_clear_image_cache_progress">Effacement du cache d\'images... %1$d %%</string>

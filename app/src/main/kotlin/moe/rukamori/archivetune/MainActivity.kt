@@ -935,13 +935,8 @@ class MainActivity : ComponentActivity() {
                     val accountName by homeViewModel.accountName.collectAsStateWithLifecycle()
                     val networkBannerState by networkBannerViewModel.bannerState.collectAsStateWithLifecycle()
                     val hasUnreadNews by newsViewModel.hasUnreadNews.collectAsStateWithLifecycle()
-                    // Hoisted profile-menu state so the GraphicsLayer capture
-                    // (applied to the main content Box below) can gate on the
-                    // dialog being open — recording every frame when the dialog
-                    // is closed would waste GPU cycles on the layer.record{}
-                    // pass with no consumer.
+                    // Hoisted profile-menu state.
                     var profileMenuExpanded by rememberSaveable { mutableStateOf(false) }
-                    val profileDialogBackdropLayer = rememberGraphicsLayer()
                     val navBackStackEntry by navController.currentBackStackEntryAsState()
                     val (previousTab) = rememberSaveable { mutableStateOf("home") }
                     val currentRoute = navBackStackEntry?.destination?.route
@@ -1994,7 +1989,6 @@ class MainActivity : ComponentActivity() {
                                                             latestUpdateChannel == effectiveUpdateChannel &&
                                                             Updater.isUpdateAvailable(latestVersionName, BuildConfig.VERSION_NAME)
                                                         ProfileMenuDialog(
-                                                            layer = profileDialogBackdropLayer,
                                                             accountName = accountName,
                                                             accountImageUrl = accountImageUrl,
                                                             items = listOf(
@@ -2600,25 +2594,6 @@ class MainActivity : ComponentActivity() {
                                                             }
                                                             drawLayer(navBarFrostedBackdrop.layer)
                                                         }
-                                                } else {
-                                                    Modifier
-                                                },
-                                            ).then(
-                                                // Profile-menu dialog backdrop: capture the app
-                                                // content into a separate layer when the dialog is
-                                                // open, so the dialog can render a real backdrop
-                                                // blur on Android 12+. Gated by `profileMenuExpanded`
-                                                // to avoid the per-frame `record{}` cost when no
-                                                // consumer is reading the layer.
-                                                if (profileMenuExpanded &&
-                                                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-                                                ) {
-                                                    Modifier.drawWithContent {
-                                                        profileDialogBackdropLayer.record {
-                                                            this@drawWithContent.drawContent()
-                                                        }
-                                                        drawContent()
-                                                    }
                                                 } else {
                                                     Modifier
                                                 },

@@ -7,10 +7,8 @@
 
 package moe.rukamori.archivetune.ui.component
 
-import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -33,13 +31,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.graphics.BlurEffect
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.TileMode
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.layer.GraphicsLayer
-import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -55,8 +47,7 @@ import moe.rukamori.archivetune.R
  * Centered, modal profile menu — replaces the previous anchored [androidx.compose.material3.DropdownMenu].
  *
  * Renders as a separate [Dialog] (in its own window) centered on screen, with a
- * real backdrop blur on Android 12+ (via a captured [GraphicsLayer] passed in
- * from the host) and a dim scrim on older devices.
+ * plain dim scrim behind it (no blur).
  *
  * Material 3 Expressive styling:
  *   - 28.dp corner radius (M3 Expressive large surface)
@@ -66,9 +57,6 @@ import moe.rukamori.archivetune.R
  *     subtitle row
  *   - ListItem rows with `leadingContent` icons, BadgedBox for unread badges
  *
- * @param layer GraphicsLayer captured from the host's main content (used for
- *   the blurred backdrop on Android 12+). Pass `null` on pre-S or if no
- *   capture is available — the dialog falls back to a dim scrim.
  * @param accountName Display name shown in the header (may be blank).
  * @param accountImageUrl Avatar URL shown in the header (may be null).
  * @param items The menu items to render (icon, label, badge, onClick).
@@ -77,7 +65,6 @@ import moe.rukamori.archivetune.R
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileMenuDialog(
-    layer: GraphicsLayer?,
     accountName: String,
     accountImageUrl: String?,
     items: List<ProfileMenuItem>,
@@ -94,37 +81,12 @@ fun ProfileMenuDialog(
             modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.Center,
         ) {
-            // Backdrop: blurred captured content on S+, dim scrim elsewhere.
-            if (layer != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                // Draw the captured screen content (recorded by the host's
-                // drawWithContent{layer.record{}} modifier) with a BlurEffect
-                // applied via graphicsLayer. The semi-transparent black scrim
-                // on top keeps the dialog content readable.
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .graphicsLayer {
-                            renderEffect = BlurEffect(
-                                radiusX = 32f,
-                                radiusY = 32f,
-                                edgeTreatment = TileMode.Decal,
-                            )
-                        }
-                        .drawBehind { drawLayer(layer) },
-                )
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.35f)),
-                )
-            } else {
-                // Pre-S or no layer — fall back to a semi-transparent scrim.
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.55f)),
-                )
-            }
+            // Plain dim scrim behind the dialog — no blur.
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.55f)),
+            )
 
             // Modal surface with the actual menu content.
             Surface(
