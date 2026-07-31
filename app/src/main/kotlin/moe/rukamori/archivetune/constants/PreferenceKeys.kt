@@ -999,6 +999,27 @@ val AudioSearchSourceKey = stringPreferencesKey("audioSearchSource")
 // When logged in, try the user's own Tidal account (official API) before the public instances.
 val TidalAccountFirstKey = booleanPreferencesKey("tidalAccountFirst")
 
+// ---------------------------------------------------------------------------
+// Deezer source
+// ---------------------------------------------------------------------------
+// Unlike Tidal/Qobuz there is no self-hosted proxy tier: Deezer streams come from accounts
+// authenticated with an `arl` cookie, supplied by the pool or by a manual sign-in. Defaults OFF
+// because the source is inert without accounts.
+val DeezerEnabledKey = booleanPreferencesKey("deezerEnabled")
+
+// A manually captured `arl` cookie. Kept separate from the pool cache: the pool is wiped and
+// rewritten on every refresh and is gated behind PoolAccountManager.isEnabled, so storing a
+// user's own credential there would lose it on the next sync.
+val DeezerArlKey = stringPreferencesKey("deezerArl")
+
+// Display label for the manually signed-in account, so the settings row can say who is signed in
+// without keeping the ARL itself anywhere near the UI.
+val DeezerAccountNameKey = stringPreferencesKey("deezerAccountName")
+
+// Whether the manual account reported a lossless-capable plan. Only orders resolution attempts;
+// the provider still verifies the real tier per track.
+val DeezerAccountPremiumKey = booleanPreferencesKey("deezerAccountPremium")
+
 val WebClientPoTokenEnabledKey = booleanPreferencesKey("webClientPoTokenEnabled")
 val PoTokenGvsKey = stringPreferencesKey("poTokenGvs")
 val PoTokenPlayerKey = stringPreferencesKey("poTokenPlayer")
