@@ -89,6 +89,19 @@ jobs:
       version: ${{ steps.pick.outputs.version }}
       version_code: ${{ steps.pick.outputs.version_code }}
     steps:
+      # Checked here rather than in the mirror job, where an empty `token:` on actions/checkout
+      # fails as an opaque auth error after the tag has already been resolved.
+      - name: Require SYNC_PAT
+        env:
+          SYNC_PAT: ${{ secrets.SYNC_PAT }}
+        run: |
+          if [ -z "${SYNC_PAT:-}" ]; then
+            echo "::error::SYNC_PAT is not set. The mirror pushes with it so release.yml fires;"
+            echo "with the default GITHUB_TOKEN the push lands but no release is ever published."
+            exit 1
+          fi
+          echo "SYNC_PAT present."
+
       - name: Pick their newest stable release
         id: pick
         env:
@@ -159,6 +172,17 @@ jobs:
           fetch-depth: 0
           ref: main
           persist-credentials: true
+          # Push with the PAT, not the default GITHUB_TOKEN.
+          #
+          # GitHub deliberately does not run workflows for pushes made with GITHUB_TOKEN, to stop
+          # runaway loops. That is why the first two mirror runs landed upstream's tree on main and
+          # published nothing: release.yml never fired, leaving main at v14.0.5362 while the newest
+          # release was still v14.0.5328. persist-credentials writes this token into the remote, so
+          # the pushes at the end of this job inherit it.
+          #
+          # Loop safety comes from release.yml and build.yml ignoring [mirror] commits, plus the
+          # tag-already-released guard in resolve -- not from the token being powerless.
+          token: ${{ secrets.SYNC_PAT }}
 
       - name: Fetch their tag
         env:
