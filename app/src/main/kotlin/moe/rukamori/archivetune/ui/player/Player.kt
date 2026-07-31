@@ -192,6 +192,7 @@ import moe.rukamori.archivetune.innertube.utils.hasYouTubeLoginCookie
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.ui.component.BottomSheet
 import moe.rukamori.archivetune.ui.component.BottomSheetState
+import moe.rukamori.archivetune.ui.component.COLLAPSED_ANCHOR
 import moe.rukamori.archivetune.ui.component.LocalBottomSheetPageState
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.rememberBottomSheetState
@@ -863,8 +864,65 @@ fun BottomSheetPlayer(
             dismissedBound = dismissedBound,
             expandedBound = state.expandedBound,
             collapsedBound = collapsedBound,
-            initialAnchor = 0,
+            // Start at COLLAPSED so the per-style peek bar (QueueCollapsedContentVX,
+            // which lives in Queue.kt's BottomSheet.collapsedContent) is rendered as
+            // soon as the player expands. With the previous default (DISMISSED_ANCHOR)
+            // the collapsedContent was suppressed (BottomSheet only renders it when
+            // !isDismissed), so the peek — and every per-style lyrics / queue / sleep
+            // timer / repeat / shuffle / menu / audio-output button inside it — was
+            // invisible on first launch and after restoring a saved DISMISSED anchor,
+            // even though the player content already reserved `collapsedBound` of
+            // empty space for it. The Apple Music style was unaffected because its
+            // bottom row is baked into AppleMusicControlsColumn (player content), not
+            // into the queue sheet's peek.
+            initialAnchor = COLLAPSED_ANCHOR,
         )
+
+    // Per-style peek-bar visibility safety net.
+    //
+    // The per-style bottom controls (lyrics / queue / AirPlay / sleep-timer /
+    // repeat / shuffle / menu / audio-output device pill) all live inside the
+    // queue sheet's `collapsedContent` (QueueCollapsedContentV1..V9 in
+    // QueueComponents.kt). That content is only rendered on-screen when the
+    // queue sheet is at its COLLAPSED anchor — at EXPANDED the full queue list
+    // covers it, and at DISMISSED the outer Box is offset entirely off-screen
+    // (offset.y == expandedBound). In both cases the user sees the empty gap
+    // below the playback controls that they keep reporting, even though each
+    // style's peek bar is fully defined with its own buttons and styling.
+    //
+    // The queue sheet's `previousAnchor` is `rememberSaveable`, so it survives
+    // process death and player collapse/expand cycles. That means three
+    // non-COLLAPSED states can survive into the next player-open:
+    //
+    //   1. DISMISSED_ANCHOR — leftover from a pre-fix saved state (the old
+    //      default `initialAnchor = 0`). The queue sheet starts off-screen.
+    //   2. EXPANDED_ANCHOR — the user opened the queue list, then collapsed
+    //      the player without first collapsing the queue. The queue sheet
+    //      starts at EXPANDED, so the peek bar is suppressed and the queue
+    //      list covers the bottom of the player.
+    //   3. Mid-animation values — rare, but possible if the player is re-opened
+    //      while a previous queue animation is still settling.
+    //
+    // The previous safety net only handled case 1 (keyed on
+    // `queueSheetState.isDismissed`). Cases 2 and 3 still produced the empty
+    // gap. This net keys solely on `state.isExpandedOrExpanding` so it fires
+    // exactly once per player-open transition and snaps the queue sheet to
+    // COLLAPSED regardless of which non-COLLAPSED state it was in. The snap
+    // happens while the player content's alpha is still 0 (the player's
+    // content BoxWithConstraints uses `alpha = ((progress - 0.25f) * 4)` which
+    // is 0 for the first 25% of the expand animation), so the user never sees
+    // a flash of the queue list or a jarring jump — the peek bar is just
+    // visible by the time the player content fades in.
+    //
+    // The user can still expand the queue list at any time by tapping the
+    // queue button (which calls `openQueue` → `queueSheetState.expandSoft()`);
+    // this net only fires on the player-open transition, not on every
+    // recomposition, so it doesn't fight the user's explicit expand action.
+    LaunchedEffect(state.isExpandedOrExpanding) {
+        if (state.isExpandedOrExpanding && !queueSheetState.isCollapsed) {
+            queueSheetState.collapseSoft()
+        }
+    }
 
     var isLyricsScreenVisible by rememberSaveable {
         mutableStateOf(false)

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Deezer source (ui/screens/settings/PlaybackSourceSections.kt).
+         Only strings missing from values/strings.xml live here; deezer_login and
+         deezer_login_description already exist upstream. -->
+    <string name="source_deezer">Deezer</string>
+    <string name="deezer_specific">Deezer</string>
+    <string name="deezer_enable">Enable Deezer source</string>
+    <string name="deezer_enable_description">Route playback through shared Deezer accounts when a matching track is found</string>
+    <string name="deezer_audio_quality">Audio quality</string>
+    <string name="deezer_quality_flac">FLAC (CD 16-bit)</string>
+    <string name="deezer_quality_mp3_320">MP3 320 kbps</string>
+    <string name="deezer_quality_mp3_128">MP3 128 kbps</string>
+    <string name="deezer_signed_in_as">Signed in as %1$s</string>
+    <string name="deezer_sign_out">Sign out of Deezer</string>
+    <string name="deezer_sign_out_description">Removes the stored session cookie from this device</string>
+    <string name="deezer_signed_out">Signed out of Deezer</string>
+</resources>

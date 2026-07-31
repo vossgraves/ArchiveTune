@@ -89,15 +89,6 @@ fun IntegrationScreen(navController: NavController, scrollTo: String? = null) {
                 .padding(bottom = SettingsDimensions.ScreenBottomPadding),
         ) {
             PreferenceGroup(
-                modifier = positions.modifierFor("lastfm_scrobbling"),
-                title = stringResource(R.string.integration_accounts),
-            ) {
-                item {
-                    IntegrationAccountCards(navController = navController)
-                }
-            }
-
-            PreferenceGroup(
                 modifier = positions.modifierFor("discord_presence"),
                 title = stringResource(R.string.general),
             ) {
@@ -171,7 +162,14 @@ fun IntegrationScreen(navController: NavController, scrollTo: String? = null) {
             }
 
             PreferenceGroup(
-                modifier = positions.modifierFor("listenbrainz"),
+                // Also carries the "lastfm_scrobbling" anchor, which used to sit on the removed
+                // Accounts group. Settings search offers a "Last.fm scrobbling" result that scrolls
+                // here, so without this the result would open this screen and then sit at the top.
+                // Chaining is safe: modifierFor only registers a y position per key.
+                modifier =
+                    positions
+                        .modifierFor("listenbrainz")
+                        .then(positions.modifierFor("lastfm_scrobbling")),
                 title = stringResource(R.string.scrobbling),
             ) {
                 item {
