@@ -20,6 +20,16 @@ permissions:
 jobs:
   notifyTelegram:
     name: Notify Telegram
+    # Skip mirror syncs. mirror-4nx3b.yml pushes the same commit to dev and main, so this workflow
+    # would fire twice over a tree that release.yml is already building for the stable release --
+    # three full matrix builds of identical code, and two Telegram pings for a release that has not
+    # been published yet. release.yml owns the build for mirrored commits.
+    #
+    # `build` (and `aggregateAndSend` behind it) declare `needs: notifyTelegram`, so skipping this
+    # job skips them too. `build_debug` has no `needs`, so it carries the same guard directly.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      contains(github.event.head_commit.message, '[mirror]') == false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -360,7 +370,12 @@ jobs:
         continue-on-error: true
 
   build_debug:
-    if: github.actor != 'dependabot[bot]' && github.actor != 'renovate[bot]'
+    # Same mirror guard as notifyTelegram. This job has no `needs`, so it would otherwise still run
+    # on mirror syncs and rebuild a tree release.yml is already building.
+    if: >-
+      github.actor != 'dependabot[bot]' && github.actor != 'renovate[bot]' &&
+      (github.event_name == 'workflow_dispatch' ||
+       contains(github.event.head_commit.message, '[mirror]') == false)
     runs-on: ubuntu-latest
 
     steps:

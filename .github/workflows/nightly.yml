@@ -22,7 +22,15 @@ concurrency:
 
 jobs:
   check:
-    if: contains(github.ref, 'refs/tags') == false
+    # Skip canaries for mirror syncs. mirror-4nx3b.yml force-pushes an upstream stable tree onto
+    # dev and sends that same commit to main to be published as a stable release, so building a
+    # canary from it would ship a nightly that is byte-identical to a stable under a different tag
+    # -- and because the canary channel sorts by timestamp, that duplicate would look newer than
+    # the stable it came from. A manual dispatch still runs, so one can be forced when wanted.
+    if: >-
+      contains(github.ref, 'refs/tags') == false &&
+      (github.event_name == 'workflow_dispatch' ||
+       contains(github.event.head_commit.message, '[mirror]') == false)
     runs-on: ubuntu-latest
     outputs:
       should_build: ${{ steps.decide.outputs.should_build }}

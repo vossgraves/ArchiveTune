@@ -18,6 +18,7 @@ jobs:
       version_changed: ${{ steps.check_version.outputs.version_changed }}
       new_version: ${{ steps.check_version.outputs.new_version }}
       version_code: ${{ steps.check_version.outputs.version_code }}
+      mirrored_from: ${{ steps.check_version.outputs.mirrored_from }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -30,6 +31,35 @@ jobs:
           if [ ! -f app/build.gradle.kts ]; then
             echo "Error: app/build.gradle.kts does not exist"
             exit 1
+          fi
+
+          # A mirrored release takes its version from upstream instead of from this repo's history.
+          #
+          # The commit-count scheme below cannot reproduce an upstream version: it would require
+          # byte-identical history, and this fork will always carry at least its own .github/. So
+          # mirror-4nx3b.yml records the upstream tag in .mirror-release.json and it wins here,
+          # which makes the published version match by construction rather than by coincidence.
+          #
+          # The marker is only honoured while its tag is unreleased here. It stays committed after
+          # the release, so without that guard every later push to main would try to republish the
+          # same version and every real change would be pinned to a stale number.
+          if [ -f .mirror-release.json ]; then
+            MIRROR_TAG="$(jq -r '.tag // empty' .mirror-release.json)"
+            MIRROR_VERSION="$(jq -r '.version // empty' .mirror-release.json)"
+            MIRROR_CODE="$(jq -r '.version_code // empty' .mirror-release.json)"
+            MIRROR_SOURCE="$(jq -r '.source // empty' .mirror-release.json)"
+
+            if [ -n "$MIRROR_VERSION" ] && ! git rev-parse "$MIRROR_TAG" >/dev/null 2>&1; then
+              echo "Mirrored release from ${MIRROR_SOURCE}: ${MIRROR_TAG} (code ${MIRROR_CODE})"
+              {
+                echo "new_version=${MIRROR_VERSION}"
+                echo "version_code=${MIRROR_CODE}"
+                echo "mirrored_from=${MIRROR_SOURCE}"
+                echo "version_changed=true"
+              } >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "Mirror marker present but ${MIRROR_TAG} is already tagged -- falling back to commit count."
           fi
 
           # Base major.minor comes from the committed versionName (bump it manually for a big
@@ -575,6 +605,31 @@ jobs:
           cat > release_notes.md <<EOF
           ${{ steps.build_changelog.outputs.changelog }}
           EOF
+
+          # A mirrored release publishes upstream's notes instead of a locally generated changelog.
+          #
+          # Generating them here would describe the wrong thing: the mirror lands as a single
+          # "chore(mirror): sync ..." commit, so build_changelog would emit that one line rather
+          # than the features and fixes the release actually contains. The body is read from the
+          # marker with jq -- never interpolated into the script -- because upstream notes contain
+          # backticks and quotes that a shell would try to execute.
+          MIRRORED_FROM="${{ needs.check-version.outputs.mirrored_from }}"
+          if [ -n "$MIRRORED_FROM" ] && [ -f .mirror-release.json ]; then
+            jq -r '.body // ""' .mirror-release.json > release_notes.md
+
+            # Credit upstream in the published notes. GPL-3.0 permits reusing the code, but
+            # republishing their release description verbatim with no attribution would present
+            # their writing as this fork's own.
+            MIRROR_TAG="$(jq -r '.tag // empty' .mirror-release.json)"
+            {
+              echo
+              echo "---"
+              echo
+              echo "Mirrored from [${MIRRORED_FROM}](https://github.com/${MIRRORED_FROM}) at \`${MIRROR_TAG}\`."
+              echo "APKs here are built and signed by this fork, so they cannot be installed as an"
+              echo "upgrade over an upstream build -- uninstall first when switching."
+            } >> release_notes.md
+          fi
 
           # With the static block gone the changelog is the only content, so an empty generator
           # result (bad tag range, nothing matched) would publish blank notes. Fall back to a

@@ -1,0 +1,277 @@
+name: Mirror 4nx3b stable releases
+
+# Mirrors 4nx3b/ArchiveTune onto this fork whenever they publish a STABLE release, so this repo
+# ships the same code under the same version number with the same release notes.
+#
+# WHY THIS EXISTS SEPARATELY FROM upstream-sync.yml
+# ------------------------------------------------
+# upstream-sync.yml tracks rukamori/ArchiveTune, the original project. Both this fork and 4nx3b
+# sync from rukamori independently, which is exactly why the two histories drifted apart. This
+# workflow tracks 4nx3b instead, and it replaces the tree outright rather than merging, because
+# merging can never produce a matching version number (see VERSION PARITY below).
+#
+# THESE TWO CANNOT BOTH OWN dev
+# -----------------------------
+# upstream-sync.yml merges rukamori into dev; this workflow force-pushes 4nx3b's tree over dev.
+# Left both enabled, every mirror is partly undone by the next hourly rukamori merge and dev ends
+# up in whichever state finished last. Running them at different minutes (see the cron below)
+# avoids a mid-operation collision but not the tug of war.
+#
+# Mirroring 4nx3b already includes rukamori's work transitively, because 4nx3b syncs from rukamori
+# themselves -- so once this workflow is trusted, upstream-sync.yml is redundant here and should be
+# disabled. It is left in place for now so nothing is removed silently.
+#
+# WHY .github/ IS PRESERVED INSTEAD OF MIRRORED
+# --------------------------------------------
+# GitHub only runs scheduled workflows from the repository's default branch. A literal mirror of
+# every path would overwrite .github/workflows with theirs, deleting this file and release.yml
+# along with it -- the mirror would run exactly once and then be gone, and because release.yml
+# exists only on main it would not come back from dev either. So the sync replaces all application
+# code and build config, then restores this fork's .github/. Everything a user can install is
+# identical; only the automation differs.
+#
+# VERSION PARITY
+# --------------
+# release.yml normally derives the version from `git rev-list --count HEAD`, so matching their
+# version would require byte-identical history -- impossible while this fork carries any commit of
+# its own, including this file. Instead the sync records their exact tag in .mirror-release.json
+# and release.yml prefers that over the commit count, so the version matches by construction.
+
+on:
+  schedule:
+    # Every two hours at :43, deliberately NOT :17.
+    #
+    # upstream-sync.yml runs hourly at :17 and merges rukamori/ArchiveTune into dev, while this
+    # workflow force-pushes 4nx3b's tree over dev. Sharing a minute would let them interleave and
+    # leave dev in whichever state finished last. The offset does not make them compatible -- see
+    # the note in the header about disabling upstream-sync -- it only stops them colliding
+    # mid-operation.
+    - cron: '43 */2 * * *'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Mirror a specific tag instead of their latest stable (e.g. v14.0.5362)'
+        required: false
+        type: string
+      dry_run:
+        description: 'Resolve and diff only -- do not push anything'
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  # Never let two mirrors race: both rewrite main, and a lost race would publish a tree that is
+  # half one release and half another.
+  group: mirror-4nx3b
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+env:
+  UPSTREAM: 4nx3b/ArchiveTune
+  UPSTREAM_URL: https://github.com/4nx3b/ArchiveTune.git
+
+jobs:
+  resolve:
+    name: Resolve upstream release
+    runs-on: ubuntu-latest
+    outputs:
+      should_mirror: ${{ steps.pick.outputs.should_mirror }}
+      tag: ${{ steps.pick.outputs.tag }}
+      version: ${{ steps.pick.outputs.version }}
+      version_code: ${{ steps.pick.outputs.version_code }}
+    steps:
+      - name: Pick their newest stable release
+        id: pick
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WANTED_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+
+          if [ -n "${WANTED_TAG:-}" ]; then
+            # Manual re-run of a specific tag. Ask for it directly so a typo fails loudly here
+            # instead of silently mirroring whatever is newest.
+            if ! REL_JSON="$(gh api "repos/${UPSTREAM}/releases/tags/${WANTED_TAG}" 2>/dev/null)"; then
+              echo "::error::No release found on ${UPSTREAM} with tag '${WANTED_TAG}'."
+              exit 1
+            fi
+          else
+            # Newest release that is neither a draft nor a pre-release. The API returns releases
+            # newest first, so the first match is the current stable.
+            REL_JSON="$(gh api "repos/${UPSTREAM}/releases" --paginate \
+              --jq '[.[] | select(.draft==false and .prerelease==false)][0] // empty')"
+            if [ -z "$REL_JSON" ]; then
+              echo "No stable release published on ${UPSTREAM} yet -- nothing to mirror."
+              echo "should_mirror=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+
+          TAG="$(printf '%s' "$REL_JSON" | jq -r '.tag_name')"
+
+          # Their tags are v<major>.<minor>.<commitcount>. Strip a leading v defensively in case
+          # that ever changes.
+          VERSION="${TAG#v}"
+
+          # versionCode must be a positive integer or Android refuses the upgrade. They use the
+          # commit count, which is the final dot-segment.
+          VERSION_CODE="${VERSION##*.}"
+          if ! printf '%s' "$VERSION_CODE" | grep -qE '^[0-9]+$'; then
+            echo "::error::Could not derive an integer versionCode from tag '${TAG}'."
+            exit 1
+          fi
+
+          # Skip if this fork already published that tag, which makes the schedule idempotent.
+          if gh release view "$TAG" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            echo "Already released ${TAG} here -- nothing to do."
+            echo "should_mirror=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "Will mirror ${UPSTREAM} ${TAG} (version ${VERSION}, code ${VERSION_CODE})."
+          {
+            echo "should_mirror=true"
+            echo "tag=${TAG}"
+            echo "version=${VERSION}"
+            echo "version_code=${VERSION_CODE}"
+          } >> "$GITHUB_OUTPUT"
+
+  mirror:
+    name: Mirror ${{ needs.resolve.outputs.tag }}
+    needs: resolve
+    if: needs.resolve.outputs.should_mirror == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout this fork
+        uses: actions/checkout@v7
+        with:
+          # Full history: the push to main must be a descendant of main, and release.yml still
+          # reads history for its changelog range.
+          fetch-depth: 0
+          ref: main
+          persist-credentials: true
+
+      - name: Fetch their tag
+        env:
+          TAG: ${{ needs.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          git remote add anx "${UPSTREAM_URL}" 2>/dev/null || git remote set-url anx "${UPSTREAM_URL}"
+          # Fetch only the tag being mirrored, into a namespaced ref that cannot collide with the
+          # tag this fork is about to create for its own release.
+          git fetch --no-tags anx "refs/tags/${TAG}:refs/mirror/${TAG}"
+          echo "Their tree: $(git rev-parse --short "refs/mirror/${TAG}")"
+
+      - name: Replace tree with theirs, keeping this fork's .github
+        env:
+          TAG: ${{ needs.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+
+          # Extract their tree to a scratch dir rather than checking it out over the top: a
+          # checkout leaves behind files they deleted, which would make this a merge rather than a
+          # mirror and could resurrect code their release does not contain.
+          rm -rf /tmp/upstream_tree && mkdir -p /tmp/upstream_tree
+          git archive "refs/mirror/${TAG}" | tar -x -C /tmp/upstream_tree
+
+          # Preserve this fork's automation. See the header comment for why this is not mirrored.
+          rm -rf /tmp/keep_github && cp -a .github /tmp/keep_github
+
+          # Clear the working tree, then lay theirs down. Dropping tracked paths through git keeps
+          # the index honest; the find pass clears anything untracked a previous build left behind.
+          git rm -rq --cached . >/dev/null
+          find . -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} +
+
+          cp -a /tmp/upstream_tree/. .
+
+          rm -rf .github
+          cp -a /tmp/keep_github .github
+
+          git add -A
+          echo "Staged $(git diff --cached --name-only | wc -l) changed paths."
+
+      - name: Record their release for release.yml
+        env:
+          TAG: ${{ needs.resolve.outputs.tag }}
+          VERSION: ${{ needs.resolve.outputs.version }}
+          VERSION_CODE: ${{ needs.resolve.outputs.version_code }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          REL="$(gh api "repos/${UPSTREAM}/releases/tags/${TAG}")"
+          BODY="$(printf '%s' "$REL" | jq -r '.body // ""')"
+          NAME="$(printf '%s' "$REL" | jq -r '.name // ""')"
+
+          # Point repo and download links at this fork: it attaches its own APKs, signed with its
+          # own key, and a verbatim link would send users to their binaries instead.
+          BODY="${BODY//4nx3b\/ArchiveTune/${GITHUB_REPOSITORY}}"
+
+          # A bare "#123" would auto-link to an unrelated issue of the same number in this repo.
+          # Qualify them so they still resolve to the pull request actually being described.
+          BODY="$(printf '%s' "$BODY" | sed -E 's@(^|[^A-Za-z0-9_/-])#([0-9]+)@\1'"${UPSTREAM}"'#\2@g')"
+
+          # Written as JSON so release.yml can read the body without shell-quoting hazards: their
+          # notes contain backticks, quotes and newlines.
+          jq -n \
+            --arg tag "$TAG" \
+            --arg version "$VERSION" \
+            --arg version_code "$VERSION_CODE" \
+            --arg name "$NAME" \
+            --arg body "$BODY" \
+            --arg source "$UPSTREAM" \
+            '{tag:$tag, version:$version, version_code:$version_code, name:$name, body:$body, source:$source}' \
+            > .mirror-release.json
+
+          git add .mirror-release.json
+          echo "Recorded ${TAG}."
+
+      - name: Show what changed
+        run: |
+          set -euo pipefail
+          {
+            echo "### Mirroring ${{ needs.resolve.outputs.tag }} from ${UPSTREAM}"
+            echo '```'
+            git diff --cached --stat | tail -40
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # Only the marker changing means their tree already matches this one; still worth
+          # committing so the version lands and the release fires.
+          if [ -z "$(git diff --cached --name-only | grep -v '^\.mirror-release\.json$' || true)" ]; then
+            echo "Note: only the release marker changed -- trees already match." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Commit and push
+        if: ${{ !inputs.dry_run }}
+        env:
+          TAG: ${{ needs.resolve.outputs.tag }}
+          VERSION: ${{ needs.resolve.outputs.version }}
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+          if git diff --cached --quiet; then
+            echo "Nothing staged -- skipping commit."
+            exit 0
+          fi
+
+          # [mirror] is load-bearing: other push-triggered jobs can filter on it, and it makes the
+          # history readable as "this came from them, not from me".
+          git commit --no-verify -q \
+            -m "chore(mirror): sync ${UPSTREAM} at ${TAG} [mirror]" \
+            -m "Replaces application code and build config with their ${TAG} tree, keeping this fork's .github/ so this workflow and release.yml survive. Version and notes come from their release via .mirror-release.json."
+
+          # dev first: if main is protected and rejects the push, dev still reflects the sync and
+          # the failure is visible rather than silent.
+          git push origin HEAD:refs/heads/dev --force
+          git push origin HEAD:refs/heads/main --force
+
+          echo "Pushed ${TAG}. release.yml will publish v${VERSION}."
+
+      - name: Dry run notice
+        if: ${{ inputs.dry_run }}
+        run: echo "Dry run -- resolved ${{ needs.resolve.outputs.tag }} and staged the tree, pushed nothing."
