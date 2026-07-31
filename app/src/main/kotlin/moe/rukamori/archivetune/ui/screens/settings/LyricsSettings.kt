@@ -102,7 +102,6 @@ import moe.rukamori.archivetune.lyrics.JapaneseLanguagePackManager
 import moe.rukamori.archivetune.lyrics.JapaneseLanguagePackState
 import moe.rukamori.archivetune.paxsenix.models.PaxsenixStats
 import moe.rukamori.archivetune.paxsenix.models.ProviderStats
-import moe.rukamori.archivetune.ui.component.ActionPromptDialog
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.EnumListPreference
 import moe.rukamori.archivetune.ui.component.IconButton
@@ -125,22 +124,7 @@ fun LyricsSettings(
     viewModel: ContentSettingsViewModel = hiltViewModel(),
     scrollTo: String? = null,
 ) {
-    var showClearLyricsDialog by remember { mutableStateOf(false) }
     var showPaxsenixStatsDialog by remember { mutableStateOf(false) }
-
-    if (showClearLyricsDialog) {
-        ActionPromptDialog(
-            title = stringResource(R.string.clear_lyrics_cache),
-            onDismiss = { showClearLyricsDialog = false },
-            onConfirm = {
-                viewModel.clearLyricsCache()
-                showClearLyricsDialog = false
-            },
-            onCancel = { showClearLyricsDialog = false },
-        ) {
-            Text(stringResource(R.string.clear_lyrics_cache_confirm))
-        }
-    }
 
     if (showPaxsenixStatsDialog) {
         val statsState by viewModel.paxsenixStatsState.collectAsStateWithLifecycle()
@@ -721,18 +705,6 @@ fun LyricsSettings(
             }
         }
 
-        PreferenceGroup(
-            modifier = positions.modifierFor("lyrics_cache_size"),
-            title = stringResource(R.string.cache),
-        ) {
-            item {
-                PreferenceEntry(
-                    title = { Text(stringResource(R.string.clear_lyrics_cache)) },
-                    icon = { Icon(painterResource(R.drawable.delete), null) },
-                    onClick = { showClearLyricsDialog = true },
-                )
-            }
-        }
     }
 
     TopAppBar(

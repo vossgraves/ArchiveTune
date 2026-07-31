@@ -20,12 +20,14 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -77,6 +79,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.R
@@ -283,12 +286,23 @@ fun LastFmDashboardScreen(
             }
         }
 
+        val playerAwareInsets = LocalPlayerAwareWindowInsets.current
         LazyColumn(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .windowInsetsPadding(
+                    playerAwareInsets.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom),
+                ),
             contentPadding =
                 PaddingValues(
                     top = innerPadding.calculateTopPadding(),
-                    bottom = 24.dp,
+                    // Reserve space for the mini player + nav bar so the last
+                    // dashboard card isn't overlapped. The window-insets padding
+                    // handles the horizontal + bottom system bars; we add the
+                    // mini-player height explicitly here via calculateBottomPadding
+                    // (which already folds in MiniPlayerHeight when the player
+                    // isn't dismissed) plus a small visual breathing margin.
+                    bottom = playerAwareInsets.calculateBottomPadding() + 16.dp,
                 ),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {

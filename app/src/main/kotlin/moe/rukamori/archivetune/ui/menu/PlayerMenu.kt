@@ -217,9 +217,11 @@ fun PlayerMenu(
                             .map { it.trim() }
                             .filter { it.isNotEmpty() }
                     if (parts.size > 1) {
-                        parts.mapIndexed { index, name ->
-                            SplitArtist(name, if (index == 0) artist else null)
-                        }
+                        // All split parts share the same originalArtist reference so the
+                        // thumbnail lookup (and click-through navigation) works for every
+                        // part — not just the first one. The underlying YTM channel ID is
+                        // the same for all parts.
+                        parts.map { name -> SplitArtist(name, artist) }
                     } else {
                         listOf(SplitArtist(artist.name, artist))
                     }
@@ -245,27 +247,38 @@ fun PlayerMenu(
     // Mirrors the pattern in SongMenu.kt:203-211 but adds the YouTube
     // fallback because PlayerMenu is also shown for songs that aren't in the
     // local library (radio, search, playlist previews).
+    // Stable, sorted key so produceState doesn't re-fire on every recomposition
+    // (a fresh List<> instance with the same contents would otherwise restart the
+    // lookup each frame, racing with the popup's render and never resolving).
+    val artistIdsKey =
+        remember(splitArtists) {
+            splitArtists.mapNotNull { it.originalArtist?.id }.distinct().sorted()
+        }
     val artistThumbnailsByKey: Map<String?, String?> by produceState(
         initialValue = emptyMap(),
-        splitArtists.mapNotNull { it.originalArtist?.id },
+        artistIdsKey,
     ) {
         withContext(Dispatchers.IO) {
             val result = mutableMapOf<String?, String?>()
-            // Map of artistId -> display name (from MediaMetadata), used as a
-            // fallback when inserting a new ArtistEntity row just to cache the
-            // fetched thumbnail URL.
             val nameById =
                 splitArtists
                     .mapNotNull { sa ->
                         sa.originalArtist?.id?.let { id -> id to sa.originalArtist.name }
                     }.toMap()
+            // Update the map INCREMENTALLY per artist so the popup shows each thumbnail
+            // as soon as it resolves — instead of waiting for every artist to fetch
+            // before updating the UI (which left the user staring at music-note icons
+            // for several seconds while slow YTM lookups completed in series).
             splitArtists.mapNotNull { it.originalArtist?.id }.distinct().forEach { artistId ->
                 val dbEntity = database.getArtistById(artistId)
                 val cached = dbEntity?.thumbnailUrl
                 if (!cached.isNullOrBlank()) {
                     result[artistId] = cached
+                    value = result.toMap()
                 } else {
-                    // DB miss or no thumbnail — fetch from YouTube and persist.
+                    // DB miss — fetch from YouTube Music and persist so the next open
+                    // is instant. `ArtistItem.thumbnail` is a `String?` (not a nested
+                    // Thumbnails object), so we read it directly.
                     val fetched =
                         runCatching { YouTube.artist(artistId) }
                             .getOrNull()
@@ -274,11 +287,7 @@ fun PlayerMenu(
                             ?.thumbnail
                     if (!fetched.isNullOrBlank()) {
                         result[artistId] = fetched
-                        // Persist back to the DB so we don't re-fetch next time.
-                        // Preserve any existing fields (name, bookmarkedAt,
-                        // blockedAt, isLocal, channelId) — only fill in
-                        // thumbnailUrl. If the row doesn't exist yet, create
-                        // it with the name from MediaMetadata.
+                        value = result.toMap()
                         runCatching {
                             database.query {
                                 upsert(
@@ -298,7 +307,6 @@ fun PlayerMenu(
                     }
                 }
             }
-            value = result
         }
     }
 

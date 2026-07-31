@@ -85,7 +85,6 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -276,6 +275,8 @@ import moe.rukamori.archivetune.constants.MiniPlayerBackgroundStyle
 import moe.rukamori.archivetune.constants.MiniPlayerBackgroundStyleKey
 import moe.rukamori.archivetune.ui.component.LocalNavigationBarBackdrop
 import moe.rukamori.archivetune.ui.component.NavigationBarBackdrop
+import moe.rukamori.archivetune.ui.component.ProfileMenuDialog
+import moe.rukamori.archivetune.ui.component.ProfileMenuItem
 import moe.rukamori.archivetune.ui.component.AutoResizeText
 import moe.rukamori.archivetune.ui.component.FontSizeRange
 import moe.rukamori.archivetune.ui.component.IconButton
@@ -934,6 +935,13 @@ class MainActivity : ComponentActivity() {
                     val accountName by homeViewModel.accountName.collectAsStateWithLifecycle()
                     val networkBannerState by networkBannerViewModel.bannerState.collectAsStateWithLifecycle()
                     val hasUnreadNews by newsViewModel.hasUnreadNews.collectAsStateWithLifecycle()
+                    // Hoisted profile-menu state so the GraphicsLayer capture
+                    // (applied to the main content Box below) can gate on the
+                    // dialog being open — recording every frame when the dialog
+                    // is closed would waste GPU cycles on the layer.record{}
+                    // pass with no consumer.
+                    var profileMenuExpanded by rememberSaveable { mutableStateOf(false) }
+                    val profileDialogBackdropLayer = rememberGraphicsLayer()
                     val navBackStackEntry by navController.currentBackStackEntryAsState()
                     val (previousTab) = rememberSaveable { mutableStateOf("home") }
                     val currentRoute = navBackStackEntry?.destination?.route
@@ -1943,7 +1951,6 @@ class MainActivity : ComponentActivity() {
                                                     }
                                                 },
                                                 actions = {
-                                                    var profileMenuExpanded by remember { mutableStateOf(false) }
                                                     Box(
                                                         modifier = Modifier.padding(end = 4.dp),
                                                     ) {
@@ -1981,107 +1988,61 @@ class MainActivity : ComponentActivity() {
                                                                 }
                                                             }
                                                         }
-                                                        DropdownMenu(
-                                                            expanded = profileMenuExpanded,
-                                                            onDismissRequest = { profileMenuExpanded = false },
-                                                            shape = RoundedCornerShape(20.dp),
-                                                        ) {
-                                                            // Optional header line showing the signed-in account name (or "Not signed in")
-                                                            if (accountName.isNotBlank()) {
-                                                                Text(
-                                                                    text = accountName,
-                                                                    style = MaterialTheme.typography.titleSmall,
-                                                                    fontWeight = FontWeight.SemiBold,
-                                                                    color = MaterialTheme.colorScheme.onSurface,
-                                                                    modifier = Modifier.padding(
-                                                                        start = 16.dp,
-                                                                        end = 16.dp,
-                                                                        top = 8.dp,
-                                                                        bottom = 4.dp,
-                                                                    ),
-                                                                    maxLines = 1,
-                                                                    overflow = TextOverflow.Ellipsis,
-                                                                )
-                                                                HorizontalDivider()
-                                                            }
-                                                            DropdownMenuItem(
-                                                                text = { Text(stringResource(R.string.history)) },
-                                                                onClick = {
-                                                                    profileMenuExpanded = false
-                                                                    navController.navigate("history")
-                                                                },
-                                                                leadingIcon = {
-                                                                    Icon(
-                                                                        painter = painterResource(R.drawable.history),
-                                                                        contentDescription = null,
-                                                                    )
-                                                                },
-                                                            )
-                                                            DropdownMenuItem(
-                                                                text = { Text(stringResource(R.string.news)) },
-                                                                onClick = {
-                                                                    profileMenuExpanded = false
-                                                                    navController.navigate("news")
-                                                                },
-                                                                leadingIcon = {
-                                                                    BadgedBox(badge = {
-                                                                        if (hasUnreadNews) Badge()
-                                                                    }) {
-                                                                        Icon(
-                                                                            painter = painterResource(R.drawable.newspaper),
-                                                                            contentDescription = null,
-                                                                        )
-                                                                    }
-                                                                },
-                                                            )
-                                                            DropdownMenuItem(
-                                                                text = { Text(stringResource(R.string.new_release_albums)) },
-                                                                onClick = {
-                                                                    profileMenuExpanded = false
-                                                                    navController.navigate("new_release")
-                                                                },
-                                                                leadingIcon = {
-                                                                    Icon(
-                                                                        painter = painterResource(R.drawable.new_release),
-                                                                        contentDescription = null,
-                                                                    )
-                                                                },
-                                                            )
-                                                            DropdownMenuItem(
-                                                                text = { Text(stringResource(R.string.lastfm_dashboard)) },
-                                                                onClick = {
-                                                                    profileMenuExpanded = false
-                                                                    navController.navigate("lastfm_dashboard")
-                                                                },
-                                                                leadingIcon = {
-                                                                    Icon(
-                                                                        painter = painterResource(R.drawable.stats),
-                                                                        contentDescription = null,
-                                                                    )
-                                                                },
-                                                            )
-                                                            DropdownMenuItem(
-                                                                text = { Text(stringResource(R.string.settings)) },
-                                                                onClick = {
-                                                                    profileMenuExpanded = false
-                                                                    navController.navigate("settings")
-                                                                },
-                                                                leadingIcon = {
-                                                                    BadgedBox(badge = {
-                                                                        if (
-                                                                            BuildConfig.UPDATER_AVAILABLE &&
-                                                                            latestUpdateChannel == effectiveUpdateChannel &&
-                                                                            Updater.isUpdateAvailable(latestVersionName, BuildConfig.VERSION_NAME)
-                                                                        ) Badge()
-                                                                    }) {
-                                                                        Icon(
-                                                                            painter = painterResource(R.drawable.settings),
-                                                                            contentDescription = null,
-                                                                        )
-                                                                    }
-                                                                },
-                                                            )
-                                                        }
+                                                    }
+                                                    if (profileMenuExpanded) {
+                                                        val showSettingsBadge = BuildConfig.UPDATER_AVAILABLE &&
+                                                            latestUpdateChannel == effectiveUpdateChannel &&
+                                                            Updater.isUpdateAvailable(latestVersionName, BuildConfig.VERSION_NAME)
+                                                        ProfileMenuDialog(
+                                                            layer = profileDialogBackdropLayer,
+                                                            accountName = accountName,
+                                                            accountImageUrl = accountImageUrl,
+                                                            items = listOf(
+                                                                ProfileMenuItem(
+                                                                    icon = R.drawable.history,
+                                                                    label = stringResource(R.string.history),
+                                                                    onClick = {
+                                                                        profileMenuExpanded = false
+                                                                        navController.navigate("history")
+                                                                    },
+                                                                ),
+                                                                ProfileMenuItem(
+                                                                    icon = R.drawable.newspaper,
+                                                                    label = stringResource(R.string.news),
+                                                                    showBadge = hasUnreadNews,
+                                                                    onClick = {
+                                                                        profileMenuExpanded = false
+                                                                        navController.navigate("news")
+                                                                    },
+                                                                ),
+                                                                ProfileMenuItem(
+                                                                    icon = R.drawable.new_release,
+                                                                    label = stringResource(R.string.new_release_albums),
+                                                                    onClick = {
+                                                                        profileMenuExpanded = false
+                                                                        navController.navigate("new_release")
+                                                                    },
+                                                                ),
+                                                                ProfileMenuItem(
+                                                                    icon = R.drawable.stats,
+                                                                    label = stringResource(R.string.lastfm_dashboard),
+                                                                    onClick = {
+                                                                        profileMenuExpanded = false
+                                                                        navController.navigate("lastfm_dashboard")
+                                                                    },
+                                                                ),
+                                                                ProfileMenuItem(
+                                                                    icon = R.drawable.settings,
+                                                                    label = stringResource(R.string.settings),
+                                                                    showBadge = showSettingsBadge,
+                                                                    onClick = {
+                                                                        profileMenuExpanded = false
+                                                                        navController.navigate("settings")
+                                                                    },
+                                                                ),
+                                                            ),
+                                                            onDismiss = { profileMenuExpanded = false },
+                                                        )
                                                     }
                                                 },
                                                 scrollBehavior =
@@ -2639,6 +2600,25 @@ class MainActivity : ComponentActivity() {
                                                             }
                                                             drawLayer(navBarFrostedBackdrop.layer)
                                                         }
+                                                } else {
+                                                    Modifier
+                                                },
+                                            ).then(
+                                                // Profile-menu dialog backdrop: capture the app
+                                                // content into a separate layer when the dialog is
+                                                // open, so the dialog can render a real backdrop
+                                                // blur on Android 12+. Gated by `profileMenuExpanded`
+                                                // to avoid the per-frame `record{}` cost when no
+                                                // consumer is reading the layer.
+                                                if (profileMenuExpanded &&
+                                                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+                                                ) {
+                                                    Modifier.drawWithContent {
+                                                        profileDialogBackdropLayer.record {
+                                                            this@drawWithContent.drawContent()
+                                                        }
+                                                        drawContent()
+                                                    }
                                                 } else {
                                                     Modifier
                                                 },

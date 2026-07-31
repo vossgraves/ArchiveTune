@@ -14,10 +14,12 @@
 package moe.rukamori.archivetune.ui.player
 
 import android.content.Intent
+import android.graphics.Bitmap
 import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -49,6 +51,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -81,6 +84,14 @@ import androidx.media3.common.Player.STATE_ENDED
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
+import coil3.imageLoader
+import coil3.request.ImageRequest
+import coil3.request.SuccessResult
+import coil3.request.allowHardware
+import coil3.size.Size as CoilSize
+import coil3.toBitmap
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.db.entities.FormatEntity
 import moe.rukamori.archivetune.db.entities.codecLabel
@@ -94,7 +105,7 @@ import moe.rukamori.archivetune.ui.menu.PlayerMenu
 import moe.rukamori.archivetune.ui.menu.rememberCastPlayerMenuAction
 import moe.rukamori.archivetune.ui.utils.ShowMediaInfo
 import moe.rukamori.archivetune.ui.utils.highRes
-import moe.rukamori.archivetune.ui.utils.rememberPreBlurredBitmap
+import moe.rukamori.archivetune.utils.ImageBlurUtils
 import moe.rukamori.archivetune.utils.makeTimeString
 import moe.rukamori.archivetune.utils.rememberLowDataModeActive
 
@@ -193,7 +204,8 @@ fun AppleMusicPlayerContent(
 
         // 0. Opaque black floor. On Android < 12 the pre-blur coroutine can take a beat to
         //    resolve (and historically crashed on hardware bitmaps — see
-        //    rememberPreBlurredBitmap). During that window the blurred-bitmap branch is
+        //    rememberPreBlurredBitmap — now inlined as produceState per PR #924).
+        //    During that window the blurred-bitmap branch is
         //    skipped and the sharp-artwork AsyncImage is still loading, leaving the
         //    BoxWithConstraints with no opaque layer at all — so the screen behind the
         //    player bottom sheet (e.g. the Appearance settings page text: "Lyrics
@@ -216,22 +228,43 @@ fun AppleMusicPlayerContent(
         //
         //    On older Android (API < 31) Modifier.blur is a silent no-op: the artwork would
         //    render sharp, killing the Apple-Music-blurred-sheet aesthetic. As a fallback we
-        //    pre-blur the artwork bitmap on a background thread via rememberPreBlurredBitmap
-        //    (which uses ImageBlurUtils.stackBlur under the hood) and render that bitmap
-        //    directly. While the blur is in-flight (first frame after artwork change) we
-        //    render a slightly darker version of the sharp artwork + a heavier scrim so the
-        //    transition into the blurred version isn't jarring.
+        //    pre-blur the artwork bitmap on a background thread via ImageBlurUtils.blur
+        //    (PR #924 approach, inlined) and render that bitmap directly. While the blur is
+        //    in-flight (first frame after artwork change) we render a slightly darker version
+        //    of the sharp artwork + a heavier scrim so the transition isn't jarring.
         val isPreS = Build.VERSION.SDK_INT < Build.VERSION_CODES.S
-        val preBlurredBitmap =
-            if (isPreS) {
-                rememberPreBlurredBitmap(imageUrl = artworkUrl, radiusDp = 72.dp, maxDimensionPx = 720)
-            } else {
-                null
+        val context = LocalContext.current
+        val imageLoader = context.imageLoader
+        val preBlurredBitmap by produceState<Bitmap?>(null, artworkUrl) {
+            if (!isPreS || artworkUrl.isNullOrBlank()) {
+                value = null
+                return@produceState
             }
+            value = withContext(Dispatchers.IO) {
+                try {
+                    val request = ImageRequest.Builder(context)
+                        .data(artworkUrl)
+                        .allowHardware(false)
+                        .memoryCacheKey("$artworkUrl#amplayer")
+                        .diskCacheKey("$artworkUrl#amplayer")
+                        .size(CoilSize(720, 720))
+                        .build()
+                    val result = imageLoader.execute(request)
+                    if (result is SuccessResult) {
+                        val bitmap = result.image.toBitmap()
+                            .copy(Bitmap.Config.ARGB_8888, true)
+                        val density = context.resources.displayMetrics.density
+                        ImageBlurUtils.blur(bitmap, 72f * density)
+                    } else null
+                } catch (_: Exception) {
+                    null
+                }
+            }
+        }
 
         if (isPreS && preBlurredBitmap != null) {
-            androidx.compose.foundation.Image(
-                bitmap = preBlurredBitmap.asImageBitmap(),
+            Image(
+                bitmap = preBlurredBitmap!!.asImageBitmap(),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier =
