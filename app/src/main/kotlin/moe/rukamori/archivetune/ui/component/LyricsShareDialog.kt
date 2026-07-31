@@ -207,19 +207,34 @@ fun LyricsShareImageDialog(
             isSharing = true
             scope.launch {
                 try {
+                    // Vinyl mode renders its own dedicated layout (album cover + vinyl
+                    // disc + center label) and skips the lyrics card entirely. The
+                    // other share options (blur, dim, aspect ratio) are ignored —
+                    // vinyl mode has its own fixed composition.
                     val image =
-                        ComposeToImage.createLyricsImage(
-                            context = context,
-                            coverArtUrl = mediaMetadata?.thumbnailUrl,
-                            songTitle = payload.songTitle,
-                            artistName = payload.artists,
-                            lyrics = payload.lyricsText,
-                            width = options.aspectRatio.exportWidth,
-                            height = options.aspectRatio.exportHeight,
-                            textColor = customTextColor?.toArgb(),
-                            glassStyle = selectedGlassStyle,
-                            shareOptions = options,
-                        )
+                        if (options.vinylMode) {
+                            ComposeToImage.createVinylImage(
+                                context = context,
+                                coverArtUrl = mediaMetadata?.thumbnailUrl,
+                                songTitle = payload.songTitle,
+                                artistName = payload.artists,
+                                width = options.aspectRatio.exportWidth,
+                                height = options.aspectRatio.exportHeight,
+                            )
+                        } else {
+                            ComposeToImage.createLyricsImage(
+                                context = context,
+                                coverArtUrl = mediaMetadata?.thumbnailUrl,
+                                songTitle = payload.songTitle,
+                                artistName = payload.artists,
+                                lyrics = payload.lyricsText,
+                                width = options.aspectRatio.exportWidth,
+                                height = options.aspectRatio.exportHeight,
+                                textColor = customTextColor?.toArgb(),
+                                glassStyle = selectedGlassStyle,
+                                shareOptions = options,
+                            )
+                        }
                     val fileName = "lyrics_${System.currentTimeMillis()}"
                     val uri = ComposeToImage.saveBitmapAsFile(context, image, fileName)
                     val shareIntent =
@@ -688,6 +703,48 @@ private fun ControlsSection(
                         )
                     }
                 }
+            }
+
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
+            // Vinyl mode toggle — sits prominently as its own section right under
+            // the layout selector because enabling it overrides every other
+            // control below (the vinyl layout has its own fixed composition:
+            // album cover + disc + center label, no lyrics card, always 1:1).
+            // Mirrors the "Show album cover" toggle pattern below: Box with
+            // background + clip on the SAME modifier chain so the rounded shape
+            // clips the painted result without cropping measured-but-unpainted
+            // description text.
+            Row(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 56.dp)
+                        .clip(MaterialTheme.shapes.large)
+                        .background(MaterialTheme.colorScheme.surfaceContainerLowest)
+                        .clickable { onOptionsChange(options.copy(vinylMode = !options.vinylMode)) }
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(R.string.lyrics_share_vinyl_mode),
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Text(
+                        text = stringResource(R.string.lyrics_share_vinyl_mode_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
+                Spacer(modifier = Modifier.width(16.dp))
+                Switch(
+                    checked = options.vinylMode,
+                    onCheckedChange = { onOptionsChange(options.copy(vinylMode = it)) },
+                )
             }
 
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)

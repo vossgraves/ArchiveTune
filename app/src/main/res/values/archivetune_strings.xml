@@ -222,6 +222,8 @@
     <string name="lyrics_share_layout_square">Square</string>
     <string name="lyrics_share_layout_portrait">Portrait</string>
     <string name="lyrics_share_layout_story">Story</string>
+    <string name="lyrics_share_vinyl_mode">Vinyl mode</string>
+    <string name="lyrics_share_vinyl_mode_desc">Render as a vinyl record with the album cover instead of the lyrics card</string>
     <string name="lyrics_share_resolution_value">%1$d x %2$d</string>
     <string name="lyrics_share_background_blur">Background blur</string>
     <string name="lyrics_share_background_blur_value">%1$d px</string>
@@ -312,6 +314,7 @@
     <string name="player_background_style">Player background style</string>
     <string name="lyrics_background_style">Lyrics background style</string>
     <string name="lyrics_background_default">Default</string>
+    <string name="lyrics_background_moving_blur">Moving Blur</string>
     <string name="mini_player_background_style">Mini player background style</string>
     <string name="follow_theme">Follow theme</string>
     <string name="gradient">Gradient</string>

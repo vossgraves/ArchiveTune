@@ -805,51 +805,48 @@ object LyricsUtils {
     }
 
     /**
-     * Converts a Katakana string to Romaji.
-     * This optimized version uses a pre-defined map and StringBuilder for better performance
-     * compared to chained regex replacements.
-     * Expected impact: Significant reduction in object creation (Regex, String) and faster execution.
+     * Converts any Hiragana characters in [text] to their Katakana equivalents.
+     * Hiragana and Katakana share the same Unicode ordering — every Hiragana codepoint
+     * has a Katakana counterpart at offset 0x60 (e.g. あ U+3042 → ア U+30A2). This lets
+     * the existing Katakana-only [KANA_ROMAJI_MAP] handle both scripts after a single
+     * cheap pre-pass.
+     *
+     * Characters outside the Hiragana block (Katakana, Kanji, Latin, punctuation, etc.)
+     * are passed through unchanged.
      */
-    fun katakanaToRomaji(katakana: String?): String {
-        if (katakana.isNullOrEmpty()) return ""
-
-        val romajiBuilder = StringBuilder(katakana.length) // Initial capacity
-        var i = 0
-        val n = katakana.length
-        while (i < n) {
-            var consumed = false
-            // Prioritize 2-character sequences from the map (e.g., "キャ" before "キ")
-            if (i + 1 < n) {
-                val twoCharCandidate = katakana.substring(i, i + 2)
-                val mappedTwoChar = KANA_ROMAJI_MAP[twoCharCandidate]
-                if (mappedTwoChar != null) {
-                    romajiBuilder.append(mappedTwoChar)
-                    i += 2
-                    consumed = true
-                }
-            }
-
-            if (!consumed) {
-                // If no 2-character sequence matched, try 1-character
-                val oneCharCandidate = katakana[i].toString()
-                val mappedOneChar = KANA_ROMAJI_MAP[oneCharCandidate]
-                if (mappedOneChar != null) {
-                    romajiBuilder.append(mappedOneChar)
+    private fun hiraganaToKatakana(text: String): String {
+        if (text.isEmpty()) return text
+        val sb = StringBuilder(text.length)
+        for (ch in text) {
+            sb.append(
+                if (ch in '\u3041'..'\u3096') {
+                    (ch.code + 0x60).toChar()
                 } else {
-                    // If the character is not in Katakana map, append it as is.
-                    romajiBuilder.append(oneCharCandidate)
-                }
-                i += 1
-            }
+                    ch
+                },
+            )
         }
-        return romajiBuilder.toString().lowercase()
+        return sb.toString()
     }
 
     /**
      * Romanizes Japanese text using Kuromoji Tokenizer and the optimized katakanaToRomaji function.
      * Runs on Dispatchers.Default for CPU-intensive work.
-     * Expected impact: Faster tokenization due to reused Tokenizer instance and faster
-     * per-token romanization.
+     *
+     * Pipeline:
+     *   1. Tokenize the input with Kuromoji (kanji + kana boundaries, readings).
+     *   2. For each token, pick the reading if Kuromoji provides one (usually Katakana);
+     *      otherwise fall back to the surface form (which may contain Hiragana).
+     *   3. Convert any Hiragana in the reading to Katakana via [hiraganaToKatakana] —
+     *      this is the critical fix. Previously, Hiragana characters in the surface form
+     *      passed through [katakanaToRomaji] unchanged because [KANA_ROMAJI_MAP] only
+     *      contains Katakana keys, so lyrics like "くさはねぇ" stayed as "くさはねぇ"
+     *      instead of becoming "kusahane-".
+     *   4. Run [katakanaToRomaji] on the normalized Katakana string. Sokuon (ッ) and
+     *      chōonpu (ー) are handled inside that function.
+     *   5. Pass the next token's Katakana-normalized reading as `nextKatakana` so
+     *      sokuon at a token boundary can still geminate the next token's initial
+     *      consonant.
      */
     suspend fun romanizeJapanese(text: String): String =
         withContext(Dispatchers.Default) {
@@ -864,26 +861,52 @@ object LyricsUtils {
                         } else {
                             token.reading
                         }
+                    // Normalize Hiragana → Katakana so KANA_ROMAJI_MAP can handle both.
+                    val katakanaReading = hiraganaToKatakana(currentReading)
 
-                    // Pass the next token's reading for sokuon handling if applicable
+                    // Pass the next token's reading for sokuon handling at token boundaries.
+                    // Also normalized to Katakana for consistency.
                     val nextTokenReading =
                         if (index + 1 < tokens.size) {
-                            tokens[index + 1].reading?.takeIf { it.isNotEmpty() && it != "*" } ?: tokens[index + 1].surface
+                            val nextReading =
+                                tokens[index + 1].reading?.takeIf { it.isNotEmpty() && it != "*" }
+                                    ?: tokens[index + 1].surface
+                            hiraganaToKatakana(nextReading)
                         } else {
                             null
                         }
-                    katakanaToRomaji(currentReading, nextTokenReading)
+                    katakanaToRomaji(katakanaReading, nextTokenReading)
                 }
             romanizedTokens.joinToString(" ")
         }
 
     /**
-     * Converts a Katakana string to Romaji.
-     * This optimized version uses a pre-defined map and StringBuilder for better performance
-     * compared to chained regex replacements.
-     * Expected impact: Significant reduction in object creation (Regex, String) and faster execution.
-     * @param katakana The Katakana string to convert.
-     * @param nextKatakana Optional: The next Katakana string (from the next token) to help with sokuon (ッ) gemination.
+     * Converts a Katakana string to Romaji using the pre-defined [KANA_ROMAJI_MAP].
+     *
+     * Handles three classes of characters specially beyond the map lookup:
+     *
+     *   1. Yōon (拗音) — 2-character sequences like "キャ" (kya). These are matched
+     *      BEFORE single-character lookups so the small y-vowel (ャ/ュ/ョ) combines
+     *      with the preceding consonant instead of being treated as a standalone
+     *      (and unmapped) character.
+     *
+     *   2. Sokuon (ッ) — gemination marker. Doubles the consonant of the NEXT
+     *      character. The next character is looked up WITHIN the current string
+     *      first (`katakana[i + 1]`); only if sokuon appears at the end of the
+     *      string do we fall back to the first character of [nextKatakana] (the
+     *      next token's reading). This fixes the previous bug where sokuon
+     *      mid-token (e.g. "がっこう" → "gakkou") was silently dropped because
+     *      the code only inspected the next TOKEN, not the next CHARACTER.
+     *
+     *   3. Chōonpu (ー) — long vowel mark. Extends the previous vowel instead of
+     *      being dropped (the old map entry `"ー" to ""` lost the long-vowel
+     *      information, turning "カー" (kaa) into "ka").
+     *
+     * @param katakana The Katakana string to convert. Hiragana should be
+     *     pre-converted with [hiraganaToKatakana]; any remaining non-Katakana
+     *     characters are passed through as-is.
+     * @param nextKatakana Optional: the next token's Katakana reading, used only
+     *     for sokuon-at-end-of-token gemination. Most tokens don't need this.
      */
     fun katakanaToRomaji(
         katakana: String?,
@@ -891,7 +914,7 @@ object LyricsUtils {
     ): String {
         if (katakana.isNullOrEmpty()) return ""
 
-        val romajiBuilder = StringBuilder(katakana.length) // Initial capacity
+        val romajiBuilder = StringBuilder(katakana.length)
         var i = 0
         val n = katakana.length
         while (i < n) {
@@ -907,18 +930,49 @@ object LyricsUtils {
                 }
             }
 
-            // Handle sokuon (ッ) - gemination
+            // Handle sokuon (ッ) — gemination. Doubles the consonant of the next
+            // character. Look INSIDE the current string first; only fall back to
+            // the next token's first character when sokuon is at the end of the
+            // current string (rare; usually a tokenizer artifact).
             if (!consumed && katakana[i] == 'ッ') {
-                val nextCharToDouble = nextKatakana?.getOrNull(0)
+                val nextCharInSameString = katakana.getOrNull(i + 1)
+                val nextCharToDouble = nextCharInSameString ?: nextKatakana?.getOrNull(0)
                 if (nextCharToDouble != null) {
                     val nextCharRomaji =
-                        KANA_ROMAJI_MAP[nextCharToDouble.toString()]?.getOrNull(0)?.toString()
+                        KANA_ROMAJI_MAP[nextCharToDouble.toString()]
                             ?: nextCharToDouble.toString()
-                    romajiBuilder.append(nextCharRomaji.lowercase().trim())
+                    // Take the first letter (the consonant to geminate) and double it.
+                    // For vowel-initial kana (あ, い, う, え, お) the first letter is the
+                    // vowel itself — geminating a vowel is unusual but renders as the
+                    // vowel doubled (e.g. っあ → "aa"), which matches common romaji
+                    // conventions for emphatic speech.
+                    val firstLetter = nextCharRomaji.firstOrNull()?.lowercase()?.trim()
+                    if (firstLetter != null && firstLetter.isNotEmpty()) {
+                        romajiBuilder.append(firstLetter)
+                    }
                 }
-                // Sokuon itself doesn't have a direct romaji representation other than geminating the next consonant.
-                // We just consume 'ッ' and let the next character (if any within the current token) be processed normally.
                 i += 1 // Consume the 'ッ'
+                consumed = true
+            }
+
+            // Handle chōonpu (ー) — long vowel mark. Extends the previous vowel
+            // instead of being silently dropped. Maps to the same vowel as the last
+            // emitted character (e.g. "カ" + "ー" → "ka" + "a" = "kaa"). If there's
+            // no previous vowel (start of string, or previous char was a consonant),
+            // we emit nothing — same as the old `"ー" to ""` map entry, but without
+            // losing information when a vowel IS present.
+            if (!consumed && katakana[i] == 'ー') {
+                val lastChar = romajiBuilder.lastOrNull()
+                val extension = when (lastChar) {
+                    'a' -> "a"
+                    'i' -> "i"
+                    'u' -> "u"
+                    'e' -> "e"
+                    'o' -> "o"
+                    else -> ""
+                }
+                romajiBuilder.append(extension)
+                i += 1
                 consumed = true
             }
 

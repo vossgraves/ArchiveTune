@@ -60,6 +60,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -85,7 +86,9 @@ import androidx.media3.exoplayer.offline.DownloadRequest
 import androidx.media3.exoplayer.offline.DownloadService
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalDatabase
 import moe.rukamori.archivetune.LocalDownloadUtil
 import moe.rukamori.archivetune.LocalPlayerConnection
@@ -100,6 +103,8 @@ import moe.rukamori.archivetune.constants.SpeedDialSongIdsKey
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.playback.CanvasArtworkRefetchResult
 import moe.rukamori.archivetune.playback.ExoDownloadService
+import moe.rukamori.archivetune.db.entities.ArtistEntity
+import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.ui.component.BottomSheetState
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.ListDialog
@@ -107,6 +112,8 @@ import moe.rukamori.archivetune.ui.component.MenuSurfaceSection
 import moe.rukamori.archivetune.ui.component.NewAction
 import moe.rukamori.archivetune.ui.component.NewActionGrid
 import moe.rukamori.archivetune.ui.player.rememberDeviceMusicVolumeController
+import moe.rukamori.archivetune.ui.utils.YtimgResizePolicy
+import moe.rukamori.archivetune.ui.utils.resize
 import moe.rukamori.archivetune.ui.player.CanvasArtworkPlaybackCache
 import moe.rukamori.archivetune.utils.SpeedDialPin
 import moe.rukamori.archivetune.utils.SpeedDialPinType
@@ -121,6 +128,7 @@ import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.utils.serializeSpeedDialPins
 import moe.rukamori.archivetune.utils.shareLocalAudio
 import moe.rukamori.archivetune.utils.toggleSpeedDialPin
+import java.time.LocalDateTime
 import kotlin.math.abs
 import kotlin.math.log2
 import kotlin.math.pow
@@ -219,6 +227,82 @@ fun PlayerMenu(
             }
         }
 
+    // Fetch artist profile-picture thumbnail URLs for the "View artist"
+    // selection dialog. `MediaMetadata.Artist.thumbnailUrl` is hardcoded to
+    // null in `SongItem.toMediaMetadata()` (innertube's Artist model doesn't
+    // carry a thumbnail), so without this lookup the dialog falls back to a
+    // grey circle with a music-note icon for every artist — even artists the
+    // user has browsed before and whose thumbnail is already cached in the
+    // local DB.
+    //
+    // We look up each artist id in the Room `artists` table first
+    // (`ArtistEntity.thumbnailUrl`, populated by LibraryArtistsViewModel and
+    // the artist-page loader). If the DB doesn't have a thumbnail (or doesn't
+    // have the artist at all), we fall back to a one-shot `YouTube.artist(id)`
+    // fetch which populates `ArtistPage.artist.thumbnail` — we then persist
+    // that thumbnail back to the DB so subsequent opens are instant.
+    //
+    // Mirrors the pattern in SongMenu.kt:203-211 but adds the YouTube
+    // fallback because PlayerMenu is also shown for songs that aren't in the
+    // local library (radio, search, playlist previews).
+    val artistThumbnailsByKey: Map<String?, String?> by produceState(
+        initialValue = emptyMap(),
+        splitArtists.mapNotNull { it.originalArtist?.id },
+    ) {
+        withContext(Dispatchers.IO) {
+            val result = mutableMapOf<String?, String?>()
+            // Map of artistId -> display name (from MediaMetadata), used as a
+            // fallback when inserting a new ArtistEntity row just to cache the
+            // fetched thumbnail URL.
+            val nameById =
+                splitArtists
+                    .mapNotNull { sa ->
+                        sa.originalArtist?.id?.let { id -> id to sa.originalArtist.name }
+                    }.toMap()
+            splitArtists.mapNotNull { it.originalArtist?.id }.distinct().forEach { artistId ->
+                val dbEntity = database.getArtistById(artistId)
+                val cached = dbEntity?.thumbnailUrl
+                if (!cached.isNullOrBlank()) {
+                    result[artistId] = cached
+                } else {
+                    // DB miss or no thumbnail — fetch from YouTube and persist.
+                    val fetched =
+                        runCatching { YouTube.artist(artistId) }
+                            .getOrNull()
+                            ?.getOrNull()
+                            ?.artist
+                            ?.thumbnail
+                            ?.url
+                    if (!fetched.isNullOrBlank()) {
+                        result[artistId] = fetched
+                        // Persist back to the DB so we don't re-fetch next time.
+                        // Preserve any existing fields (name, bookmarkedAt,
+                        // blockedAt, isLocal, channelId) — only fill in
+                        // thumbnailUrl. If the row doesn't exist yet, create
+                        // it with the name from MediaMetadata.
+                        runCatching {
+                            database.query {
+                                upsert(
+                                    ArtistEntity(
+                                        id = artistId,
+                                        name = dbEntity?.name ?: nameById[artistId].orEmpty(),
+                                        thumbnailUrl = fetched,
+                                        channelId = dbEntity?.channelId,
+                                        lastUpdateTime = dbEntity?.lastUpdateTime ?: LocalDateTime.now(),
+                                        bookmarkedAt = dbEntity?.bookmarkedAt,
+                                        blockedAt = dbEntity?.blockedAt,
+                                        isLocal = dbEntity?.isLocal ?: false,
+                                    ),
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            value = result
+        }
+    }
+
     var showChoosePlaylistDialog by rememberSaveable {
         mutableStateOf(false)
     }
@@ -290,7 +374,14 @@ fun PlayerMenu(
                         )
                     },
                     leadingContent = {
-                        val thumbUrl = splitArtist.originalArtist?.thumbnailUrl
+                        // Look up the artist's profile picture from the
+                        // produceState above (DB → YouTube fallback). Falls
+                        // back to the music-note icon only if the lookup
+                        // hasn't resolved a thumbnail yet.
+                        val thumbUrl =
+                            splitArtist.originalArtist?.id?.let { id ->
+                                artistThumbnailsByKey[id]
+                            }
                         if (thumbUrl.isNullOrBlank()) {
                             Box(
                                 modifier =
@@ -309,7 +400,12 @@ fun PlayerMenu(
                             }
                         } else {
                             AsyncImage(
-                                model = thumbUrl,
+                                model =
+                                    thumbUrl.resize(
+                                        width = 200,
+                                        height = 200,
+                                        ytimgResizePolicy = YtimgResizePolicy.PreserveOriginal,
+                                    ),
                                 contentDescription = null,
                                 contentScale = ContentScale.Crop,
                                 modifier =
@@ -637,24 +733,10 @@ fun PlayerMenu(
                                 },
                             )
                             if (!isLocalMedia) {
-                                add(
-                                    NewAction(
-                                        icon = {
-                                            Icon(
-                                                painter = painterResource(R.drawable.fire),
-                                                contentDescription = null,
-                                                modifier = Modifier.size(28.dp),
-                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            )
-                                        },
-                                        text = stringResource(R.string.music_together),
-                                        onClick = {
-                                            onDismiss()
-                                            playerBottomSheetState.snapTo(playerBottomSheetState.collapsedBound)
-                                            navController.navigate("settings/music_together")
-                                        },
-                                    ),
-                                )
+                                // "ArchiveTune Music Together" entry was removed from the
+                                // song overflow menu per maintainer request — the feature
+                                // is still reachable from Settings, but it shouldn't take a
+                                // slot in every song's popup.
                                 add(
                                     NewAction(
                                         icon = {

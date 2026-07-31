@@ -17,6 +17,7 @@ import android.content.Intent
 import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -36,10 +37,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ripple
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -79,6 +82,8 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.db.entities.FormatEntity
+import moe.rukamori.archivetune.db.entities.codecLabel
 import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.playback.PlayerConnection
@@ -119,6 +124,12 @@ fun AppleMusicPlayerContent(
     onVolumeChange: (Float) -> Unit,
     canvasPrimaryUrl: String?,
     canvasFallbackUrl: String?,
+    // Current stream format used to render the Lossless / AAC / OPUS quality
+    // chip between the seek-bar timestamps (mirrors the Immersive V8 player's
+    // V8QualityChip). Null when no format has been resolved yet (stream still
+    // loading, or local media without a format row) — in that case the chip
+    // is simply not rendered.
+    currentFormat: FormatEntity?,
     contentBottomPadding: Dp,
     onQueueClick: () -> Unit,
     onLyricsClick: () -> Unit,
@@ -308,6 +319,10 @@ fun AppleMusicPlayerContent(
                     onLyricsClick = onLyricsClick,
                     onSliderValueChange = onSliderValueChange,
                     onSliderValueChangeFinished = onSliderValueChangeFinished,
+                    currentFormat = currentFormat,
+                    onQualityChipClick = {
+                        bottomSheetPageState.show { ShowMediaInfo(mediaMetadata.id) }
+                    },
                     modifier =
                         Modifier
                             .weight(1f)
@@ -353,6 +368,10 @@ fun AppleMusicPlayerContent(
                 onLyricsClick = onLyricsClick,
                 onSliderValueChange = onSliderValueChange,
                 onSliderValueChangeFinished = onSliderValueChangeFinished,
+                currentFormat = currentFormat,
+                onQualityChipClick = {
+                    bottomSheetPageState.show { ShowMediaInfo(mediaMetadata.id) }
+                },
                 modifier =
                     Modifier
                         .fillMaxWidth()
@@ -437,6 +456,12 @@ private fun AppleMusicControlsColumn(
     onLyricsClick: () -> Unit,
     onSliderValueChange: (Long) -> Unit,
     onSliderValueChangeFinished: () -> Unit,
+    // Stream format for the quality chip. Null = no chip rendered.
+    currentFormat: FormatEntity?,
+    // Clicked when the user taps the quality chip — opens the song-detail
+    // bottom sheet (ShowMediaInfo), mirroring how tapping the title/artist
+    // in Apple Music's stock UI opens the song info page.
+    onQualityChipClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var swipeUpAccumulated by remember { mutableFloatStateOf(0f) }
@@ -563,17 +588,28 @@ private fun AppleMusicControlsColumn(
                 onScrubFinished = onSliderValueChangeFinished,
             )
             Spacer(Modifier.height(6.dp))
-            Row(Modifier.fillMaxWidth()) {
+            // Mirror the Immersive V8 layout: elapsed time on the left, quality
+            // chip (Lossless / AAC / OPUS) centered, -remaining on the right.
+            // The chip is tappable and opens the song-detail bottom sheet.
+            Box(Modifier.fillMaxWidth()) {
                 Text(
                     text = makeTimeString(sliderPosition ?: position),
                     style = MaterialTheme.typography.labelMedium,
                     color = Color.White.copy(alpha = 0.55f),
+                    modifier = Modifier.align(Alignment.CenterStart),
                 )
-                Spacer(Modifier.weight(1f))
+                if (currentFormat != null) {
+                    AppleMusicQualityChip(
+                        currentFormat = currentFormat,
+                        onClick = onQualityChipClick,
+                        modifier = Modifier.align(Alignment.Center),
+                    )
+                }
                 Text(
                     text = "-" + makeTimeString((duration - (sliderPosition ?: position)).coerceAtLeast(0L)),
                     style = MaterialTheme.typography.labelMedium,
                     color = Color.White.copy(alpha = 0.55f),
+                    modifier = Modifier.align(Alignment.CenterEnd),
                 )
             }
         }
@@ -857,4 +893,51 @@ private fun AppleMusicVolumeSlider(
                     )
                 },
     )
+}
+
+/**
+ * Quality chip rendered between the elapsed and -remaining timestamps on the
+ * Apple Music player's seek-bar row. Mirrors the Immersive V8 player's
+ * `V8QualityChip` (PlayerComponents.kt:2762) — same pill shape, same waveform
+ * icon (`R.drawable.player_graphic_eq`), same `codecLabel()` text — but uses
+ * `Color.White` as the foreground because the Apple Music player renders on
+ * top of artwork-on-black, not a themed surface.
+ *
+ * Tapping the chip opens the song-detail bottom sheet (`ShowMediaInfo`),
+ * matching how Apple Music's stock UI exposes the song info page.
+ */
+@Composable
+private fun AppleMusicQualityChip(
+    currentFormat: FormatEntity,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val label = remember(currentFormat.mimeType, currentFormat.codecs) {
+        currentFormat.codecLabel()
+    }
+    Surface(
+        shape = RoundedCornerShape(6.dp),
+        color = Color.White.copy(alpha = 0.1f),
+        border = BorderStroke(width = 1.dp, color = Color.White.copy(alpha = 0.13f)),
+        modifier = modifier.clickable(onClick = onClick),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(5.dp),
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.player_graphic_eq),
+                contentDescription = null,
+                tint = Color.White.copy(alpha = 0.72f),
+                modifier = Modifier.size(15.dp),
+            )
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                color = Color.White.copy(alpha = 0.72f),
+                maxLines = 1,
+            )
+        }
+    }
 }

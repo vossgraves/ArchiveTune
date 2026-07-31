@@ -14,6 +14,10 @@ import android.view.HapticFeedbackConstants
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -333,7 +337,10 @@ fun LyricsScreen(
         // background thumbnail covers the unextracted state) but noticeably
         // smoother on devices where the open animation was laggy.
         kotlinx.coroutines.delay(120)
-        if (lyricsBackground != LyricsBackgroundStyle.DEFAULT && lyricsBackground != LyricsBackgroundStyle.COLORING) {
+        if (lyricsBackground != LyricsBackgroundStyle.DEFAULT &&
+            lyricsBackground != LyricsBackgroundStyle.COLORING &&
+            lyricsBackground != LyricsBackgroundStyle.MOVING_BLUR
+        ) {
             gradientColors = AppleMusicFallbackGradient
             hasValidPalette = false
             return@LaunchedEffect
@@ -679,6 +686,13 @@ private fun LyricsScreenBackground(
                 )
             }
 
+            LyricsBackgroundStyle.MOVING_BLUR -> {
+                MovingBlurBackground(
+                    mediaMetadata = mediaMetadata,
+                    gradientColors = gradientColors,
+                )
+            }
+
             LyricsBackgroundStyle.FOLLOW_THEME -> Unit
 
             LyricsBackgroundStyle.COLORING,
@@ -702,6 +716,155 @@ private fun LyricsScreenBackground(
                 )
             }
         }
+    }
+}
+
+/**
+ * "Moving Blur" lyrics background — replicates Apple Music's signature animated
+ * blur effect. The album art is rendered at ~1.4× the screen size, heavily
+ * blurred, and slowly drifts along a Lissajous-like path (two sinusoidal
+ * offsets with coprime periods so the drift doesn't loop too obviously).
+ *
+ * On top of the drifting art we lay:
+ *   - a vertical gradient built from the song's Palette (same gradient source
+ *     as [AppleMusicBackground], so palette-extraction logic is reused)
+ *   - a flat black scrim to keep lyric contrast stable regardless of art brightness
+ *   - a subtle bottom vignette so the lower controls stay readable
+ *
+ * Implementation notes:
+ *   - The drift uses [rememberInfiniteTransition] + [animateFloat]s with
+ *     `RepeatMode.Reverse` so the artwork eases back and forth instead of
+ *     jumping when the loop wraps. Periods of 23s and 31s are coprime, so the
+ *     combined path repeats every ~713s — long enough that users won't notice.
+ *   - We render the AsyncImage at fixed `IntSize`-independent offsets via
+ *     [Modifier.offset] (px units) rather than [Modifier.padding] so layout
+ *     measure passes aren't invalidated every frame.
+ *   - `Modifier.blur(64.dp)` is the main visual cost — comparable to the
+ *     existing `AppleMusicBackground` (46.dp). Hardware-accelerated on
+ *     Android 12+, gated to S+ in AppearanceSettings.
+ *   - We scale the image to 1.4× of the screen's largest dimension before
+ *     blurring so the blurred edges never reveal transparent pixels as the
+ *     art drifts.
+ */
+@Composable
+private fun MovingBlurBackground(
+    mediaMetadata: MediaMetadata,
+    gradientColors: List<Color>,
+    modifier: Modifier = Modifier,
+) {
+    val colors = if (gradientColors.isNotEmpty()) gradientColors else AppleMusicFallbackGradient
+    val backgroundBrush =
+        remember(colors) {
+            Brush.verticalGradient(
+                listOf(
+                    colors.getOrElse(0) { AppleMusicFallbackGradient[0] }.copy(alpha = 0.78f),
+                    colors.getOrElse(1) { AppleMusicFallbackGradient[1] }.copy(alpha = 0.66f),
+                    colors.getOrElse(2) { AppleMusicFallbackGradient[2] }.copy(alpha = 0.86f),
+                ),
+            )
+        }
+    val bottomScrim =
+        remember {
+            Brush.verticalGradient(
+                listOf(
+                    Color.Transparent,
+                    Color.Black.copy(alpha = 0.36f),
+                ),
+            )
+        }
+
+    // Two independent infinite animations with coprime durations → combined
+    // path doesn't visibly repeat. Range is in dp; converted to px via
+    // LocalDensity below so we can pass raw pixel offsets to Modifier.offset.
+    val transition = rememberInfiniteTransition(label = "moving-blur-drift")
+    val driftX by transition.animateFloat(
+        initialValue = -32f,
+        targetValue = 32f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 23_000, easing = { it }),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "moving-blur-x",
+    )
+    val driftY by transition.animateFloat(
+        initialValue = -28f,
+        targetValue = 28f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 31_000, easing = { it }),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "moving-blur-y",
+    )
+
+    Box(
+        modifier =
+            modifier
+                .fillMaxSize()
+                .background(AppleMusicFallbackGradient.last()),
+    ) {
+        // Pre-blurred bitmap fallback for pre-S devices (Modifier.blur is a
+        // no-op below API 31). On S+ this is null and we use Modifier.blur.
+        val preBlurredBitmap = rememberPreBlurredBitmap(imageUrl = mediaMetadata.thumbnailUrl, radiusDp = 64.dp)
+        AnimatedContent(
+            targetState = mediaMetadata.thumbnailUrl,
+            transitionSpec = { fadeIn(tween(700)) togetherWith fadeOut(tween(700)) },
+            label = "lyrics-moving-blur-bg",
+        ) { thumbnailUrl ->
+            if (thumbnailUrl != null) {
+                // Render the artwork oversized and blurred, then drift it via
+                // pixel offsets. graphicsLayer is used for the scale so layout
+                // sees the original (smaller) bounds; blur is applied in the
+                // same layer so it operates on the scaled pixels.
+                if (preBlurredBitmap != null) {
+                    androidx.compose.foundation.Image(
+                        bitmap = preBlurredBitmap.asImageBitmap(),
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer {
+                                scaleX = 1.4f
+                                scaleY = 1.4f
+                            }
+                            .offset(x = driftX.dp, y = driftY.dp)
+                            .alpha(0.72f),
+                    )
+                } else {
+                    AsyncImage(
+                        model = thumbnailUrl,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer {
+                                scaleX = 1.4f
+                                scaleY = 1.4f
+                            }
+                            .blur(64.dp)
+                            .offset(x = driftX.dp, y = driftY.dp)
+                            .alpha(0.72f),
+                    )
+                }
+            }
+        }
+        // Tonal gradient layered on top — gives the background a sense of
+        // depth and ties it to the album palette.
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(backgroundBrush),
+        )
+        // Flat scrim stabilises lyric contrast.
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.22f)),
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(bottomScrim),
+        )
     }
 }
 
