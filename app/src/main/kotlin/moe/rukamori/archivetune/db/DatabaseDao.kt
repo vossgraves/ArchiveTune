@@ -1925,6 +1925,19 @@ interface DatabaseDao {
         notFoundLyrics: String,
     ): Int
 
+    @Query(
+        """
+        UPDATE lyrics
+        SET providerName = :providerName, updatedAt = :updatedAt
+        WHERE id = :id AND (providerName IS NULL OR providerName = '') AND :providerName != ''
+        """,
+    )
+    fun backfillLyricsProviderName(
+        id: String,
+        providerName: String,
+        updatedAt: Long = System.currentTimeMillis(),
+    ): Int
+
     @Transaction
     fun replaceLyricsIfAbsentOrNotFound(
         id: String,

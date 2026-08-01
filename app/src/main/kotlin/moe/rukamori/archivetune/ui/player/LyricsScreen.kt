@@ -272,7 +272,7 @@ fun LyricsScreen(
                 ).lyricsHelper()
         }
 
-    LaunchedEffect(mediaMetadata.id, currentLyrics?.lyrics) {
+    LaunchedEffect(mediaMetadata.id, currentLyrics?.lyrics, currentLyrics?.providerName) {
 
         
 
@@ -283,7 +283,8 @@ fun LyricsScreen(
         val snapshot = currentLyrics
         val needsFetch =
             snapshot == null ||
-                snapshot.lyrics == LyricsEntity.LYRICS_NOT_FOUND
+                snapshot.lyrics == LyricsEntity.LYRICS_NOT_FOUND ||
+                snapshot.providerName.isBlank()
         if (!needsFetch) return@LaunchedEffect
         try {
             val existingLyrics =
@@ -291,9 +292,10 @@ fun LyricsScreen(
                     database.lyrics(mediaMetadata.id).first()
                 }
 
-            if (existingLyrics != null &&
-                existingLyrics.lyrics != LyricsEntity.LYRICS_NOT_FOUND
-            ) {
+            val hasValidLyrics =
+                existingLyrics != null &&
+                    existingLyrics.lyrics != LyricsEntity.LYRICS_NOT_FOUND
+            if (hasValidLyrics && existingLyrics != null && existingLyrics.providerName.isNotBlank()) {
                 return@LaunchedEffect
             }
 
@@ -303,11 +305,18 @@ fun LyricsScreen(
                 }
             withContext(Dispatchers.IO) {
                 database.query {
-                    replaceLyricsIfAbsentOrNotFound(
-                        id = mediaMetadata.id,
-                        lyrics = lyricsResult.lyrics,
-                        providerName = lyricsResult.providerName,
-                    )
+                    if (hasValidLyrics) {
+                        backfillLyricsProviderName(
+                            id = mediaMetadata.id,
+                            providerName = lyricsResult.providerName,
+                        )
+                    } else {
+                        replaceLyricsIfAbsentOrNotFound(
+                            id = mediaMetadata.id,
+                            lyrics = lyricsResult.lyrics,
+                            providerName = lyricsResult.providerName,
+                        )
+                    }
                 }
             }
         } catch (e: CancellationException) {

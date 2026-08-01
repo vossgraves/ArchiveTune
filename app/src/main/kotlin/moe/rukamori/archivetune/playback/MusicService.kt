@@ -1360,15 +1360,24 @@ class MusicService :
             // plays can fail while metadata/network are still settling.
             val stored = database.lyrics(mediaMetadata.id).first()
             val shouldFetch =
-                stored == null || stored.lyrics == LyricsEntity.LYRICS_NOT_FOUND
+                stored == null ||
+                    stored.lyrics == LyricsEntity.LYRICS_NOT_FOUND ||
+                    stored.providerName.isBlank()
             if (shouldFetch) {
                 val result = lyricsHelper.getLyricsWithProvider(mediaMetadata)
                 database.query {
-                    replaceLyricsIfAbsentOrNotFound(
-                        id = mediaMetadata.id,
-                        lyrics = result.lyrics,
-                        providerName = result.providerName,
-                    )
+                    if (stored != null && stored.lyrics != LyricsEntity.LYRICS_NOT_FOUND) {
+                        backfillLyricsProviderName(
+                            id = mediaMetadata.id,
+                            providerName = result.providerName,
+                        )
+                    } else {
+                        replaceLyricsIfAbsentOrNotFound(
+                            id = mediaMetadata.id,
+                            lyrics = result.lyrics,
+                            providerName = result.providerName,
+                        )
+                    }
                 }
             }
         }

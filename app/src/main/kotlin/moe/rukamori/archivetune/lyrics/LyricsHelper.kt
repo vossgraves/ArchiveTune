@@ -61,7 +61,7 @@ class LyricsHelper
             )
 
         private val cache = LruCache<String, List<LyricsResult>>(MAX_CACHE_SIZE)
-        private val singleLyricsCache = LruCache<String, String>(MAX_CACHE_SIZE)
+        private val singleLyricsCache = LruCache<String, LyricsResult>(MAX_CACHE_SIZE)
 
         suspend fun getLyrics(
             mediaMetadata: MediaMetadata,
@@ -82,9 +82,9 @@ class LyricsHelper
             if (forceRefresh) {
                 invalidateCache(cacheKey)
             } else {
-                singleLyricsCache.get(cacheKey)?.let { lyrics ->
+                singleLyricsCache.get(cacheKey)?.let { cached ->
                     GlobalLog.append(Log.DEBUG, "LyricsHelper", "Found lyrics in cache for ${mediaMetadata.title}")
-                    return LyricsResult(providerName = "", lyrics = lyrics)
+                    return cached
                 }
 
                 val cached = cache.get(cacheKey)?.firstOrNull()
@@ -121,11 +121,12 @@ class LyricsHelper
             val providers = if (preferredProviderOnly) ordered.take(1) else ordered
             val providerName = fetchPriorityProviderName(providers, mediaMetadata)
             val lyrics = fetchPriorityLyrics(providers, mediaMetadata)
+            val result = LyricsResult(providerName = providerName, lyrics = lyrics)
             if (isMeaningfulLyrics(lyrics)) {
-                singleLyricsCache.put(cacheKey, lyrics)
+                singleLyricsCache.put(cacheKey, result)
             }
 
-            return LyricsResult(providerName = providerName, lyrics = lyrics)
+            return result
         }
 
         suspend fun getAllLyrics(
