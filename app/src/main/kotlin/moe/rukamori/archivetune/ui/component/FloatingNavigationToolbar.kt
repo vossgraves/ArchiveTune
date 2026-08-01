@@ -51,6 +51,7 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import android.graphics.Bitmap
 import android.os.Build
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -60,7 +61,10 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.BlurEffect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.TileMode
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.layer.GraphicsLayer
@@ -72,7 +76,11 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
+import moe.rukamori.archivetune.utils.ImageBlurUtils
 import moe.rukamori.archivetune.constants.DisableAnimationsKey
 import moe.rukamori.archivetune.constants.FloatingNavigationBarMaxWidth
 import moe.rukamori.archivetune.constants.HideNavigationBarLabelsKey
@@ -161,9 +169,12 @@ fun FloatingNavigationToolbar(
                 else -> null
             }
         } ?: MaterialTheme.shapes.extraLarge
-    // True backdrop blur needs RenderEffect (Android 12+); on older devices the frosted setting
-    // simply keeps the solid bar.
-    val canBlurBackdrop = frostedBlur && frostedBackdrop != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+    // True backdrop blur on Android 12+ uses RenderEffect (hardware-accelerated, every frame).
+    // Below API 31, RenderEffect is unavailable — the pre-S path falls back to a periodically
+    // captured + CPU-blurred bitmap (see [rememberPreSFrostedBitmap]) so the frosted setting
+    // still has a visible effect on older devices instead of degrading to a plain solid bar.
+    val canBlurBackdrop = frostedBlur && frostedBackdrop != null
+    val isPreS = Build.VERSION.SDK_INT < Build.VERSION_CODES.S
     val navigationContainerColor =
         if (pureBlack) Color.Black else MaterialTheme.colorScheme.surfaceContainer
     val motionScheme = MaterialTheme.motionScheme
@@ -264,31 +275,60 @@ fun FloatingNavigationToolbar(
             shadowElevation = if (isFloating) 8.dp else NavigationBarDefaults.Elevation,
         ) {
             if (canBlurBackdrop && frostedBackdrop != null) {
-                // Frosted glass on top of an always-opaque bar: the app content captured this frame
-                // is shifted so the region underneath lines up, blurred, and composited at a bounded
-                // alpha. Page brightness can only modulate the bar by that fraction, so the bar
-                // looks the same over every screen — and if the captured layer has nothing under
-                // the bar, the result is simply the solid bar (never see-through).
-                Box(
-                    modifier =
-                        Modifier
-                            .fillMaxSize()
-                            .graphicsLayer {
-                                renderEffect =
-                                    BlurEffect(
-                                        radiusX = FrostedNavBarBlurRadiusPx,
-                                        radiusY = FrostedNavBarBlurRadiusPx,
-                                        edgeTreatment = TileMode.Clamp,
-                                    )
-                                alpha = FrostedNavBarOverlayAlpha
-                                clip = true
-                            }.drawBehind {
-                                val offset = frostedBackdrop.contentOffsetInRoot - barPositionInRoot
-                                translate(offset.x, offset.y) {
-                                    drawLayer(frostedBackdrop.layer)
-                                }
-                            },
-                )
+                if (isPreS) {
+                    // Pre-Android 12: RenderEffect is unavailable. Capture the app-content
+                    // GraphicsLayer periodically (see [rememberPreSFrostedBitmap]), blur it on
+                    // the CPU via ImageBlurUtils, and composite the result on top of the opaque
+                    // bar at the same bounded alpha as the S+ path. The bar surface's shape
+                    // already clips its content, so the overlay is correctly clipped to the
+                    // pill shape.
+                    val blurredBitmap = rememberPreSFrostedBitmap(
+                        backdrop = frostedBackdrop,
+                        blurRadiusPx = FrostedNavBarBlurRadiusPx,
+                    )
+                    if (blurredBitmap != null) {
+                        Box(
+                            modifier =
+                                Modifier
+                                    .fillMaxSize()
+                                    .graphicsLayer {
+                                        alpha = FrostedNavBarOverlayAlpha
+                                        clip = true
+                                    }.drawBehind {
+                                        val offset = frostedBackdrop.contentOffsetInRoot - barPositionInRoot
+                                        translate(offset.x, offset.y) {
+                                            drawImage(blurredBitmap)
+                                        }
+                                    },
+                        )
+                    }
+                } else {
+                    // Frosted glass on top of an always-opaque bar: the app content captured this frame
+                    // is shifted so the region underneath lines up, blurred, and composited at a bounded
+                    // alpha. Page brightness can only modulate the bar by that fraction, so the bar
+                    // looks the same over every screen — and if the captured layer has nothing under
+                    // the bar, the result is simply the solid bar (never see-through).
+                    Box(
+                        modifier =
+                            Modifier
+                                .fillMaxSize()
+                                .graphicsLayer {
+                                    renderEffect =
+                                        BlurEffect(
+                                            radiusX = FrostedNavBarBlurRadiusPx,
+                                            radiusY = FrostedNavBarBlurRadiusPx,
+                                            edgeTreatment = TileMode.Clamp,
+                                        )
+                                    alpha = FrostedNavBarOverlayAlpha
+                                    clip = true
+                                }.drawBehind {
+                                    val offset = frostedBackdrop.contentOffsetInRoot - barPositionInRoot
+                                    translate(offset.x, offset.y) {
+                                        drawLayer(frostedBackdrop.layer)
+                                    }
+                                },
+                    )
+                }
             }
             ShortNavigationBar(
                 modifier = Modifier.fillMaxSize(),
@@ -431,4 +471,60 @@ fun FloatingNavigationToolbar(
             }
         }
     }
+}
+
+/**
+ * Pre-Android 12 (pre-S) fallback for the frosted-glass surfaces (navigation bar, mini player).
+ *
+ * On Android 12+ the frosted effect uses [BlurEffect] (RenderEffect, hardware-accelerated, every
+ * frame). Below API 31 RenderEffect is unavailable, so the previous implementation silently fell
+ * back to a plain opaque surface — the frosted setting appeared to do nothing on older devices.
+ *
+ * This helper restores a real frosted effect on pre-S by periodically capturing the app-content
+ * [GraphicsLayer] (the same one the S+ path uses) to a [Bitmap], running it through
+ * [ImageBlurUtils.blur] (a pure-CPU stack blur that needs no RenderEffect), and publishing the
+ * result as an [ImageBitmap] the caller draws with the same offset/alpha as the S+ path.
+ *
+ * Throttling: the capture+blur runs on [Dispatchers.Default] every [updateIntervalMs] (default
+ * ~5 fps). Frosted glass doesn't need 60 fps — the underlying content rarely changes faster than
+ * that, and a full-screen stack blur every frame would tank pre-S hardware. The first frame is
+ * captured immediately so the bar isn't transparent for a full interval on first composition.
+ *
+ * Returns `null` while the layer has no size (before first `record { ... }`) or if the capture
+ * fails — the caller should keep the opaque base surface in that case.
+ */
+@Composable
+internal fun rememberPreSFrostedBitmap(
+    backdrop: NavigationBarBackdrop?,
+    blurRadiusPx: Float,
+    updateIntervalMs: Long = 200L,
+): ImageBitmap? {
+    if (backdrop == null) return null
+    var blurred by remember(backdrop, blurRadiusPx, updateIntervalMs) {
+        mutableStateOf<ImageBitmap?>(null)
+    }
+    LaunchedEffect(backdrop, blurRadiusPx, updateIntervalMs) {
+        // First frame: capture immediately so the bar isn't opaque-only for a full interval.
+        while (isActive) {
+            val layer = backdrop.layer
+            val w = layer.size.width
+            val h = layer.size.height
+            if (w > 0 && h > 0) {
+                try {
+                    val next = withContext(Dispatchers.Default) {
+                        val imageBitmap = layer.toImageBitmap()
+                        val androidBmp: Bitmap = imageBitmap.asAndroidBitmap()
+                        val blurredBmp = ImageBlurUtils.blur(androidBmp, blurRadiusPx)
+                        blurredBmp.asImageBitmap()
+                    }
+                    blurred = next
+                } catch (_: Throwable) {
+                    // Capture or blur failed (e.g. OOM, native crash on some devices) — keep the
+                    // previous frame; the opaque base surface is still visible underneath.
+                }
+            }
+            delay(updateIntervalMs)
+        }
+    }
+    return blurred
 }

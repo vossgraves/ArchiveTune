@@ -63,6 +63,7 @@ import moe.rukamori.archivetune.constants.SwipeSensitivityKey
 import moe.rukamori.archivetune.playback.artwork.PlayerPaletteCacheKey
 import moe.rukamori.archivetune.playback.artwork.guessArtworkProvider
 import moe.rukamori.archivetune.ui.component.LocalNavigationBarBackdrop
+import moe.rukamori.archivetune.ui.component.rememberPreSFrostedBitmap
 import moe.rukamori.archivetune.ui.theme.PlayerColorExtractor
 import moe.rukamori.archivetune.ui.theme.PlayerPaletteCache
 import moe.rukamori.archivetune.utils.rememberEnumPreference
@@ -344,13 +345,48 @@ private fun MiniPlayerBackground(
 
         MiniPlayerBackgroundStyle.FROSTED -> {
             // Same frosted-glass recipe as the navigation bar: an always-opaque surface with the
-            // captured app content blurred and composited on top at a bounded alpha. Falls back to
-            // the plain theme surface when no backdrop capture is available (setting combinations
-            // that never record one, rail layouts, Android < 12).
+            // captured app content blurred and composited on top at a bounded alpha. On Android
+            // 12+ this uses RenderEffect (every frame, hardware-accelerated). Below API 31
+            // RenderEffect is unavailable, so we fall back to a periodically captured + CPU-blurred
+            // bitmap (see [rememberPreSFrostedBitmap]) — same approach as the moving-blur lyrics
+            // background. When no backdrop capture is available (rail layouts), the plain theme
+            // surface is shown.
             val backdrop = LocalNavigationBarBackdrop.current
             val baseColor = MaterialTheme.colorScheme.surfaceContainerHigh
-            if (backdrop == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+            if (backdrop == null) {
                 Box(modifier = modifier.background(baseColor))
+            } else if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+                // Pre-S: CPU-blurred bitmap fallback. The bitmap is updated a few times per
+                // second (see [rememberPreSFrostedBitmap]) — enough for a frosted-glass effect
+                // without the per-frame cost that would tank pre-S hardware.
+                val blurredBitmap = rememberPreSFrostedBitmap(
+                    backdrop = backdrop,
+                    blurRadiusPx = FrostedMiniPlayerBlurRadiusPx,
+                )
+                var positionInRoot by remember { mutableStateOf(Offset.Zero) }
+                Box(
+                    modifier =
+                        modifier
+                            .onGloballyPositioned { positionInRoot = it.positionInRoot() }
+                            .background(baseColor),
+                ) {
+                    if (blurredBitmap != null) {
+                        Box(
+                            modifier =
+                                Modifier
+                                    .fillMaxSize()
+                                    .graphicsLayer {
+                                        alpha = FrostedMiniPlayerOverlayAlpha
+                                        clip = true
+                                    }.drawBehind {
+                                        val offset = backdrop.contentOffsetInRoot - positionInRoot
+                                        translate(offset.x, offset.y) {
+                                            drawImage(blurredBitmap)
+                                        }
+                                    },
+                        )
+                    }
+                }
             } else {
                 var positionInRoot by remember { mutableStateOf(Offset.Zero) }
                 Box(

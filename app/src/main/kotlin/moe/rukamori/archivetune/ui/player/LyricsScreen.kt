@@ -79,6 +79,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -734,7 +735,6 @@ private fun MovingBlurBackground(
 ) {
     val colors = if (gradientColors.isNotEmpty()) gradientColors else AppleMusicFallbackGradient
 
-    
     val backgroundBrush =
         remember(colors) {
             Brush.verticalGradient(
@@ -754,8 +754,6 @@ private fun MovingBlurBackground(
                 ),
             )
         }
-
-    
 
     val transition = rememberInfiniteTransition(label = "moving-blur-drift")
     val driftX by transition.animateFloat(
@@ -781,31 +779,27 @@ private fun MovingBlurBackground(
     val imageLoader = context.imageLoader
     val isPreS = Build.VERSION.SDK_INT < Build.VERSION_CODES.S
 
-    // Pre-Android S can't use Modifier.blur (it requires RenderEffect, API 31+). On Android S+,
-    // Modifier.blur(64.dp) clamps edge pixels and effectively extends the visible content ~64dp
-    // beyond the layout bounds — which hides the black bar that would otherwise show when the
-    // drift offset pushes the scaled image past the screen edge. Pre-S uses a pre-blurred bitmap
-    // instead, so there's no such edge extension, and at scale 1.4 with drift up to ±120dp the
-    // image's 20% slack (~72dp on a 360dp-wide screen) is less than the max drift — a black
-    // bar shows along the edge during the drift animation.
-    //
-    // Fix: compute the minimum scale that guarantees the image always covers the screen at max
-    // drift on pre-S. Required slack on each side = maxDrift + safety. Slack = (scale-1)/2 * size,
-    // so scale = 1 + 2 * (maxDrift + safety) / size. We take the max of the X and Y requirements
-    // (X is usually binding because phones are taller than wide) and never go below 1.4 (the
-    // post-S scale, kept as a floor so pre-S doesn't look more zoomed than necessary on huge
-    // screens). BoxWithConstraints gives us the actual screen dimensions for the math.
+    // Pre-Android S can't use Modifier.blur (it requires RenderEffect, API 31+). We use sang's
+    // pure-Kotlin stack-blur fallback (rukamori/ArchiveTune#924): load the thumbnail, blur it
+    // once with ImageBlurUtils, render via Image. The drift animation IS preserved — the bitmap
+    // is scaled up well beyond the screen and the drift is applied via graphicsLayer
+    // translationX/Y (NOT Modifier.offset, which moves layout position and can leave gaps). The
+    // parent BoxWithConstraints clips to bounds so the oversized bitmap never spills. The scale
+    // is computed to guarantee full coverage at max drift + 48dp safety margin (the S+ path uses
+    // 1.4 + Modifier.blur's ~64dp edge clamping for the same effect; pre-S has no edge clamping
+    // so we need more scale).
     BoxWithConstraints(
         modifier =
             modifier
                 .fillMaxSize()
+                .clipToBounds()
                 .background(AppleMusicFallbackGradient.last()),
     ) {
         val preSDriftScale =
             if (isPreS) {
                 val driftMaxX = 120.dp
                 val driftMaxY = 90.dp
-                val safetyMargin = 24.dp
+                val safetyMargin = 48.dp
                 val requiredScaleX = 1f + 2f * (driftMaxX.value + safetyMargin.value) / maxWidth.value
                 val requiredScaleY = 1f + 2f * (driftMaxY.value + safetyMargin.value) / maxHeight.value
                 maxOf(requiredScaleX, requiredScaleY, 1.4f)
@@ -820,17 +814,14 @@ private fun MovingBlurBackground(
         ) { thumbnailUrl ->
             if (thumbnailUrl != null) {
                 if (isPreS) {
-
-                    
-
                     val blurredBitmap by produceState<Bitmap?>(null, thumbnailUrl) {
                         value = withContext(Dispatchers.IO) {
                             try {
                                 val request = ImageRequest.Builder(context)
                                     .data(thumbnailUrl)
                                     .allowHardware(false)
-                                    .memoryCacheKey("$thumbnailUrl#movingblur")
-                                    .diskCacheKey("$thumbnailUrl#movingblur")
+                                    .memoryCacheKey(thumbnailUrl)
+                                    .diskCacheKey(thumbnailUrl)
                                     .size(Size(720, 720))
                                     .build()
                                 val result = imageLoader.execute(request)
@@ -855,15 +846,13 @@ private fun MovingBlurBackground(
                                 .graphicsLayer {
                                     scaleX = preSDriftScale
                                     scaleY = preSDriftScale
+                                    translationX = driftX.dp.toPx()
+                                    translationY = driftY.dp.toPx()
                                 }
-                                .offset(x = driftX.dp, y = driftY.dp)
                                 .alpha(0.86f),
                         )
                     }
                 } else {
-
-                    
-                    
                     AsyncImage(
                         model = thumbnailUrl,
                         contentDescription = null,
@@ -871,8 +860,8 @@ private fun MovingBlurBackground(
                         modifier = Modifier
                             .fillMaxSize()
                             .graphicsLayer {
-                                scaleX = preSDriftScale
-                                scaleY = preSDriftScale
+                                scaleX = 1.4f
+                                scaleY = 1.4f
                             }
                             .blur(64.dp)
                             .offset(x = driftX.dp, y = driftY.dp)
@@ -881,13 +870,13 @@ private fun MovingBlurBackground(
                 }
             }
         }
-        
+
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(backgroundBrush),
         )
-        
+
         Box(
             modifier = Modifier
                 .fillMaxSize()
