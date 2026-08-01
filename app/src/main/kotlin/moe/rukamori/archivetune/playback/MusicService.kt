@@ -2545,10 +2545,20 @@ class MusicService :
 
         val expectedVolume = currentEffectivePlayerVolume()
         if (expectedVolume <= MIN_AUDIBLE_EFFECTIVE_VOLUME) return
-        if (player.volume > STUCK_MUTED_VOLUME_EPSILON) return
+        // Two recovery triggers:
+        //  1. player.volume ≈ 0 — classic stuck-muted (e.g., after crossfade handoff or
+        //     after a source switch interleaved with the reactive volume pipeline).
+        //  2. player.volume significantly below expected (below AUDIBLE_VOLUME_RECOVERY_RATIO
+        //     of expected). This catches the "quiet but not zero" state that the previous
+        //     epsilon-only check missed — e.g., when an audio-focus duck factor or a half-
+        //     finished ramp leaves the primary player pinned at ~5–15% of the target while
+        //     the user perceives it as muted.
+        if (player.volume > STUCK_MUTED_VOLUME_EPSILON &&
+            player.volume >= expectedVolume * AUDIBLE_VOLUME_RECOVERY_RATIO
+        ) return
 
         Timber.tag(TAG).w(
-            "Restoring muted primary player volume during active playback: reason=%s expected=%s actual=%s",
+            "Restoring muted/quiet primary player volume during active playback: reason=%s expected=%s actual=%s",
             reason,
             expectedVolume,
             player.volume,
@@ -7792,7 +7802,7 @@ class MusicService :
      * immediately so the change takes effect without the user having to skip the track. Passing a
      * null [source] clears the override for that song.
      *
-     * Two bugs are addressed here that the previous implementation had:
+     * Bugs addressed here:
      *
      * 1. **"Sometimes changing source only restarts the song but doesn't change the source."**
      *    `directStreamCache[mediaId]` and the bare-keyed `contentLengthCache[mediaId]` were not
@@ -7806,12 +7816,20 @@ class MusicService :
      *    the actual re-resolution happens on ExoPlayer's internal thread, and any of the reactive
      *    volume pipeline (`playerVolume × normalizeFactor × audioFocusVolumeFactor`), audio focus
      *    state, or crossfade ramp can interleave with it and leave the primary player's volume
-     *    pinned low (the [ensureAudiblePlaybackVolume] watchdog only fires when `player.volume`
-     *    is essentially 0, so a "quiet but not zero" state slips past it). We now explicitly:
-     *    - cancel any pending crossfade and reset its volume,
+     *    pinned low. The previous fix only restored the volume once (synchronously) right after
+     *    `prepare()` returned — but `prepare()` is async, so subsequent state transitions
+     *    (STATE_BUFFERING → STATE_READY, audio session ID change triggering audio-effect rebind,
+     *    reactive volume flow re-firing with a stale duck factor) can pin the volume low AGAIN
+     *    after our synchronous restore. The previous watchdog only fired when `player.volume ≈ 0`,
+     *    so a "quiet but not zero" state slipped past it. We now:
+     *    - cancel any pending crossfade and reset its volume (before prepare),
+     *    - re-claim audio focus BEFORE computing the effective volume (so the volume we apply
+     *      uses the post-focus-restore `audioFocusVolumeFactor` instead of a stale ducked one),
      *    - apply the effective volume immediately (no ramp),
-     *    - re-claim audio focus,
-     *    - kick the audible-playback watchdog.
+     *    - kick the audible-playback watchdog (now with a 30%-of-expected threshold instead of
+     *      epsilon-only — catches "quiet but not zero"),
+     *    - schedule a delayed re-apply (~250ms later) so any state transitions that happen
+     *      during the async prepare() that pin the volume low get corrected.
      */
     fun setSongSourceOverride(
         mediaId: String,
@@ -7848,16 +7866,34 @@ class MusicService :
             // Cancel any in-flight crossfade so its volume ramp / secondary player can't pin the
             // primary player's volume low while the new source is preparing.
             cancelCrossfade(resetVolume = true, resetPauseAtEnd = true)
+            // Re-claim audio focus BEFORE computing/applying the effective volume. The previous
+            // order applied the volume first (which would multiply by a stale ducked
+            // audioFocusVolumeFactor if focus had been transiently lost) and then restored
+            // focus — leaving the player pinned at the ducked volume until the reactive volume
+            // flow happened to re-fire. Restoring focus first means currentEffectivePlayerVolume()
+            // reflects the restored 1.0 factor.
+            ensureAudioFocusForActivePlayback()
             player.prepare()
             player.seekTo(0)
             player.playWhenReady = true
             // Restore the effective volume immediately (bypass the smooth ramp) so the new source
-            // doesn't briefly play muted while the ramp catches up. Re-claim audio focus in case
-            // the prepare transition dropped it, and start the audible-playback watchdog so any
-            // later volume dip gets corrected within the next polling window.
+            // doesn't briefly play muted while the ramp catches up. Start the audible-playback
+            // watchdog so any later volume dip gets corrected within the next polling window.
             applyEffectiveVolumeImmediately(currentEffectivePlayerVolume())
-            ensureAudioFocusForActivePlayback()
             updateAudiblePlaybackRecovery()
+            // Defensive delayed re-apply: player.prepare() is async, and the state transitions
+            // it triggers (BUFFERING → READY, audio session ID change, audio-effect rebind,
+            // reactive volume flow re-firing) can interleave with the synchronous restore above
+            // and re-pin the volume low. Re-apply once more after the prepare pipeline has
+            // settled so the user never hears a muted stream.
+            scope.launch {
+                delay(SOURCE_SWITCH_VOLUME_REASSERT_MS)
+                if (player.currentMediaItem?.mediaId == mediaId && player.playWhenReady) {
+                    ensureAudioFocusForActivePlayback()
+                    applyEffectiveVolumeImmediately(currentEffectivePlayerVolume())
+                    ensureAudiblePlaybackVolume("source_switch_reassert")
+                }
+            }
         }
     }
 
@@ -10037,6 +10073,28 @@ class MusicService :
         const val MIN_AUDIBLE_EFFECTIVE_VOLUME = 0.01f
         const val STUCK_MUTED_VOLUME_EPSILON = 0.001f
         const val AUDIBLE_PLAYBACK_VOLUME_CHECK_MS = 2_000L
+        /**
+         * Volume recovery ratio for [ensureAudiblePlaybackVolume]. If the primary player's
+         * actual volume falls below this fraction of the expected effective volume (while
+         * playback is active and the user hasn't muted), the watchdog restores it.
+         *
+         * 0.3f means "restore if actual < 30% of expected" — catches the "quiet but not
+         * zero" state where a half-finished ramp or interleaved audio-focus transition
+         * leaves the player pinned at ~5–15% of target (perceptibly muted) without ever
+         * hitting the epsilon-only zero check.
+         */
+        const val AUDIBLE_VOLUME_RECOVERY_RATIO = 0.3f
+        /**
+         * Delay before the post-source-switch volume re-assert in [setSongSourceOverride].
+         * `player.prepare()` is async — ExoPlayer's internal thread does the actual re-resolution
+         * and the BUFFERING → READY transition fires later, potentially interleaving with audio
+         * session ID changes and reactive volume flow re-fires that can re-pin the volume low
+         * after our synchronous restore. 250ms is enough for the typical prepare pipeline to
+         * settle (ExoPlayer's primary buffer for-playback is 150ms; full state transition usually
+         * completes within one frame after that) without being so long that the user perceives a
+         * muted gap.
+         */
+        const val SOURCE_SWITCH_VOLUME_REASSERT_MS = 250L
         private const val ArchiveTuneExtractorHost = "moriextractor.koyeb.app"
         private const val ArchiveTuneExtractorCacheFingerprintPrefix = "archivetune_extractor:"
         private const val ArchiveTuneExtractorExpirySafetyMs = 30_000L
