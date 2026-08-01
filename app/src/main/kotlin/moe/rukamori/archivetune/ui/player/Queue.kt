@@ -722,7 +722,13 @@ fun Queue(
                         draggedItemUid = draggedItemUid,
                         destination =
                             if (toQueueIndex == 0) {
-                                QueueDragDestination.Start
+                                // In the filtered queue list the current song is always at
+                                // index 0, so dropping at position 0 means "make this the
+                                // next song after the current one" rather than "move to the
+                                // very start of the full timeline" (which would place it
+                                // before already-played songs and is not visible anyway).
+                                currentPlayingUid?.let { QueueDragDestination.After(itemUid = it) }
+                                    ?: QueueDragDestination.Start
                             } else {
                                 QueueDragDestination.After(
                                     itemUid = mutableQueueWindows[toQueueIndex - 1].uid,
@@ -730,7 +736,7 @@ fun Queue(
                             },
                     )
 
-                if (selection && currentWindowIndex in mutableQueueWindows.indices) {
+                if (selection) {
                     val currentItem = queueWindows.getOrNull(currentWindowIndex)
 
                     if (currentItem?.uid == draggedItemUid) {
@@ -749,7 +755,7 @@ fun Queue(
                 }
             }
 
-        LaunchedEffect(queueWindows, reorderableState.isAnyItemDragging) {
+        LaunchedEffect(queueWindows, currentWindowIndex, reorderableState.isAnyItemDragging) {
             if (reorderableState.isAnyItemDragging) return@LaunchedEffect
 
             val completedDrag = dragInfo
@@ -781,9 +787,16 @@ fun Queue(
                 }
             }
 
+            // Only display the current song and upcoming songs in the queue list.
+            // Previously-played songs are excluded so the currently playing track is
+            // always at the top of the queue list — matching the "Continue Playing"
+            // header and the behaviour of mainstream music apps (Spotify, Apple Music).
+            // The full `queueWindows` (including played songs) is still used for
+            // queue stats, clear-queue, and drag-source resolution.
             Snapshot.withMutableSnapshot {
                 mutableQueueWindows.clear()
-                mutableQueueWindows.addAll(queueWindows)
+                val startIndex = currentWindowIndex.coerceAtLeast(0)
+                mutableQueueWindows.addAll(queueWindows.drop(startIndex))
             }
         }
 
@@ -1061,7 +1074,7 @@ fun Queue(
                                                                 selectedItems.add(currentItem)
                                                             }
                                                         } else {
-                                                            if (index == currentWindowIndex) {
+                                                            if (isActive) {
                                                                 playerConnection.player.togglePlayPause()
                                                             } else {
                                                                 val joined =
