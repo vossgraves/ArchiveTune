@@ -46,7 +46,6 @@ import moe.rukamori.archivetune.telegram.TelegramAuthState
 import moe.rukamori.archivetune.telegram.TelegramClient
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.IconButton
-import moe.rukamori.archivetune.ui.component.InfoLabel
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.SwitchPreference
@@ -169,9 +168,6 @@ fun TelegramSettings(navController: NavController) {
                                 navController.navigate(TELEGRAM_LOGIN_ROUTE)
                             },
                         )
-                    }
-                    item {
-                        InfoLabel(stringResource(R.string.telegram_login_info))
                     }
                 }
             }
