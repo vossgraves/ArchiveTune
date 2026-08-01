@@ -36,6 +36,7 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -780,12 +781,38 @@ private fun MovingBlurBackground(
     val imageLoader = context.imageLoader
     val isPreS = Build.VERSION.SDK_INT < Build.VERSION_CODES.S
 
-    Box(
+    // Pre-Android S can't use Modifier.blur (it requires RenderEffect, API 31+). On Android S+,
+    // Modifier.blur(64.dp) clamps edge pixels and effectively extends the visible content ~64dp
+    // beyond the layout bounds — which hides the black bar that would otherwise show when the
+    // drift offset pushes the scaled image past the screen edge. Pre-S uses a pre-blurred bitmap
+    // instead, so there's no such edge extension, and at scale 1.4 with drift up to ±120dp the
+    // image's 20% slack (~72dp on a 360dp-wide screen) is less than the max drift — a black
+    // bar shows along the edge during the drift animation.
+    //
+    // Fix: compute the minimum scale that guarantees the image always covers the screen at max
+    // drift on pre-S. Required slack on each side = maxDrift + safety. Slack = (scale-1)/2 * size,
+    // so scale = 1 + 2 * (maxDrift + safety) / size. We take the max of the X and Y requirements
+    // (X is usually binding because phones are taller than wide) and never go below 1.4 (the
+    // post-S scale, kept as a floor so pre-S doesn't look more zoomed than necessary on huge
+    // screens). BoxWithConstraints gives us the actual screen dimensions for the math.
+    BoxWithConstraints(
         modifier =
             modifier
                 .fillMaxSize()
                 .background(AppleMusicFallbackGradient.last()),
     ) {
+        val preSDriftScale =
+            if (isPreS) {
+                val driftMaxX = 120.dp
+                val driftMaxY = 90.dp
+                val safetyMargin = 24.dp
+                val requiredScaleX = 1f + 2f * (driftMaxX + safetyMargin) / maxWidth
+                val requiredScaleY = 1f + 2f * (driftMaxY + safetyMargin) / maxHeight
+                maxOf(requiredScaleX, requiredScaleY, 1.4f)
+            } else {
+                1.4f
+            }
+
         AnimatedContent(
             targetState = mediaMetadata.thumbnailUrl,
             transitionSpec = { fadeIn(tween(700)) togetherWith fadeOut(tween(700)) },
@@ -826,8 +853,8 @@ private fun MovingBlurBackground(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .graphicsLayer {
-                                    scaleX = 1.4f
-                                    scaleY = 1.4f
+                                    scaleX = preSDriftScale
+                                    scaleY = preSDriftScale
                                 }
                                 .offset(x = driftX.dp, y = driftY.dp)
                                 .alpha(0.86f),
@@ -844,8 +871,8 @@ private fun MovingBlurBackground(
                         modifier = Modifier
                             .fillMaxSize()
                             .graphicsLayer {
-                                scaleX = 1.4f
-                                scaleY = 1.4f
+                                scaleX = preSDriftScale
+                                scaleY = preSDriftScale
                             }
                             .blur(64.dp)
                             .offset(x = driftX.dp, y = driftY.dp)
