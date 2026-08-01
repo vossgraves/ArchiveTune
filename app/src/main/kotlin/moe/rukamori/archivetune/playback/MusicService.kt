@@ -373,6 +373,9 @@ class MusicService :
     private var audioDeviceCallbackRegistered = false
     private var audioRouteRecoveryJob: Job? = null
     private var audiblePlaybackRecoveryJob: Job? = null
+    private var sourceSwitchPending = false
+    private var sourceSwitchExpectedVolume = 1f
+    private var sourceSwitchReassertJob: Job? = null
     private var lastAudioOutputDeviceSignature: String? = null
     private var lastAudioRouteRecoveryRealtimeMs = 0L
 
@@ -2619,6 +2622,7 @@ class MusicService :
         crossfadeTriggerJob = null
 
         if (isCrossfading) return
+        if (sourceSwitchPending) return
         if (isCastSessionConnected()) {
             localPlayer.pauseAtEndOfMediaItems = false
             releaseSecondaryCrossfadePlayer()
@@ -6981,6 +6985,27 @@ class MusicService :
                 onInfiniteQueueEnabled(currentQueue.infiniteQueueSeedMediaId())
             }
         } else if (playbackState == Player.STATE_READY) {
+            // Source-switch completion hook: once the deterministic re-create reaches READY,
+            // the new MediaSource is fully prepared and the live flows are authoritative again.
+            // Apply the volume captured before the switch, cancel the delayed reassert (it
+            // already did its job / is redundant now), and re-arm the watchdog — the watchdog
+            // self-cancels while the player is IDLE mid-switch, so READY is where it must be
+            // restarted.
+            if (sourceSwitchPending) {
+                sourceSwitchPending = false
+                sourceSwitchReassertJob?.cancel()
+                sourceSwitchReassertJob = null
+                Timber.tag(TAG).d(
+                    "source switch READY: captured=%s live=%s actual=%s state=%s",
+                    sourceSwitchExpectedVolume,
+                    currentEffectivePlayerVolume(),
+                    player.volume,
+                    player.playWhenReady,
+                )
+                applyEffectiveVolumeImmediately(sourceSwitchExpectedVolume)
+                ensureAudiblePlaybackVolume("source_switch_ready")
+            }
+            updateAudiblePlaybackRecovery()
             scheduleCrossfade()
         }
 
@@ -7812,24 +7837,25 @@ class MusicService :
      *    the request was fully cached. Both are now evicted explicitly so the slow path always
      *    re-resolves through the new override.
      *
-     * 2. **"Qobuz → YouTube plays from YouTube but muted."** `player.prepare()` is asynchronous;
-     *    the actual re-resolution happens on ExoPlayer's internal thread, and any of the reactive
-     *    volume pipeline (`playerVolume × normalizeFactor × audioFocusVolumeFactor`), audio focus
-     *    state, or crossfade ramp can interleave with it and leave the primary player's volume
-     *    pinned low. The previous fix only restored the volume once (synchronously) right after
-     *    `prepare()` returned — but `prepare()` is async, so subsequent state transitions
-     *    (STATE_BUFFERING → STATE_READY, audio session ID change triggering audio-effect rebind,
-     *    reactive volume flow re-firing with a stale duck factor) can pin the volume low AGAIN
-     *    after our synchronous restore. The previous watchdog only fired when `player.volume ≈ 0`,
-     *    so a "quiet but not zero" state slipped past it. We now:
-     *    - cancel any pending crossfade and reset its volume (before prepare),
-     *    - re-claim audio focus BEFORE computing the effective volume (so the volume we apply
-     *      uses the post-focus-restore `audioFocusVolumeFactor` instead of a stale ducked one),
-     *    - apply the effective volume immediately (no ramp),
-     *    - kick the audible-playback watchdog (now with a 30%-of-expected threshold instead of
-     *      epsilon-only — catches "quiet but not zero"),
-     *    - schedule a delayed re-apply (~250ms later) so any state transitions that happen
-     *      during the async prepare() that pin the volume low get corrected.
+     * 2. **"Qobuz → YouTube plays from YouTube but muted."** `player.prepare()` on the same
+     *    MediaItem is effectively a no-op — the switch only "worked" because the seek-triggered
+     *    re-open re-resolved the data source, and the re-create is nondeterministic (stale data
+     *    sources, retried expired URLs, and the reactive volume pipeline interleaving with the
+     *    transition can pin the primary player's volume low). The deterministic fix:
+     *    - evict all per-source caches (URLs, content length, player/download cache resources),
+     *    - cancel any pending crossfade and reset its volume,
+     *    - re-claim audio focus BEFORE capturing the expected volume (so the baseline uses the
+     *      post-focus-restore `audioFocusVolumeFactor` instead of a stale ducked one),
+     *    - re-create the media item from scratch (`clearMediaItems()` + `setMediaItem()` + fresh
+     *      `prepare()`) — the exact same path as "skip to previous song and back", which the user
+     *      confirms always fixes the mute,
+     *    - apply the captured (pre-switch) effective volume immediately, and re-apply that same
+     *      captured baseline on a delayed reassert AND on STATE_READY (whichever fires last —
+     *      the READY hook cancels the delayed job), instead of recomputing from live flows that
+     *      can be stale/ducked mid-transition,
+     *    - re-arm the audible-playback watchdog on STATE_READY (it self-cancels while the player
+     *      is IDLE mid-switch and was never re-armed before — a dead watchdog let any later
+     *      volume dip stick forever).
      */
     fun setSongSourceOverride(
         mediaId: String,
@@ -7844,6 +7870,22 @@ class MusicService :
             }
         }
         if (player.currentMediaItem?.mediaId == mediaId) {
+            // Capture the item FIRST: clearMediaItems() empties the timeline, so
+            // currentMediaItem would be null afterwards. Bail before touching any state if it
+            // somehow is null here.
+            val item = player.currentMediaItem ?: return
+            // Capture the expected volume BEFORE any state churn. The teardown below (cache
+            // eviction, crossfade cancel, audio-focus re-claim, playlist re-create) makes the
+            // reactive volume pipeline (playerVolume x normalizeFactor x focus factor) re-fire
+            // mid-transition; recomputing the effective volume from the live flows at that
+            // point can pin the player at a stale/ducked value. We re-apply this captured
+            // baseline at every recovery point until the switch has deterministically reached
+            // STATE_READY, after which the pipeline's live values are authoritative again.
+            val expectedVolume = currentEffectivePlayerVolume()
+            val wasPlaying = player.playWhenReady
+            sourceSwitchPending = true
+            sourceSwitchExpectedVolume = expectedVolume
+
             playbackUrlCache.remove(mediaId)
             extractorPlaybackUrlCache.remove(mediaId)
             YTPlayerUtils.invalidateCachedStreamUrls(mediaId)
@@ -7870,30 +7912,57 @@ class MusicService :
             // order applied the volume first (which would multiply by a stale ducked
             // audioFocusVolumeFactor if focus had been transiently lost) and then restored
             // focus — leaving the player pinned at the ducked volume until the reactive volume
-            // flow happened to re-fire. Restoring focus first means currentEffectivePlayerVolume()
+            // flow happened to re-fire. Restoring focus first means the captured baseline
             // reflects the restored 1.0 factor.
             ensureAudioFocusForActivePlayback()
+
+            // Deterministic re-create: tear the playlist down entirely and re-add the item from
+            // scratch. This makes the in-place source switch take the exact same path as
+            // "skip to previous song and back" — a fresh MediaSource, fresh re-preparation and
+            // a fresh resolver run — instead of relying on prepare()/seekTo() re-opening the
+            // existing (and possibly stale) data source.
+            player.clearMediaItems()
+            player.setMediaItem(item, 0)
             player.prepare()
-            player.seekTo(0)
-            player.playWhenReady = true
+            player.playWhenReady = wasPlaying
             // Restore the effective volume immediately (bypass the smooth ramp) so the new source
             // doesn't briefly play muted while the ramp catches up. Start the audible-playback
             // watchdog so any later volume dip gets corrected within the next polling window.
-            applyEffectiveVolumeImmediately(currentEffectivePlayerVolume())
+            applyEffectiveVolumeImmediately(expectedVolume)
             updateAudiblePlaybackRecovery()
             // Defensive delayed re-apply: player.prepare() is async, and the state transitions
-            // it triggers (BUFFERING → READY, audio session ID change, audio-effect rebind,
+            // it triggers (BUFFERING -> READY, audio session ID change, audio-effect rebind,
             // reactive volume flow re-firing) can interleave with the synchronous restore above
-            // and re-pin the volume low. Re-apply once more after the prepare pipeline has
-            // settled so the user never hears a muted stream.
-            scope.launch {
-                delay(SOURCE_SWITCH_VOLUME_REASSERT_MS)
-                if (player.currentMediaItem?.mediaId == mediaId && player.playWhenReady) {
-                    ensureAudioFocusForActivePlayback()
-                    applyEffectiveVolumeImmediately(currentEffectivePlayerVolume())
-                    ensureAudiblePlaybackVolume("source_switch_reassert")
+            // and re-pin the volume low. Re-apply the CAPTURED baseline once more after the
+            // prepare pipeline has settled (or when STATE_READY arrives — whichever fires
+            // last), so the user never hears a muted stream. The READY hook cancels this job.
+            sourceSwitchReassertJob?.cancel()
+            sourceSwitchReassertJob =
+                scope.launch {
+                    delay(SOURCE_SWITCH_VOLUME_REASSERT_MS)
+                    if (sourceSwitchPending &&
+                        player.currentMediaItem?.mediaId == mediaId &&
+                        player.playWhenReady
+                    ) {
+                        Timber.tag(TAG).d(
+                            "source switch delayed reassert: captured=%s live=%s actual=%s",
+                            expectedVolume,
+                            currentEffectivePlayerVolume(),
+                            player.volume,
+                        )
+                        ensureAudioFocusForActivePlayback()
+                        applyEffectiveVolumeImmediately(expectedVolume)
+                        ensureAudiblePlaybackVolume("source_switch_reassert")
+                    }
                 }
-            }
+            Timber.tag(TAG).d(
+                "setSongSourceOverride: mediaId=%s source=%s capturedVolume=%s wasPlaying=%s state=%s",
+                mediaId,
+                source,
+                expectedVolume,
+                wasPlaying,
+                player.playbackState,
+            )
         }
     }
 
@@ -8564,7 +8633,18 @@ class MusicService :
                 perceptualLoudnessDb = null,
                 playbackUrl = null,
             )
-        database.query { upsert(formatEntity) }
+        // Don't clobber the authoritative format row (itag != 0, written by the YouTube
+        // resolver together with real loudness data). Overwriting it with itag=0/loudnessDb=null
+        // made the details card and the normalization pipeline read the direct-stream stub over
+        // the real format after a source switch. Only persist the direct-stream info when no
+        // real format exists yet (e.g. songs that always play through a lossless source).
+        val hasAuthoritativeFormat =
+            runBlocking(Dispatchers.IO) {
+                database.getFormatsByIds(listOf(mediaId)).firstOrNull()?.let { it.itag != 0 } ?: false
+            }
+        if (!hasAuthoritativeFormat) {
+            database.query { upsert(formatEntity) }
+        }
 
         // Backfill the content length via a HEAD request if the source didn't
         // provide it. This is what makes the nerd-stats card show e.g.
@@ -8579,11 +8659,13 @@ class MusicService :
                     mediaOkHttpClient.newCall(headRequest).execute().use { response ->
                         val len = response.header("Content-Length")?.toLongOrNull() ?: -1L
                         if (len > 0L) {
-                            // Re-read the row so we don't clobber any concurrent
-                            // updates to other fields (e.g. loudness) — only
-                            // patch the contentLength column.
-                            val refreshed = formatEntity.copy(contentLength = len)
-                            database.query { upsert(refreshed) }
+                            if (!hasAuthoritativeFormat) {
+                                // Re-read the row so we don't clobber any concurrent
+                                // updates to other fields (e.g. loudness) — only
+                                // patch the contentLength column.
+                                val refreshed = formatEntity.copy(contentLength = len)
+                                database.query { upsert(refreshed) }
+                            }
                             // Also surface the size in the in-memory cache so the
                             // download resolver picks it up immediately for the
                             // cache-first prewarm partial-cache check.
