@@ -7805,12 +7805,20 @@ class MusicService :
             }
         }
         if (player.currentMediaItem?.mediaId == mediaId) {
-            // Drop any cached resolved stream for this song and re-prepare so the new source is used.
             playbackUrlCache.remove(mediaId)
             extractorPlaybackUrlCache.remove(mediaId)
             YTPlayerUtils.invalidateCachedStreamUrls(mediaId)
             tidalActiveMediaIds.remove(mediaId)
+            runCatching { playerCache.removeResource(mediaId) }
+            runCatching { downloadCache.removeResource(mediaId) }
+            AudioSourceType.entries.forEach { src ->
+                val key = sourceCacheKey(src, mediaId)
+                runCatching { playerCache.removeResource(key) }
+                runCatching { downloadCache.removeResource(key) }
+            }
             player.prepare()
+            player.seekTo(0)
+            player.playWhenReady = true
         }
     }
 
