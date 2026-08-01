@@ -781,13 +781,20 @@ private fun MovingBlurBackground(
 
     // Pre-Android S can't use Modifier.blur (it requires RenderEffect, API 31+). We use sang's
     // pure-Kotlin stack-blur fallback (rukamori/ArchiveTune#924): load the thumbnail, blur it
-    // once with ImageBlurUtils, render via Image. The drift animation IS preserved — the bitmap
-    // is scaled up well beyond the screen and the drift is applied via graphicsLayer
-    // translationX/Y (NOT Modifier.offset, which moves layout position and can leave gaps). The
-    // parent BoxWithConstraints clips to bounds so the oversized bitmap never spills. The scale
-    // is computed to guarantee full coverage at max drift + 48dp safety margin (the S+ path uses
-    // 1.4 + Modifier.blur's ~64dp edge clamping for the same effect; pre-S has no edge clamping
-    // so we need more scale).
+    // once with ImageBlurUtils, render via Image. The drift animation is preserved by applying
+    // it through Modifier.offset(x = driftX.dp, y = driftY.dp) — the SAME mechanism the S+ path
+    // uses. Earlier attempts tried graphicsLayer { translationX = driftX.dp.toPx() } instead,
+    // but on pre-S devices the graphicsLayer block did not reliably re-evaluate each animation
+    // frame, so the background appeared static even though driftX was animating. Modifier.offset
+    // is a layout modifier that definitely invalidates layout when its Dp arguments change, so
+    // the bitmap is re-placed every frame.
+    //
+    // The bitmap is scaled up well beyond the screen (preSDriftScale, computed below) so that
+    // at max drift the scaled+drifted drawing still covers the screen with no black bars. The
+    // parent BoxWithConstraints has clipToBounds() so the oversized drawing never spills. The
+    // 48dp safety margin guarantees full coverage at max drift (the S+ path doesn't need this
+    // because Modifier.blur's TileMode.Clamp extends the visible content ~64dp beyond the
+    // layout bounds; pre-S has no such edge extension).
     BoxWithConstraints(
         modifier =
             modifier
@@ -846,9 +853,8 @@ private fun MovingBlurBackground(
                                 .graphicsLayer {
                                     scaleX = preSDriftScale
                                     scaleY = preSDriftScale
-                                    translationX = driftX.dp.toPx()
-                                    translationY = driftY.dp.toPx()
                                 }
+                                .offset(x = driftX.dp, y = driftY.dp)
                                 .alpha(0.86f),
                         )
                     }

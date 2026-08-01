@@ -43,6 +43,7 @@ import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.palette.graphics.Palette
@@ -356,18 +357,25 @@ private fun MiniPlayerBackground(
             if (backdrop == null) {
                 Box(modifier = modifier.background(baseColor))
             } else if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
-                // Pre-S: CPU-blurred bitmap fallback. The bitmap is updated a few times per
-                // second (see [rememberPreSFrostedBitmap]) — enough for a frosted-glass effect
-                // without the per-frame cost that would tank pre-S hardware.
+                // Pre-S: CPU-blurred bitmap fallback. The bitmap is the small slice under the
+                // mini player (not the full screen), captured and blurred every ~80 ms — fast
+                // enough for smooth frosted tracking without tanking pre-S hardware. The blurred
+                // slice is already aligned to the mini player's top-left, so we draw at (0, 0).
+                var positionInRoot by remember { mutableStateOf(Offset.Zero) }
+                var miniPlayerSize by remember { mutableStateOf(IntSize.Zero) }
                 val blurredBitmap = rememberPreSFrostedBitmap(
                     backdrop = backdrop,
+                    barPositionInRoot = positionInRoot,
+                    barSize = miniPlayerSize,
                     blurRadiusPx = FrostedMiniPlayerBlurRadiusPx,
                 )
-                var positionInRoot by remember { mutableStateOf(Offset.Zero) }
                 Box(
                     modifier =
                         modifier
-                            .onGloballyPositioned { positionInRoot = it.positionInRoot() }
+                            .onGloballyPositioned {
+                                positionInRoot = it.positionInRoot()
+                                miniPlayerSize = it.size
+                            }
                             .background(baseColor),
                 ) {
                     if (blurredBitmap != null) {
@@ -379,10 +387,7 @@ private fun MiniPlayerBackground(
                                         alpha = FrostedMiniPlayerOverlayAlpha
                                         clip = true
                                     }.drawBehind {
-                                        val offset = backdrop.contentOffsetInRoot - positionInRoot
-                                        translate(offset.x, offset.y) {
-                                            drawImage(blurredBitmap)
-                                        }
+                                        drawImage(blurredBitmap)
                                     },
                         )
                     }
