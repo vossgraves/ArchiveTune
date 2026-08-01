@@ -96,18 +96,26 @@ import moe.rukamori.archivetune.lastfm.CatalogueCoverProvider
 import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.innertube.models.SongItem
 import moe.rukamori.archivetune.ui.component.IconButton as AppIconButton
+import moe.rukamori.archivetune.constants.DarkModeKey
 import moe.rukamori.archivetune.ui.utils.backToMain
+import moe.rukamori.archivetune.utils.rememberEnumPreference
 import javax.inject.Inject
 
 private val DashboardAccentColor = Color(0xFFBE123C)
 
 @Composable
+private fun isDashboardDarkTheme(): Boolean {
+    val darkMode by rememberEnumPreference(DarkModeKey, defaultValue = DarkMode.AUTO)
+    return if (darkMode == DarkMode.AUTO) isSystemInDarkTheme() else darkMode == DarkMode.ON
+}
+
+@Composable
 private fun dashboardCardColor(): Color =
-    if (isSystemInDarkTheme()) Color(0xFF1F1416) else Color(0xFFFFF5F5)
+    if (isDashboardDarkTheme()) Color(0xFF1F1416) else Color(0xFFFFF5F5)
 
 @Composable
 private fun dashboardIconBackgroundColor(): Color =
-    if (isSystemInDarkTheme()) Color(0xFF3A1F23) else Color(0xFFFFE4E6)
+    if (isDashboardDarkTheme()) Color(0xFF3A1F23) else Color(0xFFFFE4E6)
 
 private enum class LastFmTab { RECENTS, TOP_PLAYED }
 

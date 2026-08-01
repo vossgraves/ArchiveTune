@@ -95,6 +95,7 @@ import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.db.entities.FormatEntity
 import moe.rukamori.archivetune.db.entities.codecLabel
+import moe.rukamori.archivetune.db.entities.isLossless
 import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.playback.PlayerConnection
@@ -948,6 +949,9 @@ private fun AppleMusicQualityChip(
     val label = remember(currentFormat.mimeType, currentFormat.codecs) {
         currentFormat.codecLabel()
     }
+    val lossless = remember(currentFormat.codecs, currentFormat.mimeType) {
+        currentFormat.isLossless()
+    }
     Surface(
         shape = RoundedCornerShape(6.dp),
         color = Color.White.copy(alpha = 0.1f),
@@ -960,10 +964,12 @@ private fun AppleMusicQualityChip(
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
         ) {
             Icon(
-                painter = painterResource(R.drawable.player_graphic_eq),
+                painter = painterResource(
+                    if (lossless) R.drawable.ic_mqa else R.drawable.player_graphic_eq,
+                ),
                 contentDescription = null,
                 tint = Color.White.copy(alpha = 0.72f),
-                modifier = Modifier.size(15.dp),
+                modifier = Modifier.size(if (lossless) 18.dp else 15.dp),
             )
             Text(
                 text = label,
