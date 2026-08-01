@@ -1289,9 +1289,20 @@ class MainActivity : ComponentActivity() {
                             ) ||
                             (playerBottomSheetState.isExpandedOrExpanding && isPlayerLyricsFullScreen)
 
-                    LaunchedEffect(shouldHideStatusBars, aodModeEnabled) {
+                    LaunchedEffect(shouldHideStatusBars, menuState.isVisible, aodModeEnabled) {
                         if (aodModeEnabled) return@LaunchedEffect
+                        // Re-assert the desired system-bar visibility. Material3's
+                        // ModalBottomSheet internally shows the system bars when it
+                        // expands; without re-asserting, opening the overflow menu
+                        // from the immersive lyrics view makes the status bar pop in
+                        // even though `shouldHideStatusBars` is still true. The
+                        // short delay gives the sheet's own inset logic time to run
+                        // before we re-hide, so our hide call wins.
                         setStatusBarsHidden(shouldHideStatusBars)
+                        if (menuState.isVisible && shouldHideStatusBars) {
+                            delay(150)
+                            setStatusBarsHidden(true)
+                        }
                     }
 
                     LaunchedEffect(isYearInMusicScreen, playerConnection) {

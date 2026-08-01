@@ -13,13 +13,9 @@ import android.util.LruCache
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.joinAll
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import moe.rukamori.archivetune.constants.LyricsProviderOrderKey
@@ -59,7 +55,6 @@ class LyricsHelper
                 YouTubeSubtitleLyricsProvider,
                 YouTubeLyricsProvider,
 
-                
                 MusixmatchExperimentalLyricsProvider,
             )
 
@@ -122,10 +117,6 @@ class LyricsHelper
                     .filter { it.isEnabled(context) }
                     .filter { supportsMediaId(it, mediaMetadata.id) }
             val providers = if (preferredProviderOnly) ordered.take(1) else ordered
-            // Single parallel fetch — the previous implementation called fetchPriorityLyricsResult
-            // twice (once for the provider name, once for the lyrics body), which doubled the
-            // worst-case latency because each call waited for the slowest provider. Resolve once
-            // and reuse the result.
             val result = fetchPriorityLyricsResult(providers, mediaMetadata)
             if (isMeaningfulLyrics(result.lyrics)) {
                 singleLyricsCache.put(cacheKey, result)
@@ -165,53 +156,64 @@ class LyricsHelper
             }
 
             val allResult = mutableListOf<LyricsResult>()
-            val providers = orderedProviders()
-            withContext(Dispatchers.IO) {
-                providers.forEach { provider ->
-                    if (!provider.isEnabled(context)) return@forEach
+            val providers = orderedProviders().filter { it.isEnabled(context) }
 
-                    try {
-                        provider.getAllLyrics(mediaId, songTitle, songArtists, songAlbum, duration) lyricsCallback@{ lyrics ->
-                            val normalizedLyrics = LyricsUtils.lyricsOrNotFound(lyrics)
-                            if (normalizedLyrics == LYRICS_NOT_FOUND) return@lyricsCallback
-                            val result = LyricsResult(provider.name, normalizedLyrics)
-                            allResult += result
-                            callback(result)
+            // Fan out all enabled providers in parallel. The previous implementation
+            // iterated providers sequentially with `forEach`, which meant the search
+            // dialog stayed on "Searching providers…" until every provider returned in
+            // order — a single slow provider (Musixmatch can take 10–15s) held back
+            // results from faster ones (LRCLIB ~100ms). Running them concurrently lets
+            // results stream into the UI as each provider finishes.
+            //
+            // Each provider call is wrapped in a per-provider timeout so a hung
+            // provider can't pin the search dialog indefinitely. Failures and timeouts
+            // are reported but never propagated — the dialog just shows fewer results.
+            withContext(Dispatchers.IO) {
+                supervisorScope {
+                    providers.map { provider ->
+                        async {
+                            try {
+                                withTimeoutOrNull(PROVIDER_TIMEOUT_MS) {
+                                    provider.getAllLyrics(mediaId, songTitle, songArtists, songAlbum, duration) lyricsCallback@{ lyrics ->
+                                        val normalizedLyrics = LyricsUtils.lyricsOrNotFound(lyrics)
+                                        if (normalizedLyrics == LYRICS_NOT_FOUND) return@lyricsCallback
+                                        val result = LyricsResult(provider.name, normalizedLyrics)
+                                        synchronized(allResult) {
+                                            allResult += result
+                                        }
+                                        callback(result)
+                                    }
+                                }
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (e: Exception) {
+                                reportException(e)
+                            }
                         }
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Exception) {
-                        reportException(e)
-                    }
+                    }.forEach { it.await() }
                 }
             }
             cache.put(cacheKey, allResult.toList())
         }
 
         /**
-         * Streams provider results as they arrive and returns the best acceptable lyrics payload
-         * while still respecting the user-configured provider priority order.
+         * Resolves lyrics from all providers in parallel and returns the best result by
+         * (sync tier: word > line > plain) then by provider priority (lower index wins).
          *
-         * Strategy:
-         *  - All enabled providers run in parallel on `Dispatchers.IO` (so a slow provider can't
-         *    block a fast one — keeps the panel load latency low).
-         *  - Results are collected as they arrive. Each result is classified as word-synced,
-         *    line-synced, or plain (unsynced).
-         *  - When a synced result arrives, a short "grace period" starts (or continues). During
-         *    the grace period we keep collecting so higher-priority providers get a chance to
-         *    respond — this is what restores the priority order: a fast low-priority line-synced
-         *    result no longer preempts a slightly slower top-priority word-synced result.
-         *  - We early-exit when:
-         *      * the top-priority provider returns a synced result (priority 0 — can't be beaten), or
-         *      * all providers have completed (no point waiting for the grace period), or
-         *      * the grace period has elapsed since the first synced result arrived.
-         *  - At decision time we pick the best result by (sync tier: word > line > plain, then by
-         *    priority index — lower index wins).
-         *  - `LYRICS_NOT_FOUND` is returned only if every provider failed/returned nothing.
+         * This is the original priority-respecting implementation. The previous
+         * "streaming first-result-wins" approach (commit 9975a15ac) was faster but
+         * silently broke priority — a fast low-priority provider's line-synced lyrics
+         * would preempt a slightly slower top-priority provider's word-synced lyrics
+         * during the grace window, because the grace period wasn't long enough to cover
+         * the typical 10–15s Musixmatch latency.
          *
-         * Grace period is short (1.2s) so the perceived load latency stays low — typical provider
-         * latency spreads (LRCLIB ~100ms, Musixmatch ~3–15s) mean the top-priority provider either
-         * responds within the grace period or wasn't going to win on speed anyway.
+         * Speed: each provider call is wrapped in [withTimeoutOrNull] so a single hung
+         * provider can't pin the panel for its full 15–20s timeout. Providers that
+         * exceed [PROVIDER_TIMEOUT_MS] are simply dropped from the ranking — they
+         * contribute nothing to the result. The hard ceiling on panel load latency is
+         * therefore min(provider timeout, slowest responsive provider's response time),
+         * which in practice is the provider timeout (~8s) since at least one provider
+         * usually responds within a few seconds.
          */
         private suspend fun fetchPriorityLyricsResult(
             providers: List<LyricsProvider>,
@@ -220,121 +222,35 @@ class LyricsHelper
             if (providers.isEmpty()) return LyricsResult(providerName = "", lyrics = LYRICS_NOT_FOUND)
 
             val artist = mediaMetadata.artists.joinToString { it.name }
-
-            return coroutineScope {
-                // (priorityIndex, providerName, lyrics) — priorityIndex is the position in the
-                // user-ordered provider list (0 = highest priority).
-                data class ProviderResult(val priority: Int, val providerName: String, val lyrics: String)
-
-                // UNLIMITED so `trySend` never blocks a provider coroutine; we close the channel
-                // ourselves once we have a winner.
-                val channel = Channel<ProviderResult>(Channel.UNLIMITED)
-                val providerJobs: List<Job> =
-                    providers.mapIndexed { index, provider ->
-                        launch(Dispatchers.IO) {
-                            val lyrics = fetchProviderLyrics(provider, mediaMetadata, artist)
-                            if (lyrics != null) {
-                                channel.trySend(ProviderResult(index, provider.name, lyrics))
+            val results =
+                supervisorScope {
+                    providers
+                        .map { provider ->
+                            async(Dispatchers.IO) {
+                                val lyrics =
+                                    withTimeoutOrNull(PROVIDER_TIMEOUT_MS) {
+                                        fetchProviderLyrics(provider, mediaMetadata, artist)
+                                    }
+                                if (lyrics == null) null else provider.name to lyrics
                             }
-                        }
-                    }
-                val collectorJob =
-                    launch {
-                        try {
-                            providerJobs.joinAll()
-                        } finally {
-                            channel.close()
-                        }
-                    }
-
-                try {
-                    val collected = mutableListOf<ProviderResult>()
-                    // Hard ceiling on total wait — if no winner emerges after this, return the best
-                    // we have so a single hung provider can't pin the panel for its full timeout.
-                    val hardTimeoutMs = 8_000L
-                    // Grace window after the first synced result arrives — gives higher-priority
-                    // providers a chance to respond before we commit to a lower-priority winner.
-                    val gracePeriodMs = 1_200L
-
-                    val startedAtMs = System.currentTimeMillis()
-                    var firstSyncedAtMs: Long? = null
-
-                    fun isSynced(result: ProviderResult): Boolean =
-                        LyricsUtils.hasWordSyncedLyrics(result.lyrics) ||
-                            LyricsUtils.isLineSyncedLrc(result.lyrics)
-
-                    // Best result so far: prefer word-synced > line-synced > plain, then by
-                    // priority index (lower = higher priority).
-                    fun pickBest(): ProviderResult? =
-                        collected
-                            .filter { isSynced(it) }
-                            .sortedWith(
-                                compareByDescending<ProviderResult> {
-                                    if (LyricsUtils.hasWordSyncedLyrics(it.lyrics)) 2 else 1
-                                }.thenBy { it.priority },
-                            ).firstOrNull()
-                            ?: collected.minByOrNull { it.priority }
-
-                    fun allProvidersDone(): Boolean = providerJobs.all { !it.isActive }
-
-                    while (true) {
-                        val elapsedMs = System.currentTimeMillis() - startedAtMs
-                        val remainingMs = hardTimeoutMs - elapsedMs
-                        if (remainingMs <= 0) break
-
-                        val nextResult = withTimeoutOrNull(remainingMs) { channel.receiveCatching().getOrNull() }
-                        if (nextResult == null) {
-                            // Channel closed (all providers done) or hard timeout — exit and pick best.
-                            break
-                        }
-
-                        collected.add(nextResult)
-
-                        if (!isSynced(nextResult)) continue
-
-                        if (firstSyncedAtMs == null) {
-                            firstSyncedAtMs = System.currentTimeMillis()
-                        }
-
-                        val best = pickBest() ?: continue
-
-                        // Early-exit case 1: top-priority provider returned a synced result.
-                        // Nothing can beat it (no higher priority exists), so commit immediately.
-                        if (best.priority == 0 && LyricsUtils.hasWordSyncedLyrics(best.lyrics)) {
-                            return@coroutineScope LyricsResult(providerName = best.providerName, lyrics = best.lyrics)
-                        }
-                        // Note: we deliberately do NOT early-exit on priority-0 line-synced,
-                        // because a slightly later word-synced result from any provider would
-                        // be strictly better — the grace period lets that arrive.
-
-                        // Early-exit case 2: all providers have completed — no point waiting.
-                        if (allProvidersDone()) {
-                            return@coroutineScope LyricsResult(providerName = best.providerName, lyrics = best.lyrics)
-                        }
-
-                        // Early-exit case 3: grace period has elapsed since the first synced
-                        // result arrived. Commit the best we have.
-                        val firstSyncedAt = firstSyncedAtMs
-                        if (firstSyncedAt != null) {
-                            val sinceFirstSyncedMs = System.currentTimeMillis() - firstSyncedAt
-                            if (sinceFirstSyncedMs >= gracePeriodMs) {
-                                return@coroutineScope LyricsResult(providerName = best.providerName, lyrics = best.lyrics)
-                            }
-                        }
-                        // Otherwise loop back to keep collecting — higher-priority providers
-                        // might still return a better result before the grace period expires.
-                    }
-
-                    // All providers completed or hard timeout — pick the best result.
-                    pickBest()?.let { best ->
-                        return@coroutineScope LyricsResult(providerName = best.providerName, lyrics = best.lyrics)
-                    }
-                    LyricsResult(providerName = "", lyrics = LYRICS_NOT_FOUND)
-                } finally {
-                    collectorJob.cancel()
-                    providerJobs.forEach { it.cancel() }
+                        }.mapNotNull { it.await() }
                 }
-            }
+
+            if (results.isEmpty()) return LyricsResult(providerName = "", lyrics = LYRICS_NOT_FOUND)
+
+            // Ranking: word-synced > line-synced > plain. `firstOrNull` walks the
+            // results in provider-priority order (because `providers` is ordered), so
+            // when multiple providers return the same tier the higher-priority one
+            // wins — this is what restores the priority order the streaming
+            // implementation broke.
+            val wordSynced = results.firstOrNull { LyricsUtils.hasWordSyncedLyrics(it.second) }
+            if (wordSynced != null) return LyricsResult(providerName = wordSynced.first, lyrics = wordSynced.second)
+
+            val lineSynced = results.firstOrNull { LyricsUtils.isLineSyncedLrc(it.second) }
+            if (lineSynced != null) return LyricsResult(providerName = lineSynced.first, lyrics = lineSynced.second)
+
+            val first = results.first()
+            return LyricsResult(providerName = first.first, lyrics = first.second)
         }
 
         private suspend fun fetchProviderLyrics(
@@ -428,6 +344,12 @@ class LyricsHelper
 
         companion object {
             private const val MAX_CACHE_SIZE = 16
+
+            // Per-provider hard timeout. Provider calls that exceed this are cancelled
+            // and dropped from ranking. Tuned to be long enough for typical provider
+            // latency (~3–5s for Musixmatch under good conditions) but short enough
+            // that a hung provider can't pin the lyrics panel.
+            private const val PROVIDER_TIMEOUT_MS = 8_000L
         }
     }
 
