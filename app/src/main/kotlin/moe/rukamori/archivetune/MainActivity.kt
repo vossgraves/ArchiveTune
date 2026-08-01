@@ -1069,10 +1069,16 @@ class MainActivity : ComponentActivity() {
                         MiniPlayerBackgroundStyleKey,
                         defaultValue = MiniPlayerBackgroundStyle.THEME,
                     )
+                    // Capture the app content into a GraphicsLayer every frame so the frosted
+                    // nav bar / mini player can draw it blurred. On Android 12+ the blur uses
+                    // RenderEffect (every frame, hardware-accelerated); on pre-S the consumers
+                    // fall back to a periodically captured + CPU-blurred bitmap
+                    // (see [rememberPreSFrostedBitmap]). Both paths need the same GraphicsLayer,
+                    // so we create it on every API level — `rememberGraphicsLayer` and
+                    // `layer.record { ... }` work without RenderEffect.
                     val navBarFrostedBackdrop =
                         if ((navigationBarFrostedBlur || miniPlayerBgStyle == MiniPlayerBackgroundStyle.FROSTED) &&
-                            !useRail &&
-                            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+                            !useRail
                         ) {
                             val frostedLayer = rememberGraphicsLayer()
                             remember(frostedLayer) { NavigationBarBackdrop(frostedLayer) }
