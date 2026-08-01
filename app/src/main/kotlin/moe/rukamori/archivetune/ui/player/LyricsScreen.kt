@@ -806,8 +806,8 @@ private fun MovingBlurBackground(
                 val driftMaxX = 120.dp
                 val driftMaxY = 90.dp
                 val safetyMargin = 24.dp
-                val requiredScaleX = 1f + 2f * (driftMaxX + safetyMargin) / maxWidth
-                val requiredScaleY = 1f + 2f * (driftMaxY + safetyMargin) / maxHeight
+                val requiredScaleX = 1f + 2f * (driftMaxX.value + safetyMargin.value) / maxWidth.value
+                val requiredScaleY = 1f + 2f * (driftMaxY.value + safetyMargin.value) / maxHeight.value
                 maxOf(requiredScaleX, requiredScaleY, 1.4f)
             } else {
                 1.4f
