@@ -786,6 +786,19 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                                 }
                             },
                         )
+                        // Pre-Android 12 disclaimer: the moving-blur background relies on per-frame
+                        // Modifier.blur (RenderEffect, API 31+). On pre-S the fallback renders a
+                        // single pre-blurred bitmap with no drift animation, so the blur is static.
+                        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S &&
+                            lyricsBackground == LyricsBackgroundStyle.MOVING_BLUR
+                        ) {
+                            Text(
+                                text = stringResource(R.string.moving_blur_static_disclaimer),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(start = 56.dp, top = 4.dp, end = 16.dp),
+                            )
+                        }
                     }
                 }
 
@@ -813,6 +826,19 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                                 }
                             },
                         )
+                        // Pre-Android 12 warning: frosted mini player uses RenderEffect (API 31+).
+                        // On pre-S the FROSTED style is silently downgraded to THEME — surface a
+                        // warning so users on older devices know why their selection isn't applying.
+                        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S &&
+                            miniPlayerBackground == MiniPlayerBackgroundStyle.FROSTED
+                        ) {
+                            Text(
+                                text = stringResource(R.string.frosted_mini_player_unsupported),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(start = 56.dp, top = 4.dp, end = 16.dp),
+                            )
+                        }
                     }
                 }
 
@@ -1017,13 +1043,26 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                 }
 
                 item {
-                    SwitchPreference(
-                        title = { Text(stringResource(R.string.navigation_bar_frosted_blur)) },
-                        description = stringResource(R.string.navigation_bar_frosted_blur_desc),
-                        icon = { Icon(painterResource(R.drawable.blur_on), null) },
-                        checked = navigationBarFrostedBlur,
-                        onCheckedChange = onNavigationBarFrostedBlurChange,
-                    )
+                    Column {
+                        SwitchPreference(
+                            title = { Text(stringResource(R.string.navigation_bar_frosted_blur)) },
+                            description = stringResource(R.string.navigation_bar_frosted_blur_desc),
+                            icon = { Icon(painterResource(R.drawable.blur_on), null) },
+                            checked = navigationBarFrostedBlur,
+                            onCheckedChange = onNavigationBarFrostedBlurChange,
+                        )
+                        // Pre-Android 12 warning: frosted navigation bar uses RenderEffect (API 31+).
+                        // On pre-S the toggle is a no-op (bar stays solid) — surface a warning so
+                        // users on older devices know the setting won't take effect.
+                        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S && navigationBarFrostedBlur) {
+                            Text(
+                                text = stringResource(R.string.navigation_bar_frosted_blur_unsupported),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(start = 56.dp, top = 4.dp, end = 16.dp),
+                            )
+                        }
+                    }
                 }
 
                 item {

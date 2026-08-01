@@ -172,11 +172,12 @@ fun FloatingNavigationToolbar(
             }
         } ?: MaterialTheme.shapes.extraLarge
     // True backdrop blur on Android 12+ uses RenderEffect (hardware-accelerated, every frame).
-    // Below API 31, RenderEffect is unavailable — the pre-S path falls back to a periodically
-    // captured + CPU-blurred bitmap (see [rememberPreSFrostedBitmap]) so the frosted setting
-    // still has a visible effect on older devices instead of degrading to a plain solid bar.
-    val canBlurBackdrop = frostedBlur && frostedBackdrop != null
+    // Below API 31 the frosted effect is disabled entirely: the pre-S CPU-blurred-bitmap fallback
+    // produced visible glitches and tearing on older devices, so we degrade to a plain solid bar.
+    // The Settings screen surfaces a "not supported on Android versions below 12" warning under
+    // the toggle when running on pre-S.
     val isPreS = Build.VERSION.SDK_INT < Build.VERSION_CODES.S
+    val canBlurBackdrop = frostedBlur && frostedBackdrop != null && !isPreS
     val navigationContainerColor =
         if (pureBlack) Color.Black else MaterialTheme.colorScheme.surfaceContainer
     val motionScheme = MaterialTheme.motionScheme

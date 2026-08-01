@@ -337,7 +337,17 @@ private fun MiniPlayerBackground(
     palette: MiniPlayerBackgroundPalette?,
     modifier: Modifier = Modifier,
 ) {
-    when (style) {
+    // Frosted blur on the mini player relies on RenderEffect (API 31+). On pre-S the CPU-blurred
+    // bitmap fallback produced visible glitches on older devices, so FROSTED is forcibly
+    // downgraded to THEME. The Settings screen surfaces a "not supported on Android versions
+    // below 12" warning under the mini player background selector when running on pre-S.
+    val isPreS = Build.VERSION.SDK_INT < Build.VERSION_CODES.S
+    val effectiveStyle = if (isPreS && style == MiniPlayerBackgroundStyle.FROSTED) {
+        MiniPlayerBackgroundStyle.THEME
+    } else {
+        style
+    }
+    when (effectiveStyle) {
         MiniPlayerBackgroundStyle.THEME -> {
             Box(
                 modifier = modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh),
