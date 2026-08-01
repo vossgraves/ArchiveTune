@@ -36,6 +36,7 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -78,6 +79,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -777,21 +779,34 @@ private fun MovingBlurBackground(
     val imageLoader = context.imageLoader
     val isPreS = Build.VERSION.SDK_INT < Build.VERSION_CODES.S
 
-    // Pre-Android S can't use Modifier.blur (it requires RenderEffect, API 31+). The earlier
-    // pre-S fallback tried to mirror the S+ path's drift animation by scaling the bitmap up and
-    // offsetting it with driftX/driftY. That left black bars on the edges — the scaled+drifted
-    // bitmap's bounds don't always cover the screen — and the constant motion was distracting on
-    // older hardware. Sang's pure-Kotlin stack-blur fallback (rukamori/ArchiveTune#924) skips the
-    // drift entirely on pre-S: load the thumbnail, blur it once with ImageBlurUtils, render it
-    // statically with ContentScale.Crop at alpha 0.62. Crop already guarantees full-bleed coverage
-    // (no black bars), and a static blurred background is the right call on pre-S hardware anyway.
-    // The S+ path keeps its drift animation — RenderEffect's edge clamping handles the bounds.
-    Box(
+    // Pre-Android S can't use Modifier.blur (it requires RenderEffect, API 31+). We use sang's
+    // pure-Kotlin stack-blur fallback (rukamori/ArchiveTune#924): load the thumbnail, blur it
+    // once with ImageBlurUtils, render via Image. The drift animation IS preserved — the bitmap
+    // is scaled up well beyond the screen and the drift is applied via graphicsLayer
+    // translationX/Y (NOT Modifier.offset, which moves layout position and can leave gaps). The
+    // parent BoxWithConstraints clips to bounds so the oversized bitmap never spills. The scale
+    // is computed to guarantee full coverage at max drift + 48dp safety margin (the S+ path uses
+    // 1.4 + Modifier.blur's ~64dp edge clamping for the same effect; pre-S has no edge clamping
+    // so we need more scale).
+    BoxWithConstraints(
         modifier =
             modifier
                 .fillMaxSize()
+                .clipToBounds()
                 .background(AppleMusicFallbackGradient.last()),
     ) {
+        val preSDriftScale =
+            if (isPreS) {
+                val driftMaxX = 120.dp
+                val driftMaxY = 90.dp
+                val safetyMargin = 48.dp
+                val requiredScaleX = 1f + 2f * (driftMaxX.value + safetyMargin.value) / maxWidth.value
+                val requiredScaleY = 1f + 2f * (driftMaxY.value + safetyMargin.value) / maxHeight.value
+                maxOf(requiredScaleX, requiredScaleY, 1.4f)
+            } else {
+                1.4f
+            }
+
         AnimatedContent(
             targetState = mediaMetadata.thumbnailUrl,
             transitionSpec = { fadeIn(tween(700)) togetherWith fadeOut(tween(700)) },
@@ -828,6 +843,12 @@ private fun MovingBlurBackground(
                             contentScale = ContentScale.Crop,
                             modifier = Modifier
                                 .fillMaxSize()
+                                .graphicsLayer {
+                                    scaleX = preSDriftScale
+                                    scaleY = preSDriftScale
+                                    translationX = driftX.dp.toPx()
+                                    translationY = driftY.dp.toPx()
+                                }
                                 .alpha(0.86f),
                         )
                     }
