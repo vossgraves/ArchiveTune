@@ -18,7 +18,6 @@ import android.content.Intent
 import android.os.Build
 import android.widget.Toast
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -155,10 +154,9 @@ fun LyricsShareImageDialog(
     var paletteGlassStyle by remember { mutableStateOf<LyricsGlassStyle?>(null) }
     var options by remember { mutableStateOf(LyricsShareImageOptions()) }
     var areAdvancedOptionsVisible by remember { mutableStateOf(false) }
-    // User-overridden lyrics text color. When null, the active glass style's default textColor is
-    // used. Reset to null whenever the style changes so picking a new style reverts the override —
-    // this matches user expectation: "pick Frosted Light" → text becomes dark; "pick Frosted Dark"
-    // → text becomes white; an explicit custom color should not bleed across style swaps.
+
+    
+    
     var customTextColor by remember { mutableStateOf<Color?>(null) }
 
     LaunchedEffect(selectedGlassStyle) { customTextColor = null }
@@ -207,10 +205,9 @@ fun LyricsShareImageDialog(
             isSharing = true
             scope.launch {
                 try {
-                    // Vinyl mode renders its own dedicated layout (album cover + vinyl
-                    // disc + center label) and skips the lyrics card entirely. The
-                    // other share options (blur, dim, aspect ratio) are ignored —
-                    // vinyl mode has its own fixed composition.
+
+                    
+                    
                     val image =
                         if (options.vinylMode) {
                             ComposeToImage.createVinylImage(
@@ -415,11 +412,7 @@ private fun LyricsShareStudioScaffold(
     modifier: Modifier = Modifier,
 ) {
     val scrollState = rememberScrollState()
-    val motionScheme = MaterialTheme.motionScheme
-    // Compact M3-Expressive spacing: dropped from 16/20 dp to 12/14 dp to fit the entire
-    // controls panel above the fold on most phones, and pulled the section spacing down from
-    // 14/18 dp to 10/12 dp for tighter rhythm. The user complaint was excessive whitespace
-    // between the header text and the preview, and oversized chips — both addressed here.
+
     val horizontalPadding = if (isCompactLayout) 12.dp else 16.dp
     val verticalPadding = if (isCompactLayout) 12.dp else 16.dp
     val sectionSpacing = if (isCompactLayout) 10.dp else 12.dp
@@ -428,20 +421,15 @@ private fun LyricsShareStudioScaffold(
         modifier =
             modifier
                 .fillMaxWidth()
-                // fillMaxHeight ensures the weighted scrollable Column below always gets a
-                // definite height to distribute. Without this, when the content exceeds the
-                // Surface's heightIn(max = maxDialogHeight) cap, the weight modifier has no
-                // bounded parent height to distribute and the scrollable area overflows the
-                // Surface — which then clips the bottom rows (e.g. "Show album cover" description).
-                .fillMaxHeight()
-                .animateContentSize(animationSpec = motionScheme.defaultSpatialSpec()),
+                .fillMaxHeight(),
     ) {
         Column(
             modifier =
                 Modifier
                     .weight(1f, fill = true)
                     .verticalScroll(scrollState)
-                    .padding(horizontal = horizontalPadding, vertical = verticalPadding),
+                    .padding(horizontal = horizontalPadding, vertical = verticalPadding)
+                    .padding(bottom = 8.dp),
             verticalArrangement = Arrangement.spacedBy(sectionSpacing),
         ) {
             if (isCompactLayout) {
@@ -538,10 +526,8 @@ private fun LyricsShareHeader(
                 .orEmpty()
         }
 
-    // Compact header: title and artist share a single row (title bold, artist secondary)
-    // instead of stacked, which saves one line of vertical space. The lyric snippet is
-    // dropped when it would duplicate the title, and the resolution pill sits inline with
-    // the artist row. The previous layout used 4 stacked text blocks + a pill = ~5 lines.
+    
+
     Column(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -616,8 +602,7 @@ private fun PreviewContainer(
         shape = MaterialTheme.shapes.extraLarge,
         color = MaterialTheme.colorScheme.primaryContainer,
     ) {
-        // Trimmed vertical padding from 18dp → 12dp to recover vertical space (user complaint:
-        // too much whitespace around the preview card).
+
         Column(
             modifier = Modifier.padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -639,15 +624,23 @@ private fun PreviewContainer(
                             ).padding(8.dp),
                     contentAlignment = Alignment.Center,
                 ) {
-                    LyricsImageCard(
-                        lyricText = payload.lyricsText,
-                        songTitle = payload.songTitle,
-                        artistName = payload.artists,
-                        coverArtUrl = mediaMetadata?.thumbnailUrl,
-                        glassStyle = selectedGlassStyle,
-                        shareOptions = options,
-                        textColor = customTextColor,
-                    )
+                    if (options.vinylMode) {
+                        VinylImageCard(
+                            songTitle = payload.songTitle,
+                            artistName = payload.artists,
+                            coverArtUrl = mediaMetadata?.thumbnailUrl,
+                        )
+                    } else {
+                        LyricsImageCard(
+                            lyricText = payload.lyricsText,
+                            songTitle = payload.songTitle,
+                            artistName = payload.artists,
+                            coverArtUrl = mediaMetadata?.thumbnailUrl,
+                            glassStyle = selectedGlassStyle,
+                            shareOptions = options,
+                            textColor = customTextColor,
+                        )
+                    }
                 }
             }
         }
@@ -668,20 +661,13 @@ private fun ControlsSection(
     isCompactLayout: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    val motionScheme = MaterialTheme.motionScheme
     Surface(
         modifier =
             modifier
-                .fillMaxWidth()
-                .animateContentSize(animationSpec = motionScheme.defaultSpatialSpec()),
+                .fillMaxWidth(),
         shape = MaterialTheme.shapes.extraLarge,
         color = MaterialTheme.colorScheme.surfaceColorAtElevation(1.dp),
     ) {
-        // Compact M3-Expressive controls: tighter padding (16/14 → 12/10) and tighter section
-        // spacing (14 → 10) so the whole panel fits one screen on most phones. The color
-        // swatch row now uses 8dp spacing instead of 10dp, and the text-color row lets the
-        // compact 32dp swatches flow with up to 8 per line — they no longer need labels so
-        // they pack densely.
         Column(
             modifier =
                 Modifier
@@ -707,14 +693,11 @@ private fun ControlsSection(
 
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
-            // Vinyl mode toggle — sits prominently as its own section right under
-            // the layout selector because enabling it overrides every other
-            // control below (the vinyl layout has its own fixed composition:
-            // album cover + disc + center label, no lyrics card, always 1:1).
-            // Mirrors the "Show album cover" toggle pattern below: Box with
-            // background + clip on the SAME modifier chain so the rounded shape
-            // clips the painted result without cropping measured-but-unpainted
-            // description text.
+            
+
+            
+
+            
             Row(
                 modifier =
                     Modifier
@@ -767,14 +750,11 @@ private fun ControlsSection(
 
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
-            // Lyrics text color override. The row of swatches lets the user pick a custom text
-            // color independent of the glass-style preset. The first chip ("Style default") clears
-            // the override, the rest are preset colors. Selecting a swatch re-renders the preview
-            // immediately; the change is also applied to the exported PNG via `textColor` on
-            // `ComposeToImage.createLyricsImage`.
-            //
-            // With the new compact 32dp circular swatches (no labels), up to 8 fit per row,
-            // collapsing the previous 6-row pill grid into 2 rows.
+            
+
+            
+
+            
             LyricsShareControlGroup(title = stringResource(R.string.lyrics_share_text_color)) {
                 FlowRow(
                     modifier = Modifier.fillMaxWidth(),
@@ -816,15 +796,12 @@ private fun ControlsSection(
                         onValueChange = { onOptionsChange(options.copy(dimAmount = it)) },
                         valueRange = 0.6f..1.6f,
                     )
-                    // The toggle row uses a Box-with-background pattern (instead of a Surface)
-                    // because Surface internally applies `Modifier.clip(shape)` on a separate
-                    // modifier chain from its content measurement. When the wrapped description
-                    // text needs 2 lines and the dialog is height-constrained, Surface's clip
-                    // would silently crop the second line ("...the exported image.") even
-                    // though the Row measured it. By putting `clip + background + clickable +
-                    // padding` on the SAME Row modifier chain, the layout measures the wrapped
-                    // text first, then clips the painted result to the rounded shape — no
-                    // cropping of measured-but-unpainted content.
+
+                    
+
+                    
+
+                    
                     Row(
                         modifier =
                             Modifier
@@ -858,9 +835,8 @@ private fun ControlsSection(
                     }
                 }
             } else {
-                // "More options" toggle in its original position — a full-width TextButton at
-                // the bottom of the scrollable controls area. This was the placement before
-                // the header-move experiment; the user explicitly asked to revert.
+
+                
                 TextButton(
                     onClick = onShowAdvancedOptions,
                     modifier =
@@ -958,7 +934,6 @@ private fun LyricsAspectRatioOption(
         label = "lyricsAspectContent",
     )
 
-    // Compact chip: 40dp min height (was 48dp) and tighter horizontal padding (14→12).
     Surface(
         modifier =
             modifier
@@ -1016,8 +991,7 @@ private fun LyricsStyleOption(
         label = "lyricsStyleContainer",
     )
 
-    // Compact style chip: 40dp min height (was 48dp), 10dp vertical padding (was 10),
-    // 12dp horizontal padding (was 12). Tighter internal spacing between swatch and label.
+    
     Surface(
         modifier =
             modifier
@@ -1109,7 +1083,7 @@ private fun ActionsSection(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // Compact action row: 48dp height (was 52dp), 12dp vertical padding (was 14dp).
+    
     val actionModifier = Modifier.height(48.dp)
     val contentPadding =
         Modifier.padding(
@@ -1208,17 +1182,6 @@ private fun ActionsSection(
     }
 }
 
-/**
- * Preset color swatches shown in the "Lyrics text color" row. Curated to span a wide perceptual
- * range while remaining legible on the dark/frosted backgrounds that the glass-style presets
- * typically produce — white, near-black, soft cream, red, orange, yellow, green, teal, blue,
- * indigo, purple, pink. Anything picked here overrides the glass-style's default textColor on
- * both the live preview and the exported PNG.
- *
- * Each preset has its own human-readable label (White, Black, Cream, …) rather than the old
- * "Custom" stub — the previous code labelled every swatch "Custom", which gave the user no way
- * to tell which swatch was which without tapping each one.
- */
 private enum class LyricsTextColorPreset(
     val color: Color,
     val labelRes: Int,
@@ -1262,10 +1225,8 @@ private fun LyricsTextColorSwatch(
         label = "lyricsTextSwatchScale",
     )
 
-    // Compact M3-Expressive swatch: just a coloured circle with a selection ring.
-    // The label is exposed via the contentDescription for accessibility but is not drawn —
-    // this collapses the previous 48dp-tall pill row (with text + 22dp circle) into a
-    // 32dp circle-only row, freeing vertical space for the preview.
+    
+
     Box(
         modifier =
             modifier

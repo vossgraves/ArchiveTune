@@ -192,12 +192,13 @@ class LyricsMenuViewModel
 
             viewModelScope.launch(Dispatchers.IO) {
                 try {
-                    val lyrics = lyricsHelper.getLyrics(mediaMetadata, forceRefresh = true)
+                    val result = lyricsHelper.getLyricsWithProvider(mediaMetadata, forceRefresh = true)
                     database.withTransaction {
                         replaceLyrics(
                             id = mediaMetadata.id,
-                            lyrics = lyrics,
+                            lyrics = result.lyrics,
                             source = LyricsEntity.Source.REMOTE.value,
+                            providerName = result.providerName,
                         )
                     }
                 } catch (e: CancellationException) {
@@ -214,6 +215,7 @@ class LyricsMenuViewModel
             mediaMetadata: MediaMetadata,
             lyrics: String,
             source: LyricsEntity.Source = LyricsEntity.Source.USER_EDIT,
+            providerName: String = "",
         ) {
             viewModelScope.launch(Dispatchers.IO) {
                 val lyricsToSave =
@@ -232,6 +234,7 @@ class LyricsMenuViewModel
                         id = mediaMetadata.id,
                         lyrics = lyricsToSave,
                         source = source.value,
+                        providerName = providerName,
                     )
                 }
             }

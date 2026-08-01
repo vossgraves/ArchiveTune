@@ -1360,14 +1360,24 @@ class MusicService :
             // plays can fail while metadata/network are still settling.
             val stored = database.lyrics(mediaMetadata.id).first()
             val shouldFetch =
-                stored == null || stored.lyrics == LyricsEntity.LYRICS_NOT_FOUND
+                stored == null ||
+                    stored.lyrics == LyricsEntity.LYRICS_NOT_FOUND ||
+                    stored.providerName.isBlank()
             if (shouldFetch) {
-                val lyrics = lyricsHelper.getLyrics(mediaMetadata)
+                val result = lyricsHelper.getLyricsWithProvider(mediaMetadata)
                 database.query {
-                    replaceLyricsIfAbsentOrNotFound(
-                        id = mediaMetadata.id,
-                        lyrics = lyrics,
-                    )
+                    if (stored != null && stored.lyrics != LyricsEntity.LYRICS_NOT_FOUND) {
+                        backfillLyricsProviderName(
+                            id = mediaMetadata.id,
+                            providerName = result.providerName,
+                        )
+                    } else {
+                        replaceLyricsIfAbsentOrNotFound(
+                            id = mediaMetadata.id,
+                            lyrics = result.lyrics,
+                            providerName = result.providerName,
+                        )
+                    }
                 }
             }
         }
@@ -7781,6 +7791,27 @@ class MusicService :
      * Applies a per-song "play from" override and, if [mediaId] is the current item, re-resolves it
      * immediately so the change takes effect without the user having to skip the track. Passing a
      * null [source] clears the override for that song.
+     *
+     * Two bugs are addressed here that the previous implementation had:
+     *
+     * 1. **"Sometimes changing source only restarts the song but doesn't change the source."**
+     *    `directStreamCache[mediaId]` and the bare-keyed `contentLengthCache[mediaId]` were not
+     *    evicted, so the resolver's fast path could short-circuit to the previous source's
+     *    resolved URL (when the override happened to be re-applied to the same id) or to a stale
+     *    content-length that made the byte-cache short-circuit in [resolveCachedDataSpec] think
+     *    the request was fully cached. Both are now evicted explicitly so the slow path always
+     *    re-resolves through the new override.
+     *
+     * 2. **"Qobuz → YouTube plays from YouTube but muted."** `player.prepare()` is asynchronous;
+     *    the actual re-resolution happens on ExoPlayer's internal thread, and any of the reactive
+     *    volume pipeline (`playerVolume × normalizeFactor × audioFocusVolumeFactor`), audio focus
+     *    state, or crossfade ramp can interleave with it and leave the primary player's volume
+     *    pinned low (the [ensureAudiblePlaybackVolume] watchdog only fires when `player.volume`
+     *    is essentially 0, so a "quiet but not zero" state slips past it). We now explicitly:
+     *    - cancel any pending crossfade and reset its volume,
+     *    - apply the effective volume immediately (no ramp),
+     *    - re-claim audio focus,
+     *    - kick the audible-playback watchdog.
      */
     fun setSongSourceOverride(
         mediaId: String,
@@ -7795,12 +7826,38 @@ class MusicService :
             }
         }
         if (player.currentMediaItem?.mediaId == mediaId) {
-            // Drop any cached resolved stream for this song and re-prepare so the new source is used.
             playbackUrlCache.remove(mediaId)
             extractorPlaybackUrlCache.remove(mediaId)
             YTPlayerUtils.invalidateCachedStreamUrls(mediaId)
             tidalActiveMediaIds.remove(mediaId)
+            // Evict the resolved DirectStream so the slow path re-resolves through the new
+            // override instead of serving the previous source's URL.
+            directStreamCache.remove(mediaId)
+            // Evict the bare-keyed content length so [resolveCachedDataSpec] can't conclude the
+            // request is fully cached based on the previous source's byte size.
+            contentLengthCache.remove(mediaId)
+            runCatching { playerCache.removeResource(mediaId) }
+            runCatching { downloadCache.removeResource(mediaId) }
+            AudioSourceType.entries.forEach { src ->
+                val key = sourceCacheKey(src, mediaId)
+                runCatching { playerCache.removeResource(key) }
+                runCatching { downloadCache.removeResource(key) }
+                // Source-prefixed content-length entries are also stale after a source switch.
+                contentLengthCache.remove(key)
+            }
+            // Cancel any in-flight crossfade so its volume ramp / secondary player can't pin the
+            // primary player's volume low while the new source is preparing.
+            cancelCrossfade(resetVolume = true, resetPauseAtEnd = true)
             player.prepare()
+            player.seekTo(0)
+            player.playWhenReady = true
+            // Restore the effective volume immediately (bypass the smooth ramp) so the new source
+            // doesn't briefly play muted while the ramp catches up. Re-claim audio focus in case
+            // the prepare transition dropped it, and start the audible-playback watchdog so any
+            // later volume dip gets corrected within the next polling window.
+            applyEffectiveVolumeImmediately(currentEffectivePlayerVolume())
+            ensureAudioFocusForActivePlayback()
+            updateAudiblePlaybackRecovery()
         }
     }
 

@@ -9,6 +9,7 @@ package moe.rukamori.archivetune.ui.component
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -28,6 +29,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -43,25 +45,6 @@ import androidx.compose.ui.window.DialogProperties
 import coil3.compose.AsyncImage
 import moe.rukamori.archivetune.R
 
-/**
- * Centered, modal profile menu — replaces the previous anchored [androidx.compose.material3.DropdownMenu].
- *
- * Renders as a separate [Dialog] (in its own window) centered on screen, with a
- * plain dim scrim behind it (no blur).
- *
- * Material 3 Expressive styling:
- *   - 28.dp corner radius (M3 Expressive large surface)
- *   - `surfaceContainerHigh` tonal elevation
- *   - 24.dp horizontal padding, 8.dp vertical
- *   - Header with avatar (or initials fallback) + display name + "View profile"
- *     subtitle row
- *   - ListItem rows with `leadingContent` icons, BadgedBox for unread badges
- *
- * @param accountName Display name shown in the header (may be blank).
- * @param accountImageUrl Avatar URL shown in the header (may be null).
- * @param items The menu items to render (icon, label, badge, onClick).
- * @param onDismiss Called when the dialog is dismissed (tap outside, back).
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileMenuDialog(
@@ -75,20 +58,24 @@ fun ProfileMenuDialog(
         properties = DialogProperties(
             usePlatformDefaultWidth = false,
             decorFitsSystemWindows = false,
+            dismissOnClickOutside = true,
         ),
     ) {
+        val scrimInteraction = remember { MutableInteractionSource() }
         Box(
             modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.Center,
         ) {
-            // Plain dim scrim behind the dialog — no blur.
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.55f)),
+                    .background(Color.Black.copy(alpha = 0.55f))
+                    .clickable(
+                        interactionSource = scrimInteraction,
+                        indication = null,
+                    ) { onDismiss() },
             )
 
-            // Modal surface with the actual menu content.
             Surface(
                 modifier = Modifier
                     .widthIn(max = 380.dp)
@@ -103,7 +90,7 @@ fun ProfileMenuDialog(
                         .fillMaxWidth()
                         .padding(vertical = 8.dp),
                 ) {
-                    // Header: avatar + account name
+                    
                     if (accountName.isNotBlank()) {
                         ListItem(
                             headlineContent = {
@@ -191,7 +178,6 @@ fun ProfileMenuDialog(
     }
 }
 
-/** A single profile menu item. */
 data class ProfileMenuItem(
     val icon: Int,
     val label: String,

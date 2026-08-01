@@ -84,6 +84,11 @@ import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.HideAiMixKey
+import moe.rukamori.archivetune.constants.HideCachedCardKey
+import moe.rukamori.archivetune.constants.HideLikedSongsCardKey
+import moe.rukamori.archivetune.constants.HideLocalFilesCardKey
+import moe.rukamori.archivetune.constants.HideOfflineCardKey
+import moe.rukamori.archivetune.constants.HideTop50CardKey
 import moe.rukamori.archivetune.constants.LibraryFilter
 import moe.rukamori.archivetune.constants.ShowSpotifyPlaylistsKey
 import moe.rukamori.archivetune.extensions.toMediaItem
@@ -138,6 +143,11 @@ fun LibraryMixScreen(
     val spotifyPlaylists by spotifyLibraryViewModel.playlists.collectAsStateWithLifecycle()
     val (showSpotifyPlaylists) = rememberPreference(ShowSpotifyPlaylistsKey, false)
     val (hideAiMix) = rememberPreference(HideAiMixKey, false)
+    val (hideLikedSongsCard) = rememberPreference(HideLikedSongsCardKey, false)
+    val (hideOfflineCard) = rememberPreference(HideOfflineCardKey, false)
+    val (hideCachedCard) = rememberPreference(HideCachedCardKey, false)
+    val (hideLocalFilesCard) = rememberPreference(HideLocalFilesCardKey, false)
+    val (hideTop50Card) = rememberPreference(HideTop50CardKey, false)
 
     val filteredPlaylistIds by database
         .playlistIdsByTags(
@@ -223,82 +233,105 @@ fun LibraryMixScreen(
 
                 // 2. Shortcuts Grid
                 item(key = "shortcuts_grid", contentType = "shortcuts_grid") {
-                    Column(
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 24.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            modifier = Modifier.fillMaxWidth(),
+                    val showRow1 = !hideLikedSongsCard || !hideOfflineCard
+                    val showRow2 = !hideCachedCard || !hideLocalFilesCard
+                    val showRow3 = !hideTop50Card
+                    if (showRow1 || showRow2 || showRow3) {
+                        Column(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 24.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
-                            // Liked Songs
-                            ShortcutCard(
-                                title = stringResource(R.string.liked_songs),
-                                countText = "$likedSongsCount ${stringResource(R.string.tracks_label)}",
-                                iconRes = R.drawable.favorite,
-                                containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.6f),
-                                iconColor = MaterialTheme.colorScheme.error,
-                                modifier = Modifier.weight(1f),
-                                onClick = { navController.navigate("auto_playlist/liked") },
-                            )
+                            if (showRow1) {
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    if (!hideLikedSongsCard) {
+                                        ShortcutCard(
+                                            title = stringResource(R.string.liked_songs),
+                                            countText = "$likedSongsCount ${stringResource(R.string.tracks_label)}",
+                                            iconRes = R.drawable.favorite,
+                                            containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.6f),
+                                            iconColor = MaterialTheme.colorScheme.error,
+                                            modifier = Modifier.weight(1f),
+                                            onClick = { navController.navigate("auto_playlist/liked") },
+                                        )
+                                    } else {
+                                        Spacer(Modifier.weight(1f))
+                                    }
 
-                            // Offline/Downloaded
-                            ShortcutCard(
-                                title = stringResource(R.string.offline_shortcut),
-                                countText = stringResource(R.string.downloaded_desc),
-                                iconRes = R.drawable.offline,
-                                containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
-                                iconColor = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.weight(1f),
-                                onClick = { navController.navigate("auto_playlist/downloaded") },
-                            )
-                        }
+                                    if (!hideOfflineCard) {
+                                        ShortcutCard(
+                                            title = stringResource(R.string.offline_shortcut),
+                                            countText = stringResource(R.string.downloaded_desc),
+                                            iconRes = R.drawable.offline,
+                                            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
+                                            iconColor = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.weight(1f),
+                                            onClick = { navController.navigate("auto_playlist/downloaded") },
+                                        )
+                                    } else {
+                                        Spacer(Modifier.weight(1f))
+                                    }
+                                }
+                            }
 
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            // Cached
-                            ShortcutCard(
-                                title = stringResource(R.string.cached),
-                                countText = stringResource(R.string.instant_playback),
-                                iconRes = R.drawable.cached,
-                                containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.6f),
-                                iconColor = MaterialTheme.colorScheme.tertiary,
-                                modifier = Modifier.weight(1f),
-                                onClick = { navController.navigate("cache_playlist/cached") },
-                            )
+                            if (showRow2) {
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    if (!hideCachedCard) {
+                                        ShortcutCard(
+                                            title = stringResource(R.string.cached),
+                                            countText = stringResource(R.string.instant_playback),
+                                            iconRes = R.drawable.cached,
+                                            containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.6f),
+                                            iconColor = MaterialTheme.colorScheme.tertiary,
+                                            modifier = Modifier.weight(1f),
+                                            onClick = { navController.navigate("cache_playlist/cached") },
+                                        )
+                                    } else {
+                                        Spacer(Modifier.weight(1f))
+                                    }
 
-                            // Local Files
-                            ShortcutCard(
-                                title = stringResource(R.string.local_files),
-                                countText = stringResource(R.string.on_device),
-                                iconRes = R.drawable.snippet_folder,
-                                containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f),
-                                iconColor = MaterialTheme.colorScheme.secondary,
-                                modifier = Modifier.weight(1f),
-                                onClick = { navController.navigate("local_songs") },
-                            )
-                        }
+                                    if (!hideLocalFilesCard) {
+                                        ShortcutCard(
+                                            title = stringResource(R.string.local_files),
+                                            countText = stringResource(R.string.on_device),
+                                            iconRes = R.drawable.snippet_folder,
+                                            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f),
+                                            iconColor = MaterialTheme.colorScheme.secondary,
+                                            modifier = Modifier.weight(1f),
+                                            onClick = { navController.navigate("local_songs") },
+                                        )
+                                    } else {
+                                        Spacer(Modifier.weight(1f))
+                                    }
+                                }
+                            }
 
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            ShortcutCard(
-                                title = topPlaylistTitle,
-                                countText = stringResource(R.string.all_time),
-                                iconRes = R.drawable.trending_up,
-                                containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f),
-                                iconColor = MaterialTheme.colorScheme.secondary,
-                                modifier = Modifier.weight(1f),
-                                onClick = { navController.navigate("top_playlist/$topSize") },
-                            )
+                            if (showRow3) {
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    ShortcutCard(
+                                        title = topPlaylistTitle,
+                                        countText = stringResource(R.string.all_time),
+                                        iconRes = R.drawable.trending_up,
+                                        containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f),
+                                        iconColor = MaterialTheme.colorScheme.secondary,
+                                        modifier = Modifier.weight(1f),
+                                        onClick = { navController.navigate("top_playlist/$topSize") },
+                                    )
 
-                            Spacer(modifier = Modifier.weight(1f))
+                                    Spacer(modifier = Modifier.weight(1f))
+                                }
+                            }
                         }
                     }
                 }

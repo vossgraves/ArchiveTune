@@ -670,6 +670,16 @@
     <string name="ai_translation_menu">AI Translation</string>
     <string name="hide_ai_mix">Hide AI Mix</string>
     <string name="hide_ai_mix_desc">Hide the AI-generated mixes section in your library and stop generating new mixes</string>
+    <string name="hide_liked_songs_card">Hide Liked songs card</string>
+    <string name="hide_liked_songs_card_desc">Hide the Liked songs quick-access card on the Library Mix screen</string>
+    <string name="hide_offline_card">Hide Offline card</string>
+    <string name="hide_offline_card_desc">Hide the Offline quick-access card on the Library Mix screen</string>
+    <string name="hide_cached_card">Hide Cached card</string>
+    <string name="hide_cached_card_desc">Hide the Cached quick-access card on the Library Mix screen</string>
+    <string name="hide_local_files_card">Hide Local Files card</string>
+    <string name="hide_local_files_card_desc">Hide the Local Files quick-access card on the Library Mix screen</string>
+    <string name="hide_top50_card">Hide My top 50 card</string>
+    <string name="hide_top50_card_desc">Hide the My top 50 quick-access card on the Library Mix screen</string>
     <string name="about_lead_developer">Lead Developer</string>
     <string name="about_archive_tune_team">Team</string>
     <string name="about_respecter">Respecter</string>

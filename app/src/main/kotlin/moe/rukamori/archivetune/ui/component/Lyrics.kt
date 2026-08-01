@@ -73,6 +73,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -112,6 +113,7 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.LayoutDirection
@@ -469,6 +471,7 @@ fun Lyrics(
     val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
     val lyricsEntity by playerConnection.currentLyrics.collectAsState(initial = null)
     val lyrics = remember(lyricsEntity) { lyricsEntity?.lyrics?.trim() }
+    val lyricsProviderName = lyricsEntity?.providerName.orEmpty()
 
     val playerBackground by rememberEnumPreference(
         key = PlayerBackgroundStyleKey,
@@ -799,6 +802,39 @@ fun Lyrics(
                 )
             }
         } else {
+            if (lyricsProviderName.isNotBlank()) {
+                val sourceAlpha by remember {
+                    derivedStateOf {
+                        val firstIdx = lazyListState.firstVisibleItemIndex
+                        val firstOffset = lazyListState.firstVisibleItemScrollOffset
+                        val firstItemSize = lazyListState.layoutInfo.visibleItemsInfo.firstOrNull()?.size ?: 1
+                        if (firstIdx > 0) 0f
+                        else (1f - (firstOffset.toFloat() / firstItemSize)).coerceIn(0f, 1f)
+                    }
+                }
+                val animatedSourceAlpha by animateFloatAsState(
+                    targetValue = sourceAlpha,
+                    animationSpec = tween(durationMillis = 220),
+                    label = "lyricsSourceAlpha",
+                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 12.dp)
+                        .alpha(animatedSourceAlpha),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = stringResource(R.string.lyrics_from_source, lyricsProviderName),
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.secondary,
+                        textAlign = TextAlign.Center,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
             LazyColumn(
                 state = lazyListState,
                 contentPadding =

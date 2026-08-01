@@ -17,6 +17,8 @@ data class LyricsEntity(
     val lyrics: String,
     @ColumnInfo(defaultValue = "'REMOTE'")
     val source: String = Source.REMOTE.value,
+    @ColumnInfo(defaultValue = "''")
+    val providerName: String = "",
     @ColumnInfo(defaultValue = "0")
     val updatedAt: Long = System.currentTimeMillis(),
 ) {
