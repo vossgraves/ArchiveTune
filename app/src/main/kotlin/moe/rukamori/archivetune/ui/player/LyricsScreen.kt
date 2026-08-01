@@ -36,7 +36,6 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -734,7 +733,6 @@ private fun MovingBlurBackground(
 ) {
     val colors = if (gradientColors.isNotEmpty()) gradientColors else AppleMusicFallbackGradient
 
-    
     val backgroundBrush =
         remember(colors) {
             Brush.verticalGradient(
@@ -754,8 +752,6 @@ private fun MovingBlurBackground(
                 ),
             )
         }
-
-    
 
     val transition = rememberInfiniteTransition(label = "moving-blur-drift")
     val driftX by transition.animateFloat(
@@ -781,38 +777,21 @@ private fun MovingBlurBackground(
     val imageLoader = context.imageLoader
     val isPreS = Build.VERSION.SDK_INT < Build.VERSION_CODES.S
 
-    // Pre-Android S can't use Modifier.blur (it requires RenderEffect, API 31+). On Android S+,
-    // Modifier.blur(64.dp) clamps edge pixels and effectively extends the visible content ~64dp
-    // beyond the layout bounds — which hides the black bar that would otherwise show when the
-    // drift offset pushes the scaled image past the screen edge. Pre-S uses a pre-blurred bitmap
-    // instead, so there's no such edge extension, and at scale 1.4 with drift up to ±120dp the
-    // image's 20% slack (~72dp on a 360dp-wide screen) is less than the max drift — a black
-    // bar shows along the edge during the drift animation.
-    //
-    // Fix: compute the minimum scale that guarantees the image always covers the screen at max
-    // drift on pre-S. Required slack on each side = maxDrift + safety. Slack = (scale-1)/2 * size,
-    // so scale = 1 + 2 * (maxDrift + safety) / size. We take the max of the X and Y requirements
-    // (X is usually binding because phones are taller than wide) and never go below 1.4 (the
-    // post-S scale, kept as a floor so pre-S doesn't look more zoomed than necessary on huge
-    // screens). BoxWithConstraints gives us the actual screen dimensions for the math.
-    BoxWithConstraints(
+    // Pre-Android S can't use Modifier.blur (it requires RenderEffect, API 31+). The earlier
+    // pre-S fallback tried to mirror the S+ path's drift animation by scaling the bitmap up and
+    // offsetting it with driftX/driftY. That left black bars on the edges — the scaled+drifted
+    // bitmap's bounds don't always cover the screen — and the constant motion was distracting on
+    // older hardware. Sang's pure-Kotlin stack-blur fallback (rukamori/ArchiveTune#924) skips the
+    // drift entirely on pre-S: load the thumbnail, blur it once with ImageBlurUtils, render it
+    // statically with ContentScale.Crop at alpha 0.62. Crop already guarantees full-bleed coverage
+    // (no black bars), and a static blurred background is the right call on pre-S hardware anyway.
+    // The S+ path keeps its drift animation — RenderEffect's edge clamping handles the bounds.
+    Box(
         modifier =
             modifier
                 .fillMaxSize()
                 .background(AppleMusicFallbackGradient.last()),
     ) {
-        val preSDriftScale =
-            if (isPreS) {
-                val driftMaxX = 120.dp
-                val driftMaxY = 90.dp
-                val safetyMargin = 24.dp
-                val requiredScaleX = 1f + 2f * (driftMaxX.value + safetyMargin.value) / maxWidth.value
-                val requiredScaleY = 1f + 2f * (driftMaxY.value + safetyMargin.value) / maxHeight.value
-                maxOf(requiredScaleX, requiredScaleY, 1.4f)
-            } else {
-                1.4f
-            }
-
         AnimatedContent(
             targetState = mediaMetadata.thumbnailUrl,
             transitionSpec = { fadeIn(tween(700)) togetherWith fadeOut(tween(700)) },
@@ -820,17 +799,14 @@ private fun MovingBlurBackground(
         ) { thumbnailUrl ->
             if (thumbnailUrl != null) {
                 if (isPreS) {
-
-                    
-
                     val blurredBitmap by produceState<Bitmap?>(null, thumbnailUrl) {
                         value = withContext(Dispatchers.IO) {
                             try {
                                 val request = ImageRequest.Builder(context)
                                     .data(thumbnailUrl)
                                     .allowHardware(false)
-                                    .memoryCacheKey("$thumbnailUrl#movingblur")
-                                    .diskCacheKey("$thumbnailUrl#movingblur")
+                                    .memoryCacheKey(thumbnailUrl)
+                                    .diskCacheKey(thumbnailUrl)
                                     .size(Size(720, 720))
                                     .build()
                                 val result = imageLoader.execute(request)
@@ -852,18 +828,10 @@ private fun MovingBlurBackground(
                             contentScale = ContentScale.Crop,
                             modifier = Modifier
                                 .fillMaxSize()
-                                .graphicsLayer {
-                                    scaleX = preSDriftScale
-                                    scaleY = preSDriftScale
-                                }
-                                .offset(x = driftX.dp, y = driftY.dp)
                                 .alpha(0.86f),
                         )
                     }
                 } else {
-
-                    
-                    
                     AsyncImage(
                         model = thumbnailUrl,
                         contentDescription = null,
@@ -871,8 +839,8 @@ private fun MovingBlurBackground(
                         modifier = Modifier
                             .fillMaxSize()
                             .graphicsLayer {
-                                scaleX = preSDriftScale
-                                scaleY = preSDriftScale
+                                scaleX = 1.4f
+                                scaleY = 1.4f
                             }
                             .blur(64.dp)
                             .offset(x = driftX.dp, y = driftY.dp)
@@ -881,13 +849,13 @@ private fun MovingBlurBackground(
                 }
             }
         }
-        
+
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(backgroundBrush),
         )
-        
+
         Box(
             modifier = Modifier
                 .fillMaxSize()
