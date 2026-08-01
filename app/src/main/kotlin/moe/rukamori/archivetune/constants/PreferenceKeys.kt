@@ -263,6 +263,12 @@ val AiCustomModelKey = stringPreferencesKey("ai_custom_model")
 // Hides the AI-generated "Top mixes" section in the library Mix tab (and stops auto-generation).
 val HideAiMixKey = booleanPreferencesKey("hide_ai_mix")
 
+val HideLikedSongsCardKey = booleanPreferencesKey("hide_liked_songs_card")
+val HideOfflineCardKey = booleanPreferencesKey("hide_offline_card")
+val HideCachedCardKey = booleanPreferencesKey("hide_cached_card")
+val HideLocalFilesCardKey = booleanPreferencesKey("hide_local_files_card")
+val HideTop50CardKey = booleanPreferencesKey("hide_top50_card")
+
 enum class AiProvider {
     CHATGPT,
     GEMINI,
