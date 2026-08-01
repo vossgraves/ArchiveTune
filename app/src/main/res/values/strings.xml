@@ -532,9 +532,12 @@
     <string name="navigation_bar_style_floating">Floating</string>
     <string name="navigation_bar_frosted_blur">Frosted navigation bar</string>
     <string name="navigation_bar_frosted_blur_desc">Apply a frosted blur behind the navigation bar</string>
+    <string name="navigation_bar_frosted_blur_unsupported">Frosted navigation bar is not supported on Android versions below 12</string>
     <string name="hide_navigation_bar_labels">Hide labels in navigation bar</string>
     <string name="hide_navigation_bar_labels_desc">Show only icons in the bottom navigation bar</string>
     <string name="frosted_blur">Frosted blur</string>
+    <string name="frosted_mini_player_unsupported">Frosted mini player is not supported on Android versions below 12</string>
+    <string name="moving_blur_static_disclaimer">Blur will be static for Android versions below 12</string>
     <string name="lyrics_animation_style">Lyrics animation style</string>
     <string name="lyrics_mode">Lyrics mode</string>
     <string name="lyrics_mode_v2">V2 Legacy</string>

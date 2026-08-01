@@ -755,8 +755,24 @@ private fun MovingBlurBackground(
             )
         }
 
+    val context = LocalContext.current
+    val imageLoader = context.imageLoader
+    val isPreS = Build.VERSION.SDK_INT < Build.VERSION_CODES.S
+
+    // Pre-Android S can't use Modifier.blur (it requires RenderEffect, API 31+). We use sang's
+    // pure-Kotlin stack-blur fallback (rukamori/ArchiveTune#924): load the thumbnail, blur it
+    // once with ImageBlurUtils, render via Image. The drift animation is NOT applied on pre-S —
+    // the pre-S fallback uses a single pre-blurred bitmap, and animating its offset every frame
+    // caused visible glitches and tearing on older devices (and the moving-blur effect relies
+    // on per-frame Modifier.blur re-evaluation that pre-S simply cannot do). Instead the pre-S
+    // path renders the blurred bitmap statically at a fixed scale that covers the screen with
+    // no black bars, giving a clean static blurred background. The drift animation runs only on
+    // Android 12+ where Modifier.blur is hardware-accelerated and re-blurs every frame.
+    //
+    // Effective drift values: animated on S+, hard-zero on pre-S so the offset modifier is a
+    // no-op and the bitmap stays pinned.
     val transition = rememberInfiniteTransition(label = "moving-blur-drift")
-    val driftX by transition.animateFloat(
+    val animatedDriftX by transition.animateFloat(
         initialValue = -120f,
         targetValue = 120f,
         animationSpec = infiniteRepeatable(
@@ -765,7 +781,7 @@ private fun MovingBlurBackground(
         ),
         label = "moving-blur-x",
     )
-    val driftY by transition.animateFloat(
+    val animatedDriftY by transition.animateFloat(
         initialValue = -90f,
         targetValue = 90f,
         animationSpec = infiniteRepeatable(
@@ -774,20 +790,8 @@ private fun MovingBlurBackground(
         ),
         label = "moving-blur-y",
     )
-
-    val context = LocalContext.current
-    val imageLoader = context.imageLoader
-    val isPreS = Build.VERSION.SDK_INT < Build.VERSION_CODES.S
-
-    // Pre-Android S can't use Modifier.blur (it requires RenderEffect, API 31+). We use sang's
-    // pure-Kotlin stack-blur fallback (rukamori/ArchiveTune#924): load the thumbnail, blur it
-    // once with ImageBlurUtils, render via Image. The drift animation IS preserved — the bitmap
-    // is scaled up well beyond the screen and the drift is applied via graphicsLayer
-    // translationX/Y (NOT Modifier.offset, which moves layout position and can leave gaps). The
-    // parent BoxWithConstraints clips to bounds so the oversized bitmap never spills. The scale
-    // is computed to guarantee full coverage at max drift + 48dp safety margin (the S+ path uses
-    // 1.4 + Modifier.blur's ~64dp edge clamping for the same effect; pre-S has no edge clamping
-    // so we need more scale).
+    val driftX = if (isPreS) 0f else animatedDriftX
+    val driftY = if (isPreS) 0f else animatedDriftY
     BoxWithConstraints(
         modifier =
             modifier
@@ -846,9 +850,8 @@ private fun MovingBlurBackground(
                                 .graphicsLayer {
                                     scaleX = preSDriftScale
                                     scaleY = preSDriftScale
-                                    translationX = driftX.dp.toPx()
-                                    translationY = driftY.dp.toPx()
                                 }
+                                .offset(x = driftX.dp, y = driftY.dp)
                                 .alpha(0.86f),
                         )
                     }
