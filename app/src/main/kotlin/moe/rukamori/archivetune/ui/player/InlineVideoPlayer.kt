@@ -12,6 +12,7 @@ package moe.rukamori.archivetune.ui.player
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
+import android.content.pm.ActivityInfo
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,8 +23,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ClosedCaption
-import androidx.compose.material.icons.filled.ClosedCaptionOff
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.HighQuality
@@ -35,6 +34,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -53,15 +53,9 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.media3.ui.AspectRatioFrameLayout
 import moe.rukamori.archivetune.R
-import moe.rukamori.archivetune.innertube.models.response.PlayerResponse
 
 /**
  * Walk the [ContextWrapper] chain to find the hosting [Activity].
- *
- * Needed because [Dialog] creates its own window, but the system bar
- * insets controller we want to hide is the host Activity's. Hiding
- * the Activity's system bars cascades to child windows (the Dialog)
- * on most Android versions.
  */
 private tailrec fun Context.findActivity(): Activity? =
     when (this) {
@@ -73,25 +67,25 @@ private tailrec fun Context.findActivity(): Activity? =
 /**
  * Inline video player + controls overlay.
  *
- * Wraps [VideoArtworkPlayer] with three icon buttons in the top-right corner:
- *  - Fullscreen toggle (enter/exit a system-immersive fullscreen Dialog)
- *  - Captions toggle (only visible if at least one caption track exists)
- *  - Quality picker (dropdown listing Auto + every resolution YouTube offered)
+ * Uses a SINGLE [VideoArtworkState] (created via [rememberVideoArtworkState])
+ * that is shared between the inline surface and the fullscreen Dialog.
+ * Toggling fullscreen does NOT recreate the ExoPlayer or re-resolve the
+ * stream URL — the video continues playing seamlessly as the surface moves
+ * between the inline slot and the fullscreen Dialog.
  *
- * State (fullscreen, captions, quality) is hoisted to this composable so
- * that it survives configuration changes and is consistent between the
- * inline and fullscreen surfaces.
+ * When the user enters fullscreen:
+ *   - The inline surface is removed from composition (the ExoPlayer's
+ *     surface is detached from the inline view).
+ *   - A fullscreen [Dialog] is rendered with a new [VideoArtworkSurface]
+ *     that attaches to the same ExoPlayer.
+ *   - The device is rotated to landscape orientation.
+ *   - System bars (status + nav) are hidden for immersive playback.
  *
- * When the user enters fullscreen, a [VideoFullscreenDialog] is rendered
- * on top of everything. **The inline [VideoArtworkPlayer] is unmounted
- * while fullscreen is open** — only one ExoPlayer is alive at a time. This
- * avoids the dual-ExoPlayer resource competition that previously caused
- * the fullscreen surface to stall. On exit, the inline player is rebuilt
- * and re-resolves the stream (brief loading spinner expected).
+ * Controls: quality picker + fullscreen toggle. Captions button has been
+ * removed per user request.
  *
- * @param onPlaybackFailed Called when the inline player cannot play the
- *   video (e.g. stream resolution exhausted all clients, or ExoPlayer
- *   emitted an error). The parent should fall back to album artwork.
+ * @param onPlaybackFailed Called when the player cannot play the video.
+ *   The parent should fall back to album artwork.
  */
 @Composable
 fun InlineVideoPlayer(
@@ -104,63 +98,58 @@ fun InlineVideoPlayer(
     onRequestResumeMain: () -> Unit = {},
     resizeMode: Int = AspectRatioFrameLayout.RESIZE_MODE_FIT,
 ) {
+    if (videoId.isBlank()) {
+        onPlaybackFailed()
+        return
+    }
+
     var isFullscreen by rememberSaveable { mutableStateOf(false) }
-    var captionsEnabled by rememberSaveable { mutableStateOf(false) }
     var preferredHeight by rememberSaveable { mutableStateOf<Int?>(null) }
     var availableHeights by remember { mutableStateOf<List<Int>>(emptyList()) }
-    var captionTracks by remember { mutableStateOf<List<PlayerResponse.CaptionTrack>>(emptyList()) }
     var qualityMenuOpen by remember { mutableStateOf(false) }
-    // True while the inline VideoArtworkPlayer is (re)loading its stream —
-    // either on initial mount or after the user picks a different quality.
-    // We render a centered CircularProgressIndicator over the video surface
-    // while this is true, so the user sees clear feedback that the video is
-    // swapping resolutions. The main MusicService audio keeps playing
-    // underneath, so the song doesn't skip.
     var isLoading by remember { mutableStateOf(false) }
 
-    Box(modifier = modifier) {
-        // ── Inline video surface ──
-        //
-        // IMPORTANT: when `isFullscreen` is true, we do NOT mount the inline
-        // VideoArtworkPlayer. Previously both the inline and fullscreen
-        // ExoPlayer instances were alive simultaneously, which caused:
-        //   - Two concurrent YouTube stream URL resolutions for the same video
-        //     (race / rate-limit risk)
-        //   - Two ExoPlayers competing for network bandwidth and CPU
-        //   - The fullscreen surface sometimes "stuck" because the inline
-        //     player kept stealing buffer bandwidth
-        //   - Repeated enter/exit fullscreen cycles accumulated stale state
-        //
-        // Now we render a solid black placeholder while fullscreen is open.
-        // The inline ExoPlayer is fully disposed (released) when entering
-        // fullscreen and re-created on exit. The brief re-resolve + rebuffer
-        // on exit is the tradeoff — acceptable because the user is back on
-        // the inline surface and expects a short load.
-        if (!isFullscreen) {
-            VideoArtworkPlayer(
-                videoId = videoId,
-                isPlaying = isPlaying,
-                positionProvider = positionProvider,
-                preferredHeight = preferredHeight,
-                captionsEnabled = captionsEnabled,
-                onStreamResolved = { info ->
-                    availableHeights = info?.availableHeights.orEmpty()
-                    captionTracks = info?.captionTracks.orEmpty()
-                },
-                onPlaybackFailed = onPlaybackFailed,
-                onLoadingStateChange = { isLoading = it },
-                onRequestPauseMain = onRequestPauseMain,
-                onRequestResumeMain = onRequestResumeMain,
+    // ── ONE shared ExoPlayer + state ──
+    //
+    // The state is created once per videoId and survives the inline ↔
+    // fullscreen transition. Only the VideoArtworkSurface (the view layer)
+    // moves; the ExoPlayer underneath keeps running. This means:
+    //   - NO re-resolving the stream URL on fullscreen toggle
+    //   - NO re-buffering / loading spinner on fullscreen toggle
+    //   - NO audio continuing while video pauses
+    //   - The video just keeps playing as the surface changes parents
+    val state =
+        rememberVideoArtworkState(
+            videoId = videoId,
+            isPlaying = isPlaying,
+            positionProvider = positionProvider,
+            preferredHeight = preferredHeight,
+            onStreamResolved = { info ->
+                availableHeights = info?.availableHeights.orEmpty()
+            },
+            onPlaybackFailed = onPlaybackFailed,
+            onLoadingStateChange = { isLoading = it },
+            onRequestPauseMain = onRequestPauseMain,
+            onRequestResumeMain = onRequestResumeMain,
+        )
+
+    // ── Inline surface + controls (rendered only when NOT fullscreen) ──
+    //
+    // When isFullscreen is true, we skip rendering the inline surface
+    // entirely. The VideoArtworkSurface in the fullscreen Dialog takes
+    // over — attaching to the same ExoPlayer. This ensures only ONE
+    // surface is attached to the ExoPlayer at any time.
+    if (!isFullscreen) {
+        Box(modifier = modifier) {
+            VideoArtworkSurface(
+                state = state,
                 resizeMode = resizeMode,
                 modifier = Modifier.fillMaxSize(),
             )
 
-            // ── Loading overlay ──
-            //
-            // Shown on initial load AND during a quality swap. The video
-            // surface's alpha also animates to 0 while loading (handled inside
-            // VideoArtworkPlayer), so the user just sees a black box + spinner.
-            // The audio keeps playing through the main MusicService.
+            // Loading overlay — shown during initial load, quality swap,
+            // and seekbar resync. The video surface's alpha also animates
+            // to 0 while loading.
             if (isLoading) {
                 Box(
                     modifier = Modifier.fillMaxSize().background(Color.Black),
@@ -173,18 +162,9 @@ fun InlineVideoPlayer(
                     )
                 }
             }
-        } else {
-            // Solid black placeholder so the inline slot doesn't show a
-            // transparent hole while the fullscreen Dialog is open on top.
-            Box(modifier = Modifier.fillMaxSize().background(Color.Black))
-        }
 
-        // ── Controls overlay ──
-        //
-        // Skip rendering while fullscreen is open — the fullscreen dialog
-        // renders its own controls overlay, and the inline controls would
-        // just be occluded (wasting recomposition + measure passes).
-        if (!isFullscreen) {
+            // Controls overlay: quality picker + fullscreen button.
+            // (Captions button removed per user request.)
             Row(
                 modifier =
                     Modifier
@@ -193,10 +173,54 @@ fun InlineVideoPlayer(
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-            // Captions toggle — only render if at least one caption track exists.
-            if (captionTracks.isNotEmpty()) {
+                // Quality picker — only render if YouTube offered more than one height.
+                if (availableHeights.size > 1) {
+                    Box {
+                        IconButton(
+                            onClick = { qualityMenuOpen = true },
+                            modifier =
+                                Modifier
+                                    .background(
+                                        color = Color.Black.copy(alpha = 0.45f),
+                                        shape = CircleShape,
+                                    ).size(40.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.HighQuality,
+                                contentDescription = stringResource(R.string.video_quality),
+                                tint = Color.White,
+                                modifier = Modifier.size(22.dp),
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = qualityMenuOpen,
+                            onDismissRequest = { qualityMenuOpen = false },
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.video_quality_auto)) },
+                                onClick = {
+                                    preferredHeight = null
+                                    qualityMenuOpen = false
+                                },
+                            )
+                            availableHeights
+                                .sortedDescending()
+                                .forEach { h ->
+                                    DropdownMenuItem(
+                                        text = { Text(formatHeightLabel(h)) },
+                                        onClick = {
+                                            preferredHeight = h
+                                            qualityMenuOpen = false
+                                        },
+                                    )
+                                }
+                        }
+                    }
+                }
+
+                // Fullscreen toggle.
                 IconButton(
-                    onClick = { captionsEnabled = !captionsEnabled },
+                    onClick = { isFullscreen = true },
                     modifier =
                         Modifier
                             .background(
@@ -205,99 +229,34 @@ fun InlineVideoPlayer(
                             ).size(40.dp),
                 ) {
                     Icon(
-                        imageVector =
-                            if (captionsEnabled) {
-                                Icons.Filled.ClosedCaption
-                            } else {
-                                Icons.Filled.ClosedCaptionOff
-                            },
-                        contentDescription = stringResource(R.string.video_captions),
+                        imageVector = Icons.Filled.Fullscreen,
+                        contentDescription = stringResource(R.string.video_fullscreen),
                         tint = Color.White,
                         modifier = Modifier.size(22.dp),
                     )
                 }
             }
-
-            // Quality picker — only render if YouTube offered more than one height.
-            if (availableHeights.size > 1) {
-                Box {
-                    IconButton(
-                        onClick = { qualityMenuOpen = true },
-                        modifier =
-                            Modifier
-                                .background(
-                                    color = Color.Black.copy(alpha = 0.45f),
-                                    shape = CircleShape,
-                                ).size(40.dp),
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.HighQuality,
-                            contentDescription = stringResource(R.string.video_quality),
-                            tint = Color.White,
-                            modifier = Modifier.size(22.dp),
-                        )
-                    }
-                    DropdownMenu(
-                        expanded = qualityMenuOpen,
-                        onDismissRequest = { qualityMenuOpen = false },
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.video_quality_auto)) },
-                            onClick = {
-                                preferredHeight = null
-                                qualityMenuOpen = false
-                            },
-                        )
-                        availableHeights
-                            .sortedDescending()
-                            .forEach { h ->
-                                DropdownMenuItem(
-                                    text = { Text(formatHeightLabel(h)) },
-                                    onClick = {
-                                        preferredHeight = h
-                                        qualityMenuOpen = false
-                                    },
-                                )
-                            }
-                    }
-                }
-            }
-
-            // Fullscreen toggle.
-            IconButton(
-                onClick = { isFullscreen = true },
-                modifier =
-                    Modifier
-                        .background(
-                            color = Color.Black.copy(alpha = 0.45f),
-                            shape = CircleShape,
-                        ).size(40.dp),
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Fullscreen,
-                    contentDescription = stringResource(R.string.video_fullscreen),
-                    tint = Color.White,
-                    modifier = Modifier.size(22.dp),
-                )
-            }
         }
-        } // end if (!isFullscreen) — controls overlay
     }
 
+    // ── Fullscreen Dialog (rendered only when fullscreen) ──
+    //
+    // The Dialog renders its own VideoArtworkSurface attached to the SAME
+    // ExoPlayer. Because the inline surface was removed from composition
+    // (the `if (!isFullscreen)` block above), only ONE surface is attached
+    // to the ExoPlayer at a time — the fullscreen surface.
+    //
+    // The ExoPlayer does NOT re-resolve the URL or re-buffer. The video
+    // continues playing from exactly where it was — the surface just
+    // changes parents.
     if (isFullscreen) {
         VideoFullscreenDialog(
-            videoId = videoId,
-            isPlaying = isPlaying,
-            positionProvider = positionProvider,
-            preferredHeight = preferredHeight,
-            captionsEnabled = captionsEnabled,
-            captionTracks = captionTracks,
+            state = state,
+            isLoading = isLoading,
             availableHeights = availableHeights,
             onDismiss = { isFullscreen = false },
-            onCaptionsToggle = { captionsEnabled = !captionsEnabled },
             onQualityChange = { preferredHeight = it },
-            onRequestPauseMain = onRequestPauseMain,
-            onRequestResumeMain = onRequestResumeMain,
+            resizeMode = resizeMode,
         )
     }
 }
@@ -306,32 +265,38 @@ fun InlineVideoPlayer(
  * Fullscreen video Dialog.
  *
  * Renders the video in a system-immersive (fullscreen, no status/nav bar)
- * [Dialog] with its own [VideoArtworkPlayer] instance. The inline player
- * is fully unmounted while this dialog is open (see [InlineVideoPlayer]),
- * so only ONE ExoPlayer is alive at a time — avoiding the dual-player
- * resource competition that previously caused the fullscreen surface to
- * stall. When the user exits fullscreen, the inline player is re-created
- * and re-resolves the stream URL (brief loading spinner expected).
+ * [Dialog] with the SAME [VideoArtworkState] used by the inline player.
+ * The ExoPlayer is shared — no re-creation, no re-loading. The video
+ * continues playing seamlessly as the surface moves from the inline slot
+ * to this Dialog.
  *
- * Renders its own copy of the controls overlay (fullscreen-exit button
- * replaces fullscreen-enter, otherwise identical captions + quality
- * controls) so the user can adjust settings without leaving fullscreen.
+ * Forces landscape orientation on entry, restores the original orientation
+ * on exit. System bars are hidden for immersive playback and restored on
+ * dismiss.
+ *
+ * Controls: quality picker + fullscreen-exit button. (Captions button
+ * removed per user request.)
  */
 @Composable
 private fun VideoFullscreenDialog(
-    videoId: String,
-    isPlaying: Boolean,
-    positionProvider: () -> Long,
-    preferredHeight: Int?,
-    captionsEnabled: Boolean,
-    captionTracks: List<PlayerResponse.CaptionTrack>,
+    state: VideoArtworkState,
+    isLoading: Boolean,
     availableHeights: List<Int>,
     onDismiss: () -> Unit,
-    onCaptionsToggle: () -> Unit,
     onQualityChange: (Int?) -> Unit,
-    onRequestPauseMain: () -> Unit = {},
-    onRequestResumeMain: () -> Unit = {},
+    resizeMode: Int,
 ) {
+    val context = LocalContext.current
+    var qualityMenuOpen by remember { mutableStateOf(false) }
+
+    // Dismiss the dialog if playback fails — don't leave the user stuck
+    // in a fullscreen black screen with no way out.
+    LaunchedEffect(state.hasPlaybackFailed) {
+        if (state.hasPlaybackFailed) {
+            onDismiss()
+        }
+    }
+
     Dialog(
         onDismissRequest = onDismiss,
         properties =
@@ -342,29 +307,34 @@ private fun VideoFullscreenDialog(
                 dismissOnClickOutside = false,
             ),
     ) {
-        var qualityMenuOpen by remember { mutableStateOf(false) }
-        var fsLoading by remember { mutableStateOf(false) }
-        val context = LocalContext.current
-
-        // Hide system bars for true immersive fullscreen. Restored on dispose
-        // (when the Dialog dismisses). Uses BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-        // so a swipe from the edge temporarily reveals the bars — same pattern
-        // the app uses for AOD mode in MainActivity.
+        // ── Force landscape orientation + hide system bars ──
+        //
+        // On enter: set orientation to SENSOR_LANDSCAPE (allows both
+        // landscape orientations based on device tilt) and hide system
+        // bars for true immersive playback.
+        // On dispose: restore the original orientation and show system bars.
         DisposableEffect(Unit) {
             val activity = context.findActivity()
+            val originalOrientation = activity?.requestedOrientation
             val window = activity?.window
-            if (window != null) {
-                val controller = WindowCompat.getInsetsController(window, window.decorView)
-                val originalBehavior = controller.systemBarsBehavior
+            val controller = window?.let { WindowCompat.getInsetsController(it, it.decorView) }
+            val originalBehavior = controller?.systemBarsBehavior
+
+            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            if (controller != null) {
                 controller.systemBarsBehavior =
                     WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
                 controller.hide(WindowInsetsCompat.Type.systemBars())
-                onDispose {
+            }
+
+            onDispose {
+                activity?.requestedOrientation =
+                    originalOrientation ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+                if (controller != null) {
                     controller.show(WindowInsetsCompat.Type.systemBars())
-                    controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_DEFAULT
+                    controller.systemBarsBehavior =
+                        originalBehavior ?: WindowInsetsControllerCompat.BEHAVIOR_DEFAULT
                 }
-            } else {
-                onDispose {}
             }
         }
 
@@ -374,21 +344,15 @@ private fun VideoFullscreenDialog(
                     .fillMaxSize()
                     .background(Color.Black),
         ) {
-            VideoArtworkPlayer(
-                videoId = videoId,
-                isPlaying = isPlaying,
-                positionProvider = positionProvider,
-                preferredHeight = preferredHeight,
-                captionsEnabled = captionsEnabled,
-                onLoadingStateChange = { fsLoading = it },
-                onRequestPauseMain = onRequestPauseMain,
-                onRequestResumeMain = onRequestResumeMain,
-                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT,
+            // Same ExoPlayer — just a different surface. NO re-loading.
+            VideoArtworkSurface(
+                state = state,
+                resizeMode = resizeMode,
                 modifier = Modifier.fillMaxSize(),
             )
 
             // Loading overlay — same rationale as the inline player.
-            if (fsLoading) {
+            if (isLoading) {
                 Box(
                     modifier = Modifier.fillMaxSize().background(Color.Black),
                     contentAlignment = Alignment.Center,
@@ -401,9 +365,10 @@ private fun VideoFullscreenDialog(
                 }
             }
 
-            // Top-right controls: captions | quality | fullscreen-exit.
+            // Top-right controls: quality | fullscreen-exit.
             // statusBarsPadding keeps the buttons clear of the (hidden)
             // status bar area in case the user swipes to reveal it.
+            // (Captions button removed per user request.)
             Row(
                 modifier =
                     Modifier
@@ -413,29 +378,6 @@ private fun VideoFullscreenDialog(
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                if (captionTracks.isNotEmpty()) {
-                    IconButton(
-                        onClick = onCaptionsToggle,
-                        modifier =
-                            Modifier
-                                .background(
-                                    color = Color.Black.copy(alpha = 0.45f),
-                                    shape = CircleShape,
-                                ).size(44.dp),
-                    ) {
-                        Icon(
-                            imageVector =
-                                if (captionsEnabled) {
-                                    Icons.Filled.ClosedCaption
-                                } else {
-                                    Icons.Filled.ClosedCaptionOff
-                                },
-                            contentDescription = stringResource(R.string.video_captions),
-                            tint = Color.White,
-                            modifier = Modifier.size(24.dp),
-                        )
-                    }
-                }
                 if (availableHeights.size > 1) {
                     Box {
                         IconButton(
