@@ -596,10 +596,38 @@ fun Thumbnail(
                                     // transport controls (play/pause, seek, next/prev) work as
                                     // normal. Only the current item gets a video surface; prev/next
                                     // pages in the swipe pager still show artwork.
+                                    //
+                                    // The artwork is always rendered as the base layer so that
+                                    // while the video is loading (or if stream resolution fails)
+                                    // the user sees the album cover instead of a black square.
+                                    // The video surface is rendered on top and alpha-fades in
+                                    // once the first frame is ready, covering the artwork.
                                     val isCurrentMusicVideo =
                                         item.metadata?.isMusicVideo == true &&
                                             item.mediaId == currentMediaItem?.mediaId &&
                                             !item.mediaId.isLocalMediaId()
+
+                                    AsyncImage(
+                                        model = thumbnailArtworkRequest,
+                                        contentDescription = null,
+                                        contentScale = if (shouldCropArtwork) ContentScale.Crop else ContentScale.Fit,
+                                        modifier =
+                                            Modifier
+                                                .fillMaxSize()
+                                                .let { if (shouldCropArtwork) it.aspectRatio(1f) else it },
+                                    )
+
+                                    if (!isCurrentMusicVideo &&
+                                        shouldUseCanvas &&
+                                        (!primaryCanvasUrl.isNullOrBlank() || !fallbackCanvasUrl.isNullOrBlank())
+                                    ) {
+                                        CanvasArtworkPlayer(
+                                            primaryUrl = primaryCanvasUrl,
+                                            fallbackUrl = fallbackCanvasUrl,
+                                            isPlaying = isPlaying,
+                                            modifier = Modifier.fillMaxSize(),
+                                        )
+                                    }
 
                                     if (isCurrentMusicVideo) {
                                         VideoArtworkPlayer(
@@ -608,27 +636,6 @@ fun Thumbnail(
                                             positionProvider = { playerConnection.player.currentPosition },
                                             modifier = Modifier.fillMaxSize(),
                                         )
-                                    } else {
-                                        AsyncImage(
-                                            model = thumbnailArtworkRequest,
-                                            contentDescription = null,
-                                            contentScale = if (shouldCropArtwork) ContentScale.Crop else ContentScale.Fit,
-                                            modifier =
-                                                Modifier
-                                                    .fillMaxSize()
-                                                    .let { if (shouldCropArtwork) it.aspectRatio(1f) else it },
-                                        )
-
-                                        if (shouldUseCanvas &&
-                                            (!primaryCanvasUrl.isNullOrBlank() || !fallbackCanvasUrl.isNullOrBlank())
-                                        ) {
-                                            CanvasArtworkPlayer(
-                                                primaryUrl = primaryCanvasUrl,
-                                                fallbackUrl = fallbackCanvasUrl,
-                                                isPlaying = isPlaying,
-                                                modifier = Modifier.fillMaxSize(),
-                                            )
-                                        }
                                     }
                                 }
                             }

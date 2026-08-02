@@ -2592,10 +2592,33 @@ private fun V8Artwork(
         // When the current media is a music video, render the video inline
         // in place of the album artwork. Audio continues through the main
         // MusicService ExoPlayer, so all transport controls work as normal.
+        //
+        // The artwork is always rendered as the base layer so the user sees
+        // the album cover while the video is loading (or if stream resolution
+        // fails). The video surface is rendered on top and alpha-fades in.
         val showVideo =
             isMusicVideo &&
                 !videoId.isNullOrBlank() &&
                 playerConnection != null
+        AsyncImage(
+            model = artworkRequest,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize(),
+        )
+
+        if (!showVideo &&
+            (!canvasPrimaryUrl.isNullOrBlank() || !canvasFallbackUrl.isNullOrBlank())
+        ) {
+            CanvasArtworkPlayer(
+                primaryUrl = canvasPrimaryUrl,
+                fallbackUrl = canvasFallbackUrl,
+                isPlaying = isPlaying,
+                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+
         if (showVideo) {
             VideoArtworkPlayer(
                 videoId = videoId!!,
@@ -2603,23 +2626,6 @@ private fun V8Artwork(
                 positionProvider = { playerConnection?.player?.currentPosition ?: 0L },
                 modifier = Modifier.fillMaxSize(),
             )
-        } else {
-            AsyncImage(
-                model = artworkRequest,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
-            )
-
-            if (!canvasPrimaryUrl.isNullOrBlank() || !canvasFallbackUrl.isNullOrBlank()) {
-                CanvasArtworkPlayer(
-                    primaryUrl = canvasPrimaryUrl,
-                    fallbackUrl = canvasFallbackUrl,
-                    isPlaying = isPlaying,
-                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
         }
     }
 }
@@ -3527,10 +3533,33 @@ private fun V9Artwork(
         // When the current media is a music video, render the video inline
         // in place of the album artwork. Audio continues through the main
         // MusicService ExoPlayer, so all transport controls work as normal.
+        //
+        // The artwork is always rendered as the base layer so the user sees
+        // the album cover while the video is loading (or if stream resolution
+        // fails). The video surface is rendered on top and alpha-fades in.
         val showVideo =
             isMusicVideo &&
                 !videoId.isNullOrBlank() &&
                 playerConnection != null
+        AsyncImage(
+            model = artworkRequest,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize(),
+        )
+
+        if (!showVideo &&
+            (!canvasPrimaryUrl.isNullOrBlank() || !canvasFallbackUrl.isNullOrBlank())
+        ) {
+            CanvasArtworkPlayer(
+                primaryUrl = canvasPrimaryUrl,
+                fallbackUrl = canvasFallbackUrl,
+                isPlaying = isPlaying,
+                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+
         if (showVideo) {
             VideoArtworkPlayer(
                 videoId = videoId!!,
@@ -3538,23 +3567,6 @@ private fun V9Artwork(
                 positionProvider = { playerConnection?.player?.currentPosition ?: 0L },
                 modifier = Modifier.fillMaxSize(),
             )
-        } else {
-            AsyncImage(
-                model = artworkRequest,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
-            )
-
-            if (!canvasPrimaryUrl.isNullOrBlank() || !canvasFallbackUrl.isNullOrBlank()) {
-                CanvasArtworkPlayer(
-                    primaryUrl = canvasPrimaryUrl,
-                    fallbackUrl = canvasFallbackUrl,
-                    isPlaying = isPlaying,
-                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
         }
     }
 }

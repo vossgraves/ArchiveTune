@@ -45,6 +45,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.innertube.NewPipeUtils
+import moe.rukamori.archivetune.innertube.models.YouTubeClient.Companion.ANDROID_VR_1_65_10
 import moe.rukamori.archivetune.innertube.models.YouTubeClient.Companion.WEB_REMIX
 import moe.rukamori.archivetune.innertube.models.response.PlayerResponse
 import moe.rukamori.archivetune.utils.StreamClientUtils
@@ -190,6 +191,14 @@ fun VideoArtworkPlayer(
         }
 
     // ── Resolve the video stream URL off the main thread ──
+    //
+    // We try multiple YouTube clients in order, preferring ones that return
+    // direct stream URLs (no signatureCipher). The signature deobfuscation
+    // path (MoriCipherRuntime → NewPipeExtractor) is fragile because YouTube
+    // periodically changes the player JS in ways that break the regex-based
+    // function discovery. Clients that don't use a signature timestamp
+    // (e.g. ANDROID_VR) get direct URLs from YouTube and bypass that entire
+    // failure mode.
     LaunchedEffect(videoId) {
         streamUrl = null
         isVideoReady = false
@@ -197,27 +206,7 @@ fun VideoArtworkPlayer(
 
         val resolved =
             withContext(Dispatchers.IO) {
-                runCatching {
-                    val sts = NewPipeUtils.getSignatureTimestamp(videoId).getOrNull()
-                    val playerResponse =
-                        YouTube
-                            .player(
-                                videoId = videoId,
-                                client = WEB_REMIX,
-                                signatureTimestamp = sts,
-                            ).getOrThrow()
-                    pickVideoFormat(playerResponse)?.let { format ->
-                        NewPipeUtils
-                            .getStreamUrl(
-                                format = format,
-                                videoId = videoId,
-                                client = WEB_REMIX,
-                            ).getOrThrow()
-                    }
-                }.getOrElse { error ->
-                    Timber.tag(VideoPlaybackLogTag).w(error, "Video stream resolution failed for $videoId")
-                    null
-                }
+                resolveVideoStreamUrl(videoId)
             }
 
         if (resolved.isNullOrBlank()) {
@@ -373,11 +362,14 @@ fun VideoArtworkPlayer(
  * Pick the best video format from a [PlayerResponse].
  *
  * Preference order:
- *  1. Combined video+audio formats from `streamingData.formats` (itag 18/22/59).
- *     These are the most reliable — single stream, no DASH muxing required.
- *  2. Video-only adaptive formats from `streamingData.adaptiveFormats`,
- *     sorted by height descending. We pick the highest-resolution one that
- *     is at most 720p to keep bandwidth reasonable on mobile.
+ *  1. Formats with a direct `url` (no signatureCipher). These never need
+ *     deobfuscation, so they're immune to YouTube player-JS breakage that
+ *     periodically breaks the Mori/NewPipe regex-based fallbacks. We pick
+ *     the highest-resolution direct-URL format ≤ 720p.
+ *  2. As a last resort, formats with `signatureCipher`/`cipher` — same 720p
+ *     cap. The deobfuscation pipeline (MoriCipherRuntime → NewPipeExtractor)
+ *     will be attempted by [NewPipeUtils.getStreamUrl]; if it fails, the
+ *     caller falls through to the next client.
  *
  * Returns null if no video format is available (e.g. the video is audio-only
  * on YouTube Music, which happens for some ATV tracks).
@@ -385,19 +377,8 @@ fun VideoArtworkPlayer(
 private fun pickVideoFormat(playerResponse: PlayerResponse): PlayerResponse.StreamingData.Format? {
     val streamingData = playerResponse.streamingData ?: return null
 
-    // 1. Combined video+audio formats (itag 18=360p, 22=720p, 59=480p, etc.)
-    val combined =
-        streamingData.formats
-            ?.filter {
-                val h = it.height
-                h != null && h > 0 && (it.url != null || it.signatureCipher != null || it.cipher != null)
-            }?.sortedByDescending { it.height ?: 0 }
-            ?.firstOrNull()
-    if (combined != null) return combined
-
-    // 2. Video-only adaptive formats — cap at 720p for mobile bandwidth.
-    val videoOnly =
-        streamingData.adaptiveFormats
+    val allVideoFormats =
+        (streamingData.formats.orEmpty() + streamingData.adaptiveFormats.orEmpty())
             .asSequence()
             .filter {
                 val h = it.height
@@ -405,9 +386,83 @@ private fun pickVideoFormat(playerResponse: PlayerResponse): PlayerResponse.Stre
             }
             .filter { (it.height ?: 0) <= 720 }
             .filter { it.url != null || it.signatureCipher != null || it.cipher != null }
-            .sortedByDescending { it.height ?: 0 }
-            .firstOrNull()
-    return videoOnly
+            .toList()
+
+    if (allVideoFormats.isEmpty()) return null
+
+    // Sort priority:
+    //   1. Direct URL (url != null) — bypasses the broken signature deobfuscation.
+    //   2. Combined (muxed) format (audioQuality != null) — single stream, no DASH.
+    //   3. Higher resolution first.
+    val comparator =
+        compareByDescending<PlayerResponse.StreamingData.Format> { it.url != null }
+            .thenByDescending { it.audioQuality != null } // combined (muxed) preferred
+            .thenByDescending { it.height ?: 0 }
+
+    return allVideoFormats.sortedWith(comparator).firstOrNull()
+}
+
+/**
+ * Resolve a playable video stream URL for [videoId] by trying multiple YouTube
+ * clients in order. Prefers clients that return direct stream URLs (no
+ * signatureCipher) so we sidestep the fragile deobfuscation path entirely.
+ *
+ * Returns null if no client yields a usable stream URL — in that case the
+ * caller should fall back to showing album artwork instead of a black
+ * video surface.
+ */
+private suspend fun resolveVideoStreamUrl(videoId: String): String? {
+    // ANDROID_VR doesn't use a signature timestamp, so YouTube returns direct
+    // URLs for video formats (no signatureCipher). This is the most reliable
+    // path and bypasses the Mori/NewPipe deobfuscation entirely.
+    // WEB_REMIX is the fallback (matches the audio pipeline); it sometimes
+    // returns direct URLs for combined formats and only falls back to
+    // signatureCipher for adaptive video-only formats.
+    val clients = listOf(ANDROID_VR_1_65_10 to null, WEB_REMIX to "sts")
+
+    for ((client, stsMode) in clients) {
+        val result =
+            runCatching {
+                val sts =
+                    if (stsMode == null) {
+                        null
+                    } else {
+                        NewPipeUtils.getSignatureTimestamp(videoId).getOrNull()
+                    }
+                val playerResponse =
+                    YouTube
+                        .player(
+                            videoId = videoId,
+                            client = client,
+                            signatureTimestamp = sts,
+                        ).getOrThrow()
+                val format = pickVideoFormat(playerResponse) ?: return@runCatching null
+                NewPipeUtils
+                    .getStreamUrl(
+                        format = format,
+                        videoId = videoId,
+                        client = client,
+                    ).getOrNull()
+            }
+
+        val url = result.getOrNull()
+        if (!url.isNullOrBlank()) {
+            Timber
+                .tag(VideoPlaybackLogTag)
+                .i("Resolved video stream for $videoId via ${client.clientName}")
+            return url
+        }
+
+        // Log the failure for diagnostics but continue to the next client.
+        result.exceptionOrNull()?.let { error ->
+            Timber
+                .tag(VideoPlaybackLogTag)
+                .w(error, "Video stream resolution failed for $videoId via ${client.clientName}")
+        }
+    }
+
+    Timber.tag(VideoPlaybackLogTag).w("All video stream clients exhausted for $videoId")
+    return null
 }
 
 private fun Int.toContentScale(): ContentScale =
