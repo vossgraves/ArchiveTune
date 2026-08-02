@@ -2582,30 +2582,35 @@ private fun V8Artwork(
 ) {
     val artworkRequest = rememberOfflineArtworkImageRequest(artworkUrl)
     val playerConnection = LocalPlayerConnection.current
+    val showVideo =
+        isMusicVideo &&
+            !videoId.isNullOrBlank() &&
+            playerConnection != null
     Box(
         modifier =
             Modifier
                 .size(size)
                 .clip(RoundedCornerShape(8.dp))
-                .background(Color.White.copy(alpha = 0.08f)),
+                .background(if (showVideo) Color.Black else Color.White.copy(alpha = 0.08f)),
     ) {
         // When the current media is a music video, render the video inline
         // in place of the album artwork. Audio continues through the main
         // MusicService ExoPlayer, so all transport controls work as normal.
         //
-        // The artwork is always rendered as the base layer so the user sees
-        // the album cover while the video is loading (or if stream resolution
-        // fails). The video surface is rendered on top and alpha-fades in.
-        val showVideo =
-            isMusicVideo &&
-                !videoId.isNullOrBlank() &&
-                playerConnection != null
-        AsyncImage(
-            model = artworkRequest,
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize(),
-        )
+        // The artwork is rendered as the base layer ONLY when the video is
+        // NOT showing. When the video is showing we use a solid black
+        // background instead — the video surface uses FIT resize mode, so
+        // any letterbox area would otherwise show the artwork through the
+        // gaps (the user explicitly reported this as "artwork behind the
+        // video").
+        if (!showVideo) {
+            AsyncImage(
+                model = artworkRequest,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
 
         if (!showVideo &&
             (!canvasPrimaryUrl.isNullOrBlank() || !canvasFallbackUrl.isNullOrBlank())
@@ -3523,30 +3528,35 @@ private fun V9Artwork(
 ) {
     val artworkRequest = rememberOfflineArtworkImageRequest(artworkUrl)
     val playerConnection = LocalPlayerConnection.current
+    val showVideo =
+        isMusicVideo &&
+            !videoId.isNullOrBlank() &&
+            playerConnection != null
     Box(
         modifier =
             Modifier
                 .size(size)
                 .clip(RoundedCornerShape(30.dp))
-                .background(placeholderColor),
+                .background(if (showVideo) Color.Black else placeholderColor),
     ) {
         // When the current media is a music video, render the video inline
         // in place of the album artwork. Audio continues through the main
         // MusicService ExoPlayer, so all transport controls work as normal.
         //
-        // The artwork is always rendered as the base layer so the user sees
-        // the album cover while the video is loading (or if stream resolution
-        // fails). The video surface is rendered on top and alpha-fades in.
-        val showVideo =
-            isMusicVideo &&
-                !videoId.isNullOrBlank() &&
-                playerConnection != null
-        AsyncImage(
-            model = artworkRequest,
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize(),
-        )
+        // The artwork is rendered as the base layer ONLY when the video is
+        // NOT showing. When the video is showing we use a solid black
+        // background instead — the video surface uses FIT resize mode, so
+        // any letterbox area would otherwise show the artwork through the
+        // gaps (the user explicitly reported this as "artwork behind the
+        // video").
+        if (!showVideo) {
+            AsyncImage(
+                model = artworkRequest,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
 
         if (!showVideo &&
             (!canvasPrimaryUrl.isNullOrBlank() || !canvasFallbackUrl.isNullOrBlank())

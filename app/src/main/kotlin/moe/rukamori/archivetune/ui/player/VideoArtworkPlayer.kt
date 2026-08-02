@@ -19,6 +19,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.layout.ContentScale
@@ -26,6 +28,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
@@ -37,6 +40,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.media3.ui.SubtitleView
 import androidx.media3.ui.compose.ContentFrame
 import androidx.media3.ui.compose.SURFACE_TYPE_TEXTURE_VIEW
 import kotlinx.coroutines.Dispatchers
@@ -56,14 +60,18 @@ import java.util.Locale
 /**
  * Maximum allowed drift between the main audio player's position and the
  * video surface's position before we force a re-seek. Anything above this
- * is perceptible to the user as audio/video desync.
+ * is perceptible to the user as audio/video desync. Kept tight (400ms) so
+ * that a seekbar drag on the main player is reflected by the video surface
+ * within one poll cycle — i.e. within ~250ms, which is imperceptible.
  */
-private const val VideoSyncDriftToleranceMs = 1_500L
+private const val VideoSyncDriftToleranceMs = 400L
 
 /**
  * How often to poll the main player's position and re-sync the video.
+ * 250ms is fast enough to make seeks feel instantaneous without burning
+ * measurable CPU.
  */
-private const val VideoSyncPollIntervalMs = 1_000L
+private const val VideoSyncPollIntervalMs = 250L
 
 /**
  * Hard cap on the resolution we will ever attempt to play. YouTube's video
@@ -286,9 +294,17 @@ fun VideoArtworkPlayer(
     // user explicitly picks a different quality. The remember(videoId)
     // guard above handles initial resolution; this LaunchedEffect handles
     // subsequent user-driven changes.
+    //
+    // We null out `streamUrl` first so that even if the new resolution
+    // happens to resolve to the same URL string (e.g. the picker was
+    // re-selected without change), the LaunchedEffect(streamUrl, ...)
+    // below still fires and reloads the MediaItem. This is important
+    // because the user expects *something* to happen when they tap a
+    // quality option.
     LaunchedEffect(preferredHeight) {
         // Skip the initial run — handled by the LaunchedEffect(videoId) above.
         if (streamUrl == null) return@LaunchedEffect
+        streamUrl = null
         val resolved =
             withContext(Dispatchers.IO) {
                 resolveVideoStreamUrl(videoId, updatedPreferredHeight)
@@ -374,19 +390,29 @@ fun VideoArtworkPlayer(
     }
 
     // ── Periodic position sync ──
-    LaunchedEffect(streamUrl, isPlaying, exoPlayer) {
+    //
+    // Polls the main audio player's position and re-seeks the video surface
+    // if drift exceeds [VideoSyncDriftToleranceMs]. Runs even when the player
+    // is paused so that a seekbar drag while paused still syncs the video —
+    // previously the `!shouldPlay` guard caused the video to stay at its old
+    // position until the user hit play, which looked broken.
+    LaunchedEffect(streamUrl, exoPlayer) {
         if (streamUrl == null) return@LaunchedEffect
         while (isActive) {
             delay(VideoSyncPollIntervalMs)
-            if (!shouldPlay || hasPlaybackFailed) continue
+            if (hasPlaybackFailed) continue
             val mainPos = currentPosition()
+            if (mainPos <= 0) continue
             val videoPos = exoPlayer.currentPosition
             val drift = kotlin.math.abs(videoPos - mainPos)
-            if (drift > VideoSyncDriftToleranceMs && mainPos > 0) {
+            if (drift > VideoSyncDriftToleranceMs) {
                 Timber
                     .tag(VideoPlaybackLogTag)
                     .d("Re-syncing video: drift=${drift}ms (main=$mainPos, video=$videoPos)")
                 exoPlayer.seekTo(mainPos)
+                // Match play state too — if the user paused and the video is
+                // still playing (or vice versa), correct it here.
+                exoPlayer.setVideoPlayback(shouldPlay)
             }
         }
     }
@@ -457,14 +483,41 @@ fun VideoArtworkPlayer(
         label = "videoAlpha",
     )
 
-    ContentFrame(
-        player = exoPlayer,
-        surfaceType = SURFACE_TYPE_TEXTURE_VIEW,
-        contentScale = resizeMode.toContentScale(),
-        keepContentOnReset = false,
-        shutter = {},
-        modifier = modifier.alpha(alpha),
-    )
+    Box(modifier = modifier) {
+        ContentFrame(
+            player = exoPlayer,
+            surfaceType = SURFACE_TYPE_TEXTURE_VIEW,
+            contentScale = resizeMode.toContentScale(),
+            keepContentOnReset = false,
+            shutter = {},
+            modifier = Modifier.fillMaxSize().alpha(alpha),
+        )
+
+        // ── Caption overlay ──
+        //
+        // media3's Compose `ContentFrame` only renders the video surface; it
+        // does NOT render subtitles. To display captions we have to overlay
+        // the regular `androidx.media3.ui.SubtitleView` (an Android View)
+        // and attach it to the same ExoPlayer. The text track is gated by
+        // the track selector (disabled when `captionsEnabled == false`), so
+        // this overlay is cheap: when captions are off, the SubtitleView
+        // just receives empty cues and renders nothing.
+        if (captionsEnabled) {
+            AndroidView(
+                factory = { ctx ->
+                    SubtitleView(ctx).apply {
+                        setPlayer(exoPlayer)
+                        setFractionalTextSize(0.0533f)
+                        setApplyEmbeddedStyles(true)
+                        setApplyEmbeddedFontSizes(true)
+                        setStyle(androidx.media3.ui.CaptionStyleCompat.DEFAULT)
+                    }
+                },
+                update = { it.setPlayer(exoPlayer) },
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+    }
 }
 
 /**
@@ -518,13 +571,27 @@ private fun pickVideoFormat(
         }
 
     // Sort priority:
-    //   1. Direct URL (url != null) — bypasses the broken signature deobfuscation.
-    //   2. Combined (muxed) format (audioQuality != null) — single stream, no DASH.
-    //   3. Higher resolution first.
+    //   Primary: HIGHEST height first.
+    //     - For an explicit preferredHeight, `heightFiltered` already
+    //       constrained us to at-or-below (or shortest-above if none), so
+    //       picking the tallest in that set gets us as close to the user's
+    //       request as possible.
+    //     - For Auto (preferredHeight == null), this picks the max available
+    //       resolution (up to 4K).
+    //   Tiebreak 1: Direct URL (url != null) — bypasses the broken signature
+    //     deobfuscation pipeline.
+    //   Tiebreak 2: Combined (muxed) format (audioQuality != null) — single
+    //     stream, no DASH.
+    //
+    // CRITICAL: height MUST come before muxed/direct-URL. YouTube's muxed
+    // formats top out at 720p (itag 22) — if muxed were prioritized over
+    // height, picking "1080p" or "2160p (4K)" from the quality menu would
+    // silently return 720p muxed. That was the bug behind "changing quality
+    // doesn't work".
     val comparator =
-        compareByDescending<PlayerResponse.StreamingData.Format> { it.url != null }
+        compareByDescending<PlayerResponse.StreamingData.Format> { it.height ?: 0 }
+            .thenByDescending { it.url != null }
             .thenByDescending { it.audioQuality != null }
-            .thenByDescending { it.height ?: 0 }
 
     return heightFiltered.sortedWith(comparator).firstOrNull()
 }

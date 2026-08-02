@@ -479,19 +479,31 @@ private fun AppleMusicSharpArtwork(
         // in place of the album artwork. Audio continues through the main
         // MusicService ExoPlayer, so all transport controls work as normal.
         //
-        // The artwork is always rendered as the base layer so the user sees
-        // the album cover while the video is loading (or if stream resolution
-        // fails). The video surface is rendered on top and alpha-fades in.
+        // When the video is showing, we render a solid black background
+        // instead of the album artwork. The video surface uses FIT resize
+        // mode, so any letterbox area would otherwise show the artwork
+        // through the gaps — the user explicitly reported this as a bug.
+        // The video surface is rendered on top and alpha-fades in once
+        // the first frame is ready.
         val showVideo =
             isMusicVideo &&
                 !videoId.isNullOrBlank() &&
                 playerConnection != null
-        AsyncImage(
-            model = artworkRequest ?: artworkUrl,
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.matchParentSize(),
-        )
+        if (showVideo) {
+            Box(
+                modifier =
+                    Modifier
+                        .matchParentSize()
+                        .background(Color.Black),
+            )
+        } else {
+            AsyncImage(
+                model = artworkRequest ?: artworkUrl,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.matchParentSize(),
+            )
+        }
 
         if (!showVideo &&
             (!canvasPrimaryUrl.isNullOrBlank() || !canvasFallbackUrl.isNullOrBlank())

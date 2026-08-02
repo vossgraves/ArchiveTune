@@ -1533,7 +1533,7 @@ fun BottomSheetPlayer(
                                 positionProvider = { playerConnection.player.currentPosition },
                                 modifier =
                                     Modifier
-                                        .align(Alignment.TopCenter)
+                                        .align(Alignment.Center)
                                         .statusBarsPadding()
                                         .padding(top = 8.dp)
                                         .fillMaxWidth()
@@ -1910,7 +1910,7 @@ fun BottomSheetPlayer(
                                 positionProvider = { playerConnection.player.currentPosition },
                                 modifier =
                                     Modifier
-                                        .align(Alignment.TopCenter)
+                                        .align(Alignment.Center)
                                         .statusBarsPadding()
                                         .padding(top = 8.dp)
                                         .fillMaxWidth()
