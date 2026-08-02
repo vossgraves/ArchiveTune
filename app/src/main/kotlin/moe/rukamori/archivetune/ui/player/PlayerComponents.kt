@@ -2582,44 +2582,57 @@ private fun V8Artwork(
 ) {
     val artworkRequest = rememberOfflineArtworkImageRequest(artworkUrl)
     val playerConnection = LocalPlayerConnection.current
+    val showVideo =
+        isMusicVideo &&
+            !videoId.isNullOrBlank() &&
+            playerConnection != null
     Box(
         modifier =
             Modifier
                 .size(size)
                 .clip(RoundedCornerShape(8.dp))
-                .background(Color.White.copy(alpha = 0.08f)),
+                .background(if (showVideo) Color.Black else Color.White.copy(alpha = 0.08f)),
     ) {
         // When the current media is a music video, render the video inline
         // in place of the album artwork. Audio continues through the main
         // MusicService ExoPlayer, so all transport controls work as normal.
-        val showVideo =
-            isMusicVideo &&
-                !videoId.isNullOrBlank() &&
-                playerConnection != null
-        if (showVideo) {
-            VideoArtworkPlayer(
-                videoId = videoId!!,
-                isPlaying = isPlaying,
-                positionProvider = { playerConnection?.player?.currentPosition ?: 0L },
-                modifier = Modifier.fillMaxSize(),
-            )
-        } else {
+        //
+        // The artwork is rendered as the base layer ONLY when the video is
+        // NOT showing. When the video is showing we use a solid black
+        // background instead — the video surface uses FIT resize mode, so
+        // any letterbox area would otherwise show the artwork through the
+        // gaps (the user explicitly reported this as "artwork behind the
+        // video").
+        if (!showVideo) {
             AsyncImage(
                 model = artworkRequest,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
             )
+        }
 
-            if (!canvasPrimaryUrl.isNullOrBlank() || !canvasFallbackUrl.isNullOrBlank()) {
-                CanvasArtworkPlayer(
-                    primaryUrl = canvasPrimaryUrl,
-                    fallbackUrl = canvasFallbackUrl,
-                    isPlaying = isPlaying,
-                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
+        if (!showVideo &&
+            (!canvasPrimaryUrl.isNullOrBlank() || !canvasFallbackUrl.isNullOrBlank())
+        ) {
+            CanvasArtworkPlayer(
+                primaryUrl = canvasPrimaryUrl,
+                fallbackUrl = canvasFallbackUrl,
+                isPlaying = isPlaying,
+                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+
+        if (showVideo) {
+            InlineVideoPlayer(
+                videoId = videoId!!,
+                isPlaying = isPlaying,
+                positionProvider = { playerConnection?.player?.currentPosition ?: 0L },
+                onRequestPauseMain = { playerConnection?.player?.pause() },
+                onRequestResumeMain = { playerConnection?.player?.play() },
+                modifier = Modifier.fillMaxSize(),
+            )
         }
     }
 }
@@ -3517,44 +3530,57 @@ private fun V9Artwork(
 ) {
     val artworkRequest = rememberOfflineArtworkImageRequest(artworkUrl)
     val playerConnection = LocalPlayerConnection.current
+    val showVideo =
+        isMusicVideo &&
+            !videoId.isNullOrBlank() &&
+            playerConnection != null
     Box(
         modifier =
             Modifier
                 .size(size)
                 .clip(RoundedCornerShape(30.dp))
-                .background(placeholderColor),
+                .background(if (showVideo) Color.Black else placeholderColor),
     ) {
         // When the current media is a music video, render the video inline
         // in place of the album artwork. Audio continues through the main
         // MusicService ExoPlayer, so all transport controls work as normal.
-        val showVideo =
-            isMusicVideo &&
-                !videoId.isNullOrBlank() &&
-                playerConnection != null
-        if (showVideo) {
-            VideoArtworkPlayer(
-                videoId = videoId!!,
-                isPlaying = isPlaying,
-                positionProvider = { playerConnection?.player?.currentPosition ?: 0L },
-                modifier = Modifier.fillMaxSize(),
-            )
-        } else {
+        //
+        // The artwork is rendered as the base layer ONLY when the video is
+        // NOT showing. When the video is showing we use a solid black
+        // background instead — the video surface uses FIT resize mode, so
+        // any letterbox area would otherwise show the artwork through the
+        // gaps (the user explicitly reported this as "artwork behind the
+        // video").
+        if (!showVideo) {
             AsyncImage(
                 model = artworkRequest,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
             )
+        }
 
-            if (!canvasPrimaryUrl.isNullOrBlank() || !canvasFallbackUrl.isNullOrBlank()) {
-                CanvasArtworkPlayer(
-                    primaryUrl = canvasPrimaryUrl,
-                    fallbackUrl = canvasFallbackUrl,
-                    isPlaying = isPlaying,
-                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
+        if (!showVideo &&
+            (!canvasPrimaryUrl.isNullOrBlank() || !canvasFallbackUrl.isNullOrBlank())
+        ) {
+            CanvasArtworkPlayer(
+                primaryUrl = canvasPrimaryUrl,
+                fallbackUrl = canvasFallbackUrl,
+                isPlaying = isPlaying,
+                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+
+        if (showVideo) {
+            InlineVideoPlayer(
+                videoId = videoId!!,
+                isPlaying = isPlaying,
+                positionProvider = { playerConnection?.player?.currentPosition ?: 0L },
+                onRequestPauseMain = { playerConnection?.player?.pause() },
+                onRequestResumeMain = { playerConnection?.player?.play() },
+                modifier = Modifier.fillMaxSize(),
+            )
         }
     }
 }

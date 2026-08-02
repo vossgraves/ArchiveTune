@@ -235,11 +235,21 @@ fun AppleMusicPlayerContent(
         //    (PR #924 approach, inlined) and render that bitmap directly. While the blur is
         //    in-flight (first frame after artwork change) we render a slightly darker version
         //    of the sharp artwork + a heavier scrim so the transition isn't jarring.
+        //
+        //    When the current media is a music video, the user wants a solid black
+        //    background instead of the blurred thumbnail — the video surface itself
+        //    provides all the visual interest, and the blurred thumbnail behind it
+        //    makes the 16:9 video look like it's floating in a colored haze.
+        //    The black floor painted above is already showing through, so we just
+        //    skip the blurred artwork + scrim layers entirely.
+        val videoShowing =
+            mediaMetadata.isMusicVideo &&
+                !mediaMetadata.id.isLocalMediaId()
         val isPreS = Build.VERSION.SDK_INT < Build.VERSION_CODES.S
         val context = LocalContext.current
         val imageLoader = context.imageLoader
         val preBlurredBitmap by produceState<Bitmap?>(null, artworkUrl) {
-            if (!isPreS || artworkUrl.isNullOrBlank()) {
+            if (!isPreS || artworkUrl.isNullOrBlank() || videoShowing) {
                 value = null
                 return@produceState
             }
@@ -265,60 +275,62 @@ fun AppleMusicPlayerContent(
             }
         }
 
-        if (isPreS && preBlurredBitmap != null) {
-            Image(
-                bitmap = preBlurredBitmap!!.asImageBitmap(),
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier =
-                    Modifier
-                        .matchParentSize()
-                        .graphicsLayer {
-                            scaleX = 1.2f
-                            scaleY = 1.2f
-                        },
-            )
-        } else {
-            // Either Android 12+ (use Modifier.blur) or pre-S but the pre-blur hasn't
-            // resolved yet (render sharp + heavier scrim for now).
-            AsyncImage(
-                model = artworkRequest ?: artworkUrl,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier =
-                    Modifier
-                        .matchParentSize()
-                        .then(
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                                Modifier.blur(72.dp)
-                            } else {
-                                Modifier
+        if (!videoShowing) {
+            if (isPreS && preBlurredBitmap != null) {
+                Image(
+                    bitmap = preBlurredBitmap!!.asImageBitmap(),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier =
+                        Modifier
+                            .matchParentSize()
+                            .graphicsLayer {
+                                scaleX = 1.2f
+                                scaleY = 1.2f
                             },
-                        ).graphicsLayer {
-                            scaleX = 1.2f
-                            scaleY = 1.2f
-                        },
+                )
+            } else {
+                // Either Android 12+ (use Modifier.blur) or pre-S but the pre-blur hasn't
+                // resolved yet (render sharp + heavier scrim for now).
+                AsyncImage(
+                    model = artworkRequest ?: artworkUrl,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier =
+                        Modifier
+                            .matchParentSize()
+                            .then(
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                    Modifier.blur(72.dp)
+                                } else {
+                                    Modifier
+                                },
+                            ).graphicsLayer {
+                                scaleX = 1.2f
+                                scaleY = 1.2f
+                            },
+                )
+            }
+            // Deep contrast scrim over the blur: the Apple Music sheet reads as a dark, artwork-tinted
+            // panel rather than a bright blur, so the whole surface is pulled well down in brightness
+            // and pushed darker still toward the bottom where the controls sit.
+            //
+            // On pre-S while the pre-blur is still loading, we push the scrim even darker to mask
+            // the un-blurred source artwork (otherwise the layout would "pop" from sharp to blurred).
+            val preBlurLoading = isPreS && preBlurredBitmap == null
+            Box(
+                modifier =
+                    Modifier
+                        .matchParentSize()
+                        .background(
+                            Brush.verticalGradient(
+                                0f to Color.Black.copy(alpha = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) 0.42f else if (preBlurLoading) 0.62f else 0.52f),
+                                0.5f to Color.Black.copy(alpha = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) 0.60f else if (preBlurLoading) 0.74f else 0.68f),
+                                1f to Color.Black.copy(alpha = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) 0.82f else if (preBlurLoading) 0.90f else 0.86f),
+                            ),
+                        ),
             )
         }
-        // Deep contrast scrim over the blur: the Apple Music sheet reads as a dark, artwork-tinted
-        // panel rather than a bright blur, so the whole surface is pulled well down in brightness
-        // and pushed darker still toward the bottom where the controls sit.
-        //
-        // On pre-S while the pre-blur is still loading, we push the scrim even darker to mask
-        // the un-blurred source artwork (otherwise the layout would "pop" from sharp to blurred).
-        val preBlurLoading = isPreS && preBlurredBitmap == null
-        Box(
-            modifier =
-                Modifier
-                    .matchParentSize()
-                    .background(
-                        Brush.verticalGradient(
-                            0f to Color.Black.copy(alpha = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) 0.42f else if (preBlurLoading) 0.62f else 0.52f),
-                            0.5f to Color.Black.copy(alpha = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) 0.60f else if (preBlurLoading) 0.74f else 0.68f),
-                            1f to Color.Black.copy(alpha = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) 0.82f else if (preBlurLoading) 0.90f else 0.86f),
-                        ),
-                    ),
-        )
 
         if (landscape) {
             Row(Modifier.fillMaxSize()) {
@@ -370,13 +382,17 @@ fun AppleMusicPlayerContent(
             }
         } else {
             // 2. Sharp artwork occupies the top, fading into the blurred continuation below it.
+            //    When the video is showing, skip the fade — the video surface handles its
+            //    own bottom edge and the fade would just make the lower 38% of the video
+            //    transparent, revealing the black floor behind it (looks weird with
+            //    videos that have text/burned-in subs near the bottom edge).
             AppleMusicSharpArtwork(
                 artworkRequest = artworkRequest,
                 artworkUrl = artworkUrl,
                 canvasPrimaryUrl = canvasPrimaryUrl,
                 canvasFallbackUrl = canvasFallbackUrl,
                 isPlaying = isPlaying,
-                fadeBottom = true,
+                fadeBottom = !videoShowing,
                 videoId = mediaMetadata.id.takeIf { !it.isLocalMediaId() },
                 isMusicVideo = mediaMetadata.isMusicVideo,
                 modifier =
@@ -462,16 +478,23 @@ private fun AppleMusicSharpArtwork(
         // When the current media is a music video, render the video inline
         // in place of the album artwork. Audio continues through the main
         // MusicService ExoPlayer, so all transport controls work as normal.
+        //
+        // When the video is showing, we render a solid black background
+        // instead of the album artwork. The video surface uses FIT resize
+        // mode, so any letterbox area would otherwise show the artwork
+        // through the gaps — the user explicitly reported this as a bug.
+        // The video surface is rendered on top and alpha-fades in once
+        // the first frame is ready.
         val showVideo =
             isMusicVideo &&
                 !videoId.isNullOrBlank() &&
                 playerConnection != null
         if (showVideo) {
-            VideoArtworkPlayer(
-                videoId = videoId!!,
-                isPlaying = isPlaying,
-                positionProvider = { playerConnection?.player?.currentPosition ?: 0L },
-                modifier = Modifier.matchParentSize(),
+            Box(
+                modifier =
+                    Modifier
+                        .matchParentSize()
+                        .background(Color.Black),
             )
         } else {
             AsyncImage(
@@ -480,15 +503,29 @@ private fun AppleMusicSharpArtwork(
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.matchParentSize(),
             )
-            if (!canvasPrimaryUrl.isNullOrBlank() || !canvasFallbackUrl.isNullOrBlank()) {
-                CanvasArtworkPlayer(
-                    primaryUrl = canvasPrimaryUrl,
-                    fallbackUrl = canvasFallbackUrl,
-                    isPlaying = isPlaying,
-                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
-                    modifier = Modifier.matchParentSize(),
-                )
-            }
+        }
+
+        if (!showVideo &&
+            (!canvasPrimaryUrl.isNullOrBlank() || !canvasFallbackUrl.isNullOrBlank())
+        ) {
+            CanvasArtworkPlayer(
+                primaryUrl = canvasPrimaryUrl,
+                fallbackUrl = canvasFallbackUrl,
+                isPlaying = isPlaying,
+                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
+                modifier = Modifier.matchParentSize(),
+            )
+        }
+
+        if (showVideo) {
+            InlineVideoPlayer(
+                videoId = videoId!!,
+                isPlaying = isPlaying,
+                positionProvider = { playerConnection?.player?.currentPosition ?: 0L },
+                onRequestPauseMain = { playerConnection?.player?.pause() },
+                onRequestResumeMain = { playerConnection?.player?.play() },
+                modifier = Modifier.matchParentSize(),
+            )
         }
     }
 }
