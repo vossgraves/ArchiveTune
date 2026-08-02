@@ -2620,7 +2620,7 @@ private fun V8Artwork(
         }
 
         if (showVideo) {
-            VideoArtworkPlayer(
+            InlineVideoPlayer(
                 videoId = videoId!!,
                 isPlaying = isPlaying,
                 positionProvider = { playerConnection?.player?.currentPosition ?: 0L },
@@ -3561,7 +3561,7 @@ private fun V9Artwork(
         }
 
         if (showVideo) {
-            VideoArtworkPlayer(
+            InlineVideoPlayer(
                 videoId = videoId!!,
                 isPlaying = isPlaying,
                 positionProvider = { playerConnection?.player?.currentPosition ?: 0L },

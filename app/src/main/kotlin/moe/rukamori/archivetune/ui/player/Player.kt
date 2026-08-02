@@ -1485,30 +1485,48 @@ fun BottomSheetPlayer(
                                 lowDataMode = lowDataModeActive,
                                 isMusicVideo = mediaMetadata?.isMusicVideo ?: false,
                             )
-                        V7PlayerBackdrop(
-                            thumbnailUrl = v7SwapState.displayUrl,
-                            canvasStaticUrl = v7CanvasArtwork?.static,
-                            canvasPrimaryUrl = v7CanvasArtwork?.animatedVertical,
-                            canvasFallbackUrl = v7CanvasArtwork?.videoUrlVertical,
-                            isPlaying = isPlaying,
-                            disableBlur = disableBlur,
-                            backdropBlurAmount = backdropBlurAmount,
-                            label = "v7BackdropLandscape",
-                        )
-
                         // When the current media is a music video, render the video
-                        // inline on top of the V7 backdrop — the blurred backdrop
-                        // remains visible behind/around the 16:9 video. Audio
-                        // continues through the main MusicService ExoPlayer, so all
-                        // transport controls work as normal.
+                        // inline on top of a solid black backdrop — the user
+                        // wants pure black behind/around the 16:9 video surface,
+                        // not the blurred artwork. Audio continues through the
+                        // main MusicService ExoPlayer, so all transport controls
+                        // work as normal.
                         val v7VideoMetadata = mediaMetadata
-                        if (v7VideoMetadata?.isMusicVideo == true &&
-                            !v7VideoMetadata.id.isLocalMediaId() &&
-                            !aodModeEnabled &&
-                            !isLyricsScreenVisible
-                        ) {
-                            VideoArtworkPlayer(
-                                videoId = v7VideoMetadata.id,
+                        val v7VideoShowing =
+                            v7VideoMetadata?.isMusicVideo == true &&
+                                !v7VideoMetadata.id.isLocalMediaId() &&
+                                !aodModeEnabled &&
+                                !isLyricsScreenVisible
+
+                        if (v7VideoShowing) {
+                            // Pure-black backdrop so the video sits in a
+                            // dark frame instead of a blurred thumbnail.
+                            Box(
+                                modifier =
+                                    Modifier
+                                        .fillMaxSize()
+                                        .background(Color.Black),
+                            )
+                        } else {
+                            V7PlayerBackdrop(
+                                thumbnailUrl = v7SwapState.displayUrl,
+                                canvasStaticUrl = v7CanvasArtwork?.static,
+                                canvasPrimaryUrl = v7CanvasArtwork?.animatedVertical,
+                                canvasFallbackUrl = v7CanvasArtwork?.videoUrlVertical,
+                                isPlaying = isPlaying,
+                                disableBlur = disableBlur,
+                                backdropBlurAmount = backdropBlurAmount,
+                                label = "v7BackdropLandscape",
+                            )
+                        }
+
+                        // `mediaMetadata != null` is required for the compiler
+                        // to smart-cast `mediaMetadata.id` to non-null — `v7VideoShowing`
+                        // already implies this but the compiler can't track the
+                        // implication through a local Boolean variable.
+                        if (v7VideoShowing && mediaMetadata != null) {
+                            InlineVideoPlayer(
+                                videoId = mediaMetadata.id,
                                 isPlaying = isPlaying,
                                 positionProvider = { playerConnection.player.currentPosition },
                                 modifier =
@@ -1574,10 +1592,31 @@ fun BottomSheetPlayer(
                                 lowDataMode = lowDataModeActive,
                                 isMusicVideo = mediaMetadata?.isMusicVideo ?: false,
                             )
-                        V8PlayerBackdrop(
-                            thumbnailUrl = v8SwapState.displayUrl,
-                            backdropBlurAmount = backdropBlurAmount,
-                        )
+                        // When the current media is a music video, render a
+                        // solid black backdrop instead of the blurred thumbnail —
+                        // the video surface itself provides all the visual
+                        // interest, and the blurred thumbnail behind it makes
+                        // the 16:9 video look like it's floating in a colored
+                        // haze. Pure black mirrors how YouTube Music shows
+                        // music videos.
+                        val v8VideoShowing =
+                            mediaMetadata?.isMusicVideo == true &&
+                                !mediaMetadata.id.isLocalMediaId() &&
+                                !aodModeEnabled &&
+                                !isLyricsScreenVisible
+                        if (v8VideoShowing) {
+                            Box(
+                                modifier =
+                                    Modifier
+                                        .fillMaxSize()
+                                        .background(Color.Black),
+                            )
+                        } else {
+                            V8PlayerBackdrop(
+                                thumbnailUrl = v8SwapState.displayUrl,
+                                backdropBlurAmount = backdropBlurAmount,
+                            )
+                        }
 
                         enrichedMetadata?.let { metadata ->
                             V8PlayerContent(
@@ -1822,30 +1861,46 @@ fun BottomSheetPlayer(
                                 lowDataMode = lowDataModeActive,
                                 isMusicVideo = mediaMetadata?.isMusicVideo ?: false,
                             )
-                        V7PlayerBackdrop(
-                            thumbnailUrl = v7SwapState.displayUrl,
-                            canvasStaticUrl = v7CanvasArtwork?.static,
-                            canvasPrimaryUrl = v7CanvasArtwork?.animatedVertical,
-                            canvasFallbackUrl = v7CanvasArtwork?.videoUrlVertical,
-                            isPlaying = isPlaying,
-                            disableBlur = disableBlur,
-                            backdropBlurAmount = backdropBlurAmount,
-                            label = "v7BackdropPortrait",
-                        )
-
                         // When the current media is a music video, render the video
-                        // inline on top of the V7 backdrop — the blurred backdrop
-                        // remains visible behind/around the 16:9 video. Audio
-                        // continues through the main MusicService ExoPlayer, so all
-                        // transport controls work as normal.
+                        // inline on top of a solid black backdrop — the user
+                        // wants pure black behind/around the 16:9 video surface,
+                        // not the blurred artwork. Audio continues through the
+                        // main MusicService ExoPlayer, so all transport controls
+                        // work as normal.
                         val v7VideoMetadata = mediaMetadata
-                        if (v7VideoMetadata?.isMusicVideo == true &&
-                            !v7VideoMetadata.id.isLocalMediaId() &&
-                            !aodModeEnabled &&
-                            !isLyricsScreenVisible
-                        ) {
-                            VideoArtworkPlayer(
-                                videoId = v7VideoMetadata.id,
+                        val v7VideoShowing =
+                            v7VideoMetadata?.isMusicVideo == true &&
+                                !v7VideoMetadata.id.isLocalMediaId() &&
+                                !aodModeEnabled &&
+                                !isLyricsScreenVisible
+
+                        if (v7VideoShowing) {
+                            Box(
+                                modifier =
+                                    Modifier
+                                        .fillMaxSize()
+                                        .background(Color.Black),
+                            )
+                        } else {
+                            V7PlayerBackdrop(
+                                thumbnailUrl = v7SwapState.displayUrl,
+                                canvasStaticUrl = v7CanvasArtwork?.static,
+                                canvasPrimaryUrl = v7CanvasArtwork?.animatedVertical,
+                                canvasFallbackUrl = v7CanvasArtwork?.videoUrlVertical,
+                                isPlaying = isPlaying,
+                                disableBlur = disableBlur,
+                                backdropBlurAmount = backdropBlurAmount,
+                                label = "v7BackdropPortrait",
+                            )
+                        }
+
+                        // `mediaMetadata != null` is required for the compiler
+                        // to smart-cast `mediaMetadata.id` to non-null — `v7VideoShowing`
+                        // already implies this but the compiler can't track the
+                        // implication through a local Boolean variable.
+                        if (v7VideoShowing && mediaMetadata != null) {
+                            InlineVideoPlayer(
+                                videoId = mediaMetadata.id,
                                 isPlaying = isPlaying,
                                 positionProvider = { playerConnection.player.currentPosition },
                                 modifier =
@@ -1909,10 +1964,31 @@ fun BottomSheetPlayer(
                                 lowDataMode = lowDataModeActive,
                                 isMusicVideo = mediaMetadata?.isMusicVideo ?: false,
                             )
-                        V8PlayerBackdrop(
-                            thumbnailUrl = v8SwapState.displayUrl,
-                            backdropBlurAmount = backdropBlurAmount,
-                        )
+                        // When the current media is a music video, render a
+                        // solid black backdrop instead of the blurred thumbnail —
+                        // the video surface itself provides all the visual
+                        // interest, and the blurred thumbnail behind it makes
+                        // the 16:9 video look like it's floating in a colored
+                        // haze. Pure black mirrors how YouTube Music shows
+                        // music videos.
+                        val v8VideoShowing =
+                            mediaMetadata?.isMusicVideo == true &&
+                                !mediaMetadata.id.isLocalMediaId() &&
+                                !aodModeEnabled &&
+                                !isLyricsScreenVisible
+                        if (v8VideoShowing) {
+                            Box(
+                                modifier =
+                                    Modifier
+                                        .fillMaxSize()
+                                        .background(Color.Black),
+                            )
+                        } else {
+                            V8PlayerBackdrop(
+                                thumbnailUrl = v8SwapState.displayUrl,
+                                backdropBlurAmount = backdropBlurAmount,
+                            )
+                        }
 
                         enrichedMetadata?.let { metadata ->
                             V8PlayerContent(

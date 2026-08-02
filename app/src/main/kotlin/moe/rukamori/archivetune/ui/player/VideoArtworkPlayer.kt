@@ -43,8 +43,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
-import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.innertube.NewPipeUtils
+import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.innertube.models.YouTubeClient.Companion.ANDROID_VR_1_65_10
 import moe.rukamori.archivetune.innertube.models.YouTubeClient.Companion.WEB_REMIX
 import moe.rukamori.archivetune.innertube.models.response.PlayerResponse
@@ -66,6 +66,24 @@ private const val VideoSyncDriftToleranceMs = 1_500L
 private const val VideoSyncPollIntervalMs = 1_000L
 
 /**
+ * Hard cap on the resolution we will ever attempt to play. YouTube's video
+ * catalog for music videos goes up to 2160p (4K). Going beyond that would
+ * just waste bandwidth on devices that can't display it.
+ */
+private const val MaxVideoHeightCap = 2160
+
+/**
+ * Resolved information about a video stream — the playable URL plus the
+ * menu of formats YouTube offered, so the user can pick a different
+ * quality after playback has started.
+ */
+data class VideoStreamInfo(
+    val streamUrl: String,
+    val availableHeights: List<Int>,
+    val captionTracks: List<PlayerResponse.CaptionTrack>,
+)
+
+/**
  * Native inline video surface for music-video playback.
  *
  * Renders the video track of the currently playing song in place of the
@@ -77,10 +95,17 @@ private const val VideoSyncPollIntervalMs = 1_000L
  * disabled to avoid double-audio.
  *
  * Stream resolution mirrors the audio pipeline: we call the YouTube InnerTube
- * player endpoint for the song's videoId, then pick a combined video+audio
- * format (itag 18/22/59) or fall back to a video-only adaptive format. The
- * URL is deobfuscated via [NewPipeUtils.getStreamUrl] (handles both direct
- * URLs and signatureCipher formats).
+ * player endpoint for the song's videoId, then pick a video format honoring
+ * [preferredHeight] (null = auto, picks the highest available up to 4K).
+ * The URL is deobfuscated via [NewPipeUtils.getStreamUrl] (handles both
+ * direct URLs and signatureCipher formats).
+ *
+ * Captions: the caption track URL is resolved internally alongside the
+ * video stream URL and always side-loaded into the [MediaItem] as a WebVTT
+ * subtitle. The [DefaultTrackSelector] enables/disables the text track type
+ * based on [captionsEnabled] — when disabled, the subtitle is loaded but
+ * not rendered; when enabled, it's rendered. This avoids a MediaItem rebuild
+ * (and the associated rebuffer) when the user toggles captions.
  *
  * Position sync: on mount we seek to the main player's current position,
  * and a periodic poller re-seeks if drift exceeds [VideoSyncDriftToleranceMs].
@@ -89,6 +114,19 @@ private const val VideoSyncPollIntervalMs = 1_000L
  * @param videoId The YouTube video ID (same as the song's mediaId for YouTube Music songs).
  * @param isPlaying Whether the main audio player is currently playing.
  * @param positionProvider Returns the main audio player's current position in ms.
+ * @param preferredHeight Desired video height in px (e.g. 720 for 720p). null = auto-best up to 4K.
+ * @param captionsEnabled Whether to render captions. The caption track URL is
+ *   resolved internally alongside the video stream URL so the [MediaItem] is
+ *   built with the subtitle side-load from the very first prepare() — this
+ *   avoids a rebuffer when the user toggles captions on later. Toggling this
+ *   parameter only updates the [DefaultTrackSelector] to enable/disable the
+ *   text track type; no MediaItem rebuild is needed.
+ * @param onStreamResolved Invoked when the stream URL has been resolved, with the
+ *   list of all heights YouTube offered (so the parent can render a quality picker)
+ *   and the list of caption tracks (so the parent can render a captions picker).
+ * @param onPlaybackFailed Invoked when playback fails (e.g. stream URL resolution
+ *   exhausted all clients, or ExoPlayer emitted an error) so the parent can fall
+ *   back to showing album artwork.
  * @param modifier Modifier for the surface.
  * @param resizeMode AspectRatioFrameLayout resize mode (default FIT to letterbox within the artwork slot).
  */
@@ -98,16 +136,25 @@ fun VideoArtworkPlayer(
     isPlaying: Boolean,
     positionProvider: () -> Long,
     modifier: Modifier = Modifier,
+    preferredHeight: Int? = null,
+    captionsEnabled: Boolean = false,
+    onStreamResolved: (VideoStreamInfo?) -> Unit = {},
+    onPlaybackFailed: () -> Unit = {},
     resizeMode: Int = AspectRatioFrameLayout.RESIZE_MODE_FIT,
 ) {
-    if (videoId.isBlank()) return
+    if (videoId.isBlank()) {
+        onPlaybackFailed()
+        return
+    }
 
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val shouldPlay by rememberUpdatedState(isPlaying)
     val currentPosition by rememberUpdatedState(positionProvider)
+    val updatedPreferredHeight by rememberUpdatedState(preferredHeight)
 
     var streamUrl by remember(videoId) { mutableStateOf<String?>(null) }
+    var resolvedCaptionUrl by remember(videoId) { mutableStateOf<String?>(null) }
     var isVideoReady by remember(videoId) { mutableStateOf(false) }
     var hasPlaybackFailed by remember(videoId) { mutableStateOf(false) }
 
@@ -164,12 +211,15 @@ fun VideoArtworkPlayer(
 
     // Disable the audio track — the main MusicService ExoPlayer is the
     // source of truth for audio. Playing audio here would double it.
+    // Text tracks are enabled only when the user has toggled captions on
+    // AND a caption URL has been resolved.
     val trackSelector =
         remember(context) {
             DefaultTrackSelector(context).apply {
                 setParameters(
                     buildUponParameters()
                         .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
+                        .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !captionsEnabled)
                         .setForceHighestSupportedBitrate(true)
                         .build(),
                 )
@@ -201,18 +251,51 @@ fun VideoArtworkPlayer(
     // failure mode.
     LaunchedEffect(videoId) {
         streamUrl = null
+        resolvedCaptionUrl = null
         isVideoReady = false
         hasPlaybackFailed = false
 
         val resolved =
             withContext(Dispatchers.IO) {
-                resolveVideoStreamUrl(videoId)
+                resolveVideoStreamUrl(videoId, updatedPreferredHeight)
             }
 
-        if (resolved.isNullOrBlank()) {
+        if (resolved == null) {
             hasPlaybackFailed = true
+            onPlaybackFailed()
+            onStreamResolved(null)
         } else {
-            streamUrl = resolved
+            streamUrl = resolved.streamUrl
+            // Pick the best caption track up front so the MediaItem can be
+            // built with the subtitle side-load from the very first prepare()
+            // call. Preference: non-ASR English > non-ASR any > English ASR > any.
+            resolvedCaptionUrl =
+                resolved.captionTracks
+                    .firstOrNull { !it.isAutoGenerated && it.languageCode == "en" }
+                    ?.webVttUrl()
+                    ?: resolved.captionTracks.firstOrNull { !it.isAutoGenerated }?.webVttUrl()
+                    ?: resolved.captionTracks.firstOrNull { it.languageCode == "en" }?.webVttUrl()
+                    ?: resolved.captionTracks.firstOrNull()?.webVttUrl()
+            onStreamResolved(resolved)
+        }
+    }
+
+    // ── Re-resolve when the user changes preferred quality ──
+    //
+    // We don't want to re-resolve on every recomposition, only when the
+    // user explicitly picks a different quality. The remember(videoId)
+    // guard above handles initial resolution; this LaunchedEffect handles
+    // subsequent user-driven changes.
+    LaunchedEffect(preferredHeight) {
+        // Skip the initial run — handled by the LaunchedEffect(videoId) above.
+        if (streamUrl == null) return@LaunchedEffect
+        val resolved =
+            withContext(Dispatchers.IO) {
+                resolveVideoStreamUrl(videoId, updatedPreferredHeight)
+            }
+        if (resolved != null) {
+            streamUrl = resolved.streamUrl
+            onStreamResolved(resolved)
         }
     }
 
@@ -232,15 +315,34 @@ fun VideoArtworkPlayer(
                 else -> MimeTypes.VIDEO_MP4
             }
 
-        val mediaItem =
+        val mediaItemBuilder =
             MediaItem
                 .Builder()
                 .setUri(url)
                 .setMimeType(mimeType)
-                .build()
+
+        // Always side-load the caption track when we resolved one. The
+        // track selector below controls whether the text track is actually
+        // rendered (gated on `captionsEnabled`), so side-loading is free:
+        // when captions are disabled the subtitle is just ignored.
+        // This avoids a MediaItem rebuild (and the associated rebuffer)
+        // when the user toggles captions on later.
+        val activeCaptionUrl = resolvedCaptionUrl
+        if (!activeCaptionUrl.isNullOrBlank()) {
+            mediaItemBuilder.setSubtitleConfigurations(
+                listOf(
+                    MediaItem.SubtitleConfiguration
+                        .Builder(android.net.Uri.parse(activeCaptionUrl))
+                        .setMimeType(MimeTypes.TEXT_VTT)
+                        .setLanguage("en")
+                        .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+                        .build(),
+                ),
+            )
+        }
 
         exoPlayer.stop()
-        exoPlayer.setMediaItem(mediaItem)
+        exoPlayer.setMediaItem(mediaItemBuilder.build())
         exoPlayer.prepare()
 
         // Seek to the main player's current position so the video starts
@@ -250,6 +352,16 @@ fun VideoArtworkPlayer(
             exoPlayer.seekTo(targetPosition)
         }
         exoPlayer.setVideoPlayback(shouldPlay)
+    }
+
+    // ── Toggle text-track disabling when captions toggle changes ──
+    LaunchedEffect(captionsEnabled) {
+        trackSelector.setParameters(
+            trackSelector
+                .buildUponParameters()
+                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !captionsEnabled)
+                .build(),
+        )
     }
 
     // ── Play/pause follower ──
@@ -262,10 +374,6 @@ fun VideoArtworkPlayer(
     }
 
     // ── Periodic position sync ──
-    // If the video drifts away from the main audio player by more than the
-    // tolerance, re-seek. This handles edge cases like the video stalling
-    // while audio continues, or the user seeking the audio while the video
-    // was buffering.
     LaunchedEffect(streamUrl, isPlaying, exoPlayer) {
         if (streamUrl == null) return@LaunchedEffect
         while (isActive) {
@@ -310,6 +418,7 @@ fun VideoArtworkPlayer(
                     Timber.tag(VideoPlaybackLogTag).w(error, "Video playback failed for $videoId")
                     hasPlaybackFailed = true
                     isVideoReady = false
+                    onPlaybackFailed()
                 }
 
                 override fun onRenderedFirstFrame() {
@@ -359,22 +468,30 @@ fun VideoArtworkPlayer(
 }
 
 /**
- * Pick the best video format from a [PlayerResponse].
+ * Pick the best video format from a [PlayerResponse], honoring a preferred
+ * height.
  *
- * Preference order:
- *  1. Formats with a direct `url` (no signatureCipher). These never need
- *     deobfuscation, so they're immune to YouTube player-JS breakage that
- *     periodically breaks the Mori/NewPipe regex-based fallbacks. We pick
- *     the highest-resolution direct-URL format ≤ 720p.
- *  2. As a last resort, formats with `signatureCipher`/`cipher` — same 720p
- *     cap. The deobfuscation pipeline (MoriCipherRuntime → NewPipeExtractor)
- *     will be attempted by [NewPipeUtils.getStreamUrl]; if it fails, the
- *     caller falls through to the next client.
+ * Selection algorithm:
+ *  - If [preferredHeight] is null → pick the highest-resolution format
+ *    available, capped at [MaxVideoHeightCap] (2160p). This is the "Auto"
+ *    mode and is what the user gets by default.
+ *  - If [preferredHeight] is non-null → pick the format whose height is
+ *    closest to but not greater than [preferredHeight]. If every available
+ *    format is taller than the preferred height, pick the smallest one
+ *    (downscale is better than refusing to play).
  *
- * Returns null if no video format is available (e.g. the video is audio-only
- * on YouTube Music, which happens for some ATV tracks).
+ * Within the height constraint, we prefer (in order):
+ *  1. Formats with a direct `url` (no signatureCipher) — bypasses the broken
+ *     signature deobfuscation pipeline entirely.
+ *  2. Combined (muxed) format (audioQuality != null) — single stream, no DASH.
+ *  3. Higher resolution first.
+ *
+ * Returns null if no video format is available.
  */
-private fun pickVideoFormat(playerResponse: PlayerResponse): PlayerResponse.StreamingData.Format? {
+private fun pickVideoFormat(
+    playerResponse: PlayerResponse,
+    preferredHeight: Int?,
+): PlayerResponse.StreamingData.Format? {
     val streamingData = playerResponse.streamingData ?: return null
 
     val allVideoFormats =
@@ -384,11 +501,21 @@ private fun pickVideoFormat(playerResponse: PlayerResponse): PlayerResponse.Stre
                 val h = it.height
                 h != null && h > 0
             }
-            .filter { (it.height ?: 0) <= 720 }
+            .filter { (it.height ?: 0) <= MaxVideoHeightCap }
             .filter { it.url != null || it.signatureCipher != null || it.cipher != null }
             .toList()
 
     if (allVideoFormats.isEmpty()) return null
+
+    val heightFiltered =
+        if (preferredHeight != null) {
+            // Prefer the tallest format <= preferredHeight.
+            // If none, fall back to the shortest available (downscale).
+            val atOrBelow = allVideoFormats.filter { (it.height ?: 0) <= preferredHeight }
+            if (atOrBelow.isNotEmpty()) atOrBelow else allVideoFormats.sortedBy { it.height ?: 0 }
+        } else {
+            allVideoFormats
+        }
 
     // Sort priority:
     //   1. Direct URL (url != null) — bypasses the broken signature deobfuscation.
@@ -396,10 +523,10 @@ private fun pickVideoFormat(playerResponse: PlayerResponse): PlayerResponse.Stre
     //   3. Higher resolution first.
     val comparator =
         compareByDescending<PlayerResponse.StreamingData.Format> { it.url != null }
-            .thenByDescending { it.audioQuality != null } // combined (muxed) preferred
+            .thenByDescending { it.audioQuality != null }
             .thenByDescending { it.height ?: 0 }
 
-    return allVideoFormats.sortedWith(comparator).firstOrNull()
+    return heightFiltered.sortedWith(comparator).firstOrNull()
 }
 
 /**
@@ -407,11 +534,20 @@ private fun pickVideoFormat(playerResponse: PlayerResponse): PlayerResponse.Stre
  * clients in order. Prefers clients that return direct stream URLs (no
  * signatureCipher) so we sidestep the fragile deobfuscation path entirely.
  *
- * Returns null if no client yields a usable stream URL — in that case the
- * caller should fall back to showing album artwork instead of a black
- * video surface.
+ * Returns a [VideoStreamInfo] containing the resolved URL plus the full
+ * menu of available heights (so the caller can render a quality picker)
+ * and the list of caption tracks (so the caller can render a captions
+ * picker). Returns null if no client yields a usable stream URL — in that
+ * case the caller should fall back to showing album artwork.
+ *
+ * The [preferredHeight] parameter is honored by [pickVideoFormat]: null
+ * means "pick the best available up to 4K"; a specific value picks the
+ * closest match.
  */
-private suspend fun resolveVideoStreamUrl(videoId: String): String? {
+private suspend fun resolveVideoStreamUrl(
+    videoId: String,
+    preferredHeight: Int?,
+): VideoStreamInfo? {
     // ANDROID_VR doesn't use a signature timestamp, so YouTube returns direct
     // URLs for video formats (no signatureCipher). This is the most reliable
     // path and bypasses the Mori/NewPipe deobfuscation entirely.
@@ -419,6 +555,9 @@ private suspend fun resolveVideoStreamUrl(videoId: String): String? {
     // returns direct URLs for combined formats and only falls back to
     // signatureCipher for adaptive video-only formats.
     val clients = listOf(ANDROID_VR_1_65_10 to null, WEB_REMIX to "sts")
+
+    var lastAvailableHeights: List<Int> = emptyList()
+    var lastCaptionTracks: List<PlayerResponse.CaptionTrack> = emptyList()
 
     for ((client, stsMode) in clients) {
         val result =
@@ -436,13 +575,32 @@ private suspend fun resolveVideoStreamUrl(videoId: String): String? {
                             client = client,
                             signatureTimestamp = sts,
                         ).getOrThrow()
-                val format = pickVideoFormat(playerResponse) ?: return@runCatching null
-                NewPipeUtils
-                    .getStreamUrl(
-                        format = format,
-                        videoId = videoId,
-                        client = client,
-                    ).getOrNull()
+
+                // Capture the full menu of heights + caption tracks regardless
+                // of whether our specific pick succeeds — the parent UI uses
+                // these to render the quality/captions pickers.
+                lastAvailableHeights =
+                    (playerResponse.streamingData?.formats.orEmpty() +
+                        playerResponse.streamingData?.adaptiveFormats.orEmpty())
+                        .mapNotNull { it.height?.takeIf { h -> h > 0 } }
+                        .distinct()
+                        .sorted()
+
+                lastCaptionTracks =
+                    playerResponse.captions
+                        ?.playerCaptionsTracklistRenderer
+                        ?.captionTracks
+                        .orEmpty()
+
+                val format = pickVideoFormat(playerResponse, preferredHeight) ?: return@runCatching null
+                val url =
+                    NewPipeUtils
+                        .getStreamUrl(
+                            format = format,
+                            videoId = videoId,
+                            client = client,
+                        ).getOrNull()
+                if (url.isNullOrBlank()) null else url
             }
 
         val url = result.getOrNull()
@@ -450,10 +608,13 @@ private suspend fun resolveVideoStreamUrl(videoId: String): String? {
             Timber
                 .tag(VideoPlaybackLogTag)
                 .i("Resolved video stream for $videoId via ${client.clientName}")
-            return url
+            return VideoStreamInfo(
+                streamUrl = url,
+                availableHeights = lastAvailableHeights,
+                captionTracks = lastCaptionTracks,
+            )
         }
 
-        // Log the failure for diagnostics but continue to the next client.
         result.exceptionOrNull()?.let { error ->
             Timber
                 .tag(VideoPlaybackLogTag)
@@ -486,6 +647,6 @@ private fun ExoPlayer.setVideoPlayback(isPlaying: Boolean) {
     }
 }
 
-private const val VideoPlaybackLogTag = "VideoArtworkPlayback"
+internal const val VideoPlaybackLogTag = "VideoArtworkPlayback"
 private const val VideoPlaybackUserAgent =
     "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Mobile Safari/537.36"

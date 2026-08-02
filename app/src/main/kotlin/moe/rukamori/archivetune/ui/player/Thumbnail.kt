@@ -630,7 +630,7 @@ fun Thumbnail(
                                     }
 
                                     if (isCurrentMusicVideo) {
-                                        VideoArtworkPlayer(
+                                        InlineVideoPlayer(
                                             videoId = item.mediaId,
                                             isPlaying = isPlaying,
                                             positionProvider = { playerConnection.player.currentPosition },
