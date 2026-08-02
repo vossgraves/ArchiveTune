@@ -83,14 +83,11 @@ private tailrec fun Context.findActivity(): Activity? =
  * inline and fullscreen surfaces.
  *
  * When the user enters fullscreen, a [VideoFullscreenDialog] is rendered
- * on top of everything. Both the inline surface and the fullscreen surface
- * use the same parameters (videoId, isPlaying, positionProvider, captions,
- * quality), so the video appears to "expand" seamlessly — in practice the
- * inline ExoPlayer pauses (because the fullscreen Dialog covers it and
- * gets the lifecycle focus) and the fullscreen ExoPlayer takes over,
- * seeking to the same main-player position. The brief rebuffer is
- * acceptable for a music app where the audio keeps playing through the
- * main MusicService regardless.
+ * on top of everything. **The inline [VideoArtworkPlayer] is unmounted
+ * while fullscreen is open** — only one ExoPlayer is alive at a time. This
+ * avoids the dual-ExoPlayer resource competition that previously caused
+ * the fullscreen surface to stall. On exit, the inline player is rebuilt
+ * and re-resolves the stream (brief loading spinner expected).
  *
  * @param onPlaybackFailed Called when the inline player cannot play the
  *   video (e.g. stream resolution exhausted all clients, or ExoPlayer
@@ -122,52 +119,80 @@ fun InlineVideoPlayer(
     var isLoading by remember { mutableStateOf(false) }
 
     Box(modifier = modifier) {
-        VideoArtworkPlayer(
-            videoId = videoId,
-            isPlaying = isPlaying,
-            positionProvider = positionProvider,
-            preferredHeight = preferredHeight,
-            captionsEnabled = captionsEnabled,
-            onStreamResolved = { info ->
-                availableHeights = info?.availableHeights.orEmpty()
-                captionTracks = info?.captionTracks.orEmpty()
-            },
-            onPlaybackFailed = onPlaybackFailed,
-            onLoadingStateChange = { isLoading = it },
-            onRequestPauseMain = onRequestPauseMain,
-            onRequestResumeMain = onRequestResumeMain,
-            resizeMode = resizeMode,
-            modifier = Modifier.fillMaxSize(),
-        )
-
-        // ── Loading overlay ──
+        // ── Inline video surface ──
         //
-        // Shown on initial load AND during a quality swap. The video
-        // surface's alpha also animates to 0 while loading (handled inside
-        // VideoArtworkPlayer), so the user just sees a black box + spinner.
-        // The audio keeps playing through the main MusicService.
-        if (isLoading) {
-            Box(
-                modifier = Modifier.fillMaxSize().background(Color.Black),
-                contentAlignment = Alignment.Center,
-            ) {
-                CircularProgressIndicator(
-                    color = Color.White,
-                    strokeWidth = 3.dp,
-                    modifier = Modifier.size(48.dp),
-                )
+        // IMPORTANT: when `isFullscreen` is true, we do NOT mount the inline
+        // VideoArtworkPlayer. Previously both the inline and fullscreen
+        // ExoPlayer instances were alive simultaneously, which caused:
+        //   - Two concurrent YouTube stream URL resolutions for the same video
+        //     (race / rate-limit risk)
+        //   - Two ExoPlayers competing for network bandwidth and CPU
+        //   - The fullscreen surface sometimes "stuck" because the inline
+        //     player kept stealing buffer bandwidth
+        //   - Repeated enter/exit fullscreen cycles accumulated stale state
+        //
+        // Now we render a solid black placeholder while fullscreen is open.
+        // The inline ExoPlayer is fully disposed (released) when entering
+        // fullscreen and re-created on exit. The brief re-resolve + rebuffer
+        // on exit is the tradeoff — acceptable because the user is back on
+        // the inline surface and expects a short load.
+        if (!isFullscreen) {
+            VideoArtworkPlayer(
+                videoId = videoId,
+                isPlaying = isPlaying,
+                positionProvider = positionProvider,
+                preferredHeight = preferredHeight,
+                captionsEnabled = captionsEnabled,
+                onStreamResolved = { info ->
+                    availableHeights = info?.availableHeights.orEmpty()
+                    captionTracks = info?.captionTracks.orEmpty()
+                },
+                onPlaybackFailed = onPlaybackFailed,
+                onLoadingStateChange = { isLoading = it },
+                onRequestPauseMain = onRequestPauseMain,
+                onRequestResumeMain = onRequestResumeMain,
+                resizeMode = resizeMode,
+                modifier = Modifier.fillMaxSize(),
+            )
+
+            // ── Loading overlay ──
+            //
+            // Shown on initial load AND during a quality swap. The video
+            // surface's alpha also animates to 0 while loading (handled inside
+            // VideoArtworkPlayer), so the user just sees a black box + spinner.
+            // The audio keeps playing through the main MusicService.
+            if (isLoading) {
+                Box(
+                    modifier = Modifier.fillMaxSize().background(Color.Black),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CircularProgressIndicator(
+                        color = Color.White,
+                        strokeWidth = 3.dp,
+                        modifier = Modifier.size(48.dp),
+                    )
+                }
             }
+        } else {
+            // Solid black placeholder so the inline slot doesn't show a
+            // transparent hole while the fullscreen Dialog is open on top.
+            Box(modifier = Modifier.fillMaxSize().background(Color.Black))
         }
 
         // ── Controls overlay ──
-        Row(
-            modifier =
-                Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(8.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
+        //
+        // Skip rendering while fullscreen is open — the fullscreen dialog
+        // renders its own controls overlay, and the inline controls would
+        // just be occluded (wasting recomposition + measure passes).
+        if (!isFullscreen) {
+            Row(
+                modifier =
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
             // Captions toggle — only render if at least one caption track exists.
             if (captionTracks.isNotEmpty()) {
                 IconButton(
@@ -256,6 +281,7 @@ fun InlineVideoPlayer(
                 )
             }
         }
+        } // end if (!isFullscreen) — controls overlay
     }
 
     if (isFullscreen) {
@@ -281,8 +307,11 @@ fun InlineVideoPlayer(
  *
  * Renders the video in a system-immersive (fullscreen, no status/nav bar)
  * [Dialog] with its own [VideoArtworkPlayer] instance. The inline player
- * keeps running underneath but is occluded; when the user exits fullscreen
- * the inline player is still alive and resumes immediately.
+ * is fully unmounted while this dialog is open (see [InlineVideoPlayer]),
+ * so only ONE ExoPlayer is alive at a time — avoiding the dual-player
+ * resource competition that previously caused the fullscreen surface to
+ * stall. When the user exits fullscreen, the inline player is re-created
+ * and re-resolves the stream URL (brief loading spinner expected).
  *
  * Renders its own copy of the controls overlay (fullscreen-exit button
  * replaces fullscreen-enter, otherwise identical captions + quality

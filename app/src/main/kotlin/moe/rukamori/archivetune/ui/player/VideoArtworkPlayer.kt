@@ -9,6 +9,7 @@
 
 package moe.rukamori.archivetune.ui.player
 
+import android.os.SystemClock
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
@@ -65,8 +66,39 @@ import java.util.Locale
  * is perceptible to the user as audio/video desync. Kept tight (400ms) so
  * that a seekbar drag on the main player is reflected by the video surface
  * within one poll cycle — i.e. within ~250ms, which is imperceptible.
+ *
+ * NOTE: drifts at or below this tolerance are treated as normal playback
+ * drift and corrected silently (video re-seeks, audio keeps playing).
+ * Drifts ABOVE [UserSeekDriftThresholdMs] are treated as a user-initiated
+ * seekbar jump and trigger the pause-load-resume protocol (see below).
  */
 private const val VideoSyncDriftToleranceMs = 400L
+
+/**
+ * Drift threshold above which we assume the user dragged the seekbar
+ * (rather than the video just naturally falling behind). When the poller
+ * detects drift > this value AND the main player is currently playing,
+ * we enter the "resync" protocol:
+ *
+ *   1. Pause the main audio player via [onRequestPauseMain].
+ *   2. Mark `isResyncing = true` and `isVideoReady = false` so the
+ *      parent shows a loading spinner.
+ *   3. Seek the video ExoPlayer to the main player's position.
+ *   4. Wait for `onRenderedFirstFrame` (the video has buffered to the
+ *      new position).
+ *   5. If `wasPlayingBeforeResync` was true, call [onRequestResumeMain]
+ *      to resume the main audio player. Both audio and video resume
+ *      together, in sync, at the requested position.
+ *
+ * Without this protocol, the audio kept playing during the video rebuffer
+ * after a seek, so the user heard audio from the new position while
+ * staring at a frozen video frame — the exact bug the user reported.
+ *
+ * 1500ms is chosen because normal playback drift rarely exceeds 400ms
+ * (the tolerance above), and a seekbar drag moves the position by
+ * seconds-to-minutes. Anything > 1.5s is unambiguously a seek.
+ */
+private const val UserSeekDriftThresholdMs = 1500L
 
 /**
  * How often to poll the main player's position and re-sync the video.
@@ -74,6 +106,19 @@ private const val VideoSyncDriftToleranceMs = 400L
  * measurable CPU.
  */
 private const val VideoSyncPollIntervalMs = 250L
+
+/**
+ * Maximum time the video ExoPlayer is allowed to stay in STATE_BUFFERING
+ * before we force a re-prepare to break out of a stuck state. 8 seconds
+ * is generous — YouTube video segments typically buffer within 1–2s on a
+ * normal connection. If we exceed this, something is wrong (network stall,
+ * dead decoder, etc.) and a re-prepare is the cleanest recovery.
+ *
+ * This is the safety net for the "video gets stuck, only audio plays"
+ * complaint — without it, a single BUFFERING state could hang the video
+ * surface indefinitely while the main MusicService audio kept playing.
+ */
+private const val VideoStuckBufferingTimeoutMs = 8000L
 
 /**
  * Hard cap on the resolution we will ever attempt to play. YouTube's video
@@ -192,14 +237,75 @@ fun VideoArtworkPlayer(
     // we'd auto-resume a song the user deliberately paused.
     var wasPlayingBeforeQualityChange by remember(videoId) { mutableStateOf(false) }
 
+    // ── Seekbar pause-load-resume protocol state ──
+    //
+    // When the periodic poller detects a large position jump
+    // (drift > UserSeekDriftThresholdMs), we treat it as a user seekbar
+    // drag and enter the "resync" protocol:
+    //   1. wasPlayingBeforeResync captures shouldPlay BEFORE we pause.
+    //   2. isResyncing flips to true (drives UI + onRenderedFirstFrame).
+    //   3. We pause the main audio player via onRequestPauseMain.
+    //   4. We seek the video ExoPlayer to the new position.
+    //   5. When onRenderedFirstFrame fires (video buffered to new pos),
+    //      we resume the main audio player via onRequestResumeMain if
+    //      wasPlayingBeforeResync was true.
+    //
+    // This fixes the user-reported bug where seeking the main player
+    // caused audio to keep playing from the new position while the video
+    // was still rebuffering — the user wants both to pause, load, and
+    // resume together.
+    var isResyncing by remember(videoId) { mutableStateOf(false) }
+    var wasPlayingBeforeResync by remember(videoId) { mutableStateOf(false) }
+
+    // ── URL resolution tracking ──
+    //
+    // True while we're fetching the stream URL from YouTube (the network
+    // call in resolveVideoStreamUrl). We feed this into the loading-state
+    // computation below so the parent shows a spinner DURING URL resolution
+    // too — previously the spinner only appeared after the URL was resolved
+    // and the MediaItem was being loaded, leaving a black gap during the
+    // initial network fetch (especially noticeable when entering fullscreen,
+    // where the user saw a black screen with no feedback for 1–3 seconds).
+    var isResolvingUrl by remember(videoId) { mutableStateOf(true) }
+
+    // ── Stuck-buffering recovery ──
+    //
+    // Timestamp (SystemClock.elapsedRealtime) of when the ExoPlayer last
+    // entered STATE_BUFFERING. The periodic poller checks this and, if
+    // the player has been buffering longer than [VideoStuckBufferingTimeoutMs],
+    // forces a re-prepare to break out of a stuck state. Reset to 0L
+    // whenever the player transitions out of BUFFERING.
+    //
+    // This is the safety net for the "video gets stuck, only audio plays"
+    // complaint. Without it, a single BUFFERING state could hang the
+    // video surface indefinitely while the main MusicService audio kept
+    // playing.
+    var bufferingStartedAtMs by remember(videoId) { mutableStateOf(0L) }
+
     // Propagate loading state to the parent so it can render a spinner.
-    // Loading = !isVideoReady AND we have a stream URL we're (re)loading.
+    //
+    // Loading is true when ANY of:
+    //   - isResolvingUrl: the YouTube stream URL is being fetched
+    //     (covers initial load AND quality swap AND fullscreen-entry load).
+    //   - streamUrl != null && !isVideoReady: the URL is resolved but
+    //     the ExoPlayer is still preparing/buffering the MediaItem.
+    //
+    // We also feed `isResyncing` into the predicate so the spinner shows
+    // during the seekbar pause-load-resume window — the user expects
+    // feedback while the video rebufferes to the seek target.
+    //
     // The `isChangingQuality` flag distinguishes "initial load" from
     // "quality swap" so the parent can decide whether to keep the old
     // frame visible during the swap (we don't, because the old frame is
     // from a different resolution and would visually jump).
-    LaunchedEffect(isVideoReady, isChangingQuality, streamUrl, hasPlaybackFailed) {
-        val loading = !hasPlaybackFailed && streamUrl != null && !isVideoReady
+    LaunchedEffect(isVideoReady, isChangingQuality, isResyncing, streamUrl, hasPlaybackFailed, isResolvingUrl) {
+        val loading =
+            !hasPlaybackFailed &&
+                (
+                    isResolvingUrl ||
+                        isResyncing ||
+                        (streamUrl != null && !isVideoReady)
+                )
         onLoadingStateChange(loading)
     }
 
@@ -311,11 +417,19 @@ fun VideoArtworkPlayer(
         resolvedCaptionUrl = null
         isVideoReady = false
         hasPlaybackFailed = false
+        isResolvingUrl = true
+        // Reset resync + buffering-stuck state so a fresh videoId doesn't
+        // inherit stale state from the previous song.
+        isResyncing = false
+        wasPlayingBeforeResync = false
+        bufferingStartedAtMs = 0L
 
         val resolved =
             withContext(Dispatchers.IO) {
                 resolveVideoStreamUrl(videoId, updatedPreferredHeight)
             }
+
+        isResolvingUrl = false
 
         if (resolved == null) {
             hasPlaybackFailed = true
@@ -369,6 +483,7 @@ fun VideoArtworkPlayer(
         wasPlayingBeforeQualityChange = shouldPlay
         isChangingQuality = true
         isVideoReady = false
+        isResolvingUrl = true
         // Pause the video ExoPlayer immediately so the stale frame doesn't
         // keep rendering while we're swapping the stream.
         exoPlayer.pause()
@@ -380,6 +495,7 @@ fun VideoArtworkPlayer(
             withContext(Dispatchers.IO) {
                 resolveVideoStreamUrl(videoId, updatedPreferredHeight)
             }
+        isResolvingUrl = false
         if (resolved != null) {
             streamUrl = resolved.streamUrl
             onStreamResolved(resolved)
@@ -504,7 +620,7 @@ fun VideoArtworkPlayer(
         }
     }
 
-    // ── Periodic position sync ──
+    // ── Periodic position sync + stuck-buffering recovery ──
     //
     // Polls the main audio player's position and re-seeks the video surface
     // if drift exceeds [VideoSyncDriftToleranceMs]. Runs even when the player
@@ -512,30 +628,108 @@ fun VideoArtworkPlayer(
     // previously the `!shouldPlay` guard caused the video to stay at its old
     // position until the user hit play, which looked broken.
     //
-    // IMPORTANT: skip while `isChangingQuality` or `!isVideoReady` — during
-    // a quality swap the ExoPlayer is loading a new MediaItem and its
-    // currentPosition is meaningless (often 0 or the old stream's position).
-    // Re-seeking during that window would fight with the loader's own
-    // seek-to-main-position call and could land the video at the wrong spot.
+    // SEEKBAR PAUSE-LOAD-RESUME PROTOCOL:
+    //   Drifts > [UserSeekDriftThresholdMs] (1.5s) are treated as a user
+    //   seekbar drag. When detected AND the main player is currently playing,
+    //   we:
+    //     1. Capture `wasPlayingBeforeResync = shouldPlay`.
+    //     2. Set `isResyncing = true` and `isVideoReady = false` (so the
+    //        parent shows a loading spinner over the video surface).
+    //     3. Call `onRequestPauseMain()` to PAUSE the main audio player.
+    //        The user explicitly reported that audio continuing to play
+    //        while the video rebuffers after a seek is undesirable.
+    //     4. Pause the video ExoPlayer and seek it to the main player's
+    //        position.
+    //     5. Wait for `onRenderedFirstFrame` (fired by the player listener
+    //        below) — that's the signal that the video has buffered to the
+    //        new position.
+    //     6. In `onRenderedFirstFrame`, if `wasPlayingBeforeResync` was
+    //        true, call `onRequestResumeMain()` to resume the main audio
+    //        player. Both audio and video resume together, in sync.
+    //
+    //   If the main player is NOT playing (paused) when the seek happens,
+    //   we just re-seek the video silently — no pause/resume needed.
+    //
+    // STUCK-BUFFERING RECOVERY:
+    //   Each poll cycle also checks `bufferingStartedAtMs`. If the ExoPlayer
+    //   has been in STATE_BUFFERING for longer than [VideoStuckBufferingTimeoutMs],
+    //   we force a re-prepare (`exoPlayer.prepare()`) to break out of the
+    //   stuck state. This is the safety net for the "video gets stuck, only
+    //   audio plays" complaint — without it, a single BUFFERING state could
+    //   hang the video surface indefinitely while the main MusicService
+    //   audio kept playing.
+    //
+    // IMPORTANT: skip the drift check while `isChangingQuality` or
+    //   `!isVideoReady` or `isResyncing` — during a quality swap or resync
+    //   the ExoPlayer is loading a new MediaItem and its currentPosition
+    //   is meaningless (often 0 or the old stream's position). Re-seeking
+    //   during that window would fight with the loader's own seek-to-main-
+    //   position call and could land the video at the wrong spot.
     LaunchedEffect(streamUrl, exoPlayer) {
         if (streamUrl == null) return@LaunchedEffect
         while (isActive) {
             delay(VideoSyncPollIntervalMs)
             if (hasPlaybackFailed) continue
+
+            // ── Stuck-buffering recovery ──
+            // Runs even during isChangingQuality / isResyncing / !isVideoReady
+            // because a stuck BUFFERING state during those windows would
+            // otherwise never clear (the drift check below is skipped, so
+            // nothing would touch the player).
+            if (bufferingStartedAtMs > 0L) {
+                val bufferingForMs = SystemClock.elapsedRealtime() - bufferingStartedAtMs
+                if (bufferingForMs > VideoStuckBufferingTimeoutMs) {
+                    Timber
+                        .tag(VideoPlaybackLogTag)
+                        .w("Video stuck in BUFFERING for ${bufferingForMs}ms — forcing re-prepare")
+                    bufferingStartedAtMs = SystemClock.elapsedRealtime()
+                    // Re-prepare forces ExoPlayer to re-fetch the stream
+                    // from the network. The current MediaItem is preserved.
+                    exoPlayer.prepare()
+                }
+            }
+
+            // ── Drift / seek detection ──
             if (isChangingQuality) continue
+            if (isResyncing) continue
             if (!isVideoReady) continue
+
             val mainPos = currentPosition()
             if (mainPos <= 0) continue
             val videoPos = exoPlayer.currentPosition
             val drift = kotlin.math.abs(videoPos - mainPos)
+
             if (drift > VideoSyncDriftToleranceMs) {
-                Timber
-                    .tag(VideoPlaybackLogTag)
-                    .d("Re-syncing video: drift=${drift}ms (main=$mainPos, video=$videoPos)")
-                exoPlayer.seekTo(mainPos)
-                // Match play state too — if the user paused and the video is
-                // still playing (or vice versa), correct it here.
-                exoPlayer.setVideoPlayback(shouldPlay)
+                // Large drift + main player playing → user seekbar drag.
+                // Enter the pause-load-resume protocol.
+                if (drift > UserSeekDriftThresholdMs && shouldPlay && !hasPlaybackFailed) {
+                    Timber
+                        .tag(VideoPlaybackLogTag)
+                        .d("User seek detected: drift=${drift}ms (main=$mainPos, video=$videoPos) — pausing main, rebuffering video")
+                    wasPlayingBeforeResync = shouldPlay
+                    isResyncing = true
+                    isVideoReady = false
+                    // Pause main audio player — user wants both paused
+                    // while the video rebuffers to the seek target.
+                    onRequestPauseMain()
+                    // Pause + seek the video ExoPlayer. The seek triggers
+                    // STATE_BUFFERING → onRenderedFirstFrame when the new
+                    // position is ready.
+                    exoPlayer.pause()
+                    exoPlayer.seekTo(mainPos)
+                    // Mark buffering start so the stuck-recovery kicks in
+                    // if the rebuffer takes too long.
+                    bufferingStartedAtMs = SystemClock.elapsedRealtime()
+                } else {
+                    // Small drift (or paused main player): silent re-seek.
+                    Timber
+                        .tag(VideoPlaybackLogTag)
+                        .d("Re-syncing video: drift=${drift}ms (main=$mainPos, video=$videoPos)")
+                    exoPlayer.seekTo(mainPos)
+                    // Match play state too — if the user paused and the video is
+                    // still playing (or vice versa), correct it here.
+                    exoPlayer.setVideoPlayback(shouldPlay)
+                }
             }
         }
     }
@@ -568,6 +762,8 @@ fun VideoArtworkPlayer(
                     hasPlaybackFailed = true
                     isVideoReady = false
                     isChangingQuality = false
+                    isResyncing = false
+                    bufferingStartedAtMs = 0L
                     onPlaybackFailed()
                 }
 
@@ -575,28 +771,46 @@ fun VideoArtworkPlayer(
                     isVideoReady = true
                     val wasChangingQuality = isChangingQuality
                     isChangingQuality = false
+                    val wasResync = isResyncing
+                    isResyncing = false
+                    val wasPlayingBeforeResyncLocal = wasPlayingBeforeResync
+                    wasPlayingBeforeResync = false
+                    // Clear the buffering-stuck timer — we just rendered a
+                    // frame, so we're definitely not stuck anymore.
+                    bufferingStartedAtMs = 0L
 
                     // Re-seek to the main player's CURRENT position before
                     // starting playback. By the time the first frame renders,
                     // the audio may have advanced (or just started) — seeking
                     // here ensures the video starts at the exact same position
                     // as the audio, fixing the "video starts before audio" bug.
-                    val mainPos = currentPosition()
-                    if (mainPos > 0) {
-                        val videoPos = exoPlayer.currentPosition
-                        val drift = kotlin.math.abs(videoPos - mainPos)
-                        if (drift > VideoSyncDriftToleranceMs) {
-                            exoPlayer.seekTo(mainPos)
+                    //
+                    // SKIP this re-seek if we just finished a resync — the
+                    // resync path already seeked precisely to mainPos and we
+                    // don't want to fight with that seek. The drift check
+                    // below would almost always fire here (because the audio
+                    // is currently PAUSED due to the resync protocol and its
+                    // position hasn't moved, but any tiny drift would trigger
+                    // another seek → another rebuffer → loop).
+                    if (!wasResync) {
+                        val mainPos = currentPosition()
+                        if (mainPos > 0) {
+                            val videoPos = exoPlayer.currentPosition
+                            val drift = kotlin.math.abs(videoPos - mainPos)
+                            if (drift > VideoSyncDriftToleranceMs) {
+                                exoPlayer.seekTo(mainPos)
+                            }
                         }
                     }
 
-                    // Start video playback if the main player is playing.
-                    // Use playWhenReady = true directly (in addition to play())
-                    // because some media3 versions don't honor play() when
-                    // called immediately after seekTo — this was causing the
-                    // fullscreen video to get "stuck" until the user manually
-                    // paused/resumed.
-                    if (shouldPlay && !hasPlaybackFailed && exoPlayer.playerError == null) {
+                    // Determine if the video should play. Normally we use
+                    // `shouldPlay` (the main player's isPlaying state), but
+                    // right after a resync the main player is PAUSED (we
+                    // paused it in the poller) and `shouldPlay` may not yet
+                    // reflect the post-resume state. Use `wasPlayingBeforeResync`
+                    // as the authoritative signal in that case.
+                    val effectiveShouldPlay = shouldPlay || (wasResync && wasPlayingBeforeResyncLocal)
+                    if (effectiveShouldPlay && !hasPlaybackFailed && exoPlayer.playerError == null) {
                         exoPlayer.playWhenReady = true
                         exoPlayer.play()
                     }
@@ -607,25 +821,66 @@ fun VideoArtworkPlayer(
                     if (wasChangingQuality && wasPlayingBeforeQualityChange) {
                         onRequestResumeMain()
                     }
+
+                    // If we just finished a seekbar resync and the main player
+                    // was playing before the user seeked, resume the main audio
+                    // player now. The video has buffered to the new position,
+                    // so both can resume in sync.
+                    if (wasResync && wasPlayingBeforeResyncLocal) {
+                        onRequestResumeMain()
+                    }
                 }
 
                 override fun onPlaybackStateChanged(playbackState: Int) {
-                    if (playbackState == Player.STATE_ENDED) {
-                        // Loop back to the main player's position — the audio
-                        // may have moved on to a new song or repeated.
-                        val mainPos = currentPosition()
-                        exoPlayer.seekTo(mainPos)
-                        exoPlayer.setVideoPlayback(shouldPlay)
-                    } else if (shouldPlay && !hasPlaybackFailed && exoPlayer.playerError == null &&
-                        playbackState == Player.STATE_READY
-                    ) {
-                        // Only force-play when transitioning to STATE_READY.
-                        // Previously we played on every state except BUFFERING,
-                        // which could call play() during IDLE (before media
-                        // was loaded) and cause races with the loader's
-                        // seek-to-main-position call.
-                        exoPlayer.playWhenReady = true
-                        exoPlayer.play()
+                    when (playbackState) {
+                        Player.STATE_BUFFERING -> {
+                            // Record when we entered BUFFERING so the
+                            // periodic poller's stuck-recovery can detect
+                            // timeouts. Only set if not already set (avoid
+                            // overwriting on redundant state transitions).
+                            if (bufferingStartedAtMs == 0L) {
+                                bufferingStartedAtMs = SystemClock.elapsedRealtime()
+                            }
+                        }
+                        Player.STATE_READY -> {
+                            // Exited BUFFERING — clear the stuck timer.
+                            bufferingStartedAtMs = 0L
+
+                            // Only force-play when transitioning to STATE_READY.
+                            // Previously we played on every state except BUFFERING,
+                            // which could call play() during IDLE (before media
+                            // was loaded) and cause races with the loader's
+                            // seek-to-main-position call.
+                            //
+                            // We use `shouldPlay || isResyncing-with-wasPlayingBeforeResync`
+                            // here too, for the same reason as in
+                            // onRenderedFirstFrame — the main player might be
+                            // paused mid-resync when STATE_READY fires before
+                            // onRenderedFirstFrame.
+                            val effectiveShouldPlay =
+                                shouldPlay ||
+                                    (isResyncing && wasPlayingBeforeResync)
+                            if (effectiveShouldPlay && !hasPlaybackFailed &&
+                                exoPlayer.playerError == null
+                            ) {
+                                exoPlayer.playWhenReady = true
+                                exoPlayer.play()
+                            }
+                        }
+                        Player.STATE_ENDED -> {
+                            // Loop back to the main player's position — the audio
+                            // may have moved on to a new song or repeated.
+                            bufferingStartedAtMs = 0L
+                            val mainPos = currentPosition()
+                            exoPlayer.seekTo(mainPos)
+                            exoPlayer.setVideoPlayback(shouldPlay)
+                        }
+                        Player.STATE_IDLE -> {
+                            // Player stopped or media item reset. Clear the
+                            // stuck timer so we don't false-alarm on the next
+                            // BUFFERING.
+                            bufferingStartedAtMs = 0L
+                        }
                     }
                 }
             }
