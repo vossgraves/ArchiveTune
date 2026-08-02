@@ -30,9 +30,11 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.C
+import androidx.media3.common.CueGroup
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
+import androidx.media3.common.text.Cue
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultRenderersFactory
@@ -498,22 +500,37 @@ fun VideoArtworkPlayer(
         // media3's Compose `ContentFrame` only renders the video surface; it
         // does NOT render subtitles. To display captions we have to overlay
         // the regular `androidx.media3.ui.SubtitleView` (an Android View)
-        // and attach it to the same ExoPlayer. The text track is gated by
-        // the track selector (disabled when `captionsEnabled == false`), so
-        // this overlay is cheap: when captions are off, the SubtitleView
-        // just receives empty cues and renders nothing.
+        // and feed it cues from the ExoPlayer. media3's `SubtitleView` no
+        // longer has a `setPlayer()` method (that was the legacy ExoPlayer
+        // API); instead we listen for `onCues(CueGroup)` on the player and
+        // push the cue list into the view via `setCues()`. The text track
+        // is gated by the track selector (disabled when
+        // `captionsEnabled == false`), so this overlay is cheap: when
+        // captions are off, we don't even mount the listener or the view.
         if (captionsEnabled) {
+            var cues by remember { mutableStateOf<List<Cue>>(emptyList()) }
+
+            DisposableEffect(exoPlayer) {
+                val cueListener =
+                    object : Player.Listener {
+                        override fun onCues(cueGroup: CueGroup) {
+                            cues = cueGroup.cues
+                        }
+                    }
+                exoPlayer.addListener(cueListener)
+                onDispose { exoPlayer.removeListener(cueListener) }
+            }
+
             AndroidView(
                 factory = { ctx ->
                     SubtitleView(ctx).apply {
-                        setPlayer(exoPlayer)
                         setFractionalTextSize(0.0533f)
                         setApplyEmbeddedStyles(true)
                         setApplyEmbeddedFontSizes(true)
                         setStyle(androidx.media3.ui.CaptionStyleCompat.DEFAULT)
                     }
                 },
-                update = { it.setPlayer(exoPlayer) },
+                update = { it.setCues(cues) },
                 modifier = Modifier.fillMaxSize(),
             )
         }
