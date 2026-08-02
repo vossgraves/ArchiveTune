@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.ClosedCaptionOff
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.HighQuality
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -110,6 +111,13 @@ fun InlineVideoPlayer(
     var availableHeights by remember { mutableStateOf<List<Int>>(emptyList()) }
     var captionTracks by remember { mutableStateOf<List<PlayerResponse.CaptionTrack>>(emptyList()) }
     var qualityMenuOpen by remember { mutableStateOf(false) }
+    // True while the inline VideoArtworkPlayer is (re)loading its stream —
+    // either on initial mount or after the user picks a different quality.
+    // We render a centered CircularProgressIndicator over the video surface
+    // while this is true, so the user sees clear feedback that the video is
+    // swapping resolutions. The main MusicService audio keeps playing
+    // underneath, so the song doesn't skip.
+    var isLoading by remember { mutableStateOf(false) }
 
     Box(modifier = modifier) {
         VideoArtworkPlayer(
@@ -123,9 +131,29 @@ fun InlineVideoPlayer(
                 captionTracks = info?.captionTracks.orEmpty()
             },
             onPlaybackFailed = onPlaybackFailed,
+            onLoadingStateChange = { isLoading = it },
             resizeMode = resizeMode,
             modifier = Modifier.fillMaxSize(),
         )
+
+        // ── Loading overlay ──
+        //
+        // Shown on initial load AND during a quality swap. The video
+        // surface's alpha also animates to 0 while loading (handled inside
+        // VideoArtworkPlayer), so the user just sees a black box + spinner.
+        // The audio keeps playing through the main MusicService.
+        if (isLoading) {
+            Box(
+                modifier = Modifier.fillMaxSize().background(Color.Black),
+                contentAlignment = Alignment.Center,
+            ) {
+                CircularProgressIndicator(
+                    color = Color.White,
+                    strokeWidth = 3.dp,
+                    modifier = Modifier.size(48.dp),
+                )
+            }
+        }
 
         // ── Controls overlay ──
         Row(
@@ -278,6 +306,7 @@ private fun VideoFullscreenDialog(
             ),
     ) {
         var qualityMenuOpen by remember { mutableStateOf(false) }
+        var fsLoading by remember { mutableStateOf(false) }
         val context = LocalContext.current
 
         // Hide system bars for true immersive fullscreen. Restored on dispose
@@ -314,9 +343,24 @@ private fun VideoFullscreenDialog(
                 positionProvider = positionProvider,
                 preferredHeight = preferredHeight,
                 captionsEnabled = captionsEnabled,
+                onLoadingStateChange = { fsLoading = it },
                 resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT,
                 modifier = Modifier.fillMaxSize(),
             )
+
+            // Loading overlay — same rationale as the inline player.
+            if (fsLoading) {
+                Box(
+                    modifier = Modifier.fillMaxSize().background(Color.Black),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CircularProgressIndicator(
+                        color = Color.White,
+                        strokeWidth = 3.dp,
+                        modifier = Modifier.size(56.dp),
+                    )
+                }
+            }
 
             // Top-right controls: captions | quality | fullscreen-exit.
             // statusBarsPadding keeps the buttons clear of the (hidden)

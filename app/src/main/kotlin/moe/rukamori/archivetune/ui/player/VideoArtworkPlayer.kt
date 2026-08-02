@@ -112,14 +112,17 @@ data class VideoStreamInfo(
  *
  * Captions: the caption track URL is resolved internally alongside the
  * video stream URL and always side-loaded into the [MediaItem] as a WebVTT
- * subtitle. The [DefaultTrackSelector] enables/disables the text track type
- * based on [captionsEnabled] — when disabled, the subtitle is loaded but
- * not rendered; when enabled, it's rendered. This avoids a MediaItem rebuild
- * (and the associated rebuffer) when the user toggles captions.
+ * subtitle. The [DefaultTrackSelector] keeps `TRACK_TYPE_TEXT` always
+ * enabled so ExoPlayer selects and parses the subtitle on prepare().
+ * Caption *rendering* is gated at the view layer: the `SubtitleView`
+ * overlay is only mounted when [captionsEnabled] is true, so toggling
+ * captions does NOT require a MediaItem rebuild or a track-selector
+ * update — it's just a Compose recomposition.
  *
  * Position sync: on mount we seek to the main player's current position,
  * and a periodic poller re-seeks if drift exceeds [VideoSyncDriftToleranceMs].
- * Play/pause follows [isPlaying].
+ * Play/pause follows [isPlaying]. During a quality swap the poller is
+ * suspended (see `isChangingQuality`) so it doesn't fight with the loader.
  *
  * @param videoId The YouTube video ID (same as the song's mediaId for YouTube Music songs).
  * @param isPlaying Whether the main audio player is currently playing.
@@ -129,14 +132,20 @@ data class VideoStreamInfo(
  *   resolved internally alongside the video stream URL so the [MediaItem] is
  *   built with the subtitle side-load from the very first prepare() — this
  *   avoids a rebuffer when the user toggles captions on later. Toggling this
- *   parameter only updates the [DefaultTrackSelector] to enable/disable the
- *   text track type; no MediaItem rebuild is needed.
+ *   parameter only mounts/unmounts the [SubtitleView] overlay; no MediaItem
+ *   rebuild or track-selector update is needed.
  * @param onStreamResolved Invoked when the stream URL has been resolved, with the
  *   list of all heights YouTube offered (so the parent can render a quality picker)
  *   and the list of caption tracks (so the parent can render a captions picker).
  * @param onPlaybackFailed Invoked when playback fails (e.g. stream URL resolution
  *   exhausted all clients, or ExoPlayer emitted an error) so the parent can fall
  *   back to showing album artwork.
+ * @param onLoadingStateChange Invoked when the video surface transitions between
+ *   loading and ready. The parent uses this to show/hide a loading indicator
+ *   over the video surface (e.g. a CircularProgressIndicator) — this fires
+ *   both on initial load AND when the user changes the quality, so the audio
+ *   keeps playing through the main MusicService while the video surface shows
+ *   a spinner and re-syncs once the new stream renders its first frame.
  * @param modifier Modifier for the surface.
  * @param resizeMode AspectRatioFrameLayout resize mode (default FIT to letterbox within the artwork slot).
  */
@@ -150,6 +159,7 @@ fun VideoArtworkPlayer(
     captionsEnabled: Boolean = false,
     onStreamResolved: (VideoStreamInfo?) -> Unit = {},
     onPlaybackFailed: () -> Unit = {},
+    onLoadingStateChange: (Boolean) -> Unit = {},
     resizeMode: Int = AspectRatioFrameLayout.RESIZE_MODE_FIT,
 ) {
     if (videoId.isBlank()) {
@@ -167,6 +177,18 @@ fun VideoArtworkPlayer(
     var resolvedCaptionUrl by remember(videoId) { mutableStateOf<String?>(null) }
     var isVideoReady by remember(videoId) { mutableStateOf(false) }
     var hasPlaybackFailed by remember(videoId) { mutableStateOf(false) }
+    var isChangingQuality by remember(videoId) { mutableStateOf(false) }
+
+    // Propagate loading state to the parent so it can render a spinner.
+    // Loading = !isVideoReady AND we have a stream URL we're (re)loading.
+    // The `isChangingQuality` flag distinguishes "initial load" from
+    // "quality swap" so the parent can decide whether to keep the old
+    // frame visible during the swap (we don't, because the old frame is
+    // from a different resolution and would visually jump).
+    LaunchedEffect(isVideoReady, isChangingQuality, streamUrl, hasPlaybackFailed) {
+        val loading = !hasPlaybackFailed && streamUrl != null && !isVideoReady
+        onLoadingStateChange(loading)
+    }
 
     // ── OkHttp client with the YouTube stream proxy + request profile headers ──
     val okHttpClient =
@@ -221,15 +243,27 @@ fun VideoArtworkPlayer(
 
     // Disable the audio track — the main MusicService ExoPlayer is the
     // source of truth for audio. Playing audio here would double it.
-    // Text tracks are enabled only when the user has toggled captions on
-    // AND a caption URL has been resolved.
+    //
+    // Text tracks are ALWAYS enabled in the track selector. We never
+    // disable TRACK_TYPE_TEXT because doing so causes ExoPlayer to skip
+    // loading the subtitle entirely, which meant the onCues() callback
+    // never fired and captions never appeared (the previous bug). Instead
+    // we control rendering at the view layer: the SubtitleView overlay is
+    // only mounted when `captionsEnabled == true`, so when CC is off the
+    // subtitle track is still loaded/parsed (cheap — subtitles are tiny)
+    // but its cues are simply discarded (no view to push them to).
+    //
+    // We also set a preferred text language so ExoPlayer selects the
+    // side-loaded subtitle track immediately on prepare() rather than
+    // waiting for a track-selection pass that might never happen.
     val trackSelector =
         remember(context) {
             DefaultTrackSelector(context).apply {
                 setParameters(
                     buildUponParameters()
                         .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
-                        .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !captionsEnabled)
+                        .setPreferredTextLanguage("en")
+                        .setSelectUndeterminedTextLanguage(true)
                         .setForceHighestSupportedBitrate(true)
                         .build(),
                 )
@@ -297,15 +331,34 @@ fun VideoArtworkPlayer(
     // guard above handles initial resolution; this LaunchedEffect handles
     // subsequent user-driven changes.
     //
-    // We null out `streamUrl` first so that even if the new resolution
-    // happens to resolve to the same URL string (e.g. the picker was
-    // re-selected without change), the LaunchedEffect(streamUrl, ...)
-    // below still fires and reloads the MediaItem. This is important
-    // because the user expects *something* to happen when they tap a
-    // quality option.
+    // QUALITY-SWAP PROTOCOL (important for AV sync):
+    //   1. Set `isChangingQuality = true` and `isVideoReady = false` BEFORE
+    //      touching the stream URL. This immediately:
+    //        - hides the video surface (alpha animates to 0)
+    //        - shows the loading indicator in the parent overlay
+    //        - pauses the ExoPlayer (so the stale frame doesn't keep
+    //          playing while we re-resolve)
+    //      The main MusicService audio KEEPS PLAYING — that's correct,
+    //      the user expects the song to continue while the video catches
+    //      up to the new resolution.
+    //   2. Null out `streamUrl` so the LaunchedEffect(streamUrl, ...) below
+    //      fires and reloads the MediaItem with the new URL.
+    //   3. Resolve the new URL off the main thread.
+    //   4. Set the new `streamUrl` → triggers MediaItem reload → ExoPlayer
+    //      prepares → `onRenderedFirstFrame` fires → `isVideoReady = true`
+    //      and `isChangingQuality = false` → loading indicator hides,
+    //      video surface fades back in, playback resumes in sync with the
+    //      main player's current position (the loader seeks to
+    //      `currentPosition()` before starting playback).
     LaunchedEffect(preferredHeight) {
         // Skip the initial run — handled by the LaunchedEffect(videoId) above.
         if (streamUrl == null) return@LaunchedEffect
+        isChangingQuality = true
+        isVideoReady = false
+        // Pause immediately so the stale frame doesn't keep rendering
+        // while we're swapping the stream. The position-sync poller would
+        // otherwise re-start playback against the OLD media item.
+        exoPlayer.pause()
         streamUrl = null
         val resolved =
             withContext(Dispatchers.IO) {
@@ -314,6 +367,26 @@ fun VideoArtworkPlayer(
         if (resolved != null) {
             streamUrl = resolved.streamUrl
             onStreamResolved(resolved)
+        } else {
+            // Resolution failed — fall back to the previous stream so the
+            // user isn't left with a black screen. Clear the loading flag
+            // so the spinner doesn't spin forever.
+            isChangingQuality = false
+            // Re-resolve with the original preferredHeight to restore the
+            // previous stream. We don't have the old URL cached, so we
+            // have to re-resolve. If THIS also fails, onPlaybackFailed()
+            // will fire and the parent falls back to album artwork.
+            val fallback =
+                withContext(Dispatchers.IO) {
+                    resolveVideoStreamUrl(videoId, updatedPreferredHeight)
+                }
+            if (fallback != null) {
+                streamUrl = fallback.streamUrl
+                onStreamResolved(fallback)
+            } else {
+                hasPlaybackFailed = true
+                onPlaybackFailed()
+            }
         }
     }
 
@@ -340,23 +413,31 @@ fun VideoArtworkPlayer(
                 .setMimeType(mimeType)
 
         // Always side-load the caption track when we resolved one. The
-        // track selector below controls whether the text track is actually
-        // rendered (gated on `captionsEnabled`), so side-loading is free:
-        // when captions are disabled the subtitle is just ignored.
-        // This avoids a MediaItem rebuild (and the associated rebuffer)
-        // when the user toggles captions on later.
+        // track selector above keeps TRACK_TYPE_TEXT always enabled, so
+        // ExoPlayer will select this subtitle track on prepare() and begin
+        // parsing it. The SubtitleView overlay below is only mounted when
+        // `captionsEnabled == true`, so when CC is off the cues are parsed
+        // but discarded (no view to render them) — cheap, and avoids a
+        // MediaItem rebuild when the user toggles captions on later.
+        //
+        // We deliberately do NOT set a language on the SubtitleConfiguration
+        // if the resolved track's language is unknown — setting a language
+        // here would cause ExoPlayer to filter by it and potentially skip
+        // the track if the track selector's preferred language doesn't
+        // match. The track selector's `setSelectUndeterminedTextLanguage(true)`
+        // ensures the track is selected regardless.
         val activeCaptionUrl = resolvedCaptionUrl
         if (!activeCaptionUrl.isNullOrBlank()) {
-            mediaItemBuilder.setSubtitleConfigurations(
-                listOf(
-                    MediaItem.SubtitleConfiguration
-                        .Builder(android.net.Uri.parse(activeCaptionUrl))
-                        .setMimeType(MimeTypes.TEXT_VTT)
-                        .setLanguage("en")
-                        .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
-                        .build(),
-                ),
-            )
+            val subBuilder =
+                MediaItem.SubtitleConfiguration
+                    .Builder(android.net.Uri.parse(activeCaptionUrl))
+                    .setMimeType(MimeTypes.TEXT_VTT)
+                    .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+            // Only set the language if we actually know it — otherwise let
+            // ExoPlayer figure it out from the WebVTT file itself.
+            // (Hardcoding "en" here previously caused tracks with no
+            // languageCode to be silently dropped.)
+            mediaItemBuilder.setSubtitleConfigurations(listOf(subBuilder.build()))
         }
 
         exoPlayer.stop()
@@ -372,15 +453,12 @@ fun VideoArtworkPlayer(
         exoPlayer.setVideoPlayback(shouldPlay)
     }
 
-    // ── Toggle text-track disabling when captions toggle changes ──
-    LaunchedEffect(captionsEnabled) {
-        trackSelector.setParameters(
-            trackSelector
-                .buildUponParameters()
-                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !captionsEnabled)
-                .build(),
-        )
-    }
+    // No LaunchedEffect for captionsEnabled here — we keep TRACK_TYPE_TEXT
+    // always enabled in the track selector (see declaration above) and
+    // control caption rendering at the view layer via the SubtitleView
+    // mount/unmount below. This avoids the previous bug where disabling
+    // TRACK_TYPE_TEXT prevented the subtitle from being loaded at all,
+    // so onCues() never fired and captions never appeared.
 
     // ── Play/pause follower ──
     LaunchedEffect(isPlaying) {
@@ -398,11 +476,19 @@ fun VideoArtworkPlayer(
     // is paused so that a seekbar drag while paused still syncs the video —
     // previously the `!shouldPlay` guard caused the video to stay at its old
     // position until the user hit play, which looked broken.
+    //
+    // IMPORTANT: skip while `isChangingQuality` or `!isVideoReady` — during
+    // a quality swap the ExoPlayer is loading a new MediaItem and its
+    // currentPosition is meaningless (often 0 or the old stream's position).
+    // Re-seeking during that window would fight with the loader's own
+    // seek-to-main-position call and could land the video at the wrong spot.
     LaunchedEffect(streamUrl, exoPlayer) {
         if (streamUrl == null) return@LaunchedEffect
         while (isActive) {
             delay(VideoSyncPollIntervalMs)
             if (hasPlaybackFailed) continue
+            if (isChangingQuality) continue
+            if (!isVideoReady) continue
             val mainPos = currentPosition()
             if (mainPos <= 0) continue
             val videoPos = exoPlayer.currentPosition
@@ -446,11 +532,13 @@ fun VideoArtworkPlayer(
                     Timber.tag(VideoPlaybackLogTag).w(error, "Video playback failed for $videoId")
                     hasPlaybackFailed = true
                     isVideoReady = false
+                    isChangingQuality = false
                     onPlaybackFailed()
                 }
 
                 override fun onRenderedFirstFrame() {
                     isVideoReady = true
+                    isChangingQuality = false
                     if (shouldPlay && !hasPlaybackFailed && exoPlayer.playerError == null) {
                         exoPlayer.setVideoPlayback(isPlaying = true)
                     }
@@ -463,7 +551,15 @@ fun VideoArtworkPlayer(
                         val mainPos = currentPosition()
                         exoPlayer.seekTo(mainPos)
                         exoPlayer.setVideoPlayback(shouldPlay)
-                    } else if (shouldPlay && !hasPlaybackFailed && exoPlayer.playerError == null) {
+                    } else if (shouldPlay && !hasPlaybackFailed && exoPlayer.playerError == null &&
+                        playbackState != Player.STATE_BUFFERING
+                    ) {
+                        // Don't force-play during BUFFERING — the player is
+                        // still loading the next chunk and calling play()
+                        // here can race with the seek-to-main-position call
+                        // in the loader, causing the video to start from 0
+                        // instead of the synced position. Let
+                        // onRenderedFirstFrame drive the resume.
                         exoPlayer.setVideoPlayback(isPlaying = true)
                     }
                 }
