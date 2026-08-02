@@ -21,7 +21,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.navigation.NavController
 import moe.rukamori.archivetune.BuildConfig
 import moe.rukamori.archivetune.R
-import moe.rukamori.archivetune.constants.AllowVideoSwitchKey
 import moe.rukamori.archivetune.constants.ArchiveTuneCanvasKey
 import moe.rukamori.archivetune.constants.AudioNormalizationKey
 import moe.rukamori.archivetune.constants.AudioOffload
@@ -193,7 +192,6 @@ fun buildSettingsGroups(
                 SettingsChild("Pause on device mute", "pause_mute", listOf("mute", "pause mute", "headphone", "silence detect")) { SearchResultSwitch(PauseOnDeviceMuteKey, false) },
                 SettingsChild("Device mute recovery volume", "device_mute_recovery_volume", listOf("recovery volume", "mute recovery", "volume restore")),
                 SettingsChild("Auto start on Bluetooth", "bluetooth_auto_start", listOf("bluetooth", "auto start", "auto play", "connect")) { SearchResultSwitch(AutoStartOnBluetoothKey, false) },
-                SettingsChild("Allow switching to video", "allow_video_switch", listOf("video", "song video", "music video", "video toggle", "switch video")) { SearchResultSwitch(AllowVideoSwitchKey, false) },
                 SettingsChild("ArchiveTune Canvas", "archive_tune_canvas", listOf("canvas", "animated artwork", "motion artwork", "live artwork")) { SearchResultSwitch(ArchiveTuneCanvasKey, true) },
                 SettingsChild("Tidal artwork fallback", "tidal_artwork_fallback", listOf("tidal artwork", "artwork fallback", "tidal cover", "hi-res artwork")) { SearchResultSwitch(TidalArtworkFallbackEnabledKey, true) },
                 SettingsChild("Persistent queue", "persistent_queue", listOf("queue", "persistent", "save queue", "resume")) { SearchResultSwitch(PersistentQueueKey, true) },

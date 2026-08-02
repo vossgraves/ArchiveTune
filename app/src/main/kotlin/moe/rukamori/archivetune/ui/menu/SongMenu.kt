@@ -454,14 +454,6 @@ fun SongMenu(
     // are hidden for them — they still support play next / add to queue / add to playlist.
     val isTelegramSong = song.song.id.isTelegramMediaId()
 
-    // NOTE: The "Video" overflow action used to live here. It navigated to
-    // a separate full-screen VideoPlayerScreen that showed "couldn't find a
-    // video version" whenever the YouTube IFrame API rejected the embed.
-    // It has been replaced by the inline Song | Video pill at the top of
-    // the player sheet (see Player.kt + VideoSurface.kt + SongVideoTogglePill.kt),
-    // which mirrors YouTube Music's behavior. Enable it via the
-    // "Allow switching to video" toggle in Playback settings.
-
     val startRadioText = stringResource(R.string.start_radio)
     val playNextText = stringResource(R.string.play_next)
     val addToQueueText = stringResource(R.string.add_to_queue)

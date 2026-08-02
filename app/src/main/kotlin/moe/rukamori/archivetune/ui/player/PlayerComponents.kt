@@ -102,6 +102,7 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
 import me.saket.squiggles.SquigglySlider
+import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.EnableHapticFeedbackKey
 import moe.rukamori.archivetune.constants.PlayerBackgroundStyle
@@ -124,6 +125,7 @@ import moe.rukamori.archivetune.ui.theme.PlayerBackgroundColorUtils
 import moe.rukamori.archivetune.ui.theme.PlayerSliderColors
 import moe.rukamori.archivetune.ui.utils.ShowMediaInfo
 import moe.rukamori.archivetune.ui.utils.highRes
+import moe.rukamori.archivetune.utils.isLocalMediaId
 import moe.rukamori.archivetune.utils.makeTimeString
 import moe.rukamori.archivetune.utils.rememberLowDataModeActive
 import moe.rukamori.archivetune.utils.rememberPreference
@@ -2342,6 +2344,8 @@ private fun V8PortraitContent(
                 canvasFallbackUrl = canvasFallbackUrl,
                 isPlaying = isPlaying,
                 size = artworkSize,
+                videoId = mediaMetadata.id.takeIf { !it.isLocalMediaId() },
+                isMusicVideo = mediaMetadata.isMusicVideo,
             )
 
             Spacer(Modifier.height(artworkToMetadata))
@@ -2456,6 +2460,8 @@ private fun V8LandscapeContent(
                 canvasFallbackUrl = canvasFallbackUrl,
                 isPlaying = isPlaying,
                 size = artworkSize,
+                videoId = mediaMetadata.id.takeIf { !it.isLocalMediaId() },
+                isMusicVideo = mediaMetadata.isMusicVideo,
             )
 
             Column(
@@ -2571,8 +2577,11 @@ private fun V8Artwork(
     canvasFallbackUrl: String?,
     isPlaying: Boolean,
     size: androidx.compose.ui.unit.Dp,
+    videoId: String? = null,
+    isMusicVideo: Boolean = false,
 ) {
     val artworkRequest = rememberOfflineArtworkImageRequest(artworkUrl)
+    val playerConnection = LocalPlayerConnection.current
     Box(
         modifier =
             Modifier
@@ -2580,21 +2589,37 @@ private fun V8Artwork(
                 .clip(RoundedCornerShape(8.dp))
                 .background(Color.White.copy(alpha = 0.08f)),
     ) {
-        AsyncImage(
-            model = artworkRequest,
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize(),
-        )
-
-        if (!canvasPrimaryUrl.isNullOrBlank() || !canvasFallbackUrl.isNullOrBlank()) {
-            CanvasArtworkPlayer(
-                primaryUrl = canvasPrimaryUrl,
-                fallbackUrl = canvasFallbackUrl,
+        // When the current media is a music video, render the video inline
+        // in place of the album artwork. Audio continues through the main
+        // MusicService ExoPlayer, so all transport controls work as normal.
+        val showVideo =
+            isMusicVideo &&
+                !videoId.isNullOrBlank() &&
+                playerConnection != null
+        if (showVideo) {
+            VideoArtworkPlayer(
+                videoId = videoId!!,
                 isPlaying = isPlaying,
-                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
+                positionProvider = { playerConnection?.player?.currentPosition ?: 0L },
                 modifier = Modifier.fillMaxSize(),
             )
+        } else {
+            AsyncImage(
+                model = artworkRequest,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+
+            if (!canvasPrimaryUrl.isNullOrBlank() || !canvasFallbackUrl.isNullOrBlank()) {
+                CanvasArtworkPlayer(
+                    primaryUrl = canvasPrimaryUrl,
+                    fallbackUrl = canvasFallbackUrl,
+                    isPlaying = isPlaying,
+                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
         }
     }
 }
@@ -3067,6 +3092,8 @@ fun V9PlayerContent(
             textBackgroundColor = textBackgroundColor,
             textButtonColor = textButtonColor,
             iconButtonColor = iconButtonColor,
+            videoId = mediaMetadata.id.takeIf { !it.isLocalMediaId() },
+            isMusicVideo = mediaMetadata.isMusicVideo,
             onCollapseClick = onCollapseClick,
             onQueueClick = onQueueClick,
             onLyricsClick = onLyricsClick,
@@ -3098,6 +3125,8 @@ fun V9PlayerContent(
             textBackgroundColor = textBackgroundColor,
             textButtonColor = textButtonColor,
             iconButtonColor = iconButtonColor,
+            videoId = mediaMetadata.id.takeIf { !it.isLocalMediaId() },
+            isMusicVideo = mediaMetadata.isMusicVideo,
             onCollapseClick = onCollapseClick,
             onQueueClick = onQueueClick,
             onLyricsClick = onLyricsClick,
@@ -3132,6 +3161,8 @@ private fun V9PortraitContent(
     textBackgroundColor: Color,
     textButtonColor: Color,
     iconButtonColor: Color,
+    videoId: String? = null,
+    isMusicVideo: Boolean = false,
     onCollapseClick: () -> Unit,
     onQueueClick: () -> Unit,
     onLyricsClick: () -> Unit,
@@ -3213,6 +3244,8 @@ private fun V9PortraitContent(
                 isPlaying = isPlaying,
                 size = artworkSize,
                 placeholderColor = textButtonColor.copy(alpha = 0.12f),
+                videoId = videoId,
+                isMusicVideo = isMusicVideo,
             )
 
             Spacer(Modifier.height(metadataGap))
@@ -3281,6 +3314,8 @@ private fun V9LandscapeContent(
     textBackgroundColor: Color,
     textButtonColor: Color,
     iconButtonColor: Color,
+    videoId: String? = null,
+    isMusicVideo: Boolean = false,
     onCollapseClick: () -> Unit,
     onQueueClick: () -> Unit,
     onLyricsClick: () -> Unit,
@@ -3314,6 +3349,8 @@ private fun V9LandscapeContent(
                 isPlaying = isPlaying,
                 size = artworkSize,
                 placeholderColor = textButtonColor.copy(alpha = 0.12f),
+                videoId = videoId,
+                isMusicVideo = isMusicVideo,
             )
 
             Column(
@@ -3475,8 +3512,11 @@ private fun V9Artwork(
     isPlaying: Boolean,
     size: Dp,
     placeholderColor: Color,
+    videoId: String? = null,
+    isMusicVideo: Boolean = false,
 ) {
     val artworkRequest = rememberOfflineArtworkImageRequest(artworkUrl)
+    val playerConnection = LocalPlayerConnection.current
     Box(
         modifier =
             Modifier
@@ -3484,21 +3524,37 @@ private fun V9Artwork(
                 .clip(RoundedCornerShape(30.dp))
                 .background(placeholderColor),
     ) {
-        AsyncImage(
-            model = artworkRequest,
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize(),
-        )
-
-        if (!canvasPrimaryUrl.isNullOrBlank() || !canvasFallbackUrl.isNullOrBlank()) {
-            CanvasArtworkPlayer(
-                primaryUrl = canvasPrimaryUrl,
-                fallbackUrl = canvasFallbackUrl,
+        // When the current media is a music video, render the video inline
+        // in place of the album artwork. Audio continues through the main
+        // MusicService ExoPlayer, so all transport controls work as normal.
+        val showVideo =
+            isMusicVideo &&
+                !videoId.isNullOrBlank() &&
+                playerConnection != null
+        if (showVideo) {
+            VideoArtworkPlayer(
+                videoId = videoId!!,
                 isPlaying = isPlaying,
-                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
+                positionProvider = { playerConnection?.player?.currentPosition ?: 0L },
                 modifier = Modifier.fillMaxSize(),
             )
+        } else {
+            AsyncImage(
+                model = artworkRequest,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+
+            if (!canvasPrimaryUrl.isNullOrBlank() || !canvasFallbackUrl.isNullOrBlank()) {
+                CanvasArtworkPlayer(
+                    primaryUrl = canvasPrimaryUrl,
+                    fallbackUrl = canvasFallbackUrl,
+                    isPlaying = isPlaying,
+                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
         }
     }
 }
