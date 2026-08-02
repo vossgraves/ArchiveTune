@@ -330,6 +330,15 @@ fun YouTubeSongMenu(
     val addToPlaylistText = stringResource(R.string.add_to_playlist)
     val shareText = stringResource(R.string.share)
 
+    // NOTE: The "Video" overflow action used to live here. It navigated
+    // to a separate full-screen VideoPlayerScreen that showed "couldn't
+    // find a video version" whenever the YouTube IFrame API rejected the
+    // embed. It has been replaced by the inline Song | Video pill at the
+    // top of the player sheet (see Player.kt + VideoSurface.kt +
+    // SongVideoTogglePill.kt), which mirrors YouTube Music's behavior.
+    // Enable it via the "Allow switching to video" toggle in Playback
+    // settings.
+
     val primaryActions =
         remember(
             song,
@@ -340,6 +349,7 @@ fun YouTubeSongMenu(
             shareText,
             onDismiss,
             playerConnection,
+            navController,
         ) {
             listOf(
                 NewAction(

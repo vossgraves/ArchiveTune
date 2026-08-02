@@ -191,6 +191,11 @@ val EnableUnisonLyricsKey = booleanPreferencesKey("enableUnisonLyrics")
 val HideExplicitKey = booleanPreferencesKey("hideExplicit")
 val HideVideoKey = booleanPreferencesKey("hideVideo")
 val AllowAgeRestrictedKey = booleanPreferencesKey("allowAgeRestricted")
+// When true, a "Song | Video" pill is shown at the top of every player style.
+// Tapping "Video" replaces the album artwork with an inline YouTube IFrame
+// player for the current song (mirroring the Song/Video toggle in YouTube
+// Music). When false, the pill is hidden and only audio playback is offered.
+val AllowVideoSwitchKey = booleanPreferencesKey("allowVideoSwitch")
 enum class DownloadSource {
     /**
      * Picks the best available source per song: tries Qobuz → Tidal → Deezer

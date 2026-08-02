@@ -32,6 +32,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.navigation.NavController
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.constants.AllowVideoSwitchKey
 import moe.rukamori.archivetune.constants.ArchiveTuneCanvasKey
 import moe.rukamori.archivetune.constants.ArtistSeparatorsKey
 import moe.rukamori.archivetune.constants.AudioNormalizationKey
@@ -141,6 +142,11 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
     val (autoStartOnBluetooth, onAutoStartOnBluetoothChange) =
         rememberPreference(
             AutoStartOnBluetoothKey,
+            defaultValue = false,
+        )
+    val (allowVideoSwitch, onAllowVideoSwitchChange) =
+        rememberPreference(
+            AllowVideoSwitchKey,
             defaultValue = false,
         )
     val (stopMusicOnTaskClear, onStopMusicOnTaskClearChange) =
@@ -443,6 +449,18 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                             icon = { Icon(painterResource(R.drawable.bluetooth), null) },
                             checked = autoStartOnBluetooth,
                             onCheckedChange = onAutoStartOnBluetoothChange,
+                        )
+                    }
+                }
+
+                item {
+                    Column(modifier = positions.modifierFor("allow_video_switch")) {
+                        SwitchPreference(
+                            title = { Text(stringResource(R.string.allow_video_switch_title)) },
+                            description = stringResource(R.string.allow_video_switch_desc),
+                            icon = { Icon(painterResource(R.drawable.video), null) },
+                            checked = allowVideoSwitch,
+                            onCheckedChange = onAllowVideoSwitchChange,
                         )
                     }
                 }

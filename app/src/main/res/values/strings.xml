@@ -224,6 +224,16 @@
     <string name="refetch_canvas">Refetch canvas</string>
     <string name="canvas_refetch_failed">Couldn\'t refresh animated canvas</string>
     <string name="share">Share</string>
+    <string name="action_video">Video</string>
+    <string name="action_song">Song</string>
+    <string name="video_player_title">Video</string>
+    <string name="video_loading">Loading video…</string>
+    <string name="video_load_failed">Couldn\'t find a video version of this song</string>
+    <string name="video_open_in_youtube">Open in YouTube</string>
+    <string name="allow_video_switch_title">Allow switching to video</string>
+    <string name="allow_video_switch_desc">Show a Song | Video toggle at the top of the player. Video plays inline like YouTube Music.</string>
+    <string name="video_open_in_youtube_fallback">Video can\'t play here. Open in YouTube?</string>
+    <string name="video_resolving">Looking up video…</string>
     <string name="delete">Delete</string>
     <string name="hide_playlist">Hide playlist</string>
     <string name="unhide_playlist">Unhide playlist</string>

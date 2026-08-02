@@ -19,6 +19,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.provider.Settings
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -60,6 +61,8 @@ import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
@@ -86,6 +89,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -154,12 +158,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalAnimationsDisabled
 import moe.rukamori.archivetune.LocalDownloadUtil
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.canvas.models.CanvasArtwork
+import moe.rukamori.archivetune.constants.AllowVideoSwitchKey
 import moe.rukamori.archivetune.constants.ArchiveTuneCanvasKey
 import moe.rukamori.archivetune.constants.BackdropBlurAmountKey
 import moe.rukamori.archivetune.constants.BackdropEnabledKey
@@ -188,8 +194,11 @@ import moe.rukamori.archivetune.constants.SliderStyleKey
 import moe.rukamori.archivetune.constants.ThumbnailCornerRadiusKey
 import moe.rukamori.archivetune.extensions.metadata
 import moe.rukamori.archivetune.extensions.togglePlayPause
+import moe.rukamori.archivetune.innertube.YouTube
+import moe.rukamori.archivetune.innertube.models.SongItem
 import moe.rukamori.archivetune.innertube.utils.hasYouTubeLoginCookie
 import moe.rukamori.archivetune.models.MediaMetadata
+import moe.rukamori.archivetune.telegram.isTelegramMediaId
 import moe.rukamori.archivetune.ui.component.BottomSheet
 import moe.rukamori.archivetune.ui.component.BottomSheetState
 import moe.rukamori.archivetune.ui.component.COLLAPSED_ANCHOR
@@ -210,6 +219,7 @@ import moe.rukamori.archivetune.ui.utils.YtimgResizePolicy
 import moe.rukamori.archivetune.ui.utils.getNextFallbackUrl
 import moe.rukamori.archivetune.ui.utils.resize
 import moe.rukamori.archivetune.utils.ImageBlurUtils
+import moe.rukamori.archivetune.utils.isLocalMediaId
 import moe.rukamori.archivetune.utils.makeTimeString
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberLowDataModeActive
@@ -1388,6 +1398,81 @@ fun BottomSheetPlayer(
 
 // distance
 
+        // ── Song | Video toggle (inline YouTube IFrame player) ─────────────────
+        // When AllowVideoSwitchKey is on, a segmented pill is shown at the top
+        // of every player style. Tapping "Video" replaces the album artwork
+        // with an inline YouTube IFrame player for the current song —
+        // mirroring the Song/Video toggle in YouTube Music. Tapping "Song"
+        // restores the artwork and resumes audio.
+        val allowVideoSwitch by rememberPreference(AllowVideoSwitchKey, defaultValue = false)
+        val videoCoroutineScope = rememberCoroutineScope()
+        val videoContext = LocalContext.current
+        // Per-song video state. Resets when the song changes so the user
+        // always starts in Song mode for a new track (matches YouTube Music).
+        var videoMode by rememberSaveable(mediaMetadata?.id) { mutableStateOf(false) }
+        var resolvedVideoId by remember(mediaMetadata?.id) { mutableStateOf<String?>(null) }
+        var isResolvingVideo by remember(mediaMetadata?.id) { mutableStateOf(false) }
+
+        val onVideoSelected: () -> Unit = onVideoSelected@{
+            val metadata = mediaMetadata ?: return@onVideoSelected
+            val songId = metadata.id
+            val isLocal = songId.isLocalMediaId()
+            val isTelegram = songId.isTelegramMediaId()
+            if (!isLocal && !isTelegram) {
+                // YouTube Music song IDs ARE YouTube video IDs — use directly.
+                resolvedVideoId = songId
+                videoMode = true
+                playerConnection.player.playWhenReady = false
+            } else {
+                // Local / Telegram: search YouTube Music for the music video.
+                videoCoroutineScope.launch {
+                    isResolvingVideo = true
+                    val term =
+                        listOf(
+                            metadata.artists.firstOrNull()?.name?.takeIf(String::isNotBlank),
+                            metadata.title.takeIf(String::isNotBlank),
+                        ).filterNotNull().joinToString(" ").ifBlank {
+                            isResolvingVideo = false
+                            return@launch
+                        }
+                    val result =
+                        withContext(Dispatchers.IO) {
+                            runCatching {
+                                YouTube.search(term, YouTube.SearchFilter.FILTER_VIDEO).getOrNull()
+                            }.getOrNull()
+                        }
+                    isResolvingVideo = false
+                    val vid =
+                        result?.items
+                            ?.mapNotNull { it as? SongItem }
+                            ?.firstOrNull()
+                            ?.id
+                    if (vid.isNullOrBlank()) {
+                        Toast
+                            .makeText(videoContext, R.string.video_load_failed, Toast.LENGTH_SHORT)
+                            .show()
+                        return@launch
+                    }
+                    resolvedVideoId = vid
+                    videoMode = true
+                    playerConnection.player.playWhenReady = false
+                }
+            }
+        }
+
+        val onSongSelected: () -> Unit =
+            {
+                videoMode = false
+                // Resume audio so the user hears the song immediately when
+                // switching back from Video — matches YouTube Music.
+                playerConnection.player.playWhenReady = true
+            }
+
+        // The videoId we should hand to VideoSurface, or null if we don't
+        // have one yet (still resolving, or video mode is off).
+        val activeVideoId: String? =
+            if (videoMode) resolvedVideoId?.takeIf { it.isNotBlank() } else null
+
         when (LocalConfiguration.current.orientation) {
             Configuration.ORIENTATION_LANDSCAPE -> {
                 if (playerDesignStyle == PlayerDesignStyle.V5) {
@@ -2045,6 +2130,57 @@ fun BottomSheetPlayer(
                 onDismiss = { isLyricsScreenVisible = false },
                 onQueueClick = openQueue,
             )
+        }
+
+        // ── Song | Video pill overlay ─────────────────────────────────────────
+        // The pill floats at the top-center of the player sheet whenever the
+        // user has enabled "Allow switching to video" in Playback settings
+        // and a song is loaded. Tapping "Video" swaps the artwork area for
+        // an inline YouTube IFrame player (see VideoSurface).
+        if (allowVideoSwitch && mediaMetadata != null && !aodModeEnabled && !isLyricsScreenVisible) {
+            SongVideoTogglePill(
+                isVideoMode = videoMode,
+                isResolving = isResolvingVideo,
+                onSongSelected = onSongSelected,
+                onVideoSelected = onVideoSelected,
+                modifier =
+                    Modifier
+                        .align(Alignment.TopCenter)
+                        .statusBarsPadding()
+                        .padding(top = 8.dp),
+            )
+        }
+
+        // ── Inline video surface overlay ─────────────────────────────────────
+        // When the user has selected "Video", we overlay the entire player
+        // sheet content with a fullscreen black Box that hosts the YouTube
+        // IFrame player. This mirrors YouTube Music: the album artwork is
+        // replaced by the video, the underlying audio is paused, and the
+        // pill stays on top so the user can switch back to "Song".
+        if (videoMode && activeVideoId != null && !aodModeEnabled && !isLyricsScreenVisible) {
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .background(Color.Black),
+            ) {
+                VideoSurface(
+                    videoId = activeVideoId,
+                    onEmbeddingBlocked = {
+                        // The video can't be embedded (error 101/150/100/2).
+                        // VideoSurface already shows an inline "Open in YouTube"
+                        // button + hands off to the system YouTube app. Flip
+                        // back to Song mode so the user lands on a working
+                        // player instead of a dead video surface.
+                        onSongSelected()
+                    },
+                    modifier =
+                        Modifier
+                            .align(Alignment.Center)
+                            .fillMaxWidth()
+                            .aspectRatio(16f / 9f),
+                )
+            }
         }
 
         AnimatedVisibility(
