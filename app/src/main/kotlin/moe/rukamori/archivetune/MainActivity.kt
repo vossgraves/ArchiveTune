@@ -291,6 +291,7 @@ import moe.rukamori.archivetune.ui.component.rememberBottomSheetState
 import moe.rukamori.archivetune.ui.component.shimmer.ShimmerTheme
 import moe.rukamori.archivetune.ui.menu.YouTubeSongMenu
 import moe.rukamori.archivetune.ui.player.BottomSheetPlayer
+import moe.rukamori.archivetune.ui.player.ProvideVideoFullscreenState
 import moe.rukamori.archivetune.ui.screens.LOGIN_URL_ARGUMENT
 import moe.rukamori.archivetune.ui.screens.Screens
 import moe.rukamori.archivetune.ui.screens.buildLoginRoute
@@ -2293,13 +2294,15 @@ class MainActivity : ComponentActivity() {
                                                 !isFloatingNavBar &&
                                                 playerBottomSheetState.isCollapsed
 
-                                        BottomSheetPlayer(
-                                            state = playerBottomSheetState,
-                                            navController = navController,
-                                            pureBlack = pureBlack,
-                                            isMiniPlayerPairedWithNavigation = areBottomBarsPaired,
-                                            onLyricsVisibilityChange = { isPlayerLyricsFullScreen = it },
-                                        )
+                                        ProvideVideoFullscreenState {
+                                            BottomSheetPlayer(
+                                                state = playerBottomSheetState,
+                                                navController = navController,
+                                                pureBlack = pureBlack,
+                                                isMiniPlayerPairedWithNavigation = areBottomBarsPaired,
+                                                onLyricsVisibilityChange = { isPlayerLyricsFullScreen = it },
+                                            )
+                                        }
 
                                         if (useRail) return@Box
 

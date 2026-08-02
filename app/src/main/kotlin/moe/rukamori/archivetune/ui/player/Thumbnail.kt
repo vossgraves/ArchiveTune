@@ -631,11 +631,6 @@ fun Thumbnail(
 
                                     if (isCurrentMusicVideo) {
                                         InlineVideoPlayer(
-                                            videoId = item.mediaId,
-                                            isPlaying = isPlaying,
-                                            positionProvider = { playerConnection.player.currentPosition },
-                                            onRequestPauseMain = { playerConnection.player.pause() },
-                                            onRequestResumeMain = { playerConnection.player.play() },
                                             modifier = Modifier.fillMaxSize(),
                                         )
                                     }

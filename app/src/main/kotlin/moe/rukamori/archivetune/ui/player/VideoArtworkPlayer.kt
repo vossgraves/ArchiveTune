@@ -60,30 +60,62 @@ import java.util.Locale
 /**
  * Maximum allowed drift between the main audio player's position and the
  * video surface's position before we force a re-seek.
+ *
+ * NOTE: This was previously 400ms, which was too tight for VP9/AV1 hardware
+ * decoders on mobile. The decoder naturally lags behind the audio player by
+ * 300–800ms due to frame rendering pipeline depth. A tight tolerance causes
+ * a seekTo on every poll cycle, which re-buffers, which causes MORE drift,
+ * creating an infinite re-sync loop (the "video keeps pausing" bug).
+ *
+ * 2000ms is wide enough to absorb normal decoder lag while still catching
+ * genuine desync from network hiccups or background throttling.
  */
-private const val VideoSyncDriftToleranceMs = 400L
+private const val VideoSyncDriftToleranceMs = 2000L
 
 /**
- * Drift threshold above which we assume the user dragged the seekbar.
- * Triggers the pause-load-resume protocol (see [rememberVideoArtworkState]).
+ * Drift threshold above which we fire a "soft" seek (seek the video WITHOUT
+ * pausing the main audio player). The video may freeze briefly while it
+ * re-buffers, but the audio continues uninterrupted.
+ *
+ * This is intentionally NOT a pause-load-resume — that protocol was removed
+ * from the automatic drift path because it caused the "video keeps pausing
+ * repeatedly" bug: the resync would pause both audio+video, the video would
+ * re-buffer, both would resume, and then the next poll cycle would detect
+ * drift again (because the video is naturally behind from decoder lag),
+ * triggering another resync — an infinite loop.
+ *
+ * The pause-load-resume protocol is now ONLY triggered by an explicit call
+ * to [VideoArtworkState.requestResync], which is wired to the seekbar's
+ * onValueChangeFinished callback.
  */
-private const val UserSeekDriftThresholdMs = 1500L
+private const val VideoSoftSeekDriftThresholdMs = 3000L
 
 /**
  * How often to poll the main player's position and re-sync the video.
  */
-private const val VideoSyncPollIntervalMs = 250L
+private const val VideoSyncPollIntervalMs = 500L
 
 /**
  * Maximum time the video ExoPlayer is allowed to stay in STATE_BUFFERING
  * before we force a re-prepare to break out of a stuck state.
+ *
+ * NOTE: Was 8000ms, which was too aggressive — normal network hiccups can
+ * cause 5–10s of buffering, and the re-prepare itself causes a brief pause.
+ * This contributed to the "video keeps pausing" bug. 20s is long enough to
+ * ride out transient network issues while still catching genuinely stuck
+ * states.
  */
-private const val VideoStuckBufferingTimeoutMs = 8000L
+private const val VideoStuckBufferingTimeoutMs = 20000L
 
 /**
  * Hard cap on the resolution we will ever attempt to play.
+ *
+ * Capped at 1080p — 4K (2160) VP9 decoding on mobile chipsets causes
+ * persistent ~500ms decoder lag that makes the video fall behind audio,
+ * triggering constant re-syncs. 1080p is more than sufficient for a phone
+ * screen and decodes fast enough to keep drift under the tolerance.
  */
-private const val MaxVideoHeightCap = 2160
+private const val MaxVideoHeightCap = 1080
 
 /**
  * Resolved information about a video stream — the playable URL plus the
@@ -132,6 +164,39 @@ class VideoArtworkState internal constructor(
         internal set
     var bufferingStartedAtMs: Long by mutableStateOf(0L)
         internal set
+
+    /**
+     * Pending resync request set by [requestResync]. Consumed by a
+     * [LaunchedEffect] in [rememberVideoArtworkState] which performs the
+     * actual pause-load-resume protocol.
+     *
+     * This indirection exists because [requestResync] is called from outside
+     * the composable (e.g. from the seekbar's onValueChangeFinished in
+     * BottomSheetPlayer) but the resync needs access to composable-scoped
+     * state (the [exoPlayer], the pause/resume callbacks, etc.).
+     */
+    internal var pendingResync: Pair<Long, Boolean>? by mutableStateOf(null)
+
+    /**
+     * Request a pause-load-resume resync to [position].
+     *
+     * This is the SEEKBAR resync path: when the user drags the seekbar and
+     * releases, the host calls this method. It:
+     *   1. Pauses the main audio player (if [isPlaying]).
+     *   2. Pauses the video ExoPlayer.
+     *   3. Seeks the video to [position].
+     *   4. Waits for the first frame to render (see [onRenderedFirstFrame]).
+     *   5. Resumes both the audio and video together.
+     *
+     * This is the ONLY path that triggers a pause-load-resume. The automatic
+     * drift-based resync was removed because it caused the "video keeps
+     * pausing repeatedly" bug.
+     */
+    fun requestResync(position: Long, isPlaying: Boolean) {
+        if (hasPlaybackFailed) return
+        if (isResyncing) return
+        pendingResync = position to isPlaying
+    }
 }
 
 /**
@@ -148,10 +213,19 @@ class VideoArtworkState internal constructor(
  * [VideoArtworkSurface] (the view layer) moves; the player underneath
  * keeps running.
  *
- * Seekbar pause-load-resume protocol: when the periodic poller detects
- * drift > [UserSeekDriftThresholdMs] and the main player is playing, it
- * pauses the main audio player, seeks the video, waits for the first frame
- * to render, then resumes both together.
+ * Seekbar pause-load-resume protocol: triggered by an explicit call to
+ * [VideoArtworkState.requestResync] (wired to the seekbar's
+ * onValueChangeFinished in BottomSheetPlayer). It pauses the main audio
+ * player, seeks the video, waits for the first frame to render, then
+ * resumes both together. This is the ONLY path that triggers a
+ * pause-load-resume — the automatic drift-based resync was removed because
+ * it caused the "video keeps pausing repeatedly" bug.
+ *
+ * Automatic drift handling: the periodic poller detects drift between the
+ * audio and video positions. For large drifts (> [VideoSoftSeekDriftThresholdMs])
+ * while playing, it performs a "soft seek" — seeking the video WITHOUT
+ * pausing the main audio. The video may freeze briefly while it re-buffers,
+ * but the audio continues uninterrupted.
  *
  * Stuck-buffering recovery: if the ExoPlayer stays in STATE_BUFFERING for
  * longer than [VideoStuckBufferingTimeoutMs], the poller forces a
@@ -389,6 +463,30 @@ fun rememberVideoArtworkState(
         }
     }
 
+    // ── Manual resync (seekbar) ──
+    //
+    // Triggered by [VideoArtworkState.requestResync], which is called from
+    // the seekbar's onValueChangeFinished in BottomSheetPlayer. This is the
+    // ONLY path that performs a pause-load-resume. The automatic drift-based
+    // resync was removed because it caused the "video keeps pausing repeatedly"
+    // bug (infinite resync loop).
+    LaunchedEffect(state.pendingResync) {
+        val (position, wasPlaying) = state.pendingResync ?: return@LaunchedEffect
+        // Consume the request immediately so subsequent calls re-trigger.
+        state.pendingResync = null
+        if (state.hasPlaybackFailed || state.isResyncing) return@LaunchedEffect
+        Timber
+            .tag(VideoPlaybackLogTag)
+            .d("Manual resync to ${position}ms (wasPlaying=$wasPlaying) — pause-load-resume")
+        state.wasPlayingBeforeResync = wasPlaying
+        state.isResyncing = true
+        state.isVideoReady = false
+        if (wasPlaying) updatedOnRequestPauseMain()
+        exoPlayer.pause()
+        exoPlayer.seekTo(position)
+        state.bufferingStartedAtMs = SystemClock.elapsedRealtime()
+    }
+
     // ── Periodic position sync + stuck-buffering recovery ──
     LaunchedEffect(state.streamUrl, exoPlayer) {
         if (state.streamUrl == null) return@LaunchedEffect
@@ -408,7 +506,29 @@ fun rememberVideoArtworkState(
                 }
             }
 
-            // Drift / seek detection
+            // Drift detection — SOFT seek only (no pause-load-resume).
+            //
+            // The automatic pause-load-resume was removed because it caused
+            // the "video keeps pausing repeatedly" bug. Instead:
+            //
+            // - While PLAYING + drift > VideoSoftSeekDriftThresholdMs:
+            //   Seek the video WITHOUT pausing the main audio. The video may
+            //   freeze briefly while it re-buffers, but the audio continues
+            //   uninterrupted. This is the right tradeoff for a music app —
+            //   the user would rather have the audio keep playing with a
+            //   brief video freeze than have both pause repeatedly.
+            //
+            // - While PAUSED + drift > tolerance:
+            //   Seek the video to match the audio position. No re-buffering
+            //   concern since playback is paused.
+            //
+            // - While PLAYING + drift <= threshold:
+            //   IGNORE. The video will self-correct because both audio and
+            //   video play at 1x speed. Decoder lag of 300–800ms is normal
+            //   on mobile VP9/AV1 decoders and is not perceptible.
+            //
+            // For explicit seekbar seeks, the pause-load-resume protocol is
+            // triggered by [VideoArtworkState.requestResync] (see above).
             if (state.isChangingQuality) continue
             if (state.isResyncing) continue
             if (!state.isVideoReady) continue
@@ -418,25 +538,13 @@ fun rememberVideoArtworkState(
             val videoPos = exoPlayer.currentPosition
             val drift = kotlin.math.abs(videoPos - mainPos)
 
-            if (drift > VideoSyncDriftToleranceMs) {
-                if (drift > UserSeekDriftThresholdMs && shouldPlay && !state.hasPlaybackFailed) {
-                    Timber
-                        .tag(VideoPlaybackLogTag)
-                        .d("User seek detected: drift=${drift}ms — pausing main, rebuffering video")
-                    state.wasPlayingBeforeResync = shouldPlay
-                    state.isResyncing = true
-                    state.isVideoReady = false
-                    updatedOnRequestPauseMain()
-                    exoPlayer.pause()
-                    exoPlayer.seekTo(mainPos)
-                    state.bufferingStartedAtMs = SystemClock.elapsedRealtime()
-                } else {
-                    Timber
-                        .tag(VideoPlaybackLogTag)
-                        .d("Re-syncing video: drift=${drift}ms (main=$mainPos, video=$videoPos)")
-                    exoPlayer.seekTo(mainPos)
-                    exoPlayer.setVideoPlayback(shouldPlay)
-                }
+            if (drift > VideoSoftSeekDriftThresholdMs && shouldPlay) {
+                Timber
+                    .tag(VideoPlaybackLogTag)
+                    .d("Soft seek: drift=${drift}ms (main=$mainPos, video=$videoPos)")
+                exoPlayer.seekTo(mainPos)
+            } else if (drift > VideoSyncDriftToleranceMs && !shouldPlay) {
+                exoPlayer.seekTo(mainPos)
             }
         }
     }
@@ -555,6 +663,53 @@ fun rememberVideoArtworkState(
 }
 
 /**
+ * Conditional wrapper around [rememberVideoArtworkState] that returns `null`
+ * when [videoId] is blank.
+ *
+ * This is used by the host (BottomSheetPlayer) to hoist the [VideoArtworkState]
+ * above the `when (orientation)` block AND above the BottomSheet content — so
+ * the ExoPlayer survives:
+ *   - Orientation changes (the `when` block can switch freely without
+ *     releasing the ExoPlayer).
+ *   - Sheet collapse/expand (the ExoPlayer is not tied to the sheet's content
+ *     lifecycle).
+ *   - Fullscreen toggle (the fullscreen overlay is a sibling of the BottomSheet,
+ *     sharing the same state).
+ *
+ * When [videoId] is blank (no music video playing), this returns `null` and
+ * does NOT create an ExoPlayer — avoiding unnecessary resource usage.
+ */
+@Composable
+fun rememberVideoArtworkStateOrNull(
+    videoId: String?,
+    isPlaying: Boolean,
+    positionProvider: () -> Long,
+    preferredHeight: Int?,
+    onStreamResolved: (VideoStreamInfo?) -> Unit,
+    onPlaybackFailed: () -> Unit,
+    onLoadingStateChange: (Boolean) -> Unit,
+    onRequestPauseMain: () -> Unit,
+    onRequestResumeMain: () -> Unit,
+): VideoArtworkState? {
+    return if (videoId.isNullOrBlank()) {
+        onPlaybackFailed()
+        null
+    } else {
+        rememberVideoArtworkState(
+            videoId = videoId,
+            isPlaying = isPlaying,
+            positionProvider = positionProvider,
+            preferredHeight = preferredHeight,
+            onStreamResolved = onStreamResolved,
+            onPlaybackFailed = onPlaybackFailed,
+            onLoadingStateChange = onLoadingStateChange,
+            onRequestPauseMain = onRequestPauseMain,
+            onRequestResumeMain = onRequestResumeMain,
+        )
+    }
+}
+
+/**
  * Renders the video surface for the given [state].
  *
  * This is a pure view composable — it reads [VideoArtworkState.isVideoReady]
@@ -562,11 +717,11 @@ fun rememberVideoArtworkState(
  * [VideoArtworkState.exoPlayer]. It does NOT create or manage the ExoPlayer;
  * that's the responsibility of [rememberVideoArtworkState].
  *
- * Because the ExoPlayer is external, this composable can be freely moved
- * between different parents (e.g. inline slot ↔ fullscreen Dialog) without
- * causing the video to reload. The ExoPlayer's surface is detached from
- * the old view and attached to the new one — a fast operation that does
- * NOT interrupt playback.
+ * Because the ExoPlayer is external, this composable can be freely mounted
+ * in different parents (inline slot, fullscreen overlay) without causing
+ * the video to reload. The ExoPlayer's surface is detached from the old
+ * view and attached to the new one — a fast operation that does NOT
+ * interrupt playback.
  */
 @Composable
 fun VideoArtworkSurface(
