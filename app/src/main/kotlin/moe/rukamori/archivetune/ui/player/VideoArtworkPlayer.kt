@@ -399,7 +399,10 @@ private fun pickVideoFormat(playerResponse: PlayerResponse): PlayerResponse.Stre
     val videoOnly =
         streamingData.adaptiveFormats
             .asSequence()
-            .filter { it.height != null && it.height > 0 }
+            .filter {
+                val h = it.height
+                h != null && h > 0
+            }
             .filter { (it.height ?: 0) <= 720 }
             .filter { it.url != null || it.signatureCipher != null || it.cipher != null }
             .sortedByDescending { it.height ?: 0 }
