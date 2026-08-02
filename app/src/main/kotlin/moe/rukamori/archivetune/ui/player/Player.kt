@@ -1520,13 +1520,15 @@ fun BottomSheetPlayer(
                             )
                         }
 
-                        // `mediaMetadata != null` is required for the compiler
-                        // to smart-cast `mediaMetadata.id` to non-null — `v7VideoShowing`
+                        // `v7VideoMetadata != null` is required for the compiler
+                        // to smart-cast `v7VideoMetadata.id` to non-null — `v7VideoShowing`
                         // already implies this but the compiler can't track the
-                        // implication through a local Boolean variable.
-                        if (v7VideoShowing && mediaMetadata != null) {
+                        // implication through a local Boolean variable. We use the
+                        // local `v7VideoMetadata` capture (not the delegated
+                        // `mediaMetadata`) so Kotlin can smart-cast it.
+                        if (v7VideoShowing && v7VideoMetadata != null) {
                             InlineVideoPlayer(
-                                videoId = mediaMetadata.id,
+                                videoId = v7VideoMetadata.id,
                                 isPlaying = isPlaying,
                                 positionProvider = { playerConnection.player.currentPosition },
                                 modifier =
@@ -1599,9 +1601,10 @@ fun BottomSheetPlayer(
                         // the 16:9 video look like it's floating in a colored
                         // haze. Pure black mirrors how YouTube Music shows
                         // music videos.
+                        val v8VideoMetadata = mediaMetadata
                         val v8VideoShowing =
-                            mediaMetadata?.isMusicVideo == true &&
-                                !mediaMetadata.id.isLocalMediaId() &&
+                            v8VideoMetadata?.isMusicVideo == true &&
+                                !v8VideoMetadata.id.isLocalMediaId() &&
                                 !aodModeEnabled &&
                                 !isLyricsScreenVisible
                         if (v8VideoShowing) {
@@ -1894,13 +1897,15 @@ fun BottomSheetPlayer(
                             )
                         }
 
-                        // `mediaMetadata != null` is required for the compiler
-                        // to smart-cast `mediaMetadata.id` to non-null — `v7VideoShowing`
+                        // `v7VideoMetadata != null` is required for the compiler
+                        // to smart-cast `v7VideoMetadata.id` to non-null — `v7VideoShowing`
                         // already implies this but the compiler can't track the
-                        // implication through a local Boolean variable.
-                        if (v7VideoShowing && mediaMetadata != null) {
+                        // implication through a local Boolean variable. We use the
+                        // local `v7VideoMetadata` capture (not the delegated
+                        // `mediaMetadata`) so Kotlin can smart-cast it.
+                        if (v7VideoShowing && v7VideoMetadata != null) {
                             InlineVideoPlayer(
-                                videoId = mediaMetadata.id,
+                                videoId = v7VideoMetadata.id,
                                 isPlaying = isPlaying,
                                 positionProvider = { playerConnection.player.currentPosition },
                                 modifier =
@@ -1971,9 +1976,10 @@ fun BottomSheetPlayer(
                         // the 16:9 video look like it's floating in a colored
                         // haze. Pure black mirrors how YouTube Music shows
                         // music videos.
+                        val v8VideoMetadata = mediaMetadata
                         val v8VideoShowing =
-                            mediaMetadata?.isMusicVideo == true &&
-                                !mediaMetadata.id.isLocalMediaId() &&
+                            v8VideoMetadata?.isMusicVideo == true &&
+                                !v8VideoMetadata.id.isLocalMediaId() &&
                                 !aodModeEnabled &&
                                 !isLyricsScreenVisible
                         if (v8VideoShowing) {
