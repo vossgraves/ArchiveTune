@@ -103,6 +103,8 @@ fun InlineVideoPlayer(
     positionProvider: () -> Long,
     modifier: Modifier = Modifier,
     onPlaybackFailed: () -> Unit = {},
+    onRequestPauseMain: () -> Unit = {},
+    onRequestResumeMain: () -> Unit = {},
     resizeMode: Int = AspectRatioFrameLayout.RESIZE_MODE_FIT,
 ) {
     var isFullscreen by rememberSaveable { mutableStateOf(false) }
@@ -132,6 +134,8 @@ fun InlineVideoPlayer(
             },
             onPlaybackFailed = onPlaybackFailed,
             onLoadingStateChange = { isLoading = it },
+            onRequestPauseMain = onRequestPauseMain,
+            onRequestResumeMain = onRequestResumeMain,
             resizeMode = resizeMode,
             modifier = Modifier.fillMaxSize(),
         )
@@ -266,6 +270,8 @@ fun InlineVideoPlayer(
             onDismiss = { isFullscreen = false },
             onCaptionsToggle = { captionsEnabled = !captionsEnabled },
             onQualityChange = { preferredHeight = it },
+            onRequestPauseMain = onRequestPauseMain,
+            onRequestResumeMain = onRequestResumeMain,
         )
     }
 }
@@ -294,6 +300,8 @@ private fun VideoFullscreenDialog(
     onDismiss: () -> Unit,
     onCaptionsToggle: () -> Unit,
     onQualityChange: (Int?) -> Unit,
+    onRequestPauseMain: () -> Unit = {},
+    onRequestResumeMain: () -> Unit = {},
 ) {
     Dialog(
         onDismissRequest = onDismiss,
@@ -344,6 +352,8 @@ private fun VideoFullscreenDialog(
                 preferredHeight = preferredHeight,
                 captionsEnabled = captionsEnabled,
                 onLoadingStateChange = { fsLoading = it },
+                onRequestPauseMain = onRequestPauseMain,
+                onRequestResumeMain = onRequestResumeMain,
                 resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT,
                 modifier = Modifier.fillMaxSize(),
             )

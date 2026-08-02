@@ -522,6 +522,8 @@ private fun AppleMusicSharpArtwork(
                 videoId = videoId!!,
                 isPlaying = isPlaying,
                 positionProvider = { playerConnection?.player?.currentPosition ?: 0L },
+                onRequestPauseMain = { playerConnection?.player?.pause() },
+                onRequestResumeMain = { playerConnection?.player?.play() },
                 modifier = Modifier.matchParentSize(),
             )
         }

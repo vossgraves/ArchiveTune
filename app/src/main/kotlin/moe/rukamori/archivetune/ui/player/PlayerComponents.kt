@@ -2629,6 +2629,8 @@ private fun V8Artwork(
                 videoId = videoId!!,
                 isPlaying = isPlaying,
                 positionProvider = { playerConnection?.player?.currentPosition ?: 0L },
+                onRequestPauseMain = { playerConnection?.player?.pause() },
+                onRequestResumeMain = { playerConnection?.player?.play() },
                 modifier = Modifier.fillMaxSize(),
             )
         }
@@ -3575,6 +3577,8 @@ private fun V9Artwork(
                 videoId = videoId!!,
                 isPlaying = isPlaying,
                 positionProvider = { playerConnection?.player?.currentPosition ?: 0L },
+                onRequestPauseMain = { playerConnection?.player?.pause() },
+                onRequestResumeMain = { playerConnection?.player?.play() },
                 modifier = Modifier.fillMaxSize(),
             )
         }

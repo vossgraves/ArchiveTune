@@ -1531,11 +1531,12 @@ fun BottomSheetPlayer(
                                 videoId = v7VideoMetadata.id,
                                 isPlaying = isPlaying,
                                 positionProvider = { playerConnection.player.currentPosition },
+                                onRequestPauseMain = { playerConnection.player.pause() },
+                                onRequestResumeMain = { playerConnection.player.play() },
                                 modifier =
                                     Modifier
                                         .align(Alignment.Center)
-                                        .statusBarsPadding()
-                                        .padding(top = 8.dp)
+                                        .padding(bottom = 180.dp)
                                         .fillMaxWidth()
                                         .aspectRatio(16f / 9f)
                                         .clip(RoundedCornerShape(16.dp)),
@@ -1908,11 +1909,12 @@ fun BottomSheetPlayer(
                                 videoId = v7VideoMetadata.id,
                                 isPlaying = isPlaying,
                                 positionProvider = { playerConnection.player.currentPosition },
+                                onRequestPauseMain = { playerConnection.player.pause() },
+                                onRequestResumeMain = { playerConnection.player.play() },
                                 modifier =
                                     Modifier
                                         .align(Alignment.Center)
-                                        .statusBarsPadding()
-                                        .padding(top = 8.dp)
+                                        .padding(bottom = 180.dp)
                                         .fillMaxWidth()
                                         .aspectRatio(16f / 9f)
                                         .clip(RoundedCornerShape(16.dp)),

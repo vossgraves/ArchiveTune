@@ -143,9 +143,16 @@ data class VideoStreamInfo(
  * @param onLoadingStateChange Invoked when the video surface transitions between
  *   loading and ready. The parent uses this to show/hide a loading indicator
  *   over the video surface (e.g. a CircularProgressIndicator) — this fires
- *   both on initial load AND when the user changes the quality, so the audio
- *   keeps playing through the main MusicService while the video surface shows
- *   a spinner and re-syncs once the new stream renders its first frame.
+ *   both on initial load AND when the user changes the quality.
+ * @param onRequestPauseMain Invoked when the video player needs the main
+ *   audio player to PAUSE — currently only during a quality swap. The main
+ *   player should pause so the audio doesn't drift ahead of the video while
+ *   the new stream is being resolved/loaded. Once the video is ready,
+ *   [onRequestResumeMain] is called to resume playback.
+ * @param onRequestResumeMain Invoked when the video player is ready to resume
+ *   playback after a quality swap. The main player should resume ONLY if it
+ *   was playing before the swap (the video player tracks this internally and
+ *   only calls this callback if the main player was playing).
  * @param modifier Modifier for the surface.
  * @param resizeMode AspectRatioFrameLayout resize mode (default FIT to letterbox within the artwork slot).
  */
@@ -160,6 +167,8 @@ fun VideoArtworkPlayer(
     onStreamResolved: (VideoStreamInfo?) -> Unit = {},
     onPlaybackFailed: () -> Unit = {},
     onLoadingStateChange: (Boolean) -> Unit = {},
+    onRequestPauseMain: () -> Unit = {},
+    onRequestResumeMain: () -> Unit = {},
     resizeMode: Int = AspectRatioFrameLayout.RESIZE_MODE_FIT,
 ) {
     if (videoId.isBlank()) {
@@ -178,6 +187,10 @@ fun VideoArtworkPlayer(
     var isVideoReady by remember(videoId) { mutableStateOf(false) }
     var hasPlaybackFailed by remember(videoId) { mutableStateOf(false) }
     var isChangingQuality by remember(videoId) { mutableStateOf(false) }
+    // Tracks whether the main player was playing when the quality swap
+    // began. We only call onRequestResumeMain if this is true — otherwise
+    // we'd auto-resume a song the user deliberately paused.
+    var wasPlayingBeforeQualityChange by remember(videoId) { mutableStateOf(false) }
 
     // Propagate loading state to the parent so it can render a spinner.
     // Loading = !isVideoReady AND we have a stream URL we're (re)loading.
@@ -331,34 +344,37 @@ fun VideoArtworkPlayer(
     // guard above handles initial resolution; this LaunchedEffect handles
     // subsequent user-driven changes.
     //
-    // QUALITY-SWAP PROTOCOL (important for AV sync):
-    //   1. Set `isChangingQuality = true` and `isVideoReady = false` BEFORE
+    // QUALITY-SWAP PROTOCOL (audio + video both pause):
+    //   1. Record whether the main player was playing (`wasPlayingBeforeQualityChange`).
+    //   2. Set `isChangingQuality = true` and `isVideoReady = false` BEFORE
     //      touching the stream URL. This immediately:
     //        - hides the video surface (alpha animates to 0)
     //        - shows the loading indicator in the parent overlay
-    //        - pauses the ExoPlayer (so the stale frame doesn't keep
-    //          playing while we re-resolve)
-    //      The main MusicService audio KEEPS PLAYING — that's correct,
-    //      the user expects the song to continue while the video catches
-    //      up to the new resolution.
-    //   2. Null out `streamUrl` so the LaunchedEffect(streamUrl, ...) below
-    //      fires and reloads the MediaItem with the new URL.
-    //   3. Resolve the new URL off the main thread.
-    //   4. Set the new `streamUrl` → triggers MediaItem reload → ExoPlayer
-    //      prepares → `onRenderedFirstFrame` fires → `isVideoReady = true`
-    //      and `isChangingQuality = false` → loading indicator hides,
-    //      video surface fades back in, playback resumes in sync with the
-    //      main player's current position (the loader seeks to
-    //      `currentPosition()` before starting playback).
+    //        - pauses the ExoPlayer (so the stale frame doesn't keep playing)
+    //   3. Call `onRequestPauseMain()` to pause the MAIN audio player too —
+    //      the user explicitly reported that audio continuing to play while
+    //      the video is loading causes a mismatch. Both should pause together.
+    //   4. Null out `streamUrl` → triggers MediaItem reload.
+    //   5. Resolve the new URL off the main thread.
+    //   6. Set the new `streamUrl` → ExoPlayer prepares → `onRenderedFirstFrame`
+    //      fires → `isVideoReady = true`, `isChangingQuality = false` →
+    //      loading indicator hides, video surface fades back in.
+    //   7. If `wasPlayingBeforeQualityChange` was true, call
+    //      `onRequestResumeMain()` to resume the main audio player. The
+    //      video ExoPlayer starts playing via `onRenderedFirstFrame`'s
+    //      `setVideoPlayback(true)` call. Both resume together.
     LaunchedEffect(preferredHeight) {
         // Skip the initial run — handled by the LaunchedEffect(videoId) above.
         if (streamUrl == null) return@LaunchedEffect
+        wasPlayingBeforeQualityChange = shouldPlay
         isChangingQuality = true
         isVideoReady = false
-        // Pause immediately so the stale frame doesn't keep rendering
-        // while we're swapping the stream. The position-sync poller would
-        // otherwise re-start playback against the OLD media item.
+        // Pause the video ExoPlayer immediately so the stale frame doesn't
+        // keep rendering while we're swapping the stream.
         exoPlayer.pause()
+        // Pause the main audio player too — the user doesn't want audio
+        // drifting ahead of the video during the swap.
+        onRequestPauseMain()
         streamUrl = null
         val resolved =
             withContext(Dispatchers.IO) {
@@ -386,6 +402,12 @@ fun VideoArtworkPlayer(
             } else {
                 hasPlaybackFailed = true
                 onPlaybackFailed()
+            }
+            // Resume the main player if it was playing before — the quality
+            // change failed, but we still paused the main player and need
+            // to restore its state.
+            if (wasPlayingBeforeQualityChange) {
+                onRequestResumeMain()
             }
         }
     }
@@ -445,12 +467,25 @@ fun VideoArtworkPlayer(
         exoPlayer.prepare()
 
         // Seek to the main player's current position so the video starts
-        // in sync with the audio that's already playing.
+        // in sync with the audio. This seek happens BEFORE the first frame
+        // renders, so by the time onRenderedFirstFrame fires, the video is
+        // positioned at the audio's current position.
+        //
+        // We do NOT call setVideoPlayback(shouldPlay) here — onRenderedFirstFrame
+        // handles starting playback. Previously we called play() here AND in
+        // onRenderedFirstFrame, which caused the video to start playing before
+        // the audio was ready (the "video starts before audio" bug). Now the
+        // video only starts when the first frame actually renders, and by
+        // that point we re-seek to the audio's position for precise sync.
         val targetPosition = currentPosition()
         if (targetPosition > 0) {
             exoPlayer.seekTo(targetPosition)
         }
-        exoPlayer.setVideoPlayback(shouldPlay)
+        // Set playWhenReady so ExoPlayer knows it should play once ready.
+        // This is NOT the same as calling play() — playWhenReady just
+        // signals intent; actual playback starts when the player reaches
+        // STATE_READY AND the first frame is rendered.
+        exoPlayer.playWhenReady = shouldPlay
     }
 
     // No LaunchedEffect for captionsEnabled here — we keep TRACK_TYPE_TEXT
@@ -538,9 +573,39 @@ fun VideoArtworkPlayer(
 
                 override fun onRenderedFirstFrame() {
                     isVideoReady = true
+                    val wasChangingQuality = isChangingQuality
                     isChangingQuality = false
+
+                    // Re-seek to the main player's CURRENT position before
+                    // starting playback. By the time the first frame renders,
+                    // the audio may have advanced (or just started) — seeking
+                    // here ensures the video starts at the exact same position
+                    // as the audio, fixing the "video starts before audio" bug.
+                    val mainPos = currentPosition()
+                    if (mainPos > 0) {
+                        val videoPos = exoPlayer.currentPosition
+                        val drift = kotlin.math.abs(videoPos - mainPos)
+                        if (drift > VideoSyncDriftToleranceMs) {
+                            exoPlayer.seekTo(mainPos)
+                        }
+                    }
+
+                    // Start video playback if the main player is playing.
+                    // Use playWhenReady = true directly (in addition to play())
+                    // because some media3 versions don't honor play() when
+                    // called immediately after seekTo — this was causing the
+                    // fullscreen video to get "stuck" until the user manually
+                    // paused/resumed.
                     if (shouldPlay && !hasPlaybackFailed && exoPlayer.playerError == null) {
-                        exoPlayer.setVideoPlayback(isPlaying = true)
+                        exoPlayer.playWhenReady = true
+                        exoPlayer.play()
+                    }
+
+                    // If we just finished a quality swap and the main player
+                    // was playing before the swap, resume the main audio player
+                    // now — both audio and video resume together.
+                    if (wasChangingQuality && wasPlayingBeforeQualityChange) {
+                        onRequestResumeMain()
                     }
                 }
 
@@ -552,15 +617,15 @@ fun VideoArtworkPlayer(
                         exoPlayer.seekTo(mainPos)
                         exoPlayer.setVideoPlayback(shouldPlay)
                     } else if (shouldPlay && !hasPlaybackFailed && exoPlayer.playerError == null &&
-                        playbackState != Player.STATE_BUFFERING
+                        playbackState == Player.STATE_READY
                     ) {
-                        // Don't force-play during BUFFERING — the player is
-                        // still loading the next chunk and calling play()
-                        // here can race with the seek-to-main-position call
-                        // in the loader, causing the video to start from 0
-                        // instead of the synced position. Let
-                        // onRenderedFirstFrame drive the resume.
-                        exoPlayer.setVideoPlayback(isPlaying = true)
+                        // Only force-play when transitioning to STATE_READY.
+                        // Previously we played on every state except BUFFERING,
+                        // which could call play() during IDLE (before media
+                        // was loaded) and cause races with the loader's
+                        // seek-to-main-position call.
+                        exoPlayer.playWhenReady = true
+                        exoPlayer.play()
                     }
                 }
             }
