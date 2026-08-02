@@ -109,6 +109,7 @@ import moe.rukamori.archivetune.extensions.metadata
 import moe.rukamori.archivetune.extensions.toMediaItem
 import moe.rukamori.archivetune.ui.utils.highRes
 import moe.rukamori.archivetune.utils.ImageBlurUtils
+import moe.rukamori.archivetune.utils.isLocalMediaId
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberLowDataModeActive
 import moe.rukamori.archivetune.utils.rememberPreference
@@ -589,25 +590,45 @@ fun Thumbnail(
                                         )
                                     }
 
-                                    AsyncImage(
-                                        model = thumbnailArtworkRequest,
-                                        contentDescription = null,
-                                        contentScale = if (shouldCropArtwork) ContentScale.Crop else ContentScale.Fit,
-                                        modifier =
-                                            Modifier
-                                                .fillMaxSize()
-                                                .let { if (shouldCropArtwork) it.aspectRatio(1f) else it },
-                                    )
+                                    // When the current media is a music video, render the video
+                                    // inline in place of the album artwork — the audio continues
+                                    // to play through the main MusicService ExoPlayer, so all
+                                    // transport controls (play/pause, seek, next/prev) work as
+                                    // normal. Only the current item gets a video surface; prev/next
+                                    // pages in the swipe pager still show artwork.
+                                    val isCurrentMusicVideo =
+                                        item.metadata?.isMusicVideo == true &&
+                                            item.mediaId == currentMediaItem?.mediaId &&
+                                            !item.mediaId.isLocalMediaId()
 
-                                    if (shouldUseCanvas &&
-                                        (!primaryCanvasUrl.isNullOrBlank() || !fallbackCanvasUrl.isNullOrBlank())
-                                    ) {
-                                        CanvasArtworkPlayer(
-                                            primaryUrl = primaryCanvasUrl,
-                                            fallbackUrl = fallbackCanvasUrl,
+                                    if (isCurrentMusicVideo) {
+                                        VideoArtworkPlayer(
+                                            videoId = item.mediaId,
                                             isPlaying = isPlaying,
+                                            positionProvider = { playerConnection.player.currentPosition },
                                             modifier = Modifier.fillMaxSize(),
                                         )
+                                    } else {
+                                        AsyncImage(
+                                            model = thumbnailArtworkRequest,
+                                            contentDescription = null,
+                                            contentScale = if (shouldCropArtwork) ContentScale.Crop else ContentScale.Fit,
+                                            modifier =
+                                                Modifier
+                                                    .fillMaxSize()
+                                                    .let { if (shouldCropArtwork) it.aspectRatio(1f) else it },
+                                        )
+
+                                        if (shouldUseCanvas &&
+                                            (!primaryCanvasUrl.isNullOrBlank() || !fallbackCanvasUrl.isNullOrBlank())
+                                        ) {
+                                            CanvasArtworkPlayer(
+                                                primaryUrl = primaryCanvasUrl,
+                                                fallbackUrl = fallbackCanvasUrl,
+                                                isPlaying = isPlaying,
+                                                modifier = Modifier.fillMaxSize(),
+                                            )
+                                        }
                                     }
                                 }
                             }

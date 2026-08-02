@@ -52,14 +52,18 @@ import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
@@ -154,6 +158,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalAnimationsDisabled
 import moe.rukamori.archivetune.LocalDownloadUtil
@@ -210,6 +215,7 @@ import moe.rukamori.archivetune.ui.utils.YtimgResizePolicy
 import moe.rukamori.archivetune.ui.utils.getNextFallbackUrl
 import moe.rukamori.archivetune.ui.utils.resize
 import moe.rukamori.archivetune.utils.ImageBlurUtils
+import moe.rukamori.archivetune.utils.isLocalMediaId
 import moe.rukamori.archivetune.utils.makeTimeString
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberLowDataModeActive
@@ -1386,8 +1392,6 @@ fun BottomSheetPlayer(
             )
         }
 
-// distance
-
         when (LocalConfiguration.current.orientation) {
             Configuration.ORIENTATION_LANDSCAPE -> {
                 if (playerDesignStyle == PlayerDesignStyle.V5) {
@@ -1491,6 +1495,32 @@ fun BottomSheetPlayer(
                             backdropBlurAmount = backdropBlurAmount,
                             label = "v7BackdropLandscape",
                         )
+
+                        // When the current media is a music video, render the video
+                        // inline on top of the V7 backdrop — the blurred backdrop
+                        // remains visible behind/around the 16:9 video. Audio
+                        // continues through the main MusicService ExoPlayer, so all
+                        // transport controls work as normal.
+                        val v7VideoMetadata = mediaMetadata
+                        if (v7VideoMetadata?.isMusicVideo == true &&
+                            !v7VideoMetadata.id.isLocalMediaId() &&
+                            !aodModeEnabled &&
+                            !isLyricsScreenVisible
+                        ) {
+                            VideoArtworkPlayer(
+                                videoId = v7VideoMetadata.id,
+                                isPlaying = isPlaying,
+                                positionProvider = { playerConnection.player.currentPosition },
+                                modifier =
+                                    Modifier
+                                        .align(Alignment.TopCenter)
+                                        .statusBarsPadding()
+                                        .padding(top = 8.dp)
+                                        .fillMaxWidth()
+                                        .aspectRatio(16f / 9f)
+                                        .clip(RoundedCornerShape(16.dp)),
+                            )
+                        }
 
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
@@ -1802,6 +1832,32 @@ fun BottomSheetPlayer(
                             backdropBlurAmount = backdropBlurAmount,
                             label = "v7BackdropPortrait",
                         )
+
+                        // When the current media is a music video, render the video
+                        // inline on top of the V7 backdrop — the blurred backdrop
+                        // remains visible behind/around the 16:9 video. Audio
+                        // continues through the main MusicService ExoPlayer, so all
+                        // transport controls work as normal.
+                        val v7VideoMetadata = mediaMetadata
+                        if (v7VideoMetadata?.isMusicVideo == true &&
+                            !v7VideoMetadata.id.isLocalMediaId() &&
+                            !aodModeEnabled &&
+                            !isLyricsScreenVisible
+                        ) {
+                            VideoArtworkPlayer(
+                                videoId = v7VideoMetadata.id,
+                                isPlaying = isPlaying,
+                                positionProvider = { playerConnection.player.currentPosition },
+                                modifier =
+                                    Modifier
+                                        .align(Alignment.TopCenter)
+                                        .statusBarsPadding()
+                                        .padding(top = 8.dp)
+                                        .fillMaxWidth()
+                                        .aspectRatio(16f / 9f)
+                                        .clip(RoundedCornerShape(16.dp)),
+                            )
+                        }
 
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,

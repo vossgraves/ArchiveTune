@@ -340,6 +340,7 @@ fun YouTubeSongMenu(
             shareText,
             onDismiss,
             playerConnection,
+            navController,
         ) {
             listOf(
                 NewAction(

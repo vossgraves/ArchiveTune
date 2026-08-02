@@ -471,6 +471,7 @@ fun SongMenu(
             shareText,
             editText,
             isLocalSong,
+            isTelegramSong,
             onDismiss,
             playerConnection,
         ) {

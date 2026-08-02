@@ -92,6 +92,7 @@ import coil3.size.Size as CoilSize
 import coil3.toBitmap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.db.entities.FormatEntity
 import moe.rukamori.archivetune.db.entities.codecLabel
@@ -107,6 +108,7 @@ import moe.rukamori.archivetune.ui.menu.rememberCastPlayerMenuAction
 import moe.rukamori.archivetune.ui.utils.ShowMediaInfo
 import moe.rukamori.archivetune.ui.utils.highRes
 import moe.rukamori.archivetune.utils.ImageBlurUtils
+import moe.rukamori.archivetune.utils.isLocalMediaId
 import moe.rukamori.archivetune.utils.makeTimeString
 import moe.rukamori.archivetune.utils.rememberLowDataModeActive
 
@@ -327,6 +329,8 @@ fun AppleMusicPlayerContent(
                     canvasFallbackUrl = canvasFallbackUrl,
                     isPlaying = isPlaying,
                     fadeBottom = false,
+                    videoId = mediaMetadata.id.takeIf { !it.isLocalMediaId() },
+                    isMusicVideo = mediaMetadata.isMusicVideo,
                     modifier =
                         Modifier
                             .weight(1f)
@@ -373,6 +377,8 @@ fun AppleMusicPlayerContent(
                 canvasFallbackUrl = canvasFallbackUrl,
                 isPlaying = isPlaying,
                 fadeBottom = true,
+                videoId = mediaMetadata.id.takeIf { !it.isLocalMediaId() },
+                isMusicVideo = mediaMetadata.isMusicVideo,
                 modifier =
                     Modifier
                         .fillMaxWidth()
@@ -425,8 +431,11 @@ private fun AppleMusicSharpArtwork(
     canvasFallbackUrl: String?,
     isPlaying: Boolean,
     fadeBottom: Boolean,
+    videoId: String? = null,
+    isMusicVideo: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
+    val playerConnection = LocalPlayerConnection.current
     Box(
         modifier =
             modifier.then(
@@ -450,20 +459,36 @@ private fun AppleMusicSharpArtwork(
                 },
             ),
     ) {
-        AsyncImage(
-            model = artworkRequest ?: artworkUrl,
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.matchParentSize(),
-        )
-        if (!canvasPrimaryUrl.isNullOrBlank() || !canvasFallbackUrl.isNullOrBlank()) {
-            CanvasArtworkPlayer(
-                primaryUrl = canvasPrimaryUrl,
-                fallbackUrl = canvasFallbackUrl,
+        // When the current media is a music video, render the video inline
+        // in place of the album artwork. Audio continues through the main
+        // MusicService ExoPlayer, so all transport controls work as normal.
+        val showVideo =
+            isMusicVideo &&
+                !videoId.isNullOrBlank() &&
+                playerConnection != null
+        if (showVideo) {
+            VideoArtworkPlayer(
+                videoId = videoId!!,
                 isPlaying = isPlaying,
-                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
+                positionProvider = { playerConnection?.player?.currentPosition ?: 0L },
                 modifier = Modifier.matchParentSize(),
             )
+        } else {
+            AsyncImage(
+                model = artworkRequest ?: artworkUrl,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.matchParentSize(),
+            )
+            if (!canvasPrimaryUrl.isNullOrBlank() || !canvasFallbackUrl.isNullOrBlank()) {
+                CanvasArtworkPlayer(
+                    primaryUrl = canvasPrimaryUrl,
+                    fallbackUrl = canvasFallbackUrl,
+                    isPlaying = isPlaying,
+                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
+                    modifier = Modifier.matchParentSize(),
+                )
+            }
         }
     }
 }
