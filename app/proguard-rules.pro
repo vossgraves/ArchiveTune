@@ -73,6 +73,13 @@
 -keep class org.mozilla.classfile.ClassFileWriter
 -dontwarn org.mozilla.javascript.JavaToJSONConverters
 -dontwarn org.mozilla.javascript.tools.**
+# org.mozilla.javascript.ObjToIntMap was removed in Rhino 1.9.x.
+# MetrolistExtractor's org.schabi.newpipe.extractor.utils.jsextractor.TokenStream
+# still references it, but that jsextractor path is dead code at runtime — the
+# morideobfuscator's RhinoTransformExecutor performs all JS execution using the
+# modern Rhino API directly. Suppress the R8 "Missing class" error so the
+# release minify task doesn't fail.
+-dontwarn org.mozilla.javascript.ObjToIntMap
 -keep class javax.script.** { *; }
 -dontwarn javax.script.**
 -keep class jdk.dynalink.** { *; }
