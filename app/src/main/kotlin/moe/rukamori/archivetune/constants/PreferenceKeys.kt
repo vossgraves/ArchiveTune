@@ -190,6 +190,10 @@ val EnablePaxsenixYouTubeLyricsKey = booleanPreferencesKey("enablePaxsenixYouTub
 val EnableUnisonLyricsKey = booleanPreferencesKey("enableUnisonLyrics")
 val HideExplicitKey = booleanPreferencesKey("hideExplicit")
 val HideVideoKey = booleanPreferencesKey("hideVideo")
+// When ON (default), music videos render an inline video surface in the player. When OFF,
+// music videos are treated as plain audio (album artwork shown, no video stream is loaded).
+// Distinct from HideVideoKey which filters videos out of the library/queue entirely.
+val EnableVideoPlaybackKey = booleanPreferencesKey("enableVideoPlayback")
 val AllowAgeRestrictedKey = booleanPreferencesKey("allowAgeRestricted")
 enum class DownloadSource {
     /**

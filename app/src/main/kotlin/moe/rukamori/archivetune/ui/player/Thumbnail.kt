@@ -603,7 +603,8 @@ fun Thumbnail(
                                     // The video surface is rendered on top and alpha-fades in
                                     // once the first frame is ready, covering the artwork.
                                     val isCurrentMusicVideo =
-                                        item.metadata?.isMusicVideo == true &&
+                                        LocalVideoArtworkState.current != null &&
+                                            item.metadata?.isMusicVideo == true &&
                                             item.mediaId == currentMediaItem?.mediaId &&
                                             !item.mediaId.isLocalMediaId()
 

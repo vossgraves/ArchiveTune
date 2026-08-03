@@ -2582,8 +2582,10 @@ private fun V8Artwork(
 ) {
     val artworkRequest = rememberOfflineArtworkImageRequest(artworkUrl)
     val playerConnection = LocalPlayerConnection.current
+    val videoArtworkState = LocalVideoArtworkState.current
     val showVideo =
-        isMusicVideo &&
+        videoArtworkState != null &&
+            isMusicVideo &&
             !videoId.isNullOrBlank() &&
             playerConnection != null
     Box(
@@ -3525,8 +3527,10 @@ private fun V9Artwork(
 ) {
     val artworkRequest = rememberOfflineArtworkImageRequest(artworkUrl)
     val playerConnection = LocalPlayerConnection.current
+    val videoArtworkState = LocalVideoArtworkState.current
     val showVideo =
-        isMusicVideo &&
+        videoArtworkState != null &&
+            isMusicVideo &&
             !videoId.isNullOrBlank() &&
             playerConnection != null
     Box(

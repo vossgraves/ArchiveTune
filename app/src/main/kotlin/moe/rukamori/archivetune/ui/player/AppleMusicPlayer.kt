@@ -243,7 +243,8 @@ fun AppleMusicPlayerContent(
         //    The black floor painted above is already showing through, so we just
         //    skip the blurred artwork + scrim layers entirely.
         val videoShowing =
-            mediaMetadata.isMusicVideo &&
+            LocalVideoArtworkState.current != null &&
+                mediaMetadata.isMusicVideo &&
                 !mediaMetadata.id.isLocalMediaId()
         val isPreS = Build.VERSION.SDK_INT < Build.VERSION_CODES.S
         val context = LocalContext.current
@@ -485,8 +486,10 @@ private fun AppleMusicSharpArtwork(
         // through the gaps — the user explicitly reported this as a bug.
         // The video surface is rendered on top and alpha-fades in once
         // the first frame is ready.
+        val videoArtworkState = LocalVideoArtworkState.current
         val showVideo =
-            isMusicVideo &&
+            videoArtworkState != null &&
+                isMusicVideo &&
                 !videoId.isNullOrBlank() &&
                 playerConnection != null
         if (showVideo) {

@@ -27,6 +27,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.HighQuality
+import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -48,12 +49,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.media3.ui.AspectRatioFrameLayout
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.innertube.models.response.PlayerResponse
 
 /**
  * Walk the [ContextWrapper] chain to find the hosting [Activity].
@@ -164,8 +167,7 @@ fun ProvideVideoFullscreenState(content: @Composable () -> Unit) {
  * window's orientation issues that caused the "horizontal for a split second
  * then back" flicker.
  *
- * Controls: quality picker + fullscreen toggle. Captions button has been
- * removed per user request.
+ * Controls: quality picker + captions toggle + fullscreen button.
  *
  * @param state The hoisted [VideoArtworkState] (ExoPlayer + playback state).
  *   Null when there's no music video.
@@ -225,8 +227,7 @@ fun InlineVideoPlayer(
                 }
             }
 
-            // Controls overlay: quality picker + fullscreen button.
-            // (Captions button removed per user request.)
+            // Controls overlay: quality picker + captions toggle + fullscreen button.
             Row(
                 modifier =
                     Modifier
@@ -280,6 +281,10 @@ fun InlineVideoPlayer(
                     }
                 }
 
+                // Captions toggle — lists the caption tracks YouTube offered
+                // for this video (Off + each language).
+                CaptionControlsButton(state = state, size = 40.dp, iconSize = 22.dp)
+
                 // Fullscreen toggle — writes to the hoisted holder so the
                 // host can render the FullscreenVideoOverlay.
                 IconButton(
@@ -324,8 +329,7 @@ fun InlineVideoPlayer(
  * on exit. System bars are hidden for immersive playback and restored on
  * dismiss.
  *
- * Controls: quality picker + fullscreen-exit button. (Captions button
- * removed per user request.)
+ * Controls: quality picker + captions toggle + fullscreen-exit button.
  */
 @Composable
 fun FullscreenVideoOverlay(
@@ -417,10 +421,9 @@ fun FullscreenVideoOverlay(
             }
         }
 
-        // Top-right controls: quality | fullscreen-exit.
+        // Top-right controls: quality | captions | fullscreen-exit.
         // statusBarsPadding keeps the buttons clear of the (hidden)
         // status bar area in case the user swipes to reveal it.
-        // (Captions button removed per user request.)
         Row(
             modifier =
                 Modifier
@@ -473,6 +476,7 @@ fun FullscreenVideoOverlay(
                     }
                 }
             }
+            CaptionControlsButton(state = state, size = 44.dp, iconSize = 24.dp)
             IconButton(
                 onClick = onDismiss,
                 modifier =
@@ -491,6 +495,74 @@ fun FullscreenVideoOverlay(
             }
         }
     }
+}
+
+/**
+ * Captions toggle button + track list.
+ *
+ * Shown only when YouTube offered caption tracks for the current video.
+ * Selecting a track sets [VideoArtworkState.selectedCaptionTrack], which
+ * reloads the media item with that track's WebVTT URL embedded as a
+ * subtitle configuration. "Off" clears the selection.
+ */
+@Composable
+private fun CaptionControlsButton(
+    state: VideoArtworkState,
+    size: Dp,
+    iconSize: Dp,
+) {
+    if (state.captionTracks.isEmpty()) return
+
+    var captionMenuOpen by remember { mutableStateOf(false) }
+
+    Box {
+        IconButton(
+            onClick = { captionMenuOpen = true },
+            modifier =
+                Modifier
+                    .background(
+                        color = Color.Black.copy(alpha = 0.45f),
+                        shape = CircleShape,
+                    ).size(size),
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Subtitles,
+                contentDescription = stringResource(R.string.video_captions),
+                tint = Color.White,
+                modifier = Modifier.size(iconSize),
+            )
+        }
+        DropdownMenu(
+            expanded = captionMenuOpen,
+            onDismissRequest = { captionMenuOpen = false },
+        ) {
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.video_captions_off)) },
+                onClick = {
+                    state.selectedCaptionTrack = null
+                    captionMenuOpen = false
+                },
+            )
+            state.captionTracks.forEach { track ->
+                DropdownMenuItem(
+                    text = { Text(track.captionDisplayLabel()) },
+                    onClick = {
+                        state.selectedCaptionTrack = track
+                        captionMenuOpen = false
+                    },
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Human-readable label for a caption track. Auto-generated (ASR) tracks are
+ * de-prioritized by YouTube and marked as such.
+ */
+private fun PlayerResponse.CaptionTrack.captionDisplayLabel(): String {
+    val base = name?.displayName ?: languageCode ?: "Captions"
+    return if (isAutoGenerated) "$base (auto)" else base
 }
 
 /**

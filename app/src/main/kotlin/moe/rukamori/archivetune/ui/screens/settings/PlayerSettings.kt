@@ -45,6 +45,7 @@ import moe.rukamori.archivetune.constants.CrossfadeGaplessKey
 import moe.rukamori.archivetune.constants.DeviceMutePlaybackRecoveryVolumeKey
 import moe.rukamori.archivetune.constants.DownloadSource
 import moe.rukamori.archivetune.constants.DownloadSourceKey
+import moe.rukamori.archivetune.constants.EnableVideoPlaybackKey
 import moe.rukamori.archivetune.constants.ExternalDownloaderEnabledKey
 import moe.rukamori.archivetune.constants.ExternalDownloaderPackageKey
 import moe.rukamori.archivetune.constants.HISTORY_DURATION_DEFAULT
@@ -119,6 +120,11 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
         rememberPreference(
             AutoDownloadOnLikeKey,
             defaultValue = false,
+        )
+    val (enableVideoPlayback, onEnableVideoPlaybackChange) =
+        rememberPreference(
+            EnableVideoPlaybackKey,
+            defaultValue = true,
         )
     val (autoSkipNextOnError, onAutoSkipNextOnErrorChange) =
         rememberPreference(
@@ -294,6 +300,18 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                         checked = lowDataMode,
                         onCheckedChange = onLowDataModeChange,
                     )
+                }
+
+                item {
+                    Column(modifier = positions.modifierFor("enable_video_playback")) {
+                        SwitchPreference(
+                            title = { Text(stringResource(R.string.enable_video_playback)) },
+                            description = stringResource(R.string.enable_video_playback_desc),
+                            icon = { Icon(painterResource(R.drawable.slow_motion_video), null) },
+                            checked = enableVideoPlayback,
+                            onCheckedChange = onEnableVideoPlaybackChange,
+                        )
+                    }
                 }
 
                 item {

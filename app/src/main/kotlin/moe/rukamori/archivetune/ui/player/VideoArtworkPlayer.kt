@@ -9,11 +9,16 @@
 
 package moe.rukamori.archivetune.ui.player
 
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -23,14 +28,21 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.core.net.toUri
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.media3.common.C
+import androidx.media3.common.CueGroup
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
@@ -118,6 +130,14 @@ private const val VideoStuckBufferingTimeoutMs = 20000L
 private const val MaxVideoHeightCap = 1080
 
 /**
+ * Maximum time the main audio player stays paused while we wait for the
+ * video's first frame. After this the hold is released and playback falls
+ * back to audio-only (with the artwork) so the user is never stuck in
+ * silence if the video is slow to resolve or the network is degraded.
+ */
+private const val VideoReadyHoldTimeoutMs = 10000L
+
+/**
  * Resolved information about a video stream — the playable URL plus the
  * menu of formats YouTube offered, so the user can pick a different
  * quality after playback has started.
@@ -138,9 +158,14 @@ data class VideoStreamInfo(
  * playing seamlessly as the surface moves between the inline slot and the
  * fullscreen Dialog.
  *
- * This is the key architectural change from the previous design where two
- * separate ExoPlayer instances were created (one inline, one fullscreen),
- * causing the video to reload and pause on every fullscreen toggle.
+ * The ExoPlayer itself is created ONCE for the whole composition lifetime
+ * and reused across video changes (see [rememberVideoArtworkState]) — this
+ * is what fixes the "switching videos crashes the app" bug. Recreating the
+ * player per video meant releasing the old player while its surface was
+ * still attached, which raced with the surface detaching and threw
+ * IllegalStateException.
+ *
+ * @see rememberVideoArtworkState
  */
 @Stable
 class VideoArtworkState internal constructor(
@@ -163,6 +188,28 @@ class VideoArtworkState internal constructor(
     var isResolvingUrl: Boolean by mutableStateOf(true)
         internal set
     var bufferingStartedAtMs: Long by mutableStateOf(0L)
+        internal set
+
+    /**
+     * Caption tracks offered by YouTube for the current video, from the
+     * resolved [VideoStreamInfo]. Empty when the video has no captions.
+     */
+    var captionTracks: List<PlayerResponse.CaptionTrack> by mutableStateOf(emptyList())
+        internal set
+
+    /**
+     * The caption track the user has chosen to display. Null = captions off.
+     * Selecting a non-null track re-loads the media item with that track's
+     * WebVTT URL embedded as a subtitle configuration.
+     */
+    var selectedCaptionTrack: PlayerResponse.CaptionTrack? by mutableStateOf(null)
+
+    /**
+     * The text of the currently active caption cue (if [selectedCaptionTrack]
+     * is set and the track is producing cues), used by [VideoArtworkSurface]
+     * to render a subtitle overlay. Null when captions are off or idle.
+     */
+    var currentCaptionText: String? by mutableStateOf(null)
         internal set
 
     /**
@@ -207,11 +254,25 @@ class VideoArtworkState internal constructor(
  * position-sync poller, and releases the player when the composable leaves
  * the tree (or when [videoId] changes).
  *
+ * NOTE on the crash fix: the ExoPlayer is created ONCE and reused for every
+ * [videoId] this composable is shown with. Previously the player was keyed on
+ * [videoId], so switching from one music video to another created a brand-new
+ * ExoPlayer and released the old one while its surface was still attached —
+ * a race that crashed the app with IllegalStateException. Reusing the player
+ * means switching videos is just "stop the old media item, load the new one".
+ *
  * The returned [VideoArtworkState] is stable across recompositions and
  * across fullscreen toggles — the ExoPlayer is NOT recreated when the
  * parent switches between inline and fullscreen surfaces. Only the
  * [VideoArtworkSurface] (the view layer) moves; the player underneath
  * keeps running.
+ *
+ * "Start together" audio hold: while a music video is loading, the main
+ * audio player is paused (via [onRequestPauseMain]) so that audio does not
+ * play alone ahead of the video. Once the video's first frame is ready the
+ * audio is resumed (via [onRequestResumeMain]) and both start together.
+ * If the video fails or takes longer than [VideoReadyHoldTimeoutMs], the
+ * hold is released and playback falls back to audio-only.
  *
  * Seekbar pause-load-resume protocol: triggered by an explicit call to
  * [VideoArtworkState.requestResync] (wired to the seekbar's
@@ -237,6 +298,7 @@ fun rememberVideoArtworkState(
     isPlaying: Boolean,
     positionProvider: () -> Long,
     preferredHeight: Int?,
+    holdAudioUntilVideoReady: Boolean,
     onStreamResolved: (VideoStreamInfo?) -> Unit,
     onPlaybackFailed: () -> Unit,
     onLoadingStateChange: (Boolean) -> Unit,
@@ -253,6 +315,7 @@ fun rememberVideoArtworkState(
     val updatedOnLoadingStateChange by rememberUpdatedState(onLoadingStateChange)
     val updatedOnRequestPauseMain by rememberUpdatedState(onRequestPauseMain)
     val updatedOnRequestResumeMain by rememberUpdatedState(onRequestResumeMain)
+    val updatedHoldAudioUntilVideoReady by rememberUpdatedState(holdAudioUntilVideoReady)
 
     // ── OkHttp client with the YouTube stream proxy + request profile headers ──
     val okHttpClient =
@@ -319,8 +382,16 @@ fun rememberVideoArtworkState(
             }
         }
 
+    // ── Single ExoPlayer for the whole composition lifetime ──
+    //
+    // Deliberately NOT keyed on videoId: recreating the player per video
+    // released the old player while its surface was still attached, which
+    // crashed the app when switching between two music videos. Reusing the
+    // player means switching videos just loads a new media item into the
+    // same player. The player is only released when this composable (and
+    // therefore the whole video UI) leaves the tree.
     val state =
-        remember(videoId, mediaSourceFactory, renderersFactory, trackSelector) {
+        remember(mediaSourceFactory, renderersFactory, trackSelector) {
             val exoPlayer =
                 ExoPlayer
                     .Builder(context)
@@ -336,6 +407,40 @@ fun rememberVideoArtworkState(
         }
 
     val exoPlayer = state.exoPlayer
+
+    // "Start together" audio hold state.
+    //
+    // While a music video is loading we pause the main audio player and hold
+    // it until the video's first frame is rendered, then resume both. This
+    // prevents the "audio starts first, video loads later" desync.
+    var awaitingVideoReady by remember { mutableStateOf(false) }
+    var resumeAudioAfterVideoReady by remember { mutableStateOf(false) }
+
+    fun beginAudioHold() {
+        if (!updatedHoldAudioUntilVideoReady) return
+        if (awaitingVideoReady) return
+        awaitingVideoReady = true
+        resumeAudioAfterVideoReady = shouldPlay
+        if (shouldPlay) {
+            Timber
+                .tag(VideoPlaybackLogTag)
+                .d("Holding main audio while video for $videoId loads")
+            updatedOnRequestPauseMain()
+        }
+    }
+
+    fun releaseAudioHold() {
+        if (!awaitingVideoReady) return
+        awaitingVideoReady = false
+        val shouldResume = resumeAudioAfterVideoReady
+        resumeAudioAfterVideoReady = false
+        if (shouldResume) {
+            Timber
+                .tag(VideoPlaybackLogTag)
+                .d("Video ready — resuming main audio")
+            updatedOnRequestResumeMain()
+        }
+    }
 
     // Propagate loading state to the parent so it can render a spinner.
     LaunchedEffect(
@@ -365,6 +470,11 @@ fun rememberVideoArtworkState(
         state.isResyncing = false
         state.wasPlayingBeforeResync = false
         state.bufferingStartedAtMs = 0L
+        state.selectedCaptionTrack = null
+        state.captionTracks = emptyList()
+        state.currentCaptionText = null
+
+        beginAudioHold()
 
         val resolved =
             withContext(Dispatchers.IO) {
@@ -375,10 +485,12 @@ fun rememberVideoArtworkState(
 
         if (resolved == null) {
             state.hasPlaybackFailed = true
+            releaseAudioHold()
             updatedOnPlaybackFailed()
             updatedOnStreamResolved(null)
         } else {
             state.streamUrl = resolved.streamUrl
+            state.captionTracks = resolved.captionTracks
             updatedOnStreamResolved(resolved)
         }
     }
@@ -400,6 +512,7 @@ fun rememberVideoArtworkState(
         state.isResolvingUrl = false
         if (resolved != null) {
             state.streamUrl = resolved.streamUrl
+            state.captionTracks = resolved.captionTracks
             updatedOnStreamResolved(resolved)
         } else {
             state.isChangingQuality = false
@@ -409,6 +522,7 @@ fun rememberVideoArtworkState(
                 }
             if (fallback != null) {
                 state.streamUrl = fallback.streamUrl
+                state.captionTracks = fallback.captionTracks
                 updatedOnStreamResolved(fallback)
             } else {
                 state.hasPlaybackFailed = true
@@ -421,10 +535,15 @@ fun rememberVideoArtworkState(
     }
 
     // ── Load the resolved URL into the ExoPlayer ──
-    LaunchedEffect(state.streamUrl, exoPlayer) {
+    //
+    // Reloads when the stream URL changes (new video / quality swap) and when
+    // the selected caption track changes (so the caption's WebVTT URL can be
+    // embedded as a subtitle configuration on the media item).
+    LaunchedEffect(state.streamUrl, state.selectedCaptionTrack, exoPlayer) {
         val url = state.streamUrl ?: return@LaunchedEffect
         state.isVideoReady = false
         state.hasPlaybackFailed = false
+        state.currentCaptionText = null
 
         val lowercaseUrl = url.lowercase(Locale.ROOT)
         val mimeType =
@@ -436,12 +555,32 @@ fun rememberVideoArtworkState(
                 else -> MimeTypes.VIDEO_MP4
             }
 
-        val mediaItem =
+        val mediaItemBuilder =
             MediaItem
                 .Builder()
                 .setUri(url)
                 .setMimeType(mimeType)
-                .build()
+
+        // Embed the user-selected caption track. YouTube's timedtext endpoint
+        // returns WebVTT when `fmt=vtt` is appended (see CaptionTrack.webVttUrl),
+        // which ExoPlayer parses natively. Marking it SELECTION_FLAG_DEFAULT
+        // makes the default track selector pick it automatically so the
+        // onCues listener below receives the subtitle text.
+        state.selectedCaptionTrack?.let { track ->
+            mediaItemBuilder.setSubtitleConfigurations(
+                listOf(
+                    MediaItem
+                        .SubtitleConfiguration
+                        .Builder(track.webVttUrl().toUri())
+                        .setMimeType(MimeTypes.TEXT_VTT)
+                        .setLanguage(track.languageCode)
+                        .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+                        .build(),
+                ),
+            )
+        }
+
+        val mediaItem = mediaItemBuilder.build()
 
         exoPlayer.stop()
         exoPlayer.setMediaItem(mediaItem)
@@ -451,15 +590,33 @@ fun rememberVideoArtworkState(
         if (targetPosition > 0) {
             exoPlayer.seekTo(targetPosition)
         }
-        exoPlayer.playWhenReady = shouldPlay
+        exoPlayer.playWhenReady = shouldPlay && !awaitingVideoReady
     }
 
     // ── Play/pause follower ──
-    LaunchedEffect(isPlaying) {
+    LaunchedEffect(isPlaying, awaitingVideoReady) {
         if (state.hasPlaybackFailed) {
+            exoPlayer.pause()
+        } else if (awaitingVideoReady) {
+            // The video isn't ready yet — keep both paused so audio cannot
+            // run ahead of the video (and vice-versa). If the user pressed
+            // play during the hold, immediately re-pause the main player.
+            if (isPlaying) updatedOnRequestPauseMain()
             exoPlayer.pause()
         } else {
             exoPlayer.setVideoPlayback(isPlaying)
+        }
+    }
+
+    // ── Safety net: release the audio hold if the video never becomes ready ──
+    LaunchedEffect(state.streamUrl) {
+        if (state.streamUrl == null) return@LaunchedEffect
+        delay(VideoReadyHoldTimeoutMs)
+        if (awaitingVideoReady && !state.isVideoReady) {
+            Timber
+                .tag(VideoPlaybackLogTag)
+                .w("Video not ready within ${VideoReadyHoldTimeoutMs}ms — releasing audio hold")
+            releaseAudioHold()
         }
     }
 
@@ -532,6 +689,7 @@ fun rememberVideoArtworkState(
             if (state.isChangingQuality) continue
             if (state.isResyncing) continue
             if (!state.isVideoReady) continue
+            if (awaitingVideoReady) continue
 
             val mainPos = currentPosition()
             if (mainPos <= 0) continue
@@ -579,11 +737,21 @@ fun rememberVideoArtworkState(
                     state.isChangingQuality = false
                     state.isResyncing = false
                     state.bufferingStartedAtMs = 0L
+                    releaseAudioHold()
                     updatedOnPlaybackFailed()
+                }
+
+                override fun onCues(cueGroup: CueGroup) {
+                    val text =
+                        cueGroup.cues
+                            .joinToString("\n") { it.text?.toString().orEmpty() }
+                            .takeIf { it.isNotBlank() }
+                    state.currentCaptionText = text
                 }
 
                 override fun onRenderedFirstFrame() {
                     state.isVideoReady = true
+                    releaseAudioHold()
                     val wasChangingQuality = state.isChangingQuality
                     state.isChangingQuality = false
                     val wasResync = state.isResyncing
@@ -653,9 +821,22 @@ fun rememberVideoArtworkState(
     }
 
     // ── Release the ExoPlayer when the composable leaves the tree ──
+    //
+    // The release is deferred to the next main-looper pass so any surface
+    // still attached in this frame (e.g. when switching to a non-video song)
+    // can detach cleanly first — accessing a released player throws.
+    //
+    // The audio hold is released IMMEDIATELY (not deferred): if the hold was
+    // active (main audio paused while waiting for the video's first frame)
+    // and this composable leaves the tree — e.g. the user skips from a music
+    // video to a non-video song while the video is still loading — the main
+    // audio must be resumed right away or it would stay paused forever.
     DisposableEffect(exoPlayer) {
         onDispose {
-            exoPlayer.release()
+            releaseAudioHold()
+            Handler(Looper.getMainLooper()).post {
+                exoPlayer.release()
+            }
         }
     }
 
@@ -685,6 +866,7 @@ fun rememberVideoArtworkStateOrNull(
     isPlaying: Boolean,
     positionProvider: () -> Long,
     preferredHeight: Int?,
+    holdAudioUntilVideoReady: Boolean,
     onStreamResolved: (VideoStreamInfo?) -> Unit,
     onPlaybackFailed: () -> Unit,
     onLoadingStateChange: (Boolean) -> Unit,
@@ -700,6 +882,7 @@ fun rememberVideoArtworkStateOrNull(
             isPlaying = isPlaying,
             positionProvider = positionProvider,
             preferredHeight = preferredHeight,
+            holdAudioUntilVideoReady = holdAudioUntilVideoReady,
             onStreamResolved = onStreamResolved,
             onPlaybackFailed = onPlaybackFailed,
             onLoadingStateChange = onLoadingStateChange,
@@ -722,6 +905,9 @@ fun rememberVideoArtworkStateOrNull(
  * the video to reload. The ExoPlayer's surface is detached from the old
  * view and attached to the new one — a fast operation that does NOT
  * interrupt playback.
+ *
+ * When a caption track is selected, the currently active cue text is
+ * rendered as a subtitle overlay along the bottom edge.
  */
 @Composable
 fun VideoArtworkSurface(
@@ -744,6 +930,23 @@ fun VideoArtworkSurface(
             shutter = {},
             modifier = Modifier.fillMaxSize().alpha(alpha),
         )
+
+        // Caption overlay — rendered from the ExoPlayer's current cue text.
+        val captionText = state.currentCaptionText
+        if (state.selectedCaptionTrack != null && !captionText.isNullOrBlank()) {
+            androidx.compose.material3.Text(
+                text = captionText,
+                color = Color.White,
+                fontSize = 15.sp,
+                textAlign = TextAlign.Center,
+                modifier =
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .background(Color.Black.copy(alpha = 0.6f))
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+            )
+        }
     }
 }
 
