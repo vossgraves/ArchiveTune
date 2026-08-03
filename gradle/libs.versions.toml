@@ -35,7 +35,25 @@ junit = "4.13.2"
 turbine = "1.2.1"
 timber = "5.0.1"
 kuromojiIpadic = "0.9.0"
-extractor = "0.26.3"
+# Pinned to MetrolistGroup's commit `08a64867704c` (2026-05-29) — the last
+# commit before MetrolistExtractor bumped its java toolchain to JDK 25 in
+# `1cce4d0ce1bb` (2026-05-29). The :core submodule is a pure Kotlin/JVM module
+# with `jvmToolchain(21)` and the CI runner uses JDK 21, so we cannot consume
+# artifacts built with `languageVersion = JavaLanguageVersion.of(25)` — Gradle's
+# strict variant matching rejects them with "only compatible with JVM runtime
+# version 25 or newer". This commit targets Java 8 bytecode (`jvm.version=8` in
+# the Gradle module metadata), which is loadable on JVM 21.
+#
+# The API surface :core relies on (Downloader.executeAsync + AsyncCallback
+# nested interface, CancellableCall, 6-arg Response constructor) is already
+# present at this commit, so the swap from NewPipeExtractor still works.
+#
+# MetrolistExtractor is a maintained fork of NewPipeExtractor that keeps the
+# `org.schabi.newpipe.extractor` package names. The project publishes only via
+# JitPack (no Maven Central release) and has no git tags — JitPack resolves the
+# short commit hash. To move to a newer commit, the CI JDK and :core's
+# `jvmToolchain(...)` both need to be bumped to ≥ 25.
+extractor = "08a64867704c"
 translator = "1.1.1"
 rhino = "1.9.1"
 markwon = "4.6.2"
@@ -131,7 +149,11 @@ turbine = { module = "app.cash.turbine:turbine", version.ref = "turbine" }
 
 timber = { module = "com.jakewharton.timber:timber", version.ref = "timber" }
 
-newpipe-extractor = { module = "com.github.TeamNewPipe:NewPipeExtractor", version.ref = "extractor" }
+# MetrolistExtractor — maintained fork of NewPipeExtractor used by :core.
+# Same `org.schabi.newpipe.extractor` package namespace as upstream, so all
+# existing NewPipe imports keep working. Published on JitPack only.
+# Coordinates match the upstream Metrolist Android app (MetrolistGroup/Metrolist).
+metrolist-extractor = { module = "com.github.MetrolistGroup:MetrolistExtractor", version.ref = "extractor" }
 translator = { module = "com.github.therealbush:translator", version.ref = "translator" }
 
 kuromoji-ipadic = { module = "com.atilika.kuromoji:kuromoji-ipadic", version.ref = "kuromojiIpadic" }

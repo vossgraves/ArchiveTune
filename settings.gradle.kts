@@ -45,6 +45,16 @@ dependencyResolutionManagement {
                 // Used by AudioTagger to write title/artist/album/year/artwork tags onto
                 // exported downloaded songs.
                 includeGroup("com.github.RouHim")
+                // MetrolistExtractor — maintained fork of NewPipeExtractor used by :core
+                // for YouTube stream resolution (incl. captions + signature decryption).
+                // Same `org.schabi.newpipe.extractor` package namespace as upstream.
+                // Note: MetrolistExtractor is a multi-module Gradle project on JitPack,
+                // so its sub-modules (extractor, timeago-parser, ...) are published under
+                // the `com.github.MetrolistGroup.MetrolistExtractor` group — that group
+                // must also be allow-listed here, otherwise the parent POM resolves but
+                // every sub-module artifact fails to download.
+                includeGroup("com.github.MetrolistGroup")
+                includeGroup("com.github.MetrolistGroup.MetrolistExtractor")
             }
         }
     }
@@ -73,18 +83,18 @@ include(":spotifycore")
 include(":moriextractor")
 include(":morideobfuscator")
 
-// Use a local copy of NewPipe Extractor by uncommenting the lines below.
-// We assume, that ArchiveTune and NewPipe Extractor have the same parent directory.
+// Use a local copy of MetrolistExtractor by uncommenting the lines below.
+// We assume, that ArchiveTune and MetrolistExtractor have the same parent directory.
 // If this is not the case, please change the path in includeBuild().
 //
 // For this to work you also need to change the implementation in core/build.gradle.kts
 // to one which does not specify a version.
 // From:
-//      implementation(libs.newpipe.extractor)
+//      implementation(libs.metrolist.extractor)
 // To:
-//      implementation("com.github.TeamNewPipe:NewPipeExtractor")
-// includeBuild("../NewPipeExtractor") {
+//      implementation("com.github.MetrolistGroup:MetrolistExtractor")
+// includeBuild("../MetrolistExtractor") {
 //    dependencySubstitution {
-//        substitute(module("com.github.TeamNewPipe:NewPipeExtractor")).using(project(":extractor"))
+//        substitute(module("com.github.MetrolistGroup:MetrolistExtractor")).using(project(":extractor"))
 //    }
 // }
