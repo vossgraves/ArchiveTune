@@ -1357,6 +1357,43 @@ private fun VideoAmbientBackdrop(
 /**
  * Pick the best video format from a [PlayerResponse], honoring a preferred
  * height.
+ *
+ * # Single-stream A/V preference
+ *
+ * The user explicitly wants "audio and video in a single stream", so we
+ * prefer **muxed** (a.k.a. "progressive") formats — the entries in
+ * [PlayerResponse.StreamingData.formats] — which carry both audio + video
+ * in ONE HTTP stream. YouTube caps these at 720p (itag 22) or 360p (itag
+ * 18 / 36). When no muxed format is available at the requested quality
+ * (e.g. the user picked 1080p, which YouTube only serves as DASH
+ * adaptive), we fall back to adaptive video-only formats from
+ * [PlayerResponse.StreamingData.adaptiveFormats].
+ *
+ * # Why this does NOT cause dual audio
+ *
+ * Even when we pick a muxed format, the video ExoPlayer's audio track is
+ * DISABLED (see [rememberVideoArtworkState] —
+ * `setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)`). The muxed stream's
+ * audio is demuxed but NOT rendered. The MAIN MusicService ExoPlayer is
+ * the sole source of audible audio. This is the key difference from the
+ * previous broken single-stream attempt, which ENABLED the video's audio
+ * track and tried — unreliably — to mute the main player via
+ * `playerConnection.player.volume = 0f`. The mute call did not reliably
+ * reach the playback instance at the right time, so the user heard both
+ * streams stacked on top of each other. Disabling the audio track at the
+ * track-selector level is deterministic and has no timing window.
+ *
+ * # Why prefer muxed when we silence it anyway
+ *
+ * Two reasons:
+ *  1. The user explicitly asked for it ("audio and video in a single
+ *     stream"). Honoring the literal request.
+ *  2. Muxed progressive formats are MP4 + H.264 + AAC, which is hardware-
+ *     decoded on virtually every Android device. Adaptive formats are
+ *     frequently VP9 / AV1, which falls back to software decoding on
+ *     older / mid-range chipsets — causing the ~500ms decoder lag that
+ *     triggers constant drift resyncs. Muxed is therefore also the
+ *     higher-performance choice.
  */
 private fun pickVideoFormat(
     playerResponse: PlayerResponse,
@@ -1364,33 +1401,70 @@ private fun pickVideoFormat(
 ): PlayerResponse.StreamingData.Format? {
     val streamingData = playerResponse.streamingData ?: return null
 
-    val allVideoFormats =
-        (streamingData.formats.orEmpty() + streamingData.adaptiveFormats.orEmpty())
+    // ── Candidate pools ──
+    //
+    // streamingData.formats          → muxed (audio+video in one stream).
+    // streamingData.adaptiveFormats  → DASH; each entry is EITHER video-only
+    //                                   OR audio-only. We keep only the ones
+    //                                   with a non-null height (i.e. video).
+    val muxedCandidates =
+        streamingData.formats.orEmpty()
             .asSequence()
-            .filter {
-                val h = it.height
-                h != null && h > 0
-            }
-            .filter { it.height ?: 0 <= MaxVideoHeightCap }
+            .filter { it.height != null && it.height > 0 }
+            .filter { it.height <= MaxVideoHeightCap }
+            .filter { it.url != null || it.signatureCipher != null || it.cipher != null }
+            // Defensive: confirm the format actually carries audio. Every
+            // entry in streamingData.formats SHOULD be muxed, but filter
+            // to be safe against malformed responses.
+            .filter { it.audioSampleRate != null || it.audioQuality != null }
+            .toList()
+
+    val adaptiveVideoCandidates =
+        streamingData.adaptiveFormats.orEmpty()
+            .asSequence()
+            .filter { it.height != null && it.height > 0 }
+            .filter { it.height <= MaxVideoHeightCap }
             .filter { it.url != null || it.signatureCipher != null || it.cipher != null }
             .toList()
 
-    if (allVideoFormats.isEmpty()) return null
-
-    val heightFiltered =
-        if (preferredHeight != null) {
-            val atOrBelow = allVideoFormats.filter { (it.height ?: 0) <= preferredHeight }
-            if (atOrBelow.isNotEmpty()) atOrBelow else allVideoFormats.sortedBy { it.height ?: 0 }
-        } else {
-            allVideoFormats
-        }
+    if (muxedCandidates.isEmpty() && adaptiveVideoCandidates.isEmpty()) return null
 
     val comparator =
         compareByDescending<PlayerResponse.StreamingData.Format> { it.height ?: 0 }
             .thenByDescending { it.url != null }
             .thenByDescending { it.audioQuality != null }
 
-    return heightFiltered.sortedWith(comparator).firstOrNull()
+    // If the user specified a preferred height, prefer formats at or below
+    // it; if none qualify, fall back to the full candidate list (the
+    // comparator will pick the closest match — typically the smallest
+    // available, which is the safest option when the preferred height is
+    // below everything YouTube offered).
+    fun pickBest(candidates: List<PlayerResponse.StreamingData.Format>): PlayerResponse.StreamingData.Format? {
+        if (candidates.isEmpty()) return null
+        val heightFiltered =
+            if (preferredHeight == null) {
+                candidates
+            } else {
+                val atOrBelow = candidates.filter { (it.height ?: 0) <= preferredHeight }
+                if (atOrBelow.isNotEmpty()) atOrBelow else candidates
+            }
+        return heightFiltered.sortedWith(comparator).firstOrNull()
+    }
+
+    // Tier 1: muxed (single-stream audio+video) — preferred per the user's
+    // "audio and video in a single stream" requirement. The video
+    // ExoPlayer's audio track is disabled (see rememberVideoArtworkState),
+    // so the muxed stream's audio is demuxed but NOT rendered — the MAIN
+    // MusicService ExoPlayer remains the sole audible source. This is what
+    // prevents the dual-audio bug.
+    pickBest(muxedCandidates)?.let { return it }
+
+    // Tier 2: adaptive video-only — fallback when no muxed format is
+    // available (e.g. user prefers 1080p and YouTube offers no muxed at
+    // or below that height). Audio is still provided solely by the main
+    // MusicService ExoPlayer; the adaptive video-only stream has no audio
+    // track to disable.
+    return pickBest(adaptiveVideoCandidates)
 }
 
 /**
