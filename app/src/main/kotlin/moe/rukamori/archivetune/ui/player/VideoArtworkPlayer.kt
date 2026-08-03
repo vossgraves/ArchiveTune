@@ -92,19 +92,85 @@ import timber.log.Timber
 import java.util.Locale
 
 /**
- * Maximum allowed drift between the main audio player's position and the
- * video surface's position before we force a re-seek.
+ * Below this absolute drift, NO correction is applied — the desync is
+ * imperceptible to the user.
  *
- * NOTE: This was previously 400ms, which was too tight for VP9/AV1 hardware
- * decoders on mobile. The decoder naturally lags behind the audio player by
- * 300–800ms due to frame rendering pipeline depth. A tight tolerance causes
- * a seekTo on every poll cycle, which re-buffers, which causes MORE drift,
- * creating an infinite re-sync loop (the "video keeps pausing" bug).
+ * Human perception thresholds for A/V desync (industry research, ITU-R
+ * BT.1359-1): ~50ms is imperceptible, ~100ms is noticeable to trained
+ * viewers, ~200ms is noticeable to casual viewers, >400ms is annoying.
+ * 60ms sits safely in the "imperceptible" band.
  *
- * 2000ms is wide enough to absorb normal decoder lag while still catching
- * genuine desync from network hiccups or background throttling.
+ * The previous tolerance was 2000ms — that is WHY the user perceived
+ * constant desync: drifts of 300–1500ms (very common with VP9/AV1
+ * hardware decoder lag) were silently ignored. Only pause/resume or a
+ * quality change (which run the full pause-load-resume protocol) would
+ * resync. This tight 60ms floor replaces that ignore-everything policy.
  */
-private const val VideoSyncDriftToleranceMs = 2000L
+private const val VideoSyncIgnoreToleranceMs = 60L
+
+/**
+ * Drift above this threshold triggers a **soft seek** instead of
+ * speed-based correction. Below this, drift is corrected gradually by
+ * adjusting the video ExoPlayer's playback speed (see
+ * [VideoSyncSpeedCorrectionFactorMax]); above it, the video is seeked
+ * to the audio's current position (which causes a brief re-buffer).
+ *
+ * 3000ms is the crossover because at ±20% max speed correction, closing
+ * a 3000ms drift would take ~15 seconds — too slow for the user to
+ * perceive it as "fixed". A soft seek re-buffers for ~1s and is done.
+ *
+ * The settling period ([VideoSeekSettlingTimeMs]) after a seek prevents
+ * the re-buffer loop that previously plagued this path: after a seek we
+ * suppress drift checks for 2s while the video re-buffers, so the
+ * natural decoder lag during re-buffer doesn't immediately re-trigger
+ * another seek.
+ */
+private const val VideoSoftSeekDriftThresholdMs = 3000L
+
+/**
+ * Maximum proportional speed adjustment applied for drift correction.
+ *
+ * When drift is in the [VideoSyncIgnoreToleranceMs]..
+ * [VideoSoftSeekDriftThresholdMs] band, the video ExoPlayer's playback
+ * speed is adjusted by up to ±20% to gently catch up / slow down to the
+ * audio clock — WITHOUT seeking, WITHOUT re-buffering. This is the same
+ * approach MPV and VLC use for their default A/V sync (MPV's
+ * `video-sync=audio` mode).
+ *
+ * The correction is proportional: drift = 0 → factor = 1.0; drift =
+ * +1500ms (video ahead) → factor ≈ 0.90; drift = -1500ms (video behind)
+ * → factor ≈ 1.10; drift = ±3000ms → factor = 0.80 / 1.20 (capped).
+ *
+ * The factor is recomputed every poll cycle ([VideoSyncPollIntervalMs]
+ * = 500ms), so it continuously narrows as drift approaches zero. Once
+ * drift drops below [VideoSyncIgnoreToleranceMs] the factor resets to
+ * 1.0 and the video returns to the user's preferred playback speed.
+ *
+ * 20% is noticeable to the user IF sustained, but because it's
+ * proportional and only sustained while drift is being corrected (a
+ * few seconds at most), it reads as "the video caught up" rather than
+ * "the video is playing at the wrong speed".
+ */
+private const val VideoSyncSpeedCorrectionFactorMax = 0.20f
+
+/**
+ * Time during which drift checks are suppressed after a seek (soft seek,
+ * manual resync, or the initial-load snap in [onRenderedFirstFrame]).
+ *
+ * After a seek the video ExoPlayer enters STATE_BUFFERING while it
+ * re-decodes from the new position. During this window its
+ * `currentPosition` is stale and the audio player keeps advancing, so a
+ * drift check would always fire and either re-seek (infinite loop) or
+ * apply a huge speed correction that immediately gets undone when the
+ * video catches up. Suppressing checks for 2s lets the video re-buffer
+ * fully before we trust its position again.
+ *
+ * 2s is empirically enough for 1080p VP9/AV1 to re-buffer on a typical
+ * mobile connection; the prior 20s stuck-buffering timeout
+ * ([VideoStuckBufferingTimeoutMs]) still catches genuinely stuck
+ * decoders separately.
+ */
+private const val VideoSeekSettlingTimeMs = 2000L
 
 /**
  * Tight drift tolerance used ONLY for the initial sync in
@@ -113,31 +179,8 @@ private const val VideoSyncDriftToleranceMs = 2000L
  * threshold. 200ms is imperceptible to the user while avoiding a redundant
  * seekTo (which would trigger a brief re-buffer) when the video is already
  * close enough.
- *
- * This is separate from [VideoSyncDriftToleranceMs] (2000ms) which governs
- * the CONTINUOUS drift poller. The continuous poller needs a wide tolerance
- * to absorb natural decoder lag; the initial sync needs a tight one to
- * guarantee A/V alignment at startup.
  */
 private const val VideoInitialSyncToleranceMs = 200L
-
-/**
- * Drift threshold above which we fire a "soft" seek (seek the video WITHOUT
- * pausing the main audio player). The video may freeze briefly while it
- * re-buffers, but the audio continues uninterrupted.
- *
- * This is intentionally NOT a pause-load-resume — that protocol was removed
- * from the automatic drift path because it caused the "video keeps pausing
- * repeatedly" bug: the resync would pause both audio+video, the video would
- * re-buffer, both would resume, and then the next poll cycle would detect
- * drift again (because the video is naturally behind from decoder lag),
- * triggering another resync — an infinite loop.
- *
- * The pause-load-resume protocol is now ONLY triggered by an explicit call
- * to [VideoArtworkState.requestResync], which is wired to the seekbar's
- * onValueChangeFinished callback.
- */
-private const val VideoSoftSeekDriftThresholdMs = 3000L
 
 /**
  * Drift threshold above which we fire a HARD pause-load-resume resync even
@@ -249,6 +292,45 @@ class VideoArtworkState internal constructor(
     var isResolvingUrl: Boolean by mutableStateOf(true)
         internal set
     var bufferingStartedAtMs: Long by mutableStateOf(0L)
+        internal set
+
+    /**
+     * Current speed-correction factor applied on top of the user's
+     * preferred playback speed ([VideoPlaybackSpeedKey]) to gently bring
+     * the video back into sync with the main audio clock.
+     *
+     * 1.0 = no correction (in sync or within
+     * [VideoSyncIgnoreToleranceMs]). Between 0.80 and 1.20 = actively
+     * correcting drift: <1.0 means the video is ahead of the audio and
+     * is being slowed down; >1.0 means the video is behind and is being
+     * sped up.
+     *
+     * The effective video speed is `userSpeed * currentSpeedCorrectionFactor`,
+     * computed in the speed-follower LaunchedEffect in
+     * [rememberVideoArtworkState]. The drift poller updates this factor
+     * every [VideoSyncPollIntervalMs]; the speed follower re-applies it
+     * whenever it changes.
+     *
+     * See [VideoSyncSpeedCorrectionFactorMax] for the proportional
+     * control rationale.
+     */
+    var currentSpeedCorrectionFactor by mutableStateOf(1.0f)
+        internal set
+
+    /**
+     * Epoch-millis (from [SystemClock.elapsedRealtime]) of the last
+     * seek performed on the video ExoPlayer — soft seek, manual resync,
+     * or the initial-load snap in onRenderedFirstFrame.
+     *
+     * The drift poller consults this to suppress drift checks for
+     * [VideoSeekSettlingTimeMs] after any seek, preventing the re-buffer
+     * loop where the video's stale position during re-buffer immediately
+     * re-triggers another seek.
+     *
+     * Reset to 0 when the video id changes (the new video gets a fresh
+     * settling window from its own initial-load snap).
+     */
+    var lastSeekAtMs: Long by mutableStateOf(0L)
         internal set
 
     /**
@@ -605,6 +687,14 @@ fun rememberVideoArtworkState(
         // the previous video's decoder got stuck.
         state.lastAutoResyncAtMs = 0L
         state.autoResyncDisabled = false
+        // Reset the drift-correction state for the new video. The speed
+        // factor returns to 1.0 (no correction) and the settling timer
+        // is cleared so the drift poller can run as soon as the video's
+        // first frame renders (the initial-load snap in
+        // onRenderedFirstFrame will set lastSeekAtMs to start a fresh
+        // settling window if it actually seeks).
+        state.currentSpeedCorrectionFactor = 1.0f
+        state.lastSeekAtMs = 0L
         // Reset the "last loaded" trackers so the next media-item load is
         // treated as a fresh load (not a caption-only change).
         lastLoadedStreamUrl = null
@@ -751,6 +841,10 @@ fun rememberVideoArtworkState(
         val targetPosition = currentPosition()
         if (targetPosition > 0) {
             exoPlayer.seekTo(targetPosition)
+            // Start a settling window so the drift poller doesn't
+            // immediately re-seek while the new media item buffers. This
+            // covers BOTH the initial-load and quality-change paths.
+            state.lastSeekAtMs = SystemClock.elapsedRealtime()
         }
         exoPlayer.playWhenReady = shouldPlay && !awaitingVideoReady
     }
@@ -813,24 +907,31 @@ fun rememberVideoArtworkState(
         }
     }
 
-    // ── Playback speed follower ──
+    // ── Playback speed follower (user preference × drift-correction factor) ──
     //
-    // Mirror the user's [VideoPlaybackSpeedKey] preference into the video
-    // ExoPlayer. This is the video-side counterpart to the audio-side
-    // follower in FullscreenVideoOverlay — keeping both ExoPlayers at the
-    // same speed is what keeps audio + video aligned when the user picks a
-    // non-1.0x speed from the 3-dot overflow menu.
+    // The video ExoPlayer's effective speed is the product of:
+    //   - the user's preferred playback speed ([VideoPlaybackSpeedKey]),
+    //     which the audio-side follower in FullscreenVideoOverlay also
+    //     applies to the main MusicService ExoPlayer so both stay at the
+    //     same nominal speed; AND
+    //   - [VideoArtworkState.currentSpeedCorrectionFactor], a proportional
+    //     correction factor (0.80–1.20) updated by the drift poller below
+    //     to gently bring the video into sync with the audio clock WITHOUT
+    //     seeking. This is the MPV / VLC approach to A/V sync.
     //
-    // The preference is also written from the audio side (the overlay sets
-    // playerConnection.player.playbackParameters AND persists the speed to
-    // VideoPlaybackSpeedKey), so reading the same preference here keeps
-    // them in lock-step.
+    // When drift is within [VideoSyncIgnoreToleranceMs] the factor is 1.0
+    // and the video plays at exactly the user's preferred speed. When the
+    // drift poller detects desync it nudges the factor up (video behind) or
+    // down (video ahead); this LaunchedEffect re-applies the resulting
+    // effective speed to the ExoPlayer.
     val (videoPlaybackSpeed, _) = rememberPreference(VideoPlaybackSpeedKey, defaultValue = 1.0f)
-    LaunchedEffect(videoPlaybackSpeed, exoPlayer) {
+    LaunchedEffect(videoPlaybackSpeed, exoPlayer, state.currentSpeedCorrectionFactor) {
         val safeSpeed = videoPlaybackSpeed.coerceIn(0.25f, 2f)
+        val effectiveSpeed =
+            (safeSpeed * state.currentSpeedCorrectionFactor).coerceIn(0.1f, 4f)
         val current = exoPlayer.playbackParameters.speed
-        if (kotlin.math.abs(current - safeSpeed) > 0.001f) {
-            exoPlayer.playbackParameters = PlaybackParameters(safeSpeed)
+        if (kotlin.math.abs(current - effectiveSpeed) > 0.001f) {
+            exoPlayer.playbackParameters = PlaybackParameters(effectiveSpeed)
         }
     }
 
@@ -854,6 +955,12 @@ fun rememberVideoArtworkState(
         state.wasPlayingBeforeResync = wasPlaying
         state.isResyncing = true
         state.isVideoReady = false
+        // Reset the speed-correction factor — the seek will bring the video
+        // back into sync, so any in-flight speed nudge is no longer needed.
+        // The drift poller is also suppressed for [VideoSeekSettlingTimeMs]
+        // via [lastSeekAtMs] so it won't fight the seek during re-buffer.
+        state.currentSpeedCorrectionFactor = 1.0f
+        state.lastSeekAtMs = SystemClock.elapsedRealtime()
         if (wasPlaying) updatedOnRequestPauseMain()
         exoPlayer.pause()
         exoPlayer.seekTo(position)
@@ -879,27 +986,45 @@ fun rememberVideoArtworkState(
                 }
             }
 
-            // Drift detection — three tiers:
+            // ── Drift detection — four tiers ──
             //
-            // 1. SMALL drift (<= VideoSoftSeekDriftThresholdMs while playing,
-            //    <= VideoSyncDriftToleranceMs while paused):
-            //    IGNORE. The video self-corrects because both play at 1x.
-            //    Decoder lag of 300–800ms is normal and imperceptible.
+            // 0. SETTLING (just seeked): suppress all drift checks for
+            //    [VideoSeekSettlingTimeMs] after any seek (soft seek,
+            //    manual resync, or initial-load snap). During re-buffer
+            //    the video's currentPosition is stale and would
+            //    immediately re-trigger a seek — the infinite-loop bug
+            //    that previously plagued this path.
             //
-            // 2. MEDIUM drift (> VideoSoftSeekDriftThresholdMs while playing):
-            //    SOFT seek — seek the video WITHOUT pausing the main audio.
-            //    The video may freeze briefly while re-buffering, but the
-            //    audio continues uninterrupted. Good tradeoff for a music app.
+            // 1. IGNORE (|drift| <= [VideoSyncIgnoreToleranceMs]):
+            //    No correction. 60ms is imperceptible (ITU-R BT.1359-1).
+            //    Reset the speed-correction factor to 1.0 so the video
+            //    returns to the user's preferred speed.
             //
-            // 3. LARGE drift (> VideoHardResyncThresholdMs while playing OR
-            //    paused): HARD pause-load-resume via [requestAutoResync].
-            //    The soft seek is unreliable at multi-second drift (the
-            //    re-buffer takes too long and drift keeps growing), so we
-            //    coordinate a full pause-load-resume. This is rate-limited
-            //    by [VideoHardResyncCooldownMs] and latches
-            //    [VideoArtworkState.autoResyncDisabled] if two fire within
-            //    the cooldown — preventing the infinite-loop bug that
-            //    previously plagued automatic resync.
+            // 2. SPEED-CORRECT
+            //    ([VideoSyncIgnoreToleranceMs] < |drift| <=
+            //    [VideoSoftSeekDriftThresholdMs]):
+            //    Proportional speed adjustment — up to ±20% (capped) on
+            //    top of the user's preferred speed. Video behind audio →
+            //    speed up; video ahead → slow down. No seek, no
+            //    re-buffer. This is the MPV / VLC approach and is what
+            //    fixes the user's "always desynced, only pause/resume
+            //    fixes it" complaint: drifts of 100–2000ms (the band
+            //    that was previously IGNORED up to 2000ms) are now
+            //    continuously corrected without any user-visible
+            //    disruption.
+            //
+            // 3. SOFT SEEK ([VideoSoftSeekDriftThresholdMs] < |drift|
+            //    <= [VideoHardResyncThresholdMs], while playing):
+            //    Seek the video WITHOUT pausing the main audio. The
+            //    video freezes briefly while re-buffering, but the audio
+            //    continues uninterrupted. Sets [lastSeekAtMs] to trigger
+            //    the SETTLING tier afterward.
+            //
+            // 4. HARD RESYNC (|drift| > [VideoHardResyncThresholdMs]):
+            //    Coordinated pause-load-resume via [requestAutoResync].
+            //    Rate-limited by [VideoHardResyncCooldownMs] and latches
+            //    [VideoArtworkState.autoResyncDisabled] if two fire
+            //    within the cooldown.
             //
             // For explicit seekbar seeks, the user-initiated
             // [VideoArtworkState.requestResync] bypasses the cooldown.
@@ -908,23 +1033,77 @@ fun rememberVideoArtworkState(
             if (!state.isVideoReady) continue
             if (awaitingVideoReady) continue
 
+            // Tier 0: settling — suppress drift checks for 2s after any
+            // seek so the video has time to re-buffer fully before we
+            // trust its currentPosition again.
+            val now = SystemClock.elapsedRealtime()
+            if (state.lastSeekAtMs > 0L && now - state.lastSeekAtMs < VideoSeekSettlingTimeMs) {
+                // Also clamp the correction factor to 1.0 during settling
+                // so we don't fight the seek with a stale speed nudge.
+                if (state.currentSpeedCorrectionFactor != 1.0f) {
+                    state.currentSpeedCorrectionFactor = 1.0f
+                }
+                continue
+            }
+
             val mainPos = currentPosition()
             if (mainPos <= 0) continue
             val videoPos = exoPlayer.currentPosition
-            val drift = kotlin.math.abs(videoPos - mainPos)
+            // SIGNED drift: positive = video AHEAD of audio, negative =
+            // video BEHIND audio. The sign drives the direction of the
+            // speed correction (tier 2).
+            val signedDrift = videoPos - mainPos
+            val absDrift = kotlin.math.abs(signedDrift)
 
-            if (drift > VideoHardResyncThresholdMs) {
+            if (absDrift > VideoHardResyncThresholdMs) {
+                // Tier 4: hard resync.
                 Timber
                     .tag(VideoPlaybackLogTag)
-                    .w("Hard resync: drift=${drift}ms (main=$mainPos, video=$videoPos, playing=$shouldPlay)")
+                    .w("Hard resync: drift=${signedDrift}ms (main=$mainPos, video=$videoPos, playing=$shouldPlay)")
+                state.currentSpeedCorrectionFactor = 1.0f
                 state.requestAutoResync(mainPos, shouldPlay)
-            } else if (drift > VideoSoftSeekDriftThresholdMs && shouldPlay) {
+            } else if (absDrift > VideoSoftSeekDriftThresholdMs) {
+                // Tier 3: soft seek. Triggered for both playing AND
+                // paused states — when paused, a large drift means the
+                // user seeked the audio while the video was idle, so we
+                // need to snap the video to the new audio position.
                 Timber
                     .tag(VideoPlaybackLogTag)
-                    .d("Soft seek: drift=${drift}ms (main=$mainPos, video=$videoPos)")
+                    .d("Soft seek: drift=${signedDrift}ms (main=$mainPos, video=$videoPos)")
+                state.currentSpeedCorrectionFactor = 1.0f
                 exoPlayer.seekTo(mainPos)
-            } else if (drift > VideoSyncDriftToleranceMs && !shouldPlay) {
-                exoPlayer.seekTo(mainPos)
+                state.lastSeekAtMs = now
+            } else if (absDrift > VideoSyncIgnoreToleranceMs) {
+                // Tier 2: proportional speed correction.
+                //
+                // normalizedDrift ∈ [-1, 1]: +1 = video ahead by
+                // [VideoSoftSeekDriftThresholdMs]; -1 = video behind by
+                // the same. We cap at ±1 so a borderline drift just
+                // before the soft-seek threshold still applies the max
+                // correction (no runaway).
+                val normalizedDrift =
+                    (signedDrift.toFloat() / VideoSoftSeekDriftThresholdMs.toFloat())
+                        .coerceIn(-1f, 1f)
+                // If drift > 0 (video ahead), we want factor < 1 (slow
+                // down) → subtract. If drift < 0 (video behind), we
+                // want factor > 1 (speed up) → the subtraction of a
+                // negative adds. Hence the single formula:
+                //   factor = 1 - (normalizedDrift * maxFactor)
+                val targetFactor =
+                    1.0f - (normalizedDrift * VideoSyncSpeedCorrectionFactorMax)
+                if (kotlin.math.abs(state.currentSpeedCorrectionFactor - targetFactor) > 0.005f) {
+                    Timber
+                        .tag(VideoPlaybackLogTag)
+                        .d("Speed-correct: drift=${signedDrift}ms factor=$targetFactor (main=$mainPos, video=$videoPos)")
+                    state.currentSpeedCorrectionFactor = targetFactor
+                }
+            } else {
+                // Tier 1: within ignore tolerance. Reset the factor so
+                // the video returns to the user's preferred speed once
+                // drift is corrected.
+                if (state.currentSpeedCorrectionFactor != 1.0f) {
+                    state.currentSpeedCorrectionFactor = 1.0f
+                }
             }
         }
     }
@@ -1007,6 +1186,10 @@ fun rememberVideoArtworkState(
                             val drift = kotlin.math.abs(videoPos - mainPos)
                             if (drift > VideoInitialSyncToleranceMs) {
                                 exoPlayer.seekTo(mainPos)
+                                // Start the settling window so the drift
+                                // poller doesn't immediately re-seek while
+                                // the video re-buffers from this snap.
+                                state.lastSeekAtMs = SystemClock.elapsedRealtime()
                             }
                         }
                     }
@@ -1076,6 +1259,11 @@ fun rememberVideoArtworkState(
                             state.bufferingStartedAtMs = 0L
                             val mainPos = currentPosition()
                             exoPlayer.seekTo(mainPos)
+                            // The video ended (likely a brief stall at the
+                            // end of a chunk); snap it back to the audio
+                            // position and start a settling window so the
+                            // drift poller doesn't immediately re-seek.
+                            state.lastSeekAtMs = SystemClock.elapsedRealtime()
                             exoPlayer.setVideoPlayback(shouldPlay)
                         }
                         Player.STATE_IDLE -> {
@@ -1358,42 +1546,30 @@ private fun VideoAmbientBackdrop(
  * Pick the best video format from a [PlayerResponse], honoring a preferred
  * height.
  *
- * # Single-stream A/V preference
+ * # Audio + video loaded SEPARATELY
  *
- * The user explicitly wants "audio and video in a single stream", so we
- * prefer **muxed** (a.k.a. "progressive") formats — the entries in
- * [PlayerResponse.StreamingData.formats] — which carry both audio + video
- * in ONE HTTP stream. YouTube caps these at 720p (itag 22) or 360p (itag
- * 18 / 36). When no muxed format is available at the requested quality
- * (e.g. the user picked 1080p, which YouTube only serves as DASH
- * adaptive), we fall back to adaptive video-only formats from
- * [PlayerResponse.StreamingData.adaptiveFormats].
+ * The video ExoPlayer loads a **video-only** adaptive format from
+ * `streamingData.adaptiveFormats`. The MAIN MusicService ExoPlayer is the
+ * sole source of audio — it plays the YouTube Music audio stream
+ * independently. The video ExoPlayer's audio track is disabled (see
+ * [rememberVideoArtworkState] —
+ * `setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)`), so even if a
+ * candidate happens to be muxed its audio is demuxed but not rendered.
  *
- * # Why this does NOT cause dual audio
+ * This split-stream approach was the user's explicit request — they tried
+ * a muxed (single-stream) preference and reverted because (a) YouTube
+ * caps muxed formats at 720p and (b) the muxed audio wasn't reliably
+ * silenced in an earlier attempt. Loading audio + video separately keeps
+ * the audio path identical to non-music-video playback (no muting hooks,
+ * no risk of dual audio) and lets the user pick any adaptive video
+ * resolution up to [MaxVideoHeightCap] (1080p).
  *
- * Even when we pick a muxed format, the video ExoPlayer's audio track is
- * DISABLED (see [rememberVideoArtworkState] —
- * `setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)`). The muxed stream's
- * audio is demuxed but NOT rendered. The MAIN MusicService ExoPlayer is
- * the sole source of audible audio. This is the key difference from the
- * previous broken single-stream attempt, which ENABLED the video's audio
- * track and tried — unreliably — to mute the main player via
- * `playerConnection.player.volume = 0f`. The mute call did not reliably
- * reach the playback instance at the right time, so the user heard both
- * streams stacked on top of each other. Disabling the audio track at the
- * track-selector level is deterministic and has no timing window.
- *
- * # Why prefer muxed when we silence it anyway
- *
- * Two reasons:
- *  1. The user explicitly asked for it ("audio and video in a single
- *     stream"). Honoring the literal request.
- *  2. Muxed progressive formats are MP4 + H.264 + AAC, which is hardware-
- *     decoded on virtually every Android device. Adaptive formats are
- *     frequently VP9 / AV1, which falls back to software decoding on
- *     older / mid-range chipsets — causing the ~500ms decoder lag that
- *     triggers constant drift resyncs. Muxed is therefore also the
- *     higher-performance choice.
+ * The picker scans BOTH `formats` and `adaptiveFormats` (YouTube
+ * occasionally lists a video-only entry in `formats` on some clients),
+ * filters to those at or below [MaxVideoHeightCap], and picks the highest
+ * resolution at or below the user's [preferredHeight] (falling back to
+ * the smallest available if the preferred height is below everything
+ * YouTube offered).
  */
 private fun pickVideoFormat(
     playerResponse: PlayerResponse,
@@ -1401,14 +1577,8 @@ private fun pickVideoFormat(
 ): PlayerResponse.StreamingData.Format? {
     val streamingData = playerResponse.streamingData ?: return null
 
-    // ── Candidate pools ──
-    //
-    // streamingData.formats          → muxed (audio+video in one stream).
-    // streamingData.adaptiveFormats  → DASH; each entry is EITHER video-only
-    //                                   OR audio-only. We keep only the ones
-    //                                   with a non-null height (i.e. video).
-    val muxedCandidates =
-        streamingData.formats.orEmpty()
+    val allVideoFormats =
+        (streamingData.formats.orEmpty() + streamingData.adaptiveFormats.orEmpty())
             .asSequence()
             .filter {
                 // Local val enables smart-casting — `height` is a public
@@ -1420,61 +1590,24 @@ private fun pickVideoFormat(
             }
             .filter { (it.height ?: 0) <= MaxVideoHeightCap }
             .filter { it.url != null || it.signatureCipher != null || it.cipher != null }
-            // Defensive: confirm the format actually carries audio. Every
-            // entry in streamingData.formats SHOULD be muxed, but filter
-            // to be safe against malformed responses.
-            .filter { it.audioSampleRate != null || it.audioQuality != null }
             .toList()
 
-    val adaptiveVideoCandidates =
-        streamingData.adaptiveFormats.orEmpty()
-            .asSequence()
-            .filter {
-                val h = it.height
-                h != null && h > 0
-            }
-            .filter { (it.height ?: 0) <= MaxVideoHeightCap }
-            .filter { it.url != null || it.signatureCipher != null || it.cipher != null }
-            .toList()
+    if (allVideoFormats.isEmpty()) return null
 
-    if (muxedCandidates.isEmpty() && adaptiveVideoCandidates.isEmpty()) return null
+    val heightFiltered =
+        if (preferredHeight != null) {
+            val atOrBelow = allVideoFormats.filter { (it.height ?: 0) <= preferredHeight }
+            if (atOrBelow.isNotEmpty()) atOrBelow else allVideoFormats.sortedBy { it.height ?: 0 }
+        } else {
+            allVideoFormats
+        }
 
     val comparator =
         compareByDescending<PlayerResponse.StreamingData.Format> { it.height ?: 0 }
             .thenByDescending { it.url != null }
             .thenByDescending { it.audioQuality != null }
 
-    // If the user specified a preferred height, prefer formats at or below
-    // it; if none qualify, fall back to the full candidate list (the
-    // comparator will pick the closest match — typically the smallest
-    // available, which is the safest option when the preferred height is
-    // below everything YouTube offered).
-    fun pickBest(candidates: List<PlayerResponse.StreamingData.Format>): PlayerResponse.StreamingData.Format? {
-        if (candidates.isEmpty()) return null
-        val heightFiltered =
-            if (preferredHeight == null) {
-                candidates
-            } else {
-                val atOrBelow = candidates.filter { (it.height ?: 0) <= preferredHeight }
-                if (atOrBelow.isNotEmpty()) atOrBelow else candidates
-            }
-        return heightFiltered.sortedWith(comparator).firstOrNull()
-    }
-
-    // Tier 1: muxed (single-stream audio+video) — preferred per the user's
-    // "audio and video in a single stream" requirement. The video
-    // ExoPlayer's audio track is disabled (see rememberVideoArtworkState),
-    // so the muxed stream's audio is demuxed but NOT rendered — the MAIN
-    // MusicService ExoPlayer remains the sole audible source. This is what
-    // prevents the dual-audio bug.
-    pickBest(muxedCandidates)?.let { return it }
-
-    // Tier 2: adaptive video-only — fallback when no muxed format is
-    // available (e.g. user prefers 1080p and YouTube offers no muxed at
-    // or below that height). Audio is still provided solely by the main
-    // MusicService ExoPlayer; the adaptive video-only stream has no audio
-    // track to disable.
-    return pickBest(adaptiveVideoCandidates)
+    return heightFiltered.sortedWith(comparator).firstOrNull()
 }
 
 /**
