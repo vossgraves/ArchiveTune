@@ -681,7 +681,7 @@ fun FullscreenVideoOverlay(
                                 // swiping UP (negative y) increases
                                 // brightness. Each 600px of cumulative
                                 // drag sweeps the full 0..1 range.
-                                val delta = -dragAmount.y / 600f
+                                val delta = -dragAmount / 600f
                                 val next = (currentWindowBrightness(context) + delta).coerceIn(0f, 1f)
                                 applyWindowBrightness(context, next)
                                 gestureFeedback =
@@ -693,7 +693,7 @@ fun FullscreenVideoOverlay(
                             } else if (!isLeftHalf && volumeDragActive) {
                                 val maxVol = maxMediaVolume(context)
                                 if (maxVol > 0) {
-                                    val delta = (-dragAmount.y / 600f) * maxVol
+                                    val delta = (-dragAmount / 600f) * maxVol
                                     val currentVol = audioManager(context)?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: 0
                                     val next = (currentVol + delta).toInt().coerceIn(0, maxVol)
                                     setMediaVolume(context, next)
