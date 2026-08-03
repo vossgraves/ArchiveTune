@@ -13,7 +13,6 @@ import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.pm.ActivityInfo
-import android.graphics.Bitmap
 import android.media.AudioManager
 import android.provider.Settings
 import android.view.WindowManager
@@ -25,7 +24,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -66,19 +64,13 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -92,13 +84,6 @@ import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
-import coil3.imageLoader
-import coil3.request.ImageRequest
-import coil3.request.SuccessResult
-import coil3.request.allowHardware
-import coil3.size.Size
-import coil3.toBitmap
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import androidx.media3.common.C
 import androidx.media3.common.PlaybackParameters
@@ -107,7 +92,6 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.SliderStyle
@@ -118,7 +102,6 @@ import moe.rukamori.archivetune.constants.VideoAspectRatioKey
 import moe.rukamori.archivetune.constants.VideoPlaybackSpeedKey
 import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.models.MediaMetadata
-import moe.rukamori.archivetune.utils.ImageBlurUtils
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
 
@@ -308,75 +291,72 @@ fun InlineVideoPlayer(
             // (Captions button removed per spec — captions are no longer
             // user-togglable.)
             //
-            // Both buttons are grouped inside a single frosted-glass pill
-            // (matching the fullscreen overlay's top-right pill) so the
+            // Both buttons are grouped inside a single dark pill so the
             // inline and fullscreen controls look consistent.
-            FrostedGlassPill(
-                thumbnailUrl = thumbnailUrl,
+            Row(
                 modifier =
                     Modifier
                         .align(Alignment.TopEnd)
                         .padding(8.dp)
-                        .padding(horizontal = 4.dp, vertical = 4.dp),
-                shape = RoundedCornerShape(28.dp),
+                        .background(
+                            color = Color.Black.copy(alpha = 0.5f),
+                            shape = RoundedCornerShape(28.dp),
+                        ).padding(horizontal = 4.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(2.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    // Quality picker — only render if YouTube offered more than one height.
-                    if (availableHeights.size > 1) {
-                        Box {
-                            IconButton(
-                                onClick = { qualityMenuOpen = true },
-                                modifier = Modifier.size(40.dp),
-                            ) {
-                                Icon(
-                                    painter = painterResource(R.drawable.player_quality),
-                                    contentDescription = stringResource(R.string.video_quality),
-                                    tint = Color.White,
-                                    modifier = Modifier.size(22.dp),
-                                )
-                            }
-                            DropdownMenu(
-                                expanded = qualityMenuOpen,
-                                onDismissRequest = { qualityMenuOpen = false },
-                            ) {
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.video_quality_auto)) },
-                                    onClick = {
-                                        onPreferredHeightChange(null)
-                                        qualityMenuOpen = false
-                                    },
-                                )
-                                availableHeights
-                                    .sortedDescending()
-                                    .forEach { h ->
-                                        DropdownMenuItem(
-                                            text = { Text(formatHeightLabel(h)) },
-                                            onClick = {
-                                                onPreferredHeightChange(h)
-                                                qualityMenuOpen = false
-                                            },
-                                        )
-                                    }
-                            }
+                // Quality picker — only render if YouTube offered more than one height.
+                if (availableHeights.size > 1) {
+                    Box {
+                        IconButton(
+                            onClick = { qualityMenuOpen = true },
+                            modifier = Modifier.size(40.dp),
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.player_quality),
+                                contentDescription = stringResource(R.string.video_quality),
+                                tint = Color.White,
+                                modifier = Modifier.size(22.dp),
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = qualityMenuOpen,
+                            onDismissRequest = { qualityMenuOpen = false },
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.video_quality_auto)) },
+                                onClick = {
+                                    onPreferredHeightChange(null)
+                                    qualityMenuOpen = false
+                                },
+                            )
+                            availableHeights
+                                .sortedDescending()
+                                .forEach { h ->
+                                    DropdownMenuItem(
+                                        text = { Text(formatHeightLabel(h)) },
+                                        onClick = {
+                                            onPreferredHeightChange(h)
+                                            qualityMenuOpen = false
+                                        },
+                                    )
+                                }
                         }
                     }
+                }
 
-                    // Fullscreen toggle — writes to the hoisted holder so the
-                    // host can render the FullscreenVideoOverlay.
-                    IconButton(
-                        onClick = { fullscreenHolder.isFullscreen = true },
-                        modifier = Modifier.size(40.dp),
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.player_fullscreen),
-                            contentDescription = stringResource(R.string.video_fullscreen),
-                            tint = Color.White,
-                            modifier = Modifier.size(22.dp),
-                        )
-                    }
+                // Fullscreen toggle — writes to the hoisted holder so the
+                // host can render the FullscreenVideoOverlay.
+                IconButton(
+                    onClick = { fullscreenHolder.isFullscreen = true },
+                    modifier = Modifier.size(40.dp),
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.player_fullscreen),
+                        contentDescription = stringResource(R.string.video_fullscreen),
+                        tint = Color.White,
+                        modifier = Modifier.size(22.dp),
+                    )
                 }
             }
         }
@@ -846,34 +826,32 @@ fun FullscreenVideoOverlay(
                 }
 
                 // ── Top-right pill: quality + aspect-ratio + overflow + fullscreen-exit ──
-                // All controls are grouped inside a single frosted-glass pill so the
+                // All controls are grouped inside a single dark pill so the
                 // overlay reads as one cohesive unit rather than a row of loose
-                // circular buttons. The pill uses a blurred-thumbnail backdrop +
-                // dark overlay + white gradient + border to create a true
-                // frosted-glass effect that picks up the colors of the video.
-                FrostedGlassPill(
-                    thumbnailUrl = thumbnailUrl,
+                // circular buttons. The pill uses a semi-transparent dark fill
+                // that, against the moving video, reads as frosted glass.
+                Row(
                     modifier =
                         Modifier
                             .align(Alignment.TopEnd)
                             .statusBarsPadding()
                             .padding(8.dp)
-                            .padding(horizontal = 4.dp, vertical = 4.dp),
-                    shape = RoundedCornerShape(28.dp),
+                            .background(
+                                color = Color.Black.copy(alpha = 0.5f),
+                                shape = RoundedCornerShape(28.dp),
+                            ).padding(horizontal = 4.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(2.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        if (availableHeights.size > 1) {
-                            Box {
-                                IconButton(
-                                    onClick = { qualityMenuOpen = true },
-                                    modifier = Modifier.size(40.dp),
-                                ) {
-                                    Icon(
-                                        painter = painterResource(R.drawable.player_quality),
-                                        contentDescription = stringResource(R.string.video_quality),
+                    if (availableHeights.size > 1) {
+                        Box {
+                            IconButton(
+                                onClick = { qualityMenuOpen = true },
+                                modifier = Modifier.size(40.dp),
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.player_quality),
+                                    contentDescription = stringResource(R.string.video_quality),
                                         tint = Color.White,
                                         modifier = Modifier.size(22.dp),
                                     )
@@ -983,7 +961,6 @@ fun FullscreenVideoOverlay(
                                 modifier = Modifier.size(22.dp),
                             )
                         }
-                    }
                 }
 
                 // ── Center row: previous | play/pause | next ──
@@ -1003,19 +980,18 @@ fun FullscreenVideoOverlay(
                     val canSkipPrevious by playerConnection.canSkipPrevious.collectAsState()
                     val playbackStateFs by playerConnection.playbackState.collectAsState()
 
-                    FrostedGlassPill(
-                        thumbnailUrl = thumbnailUrl,
+                    Row(
                         modifier =
                             Modifier
                                 .align(Alignment.Center)
                                 .padding(horizontal = 24.dp)
-                                .padding(horizontal = 12.dp, vertical = 8.dp),
-                        shape = RoundedCornerShape(40.dp),
+                                .background(
+                                    color = Color.Black.copy(alpha = 0.5f),
+                                    shape = RoundedCornerShape(40.dp),
+                                ).padding(horizontal = 12.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(24.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(24.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
                             IconButton(
                                 onClick = { playerConnection.seekToPrevious() },
                                 enabled = canSkipPrevious,
@@ -1065,7 +1041,6 @@ fun FullscreenVideoOverlay(
                                 )
                             }
                         }
-                    }
 
                     // ── Bottom row: seekbar + time labels ──
                     //
@@ -1525,141 +1500,6 @@ private fun BoxScope.GestureFeedbackBubble(feedback: GestureFeedback) {
                 textAlign = TextAlign.Center,
             )
         }
-    }
-}
-
-// ── Frosted-glass pill helpers ──
-//
-// The control pills (top-right action row, center transport row, gesture
-// feedback bubble) use a "frosted glass" effect: a blurred copy of the
-// song thumbnail is rendered behind the pill's dark overlay, giving the
-// pill a translucent, glassy appearance that picks up the colors of the
-// video behind it.
-//
-// We reuse the SAME blurred thumbnail bitmap as the ambient mode (cache
-// key "ambient:$thumbnailUrl") so there's only one blur operation per
-// song. The bitmap is loaded asynchronously via [produceState] — while
-// it's loading, the pill falls back to a plain dark background.
-
-/**
- * Load and blur the song thumbnail for use as a frosted-glass backdrop.
- *
- * Returns null while loading (or if the thumbnail URL is blank / the load
- * fails). The bitmap is cached by Coil under the "ambient:" key so it's
- * shared with [VideoAmbientBackdrop] — only one blur per song.
- */
-@Composable
-private fun rememberBlurredThumbnail(thumbnailUrl: String?): Bitmap? {
-    if (thumbnailUrl.isNullOrBlank()) return null
-    val context = LocalContext.current
-    val blurredBitmap by produceState<Bitmap?>(null, thumbnailUrl) {
-        value =
-            withContext(Dispatchers.IO) {
-                runCatching {
-                    val request =
-                        ImageRequest
-                            .Builder(context)
-                            .data(thumbnailUrl)
-                            .allowHardware(false)
-                            .memoryCacheKey("ambient:$thumbnailUrl")
-                            .diskCacheKey("ambient:$thumbnailUrl")
-                            .size(Size(540, 540))
-                            .build()
-                    val result = context.imageLoader.execute(request)
-                    if (result is SuccessResult) {
-                        val bitmap = result.image.toBitmap().copy(Bitmap.Config.ARGB_8888, true)
-                        val density = context.resources.displayMetrics.density
-                        ImageBlurUtils.blur(bitmap, 48f * density)
-                    } else {
-                        null
-                    }
-                }.getOrNull()
-            }
-    }
-    return blurredBitmap
-}
-
-/**
- * A frosted-glass pill: a rounded container with a blurred-thumbnail
- * backdrop, a dark overlay for icon contrast, a subtle top-down white
- * gradient (simulating light refraction on glass), and a thin white
- * border to define the edge.
- *
- * The blurred thumbnail gives a TRUE blur effect (the colors of the video
- * artwork show through, softly blurred). The dark overlay + gradient +
- * border refine the "frosted glass" appearance so the icons remain
- * legible against any backdrop.
- *
- * @param thumbnailUrl The song thumbnail URL to blur and render behind the pill.
- *   Null/blank = fall back to a plain dark background (no blur).
- * @param shape The pill's shape. Defaults to a fully-rounded pill.
- * @param content The pill's foreground content (icons, etc).
- */
-@Composable
-private fun FrostedGlassPill(
-    thumbnailUrl: String?,
-    modifier: Modifier = Modifier,
-    shape: Shape = RoundedCornerShape(28.dp),
-    content: @Composable BoxScope.() -> Unit,
-) {
-    val blurredBitmap = rememberBlurredThumbnail(thumbnailUrl)
-    Box(
-        modifier =
-            modifier
-                .clip(shape)
-                .background(Color.Black.copy(alpha = 0.55f)),
-    ) {
-        // ── Layer 1: Blurred thumbnail backdrop ──
-        // Rendered at 50% opacity so the colors show through but don't
-        // overpower the icons. ContentScale.Crop zooms the blurred bitmap
-        // to fill the pill — since the bitmap is already blurred, the
-        // zoom just means we see a smaller, more uniform slice of color.
-        blurredBitmap?.let { bm ->
-            Image(
-                bitmap = bm.asImageBitmap(),
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize().alpha(0.5f),
-            )
-        }
-        // ── Layer 2: Dark overlay for icon contrast ──
-        // Even with the blurred thumbnail, we need a dark layer so white
-        // icons are legible. 35% black is enough to darken the backdrop
-        // without hiding the colors entirely.
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.35f)),
-        )
-        // ── Layer 3: Top-down white gradient (frosted highlight) ──
-        // Simulates the way light catches the top edge of a glass surface.
-        // Subtle (8% white at the top, fading to transparent) so it doesn't
-        // interfere with the icons.
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(
-                                Color.White.copy(alpha = 0.08f),
-                                Color.Transparent,
-                            ),
-                        ),
-                    ),
-        )
-        // ── Layer 4: Thin white border ──
-        // Defines the pill's edge against any backdrop. 18% white is
-        // visible against both light and dark backgrounds.
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .border(0.5.dp, Color.White.copy(alpha = 0.18f), shape),
-        )
-        // ── Layer 5: Foreground content (icons) ──
-        content()
     }
 }
 

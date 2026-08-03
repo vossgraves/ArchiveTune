@@ -1024,26 +1024,6 @@ fun BottomSheetPlayer(
             onLoadingStateChange = { /* loading is computed from state directly in InlineVideoPlayer */ },
             onRequestPauseMain = { playerConnection.player.pause() },
             onRequestResumeMain = { playerConnection.player.play() },
-            // ── Single-stream audio muting ──
-            //
-            // While the video is active, the main MusicService audio is MUTED
-            // (volume = 0) so the user only hears the audio from the video
-            // stream (which is loaded as a single muxed stream by
-            // [pickVideoFormat]). When the video fails or is dismissed, the
-            // main audio is unmuted and playback continues from the YouTube
-            // Music stream.
-            //
-            // We DON'T pause the main audio — we just mute it. This keeps the
-            // main player's position advancing (so the UI seekbar stays
-            // accurate) and the queue management intact. The drift poller in
-            // [rememberVideoArtworkState] keeps the video ExoPlayer aligned
-            // to the main player's position.
-            onRequestMuteMain = {
-                runCatching { playerConnection.player.volume = 0f }
-            },
-            onRequestUnmuteMain = {
-                runCatching { playerConnection.player.volume = 1f }
-            },
         )
 
     // Wrap BottomSheet + FullscreenVideoOverlay in a Box so the overlay
