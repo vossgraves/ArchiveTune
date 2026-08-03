@@ -411,6 +411,7 @@ fun FullscreenVideoOverlay(
     val context = LocalContext.current
     val playerConnection = LocalPlayerConnection.current
     var qualityMenuOpen by remember { mutableStateOf(false) }
+    var aspectRatioMenuOpen by remember { mutableStateOf(false) }
     var controlsVisible by remember { mutableStateOf(false) }
     var isUserSeeking by remember { mutableStateOf(false) }
     var sliderPosition by remember { mutableStateOf<Long?>(null) }
@@ -676,12 +677,11 @@ fun FullscreenVideoOverlay(
                         onVerticalDrag = { change, dragAmount ->
                             val isLeftHalf = change.position.x < size.width / 2f
                             if (isLeftHalf && brightnessDragActive) {
-                                // dragAmount.y is the incremental delta
-                                // since the last event. We invert it so
-                                // swiping UP (negative y) increases
-                                // brightness. Each 600px of cumulative
-                                // drag sweeps the full 0..1 range.
-                                val delta = -dragAmount / 600f
+                                // dragAmount is the incremental vertical delta
+                                // since the last event. We invert it so swiping
+                                // UP (negative) increases brightness. Each 400px
+                                // of cumulative drag sweeps the full 0..1 range.
+                                val delta = -dragAmount / 400f
                                 val next = (currentWindowBrightness(context) + delta).coerceIn(0f, 1f)
                                 applyWindowBrightness(context, next)
                                 gestureFeedback =
@@ -693,7 +693,12 @@ fun FullscreenVideoOverlay(
                             } else if (!isLeftHalf && volumeDragActive) {
                                 val maxVol = maxMediaVolume(context)
                                 if (maxVol > 0) {
-                                    val delta = (-dragAmount / 600f) * maxVol
+                                    // Volume is more sensitive than brightness:
+                                    // 150px sweeps the full 0..maxVol range so
+                                    // the user doesn't have to swipe repeatedly
+                                    // to make a noticeable change. The previous
+                                    // 600px divisor made it feel "stuck".
+                                    val delta = (-dragAmount / 150f) * maxVol
                                     val currentVol = audioManager(context)?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: 0
                                     val next = (currentVol + delta).toInt().coerceIn(0, maxVol)
                                     setMediaVolume(context, next)
@@ -796,32 +801,35 @@ fun FullscreenVideoOverlay(
                     }
                 }
 
-                // ── Top-right row: quality picker + 3-dot overflow + fullscreen-exit ──
+                // ── Top-right pill: quality + aspect-ratio + overflow + fullscreen-exit ──
+                // All controls are grouped inside a single frosted pill so the
+                // overlay reads as one cohesive unit rather than a row of loose
+                // circular buttons. The pill uses a semi-transparent dark fill
+                // that, against the moving video, reads as frosted glass.
                 Row(
                     modifier =
                         Modifier
                             .align(Alignment.TopEnd)
                             .statusBarsPadding()
-                            .padding(8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            .padding(8.dp)
+                            .background(
+                                color = Color.Black.copy(alpha = 0.5f),
+                                shape = RoundedCornerShape(28.dp),
+                            ).padding(horizontal = 4.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     if (availableHeights.size > 1) {
                         Box {
                             IconButton(
                                 onClick = { qualityMenuOpen = true },
-                                modifier =
-                                    Modifier
-                                        .background(
-                                            color = Color.Black.copy(alpha = 0.45f),
-                                            shape = CircleShape,
-                                        ).size(44.dp),
+                                modifier = Modifier.size(40.dp),
                             ) {
                                 Icon(
                                     painter = painterResource(R.drawable.player_quality),
                                     contentDescription = stringResource(R.string.video_quality),
                                     tint = Color.White,
-                                    modifier = Modifier.size(24.dp),
+                                    modifier = Modifier.size(22.dp),
                                 )
                             }
                             DropdownMenu(
@@ -850,41 +858,83 @@ fun FullscreenVideoOverlay(
                         }
                     }
 
+                    // ── Aspect ratio picker ──
+                    // Moved out of the overflow sheet so the user can quickly
+                    // cycle aspect ratios without opening the sheet. The
+                    // dropdown shows a checkmark next to the active option.
+                    Box {
+                        IconButton(
+                            onClick = { aspectRatioMenuOpen = true },
+                            modifier = Modifier.size(40.dp),
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.player_aspect_ratio),
+                                contentDescription = stringResource(R.string.video_aspect_ratio),
+                                tint = Color.White,
+                                modifier = Modifier.size(22.dp),
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = aspectRatioMenuOpen,
+                            onDismissRequest = { aspectRatioMenuOpen = false },
+                        ) {
+                            val aspectOptions =
+                                listOf(
+                                    VideoAspectRatio.FIT to R.string.video_aspect_fit,
+                                    VideoAspectRatio.CROP to R.string.video_aspect_crop,
+                                    VideoAspectRatio.STRETCH to R.string.video_aspect_stretch,
+                                    VideoAspectRatio.FILL to R.string.video_aspect_fill,
+                                )
+                            aspectOptions.forEach { (ratio, labelRes) ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(
+                                                text = stringResource(labelRes),
+                                                modifier = Modifier.weight(1f),
+                                            )
+                                            if (ratio == aspectRatio) {
+                                                Icon(
+                                                    painter = painterResource(R.drawable.check),
+                                                    contentDescription = null,
+                                                    tint = MaterialTheme.colorScheme.primary,
+                                                    modifier = Modifier.size(18.dp),
+                                                )
+                                            }
+                                        }
+                                    },
+                                    onClick = {
+                                        onAspectRatioChange(ratio)
+                                        aspectRatioMenuOpen = false
+                                    },
+                                )
+                            }
+                        }
+                    }
+
                     // 3-dot overflow button — opens the ModalBottomSheet
-                    // with slider style / playback speed / ambient mode /
-                    // aspect ratio options. Uses the same player_more_vert
-                    // drawable as the rest of the app for visual consistency.
+                    // with slider style / playback speed / ambient mode.
                     IconButton(
                         onClick = { showOverflowSheet = true },
-                        modifier =
-                            Modifier
-                                .background(
-                                    color = Color.Black.copy(alpha = 0.45f),
-                                    shape = CircleShape,
-                                ).size(44.dp),
+                        modifier = Modifier.size(40.dp),
                     ) {
                         Icon(
                             painter = painterResource(R.drawable.player_more_vert),
                             contentDescription = stringResource(R.string.video_overflow_menu),
                             tint = Color.White,
-                            modifier = Modifier.size(24.dp),
+                            modifier = Modifier.size(22.dp),
                         )
                     }
 
                     IconButton(
                         onClick = onDismiss,
-                        modifier =
-                            Modifier
-                                .background(
-                                    color = Color.Black.copy(alpha = 0.45f),
-                                    shape = CircleShape,
-                                ).size(44.dp),
+                        modifier = Modifier.size(40.dp),
                     ) {
                         Icon(
                             painter = painterResource(R.drawable.player_fullscreen_exit),
                             contentDescription = stringResource(R.string.video_exit_fullscreen),
                             tint = Color.White,
-                            modifier = Modifier.size(24.dp),
+                            modifier = Modifier.size(22.dp),
                         )
                     }
                 }
@@ -910,20 +960,24 @@ fun FullscreenVideoOverlay(
                         modifier =
                             Modifier
                                 .align(Alignment.Center)
-                                .padding(horizontal = 24.dp),
-                        horizontalArrangement = Arrangement.spacedBy(32.dp),
+                                .padding(horizontal = 24.dp)
+                                .background(
+                                    color = Color.Black.copy(alpha = 0.5f),
+                                    shape = RoundedCornerShape(40.dp),
+                                ).padding(horizontal = 12.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(24.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         IconButton(
                             onClick = { playerConnection.seekToPrevious() },
                             enabled = canSkipPrevious,
-                            modifier = Modifier.size(56.dp),
+                            modifier = Modifier.size(48.dp),
                         ) {
                             Icon(
                                 painter = painterResource(R.drawable.player_skip_previous),
                                 contentDescription = stringResource(R.string.video_fs_previous),
                                 tint = if (canSkipPrevious) Color.White else Color.White.copy(alpha = 0.4f),
-                                modifier = Modifier.size(40.dp),
+                                modifier = Modifier.size(36.dp),
                             )
                         }
                         IconButton(
@@ -935,12 +989,7 @@ fun FullscreenVideoOverlay(
                                     playerConnection.player.togglePlayPause()
                                 }
                             },
-                            modifier =
-                                Modifier
-                                    .background(
-                                        color = Color.Black.copy(alpha = 0.55f),
-                                        shape = CircleShape,
-                                    ).size(72.dp),
+                            modifier = Modifier.size(64.dp),
                         ) {
                             val playIcon =
                                 when {
@@ -958,13 +1007,13 @@ fun FullscreenVideoOverlay(
                         IconButton(
                             onClick = { playerConnection.seekToNext() },
                             enabled = canSkipNext,
-                            modifier = Modifier.size(56.dp),
+                            modifier = Modifier.size(48.dp),
                         ) {
                             Icon(
                                 painter = painterResource(R.drawable.player_skip_next),
                                 contentDescription = stringResource(R.string.video_fs_next),
                                 tint = if (canSkipNext) Color.White else Color.White.copy(alpha = 0.4f),
-                                modifier = Modifier.size(40.dp),
+                                modifier = Modifier.size(36.dp),
                             )
                         }
                     }
@@ -1073,8 +1122,6 @@ fun FullscreenVideoOverlay(
                 onPlaybackSpeedChange = onPlaybackSpeedChange,
                 ambientMode = ambientMode,
                 onAmbientModeChange = onAmbientModeChange,
-                aspectRatio = aspectRatio,
-                onAspectRatioChange = onAspectRatioChange,
             )
         }
     }
@@ -1089,7 +1136,7 @@ private const val FullscreenControlsAutoHideMs = 3_500L
 
 /**
  * Content of the 3-dot overflow [ModalBottomSheet] shown from the fullscreen
- * video overlay. Renders four user-tunable options:
+ * video overlay. Renders three user-tunable options:
  *
  *  1. **Slider style** — 5 pill toggles (Standard / Wavy / Thick / Circular /
  *     Simple). Shares [SliderStyleKey] with the main player so a change here
@@ -1103,8 +1150,10 @@ private const val FullscreenControlsAutoHideMs = 3_500L
  *     the song thumbnail is rendered behind the video surface so the
  *     letterbox bars glow with the artwork's colors (YouTube-style ambient
  *     mode).
- *  4. **Aspect ratio** — 4 pill toggles (Fit / Crop / Stretch / Fill).
- *     Maps to ExoPlayer's AspectRatioFrameLayout resize modes.
+ *
+ * Aspect ratio was previously the 4th option here but has been moved to a
+ * dedicated button in the top bar of the fullscreen overlay so it's one tap
+ * away instead of two.
  */
 @Composable
 private fun VideoOverflowSheetContent(
@@ -1114,8 +1163,6 @@ private fun VideoOverflowSheetContent(
     onPlaybackSpeedChange: (Float) -> Unit,
     ambientMode: Boolean,
     onAmbientModeChange: (Boolean) -> Unit,
-    aspectRatio: VideoAspectRatio,
-    onAspectRatioChange: (VideoAspectRatio) -> Unit,
 ) {
     Column(
         modifier =
@@ -1225,71 +1272,9 @@ private fun VideoOverflowSheetContent(
             )
         }
 
-        // ── 4. Aspect ratio ──
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(
-                text = stringResource(R.string.video_aspect_ratio),
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                AspectRatioOption(VideoAspectRatio.FIT, aspectRatio, onAspectRatioChange, R.string.video_aspect_fit, Modifier.weight(1f))
-                AspectRatioOption(VideoAspectRatio.CROP, aspectRatio, onAspectRatioChange, R.string.video_aspect_crop, Modifier.weight(1f))
-                AspectRatioOption(VideoAspectRatio.STRETCH, aspectRatio, onAspectRatioChange, R.string.video_aspect_stretch, Modifier.weight(1f))
-                AspectRatioOption(VideoAspectRatio.FILL, aspectRatio, onAspectRatioChange, R.string.video_aspect_fill, Modifier.weight(1f))
-            }
-        }
-    }
-}
-
-@Composable
-private fun AspectRatioOption(
-    value: VideoAspectRatio,
-    current: VideoAspectRatio,
-    onSelect: (VideoAspectRatio) -> Unit,
-    labelRes: Int,
-    modifier: Modifier = Modifier,
-) {
-    val selected = value == current
-    val bg = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
-    val fg = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
-    Row(
-        modifier =
-            modifier
-                .background(bg, CircleShape)
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = { onSelect(value) },
-                ).padding(horizontal = 6.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        // Add a semantic description so screen readers announce which
-        // option is currently selected when the user navigates here.
-    ) {
-        // Leading check icon — visible ONLY on the currently selected
-        // aspect-ratio option. This makes the active choice unmistakable
-        // at a glance, even with the colored pill background.
-        if (selected) {
-            Icon(
-                painter = painterResource(R.drawable.check),
-                contentDescription = stringResource(R.string.video_aspect_selected),
-                tint = fg,
-                modifier = Modifier.size(14.dp),
-            )
-        }
-        Text(
-            text = stringResource(labelRes),
-            color = fg,
-            style = MaterialTheme.typography.labelMedium,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-            textAlign = TextAlign.Center,
-        )
+        // Aspect ratio has been moved to a dedicated button in the top bar
+        // of the fullscreen overlay (next to the quality picker) so it's
+        // reachable without opening this sheet. See FullscreenVideoOverlay.
     }
 }
 

@@ -107,6 +107,21 @@ import java.util.Locale
 private const val VideoSyncDriftToleranceMs = 2000L
 
 /**
+ * Tight drift tolerance used ONLY for the initial sync in
+ * [onRenderedFirstFrame]. When the video's first frame renders, we snap the
+ * video to the audio's current position — but only if the drift exceeds this
+ * threshold. 200ms is imperceptible to the user while avoiding a redundant
+ * seekTo (which would trigger a brief re-buffer) when the video is already
+ * close enough.
+ *
+ * This is separate from [VideoSyncDriftToleranceMs] (2000ms) which governs
+ * the CONTINUOUS drift poller. The continuous poller needs a wide tolerance
+ * to absorb natural decoder lag; the initial sync needs a tight one to
+ * guarantee A/V alignment at startup.
+ */
+private const val VideoInitialSyncToleranceMs = 200L
+
+/**
  * Drift threshold above which we fire a "soft" seek (seek the video WITHOUT
  * pausing the main audio player). The video may freeze briefly while it
  * re-buffers, but the audio continues uninterrupted.
@@ -524,25 +539,33 @@ fun rememberVideoArtworkState(
         if (awaitingVideoReady) return
         awaitingVideoReady = true
         resumeAudioAfterVideoReady = shouldPlay
-        if (shouldPlay) {
-            Timber
-                .tag(VideoPlaybackLogTag)
-                .d("Holding main audio while video for $videoId loads")
-            updatedOnRequestPauseMain()
-        }
+        // DON'T pause the main audio. Previously we called
+        // updatedOnRequestPauseMain() here to hold the audio while the
+        // video loaded. But when the video's first frame rendered and we
+        // resumed the audio via player.play(), the audio had to re-buffer
+        // (its decoder had been idle during the hold) while the video
+        // started immediately — creating the "video plays first, audio
+        // catches up" desync the user reported on first play and next.
+        //
+        // Instead, let the audio play continuously. The video loads in
+        // the background; when its first frame renders we snap it to the
+        // audio's current position (see onRenderedFirstFrame). This
+        // matches the quality-change path which the user confirmed is in
+        // sync.
+        Timber
+            .tag(VideoPlaybackLogTag)
+            .d("Video for $videoId loading — audio continues playing")
     }
 
     fun releaseAudioHold() {
         if (!awaitingVideoReady) return
         awaitingVideoReady = false
-        val shouldResume = resumeAudioAfterVideoReady
         resumeAudioAfterVideoReady = false
-        if (shouldResume) {
-            Timber
-                .tag(VideoPlaybackLogTag)
-                .d("Video ready — resuming main audio")
-            updatedOnRequestResumeMain()
-        }
+        // No audio resume needed — we never paused it. Just clear the flag
+        // so the play/pause follower stops force-pausing the video.
+        Timber
+            .tag(VideoPlaybackLogTag)
+            .d("Video ready — clearing hold flag")
     }
 
     // Propagate loading state to the parent so it can render a spinner.
@@ -736,13 +759,15 @@ fun rememberVideoArtworkState(
         if (state.hasPlaybackFailed) {
             exoPlayer.pause()
         } else if (awaitingVideoReady) {
-            // The video isn't ready yet — keep both paused so audio cannot
-            // run ahead of the video (and vice-versa). If the user pressed
-            // play during the hold, immediately re-pause the main player.
-            if (isPlaying) updatedOnRequestPauseMain()
+            // The video isn't ready yet — keep ONLY the video paused. The
+            // main audio continues playing so its decoder stays warm and
+            // buffered; when the video's first frame renders we snap the
+            // video to the audio's current position (see onRenderedFirstFrame).
+            // This eliminates the "video plays first, audio catches up"
+            // desync that occurred when we used to pause the audio too.
             exoPlayer.pause()
         } else if (state.isChangingQuality) {
-            // A quality or caption change is in progress — keep both paused
+            // A quality or caption change is in progress — keep BOTH paused
             // until the first frame of the new media item renders. This
             // ensures neither audio nor video resumes on its own while the
             // other is still loading.
@@ -956,15 +981,19 @@ fun rememberVideoArtworkState(
                     state.wasPlayingBeforeResync = false
                     state.bufferingStartedAtMs = 0L
 
-                    // ── Fix: guarantee video & audio start at the SAME position ──
+                    // ── Snap video to the audio's CURRENT position ──
                     //
-                    // Before resuming, snap the video to the audio player's
-                    // CURRENT position. During the hold the audio was paused,
-                    // but its position may have advanced by a few hundred ms
-                    // between the hold beginning and the video URL resolving.
-                    // Without this snap, the video resumes at the position it
-                    // was loaded at (which may be stale), causing the
-                    // "video plays first, audio catches up later" mismatch.
+                    // During the initial load the audio was NOT paused (see
+                    // beginAudioHold), so its position has been advancing
+                    // while the video buffered. The video was seeked to the
+                    // audio's position when the URL was loaded, but that
+                    // position is now stale. We re-snap to the live audio
+                    // position so the video starts in sync.
+                    //
+                    // We use a tight 200ms tolerance (vs. the 2s tolerance
+                    // used by the continuous drift poller) because the
+                    // initial sync must be near-exact — anything wider lets
+                    // the video start up to 2s behind the audio.
                     //
                     // We skip this snap during a manual (seekbar) resync
                     // because the seekTo(position) in the pendingResync
@@ -975,7 +1004,7 @@ fun rememberVideoArtworkState(
                         if (mainPos > 0) {
                             val videoPos = exoPlayer.currentPosition
                             val drift = kotlin.math.abs(videoPos - mainPos)
-                            if (drift > VideoSyncDriftToleranceMs) {
+                            if (drift > VideoInitialSyncToleranceMs) {
                                 exoPlayer.seekTo(mainPos)
                             }
                         }
@@ -984,40 +1013,34 @@ fun rememberVideoArtworkState(
                     // Decide whether to resume playback. During a quality or
                     // caption change, the main audio player was paused — so
                     // shouldPlay (which tracks the main player's state) is
-                    // false at this point. We must use wasPlayingBeforeQualityChange
+                    // false at that point. We must use wasPlayingBeforeQualityChange
                     // to decide whether to resume BOTH the video and the main
                     // audio together.
+                    //
+                    // For the INITIAL LOAD path (shouldPlay == true,
+                    // wasChangingQuality == false, wasResync == false), the
+                    // audio was never paused — it's been playing continuously.
+                    // We only need to start the video; calling
+                    // updatedOnRequestResumeMain() here would be a no-op but
+                    // we omit it to make the intent clear.
                     val effectiveShouldPlay =
                         shouldPlay ||
                             (wasResync && wasPlayingBeforeResyncLocal) ||
                             (wasChangingQuality && state.wasPlayingBeforeQualityChange)
                     if (effectiveShouldPlay && !state.hasPlaybackFailed && exoPlayer.playerError == null) {
-                        // Resume the MAIN audio player FIRST. The audio is
-                        // the source of truth for position — if we start the
-                        // video first, the video advances while the audio is
-                        // still spinning up, creating the "video plays first"
-                        // mismatch the user reported. By resuming audio first
-                        // and the video immediately after (synchronously on
-                        // the same main-looper tick), both start at the same
-                        // instant from the same position.
-                        //
-                        // We call updatedOnRequestResumeMain() in ALL three
-                        // branches (quality change, resync, and normal play)
-                        // because in the normal-play path the audio hold may
-                        // have just been released by releaseAudioHold()
-                        // above — calling resume again is a safe no-op if
-                        // the audio is already playing, but ensures we don't
-                        // leave the audio paused if the hold released but
-                        // the resume hasn't propagated yet.
+                        // Resume the main audio for quality-change and resync
+                        // paths only — it was paused during those flows.
                         if (wasChangingQuality && state.wasPlayingBeforeQualityChange) {
                             updatedOnRequestResumeMain()
                         }
                         if (wasResync && wasPlayingBeforeResyncLocal) {
                             updatedOnRequestResumeMain()
                         }
-                        if (shouldPlay) {
-                            updatedOnRequestResumeMain()
-                        }
+                        // Start the video. For the initial-load path, the
+                        // audio is already playing; for quality-change /
+                        // resync, we just resumed it above. Either way, the
+                        // video snaps to the audio position (above) and
+                        // starts now.
                         exoPlayer.playWhenReady = true
                         exoPlayer.play()
                     }
