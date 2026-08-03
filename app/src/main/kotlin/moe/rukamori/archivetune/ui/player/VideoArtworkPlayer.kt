@@ -370,12 +370,18 @@ fun rememberVideoArtworkState(
 
     // Disable the audio track — the main MusicService ExoPlayer is the
     // source of truth for audio. Playing audio here would double it.
+    // Text tracks (captions) are explicitly ENABLED so that the
+    // onCues(CueGroup) listener fires when a caption track is selected.
+    // Without setTrackTypeDisabled(TEXT, false) some default track
+    // selector configurations leave text tracks off, which is why
+    // captions were detected but never displayed.
     val trackSelector =
         remember(context) {
             DefaultTrackSelector(context).apply {
                 setParameters(
                     buildUponParameters()
                         .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
+                        .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
                         .setForceHighestSupportedBitrate(true)
                         .build(),
                 )
@@ -415,6 +421,14 @@ fun rememberVideoArtworkState(
     // prevents the "audio starts first, video loads later" desync.
     var awaitingVideoReady by remember { mutableStateOf(false) }
     var resumeAudioAfterVideoReady by remember { mutableStateOf(false) }
+
+    // Track what's currently loaded into the ExoPlayer so we can detect
+    // caption-only changes (stream URL unchanged, caption track changed).
+    // When a caption-only change is detected, we pause both audio and video
+    // before reloading the media item, and resume both only after the first
+    // frame renders — matching the quality-change pause-load-resume protocol.
+    var lastLoadedStreamUrl by remember { mutableStateOf<String?>(null) }
+    var lastLoadedCaptionTrack by remember { mutableStateOf<PlayerResponse.CaptionTrack?>(null) }
 
     fun beginAudioHold() {
         if (!updatedHoldAudioUntilVideoReady) return
@@ -473,6 +487,10 @@ fun rememberVideoArtworkState(
         state.selectedCaptionTrack = null
         state.captionTracks = emptyList()
         state.currentCaptionText = null
+        // Reset the "last loaded" trackers so the next media-item load is
+        // treated as a fresh load (not a caption-only change).
+        lastLoadedStreamUrl = null
+        lastLoadedCaptionTrack = null
 
         beginAudioHold()
 
@@ -539,8 +557,34 @@ fun rememberVideoArtworkState(
     // Reloads when the stream URL changes (new video / quality swap) and when
     // the selected caption track changes (so the caption's WebVTT URL can be
     // embedded as a subtitle configuration on the media item).
+    //
+    // CAPTION-CHANGE PAUSE-LOAD-RESUME: When ONLY the caption track changes
+    // (stream URL stays the same), we still need to rebuild and reload the
+    // media item (ExoPlayer cannot hot-swap subtitle configurations on a
+    // playing item). This reload causes the video to buffer again. To match
+    // the quality-change behavior — and the user's explicit requirement that
+    // "neither audio nor video should resume on its own until both are
+    // loaded" — we set isChangingQuality=true and pause the main audio player
+    // BEFORE reloading. The hold is released in onRenderedFirstFrame.
     LaunchedEffect(state.streamUrl, state.selectedCaptionTrack, exoPlayer) {
         val url = state.streamUrl ?: return@LaunchedEffect
+
+        // Detect caption-only change: stream URL is unchanged but the caption
+        // track differs from what's currently loaded. We track this with a
+        // remembered "last loaded caption" so we can pause the main audio
+        // before the reload and resume it after the first frame renders.
+        val captionBeingChanged =
+            url == lastLoadedStreamUrl &&
+                state.selectedCaptionTrack != lastLoadedCaptionTrack
+        if (captionBeingChanged) {
+            state.wasPlayingBeforeQualityChange = shouldPlay
+            state.isChangingQuality = true
+            exoPlayer.pause()
+            if (shouldPlay) updatedOnRequestPauseMain()
+        }
+        lastLoadedStreamUrl = url
+        lastLoadedCaptionTrack = state.selectedCaptionTrack
+
         state.isVideoReady = false
         state.hasPlaybackFailed = false
         state.currentCaptionText = null
@@ -594,7 +638,7 @@ fun rememberVideoArtworkState(
     }
 
     // ── Play/pause follower ──
-    LaunchedEffect(isPlaying, awaitingVideoReady) {
+    LaunchedEffect(isPlaying, awaitingVideoReady, state.isChangingQuality) {
         if (state.hasPlaybackFailed) {
             exoPlayer.pause()
         } else if (awaitingVideoReady) {
@@ -603,9 +647,38 @@ fun rememberVideoArtworkState(
             // play during the hold, immediately re-pause the main player.
             if (isPlaying) updatedOnRequestPauseMain()
             exoPlayer.pause()
+        } else if (state.isChangingQuality) {
+            // A quality or caption change is in progress — keep both paused
+            // until the first frame of the new media item renders. This
+            // ensures neither audio nor video resumes on its own while the
+            // other is still loading.
+            if (isPlaying) updatedOnRequestPauseMain()
+            exoPlayer.pause()
         } else {
             exoPlayer.setVideoPlayback(isPlaying)
         }
+    }
+
+    // ── Update track selector when caption selection changes ──
+    //
+    // Setting the preferred text language on the DefaultTrackSelector makes
+    // it actively select the caption track that matches the user's choice.
+    // Without this, even with SELECTION_FLAG_DEFAULT on the subtitle config,
+    // the track selector may not pick it up if there are multiple text
+    // tracks or if the default selection logic doesn't match. When captions
+    // are off (selectedCaptionTrack == null), we clear the preferred language
+    // so no text track is selected.
+    LaunchedEffect(state.selectedCaptionTrack, trackSelector) {
+        val lang = state.selectedCaptionTrack?.languageCode
+        val params =
+            trackSelector
+                .buildUponParameters()
+                .apply {
+                    if (!lang.isNullOrBlank()) {
+                        setPreferredTextLanguage(lang)
+                    }
+                }.build()
+        trackSelector.setParameters(params)
     }
 
     // ── Safety net: release the audio hold if the video never becomes ready ──
@@ -771,7 +844,16 @@ fun rememberVideoArtworkState(
                         }
                     }
 
-                    val effectiveShouldPlay = shouldPlay || (wasResync && wasPlayingBeforeResyncLocal)
+                    // Decide whether to resume playback. During a quality or
+                    // caption change, the main audio player was paused — so
+                    // shouldPlay (which tracks the main player's state) is
+                    // false at this point. We must use wasPlayingBeforeQualityChange
+                    // to decide whether to resume BOTH the video and the main
+                    // audio together.
+                    val effectiveShouldPlay =
+                        shouldPlay ||
+                            (wasResync && wasPlayingBeforeResyncLocal) ||
+                            (wasChangingQuality && state.wasPlayingBeforeQualityChange)
                     if (effectiveShouldPlay && !state.hasPlaybackFailed && exoPlayer.playerError == null) {
                         exoPlayer.playWhenReady = true
                         exoPlayer.play()
@@ -795,8 +877,15 @@ fun rememberVideoArtworkState(
                         }
                         Player.STATE_READY -> {
                             state.bufferingStartedAtMs = 0L
+                            // During a quality or caption change, the main
+                            // audio player is paused (shouldPlay == false),
+                            // so we must consult wasPlayingBeforeQualityChange
+                            // to decide whether to resume the video. The main
+                            // audio itself is resumed in onRenderedFirstFrame.
                             val effectiveShouldPlay =
-                                shouldPlay || (state.isResyncing && state.wasPlayingBeforeResync)
+                                shouldPlay ||
+                                    (state.isResyncing && state.wasPlayingBeforeResync) ||
+                                    (state.isChangingQuality && state.wasPlayingBeforeQualityChange)
                             if (effectiveShouldPlay && !state.hasPlaybackFailed &&
                                 exoPlayer.playerError == null
                             ) {
