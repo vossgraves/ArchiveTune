@@ -5,7 +5,7 @@
  * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
  */
 
-@file:OptIn(androidx.media3.common.util.UnstableApi::class)
+@file:OptIn(androidx.media3.common.util.UnstableApi::class, androidx.compose.material3.ExperimentalMaterial3Api::class)
 
 package moe.rukamori.archivetune.ui.player
 
@@ -19,7 +19,10 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,11 +33,13 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.HighQuality
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipNext
@@ -42,20 +47,28 @@ import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -63,21 +76,32 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.media3.common.C
+import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.ui.AspectRatioFrameLayout
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.constants.SliderStyle
+import moe.rukamori.archivetune.constants.SliderStyleKey
+import moe.rukamori.archivetune.constants.VideoAmbientModeKey
+import moe.rukamori.archivetune.constants.VideoAspectRatio
+import moe.rukamori.archivetune.constants.VideoAspectRatioKey
+import moe.rukamori.archivetune.constants.VideoPlaybackSpeedKey
 import moe.rukamori.archivetune.extensions.togglePlayPause
-import androidx.compose.runtime.Stable
-import androidx.compose.runtime.compositionLocalOf
+import moe.rukamori.archivetune.models.MediaMetadata
+import moe.rukamori.archivetune.utils.rememberEnumPreference
+import moe.rukamori.archivetune.utils.rememberPreference
 
 /**
  * Walk the [ContextWrapper] chain to find the hosting [Activity].
@@ -218,6 +242,16 @@ fun InlineVideoPlayer(
 
     var qualityMenuOpen by remember { mutableStateOf(false) }
 
+    // Ambient mode + thumbnail URL — shared with the fullscreen overlay via
+    // the same preference keys, so toggling it in either place affects both.
+    // The setter (onAmbientModeChange) is unused here — the toggle is only
+    // surfaced in the fullscreen overlay's 3-dot overflow menu.
+    val (ambientMode, _) = rememberPreference(VideoAmbientModeKey, defaultValue = false)
+    val playerConnection = LocalPlayerConnection.current
+    val fallbackMetadataFlow = remember { kotlinx.coroutines.flow.MutableStateFlow<MediaMetadata?>(null) }
+    val mediaMetadata by (playerConnection?.mediaMetadata ?: fallbackMetadataFlow).collectAsState()
+    val thumbnailUrl = mediaMetadata?.thumbnailUrl
+
     // ── Inline surface + controls (rendered only when NOT fullscreen) ──
     //
     // When isFullscreen is true, we skip rendering the inline surface
@@ -229,6 +263,8 @@ fun InlineVideoPlayer(
             VideoArtworkSurface(
                 state = state,
                 resizeMode = resizeMode,
+                ambientMode = ambientMode,
+                thumbnailUrl = thumbnailUrl,
                 modifier = Modifier.fillMaxSize(),
             )
 
@@ -375,6 +411,26 @@ fun FullscreenVideoOverlay(
     var controlsVisible by remember { mutableStateOf(false) }
     var isUserSeeking by remember { mutableStateOf(false) }
     var sliderPosition by remember { mutableStateOf<Long?>(null) }
+    var showOverflowSheet by remember { mutableStateOf(false) }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val scope = rememberCoroutineScope()
+
+    // ── User-tunable fullscreen-overlay preferences ──
+    // Slider style: shared with the main player via SliderStyleKey — same 5 styles.
+    // Playback speed: applied to BOTH the audio ExoPlayer (here) and the video
+    //   ExoPlayer (in rememberVideoArtworkState via a sibling LaunchedEffect).
+    // Ambient mode: toggles the blurred-thumbnail backdrop behind the video.
+    // Aspect ratio: cycles FIT / CROP / STRETCH / FILL — overrides [resizeMode]
+    //   passed in by the host when the user picks a non-default aspect.
+    val (sliderStyle, onSliderStyleChange) = rememberEnumPreference(SliderStyleKey, defaultValue = SliderStyle.Standard)
+    val (playbackSpeed, onPlaybackSpeedChange) = rememberPreference(VideoPlaybackSpeedKey, defaultValue = 1.0f)
+    val (ambientMode, onAmbientModeChange) = rememberPreference(VideoAmbientModeKey, defaultValue = false)
+    val (aspectRatio, onAspectRatioChange) = rememberEnumPreference(VideoAspectRatioKey, defaultValue = VideoAspectRatio.FIT)
+
+    // Effective resize mode: the user's aspect-ratio pick overrides the host's
+    // default. This lets the user cycle through Fit/Crop/Stretch/Fill without
+    // the host needing to know.
+    val effectiveResizeMode = aspectRatio.toExoResizeMode()
 
     // Intercept the back button so it dismisses the fullscreen overlay
     // instead of collapsing the BottomSheet (which is what the sheet's own
@@ -387,6 +443,43 @@ fun FullscreenVideoOverlay(
     LaunchedEffect(state.hasPlaybackFailed) {
         if (state.hasPlaybackFailed) {
             onDismiss()
+        }
+    }
+
+    // ── Apply playback speed to the AUDIO ExoPlayer ──
+    // The video ExoPlayer is updated by a sibling LaunchedEffect in
+    // rememberVideoArtworkState reading the same preference. Keeping both
+    // at the same speed is what keeps audio + video aligned at non-1.0x.
+    LaunchedEffect(playbackSpeed) {
+        if (playerConnection == null) return@LaunchedEffect
+        val safeSpeed = playbackSpeed.coerceIn(0.25f, 2f)
+        val current = playerConnection.player.playbackParameters.speed
+        if (kotlin.math.abs(current - safeSpeed) > 0.001f) {
+            playerConnection.player.playbackParameters =
+                PlaybackParameters(
+                    safeSpeed,
+                    playerConnection.player.playbackParameters.pitch,
+                )
+        }
+    }
+
+    // Mirror the audio player's current speed back into the preference so
+    // the overflow menu shows the right value if it was changed elsewhere
+    // (e.g. via the existing TempoPitchDialog). Poll every 2s — cheap.
+    //
+    // rememberUpdatedState is used so the while-loop polls the latest
+    // playbackSpeed value across recompositions (a LaunchedEffect(Unit)
+    // would otherwise capture the initial value forever).
+    val latestPlaybackSpeed by rememberUpdatedState(playbackSpeed)
+    val latestOnPlaybackSpeedChange by rememberUpdatedState(onPlaybackSpeedChange)
+    LaunchedEffect(Unit) {
+        if (playerConnection == null) return@LaunchedEffect
+        while (true) {
+            val currentSpeed = playerConnection.player.playbackParameters.speed
+            if (kotlin.math.abs(currentSpeed - latestPlaybackSpeed) > 0.01f) {
+                latestOnPlaybackSpeedChange(currentSpeed)
+            }
+            delay(2_000)
         }
     }
 
@@ -431,14 +524,23 @@ fun FullscreenVideoOverlay(
     //
     // Each time controlsVisible flips to true, start (or restart) a timer.
     // When it fires, hide the controls — UNLESS the user is actively
-    // dragging the seekbar or has the quality menu open (those interactions
-    // need the controls to stay visible).
-    LaunchedEffect(controlsVisible, isUserSeeking, qualityMenuOpen) {
-        if (controlsVisible && !isUserSeeking && !qualityMenuOpen) {
+    // dragging the seekbar, has the quality menu open, or has the 3-dot
+    // overflow sheet open (those interactions need the controls to stay
+    // visible).
+    LaunchedEffect(controlsVisible, isUserSeeking, qualityMenuOpen, showOverflowSheet) {
+        if (controlsVisible && !isUserSeeking && !qualityMenuOpen && !showOverflowSheet) {
             kotlinx.coroutines.delay(FullscreenControlsAutoHideMs)
             controlsVisible = false
         }
     }
+
+    // Thumbnail URL — collected once at the top level so we can pass it
+    // into VideoArtworkSurface for ambient mode. Uses a fallback empty
+    // flow when playerConnection is null so collectAsState has a stable
+    // call site (Compose requires composables to be called unconditionally).
+    val fallbackMetadataFlow = remember { kotlinx.coroutines.flow.MutableStateFlow<MediaMetadata?>(null) }
+    val headerMetadata by (playerConnection?.mediaMetadata ?: fallbackMetadataFlow).collectAsState()
+    val thumbnailUrl = headerMetadata?.thumbnailUrl
 
     Box(
         modifier =
@@ -448,16 +550,28 @@ fun FullscreenVideoOverlay(
                 .pointerInput(Unit) {
                     detectTapGestures(
                         onTap = {
-                            // Single tap toggles the controls overlay.
-                            controlsVisible = !controlsVisible
+                            if (showOverflowSheet) {
+                                // Tapping outside the sheet dismisses it instead of toggling overlay.
+                                scope.launch { sheetState.hide() }.invokeOnCompletion {
+                                    if (!sheetState.isVisible) showOverflowSheet = false
+                                }
+                            } else {
+                                // Single tap toggles the controls overlay.
+                                controlsVisible = !controlsVisible
+                            }
                         },
                     )
                 },
     ) {
         // Same ExoPlayer — just a different surface. NO re-loading.
+        // The user's aspect-ratio pick overrides the host's resizeMode.
+        // Ambient mode renders a blurred-thumbnail backdrop behind the video
+        // when toggled on in the 3-dot overflow menu.
         VideoArtworkSurface(
             state = state,
-            resizeMode = resizeMode,
+            resizeMode = effectiveResizeMode,
+            ambientMode = ambientMode,
+            thumbnailUrl = thumbnailUrl,
             modifier = Modifier.fillMaxSize(),
         )
 
@@ -478,18 +592,55 @@ fun FullscreenVideoOverlay(
 
         // ── Controls overlay (YouTube-style) ──
         //
-        // Fades in/out based on controlsVisible. Three rows:
-        //   - Top: quality picker + fullscreen-exit (statusBarsPadding)
+        // Fades in/out based on controlsVisible. Four regions:
+        //   - Top-left: song title + artist (marquee)
+        //   - Top-right: quality picker (if >1 height) + 3-dot overflow + fullscreen-exit
         //   - Center: previous | play/pause | next
-        //   - Bottom: seekbar + time labels (navigationBarsPadding)
+        //   - Bottom: seekbar (uses selected slider style) + time labels
         AnimatedVisibility(
-            visible = controlsVisible,
+            visible = controlsVisible && !showOverflowSheet,
             enter = fadeIn(animationSpec = tween(200)),
             exit = fadeOut(animationSpec = tween(200)),
             modifier = Modifier.fillMaxSize(),
         ) {
             Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f))) {
-                // ── Top row: quality picker + fullscreen-exit ──
+                // ── Top-left: song title + artist ──
+                // Displayed only when controls are visible, alongside the
+                // top-right action row. Marquee-clipped to one line.
+                // Uses the hoisted [headerMetadata] collected above (avoids
+                // a second collectAsState call here).
+                headerMetadata?.let { meta ->
+                    Column(
+                        modifier =
+                            Modifier
+                                .align(Alignment.TopStart)
+                                .statusBarsPadding()
+                                .padding(start = 16.dp, top = 8.dp, end = 160.dp),
+                    ) {
+                        Text(
+                            text = meta.title,
+                            color = Color.White,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.basicMarquee(),
+                        )
+                        val artistText = meta.artists.joinToString(", ") { it.name }
+                        if (artistText.isNotBlank()) {
+                            Text(
+                                text = artistText,
+                                color = Color.White.copy(alpha = 0.7f),
+                                fontSize = 13.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.basicMarquee(),
+                            )
+                        }
+                    }
+                }
+
+                // ── Top-right row: quality picker + 3-dot overflow + fullscreen-exit ──
                 Row(
                     modifier =
                         Modifier
@@ -542,6 +693,27 @@ fun FullscreenVideoOverlay(
                             }
                         }
                     }
+
+                    // 3-dot overflow button — opens the ModalBottomSheet
+                    // with slider style / playback speed / ambient mode /
+                    // aspect ratio options.
+                    IconButton(
+                        onClick = { showOverflowSheet = true },
+                        modifier =
+                            Modifier
+                                .background(
+                                    color = Color.Black.copy(alpha = 0.45f),
+                                    shape = CircleShape,
+                                ).size(44.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.MoreVert,
+                            contentDescription = stringResource(R.string.video_overflow_menu),
+                            tint = Color.White,
+                            modifier = Modifier.size(24.dp),
+                        )
+                    }
+
                     IconButton(
                         onClick = onDismiss,
                         modifier =
@@ -628,6 +800,10 @@ fun FullscreenVideoOverlay(
                     // playerConnection.player.seekTo() and then
                     // state.requestResync() so the video performs a
                     // pause-load-resume to the new position.
+                    //
+                    // The slider uses [StyledPlaybackSlider] with the user's
+                    // selected [sliderStyle] — same 5 styles (Standard / Wavy
+                    // / Thick / Circular / Simple) as the main player.
                     val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
                     val currentPosition = remember(mediaMetadata?.id) {
                         mutableLongStateOf(playerConnection.player.currentPosition)
@@ -660,8 +836,10 @@ fun FullscreenVideoOverlay(
                                 .navigationBarsPadding()
                                 .padding(horizontal = 16.dp, vertical = 8.dp),
                     ) {
-                        Slider(
+                        StyledPlaybackSlider(
+                            sliderStyle = sliderStyle,
                             value = if (seekEnabled) displayPosition.toFloat() else 0f,
+                            valueRange = if (seekEnabled) 0f..duration.toFloat() else 0f..1f,
                             onValueChange = { newValue ->
                                 if (seekEnabled) {
                                     isUserSeeking = true
@@ -678,14 +856,8 @@ fun FullscreenVideoOverlay(
                                 isUserSeeking = false
                                 sliderPosition = null
                             },
-                            valueRange = if (seekEnabled) 0f..duration.toFloat() else 0f..1f,
-                            enabled = seekEnabled,
-                            colors =
-                                SliderDefaults.colors(
-                                    thumbColor = Color.White,
-                                    activeTrackColor = Color.White,
-                                    inactiveTrackColor = Color.White.copy(alpha = 0.3f),
-                                ),
+                            activeColor = Color.White,
+                            isPlaying = playerConnection.player.playWhenReady,
                             modifier = Modifier.fillMaxWidth(),
                         )
                         Row(
@@ -708,6 +880,28 @@ fun FullscreenVideoOverlay(
             }
         }
     }
+
+    // ── 3-dot overflow bottom sheet ──
+    // Renders on top of the fullscreen overlay when showOverflowSheet is
+    // true. Tapping outside the sheet dismisses it.
+    if (showOverflowSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showOverflowSheet = false },
+            sheetState = sheetState,
+            containerColor = MaterialTheme.colorScheme.surface,
+        ) {
+            VideoOverflowSheetContent(
+                sliderStyle = sliderStyle,
+                onSliderStyleChange = onSliderStyleChange,
+                playbackSpeed = playbackSpeed,
+                onPlaybackSpeedChange = onPlaybackSpeedChange,
+                ambientMode = ambientMode,
+                onAmbientModeChange = onAmbientModeChange,
+                aspectRatio = aspectRatio,
+                onAspectRatioChange = onAspectRatioChange,
+            )
+        }
+    }
 }
 
 /**
@@ -716,6 +910,210 @@ fun FullscreenVideoOverlay(
  * obscure the video.
  */
 private const val FullscreenControlsAutoHideMs = 3_500L
+
+/**
+ * Content of the 3-dot overflow [ModalBottomSheet] shown from the fullscreen
+ * video overlay. Renders four user-tunable options:
+ *
+ *  1. **Slider style** — 5 pill toggles (Standard / Wavy / Thick / Circular /
+ *     Simple). Shares [SliderStyleKey] with the main player so a change here
+ *     applies globally to the next render of any seekbar using
+ *     [StyledPlaybackSlider].
+ *  2. **Playback speed** — Slider (0.25–2.0x, 0.25 step) + "Normal" pill.
+ *     Applies to BOTH the audio ExoPlayer (in MusicService) and the video
+ *     ExoPlayer (in VideoArtworkState) so audio + video stay aligned at
+ *     non-1.0x speeds.
+ *  3. **Ambient mode** — Switch. When on, a slowly drifting blurred copy of
+ *     the song thumbnail is rendered behind the video surface so the
+ *     letterbox bars glow with the artwork's colors (YouTube-style ambient
+ *     mode).
+ *  4. **Aspect ratio** — 4 pill toggles (Fit / Crop / Stretch / Fill).
+ *     Maps to ExoPlayer's AspectRatioFrameLayout resize modes.
+ */
+@Composable
+private fun VideoOverflowSheetContent(
+    sliderStyle: SliderStyle,
+    onSliderStyleChange: (SliderStyle) -> Unit,
+    playbackSpeed: Float,
+    onPlaybackSpeedChange: (Float) -> Unit,
+    ambientMode: Boolean,
+    onAmbientModeChange: (Boolean) -> Unit,
+    aspectRatio: VideoAspectRatio,
+    onAspectRatioChange: (VideoAspectRatio) -> Unit,
+) {
+    Column(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .systemBarsPadding()
+                .padding(horizontal = 24.dp, vertical = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp),
+    ) {
+        // ── 1. Slider style ──
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                text = stringResource(R.string.video_slider_style),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                SliderStyle.entries.forEach { style ->
+                    val labelRes =
+                        when (style) {
+                            SliderStyle.Standard -> R.string.slider_style_standard
+                            SliderStyle.Wavy -> R.string.slider_style_wavy
+                            SliderStyle.Thick -> R.string.slider_style_thick
+                            SliderStyle.Circular -> R.string.slider_style_circular
+                            SliderStyle.Simple -> R.string.slider_style_simple
+                        }
+                    PillToggle(
+                        text = stringResource(labelRes),
+                        selected = style == sliderStyle,
+                        onClick = { onSliderStyleChange(style) },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+        }
+
+        // ── 2. Playback speed ──
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = stringResource(R.string.video_playback_speed),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = stringResource(R.string.video_playback_speed_value, playbackSpeed),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Slider(
+                value = playbackSpeed.coerceIn(0.25f, 2f),
+                onValueChange = { onPlaybackSpeedChange(it) },
+                valueRange = 0.25f..2f,
+                steps = 6, // 0.25-step granularity: 0.25, 0.50, 0.75, 1.00, 1.25, 1.50, 1.75, 2.00
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
+                    text = stringResource(R.string.video_playback_speed_value, 0.25f),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                PillToggle(
+                    text = stringResource(R.string.video_playback_speed_normal),
+                    selected = kotlin.math.abs(playbackSpeed - 1f) < 0.01f,
+                    onClick = { onPlaybackSpeedChange(1f) },
+                )
+                Text(
+                    text = stringResource(R.string.video_playback_speed_value, 2f),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+
+        // ── 3. Ambient mode ──
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(R.string.video_ambient_mode),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = stringResource(R.string.video_ambient_mode_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Switch(
+                checked = ambientMode,
+                onCheckedChange = onAmbientModeChange,
+            )
+        }
+
+        // ── 4. Aspect ratio ──
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                text = stringResource(R.string.video_aspect_ratio),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                AspectRatioOption(VideoAspectRatio.FIT, aspectRatio, onAspectRatioChange, R.string.video_aspect_fit, Modifier.weight(1f))
+                AspectRatioOption(VideoAspectRatio.CROP, aspectRatio, onAspectRatioChange, R.string.video_aspect_crop, Modifier.weight(1f))
+                AspectRatioOption(VideoAspectRatio.STRETCH, aspectRatio, onAspectRatioChange, R.string.video_aspect_stretch, Modifier.weight(1f))
+                AspectRatioOption(VideoAspectRatio.FILL, aspectRatio, onAspectRatioChange, R.string.video_aspect_fill, Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+@Composable
+private fun AspectRatioOption(
+    value: VideoAspectRatio,
+    current: VideoAspectRatio,
+    onSelect: (VideoAspectRatio) -> Unit,
+    labelRes: Int,
+    modifier: Modifier = Modifier,
+) {
+    PillToggle(
+        text = stringResource(labelRes),
+        selected = value == current,
+        onClick = { onSelect(value) },
+        modifier = modifier,
+    )
+}
+
+@Composable
+private fun PillToggle(
+    text: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val bg = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
+    val fg = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+    Box(
+        modifier =
+            modifier
+                .background(bg, CircleShape)
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onClick,
+                ).padding(horizontal = 8.dp, vertical = 8.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = text,
+            color = fg,
+            style = MaterialTheme.typography.labelMedium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
 
 /**
  * Format milliseconds as M:SS or H:MM:SS.

@@ -9,11 +9,19 @@
 
 package moe.rukamori.archivetune.ui.player
 
+import android.graphics.Bitmap
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -25,13 +33,17 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
@@ -44,6 +56,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
+import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.text.CueGroup
 import androidx.media3.datasource.DefaultDataSource
@@ -55,16 +68,25 @@ import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.compose.ContentFrame
 import androidx.media3.ui.compose.SURFACE_TYPE_TEXTURE_VIEW
+import coil3.imageLoader
+import coil3.request.ImageRequest
+import coil3.request.SuccessResult
+import coil3.request.allowHardware
+import coil3.size.Size
+import coil3.toBitmap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
+import moe.rukamori.archivetune.constants.VideoPlaybackSpeedKey
 import moe.rukamori.archivetune.innertube.NewPipeUtils
 import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.innertube.models.YouTubeClient.Companion.ANDROID_VR_1_65_10
 import moe.rukamori.archivetune.innertube.models.YouTubeClient.Companion.WEB_REMIX
 import moe.rukamori.archivetune.innertube.models.response.PlayerResponse
+import moe.rukamori.archivetune.utils.ImageBlurUtils
 import moe.rukamori.archivetune.utils.StreamClientUtils
+import moe.rukamori.archivetune.utils.rememberPreference
 import okhttp3.OkHttpClient
 import timber.log.Timber
 import java.util.Locale
@@ -765,6 +787,27 @@ fun rememberVideoArtworkState(
         }
     }
 
+    // ── Playback speed follower ──
+    //
+    // Mirror the user's [VideoPlaybackSpeedKey] preference into the video
+    // ExoPlayer. This is the video-side counterpart to the audio-side
+    // follower in FullscreenVideoOverlay — keeping both ExoPlayers at the
+    // same speed is what keeps audio + video aligned when the user picks a
+    // non-1.0x speed from the 3-dot overflow menu.
+    //
+    // The preference is also written from the audio side (the overlay sets
+    // playerConnection.player.playbackParameters AND persists the speed to
+    // VideoPlaybackSpeedKey), so reading the same preference here keeps
+    // them in lock-step.
+    val (videoPlaybackSpeed, _) = rememberPreference(VideoPlaybackSpeedKey, defaultValue = 1.0f)
+    LaunchedEffect(videoPlaybackSpeed, exoPlayer) {
+        val safeSpeed = videoPlaybackSpeed.coerceIn(0.25f, 2f)
+        val current = exoPlayer.playbackParameters.speed
+        if (kotlin.math.abs(current - safeSpeed) > 0.001f) {
+            exoPlayer.playbackParameters = PlaybackParameters(safeSpeed)
+        }
+    }
+
     // ── Manual resync (seekbar) ──
     //
     // Triggered by [VideoArtworkState.requestResync], which is called from
@@ -1109,12 +1152,22 @@ fun rememberVideoArtworkStateOrNull(
  *
  * When a caption track is selected, the currently active cue text is
  * rendered as a subtitle overlay along the bottom edge.
+ *
+ * When [ambientMode] is true and [thumbnailUrl] is non-blank, a slowly
+ * drifting blurred copy of the song thumbnail is rendered BEHIND the video
+ * surface so the letterboxed black area around a FIT video glows with the
+ * artwork's dominant colors — mimicking YouTube's "ambient mode" effect.
+ *
+ * @param ambientMode When true, render the blurred-thumbnail backdrop behind the video.
+ * @param thumbnailUrl URL of the song thumbnail to use for ambient mode. Required if ambientMode = true.
  */
 @Composable
 fun VideoArtworkSurface(
     state: VideoArtworkState,
     modifier: Modifier = Modifier,
     resizeMode: Int = AspectRatioFrameLayout.RESIZE_MODE_FIT,
+    ambientMode: Boolean = false,
+    thumbnailUrl: String? = null,
 ) {
     val alpha by animateFloatAsState(
         targetValue = if (state.isVideoReady) 1f else 0f,
@@ -1123,6 +1176,26 @@ fun VideoArtworkSurface(
     )
 
     Box(modifier = modifier) {
+        // ── Ambient mode background ──
+        // Render a slowly drifting, blurred copy of the song thumbnail
+        // behind the video surface. The black letterbox area around a FIT
+        // video then glows with the artwork's colors instead of being pure
+        // black — mimicking YouTube's "ambient mode" effect.
+        if (ambientMode && !thumbnailUrl.isNullOrBlank()) {
+            VideoAmbientBackdrop(
+                thumbnailUrl = thumbnailUrl,
+                modifier = Modifier.fillMaxSize(),
+            )
+        } else {
+            // Plain black background so letterbox bars look clean.
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .background(Color.Black),
+            )
+        }
+
         ContentFrame(
             player = state.exoPlayer,
             surfaceType = SURFACE_TYPE_TEXTURE_VIEW,
@@ -1148,6 +1221,112 @@ fun VideoArtworkSurface(
                         .padding(horizontal = 12.dp, vertical = 6.dp),
             )
         }
+    }
+}
+
+/**
+ * Soft drifting blurred artwork backdrop for ambient mode.
+ *
+ * On Android S+ we use a graphicsLayer translation to drift a pre-blurred
+ * bitmap (the bitmap is blurred once via [ImageBlurUtils] using a CPU
+ * stack-blur, then animated on the GPU). On pre-S we render the same bitmap
+ * but without the drift animation (animating a CPU-blurred bitmap every
+ * frame causes visible tearing on older devices).
+ *
+ * The bitmap is loaded via Coil with hardware-acceleration DISABLED so we
+ * can copy it to an ARGB_8888 bitmap and run the CPU stack-blur. We use a
+ * dedicated cache key prefix ("ambient:") so the ambient-mode bitmap isn't
+ * shared with the regular thumbnail cache (different size + blur).
+ */
+@Composable
+private fun VideoAmbientBackdrop(
+    thumbnailUrl: String,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val isPreS = Build.VERSION.SDK_INT < Build.VERSION_CODES.S
+
+    val transition = rememberInfiniteTransition(label = "video-ambient-drift")
+    val animatedDriftX by transition.animateFloat(
+        initialValue = -90f,
+        targetValue = 90f,
+        animationSpec =
+            infiniteRepeatable(
+                animation = tween(durationMillis = 19_000, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse,
+            ),
+        label = "video-ambient-x",
+    )
+    val animatedDriftY by transition.animateFloat(
+        initialValue = -60f,
+        targetValue = 60f,
+        animationSpec =
+            infiniteRepeatable(
+                animation = tween(durationMillis = 27_000, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse,
+            ),
+        label = "video-ambient-y",
+    )
+    val driftX = if (isPreS) 0f else animatedDriftX
+    val driftY = if (isPreS) 0f else animatedDriftY
+
+    val blurredBitmap by produceState<Bitmap?>(null, thumbnailUrl) {
+        value =
+            withContext(Dispatchers.IO) {
+                runCatching {
+                    val request =
+                        ImageRequest
+                            .Builder(context)
+                            .data(thumbnailUrl)
+                            .allowHardware(false)
+                            .memoryCacheKey("ambient:$thumbnailUrl")
+                            .diskCacheKey("ambient:$thumbnailUrl")
+                            .size(Size(540, 540))
+                            .build()
+                    val result = context.imageLoader.execute(request)
+                    if (result is SuccessResult) {
+                        val bitmap = result.image.toBitmap().copy(Bitmap.Config.ARGB_8888, true)
+                        val density = context.resources.displayMetrics.density
+                        ImageBlurUtils.blur(bitmap, 48f * density)
+                    } else {
+                        null
+                    }
+                }.getOrNull()
+            }
+    }
+
+    Box(
+        modifier =
+            modifier
+                .fillMaxSize()
+                .clipToBounds()
+                .background(Color.Black),
+    ) {
+        blurredBitmap?.let { bm ->
+            Image(
+                bitmap = bm.asImageBitmap(),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .graphicsLayer(
+                            translationX = driftX,
+                            translationY = driftY,
+                            scaleX = 1.4f,
+                            scaleY = 1.4f,
+                            alpha = 0.85f,
+                        ),
+            )
+        }
+        // Darkening scrim so the ambient glow doesn't compete with the
+        // video for attention — keeps the video the focal point.
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.45f)),
+        )
     }
 }
 
