@@ -408,6 +408,8 @@ fun rememberVideoArtworkState(
     onLoadingStateChange: (Boolean) -> Unit,
     onRequestPauseMain: () -> Unit,
     onRequestResumeMain: () -> Unit,
+    onRequestMuteMain: () -> Unit = {},
+    onRequestUnmuteMain: () -> Unit = {},
 ): VideoArtworkState {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -419,6 +421,8 @@ fun rememberVideoArtworkState(
     val updatedOnLoadingStateChange by rememberUpdatedState(onLoadingStateChange)
     val updatedOnRequestPauseMain by rememberUpdatedState(onRequestPauseMain)
     val updatedOnRequestResumeMain by rememberUpdatedState(onRequestResumeMain)
+    val updatedOnRequestMuteMain by rememberUpdatedState(onRequestMuteMain)
+    val updatedOnRequestUnmuteMain by rememberUpdatedState(onRequestUnmuteMain)
     val updatedHoldAudioUntilVideoReady by rememberUpdatedState(holdAudioUntilVideoReady)
 
     // ── OkHttp client with the YouTube stream proxy + request profile headers ──
@@ -472,19 +476,31 @@ fun rememberVideoArtworkState(
             DefaultRenderersFactory(context).setEnableDecoderFallback(true)
         }
 
-    // Disable the audio track — the main MusicService ExoPlayer is the
-    // source of truth for audio. Playing audio here would double it.
+    // ── Audio track is ENABLED on this ExoPlayer ──
+    //
+    // Previously, audio was disabled here and the main MusicService ExoPlayer
+    // was the sole source of truth for audio. The video ExoPlayer ran muted,
+    // synced to the audio via the drift poller.
+    //
+    // Now, we load a SINGLE YouTube stream that contains BOTH audio and
+    // video (muxed formats — see [pickVideoFormat]). This ExoPlayer plays
+    // the audible audio. While it's playing, the main MusicService audio is
+    // MUTED (volume = 0f) via [onRequestMuteMain] / [onRequestUnmuteMain],
+    // so the user only hears one audio source.
+    //
+    // The MusicService player is still loaded (for position tracking, queue
+    // management, and the UI seekbar), but it's silent while the video is
+    // active. When the video fails or is dismissed, the MusicService audio
+    // is unmuted and playback continues seamlessly.
+    //
     // Text tracks (captions) are explicitly ENABLED so that the
     // onCues(CueGroup) listener fires when a caption track is selected.
-    // Without setTrackTypeDisabled(TEXT, false) some default track
-    // selector configurations leave text tracks off, which is why
-    // captions were detected but never displayed.
     val trackSelector =
         remember(context) {
             DefaultTrackSelector(context).apply {
                 setParameters(
                     buildUponParameters()
-                        .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
+                        .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
                         .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
                         .setForceHighestSupportedBitrate(true)
                         .build(),
@@ -510,7 +526,10 @@ fun rememberVideoArtworkState(
                     .setTrackSelector(trackSelector)
                     .build()
                     .apply {
-                        volume = 0f
+                        // Audio is enabled — this ExoPlayer plays the muxed
+                        // stream's audio. The main MusicService audio is muted
+                        // while the video is active (see [onRequestMuteMain]).
+                        volume = 1f
                         playWhenReady = isPlaying
                     }
             VideoArtworkState(exoPlayer)
@@ -609,6 +628,18 @@ fun rememberVideoArtworkState(
         lastLoadedStreamUrl = null
         lastLoadedCaptionTrack = null
 
+        // ── Mute the main audio player while the video is active ──
+        //
+        // We mute IMMEDIATELY (before the URL is even resolved) so the user
+        // never hears the YouTube Music audio stream — only the audio from
+        // the video stream (loaded as a single muxed stream by
+        // [pickVideoFormat]).
+        //
+        // If the video fails to resolve or play, [updatedOnRequestUnmuteMain]
+        // is called below (and in the player-error listener) to restore the
+        // main audio.
+        updatedOnRequestMuteMain()
+
         beginAudioHold()
 
         val resolved =
@@ -621,6 +652,8 @@ fun rememberVideoArtworkState(
         if (resolved == null) {
             state.hasPlaybackFailed = true
             releaseAudioHold()
+            // Video failed — restore the main audio so playback continues.
+            updatedOnRequestUnmuteMain()
             updatedOnPlaybackFailed()
             updatedOnStreamResolved(null)
         } else {
@@ -878,53 +911,39 @@ fun rememberVideoArtworkState(
                 }
             }
 
-            // Drift detection — three tiers:
+            // Drift detection — DISABLED for single-stream playback.
             //
-            // 1. SMALL drift (<= VideoSoftSeekDriftThresholdMs while playing,
-            //    <= VideoSyncDriftToleranceMs while paused):
-            //    IGNORE. The video self-corrects because both play at 1x.
-            //    Decoder lag of 300–800ms is normal and imperceptible.
+            // PREVIOUSLY (when audio came from the main MusicService player
+            // and the video was muted), we had three tiers of drift
+            // correction:
+            //   1. SMALL drift → ignore (self-corrects)
+            //   2. MEDIUM drift → soft seek (video re-buffers silently)
+            //   3. LARGE drift → hard pause-load-resume
             //
-            // 2. MEDIUM drift (> VideoSoftSeekDriftThresholdMs while playing):
-            //    SOFT seek — seek the video WITHOUT pausing the main audio.
-            //    The video may freeze briefly while re-buffering, but the
-            //    audio continues uninterrupted. Good tradeoff for a music app.
+            // NOW (audio comes from the video stream itself via the muxed
+            // format), ANY seek of the video ExoPlayer causes an audible
+            // audio glitch — the video's audio jumps to the new position.
+            // The drift correction is therefore counterproductive: it
+            // introduces audio glitches without any benefit, because the
+            // audio and video are ALREADY in sync within the muxed stream.
             //
-            // 3. LARGE drift (> VideoHardResyncThresholdMs while playing OR
-            //    paused): HARD pause-load-resume via [requestAutoResync].
-            //    The soft seek is unreliable at multi-second drift (the
-            //    re-buffer takes too long and drift keeps growing), so we
-            //    coordinate a full pause-load-resume. This is rate-limited
-            //    by [VideoHardResyncCooldownMs] and latches
-            //    [VideoArtworkState.autoResyncDisabled] if two fire within
-            //    the cooldown — preventing the infinite-loop bug that
-            //    previously plagued automatic resync.
+            // The only consequence of disabling drift correction is that
+            // the UI seekbar (which reads from the main MusicService player's
+            // position) may drift slightly from the position the user
+            // actually hears. This is a minor cosmetic issue and far
+            // preferable to constant audio glitches.
             //
-            // For explicit seekbar seeks, the user-initiated
-            // [VideoArtworkState.requestResync] bypasses the cooldown.
+            // The user can still manually seek (which triggers
+            // [VideoArtworkState.requestResync] — a coordinated
+            // pause-load-resume that's intentional, not automatic).
+            //
+            // Stuck-buffering recovery (above) is still active — that's a
+            // separate concern (recovering from a stalled decoder, not
+            // correcting drift).
             if (state.isChangingQuality) continue
             if (state.isResyncing) continue
             if (!state.isVideoReady) continue
             if (awaitingVideoReady) continue
-
-            val mainPos = currentPosition()
-            if (mainPos <= 0) continue
-            val videoPos = exoPlayer.currentPosition
-            val drift = kotlin.math.abs(videoPos - mainPos)
-
-            if (drift > VideoHardResyncThresholdMs) {
-                Timber
-                    .tag(VideoPlaybackLogTag)
-                    .w("Hard resync: drift=${drift}ms (main=$mainPos, video=$videoPos, playing=$shouldPlay)")
-                state.requestAutoResync(mainPos, shouldPlay)
-            } else if (drift > VideoSoftSeekDriftThresholdMs && shouldPlay) {
-                Timber
-                    .tag(VideoPlaybackLogTag)
-                    .d("Soft seek: drift=${drift}ms (main=$mainPos, video=$videoPos)")
-                exoPlayer.seekTo(mainPos)
-            } else if (drift > VideoSyncDriftToleranceMs && !shouldPlay) {
-                exoPlayer.seekTo(mainPos)
-            }
         }
     }
 
@@ -959,6 +978,9 @@ fun rememberVideoArtworkState(
                     state.isResyncing = false
                     state.bufferingStartedAtMs = 0L
                     releaseAudioHold()
+                    // Video failed — restore the main audio so playback
+                    // continues from the YouTube Music stream.
+                    updatedOnRequestUnmuteMain()
                     updatedOnPlaybackFailed()
                 }
 
@@ -999,7 +1021,21 @@ fun rememberVideoArtworkState(
                     // because the seekTo(position) in the pendingResync
                     // consumer already placed the video exactly where the
                     // user wants it.
-                    if (!wasResync) {
+                    //
+                    // SINGLE-STREAM NOTE: With audio coming from the video
+                    // stream itself (muxed format), this snap causes an
+                    // audible audio glitch — the video's audio jumps to the
+                    // snapped position. To avoid this, we only snap during
+                    // quality changes (where the audio is already
+                    // re-buffering) and resyncs (where the user explicitly
+                    // requested a seek). For the initial load, we let the
+                    // video start at the position it was seeked to (which is
+                    // the MusicService's position at load time, 1-3s stale).
+                    // The UI seekbar may show a slightly different position
+                    // than what the user hears, but this is a minor cosmetic
+                    // issue compared to an audio glitch at the start of
+                    // every video.
+                    if (!wasResync && wasChangingQuality) {
                         val mainPos = currentPosition()
                         if (mainPos > 0) {
                             val videoPos = exoPlayer.currentPosition
@@ -1098,9 +1134,17 @@ fun rememberVideoArtworkState(
     // and this composable leaves the tree — e.g. the user skips from a music
     // video to a non-video song while the video is still loading — the main
     // audio must be resumed right away or it would stay paused forever.
+    //
+    // The main audio player is also UNMUTED here — while the video was
+    // active, the main audio was muted (volume = 0) so the user only heard
+    // the video stream's audio. Now that the video is going away, we restore
+    // the main audio's volume so playback continues audibly from the YouTube
+    // Music stream (or stops if the user is skipping to a non-video song
+    // and the next song's video will mute it again).
     DisposableEffect(exoPlayer) {
         onDispose {
             releaseAudioHold()
+            updatedOnRequestUnmuteMain()
             Handler(Looper.getMainLooper()).post {
                 exoPlayer.release()
             }
@@ -1139,6 +1183,8 @@ fun rememberVideoArtworkStateOrNull(
     onLoadingStateChange: (Boolean) -> Unit,
     onRequestPauseMain: () -> Unit,
     onRequestResumeMain: () -> Unit,
+    onRequestMuteMain: () -> Unit = {},
+    onRequestUnmuteMain: () -> Unit = {},
 ): VideoArtworkState? {
     return if (videoId.isNullOrBlank()) {
         onPlaybackFailed()
@@ -1155,6 +1201,8 @@ fun rememberVideoArtworkStateOrNull(
             onLoadingStateChange = onLoadingStateChange,
             onRequestPauseMain = onRequestPauseMain,
             onRequestResumeMain = onRequestResumeMain,
+            onRequestMuteMain = onRequestMuteMain,
+            onRequestUnmuteMain = onRequestUnmuteMain,
         )
     }
 }
@@ -1356,6 +1404,22 @@ private fun VideoAmbientBackdrop(
 /**
  * Pick the best video format from a [PlayerResponse], honoring a preferred
  * height.
+ *
+ * SINGLE-STREAM PREFERENCE: We strongly prefer muxed formats (formats with
+ * `audioQuality != null`) — these contain BOTH audio and video in one stream,
+ * so the video ExoPlayer can play the audible audio directly. This eliminates
+ * the need to load the YouTube Music audio separately and sync it via the
+ * drift poller.
+ *
+ * Muxed formats on YouTube are typically capped at 720p (itag 18 = 360p,
+ * itag 22 = 720p). If a muxed format is available, we use it — even if it
+ * means dropping below the user's preferred height. The single-stream
+ * experience (no A/V sync issues, no separate audio load) is more important
+ * than maximum resolution on a phone screen.
+ *
+ * If NO muxed format is available (rare — happens only for very new or
+ * restricted videos), we fall back to an adaptive video-only format. In that
+ * case the audio comes from the main MusicService player as before.
  */
 private fun pickVideoFormat(
     playerResponse: PlayerResponse,
@@ -1363,25 +1427,61 @@ private fun pickVideoFormat(
 ): PlayerResponse.StreamingData.Format? {
     val streamingData = playerResponse.streamingData ?: return null
 
-    val allVideoFormats =
-        (streamingData.formats.orEmpty() + streamingData.adaptiveFormats.orEmpty())
-            .asSequence()
-            .filter {
-                val h = it.height
-                h != null && h > 0
+    // ── Tier 1: Muxed formats (audio + video in one stream) ──
+    //
+    // These come from `streamingData.formats` (not `adaptiveFormats`).
+    // We cap at [MaxVideoHeightCap] (1080p) for decoder safety, though in
+    // practice muxed formats rarely exceed 720p.
+    val muxedFormats =
+        streamingData.formats.orEmpty().asSequence()
+            .filter { (it.height ?: 0) > 0 }
+            .filter { (it.height ?: 0) <= MaxVideoHeightCap }
+            .filter { it.audioQuality != null } // must contain audio
+            .filter { it.url != null || it.signatureCipher != null || it.cipher != null }
+            .toList()
+
+    if (muxedFormats.isNotEmpty()) {
+        // Honor the user's preferred height: pick the highest muxed format at
+        // or below the preference. If the preference is above all muxed
+        // formats (e.g. user picked 1080p but only 720p muxed is available),
+        // pick the highest available muxed format — single-stream wins over
+        // resolution.
+        val heightFiltered =
+            if (preferredHeight != null) {
+                val atOrBelow = muxedFormats.filter { (it.height ?: 0) <= preferredHeight }
+                if (atOrBelow.isNotEmpty()) atOrBelow else muxedFormats
+            } else {
+                muxedFormats
             }
+        return heightFiltered.sortedWith(
+            compareByDescending<PlayerResponse.StreamingData.Format> { it.height ?: 0 }
+                .thenByDescending { it.url != null }
+                .thenByDescending { it.audioQuality != null },
+        ).firstOrNull()
+    }
+
+    // ── Tier 2 (fallback): Adaptive video-only formats ──
+    //
+    // No muxed format available. Fall back to an adaptive video-only format.
+    // In this case the audio will come from the main MusicService player
+    // (the track selector will disable the (non-existent) audio track on
+    // this format, and the MusicService player's audio is what the user
+    // hears).
+    val adaptiveVideoFormats =
+        streamingData.adaptiveFormats.orEmpty().asSequence()
+            .filter { (it.height ?: 0) > 0 }
             .filter { (it.height ?: 0) <= MaxVideoHeightCap }
             .filter { it.url != null || it.signatureCipher != null || it.cipher != null }
             .toList()
 
-    if (allVideoFormats.isEmpty()) return null
+    if (adaptiveVideoFormats.isEmpty()) return null
 
     val heightFiltered =
         if (preferredHeight != null) {
-            val atOrBelow = allVideoFormats.filter { (it.height ?: 0) <= preferredHeight }
-            if (atOrBelow.isNotEmpty()) atOrBelow else allVideoFormats.sortedBy { it.height ?: 0 }
+            val atOrBelow = adaptiveVideoFormats.filter { (it.height ?: 0) <= preferredHeight }
+            if (atOrBelow.isNotEmpty()) atOrBelow else adaptiveVideoFormats.sortedBy { it.height ?: 0 }
         } else {
-            allVideoFormats
+            adaptiveVideoFormats
         }
 
     val comparator =

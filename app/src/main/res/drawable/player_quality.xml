@@ -3,13 +3,35 @@
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
+    <!-- Quality / settings sliders: three horizontal lines, each with a
+         circular handle at a different horizontal position. This is the
+         modern convention used by YouTube, Netflix, and most modern video
+         players for the quality / settings menu. Cleaner and more
+         recognizable than the previous "H in a square" badge. -->
+    <!-- Top slider line (handle on the right) -->
     <path
         android:fillColor="@android:color/white"
-        android:strokeColor="@android:color/white"
-        android:strokeWidth="0"
-        android:pathData="M4.5,4.5h15v15h-15z"
-        android:fillAlpha="0"/>
+        android:pathData="M4,6.5 L20,6.5 L20,7.5 L4,7.5 Z"/>
+    <!-- Top handle (circle at x=16, y=7, r=2.5) -->
     <path
         android:fillColor="@android:color/white"
-        android:pathData="M5,3L19,3A2,2 0 0 1 21,5L21,19A2,2 0 0 1 19,21L5,21A2,2 0 0 1 3,19L3,5A2,2 0 0 1 5,3M5,5L5,19L19,19L19,5L5,5M7,15C7,15 7,9 7,9L8.5,9L8.5,11.5L10.5,11.5L10.5,9L12,9L12,15L10.5,15L10.5,13L8.5,13L8.5,15L7,15M14.5,15L14.5,11.5L13,11.5L13,9L17,9L17,11.5L15.5,11.5L15.5,15L14.5,15Z"/>
+        android:pathData="M13.5,7 a2.5,2.5 0 1,0 5,0 a2.5,2.5 0 1,0 -5,0 Z"/>
+
+    <!-- Middle slider line (handle in the center) -->
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M4,11.5 L20,11.5 L20,12.5 L4,12.5 Z"/>
+    <!-- Middle handle (circle at x=12, y=12, r=2.5) -->
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M9.5,12 a2.5,2.5 0 1,0 5,0 a2.5,2.5 0 1,0 -5,0 Z"/>
+
+    <!-- Bottom slider line (handle on the left) -->
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M4,16.5 L20,16.5 L20,17.5 L4,17.5 Z"/>
+    <!-- Bottom handle (circle at x=8, y=17, r=2.5) -->
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M5.5,17 a2.5,2.5 0 1,0 5,0 a2.5,2.5 0 1,0 -5,0 Z"/>
 </vector>

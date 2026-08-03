@@ -3,7 +3,23 @@
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
+    <!-- Fullscreen exit: four solid triangle arrowheads, one in each corner,
+         each pointing INWARD toward the center. The mirror of the fullscreen
+         enter icon. -->
+    <!-- Top-left arrowhead (tip at center end, points SE) -->
     <path
         android:fillColor="@android:color/white"
-        android:pathData="M7,14H5v5h5v-2H7V14zM5,10h2V7h3V5H5V10zM17,14h-2v3h-3v2h5V14zM14,7V5h5v5h-2V7H14z"/>
+        android:pathData="M3,3 L10,3 L10,10 Z"/>
+    <!-- Top-right arrowhead (tip at center end, points SW) -->
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M21,3 L21,10 L14,10 Z"/>
+    <!-- Bottom-left arrowhead (tip at center end, points NE) -->
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M3,21 L3,14 L10,14 Z"/>
+    <!-- Bottom-right arrowhead (tip at center end, points NW) -->
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M21,21 L14,21 L14,14 Z"/>
 </vector>

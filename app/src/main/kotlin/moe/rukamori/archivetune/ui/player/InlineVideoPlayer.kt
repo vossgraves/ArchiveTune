@@ -13,6 +13,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.pm.ActivityInfo
+import android.graphics.Bitmap
 import android.media.AudioManager
 import android.provider.Settings
 import android.view.WindowManager
@@ -24,6 +25,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -64,13 +66,19 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -84,6 +92,13 @@ import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import coil3.imageLoader
+import coil3.request.ImageRequest
+import coil3.request.SuccessResult
+import coil3.request.allowHardware
+import coil3.size.Size
+import coil3.toBitmap
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import androidx.media3.common.C
 import androidx.media3.common.PlaybackParameters
@@ -92,6 +107,7 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.SliderStyle
@@ -102,6 +118,7 @@ import moe.rukamori.archivetune.constants.VideoAspectRatioKey
 import moe.rukamori.archivetune.constants.VideoPlaybackSpeedKey
 import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.models.MediaMetadata
+import moe.rukamori.archivetune.utils.ImageBlurUtils
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
 
@@ -290,76 +307,76 @@ fun InlineVideoPlayer(
             // Controls overlay: quality picker + fullscreen button.
             // (Captions button removed per spec — captions are no longer
             // user-togglable.)
-            Row(
+            //
+            // Both buttons are grouped inside a single frosted-glass pill
+            // (matching the fullscreen overlay's top-right pill) so the
+            // inline and fullscreen controls look consistent.
+            FrostedGlassPill(
+                thumbnailUrl = thumbnailUrl,
                 modifier =
                     Modifier
                         .align(Alignment.TopEnd)
-                        .padding(8.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                verticalAlignment = Alignment.CenterVertically,
+                        .padding(8.dp)
+                        .padding(horizontal = 4.dp, vertical = 4.dp),
+                shape = RoundedCornerShape(28.dp),
             ) {
-                // Quality picker — only render if YouTube offered more than one height.
-                if (availableHeights.size > 1) {
-                    Box {
-                        IconButton(
-                            onClick = { qualityMenuOpen = true },
-                            modifier =
-                                Modifier
-                                    .background(
-                                        color = Color.Black.copy(alpha = 0.45f),
-                                        shape = CircleShape,
-                                    ).size(40.dp),
-                        ) {
-                            Icon(
-                                painter = painterResource(R.drawable.player_quality),
-                                contentDescription = stringResource(R.string.video_quality),
-                                tint = Color.White,
-                                modifier = Modifier.size(22.dp),
-                            )
-                        }
-                        DropdownMenu(
-                            expanded = qualityMenuOpen,
-                            onDismissRequest = { qualityMenuOpen = false },
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.video_quality_auto)) },
-                                onClick = {
-                                    onPreferredHeightChange(null)
-                                    qualityMenuOpen = false
-                                },
-                            )
-                            availableHeights
-                                .sortedDescending()
-                                .forEach { h ->
-                                    DropdownMenuItem(
-                                        text = { Text(formatHeightLabel(h)) },
-                                        onClick = {
-                                            onPreferredHeightChange(h)
-                                            qualityMenuOpen = false
-                                        },
-                                    )
-                                }
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    // Quality picker — only render if YouTube offered more than one height.
+                    if (availableHeights.size > 1) {
+                        Box {
+                            IconButton(
+                                onClick = { qualityMenuOpen = true },
+                                modifier = Modifier.size(40.dp),
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.player_quality),
+                                    contentDescription = stringResource(R.string.video_quality),
+                                    tint = Color.White,
+                                    modifier = Modifier.size(22.dp),
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = qualityMenuOpen,
+                                onDismissRequest = { qualityMenuOpen = false },
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.video_quality_auto)) },
+                                    onClick = {
+                                        onPreferredHeightChange(null)
+                                        qualityMenuOpen = false
+                                    },
+                                )
+                                availableHeights
+                                    .sortedDescending()
+                                    .forEach { h ->
+                                        DropdownMenuItem(
+                                            text = { Text(formatHeightLabel(h)) },
+                                            onClick = {
+                                                onPreferredHeightChange(h)
+                                                qualityMenuOpen = false
+                                            },
+                                        )
+                                    }
+                            }
                         }
                     }
-                }
 
-                // Fullscreen toggle — writes to the hoisted holder so the
-                // host can render the FullscreenVideoOverlay.
-                IconButton(
-                    onClick = { fullscreenHolder.isFullscreen = true },
-                    modifier =
-                        Modifier
-                            .background(
-                                color = Color.Black.copy(alpha = 0.45f),
-                                shape = CircleShape,
-                            ).size(40.dp),
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.player_fullscreen),
-                        contentDescription = stringResource(R.string.video_fullscreen),
-                        tint = Color.White,
-                        modifier = Modifier.size(22.dp),
-                    )
+                    // Fullscreen toggle — writes to the hoisted holder so the
+                    // host can render the FullscreenVideoOverlay.
+                    IconButton(
+                        onClick = { fullscreenHolder.isFullscreen = true },
+                        modifier = Modifier.size(40.dp),
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.player_fullscreen),
+                            contentDescription = stringResource(R.string.video_fullscreen),
+                            tint = Color.White,
+                            modifier = Modifier.size(22.dp),
+                        )
+                    }
                 }
             }
         }
@@ -512,19 +529,34 @@ fun FullscreenVideoOverlay(
     // On enter: set orientation to SENSOR_LANDSCAPE (allows both
     // landscape orientations based on device tilt) and hide system
     // bars for true immersive playback.
-    // On dispose: restore the original orientation and show system bars.
+    // On dispose: restore the original orientation, show system bars, AND
+    // restore the original screen brightness.
     //
     // This is a DisposableEffect tied to the overlay's lifecycle. As long
     // as the overlay is in the composition tree, the orientation stays
     // landscape. When the overlay is removed (onDismiss sets isFullscreen
     // = false → host stops rendering this composable), the orientation
     // is restored.
+    //
+    // BRIGHTNESS RESTORATION: The user can adjust the screen brightness by
+    // dragging on the left half of the fullscreen overlay (see
+    // [currentWindowBrightness] / [applyWindowBrightness]). This override
+    // is applied to the Activity's window attributes and does NOT auto-
+    // revert when the overlay is dismissed. We MUST explicitly save the
+    // original brightness on enter and restore it on dispose — otherwise
+    // the user's manual brightness change persists after the video is
+    // closed, which is surprising and annoying (e.g., the phone stays
+    // dimmed at 10% brightness even after exiting the video).
     DisposableEffect(Unit) {
         val activity = context.findActivity()
         val originalOrientation = activity?.requestedOrientation
         val window = activity?.window
         val controller = window?.let { WindowCompat.getInsetsController(it, it.decorView) }
         val originalBehavior = controller?.systemBarsBehavior
+        // Save the original window brightness so we can restore it on
+        // dispose. BRIGHTNESS_OVERRIDE_NONE (-1f) means "use system
+        // default" — we save that as-is and restore it the same way.
+        val originalBrightness = window?.attributes?.screenBrightness
 
         activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         if (controller != null) {
@@ -540,6 +572,18 @@ fun FullscreenVideoOverlay(
                 controller.show(WindowInsetsCompat.Type.systemBars())
                 controller.systemBarsBehavior =
                     originalBehavior ?: WindowInsetsControllerCompat.BEHAVIOR_DEFAULT
+            }
+            // ── Restore the original screen brightness ──
+            // Without this, any brightness adjustment the user made via
+            // the drag gesture would persist after the video is closed.
+            // Restoring to [originalBrightness] (which is either the
+            // system default of -1f or a previous override) ensures the
+            // phone returns to the brightness it was at BEFORE the user
+            // opened the fullscreen video.
+            if (window != null && originalBrightness != null) {
+                val params = window.attributes
+                params.screenBrightness = originalBrightness
+                window.attributes = params
             }
         }
     }
@@ -802,140 +846,143 @@ fun FullscreenVideoOverlay(
                 }
 
                 // ── Top-right pill: quality + aspect-ratio + overflow + fullscreen-exit ──
-                // All controls are grouped inside a single frosted pill so the
+                // All controls are grouped inside a single frosted-glass pill so the
                 // overlay reads as one cohesive unit rather than a row of loose
-                // circular buttons. The pill uses a semi-transparent dark fill
-                // that, against the moving video, reads as frosted glass.
-                Row(
+                // circular buttons. The pill uses a blurred-thumbnail backdrop +
+                // dark overlay + white gradient + border to create a true
+                // frosted-glass effect that picks up the colors of the video.
+                FrostedGlassPill(
+                    thumbnailUrl = thumbnailUrl,
                     modifier =
                         Modifier
                             .align(Alignment.TopEnd)
                             .statusBarsPadding()
                             .padding(8.dp)
-                            .background(
-                                color = Color.Black.copy(alpha = 0.5f),
-                                shape = RoundedCornerShape(28.dp),
-                            ).padding(horizontal = 4.dp, vertical = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(2.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                            .padding(horizontal = 4.dp, vertical = 4.dp),
+                    shape = RoundedCornerShape(28.dp),
                 ) {
-                    if (availableHeights.size > 1) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(2.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        if (availableHeights.size > 1) {
+                            Box {
+                                IconButton(
+                                    onClick = { qualityMenuOpen = true },
+                                    modifier = Modifier.size(40.dp),
+                                ) {
+                                    Icon(
+                                        painter = painterResource(R.drawable.player_quality),
+                                        contentDescription = stringResource(R.string.video_quality),
+                                        tint = Color.White,
+                                        modifier = Modifier.size(22.dp),
+                                    )
+                                }
+                                DropdownMenu(
+                                    expanded = qualityMenuOpen,
+                                    onDismissRequest = { qualityMenuOpen = false },
+                                ) {
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.video_quality_auto)) },
+                                        onClick = {
+                                            onPreferredHeightChange(null)
+                                            qualityMenuOpen = false
+                                        },
+                                    )
+                                    availableHeights
+                                        .sortedDescending()
+                                        .forEach { h ->
+                                            DropdownMenuItem(
+                                                text = { Text(formatHeightLabel(h)) },
+                                                onClick = {
+                                                    onPreferredHeightChange(h)
+                                                    qualityMenuOpen = false
+                                                },
+                                            )
+                                        }
+                                }
+                            }
+                        }
+
+                        // ── Aspect ratio picker ──
+                        // Moved out of the overflow sheet so the user can quickly
+                        // cycle aspect ratios without opening the sheet. The
+                        // dropdown shows a checkmark next to the active option.
                         Box {
                             IconButton(
-                                onClick = { qualityMenuOpen = true },
+                                onClick = { aspectRatioMenuOpen = true },
                                 modifier = Modifier.size(40.dp),
                             ) {
                                 Icon(
-                                    painter = painterResource(R.drawable.player_quality),
-                                    contentDescription = stringResource(R.string.video_quality),
+                                    painter = painterResource(R.drawable.player_aspect_ratio),
+                                    contentDescription = stringResource(R.string.video_aspect_ratio),
                                     tint = Color.White,
                                     modifier = Modifier.size(22.dp),
                                 )
                             }
                             DropdownMenu(
-                                expanded = qualityMenuOpen,
-                                onDismissRequest = { qualityMenuOpen = false },
+                                expanded = aspectRatioMenuOpen,
+                                onDismissRequest = { aspectRatioMenuOpen = false },
                             ) {
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.video_quality_auto)) },
-                                    onClick = {
-                                        onPreferredHeightChange(null)
-                                        qualityMenuOpen = false
-                                    },
-                                )
-                                availableHeights
-                                    .sortedDescending()
-                                    .forEach { h ->
-                                        DropdownMenuItem(
-                                            text = { Text(formatHeightLabel(h)) },
-                                            onClick = {
-                                                onPreferredHeightChange(h)
-                                                qualityMenuOpen = false
-                                            },
-                                        )
-                                    }
+                                val aspectOptions =
+                                    listOf(
+                                        VideoAspectRatio.FIT to R.string.video_aspect_fit,
+                                        VideoAspectRatio.CROP to R.string.video_aspect_crop,
+                                        VideoAspectRatio.STRETCH to R.string.video_aspect_stretch,
+                                        VideoAspectRatio.FILL to R.string.video_aspect_fill,
+                                    )
+                                aspectOptions.forEach { (ratio, labelRes) ->
+                                    DropdownMenuItem(
+                                        text = {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Text(
+                                                    text = stringResource(labelRes),
+                                                    modifier = Modifier.weight(1f),
+                                                )
+                                                if (ratio == aspectRatio) {
+                                                    Icon(
+                                                        painter = painterResource(R.drawable.check),
+                                                        contentDescription = null,
+                                                        tint = MaterialTheme.colorScheme.primary,
+                                                        modifier = Modifier.size(18.dp),
+                                                    )
+                                                }
+                                            }
+                                        },
+                                        onClick = {
+                                            onAspectRatioChange(ratio)
+                                            aspectRatioMenuOpen = false
+                                        },
+                                    )
+                                }
                             }
                         }
-                    }
 
-                    // ── Aspect ratio picker ──
-                    // Moved out of the overflow sheet so the user can quickly
-                    // cycle aspect ratios without opening the sheet. The
-                    // dropdown shows a checkmark next to the active option.
-                    Box {
+                        // 3-dot overflow button — opens the ModalBottomSheet
+                        // with slider style / playback speed / ambient mode.
                         IconButton(
-                            onClick = { aspectRatioMenuOpen = true },
+                            onClick = { showOverflowSheet = true },
                             modifier = Modifier.size(40.dp),
                         ) {
                             Icon(
-                                painter = painterResource(R.drawable.player_aspect_ratio),
-                                contentDescription = stringResource(R.string.video_aspect_ratio),
+                                painter = painterResource(R.drawable.player_more_vert),
+                                contentDescription = stringResource(R.string.video_overflow_menu),
                                 tint = Color.White,
                                 modifier = Modifier.size(22.dp),
                             )
                         }
-                        DropdownMenu(
-                            expanded = aspectRatioMenuOpen,
-                            onDismissRequest = { aspectRatioMenuOpen = false },
+
+                        IconButton(
+                            onClick = onDismiss,
+                            modifier = Modifier.size(40.dp),
                         ) {
-                            val aspectOptions =
-                                listOf(
-                                    VideoAspectRatio.FIT to R.string.video_aspect_fit,
-                                    VideoAspectRatio.CROP to R.string.video_aspect_crop,
-                                    VideoAspectRatio.STRETCH to R.string.video_aspect_stretch,
-                                    VideoAspectRatio.FILL to R.string.video_aspect_fill,
-                                )
-                            aspectOptions.forEach { (ratio, labelRes) ->
-                                DropdownMenuItem(
-                                    text = {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text(
-                                                text = stringResource(labelRes),
-                                                modifier = Modifier.weight(1f),
-                                            )
-                                            if (ratio == aspectRatio) {
-                                                Icon(
-                                                    painter = painterResource(R.drawable.check),
-                                                    contentDescription = null,
-                                                    tint = MaterialTheme.colorScheme.primary,
-                                                    modifier = Modifier.size(18.dp),
-                                                )
-                                            }
-                                        }
-                                    },
-                                    onClick = {
-                                        onAspectRatioChange(ratio)
-                                        aspectRatioMenuOpen = false
-                                    },
-                                )
-                            }
+                            Icon(
+                                painter = painterResource(R.drawable.player_fullscreen_exit),
+                                contentDescription = stringResource(R.string.video_exit_fullscreen),
+                                tint = Color.White,
+                                modifier = Modifier.size(22.dp),
+                            )
                         }
-                    }
-
-                    // 3-dot overflow button — opens the ModalBottomSheet
-                    // with slider style / playback speed / ambient mode.
-                    IconButton(
-                        onClick = { showOverflowSheet = true },
-                        modifier = Modifier.size(40.dp),
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.player_more_vert),
-                            contentDescription = stringResource(R.string.video_overflow_menu),
-                            tint = Color.White,
-                            modifier = Modifier.size(22.dp),
-                        )
-                    }
-
-                    IconButton(
-                        onClick = onDismiss,
-                        modifier = Modifier.size(40.dp),
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.player_fullscreen_exit),
-                            contentDescription = stringResource(R.string.video_exit_fullscreen),
-                            tint = Color.White,
-                            modifier = Modifier.size(22.dp),
-                        )
                     }
                 }
 
@@ -956,65 +1003,67 @@ fun FullscreenVideoOverlay(
                     val canSkipPrevious by playerConnection.canSkipPrevious.collectAsState()
                     val playbackStateFs by playerConnection.playbackState.collectAsState()
 
-                    Row(
+                    FrostedGlassPill(
+                        thumbnailUrl = thumbnailUrl,
                         modifier =
                             Modifier
                                 .align(Alignment.Center)
                                 .padding(horizontal = 24.dp)
-                                .background(
-                                    color = Color.Black.copy(alpha = 0.5f),
-                                    shape = RoundedCornerShape(40.dp),
-                                ).padding(horizontal = 12.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(24.dp),
-                        verticalAlignment = Alignment.CenterVertically,
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                        shape = RoundedCornerShape(40.dp),
                     ) {
-                        IconButton(
-                            onClick = { playerConnection.seekToPrevious() },
-                            enabled = canSkipPrevious,
-                            modifier = Modifier.size(48.dp),
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(24.dp),
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Icon(
-                                painter = painterResource(R.drawable.player_skip_previous),
-                                contentDescription = stringResource(R.string.video_fs_previous),
-                                tint = if (canSkipPrevious) Color.White else Color.White.copy(alpha = 0.4f),
-                                modifier = Modifier.size(36.dp),
-                            )
-                        }
-                        IconButton(
-                            onClick = {
-                                if (playbackStateFs == Player.STATE_ENDED) {
-                                    playerConnection.player.seekTo(0, 0)
-                                    playerConnection.player.playWhenReady = true
-                                } else {
-                                    playerConnection.player.togglePlayPause()
-                                }
-                            },
-                            modifier = Modifier.size(64.dp),
-                        ) {
-                            val playIcon =
-                                when {
-                                    playbackStateFs == Player.STATE_ENDED -> R.drawable.player_replay
-                                    isPlaying -> R.drawable.player_pause
-                                    else -> R.drawable.player_play
-                                }
-                            Icon(
-                                painter = painterResource(playIcon),
-                                contentDescription = stringResource(R.string.video_fs_play_pause),
-                                tint = Color.White,
-                                modifier = Modifier.size(44.dp),
-                            )
-                        }
-                        IconButton(
-                            onClick = { playerConnection.seekToNext() },
-                            enabled = canSkipNext,
-                            modifier = Modifier.size(48.dp),
-                        ) {
-                            Icon(
-                                painter = painterResource(R.drawable.player_skip_next),
-                                contentDescription = stringResource(R.string.video_fs_next),
-                                tint = if (canSkipNext) Color.White else Color.White.copy(alpha = 0.4f),
-                                modifier = Modifier.size(36.dp),
-                            )
+                            IconButton(
+                                onClick = { playerConnection.seekToPrevious() },
+                                enabled = canSkipPrevious,
+                                modifier = Modifier.size(48.dp),
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.player_skip_previous),
+                                    contentDescription = stringResource(R.string.video_fs_previous),
+                                    tint = if (canSkipPrevious) Color.White else Color.White.copy(alpha = 0.4f),
+                                    modifier = Modifier.size(36.dp),
+                                )
+                            }
+                            IconButton(
+                                onClick = {
+                                    if (playbackStateFs == Player.STATE_ENDED) {
+                                        playerConnection.player.seekTo(0, 0)
+                                        playerConnection.player.playWhenReady = true
+                                    } else {
+                                        playerConnection.player.togglePlayPause()
+                                    }
+                                },
+                                modifier = Modifier.size(64.dp),
+                            ) {
+                                val playIcon =
+                                    when {
+                                        playbackStateFs == Player.STATE_ENDED -> R.drawable.player_replay
+                                        isPlaying -> R.drawable.player_pause
+                                        else -> R.drawable.player_play
+                                    }
+                                Icon(
+                                    painter = painterResource(playIcon),
+                                    contentDescription = stringResource(R.string.video_fs_play_pause),
+                                    tint = Color.White,
+                                    modifier = Modifier.size(44.dp),
+                                )
+                            }
+                            IconButton(
+                                onClick = { playerConnection.seekToNext() },
+                                enabled = canSkipNext,
+                                modifier = Modifier.size(48.dp),
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.player_skip_next),
+                                    contentDescription = stringResource(R.string.video_fs_next),
+                                    tint = if (canSkipNext) Color.White else Color.White.copy(alpha = 0.4f),
+                                    modifier = Modifier.size(36.dp),
+                                )
+                            }
                         }
                     }
 
@@ -1479,6 +1528,141 @@ private fun BoxScope.GestureFeedbackBubble(feedback: GestureFeedback) {
     }
 }
 
+// ── Frosted-glass pill helpers ──
+//
+// The control pills (top-right action row, center transport row, gesture
+// feedback bubble) use a "frosted glass" effect: a blurred copy of the
+// song thumbnail is rendered behind the pill's dark overlay, giving the
+// pill a translucent, glassy appearance that picks up the colors of the
+// video behind it.
+//
+// We reuse the SAME blurred thumbnail bitmap as the ambient mode (cache
+// key "ambient:$thumbnailUrl") so there's only one blur operation per
+// song. The bitmap is loaded asynchronously via [produceState] — while
+// it's loading, the pill falls back to a plain dark background.
+
+/**
+ * Load and blur the song thumbnail for use as a frosted-glass backdrop.
+ *
+ * Returns null while loading (or if the thumbnail URL is blank / the load
+ * fails). The bitmap is cached by Coil under the "ambient:" key so it's
+ * shared with [VideoAmbientBackdrop] — only one blur per song.
+ */
+@Composable
+private fun rememberBlurredThumbnail(thumbnailUrl: String?): Bitmap? {
+    if (thumbnailUrl.isNullOrBlank()) return null
+    val context = LocalContext.current
+    val blurredBitmap by produceState<Bitmap?>(null, thumbnailUrl) {
+        value =
+            withContext(Dispatchers.IO) {
+                runCatching {
+                    val request =
+                        ImageRequest
+                            .Builder(context)
+                            .data(thumbnailUrl)
+                            .allowHardware(false)
+                            .memoryCacheKey("ambient:$thumbnailUrl")
+                            .diskCacheKey("ambient:$thumbnailUrl")
+                            .size(Size(540, 540))
+                            .build()
+                    val result = context.imageLoader.execute(request)
+                    if (result is SuccessResult) {
+                        val bitmap = result.image.toBitmap().copy(Bitmap.Config.ARGB_8888, true)
+                        val density = context.resources.displayMetrics.density
+                        ImageBlurUtils.blur(bitmap, 48f * density)
+                    } else {
+                        null
+                    }
+                }.getOrNull()
+            }
+    }
+    return blurredBitmap
+}
+
+/**
+ * A frosted-glass pill: a rounded container with a blurred-thumbnail
+ * backdrop, a dark overlay for icon contrast, a subtle top-down white
+ * gradient (simulating light refraction on glass), and a thin white
+ * border to define the edge.
+ *
+ * The blurred thumbnail gives a TRUE blur effect (the colors of the video
+ * artwork show through, softly blurred). The dark overlay + gradient +
+ * border refine the "frosted glass" appearance so the icons remain
+ * legible against any backdrop.
+ *
+ * @param thumbnailUrl The song thumbnail URL to blur and render behind the pill.
+ *   Null/blank = fall back to a plain dark background (no blur).
+ * @param shape The pill's shape. Defaults to a fully-rounded pill.
+ * @param content The pill's foreground content (icons, etc).
+ */
+@Composable
+private fun FrostedGlassPill(
+    thumbnailUrl: String?,
+    modifier: Modifier = Modifier,
+    shape: Shape = RoundedCornerShape(28.dp),
+    content: @Composable BoxScope.() -> Unit,
+) {
+    val blurredBitmap = rememberBlurredThumbnail(thumbnailUrl)
+    Box(
+        modifier =
+            modifier
+                .clip(shape)
+                .background(Color.Black.copy(alpha = 0.55f)),
+    ) {
+        // ── Layer 1: Blurred thumbnail backdrop ──
+        // Rendered at 50% opacity so the colors show through but don't
+        // overpower the icons. ContentScale.Crop zooms the blurred bitmap
+        // to fill the pill — since the bitmap is already blurred, the
+        // zoom just means we see a smaller, more uniform slice of color.
+        blurredBitmap?.let { bm ->
+            Image(
+                bitmap = bm.asImageBitmap(),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize().alpha(0.5f),
+            )
+        }
+        // ── Layer 2: Dark overlay for icon contrast ──
+        // Even with the blurred thumbnail, we need a dark layer so white
+        // icons are legible. 35% black is enough to darken the backdrop
+        // without hiding the colors entirely.
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.35f)),
+        )
+        // ── Layer 3: Top-down white gradient (frosted highlight) ──
+        // Simulates the way light catches the top edge of a glass surface.
+        // Subtle (8% white at the top, fading to transparent) so it doesn't
+        // interfere with the icons.
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(
+                                Color.White.copy(alpha = 0.08f),
+                                Color.Transparent,
+                            ),
+                        ),
+                    ),
+        )
+        // ── Layer 4: Thin white border ──
+        // Defines the pill's edge against any backdrop. 18% white is
+        // visible against both light and dark backgrounds.
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .border(0.5.dp, Color.White.copy(alpha = 0.18f), shape),
+        )
+        // ── Layer 5: Foreground content (icons) ──
+        content()
+    }
+}
+
 // ── Brightness helpers ──
 //
 // The screen brightness is applied to the Activity's window via
@@ -1486,11 +1670,11 @@ private fun BoxScope.GestureFeedbackBubble(feedback: GestureFeedback) {
 // BRIGHTNESS_OVERRIDE_NONE (-1f) means "use system default"; any value in
 // 0..1f overrides it for the duration of this window.
 //
-// We do NOT persist the brightness — the change is local to the fullscreen
-// overlay's window and reverts automatically when the overlay is dismissed
-// (the host Activity recreates the window attributes). This matches the
-// behavior of most video player apps: the manual brightness only applies
-// while watching a video.
+// IMPORTANT: The brightness override does NOT auto-revert when the
+// composable leaves the tree. We MUST explicitly restore the original
+// brightness in [FullscreenVideoOverlay]'s DisposableEffect.onDispose —
+// otherwise the user's manual brightness change persists after the video
+// is closed, which is surprising and annoying.
 
 /**
  * Read the current window brightness. Returns a value in 0..1f, or the
