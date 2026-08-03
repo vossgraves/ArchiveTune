@@ -1127,8 +1127,8 @@ private suspend fun resolveVideoStreamUrl(
                         .getStreamUrl(
                             format = format,
                             videoId = videoId,
-                            client = client,
                         ).getOrNull()
+                        ?.let { StreamClientUtils.patchClientVersion(it, client.clientVersion) }
                 if (url.isNullOrBlank()) null else url
             }
 
