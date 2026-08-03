@@ -9,6 +9,21 @@ pluginManagement {
                 includeGroupAndSubgroups("androidx")
             }
         }
+        // Aliyun mirror of Maven Central + Gradle Plugin Portal.
+        //
+        // Declared BEFORE mavenCentral()/gradlePluginPortal() because Gradle's
+        // HTTP retry on 429 (Too Many Requests) does NOT fall back to the next
+        // declared repository — it exhausts retries on the first repo and then
+        // fails the build. Maven Central (repo.maven.apache.org) rate-limits
+        // GitHub Actions runner IPs aggressively, causing transient 429 build
+        // failures (e.g. when resolving transitive deps like org.jsoup:jsoup
+        // pulled in by MetrolistExtractor). Routing through Aliyun first
+        // eliminates that failure mode; mavenCentral()/gradlePluginPortal()
+        // remain as fallbacks for any artifact Aliyun hasn't mirrored yet.
+        maven {
+            name = "AliyunPlugin"
+            setUrl("https://maven.aliyun.com/repository/public")
+        }
         mavenCentral()
         gradlePluginPortal()
     }
@@ -19,6 +34,15 @@ dependencyResolutionManagement {
 
     repositories {
         google()
+        // Aliyun mirror of Maven Central — declared BEFORE mavenCentral() for
+        // the same reason as in pluginManagement (see comment above). Maven
+        // Central's 429 rate-limiting on GitHub Actions IPs was causing
+        // dependency-resolution failures for transitive deps (jsoup,
+        // rhino, ...) pulled in by MetrolistExtractor.
+        maven {
+            name = "AliyunCentral"
+            setUrl("https://maven.aliyun.com/repository/public")
+        }
         mavenCentral {
             mavenContent {
                 releasesOnly()
