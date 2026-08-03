@@ -1410,8 +1410,15 @@ private fun pickVideoFormat(
     val muxedCandidates =
         streamingData.formats.orEmpty()
             .asSequence()
-            .filter { it.height != null && it.height > 0 }
-            .filter { it.height <= MaxVideoHeightCap }
+            .filter {
+                // Local val enables smart-casting — `height` is a public
+                // API property declared in a different module (core), so
+                // Kotlin cannot smart-cast `it.height` directly after the
+                // null check. Using `h` works around that limitation.
+                val h = it.height
+                h != null && h > 0
+            }
+            .filter { (it.height ?: 0) <= MaxVideoHeightCap }
             .filter { it.url != null || it.signatureCipher != null || it.cipher != null }
             // Defensive: confirm the format actually carries audio. Every
             // entry in streamingData.formats SHOULD be muxed, but filter
@@ -1422,8 +1429,11 @@ private fun pickVideoFormat(
     val adaptiveVideoCandidates =
         streamingData.adaptiveFormats.orEmpty()
             .asSequence()
-            .filter { it.height != null && it.height > 0 }
-            .filter { it.height <= MaxVideoHeightCap }
+            .filter {
+                val h = it.height
+                h != null && h > 0
+            }
+            .filter { (it.height ?: 0) <= MaxVideoHeightCap }
             .filter { it.url != null || it.signatureCipher != null || it.cipher != null }
             .toList()
 
