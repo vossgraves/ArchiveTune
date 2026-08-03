@@ -77,6 +77,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
@@ -978,6 +979,67 @@ fun BottomSheetPlayer(
         }
     }
 
+    // ── Hoisted video state ──
+    //
+    // The VideoArtworkState (ExoPlayer + stream URL + playback state) is
+    // created HERE — above the BottomSheet and above the `when (orientation)`
+    // block — so it survives:
+    //   - Orientation changes (the `when` block can switch freely without
+    //     releasing the ExoPlayer).
+    //   - Sheet collapse/expand (the ExoPlayer is not tied to the sheet's
+    //     content lifecycle; `keepContentAlive = true` keeps the content
+    //     alive too, but even without it the state would survive).
+    //   - Fullscreen toggle (the FullscreenVideoOverlay is a sibling of the
+    //     BottomSheet, sharing this same state — no Dialog, no separate
+    //     window, no re-loading).
+    //
+    // When there's no music video playing, this returns null and no ExoPlayer
+    // is created.
+    val videoFullscreenHolder = LocalVideoFullscreenState.current
+    val videoMediaId =
+        mediaMetadata
+            ?.takeIf { it.isMusicVideo == true && !it.id.isLocalMediaId() }
+            ?.id
+    var videoPreferredHeight by rememberSaveable { mutableStateOf<Int?>(null) }
+    var videoAvailableHeights by remember { mutableStateOf<List<Int>>(emptyList()) }
+    var videoPlaybackFailed by remember { mutableStateOf(false) }
+
+    // Reset the failure flag when the media changes — a new song gets a fresh
+    // attempt at video playback even if the previous song's video failed.
+    LaunchedEffect(videoMediaId) {
+        videoPlaybackFailed = false
+    }
+
+    val videoState =
+        rememberVideoArtworkStateOrNull(
+            videoId = videoMediaId,
+            isPlaying = isPlaying,
+            positionProvider = { playerConnection.player.currentPosition },
+            preferredHeight = videoPreferredHeight,
+            onStreamResolved = { info -> videoAvailableHeights = info?.availableHeights.orEmpty() },
+            onPlaybackFailed = { videoPlaybackFailed = true },
+            onLoadingStateChange = { /* loading is computed from state directly in InlineVideoPlayer */ },
+            onRequestPauseMain = { playerConnection.player.pause() },
+            onRequestResumeMain = { playerConnection.player.play() },
+        )
+
+    // Wrap BottomSheet + FullscreenVideoOverlay in a Box so the overlay
+    // can be rendered as a sibling of the BottomSheet, filling the entire
+    // screen on top of it. This avoids using a Compose Dialog (which has
+    // orientation/window issues that caused the "horizontal for a split
+    // second then back" flicker).
+    //
+    // The video state is provided via CompositionLocals so that composables
+    // deep in the tree (V8PlayerContent, AppleMusicPlayer, etc.) can access
+    // the shared ExoPlayer without needing it passed as an explicit parameter
+    // through every layer.
+    CompositionLocalProvider(
+        LocalVideoArtworkState provides videoState,
+        LocalVideoPreferredHeight provides videoPreferredHeight,
+        LocalVideoOnPreferredHeightChange provides { videoPreferredHeight = it },
+        LocalVideoAvailableHeights provides videoAvailableHeights,
+    ) {
+    Box(modifier = Modifier.fillMaxSize()) {
     BottomSheet(
         state = state,
         modifier =
@@ -1122,6 +1184,13 @@ fun BottomSheetPlayer(
         onDismiss = {
             playerConnection.service.stopAndClearPlayback(clearPersistentState = true)
         },
+        // Keep the player content (including InlineVideoPlayer) alive even
+        // when the sheet is collapsed to the mini player. Without this,
+        // collapsing the player unmounts the InlineVideoPlayer, releasing
+        // the ExoPlayer — and expanding it again requires re-resolving the
+        // stream URL and re-buffering, causing "video pauses, audio keeps
+        // playing" on reopen.
+        keepContentAlive = true,
         collapsedContent = {
             MiniPlayer(
                 position = position,
@@ -1147,6 +1216,12 @@ fun BottomSheetPlayer(
                     playerConnection.player.seekTo(it)
                 }
                 position = it
+                // Request a pause-load-resume resync on the video player so
+                // it jumps to the new position. This is the ONLY path that
+                // triggers a pause-load-resume — the automatic drift-based
+                // resync was removed because it caused "video keeps pausing
+                // repeatedly".
+                videoState?.requestResync(it, isPlaying)
             }
             isUserSeeking = false
         }
@@ -1392,6 +1467,15 @@ fun BottomSheetPlayer(
             )
         }
 
+        // The `when (orientation)` block can switch freely between PORTRAIT
+        // and LANDSCAPE — the VideoArtworkState (ExoPlayer) is hoisted above
+        // this block (in BottomSheetPlayer), so it survives the switch. The
+        // InlineVideoPlayer in either branch just attaches/detaches its
+        // surface; the ExoPlayer keeps running.
+        //
+        // The FullscreenVideoOverlay is rendered as a sibling of the
+        // BottomSheet (not inside this `when` block), so it's always available
+        // regardless of which orientation branch is active.
         when (LocalConfiguration.current.orientation) {
             Configuration.ORIENTATION_LANDSCAPE -> {
                 if (playerDesignStyle == PlayerDesignStyle.V5) {
@@ -1496,7 +1580,8 @@ fun BottomSheetPlayer(
                             v7VideoMetadata?.isMusicVideo == true &&
                                 !v7VideoMetadata.id.isLocalMediaId() &&
                                 !aodModeEnabled &&
-                                !isLyricsScreenVisible
+                                !isLyricsScreenVisible &&
+                                !videoPlaybackFailed
 
                         if (v7VideoShowing) {
                             // Pure-black backdrop so the video sits in a
@@ -1528,11 +1613,10 @@ fun BottomSheetPlayer(
                         // `mediaMetadata`) so Kotlin can smart-cast it.
                         if (v7VideoShowing && v7VideoMetadata != null) {
                             InlineVideoPlayer(
-                                videoId = v7VideoMetadata.id,
-                                isPlaying = isPlaying,
-                                positionProvider = { playerConnection.player.currentPosition },
-                                onRequestPauseMain = { playerConnection.player.pause() },
-                                onRequestResumeMain = { playerConnection.player.play() },
+                                state = videoState,
+                                preferredHeight = videoPreferredHeight,
+                                onPreferredHeightChange = { videoPreferredHeight = it },
+                                availableHeights = videoAvailableHeights,
                                 modifier =
                                     Modifier
                                         .align(Alignment.Center)
@@ -1607,7 +1691,8 @@ fun BottomSheetPlayer(
                             v8VideoMetadata?.isMusicVideo == true &&
                                 !v8VideoMetadata.id.isLocalMediaId() &&
                                 !aodModeEnabled &&
-                                !isLyricsScreenVisible
+                                !isLyricsScreenVisible &&
+                                !videoPlaybackFailed
                         if (v8VideoShowing) {
                             Box(
                                 modifier =
@@ -1876,7 +1961,8 @@ fun BottomSheetPlayer(
                             v7VideoMetadata?.isMusicVideo == true &&
                                 !v7VideoMetadata.id.isLocalMediaId() &&
                                 !aodModeEnabled &&
-                                !isLyricsScreenVisible
+                                !isLyricsScreenVisible &&
+                                !videoPlaybackFailed
 
                         if (v7VideoShowing) {
                             Box(
@@ -1906,11 +1992,10 @@ fun BottomSheetPlayer(
                         // `mediaMetadata`) so Kotlin can smart-cast it.
                         if (v7VideoShowing && v7VideoMetadata != null) {
                             InlineVideoPlayer(
-                                videoId = v7VideoMetadata.id,
-                                isPlaying = isPlaying,
-                                positionProvider = { playerConnection.player.currentPosition },
-                                onRequestPauseMain = { playerConnection.player.pause() },
-                                onRequestResumeMain = { playerConnection.player.play() },
+                                state = videoState,
+                                preferredHeight = videoPreferredHeight,
+                                onPreferredHeightChange = { videoPreferredHeight = it },
+                                availableHeights = videoAvailableHeights,
                                 modifier =
                                     Modifier
                                         .align(Alignment.Center)
@@ -1983,7 +2068,8 @@ fun BottomSheetPlayer(
                             v8VideoMetadata?.isMusicVideo == true &&
                                 !v8VideoMetadata.id.isLocalMediaId() &&
                                 !aodModeEnabled &&
-                                !isLyricsScreenVisible
+                                !isLyricsScreenVisible &&
+                                !videoPlaybackFailed
                         if (v8VideoShowing) {
                             Box(
                                 modifier =
@@ -2217,6 +2303,36 @@ fun BottomSheetPlayer(
             }
         }
     }
+
+        // ── Fullscreen video overlay (sibling of BottomSheet) ──
+        //
+        // Rendered on top of the BottomSheet when the user enters fullscreen.
+        // This is a regular composable (NOT a Dialog) — it shares the same
+        // window as the BottomSheet, so the Activity's `requestedOrientation`
+        // applies cleanly to it. This avoids the Compose Dialog's window/
+        // orientation issues that caused the "horizontal for a split second
+        // then back" flicker.
+        //
+        // The overlay uses the SAME VideoArtworkState as the inline player —
+        // no re-loading, no re-buffering. The video continues playing
+        // seamlessly as the surface moves from the inline slot to this overlay.
+        //
+        // When the overlay is visible, the InlineVideoPlayer (inside the
+        // BottomSheet) skips rendering its own surface (`if (!isFullscreen)`),
+        // ensuring only ONE surface is attached to the ExoPlayer at a time.
+        videoState?.let { vs ->
+            if (videoFullscreenHolder.isFullscreen) {
+                FullscreenVideoOverlay(
+                    state = vs,
+                    preferredHeight = videoPreferredHeight,
+                    onPreferredHeightChange = { videoPreferredHeight = it },
+                    availableHeights = videoAvailableHeights,
+                    onDismiss = { videoFullscreenHolder.isFullscreen = false },
+                )
+            }
+        }
+    } // close Box(Modifier.fillMaxSize())
+    } // close CompositionLocalProvider
 
     val activePlaybackError = playbackError
     val isRecoveryDestination =

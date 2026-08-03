@@ -60,6 +60,16 @@ import moe.rukamori.archivetune.constants.BottomSheetSoftAnimationSpec
 /**
  * Bottom Sheet
  * Modified from [ViMusic](https://github.com/vfsfitvnm/ViMusic)
+ *
+ * @param keepContentAlive When true, the [content] composable is kept in the
+ *   composition tree even when the sheet is collapsed (it's hidden via
+ *   alpha=0 instead of being unmounted). This is used by the player sheet
+ *   to keep the [InlineVideoPlayer]'s ExoPlayer alive across collapse/expand
+ *   cycles — without this, collapsing the player to the mini player would
+ *   release the ExoPlayer, and expanding it again would require re-resolving
+ *   the stream URL and re-buffering (causing the "video pauses, audio keeps
+ *   playing" bug). Default is false to preserve the original behavior for
+ *   other sheets (queue, etc.) that don't need this.
  */
 @Composable
 fun BottomSheet(
@@ -67,6 +77,7 @@ fun BottomSheet(
     modifier: Modifier = Modifier,
     backgroundColor: Color,
     onDismiss: (() -> Unit)? = null,
+    keepContentAlive: Boolean = false,
     collapsedContent: @Composable BoxScope.() -> Unit,
     content: @Composable BoxScope.() -> Unit,
 ) {
@@ -96,7 +107,20 @@ fun BottomSheet(
             BackHandler(onBack = state::collapseSoft)
         }
 
-        if (!state.isCollapsed) {
+        if (keepContentAlive) {
+            // Always compose the content, but hide it when collapsed.
+            // This keeps stateful composables (e.g. InlineVideoPlayer's
+            // ExoPlayer) alive across collapse/expand cycles.
+            BoxWithConstraints(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            alpha = if (state.isCollapsed) 0f else ((state.progress - 0.25f) * 4).coerceIn(0f, 1f)
+                        },
+                content = content,
+            )
+        } else if (!state.isCollapsed) {
             BoxWithConstraints(
                 modifier =
                     Modifier
