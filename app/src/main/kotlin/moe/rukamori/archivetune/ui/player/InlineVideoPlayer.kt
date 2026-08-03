@@ -13,18 +13,24 @@ import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.pm.ActivityInfo
+import android.media.AudioManager
+import android.provider.Settings
+import android.view.WindowManager
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -35,15 +41,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Fullscreen
-import androidx.compose.material.icons.filled.FullscreenExit
-import androidx.compose.material.icons.filled.HighQuality
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.SkipNext
-import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -74,15 +72,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import kotlinx.coroutines.Job
 import androidx.media3.common.C
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
@@ -242,11 +244,12 @@ fun InlineVideoPlayer(
 
     var qualityMenuOpen by remember { mutableStateOf(false) }
 
-    // Ambient mode + thumbnail URL — shared with the fullscreen overlay via
-    // the same preference keys, so toggling it in either place affects both.
-    // The setter (onAmbientModeChange) is unused here — the toggle is only
-    // surfaced in the fullscreen overlay's 3-dot overflow menu.
-    val (ambientMode, _) = rememberPreference(VideoAmbientModeKey, defaultValue = false)
+    // Ambient mode is intentionally NOT applied here. The drifting blurred
+    // backdrop only makes sense in the fullscreen landscape overlay where
+    // the video is letterboxed against a black background — in the inline
+    // portrait player the artwork is already displayed next to the video,
+    // so an additional blurred copy would just be visual noise. The
+    // fullscreen overlay reads the same preference and applies it.
     val playerConnection = LocalPlayerConnection.current
     val fallbackMetadataFlow = remember { kotlinx.coroutines.flow.MutableStateFlow<MediaMetadata?>(null) }
     val mediaMetadata by (playerConnection?.mediaMetadata ?: fallbackMetadataFlow).collectAsState()
@@ -263,7 +266,7 @@ fun InlineVideoPlayer(
             VideoArtworkSurface(
                 state = state,
                 resizeMode = resizeMode,
-                ambientMode = ambientMode,
+                ambientMode = false,
                 thumbnailUrl = thumbnailUrl,
                 modifier = Modifier.fillMaxSize(),
             )
@@ -308,7 +311,7 @@ fun InlineVideoPlayer(
                                     ).size(40.dp),
                         ) {
                             Icon(
-                                imageVector = Icons.Filled.HighQuality,
+                                painter = painterResource(R.drawable.player_quality),
                                 contentDescription = stringResource(R.string.video_quality),
                                 tint = Color.White,
                                 modifier = Modifier.size(22.dp),
@@ -352,7 +355,7 @@ fun InlineVideoPlayer(
                             ).size(40.dp),
                 ) {
                     Icon(
-                        imageVector = Icons.Filled.Fullscreen,
+                        painter = painterResource(R.drawable.player_fullscreen),
                         contentDescription = stringResource(R.string.video_fullscreen),
                         tint = Color.White,
                         modifier = Modifier.size(22.dp),
@@ -414,6 +417,26 @@ fun FullscreenVideoOverlay(
     var showOverflowSheet by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
+
+    // ── Gesture state ──
+    // Transient on-screen indicator shown when the user performs a swipe
+    // (brightness / volume) or double-tap (seek ±10s) gesture. Auto-clears
+    // a short delay after the gesture ends.
+    var gestureFeedback by remember { mutableStateOf<GestureFeedback?>(null) }
+
+    // Brightness drag tracker — set to true while the user is actively
+    // dragging on the left half of the screen, used to gate the onVerticalDrag
+    // callback (which fires for both halves).
+    var brightnessDragActive by remember { mutableStateOf(false) }
+
+    // Volume drag tracker — same pattern as brightness, for the right half.
+    var volumeDragActive by remember { mutableStateOf(false) }
+
+    // The Job holders use `mutableStateOf<Job?>` but are NEVER read in the
+    // composable body — only inside event lambdas — so changes to them do
+    // not trigger recomposition.
+    var brightnessGestureJob by remember { mutableStateOf<Job?>(null) }
+    var volumeGestureJob by remember { mutableStateOf<Job?>(null) }
 
     // ── User-tunable fullscreen-overlay preferences ──
     // Slider style: shared with the main player via SliderStyleKey — same 5 styles.
@@ -547,9 +570,12 @@ fun FullscreenVideoOverlay(
             Modifier
                 .fillMaxSize()
                 .background(Color.Black)
+                // Tap detector — toggles controls on single tap, dismisses
+                // the overflow sheet if open, and seeks ±10s on double tap
+                // (left half rewind, right half forward).
                 .pointerInput(Unit) {
                     detectTapGestures(
-                        onTap = {
+                        onTap = { offset ->
                             if (showOverflowSheet) {
                                 // Tapping outside the sheet dismisses it instead of toggling overlay.
                                 scope.launch { sheetState.hide() }.invokeOnCompletion {
@@ -558,6 +584,126 @@ fun FullscreenVideoOverlay(
                             } else {
                                 // Single tap toggles the controls overlay.
                                 controlsVisible = !controlsVisible
+                                // Reset any visible gesture feedback so it doesn't linger.
+                                gestureFeedback = null
+                            }
+                        },
+                        onDoubleTap = { offset ->
+                            // Double-tap seek: left half rewinds 10s, right half skips 10s.
+                            // Suppress when the overflow sheet is open.
+                            if (!showOverflowSheet && playerConnection != null) {
+                                val width = size.width.toFloat()
+                                val isLeftHalf = offset.x < width / 2f
+                                val cur = playerConnection.player.currentPosition
+                                val dur = playerConnection.player.duration
+                                val target =
+                                    if (isLeftHalf) {
+                                        (cur - 10_000L).coerceAtLeast(0L)
+                                    } else {
+                                        (cur + 10_000L).coerceAtMost(
+                                            if (dur > 0 && dur != C.TIME_UNSET) dur else Long.MAX_VALUE,
+                                        )
+                                    }
+                                playerConnection.player.seekTo(target)
+                                state.requestResync(target, playerConnection.player.playWhenReady)
+                                gestureFeedback =
+                                    GestureFeedback.Seek(
+                                        forward = !isLeftHalf,
+                                        showAt = System.currentTimeMillis(),
+                                    )
+                                // Auto-clear the seek feedback shortly after release.
+                                volumeGestureJob?.cancel()
+                                brightnessGestureJob?.cancel()
+                                brightnessGestureJob =
+                                    scope.launch {
+                                        delay(GestureFeedbackLingerMs)
+                                        if (gestureFeedback is GestureFeedback.Seek) {
+                                            gestureFeedback = null
+                                        }
+                                    }
+                                // Keep the controls visible so the user sees the seekbar move.
+                                controlsVisible = true
+                            }
+                        },
+                    )
+                }
+                // Vertical drag detector — routes by initial x position:
+                // left half = screen brightness, right half = media volume.
+                // Stacked as a separate pointerInput so it doesn't fight the
+                // tap detector above — Compose dispatches the same pointer
+                // events to both, and each only consumes what it handles
+                // (tap detector ignores drags beyond slop, drag detector
+                // ignores taps below slop).
+                .pointerInput(Unit) {
+                    detectVerticalDragGestures(
+                        onDragStart = { offset ->
+                            val isLeftHalf = offset.x < size.width / 2f
+                            if (isLeftHalf) {
+                                brightnessDragActive = true
+                            } else {
+                                volumeDragActive = true
+                            }
+                        },
+                        onDragEnd = {
+                            if (brightnessDragActive) {
+                                brightnessDragActive = false
+                                brightnessGestureJob?.cancel()
+                                brightnessGestureJob =
+                                    scope.launch {
+                                        delay(GestureFeedbackLingerMs)
+                                        if (gestureFeedback is GestureFeedback.Brightness) {
+                                            gestureFeedback = null
+                                        }
+                                    }
+                            }
+                            if (volumeDragActive) {
+                                volumeDragActive = false
+                                volumeGestureJob?.cancel()
+                                volumeGestureJob =
+                                    scope.launch {
+                                        delay(GestureFeedbackLingerMs)
+                                        if (gestureFeedback is GestureFeedback.Volume) {
+                                            gestureFeedback = null
+                                        }
+                                    }
+                            }
+                        },
+                        onDragCancel = {
+                            brightnessDragActive = false
+                            volumeDragActive = false
+                            gestureFeedback = null
+                        },
+                        onVerticalDrag = { change, dragAmount ->
+                            val isLeftHalf = change.position.x < size.width / 2f
+                            if (isLeftHalf && brightnessDragActive) {
+                                // dragAmount.y is the incremental delta
+                                // since the last event. We invert it so
+                                // swiping UP (negative y) increases
+                                // brightness. Each 600px of cumulative
+                                // drag sweeps the full 0..1 range.
+                                val delta = -dragAmount.y / 600f
+                                val next = (currentWindowBrightness(context) + delta).coerceIn(0f, 1f)
+                                applyWindowBrightness(context, next)
+                                gestureFeedback =
+                                    GestureFeedback.Brightness(
+                                        percent = (next * 100f).toInt(),
+                                        showAt = System.currentTimeMillis(),
+                                    )
+                                controlsVisible = false
+                            } else if (!isLeftHalf && volumeDragActive) {
+                                val maxVol = maxMediaVolume(context)
+                                if (maxVol > 0) {
+                                    val delta = (-dragAmount.y / 600f) * maxVol
+                                    val currentVol = audioManager(context)?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: 0
+                                    val next = (currentVol + delta).toInt().coerceIn(0, maxVol)
+                                    setMediaVolume(context, next)
+                                    gestureFeedback =
+                                        GestureFeedback.Volume(
+                                            percent = (next * 100 / maxVol),
+                                            showAt = System.currentTimeMillis(),
+                                        )
+                                    controlsVisible = false
+                                }
                             }
                         },
                     )
@@ -566,7 +712,10 @@ fun FullscreenVideoOverlay(
         // Same ExoPlayer — just a different surface. NO re-loading.
         // The user's aspect-ratio pick overrides the host's resizeMode.
         // Ambient mode renders a blurred-thumbnail backdrop behind the video
-        // when toggled on in the 3-dot overflow menu.
+        // when toggled on in the 3-dot overflow menu. Ambient mode is only
+        // applied here in the fullscreen landscape overlay — the inline
+        // portrait player ignores the ambientMode preference (see
+        // [InlineVideoPlayer]).
         VideoArtworkSurface(
             state = state,
             resizeMode = effectiveResizeMode,
@@ -574,6 +723,13 @@ fun FullscreenVideoOverlay(
             thumbnailUrl = thumbnailUrl,
             modifier = Modifier.fillMaxSize(),
         )
+
+        // ── Gesture feedback overlay (brightness / volume / double-tap seek) ──
+        // Renders a pill-shaped indicator near the center of the screen with
+        // the appropriate icon + percentage or "+10s / -10s" label. Fades out
+        // 800ms after the gesture ends (handled by the onDragEnd / onDoubleTap
+        // launch above).
+        gestureFeedback?.let { feedback -> GestureFeedbackBubble(feedback) }
 
         // Loading overlay — same rationale as the inline player. Always
         // visible during loading regardless of controlsVisible.
@@ -662,7 +818,7 @@ fun FullscreenVideoOverlay(
                                         ).size(44.dp),
                             ) {
                                 Icon(
-                                    imageVector = Icons.Filled.HighQuality,
+                                    painter = painterResource(R.drawable.player_quality),
                                     contentDescription = stringResource(R.string.video_quality),
                                     tint = Color.White,
                                     modifier = Modifier.size(24.dp),
@@ -696,7 +852,8 @@ fun FullscreenVideoOverlay(
 
                     // 3-dot overflow button — opens the ModalBottomSheet
                     // with slider style / playback speed / ambient mode /
-                    // aspect ratio options.
+                    // aspect ratio options. Uses the same player_more_vert
+                    // drawable as the rest of the app for visual consistency.
                     IconButton(
                         onClick = { showOverflowSheet = true },
                         modifier =
@@ -707,7 +864,7 @@ fun FullscreenVideoOverlay(
                                 ).size(44.dp),
                     ) {
                         Icon(
-                            imageVector = Icons.Filled.MoreVert,
+                            painter = painterResource(R.drawable.player_more_vert),
                             contentDescription = stringResource(R.string.video_overflow_menu),
                             tint = Color.White,
                             modifier = Modifier.size(24.dp),
@@ -724,7 +881,7 @@ fun FullscreenVideoOverlay(
                                 ).size(44.dp),
                     ) {
                         Icon(
-                            imageVector = Icons.Filled.FullscreenExit,
+                            painter = painterResource(R.drawable.player_fullscreen_exit),
                             contentDescription = stringResource(R.string.video_exit_fullscreen),
                             tint = Color.White,
                             modifier = Modifier.size(24.dp),
@@ -738,10 +895,16 @@ fun FullscreenVideoOverlay(
                 // follows via the A/V sync logic. If the user pauses, both
                 // audio and video pause; if the user skips, the new song's
                 // video loads with the "start together" hold.
+                //
+                // Uses the SAME player_skip_previous / player_skip_next /
+                // player_play / player_pause / player_replay drawables as
+                // the normal (portrait) player so the icons match across
+                // layouts.
                 if (playerConnection != null) {
                     val isPlaying by playerConnection.isPlaying.collectAsState()
                     val canSkipNext by playerConnection.canSkipNext.collectAsState()
                     val canSkipPrevious by playerConnection.canSkipPrevious.collectAsState()
+                    val playbackStateFs by playerConnection.playbackState.collectAsState()
 
                     Row(
                         modifier =
@@ -757,14 +920,21 @@ fun FullscreenVideoOverlay(
                             modifier = Modifier.size(56.dp),
                         ) {
                             Icon(
-                                imageVector = Icons.Filled.SkipPrevious,
+                                painter = painterResource(R.drawable.player_skip_previous),
                                 contentDescription = stringResource(R.string.video_fs_previous),
                                 tint = if (canSkipPrevious) Color.White else Color.White.copy(alpha = 0.4f),
                                 modifier = Modifier.size(40.dp),
                             )
                         }
                         IconButton(
-                            onClick = { playerConnection.player.togglePlayPause() },
+                            onClick = {
+                                if (playbackStateFs == Player.STATE_ENDED) {
+                                    playerConnection.player.seekTo(0, 0)
+                                    playerConnection.player.playWhenReady = true
+                                } else {
+                                    playerConnection.player.togglePlayPause()
+                                }
+                            },
                             modifier =
                                 Modifier
                                     .background(
@@ -772,8 +942,14 @@ fun FullscreenVideoOverlay(
                                         shape = CircleShape,
                                     ).size(72.dp),
                         ) {
+                            val playIcon =
+                                when {
+                                    playbackStateFs == Player.STATE_ENDED -> R.drawable.player_replay
+                                    isPlaying -> R.drawable.player_pause
+                                    else -> R.drawable.player_play
+                                }
                             Icon(
-                                imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                                painter = painterResource(playIcon),
                                 contentDescription = stringResource(R.string.video_fs_play_pause),
                                 tint = Color.White,
                                 modifier = Modifier.size(44.dp),
@@ -785,7 +961,7 @@ fun FullscreenVideoOverlay(
                             modifier = Modifier.size(56.dp),
                         ) {
                             Icon(
-                                imageVector = Icons.Filled.SkipNext,
+                                painter = painterResource(R.drawable.player_skip_next),
                                 contentDescription = stringResource(R.string.video_fs_next),
                                 tint = if (canSkipNext) Color.White else Color.White.copy(alpha = 0.4f),
                                 modifier = Modifier.size(40.dp),
@@ -1077,12 +1253,44 @@ private fun AspectRatioOption(
     labelRes: Int,
     modifier: Modifier = Modifier,
 ) {
-    PillToggle(
-        text = stringResource(labelRes),
-        selected = value == current,
-        onClick = { onSelect(value) },
-        modifier = modifier,
-    )
+    val selected = value == current
+    val bg = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
+    val fg = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+    Row(
+        modifier =
+            modifier
+                .background(bg, CircleShape)
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = { onSelect(value) },
+                ).padding(horizontal = 6.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        // Add a semantic description so screen readers announce which
+        // option is currently selected when the user navigates here.
+    ) {
+        // Leading check icon — visible ONLY on the currently selected
+        // aspect-ratio option. This makes the active choice unmistakable
+        // at a glance, even with the colored pill background.
+        if (selected) {
+            Icon(
+                painter = painterResource(R.drawable.check),
+                contentDescription = stringResource(R.string.video_aspect_selected),
+                tint = fg,
+                modifier = Modifier.size(14.dp),
+            )
+        }
+        Text(
+            text = stringResource(labelRes),
+            color = fg,
+            style = MaterialTheme.typography.labelMedium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+            textAlign = TextAlign.Center,
+        )
+    }
 }
 
 @Composable
@@ -1175,4 +1383,186 @@ private fun formatHeightLabel(height: Int): String {
             else -> ""
         }
     return "${height}p$qualityName"
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Fullscreen overlay gesture support
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * How long the gesture feedback bubble stays visible after the gesture ends.
+ * Tuned to match YouTube's ~700ms feel — long enough to read, short enough
+ * not to feel laggy.
+ */
+private const val GestureFeedbackLingerMs = 800L
+
+/**
+ * Sealed hierarchy of transient on-screen indicators shown when the user
+ * performs a swipe (brightness / volume) or double-tap (seek ±10s) gesture
+ * on the fullscreen video overlay.
+ *
+ * Each variant carries a `showAt` epoch-millis timestamp so the renderer
+ * can animate the bubble's fade-out relative to the gesture's end time.
+ */
+private sealed interface GestureFeedback {
+    val showAt: Long
+
+    /**
+     * Brightness gesture. [percent] is the current window brightness as an
+     * integer 0..100 (rounded from the underlying 0..1 float).
+     */
+    data class Brightness(val percent: Int, override val showAt: Long) : GestureFeedback
+
+    /**
+     * Volume gesture. [percent] is the current media volume as an integer
+     * 0..100 of the device's max media volume.
+     */
+    data class Volume(val percent: Int, override val showAt: Long) : GestureFeedback
+
+    /**
+     * Double-tap seek gesture. [forward] is true for skip-forward (right
+     * half) and false for rewind (left half).
+     */
+    data class Seek(val forward: Boolean, override val showAt: Long) : GestureFeedback
+}
+
+/**
+ * Renders the transient gesture feedback bubble centered on the screen.
+ *
+ * Layout: a dark pill with the appropriate icon on top and a percentage
+ * (brightness / volume) or "+10s / -10s" label below. The bubble does NOT
+ * auto-animate out — that's handled by the caller, which clears the
+ * [GestureFeedback] state after [GestureFeedbackLingerMs] via a coroutine.
+ *
+ * Must be called from inside a [Box] composable so the [BoxScope.align]
+ * modifier can position the bubble at the center.
+ */
+@Composable
+private fun BoxScope.GestureFeedbackBubble(feedback: GestureFeedback) {
+    val (iconRes, label) =
+        when (feedback) {
+            is GestureFeedback.Brightness -> {
+                val res =
+                    when {
+                        feedback.percent <= 0 -> R.drawable.brightness_low
+                        feedback.percent >= 100 -> R.drawable.brightness_high
+                        else -> R.drawable.brightness_auto
+                    }
+                res to stringResource(R.string.percentage_format, feedback.percent)
+            }
+            is GestureFeedback.Volume -> {
+                val res =
+                    if (feedback.percent <= 0) R.drawable.player_volume_off else R.drawable.player_volume_up
+                res to stringResource(R.string.percentage_format, feedback.percent)
+            }
+            is GestureFeedback.Seek -> {
+                val res =
+                    if (feedback.forward) R.drawable.player_fast_forward else R.drawable.player_fast_rewind
+                val textRes =
+                    if (feedback.forward) R.string.video_gesture_seek_forward else R.string.video_gesture_seek_backward
+                res to stringResource(textRes)
+            }
+        }
+    Box(
+        modifier =
+            Modifier
+                .align(Alignment.Center)
+                .background(
+                    color = Color.Black.copy(alpha = 0.7f),
+                    shape = RoundedCornerShape(16.dp),
+                ).padding(horizontal = 24.dp, vertical = 20.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Image(
+                painter = painterResource(iconRes),
+                contentDescription = null,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.size(32.dp),
+            )
+            Text(
+                text = label,
+                color = Color.White,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.Center,
+            )
+        }
+    }
+}
+
+// ── Brightness helpers ──
+//
+// The screen brightness is applied to the Activity's window via
+// WindowManager.LayoutParams.screenBrightness. A value of
+// BRIGHTNESS_OVERRIDE_NONE (-1f) means "use system default"; any value in
+// 0..1f overrides it for the duration of this window.
+//
+// We do NOT persist the brightness — the change is local to the fullscreen
+// overlay's window and reverts automatically when the overlay is dismissed
+// (the host Activity recreates the window attributes). This matches the
+// behavior of most video player apps: the manual brightness only applies
+// while watching a video.
+
+/**
+ * Read the current window brightness. Returns a value in 0..1f, or the
+ * system default (interpreted as 0.5f for UI purposes) if the window is
+ * using BRIGHTNESS_OVERRIDE_NONE.
+ */
+private fun currentWindowBrightness(context: Context): Float {
+    val activity = context.findActivity() ?: return 0.5f
+    val attrs = activity.window.attributes
+    return if (attrs.screenBrightness == WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE) {
+        // Read the system brightness as the baseline.
+        val system =
+            try {
+                Settings.System.getInt(activity.contentResolver, Settings.System.SCREEN_BRIGHTNESS)
+            } catch (e: Settings.SettingNotFoundException) {
+                128
+            }
+        // System brightness is 0..255 — normalize to 0..1.
+        system / 255f
+    } else {
+        attrs.screenBrightness
+    }
+}
+
+/**
+ * Apply a window brightness override in the 0..1 range. Values outside
+ * that range are coerced. A value of 0 fully dims the screen (the
+ * Backlight can't actually go to 0 on most devices, but 0.01f is close
+ * enough for UX purposes).
+ */
+private fun applyWindowBrightness(context: Context, brightness: Float) {
+    val activity = context.findActivity() ?: return
+    val window = activity.window ?: return
+    val params = window.attributes
+    params.screenBrightness = brightness.coerceIn(0f, 1f)
+    window.attributes = params
+}
+
+// ── Volume helpers ──
+//
+// We adjust STREAM_MUSIC via AudioManager — this is the same stream the
+// main MusicService ExoPlayer uses, so the change is global and persists
+// after the overlay is dismissed. This matches user expectations: they
+// explicitly asked to change the volume, so the change should stick.
+
+private fun audioManager(context: Context): AudioManager? =
+    context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+
+private fun maxMediaVolume(context: Context): Int =
+    audioManager(context)?.getStreamMaxVolume(AudioManager.STREAM_MUSIC) ?: 0
+
+private fun setMediaVolume(context: Context, volume: Int) {
+    val am = audioManager(context) ?: return
+    val max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+    am.setStreamVolume(
+        AudioManager.STREAM_MUSIC,
+        volume.coerceIn(0, max),
+        AudioManager.FLAG_SHOW_UI,
+    )
 }

@@ -402,6 +402,12 @@
     <string name="video_aspect_crop">Crop</string>
     <string name="video_aspect_stretch">Stretch</string>
     <string name="video_aspect_fill">Fill screen</string>
+    <string name="video_aspect_selected">Currently selected</string>
+    <!-- Fullscreen video overlay gesture feedback -->
+    <string name="video_gesture_brightness">Brightness</string>
+    <string name="video_gesture_volume">Volume</string>
+    <string name="video_gesture_seek_forward">+10 seconds</string>
+    <string name="video_gesture_seek_backward">-10 seconds</string>
     <!-- Enable video playback setting (Player & audio settings) -->
     <string name="enable_video_playback">Enable video playback</string>
     <string name="enable_video_playback_desc">Show music videos inline in the player and keep audio/video in sync. When disabled, music videos play as audio only.</string>
