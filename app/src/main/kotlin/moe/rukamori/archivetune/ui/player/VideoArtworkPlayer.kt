@@ -103,6 +103,30 @@ private const val VideoSyncDriftToleranceMs = 2000L
 private const val VideoSoftSeekDriftThresholdMs = 3000L
 
 /**
+ * Drift threshold above which we fire a HARD pause-load-resume resync even
+ * without an explicit seekbar seek. Above this threshold the soft-seek is
+ * unreliable (the re-buffer after a multi-second seek takes too long and
+ * the drift keeps growing), so we fall back to the coordinated
+ * pause-load-resume protocol: pause both audio + video, seek the video to
+ * the audio's position, wait for the first frame, then resume both together.
+ *
+ * This is guarded by [VideoHardResyncCooldownMs] to prevent the infinite
+ * loop that previously plagued the automatic resync path. If two hard
+ * resyncs fire within the cooldown window, we assume the decoder is
+ * fundamentally stuck and stop trying to resync automatically (the user
+ * can still seek manually).
+ */
+private const val VideoHardResyncThresholdMs = 5000L
+
+/**
+ * Minimum time between automatic hard resyncs. If a hard resync fires and
+ * another is requested within this window, the second request is dropped and
+ * a "stuck" flag is set that disables automatic hard resync until the video
+ * id changes.
+ */
+private const val VideoHardResyncCooldownMs = 30_000L
+
+/**
  * How often to poll the main player's position and re-sync the video.
  */
 private const val VideoSyncPollIntervalMs = 500L
@@ -221,8 +245,28 @@ class VideoArtworkState internal constructor(
      * the composable (e.g. from the seekbar's onValueChangeFinished in
      * BottomSheetPlayer) but the resync needs access to composable-scoped
      * state (the [exoPlayer], the pause/resume callbacks, etc.).
+     *
+     * The tuple is (position, wasPlaying, isAutomatic). [isAutomatic] marks
+     * resyncs triggered by the drift poller (as opposed to explicit seekbar
+     * seeks) so the cooldown logic can suppress runaway auto-resync loops.
      */
-    internal var pendingResync: Pair<Long, Boolean>? by mutableStateOf(null)
+    internal var pendingResync: Triple<Long, Boolean, Boolean>? by mutableStateOf(null)
+
+    /**
+     * Epoch-millis timestamp of the last automatic (drift-triggered) hard
+     * resync. Used together with [VideoHardResyncCooldownMs] to suppress
+     * runaway resync loops. Reset to 0 when the video id changes.
+     */
+    internal var lastAutoResyncAtMs: Long by mutableStateOf(0L)
+
+    /**
+     * Sticky flag set when two automatic hard resyncs fire within
+     * [VideoHardResyncCooldownMs]. While true, the drift poller stops
+     * requesting automatic hard resyncs (the decoder is clearly stuck and
+     * re-syncing just makes it worse). The user can still seek manually.
+     * Reset when the video id changes.
+     */
+    internal var autoResyncDisabled: Boolean by mutableStateOf(false)
 
     /**
      * Request a pause-load-resume resync to [position].
@@ -235,14 +279,37 @@ class VideoArtworkState internal constructor(
      *   4. Waits for the first frame to render (see [onRenderedFirstFrame]).
      *   5. Resumes both the audio and video together.
      *
-     * This is the ONLY path that triggers a pause-load-resume. The automatic
-     * drift-based resync was removed because it caused the "video keeps
-     * pausing repeatedly" bug.
+     * Explicit (seekbar-triggered) resyncs bypass the cooldown — the user
+     * always wins. Automatic (drift-triggered) resyncs are rate-limited via
+     * [requestAutoResync] to prevent the infinite-loop bug that previously
+     * plagued this path.
      */
     fun requestResync(position: Long, isPlaying: Boolean) {
         if (hasPlaybackFailed) return
         if (isResyncing) return
-        pendingResync = position to isPlaying
+        pendingResync = Triple(position, isPlaying, false)
+    }
+
+    /**
+     * Request an automatic (drift-triggered) hard resync. Subject to a
+     * cooldown: if two auto-resyncs fire within [VideoHardResyncCooldownMs],
+     * [autoResyncDisabled] is latched true and subsequent auto-resync
+     * requests are dropped until the video id changes.
+     */
+    internal fun requestAutoResync(position: Long, isPlaying: Boolean) {
+        if (hasPlaybackFailed) return
+        if (isResyncing) return
+        if (autoResyncDisabled) return
+        val now = SystemClock.elapsedRealtime()
+        if (lastAutoResyncAtMs != 0L && now - lastAutoResyncAtMs < VideoHardResyncCooldownMs) {
+            Timber
+                .tag(VideoPlaybackLogTag)
+                .w("Auto-resync cooldown hit — disabling automatic resync for this video")
+            autoResyncDisabled = true
+            return
+        }
+        lastAutoResyncAtMs = now
+        pendingResync = Triple(position, isPlaying, true)
     }
 }
 
@@ -487,6 +554,11 @@ fun rememberVideoArtworkState(
         state.selectedCaptionTrack = null
         state.captionTracks = emptyList()
         state.currentCaptionText = null
+        // Reset the automatic-resync cooldown trackers for the new video.
+        // A new video gets a fresh chance at automatic drift resync even if
+        // the previous video's decoder got stuck.
+        state.lastAutoResyncAtMs = 0L
+        state.autoResyncDisabled = false
         // Reset the "last loaded" trackers so the next media-item load is
         // treated as a fresh load (not a caption-only change).
         lastLoadedStreamUrl = null
@@ -701,13 +773,15 @@ fun rememberVideoArtworkState(
     // resync was removed because it caused the "video keeps pausing repeatedly"
     // bug (infinite resync loop).
     LaunchedEffect(state.pendingResync) {
-        val (position, wasPlaying) = state.pendingResync ?: return@LaunchedEffect
+        val (position, wasPlaying, isAutomatic) = state.pendingResync ?: return@LaunchedEffect
         // Consume the request immediately so subsequent calls re-trigger.
         state.pendingResync = null
         if (state.hasPlaybackFailed || state.isResyncing) return@LaunchedEffect
         Timber
             .tag(VideoPlaybackLogTag)
-            .d("Manual resync to ${position}ms (wasPlaying=$wasPlaying) — pause-load-resume")
+            .d(
+                "Resync to ${position}ms (wasPlaying=$wasPlaying, auto=$isAutomatic) — pause-load-resume",
+            )
         state.wasPlayingBeforeResync = wasPlaying
         state.isResyncing = true
         state.isVideoReady = false
@@ -736,29 +810,30 @@ fun rememberVideoArtworkState(
                 }
             }
 
-            // Drift detection — SOFT seek only (no pause-load-resume).
+            // Drift detection — three tiers:
             //
-            // The automatic pause-load-resume was removed because it caused
-            // the "video keeps pausing repeatedly" bug. Instead:
+            // 1. SMALL drift (<= VideoSoftSeekDriftThresholdMs while playing,
+            //    <= VideoSyncDriftToleranceMs while paused):
+            //    IGNORE. The video self-corrects because both play at 1x.
+            //    Decoder lag of 300–800ms is normal and imperceptible.
             //
-            // - While PLAYING + drift > VideoSoftSeekDriftThresholdMs:
-            //   Seek the video WITHOUT pausing the main audio. The video may
-            //   freeze briefly while it re-buffers, but the audio continues
-            //   uninterrupted. This is the right tradeoff for a music app —
-            //   the user would rather have the audio keep playing with a
-            //   brief video freeze than have both pause repeatedly.
+            // 2. MEDIUM drift (> VideoSoftSeekDriftThresholdMs while playing):
+            //    SOFT seek — seek the video WITHOUT pausing the main audio.
+            //    The video may freeze briefly while re-buffering, but the
+            //    audio continues uninterrupted. Good tradeoff for a music app.
             //
-            // - While PAUSED + drift > tolerance:
-            //   Seek the video to match the audio position. No re-buffering
-            //   concern since playback is paused.
+            // 3. LARGE drift (> VideoHardResyncThresholdMs while playing OR
+            //    paused): HARD pause-load-resume via [requestAutoResync].
+            //    The soft seek is unreliable at multi-second drift (the
+            //    re-buffer takes too long and drift keeps growing), so we
+            //    coordinate a full pause-load-resume. This is rate-limited
+            //    by [VideoHardResyncCooldownMs] and latches
+            //    [VideoArtworkState.autoResyncDisabled] if two fire within
+            //    the cooldown — preventing the infinite-loop bug that
+            //    previously plagued automatic resync.
             //
-            // - While PLAYING + drift <= threshold:
-            //   IGNORE. The video will self-correct because both audio and
-            //   video play at 1x speed. Decoder lag of 300–800ms is normal
-            //   on mobile VP9/AV1 decoders and is not perceptible.
-            //
-            // For explicit seekbar seeks, the pause-load-resume protocol is
-            // triggered by [VideoArtworkState.requestResync] (see above).
+            // For explicit seekbar seeks, the user-initiated
+            // [VideoArtworkState.requestResync] bypasses the cooldown.
             if (state.isChangingQuality) continue
             if (state.isResyncing) continue
             if (!state.isVideoReady) continue
@@ -769,7 +844,12 @@ fun rememberVideoArtworkState(
             val videoPos = exoPlayer.currentPosition
             val drift = kotlin.math.abs(videoPos - mainPos)
 
-            if (drift > VideoSoftSeekDriftThresholdMs && shouldPlay) {
+            if (drift > VideoHardResyncThresholdMs) {
+                Timber
+                    .tag(VideoPlaybackLogTag)
+                    .w("Hard resync: drift=${drift}ms (main=$mainPos, video=$videoPos, playing=$shouldPlay)")
+                state.requestAutoResync(mainPos, shouldPlay)
+            } else if (drift > VideoSoftSeekDriftThresholdMs && shouldPlay) {
                 Timber
                     .tag(VideoPlaybackLogTag)
                     .d("Soft seek: drift=${drift}ms (main=$mainPos, video=$videoPos)")
@@ -833,6 +913,20 @@ fun rememberVideoArtworkState(
                     state.wasPlayingBeforeResync = false
                     state.bufferingStartedAtMs = 0L
 
+                    // ── Fix: guarantee video & audio start at the SAME position ──
+                    //
+                    // Before resuming, snap the video to the audio player's
+                    // CURRENT position. During the hold the audio was paused,
+                    // but its position may have advanced by a few hundred ms
+                    // between the hold beginning and the video URL resolving.
+                    // Without this snap, the video resumes at the position it
+                    // was loaded at (which may be stale), causing the
+                    // "video plays first, audio catches up later" mismatch.
+                    //
+                    // We skip this snap during a manual (seekbar) resync
+                    // because the seekTo(position) in the pendingResync
+                    // consumer already placed the video exactly where the
+                    // user wants it.
                     if (!wasResync) {
                         val mainPos = currentPosition()
                         if (mainPos > 0) {
@@ -855,16 +949,34 @@ fun rememberVideoArtworkState(
                             (wasResync && wasPlayingBeforeResyncLocal) ||
                             (wasChangingQuality && state.wasPlayingBeforeQualityChange)
                     if (effectiveShouldPlay && !state.hasPlaybackFailed && exoPlayer.playerError == null) {
+                        // Resume the MAIN audio player FIRST. The audio is
+                        // the source of truth for position — if we start the
+                        // video first, the video advances while the audio is
+                        // still spinning up, creating the "video plays first"
+                        // mismatch the user reported. By resuming audio first
+                        // and the video immediately after (synchronously on
+                        // the same main-looper tick), both start at the same
+                        // instant from the same position.
+                        //
+                        // We call updatedOnRequestResumeMain() in ALL three
+                        // branches (quality change, resync, and normal play)
+                        // because in the normal-play path the audio hold may
+                        // have just been released by releaseAudioHold()
+                        // above — calling resume again is a safe no-op if
+                        // the audio is already playing, but ensures we don't
+                        // leave the audio paused if the hold released but
+                        // the resume hasn't propagated yet.
+                        if (wasChangingQuality && state.wasPlayingBeforeQualityChange) {
+                            updatedOnRequestResumeMain()
+                        }
+                        if (wasResync && wasPlayingBeforeResyncLocal) {
+                            updatedOnRequestResumeMain()
+                        }
+                        if (shouldPlay) {
+                            updatedOnRequestResumeMain()
+                        }
                         exoPlayer.playWhenReady = true
                         exoPlayer.play()
-                    }
-
-                    if (wasChangingQuality && state.wasPlayingBeforeQualityChange) {
-                        updatedOnRequestResumeMain()
-                    }
-
-                    if (wasResync && wasPlayingBeforeResyncLocal) {
-                        updatedOnRequestResumeMain()
                     }
                 }
 

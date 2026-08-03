@@ -385,6 +385,10 @@
     <string name="video_captions_off">Captions off</string>
     <string name="video_quality">Video quality</string>
     <string name="video_quality_auto">Auto (highest available)</string>
+    <!-- Fullscreen video overlay transport controls -->
+    <string name="video_fs_play_pause">Play/Pause</string>
+    <string name="video_fs_next">Next</string>
+    <string name="video_fs_previous">Previous</string>
     <!-- Enable video playback setting (Player & audio settings) -->
     <string name="enable_video_playback">Enable video playback</string>
     <string name="enable_video_playback_desc">Show music videos inline in the player and keep audio/video in sync. When disabled, music videos play as audio only.</string>
