@@ -942,7 +942,7 @@ class DownloadUtil
                         val videoDetails = playbackData.videoDetails
                         val hasArtistMap = existingSongRow?.artists?.isNotEmpty() == true
                         if (!hasArtistMap && videoDetails != null) {
-                            val authorName = videoDetails.author.takeIf { it.isNotBlank() }
+                            val authorName = videoDetails.author?.takeIf { it.isNotBlank() }
                             val channelId = videoDetails.channelId.takeIf { it.isNotBlank() }
                             if (authorName != null) {
                                 // Use the YouTube channelId as the artist id when

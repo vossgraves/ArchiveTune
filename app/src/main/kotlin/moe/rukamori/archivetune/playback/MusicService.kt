@@ -2705,6 +2705,15 @@ class MusicService :
 
         val currentItem = player.getMediaItemAt(currentIndex)
         val targetItem = player.getMediaItemAt(targetIndex)
+
+        // Crossfade doesn't apply to music videos. The video ExoPlayer has
+        // its own A/V sync logic (audio-hold + drift poller) that doesn't
+        // tolerate the secondary-player handoff — crossfading into or out
+        // of a video track would cause the video to start on the wrong
+        // player instance and desync. Skip crossfade entirely if either
+        // the current or the target track is a music video.
+        if (currentItem.metadata?.isMusicVideo == true || targetItem.metadata?.isMusicVideo == true) return null
+
         if (!repeatCurrent && crossfadeGapless && isGaplessAlbumTransition(currentItem, targetItem)) return null
 
         return CrossfadeTarget(

@@ -1537,7 +1537,7 @@ object YTPlayerUtils {
     ): Result<String> {
         Timber.tag(logTag).i("Finding stream URL for format: ${format.mimeType}, videoId: $videoId")
         return NewPipeUtils
-            .getStreamUrl(format, videoId, client, authState)
+            .getStreamUrl(format, videoId)
             .map { url ->
                 if (client == null) url else StreamClientUtils.patchClientVersion(url, client.clientVersion)
             }.onSuccess { Timber.tag(logTag).i("Stream URL obtained successfully") }

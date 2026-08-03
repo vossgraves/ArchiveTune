@@ -173,6 +173,7 @@ import moe.rukamori.archivetune.constants.BlurRadiusKey
 import moe.rukamori.archivetune.constants.DarkModeKey
 import moe.rukamori.archivetune.constants.DisableBlurKey
 import moe.rukamori.archivetune.constants.EnableHapticFeedbackKey
+import moe.rukamori.archivetune.constants.EnableVideoPlaybackKey
 import moe.rukamori.archivetune.constants.InnerTubeCookieKey
 import moe.rukamori.archivetune.constants.MaxCanvasCacheSizeKey
 import moe.rukamori.archivetune.constants.PlayerBackgroundStyle
@@ -407,6 +408,7 @@ fun BottomSheetPlayer(
     val (backdropBlurAmount) = rememberPreference(BackdropBlurAmountKey, defaultValue = 60)
     val (showCodecOnPlayer) = rememberPreference(booleanPreferencesKey("show_codec_on_player"), false)
     val (incrementalSeekSkipEnabled) = rememberPreference(moe.rukamori.archivetune.constants.SeekExtraSeconds, defaultValue = false)
+    val enableVideoPlayback by rememberPreference(EnableVideoPlaybackKey, defaultValue = true)
     var keyboardSkipMultiplier by remember { mutableStateOf(1) }
     var lastKeyboardTapTime by remember { mutableLongStateOf(0L) }
 
@@ -998,7 +1000,7 @@ fun BottomSheetPlayer(
     val videoFullscreenHolder = LocalVideoFullscreenState.current
     val videoMediaId =
         mediaMetadata
-            ?.takeIf { it.isMusicVideo == true && !it.id.isLocalMediaId() }
+            ?.takeIf { enableVideoPlayback && it.isMusicVideo == true && !it.id.isLocalMediaId() }
             ?.id
     var videoPreferredHeight by rememberSaveable { mutableStateOf<Int?>(null) }
     var videoAvailableHeights by remember { mutableStateOf<List<Int>>(emptyList()) }
@@ -1016,6 +1018,7 @@ fun BottomSheetPlayer(
             isPlaying = isPlaying,
             positionProvider = { playerConnection.player.currentPosition },
             preferredHeight = videoPreferredHeight,
+            holdAudioUntilVideoReady = true,
             onStreamResolved = { info -> videoAvailableHeights = info?.availableHeights.orEmpty() },
             onPlaybackFailed = { videoPlaybackFailed = true },
             onLoadingStateChange = { /* loading is computed from state directly in InlineVideoPlayer */ },
@@ -1577,7 +1580,8 @@ fun BottomSheetPlayer(
                         // work as normal.
                         val v7VideoMetadata = mediaMetadata
                         val v7VideoShowing =
-                            v7VideoMetadata?.isMusicVideo == true &&
+                            videoState != null &&
+                                v7VideoMetadata?.isMusicVideo == true &&
                                 !v7VideoMetadata.id.isLocalMediaId() &&
                                 !aodModeEnabled &&
                                 !isLyricsScreenVisible &&
@@ -1688,7 +1692,8 @@ fun BottomSheetPlayer(
                         // music videos.
                         val v8VideoMetadata = mediaMetadata
                         val v8VideoShowing =
-                            v8VideoMetadata?.isMusicVideo == true &&
+                            videoState != null &&
+                                v8VideoMetadata?.isMusicVideo == true &&
                                 !v8VideoMetadata.id.isLocalMediaId() &&
                                 !aodModeEnabled &&
                                 !isLyricsScreenVisible &&
@@ -1958,7 +1963,8 @@ fun BottomSheetPlayer(
                         // work as normal.
                         val v7VideoMetadata = mediaMetadata
                         val v7VideoShowing =
-                            v7VideoMetadata?.isMusicVideo == true &&
+                            videoState != null &&
+                                v7VideoMetadata?.isMusicVideo == true &&
                                 !v7VideoMetadata.id.isLocalMediaId() &&
                                 !aodModeEnabled &&
                                 !isLyricsScreenVisible &&
@@ -2065,7 +2071,8 @@ fun BottomSheetPlayer(
                         // music videos.
                         val v8VideoMetadata = mediaMetadata
                         val v8VideoShowing =
-                            v8VideoMetadata?.isMusicVideo == true &&
+                            videoState != null &&
+                                v8VideoMetadata?.isMusicVideo == true &&
                                 !v8VideoMetadata.id.isLocalMediaId() &&
                                 !aodModeEnabled &&
                                 !isLyricsScreenVisible &&

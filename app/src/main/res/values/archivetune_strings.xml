@@ -382,8 +382,35 @@
     <string name="video_fullscreen">Enter fullscreen</string>
     <string name="video_exit_fullscreen">Exit fullscreen</string>
     <string name="video_captions">Toggle captions</string>
+    <string name="video_captions_off">Captions off</string>
     <string name="video_quality">Video quality</string>
     <string name="video_quality_auto">Auto (highest available)</string>
+    <!-- Fullscreen video overlay transport controls -->
+    <string name="video_fs_play_pause">Play/Pause</string>
+    <string name="video_fs_next">Next</string>
+    <string name="video_fs_previous">Previous</string>
+    <!-- Fullscreen video overlay 3-dot overflow menu -->
+    <string name="video_overflow_menu">More video options</string>
+    <string name="video_slider_style">Slider style</string>
+    <string name="video_playback_speed">Playback speed</string>
+    <string name="video_playback_speed_value">%1$.2fx</string>
+    <string name="video_playback_speed_normal">Normal</string>
+    <string name="video_ambient_mode">Ambient mode</string>
+    <string name="video_ambient_mode_desc">Soft drifting blur of the artwork around the video</string>
+    <string name="video_aspect_ratio">Aspect ratio</string>
+    <string name="video_aspect_fit">Fit</string>
+    <string name="video_aspect_crop">Crop</string>
+    <string name="video_aspect_stretch">Stretch</string>
+    <string name="video_aspect_fill">Fill screen</string>
+    <string name="video_aspect_selected">Currently selected</string>
+    <!-- Fullscreen video overlay gesture feedback -->
+    <string name="video_gesture_brightness">Brightness</string>
+    <string name="video_gesture_volume">Volume</string>
+    <string name="video_gesture_seek_forward">+10 seconds</string>
+    <string name="video_gesture_seek_backward">-10 seconds</string>
+    <!-- Enable video playback setting (Player & audio settings) -->
+    <string name="enable_video_playback">Enable video playback</string>
+    <string name="enable_video_playback_desc">Show music videos inline in the player and keep audio/video in sync. When disabled, music videos play as audio only.</string>
     <string name="percentage_format">%d%%</string>
     <string name="import_online">Import a \"m3u\" playlists</string>
     <string name="import_csv">Import a \"csv\" playlists</string>

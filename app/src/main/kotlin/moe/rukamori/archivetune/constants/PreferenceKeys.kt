@@ -190,6 +190,10 @@ val EnablePaxsenixYouTubeLyricsKey = booleanPreferencesKey("enablePaxsenixYouTub
 val EnableUnisonLyricsKey = booleanPreferencesKey("enableUnisonLyrics")
 val HideExplicitKey = booleanPreferencesKey("hideExplicit")
 val HideVideoKey = booleanPreferencesKey("hideVideo")
+// When ON (default), music videos render an inline video surface in the player. When OFF,
+// music videos are treated as plain audio (album artwork shown, no video stream is loaded).
+// Distinct from HideVideoKey which filters videos out of the library/queue entirely.
+val EnableVideoPlaybackKey = booleanPreferencesKey("enableVideoPlayback")
 val AllowAgeRestrictedKey = booleanPreferencesKey("allowAgeRestricted")
 enum class DownloadSource {
     /**
@@ -1174,3 +1178,48 @@ enum class UpdateChannel {
             }
     }
 }
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Inline / fullscreen music-video player preferences
+// ──────────────────────────────────────────────────────────────────────────────
+
+/**
+ * When true, the inline + fullscreen video player renders a slowly drifting
+ * blurred copy of the song thumbnail behind the video surface — mimicking
+ * YouTube's "ambient mode" so the letterboxed black area glows with the
+ * artwork's dominant colors instead of being pure black.
+ */
+val VideoAmbientModeKey = booleanPreferencesKey("videoAmbientMode")
+
+/**
+ * Playback speed applied to BOTH the audio ExoPlayer (in MusicService) and
+ * the video ExoPlayer (in VideoArtworkState). Stored as a Float in
+ * [0.25f, 2.0f]. 1.0 = normal speed. Surfaced via the fullscreen video
+ * overlay's 3-dot overflow menu.
+ */
+val VideoPlaybackSpeedKey = floatPreferencesKey("videoPlaybackSpeed")
+
+/**
+ * Aspect-ratio mode for the inline + fullscreen video surface. Maps to
+ * ExoPlayer's AspectRatioFrameLayout resize modes:
+ *  - FIT     → RESIZE_MODE_FIT     (letterbox; whole video visible)
+ *  - CROP    → RESIZE_MODE_ZOOM    (fill screen, crop edges)
+ *  - STRETCH → RESIZE_MODE_FILL    (fill screen, distort if needed)
+ *  - FILL    → RESIZE_MODE_FILL    (alias kept for UX parity with YT)
+ */
+enum class VideoAspectRatio {
+    FIT,
+    CROP,
+    STRETCH,
+    FILL,
+    ;
+
+    fun toExoResizeMode(): Int = when (this) {
+        FIT -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
+        CROP -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+        STRETCH -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL
+        FILL -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL
+    }
+}
+
+val VideoAspectRatioKey = stringPreferencesKey("videoAspectRatio")
