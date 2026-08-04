@@ -116,7 +116,6 @@ import moe.rukamori.archivetune.constants.SliderStyle
 import moe.rukamori.archivetune.constants.SliderStyleKey
 import moe.rukamori.archivetune.constants.SwipeSensitivityKey
 import moe.rukamori.archivetune.constants.SwipeThumbnailKey
-import moe.rukamori.archivetune.constants.SwipeToSongKey
 import moe.rukamori.archivetune.constants.ThumbnailCornerRadiusKey
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.EnumListPreference
@@ -265,12 +264,6 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
         rememberEnumPreference(
             GridItemsSizeKey,
             defaultValue = GridItemSize.SMALL,
-        )
-
-    val (swipeToSong, onSwipeToSongChange) =
-        rememberPreference(
-            SwipeToSongKey,
-            defaultValue = false,
         )
 
     val (showTagsInLibrary, onShowTagsInLibraryChange) =
@@ -573,21 +566,6 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                         icon = { Icon(painterResource(R.drawable.animation), null) },
                         checked = disableAnimations,
                         onCheckedChange = onDisableAnimationsChange,
-                    )
-                }
-
-                item {
-                    SwitchPreference(
-                        title = { Text(stringResource(R.string.force_high_refresh_rate)) },
-                        description =
-                            stringResource(
-                                R.string.max_supported_refresh_rate,
-                                supportedHighestFps.roundToInt(),
-                            ),
-                        icon = { Icon(painterResource(R.drawable.speed), null) },
-                        checked = forceHighRefreshRate,
-                        onCheckedChange = onForceHighRefreshRateChange,
-                        isEnabled = isHighRefreshRateSupported,
                     )
                 }
 
@@ -1120,7 +1098,12 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                         onValueSelected = onDefaultChipChange,
                     )
                 }
+            }
 
+            PreferenceGroup(
+                modifier = positions.modifierFor("extras"),
+                title = stringResource(R.string.extras),
+            ) {
                 item {
                     SwitchPreference(
                         title = { Text(stringResource(R.string.show_home_category_chips)) },
@@ -1188,15 +1171,6 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                         icon = { Icon(painterResource(R.drawable.trending_up), null) },
                         checked = hideTop50Card,
                         onCheckedChange = onHideTop50CardChange,
-                    )
-                }
-
-                item {
-                    SwitchPreference(
-                        title = { Text(stringResource(R.string.swipe_song_to_add)) },
-                        icon = { Icon(painterResource(R.drawable.swipe), null) },
-                        checked = swipeToSong,
-                        onCheckedChange = onSwipeToSongChange,
                     )
                 }
             }

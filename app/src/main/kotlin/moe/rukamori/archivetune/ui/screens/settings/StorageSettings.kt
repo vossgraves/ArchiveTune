@@ -183,7 +183,6 @@ fun StorageSettings(
             defaultValue = 256,
         )
     var clearCacheDialog by remember { mutableStateOf(false) }
-    var clearDownloads by remember { mutableStateOf(false) }
     var clearImageCacheDialog by remember { mutableStateOf(false) }
     var clearCanvasCacheDialog by remember { mutableStateOf(false) }
     var clearLyricsCacheDialog by remember { mutableStateOf(false) }
@@ -353,53 +352,6 @@ fun StorageSettings(
                 onSelectFolder = viewModel::openStorageLocationPicker,
                 positions = positions,
             )
-
-            PreferenceGroup(
-                modifier = positions.modifierFor("downloaded_songs"),
-                title = stringResource(R.string.downloaded_songs),
-            ) {
-                item {
-                    PreferenceEntry(
-                        title = { Text(stringResource(R.string.clear_all_downloads)) },
-                        description = stringResource(R.string.size_used, formatFileSize(downloadCacheSize)),
-                        icon = {
-                            Icon(
-                                painter = painterResource(R.drawable.ic_download),
-                                contentDescription = null,
-                            )
-                        },
-                        onClick = { clearDownloads = true },
-                    )
-                }
-                item {
-                    PreferenceEntry(
-                        title = { Text(stringResource(R.string.export_downloaded_songs)) },
-                        description = stringResource(R.string.export_downloaded_songs_description),
-                        icon = {
-                            Icon(
-                                painter = painterResource(R.drawable.send),
-                                contentDescription = null,
-                            )
-                        },
-                        onClick = { navController.navigate("settings/storage/export_songs") },
-                    )
-                }
-            }
-
-            if (clearDownloads) {
-                ActionPromptDialog(
-                    title = stringResource(R.string.clear_all_downloads),
-                    onDismiss = { clearDownloads = false },
-                    onConfirm = {
-                        viewModel.clearDownloads()
-                        clearDownloads = false
-                    },
-                    onCancel = { clearDownloads = false },
-                    content = {
-                        Text(text = stringResource(R.string.clear_downloads_dialog))
-                    },
-                )
-            }
 
             PreferenceGroup(
                 modifier = positions.modifierFor("song_cache_size"),

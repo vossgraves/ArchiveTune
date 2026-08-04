@@ -94,6 +94,7 @@ import moe.rukamori.archivetune.ui.screens.settings.PrivacySettings
 import moe.rukamori.archivetune.ui.screens.settings.SettingsScreen
 import moe.rukamori.archivetune.ui.screens.settings.SourceSettings
 import moe.rukamori.archivetune.ui.screens.settings.StorageSettings
+import moe.rukamori.archivetune.ui.screens.settings.DownloadsSettings
 import moe.rukamori.archivetune.ui.screens.settings.ThemeCreatorScreen
 import moe.rukamori.archivetune.ui.screens.settings.UpdateScreen
 import moe.rukamori.archivetune.viewmodels.OnlineSearchSort
@@ -474,6 +475,12 @@ fun NavGraphBuilder.navigationBuilder(
     }
     composable("settings/storage/export_songs") {
         ExportDownloadedSongsScreen(navController)
+    }
+    composable(
+        route = "settings/downloads?scrollTo={scrollTo}",
+        arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
+    ) {
+        DownloadsSettings(navController, scrollTo = it.savedStateHandle["scrollTo"])
     }
     composable(
         route = "settings/privacy?scrollTo={scrollTo}",

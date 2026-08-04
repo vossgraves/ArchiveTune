@@ -47,6 +47,8 @@ import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.DisableScreenshotKey
 import moe.rukamori.archivetune.constants.EnableHapticFeedbackKey
+import moe.rukamori.archivetune.constants.ForceHighRefreshRateKey
+import moe.rukamori.archivetune.constants.LowDataModeKey
 import moe.rukamori.archivetune.constants.PauseListenHistoryKey
 import moe.rukamori.archivetune.constants.PauseSearchHistoryKey
 import moe.rukamori.archivetune.ui.component.DefaultDialog
@@ -82,6 +84,16 @@ fun PrivacySettings(navController: NavController, scrollTo: String? = null) {
         rememberPreference(
             key = EnableHapticFeedbackKey,
             defaultValue = true,
+        )
+    val (lowDataMode, onLowDataModeChange) =
+        rememberPreference(
+            key = LowDataModeKey,
+            defaultValue = true,
+        )
+    val (forceHighRefreshRate, onForceHighRefreshRateChange) =
+        rememberPreference(
+            key = ForceHighRefreshRateKey,
+            defaultValue = false,
         )
 
     var showClearListenHistoryDialog by remember {
@@ -237,6 +249,25 @@ fun PrivacySettings(navController: NavController, scrollTo: String? = null) {
                 modifier = positions.modifierFor("haptics"),
                 title = stringResource(R.string.misc),
             ) {
+                item {
+                    SwitchPreference(
+                        title = { Text(stringResource(R.string.low_data_mode_title)) },
+                        description = stringResource(R.string.low_data_mode_description),
+                        icon = { Icon(painterResource(R.drawable.android_cell), null) },
+                        checked = lowDataMode,
+                        onCheckedChange = onLowDataModeChange,
+                    )
+                }
+
+                item {
+                    SwitchPreference(
+                        title = { Text(stringResource(R.string.force_high_refresh_rate)) },
+                        icon = { Icon(painterResource(R.drawable.speed), null) },
+                        checked = forceHighRefreshRate,
+                        onCheckedChange = onForceHighRefreshRateChange,
+                    )
+                }
+
                 item {
                     SwitchPreference(
                         title = { Text(stringResource(R.string.haptics)) },
