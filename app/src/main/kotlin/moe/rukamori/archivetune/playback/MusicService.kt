@@ -1372,7 +1372,7 @@ class MusicService :
             // LyricsHelper gets a chance to find better lyrics. Without this, turning
             // the toggle on and replaying a previously-cached song would keep returning
             // the old line-synced/plain result and the word-synced lookup would never run.
-            val prioritizeWordSynced = context.dataStore[PrioritizeWordSyncedLyricsKey] ?: false
+            val prioritizeWordSynced = dataStore[PrioritizeWordSyncedLyricsKey] ?: false
             val storedIsWordSynced =
                 stored != null &&
                     stored.lyrics != LyricsEntity.LYRICS_NOT_FOUND &&
