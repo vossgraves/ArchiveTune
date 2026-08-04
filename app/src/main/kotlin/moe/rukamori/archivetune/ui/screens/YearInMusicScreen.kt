@@ -213,38 +213,6 @@ private fun YearInMusicRecapScreen(
             modifier = Modifier.fillMaxSize(),
         )
 
-        RecapCardPager(
-            cards = cards,
-            pagerState = pagerState,
-            isShareCaptureMode = isShareCaptureMode,
-            onCardBoundsChanged = { currentCardBounds = it },
-            onTopSongLongClick = { song ->
-                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                menuState.show {
-                    SongMenu(
-                        originalSong = song,
-                        navController = navController,
-                        onDismiss = menuState::dismiss,
-                    )
-                }
-            },
-            onTopArtistLongClick = { artist ->
-                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                menuState.show {
-                    ArtistMenu(
-                        originalArtist = artist,
-                        coroutineScope = coroutineScope,
-                        onDismiss = menuState::dismiss,
-                    )
-                }
-            },
-            onShare = onShare,
-            isGenerating = isGeneratingImage,
-            modifier =
-                Modifier
-                    .fillMaxSize(),
-        )
-
         val onShare: () -> Unit = {
             if (!isGeneratingImage) {
                 isGeneratingImage = true
@@ -304,6 +272,38 @@ private fun YearInMusicRecapScreen(
                 }
             }
         }
+
+        RecapCardPager(
+            cards = cards,
+            pagerState = pagerState,
+            isShareCaptureMode = isShareCaptureMode,
+            onCardBoundsChanged = { currentCardBounds = it },
+            onTopSongLongClick = { song ->
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                menuState.show {
+                    SongMenu(
+                        originalSong = song,
+                        navController = navController,
+                        onDismiss = menuState::dismiss,
+                    )
+                }
+            },
+            onTopArtistLongClick = { artist ->
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                menuState.show {
+                    ArtistMenu(
+                        originalArtist = artist,
+                        coroutineScope = coroutineScope,
+                        onDismiss = menuState::dismiss,
+                    )
+                }
+            },
+            onShare = onShare,
+            isGenerating = isGeneratingImage,
+            modifier =
+                Modifier
+                    .fillMaxSize(),
+        )
 
         if (canShare && pagerState.currentPage > 0) {
             Box(modifier = Modifier.align(Alignment.BottomEnd)) {
