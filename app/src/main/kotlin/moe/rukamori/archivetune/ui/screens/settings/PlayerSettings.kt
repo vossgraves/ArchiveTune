@@ -46,6 +46,7 @@ import moe.rukamori.archivetune.constants.DeviceMutePlaybackRecoveryVolumeKey
 import moe.rukamori.archivetune.constants.DownloadSource
 import moe.rukamori.archivetune.constants.DownloadSourceKey
 import moe.rukamori.archivetune.constants.EnableVideoPlaybackKey
+import moe.rukamori.archivetune.constants.EnablePipModeKey
 import moe.rukamori.archivetune.constants.ExternalDownloaderEnabledKey
 import moe.rukamori.archivetune.constants.ExternalDownloaderPackageKey
 import moe.rukamori.archivetune.constants.HISTORY_DURATION_DEFAULT
@@ -125,6 +126,11 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
         rememberPreference(
             EnableVideoPlaybackKey,
             defaultValue = true,
+        )
+    val (enablePipMode, onEnablePipModeChange) =
+        rememberPreference(
+            EnablePipModeKey,
+            defaultValue = false,
         )
     val (autoSkipNextOnError, onAutoSkipNextOnErrorChange) =
         rememberPreference(
@@ -310,6 +316,22 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                             icon = { Icon(painterResource(R.drawable.slow_motion_video), null) },
                             checked = enableVideoPlayback,
                             onCheckedChange = onEnableVideoPlaybackChange,
+                        )
+                    }
+                }
+
+                item {
+                    Column(modifier = positions.modifierFor("enable_pip_mode")) {
+                        SwitchPreference(
+                            title = { Text(stringResource(R.string.enable_pip_mode)) },
+                            description = stringResource(R.string.enable_pip_mode_desc),
+                            icon = { Icon(painterResource(R.drawable.player_pip), null) },
+                            checked = enablePipMode,
+                            onCheckedChange = onEnablePipModeChange,
+                            // PiP requires a video surface to float — disable the toggle
+                            // (and grey it out) when video playback is off, so the user
+                            // can't enable a setting that would have no effect.
+                            isEnabled = enableVideoPlayback,
                         )
                     }
                 }

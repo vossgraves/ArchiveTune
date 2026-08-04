@@ -1,0 +1,19 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Picture-in-Picture: a large outer rectangle (the screen)
+         with a smaller filled rectangle in the bottom-right (the
+         floating PiP window). Matches the standard Android PiP
+         affordance iconography. -->
+    <!-- Outer screen rectangle (stroke only) -->
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M3,5 h18 a2,2 0 0 1 2,2 v10 a2,2 0 0 1 -2,2 h-18 a2,2 0 0 1 -2,-2 v-10 a2,2 0 0 1 2,-2 z
+                          M3,7 v10 h18 v-10 z" />
+    <!-- Inner PiP window (solid fill) in the bottom-right corner -->
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M12,12 h8 a1,1 0 0 1 1,1 v4 a1,1 0 0 1 -1,1 h-8 a1,1 0 0 1 -1,-1 v-4 a1,1 0 0 1 1,-1 z" />
+</vector>
