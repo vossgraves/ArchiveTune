@@ -7,9 +7,11 @@
 
 package moe.rukamori.archivetune.ai
 
+import moe.rukamori.archivetune.betterlyrics.QRCParser
 import moe.rukamori.archivetune.lyrics.LyricsUtils
 import org.w3c.dom.Document
 import org.w3c.dom.Element
+import org.w3c.dom.Node
 import org.xml.sax.InputSource
 import java.io.StringReader
 import java.io.StringWriter
@@ -36,6 +38,8 @@ object AiLyricsDocumentParser {
     fun parse(rawLyrics: String): AiLyricsDocument =
         if (LyricsUtils.isTtml(rawLyrics)) {
             parseTtml(rawLyrics).getOrElse { parseLineBased(rawLyrics, formatName = "TTML fallback") }
+        } else if (QRCParser.isQrc(rawLyrics)) {
+            parseQrc(rawLyrics)
         } else {
             parseLineBased(
                 rawLyrics = rawLyrics,
@@ -98,6 +102,100 @@ object AiLyricsDocumentParser {
         return LineBasedLyricsDocument(formatName = formatName, templates = templates, segments = segments)
     }
 
+    private fun parseQrc(rawLyrics: String): AiLyricsDocument {
+        val lines = rawLyrics.split('\n')
+        val entries = ArrayList<QrcLineEntry>(lines.size)
+        val segments = ArrayList<AiLyricsSegment>()
+        val seenTimingKeys = HashSet<String>()
+        lines.forEach { line ->
+            val trimmed = line.trim()
+            if (trimmed.isEmpty() || QrcMetadataLineRegex.matches(trimmed)) {
+                entries.add(QrcLineEntry(raw = line, segmentId = -1, timingPrefix = "", cleanText = ""))
+                return@forEach
+            }
+            val qrcMatch = QrcLineRegex.matchEntire(trimmed)
+            if (qrcMatch != null) {
+                val startMs = qrcMatch.groupValues[1]
+                val durMs = qrcMatch.groupValues[2]
+                val content = qrcMatch.groupValues[3]
+                val timingKey = "$startMs,$durMs"
+                if (!seenTimingKeys.add(timingKey)) {
+                    entries.add(QrcLineEntry(raw = line, segmentId = -1, timingPrefix = "", cleanText = ""))
+                    return@forEach
+                }
+                val cleanText = extractQrcCleanText(content)
+                if (cleanText.isBlank()) {
+                    entries.add(QrcLineEntry(raw = line, segmentId = -1, timingPrefix = "", cleanText = ""))
+                    return@forEach
+                }
+                val segmentId = segments.size
+                segments.add(AiLyricsSegment(segmentId, cleanText))
+                entries.add(
+                    QrcLineEntry(
+                        raw = line,
+                        segmentId = segmentId,
+                        timingPrefix = "[$startMs,$durMs]",
+                        cleanText = cleanText,
+                    ),
+                )
+                return@forEach
+            }
+            val lrcMatch = SyncedLineRegex.matchEntire(line)
+            if (lrcMatch != null) {
+                val prefix = lrcMatch.groupValues[1]
+                val lrcTimingKey = prefix.filterNot { it.isWhitespace() }
+                if (!seenTimingKeys.add(lrcTimingKey)) {
+                    entries.add(QrcLineEntry(raw = line, segmentId = -1, timingPrefix = "", cleanText = ""))
+                    return@forEach
+                }
+                val content = lrcMatch.groupValues[3].trim()
+                if (content.isBlank()) {
+                    entries.add(QrcLineEntry(raw = line, segmentId = -1, timingPrefix = "", cleanText = ""))
+                    return@forEach
+                }
+                val segmentId = segments.size
+                segments.add(AiLyricsSegment(segmentId, content))
+                entries.add(
+                    QrcLineEntry(
+                        raw = line,
+                        segmentId = segmentId,
+                        timingPrefix = prefix,
+                        cleanText = content,
+                    ),
+                )
+                return@forEach
+            }
+            val plainMatch = PlainLineRegex.matchEntire(line)
+            val plainContent = plainMatch?.groupValues?.get(2).orEmpty().trim()
+            if (plainContent.isBlank()) {
+                entries.add(QrcLineEntry(raw = line, segmentId = -1, timingPrefix = "", cleanText = ""))
+                return@forEach
+            }
+            val segmentId = segments.size
+            segments.add(AiLyricsSegment(segmentId, plainContent))
+            entries.add(
+                QrcLineEntry(
+                    raw = line,
+                    segmentId = segmentId,
+                    timingPrefix = "",
+                    cleanText = plainContent,
+                ),
+            )
+        }
+        return QrcLyricsDocument(entries = entries, segments = segments)
+    }
+
+    private fun extractQrcCleanText(content: String): String {
+        if (content.isEmpty()) return ""
+        val words = ArrayList<String>()
+        QrcWordTimingRegex.findAll(content).forEach { match ->
+            val wordText = match.groupValues[1]
+            if (wordText.isNotEmpty()) words.add(wordText)
+        }
+        if (words.isEmpty()) return content.trim().replace(Regex("\\s+"), " ")
+        return words.joinToString("").trim().replace(Regex("\\s+"), " ")
+    }
+
     private fun parseTtml(rawLyrics: String): Result<AiLyricsDocument> =
         runCatching {
             val factory =
@@ -115,14 +213,14 @@ object AiLyricsDocumentParser {
             for (index in 0 until elements.length) {
                 val element = elements.item(index) as? Element ?: continue
                 if (!element.tagName.endsWith("p", ignoreCase = true)) continue
-                val text = element.textContent?.trim().orEmpty()
+                val text = readTtmlLineText(element)
                 if (text.isBlank()) continue
                 val segmentId = segments.size
                 val lineKey =
                     readAttributeBySuffix(element, "key")
                         ?: "archivetune-translation-$segmentId".also { key -> element.setAttribute("key", key) }
                 segments.add(AiLyricsSegment(segmentId, text))
-                paragraphs.add(TtmlParagraph(element = element, segmentId = segmentId, key = lineKey))
+                paragraphs.add(TtmlParagraph(element = element, segmentId = segmentId, key = lineKey, cleanText = text))
             }
             require(segments.isNotEmpty()) { "TTML has no translatable text" }
             TtmlLyricsDocument(
@@ -132,6 +230,23 @@ object AiLyricsDocumentParser {
                 segments = segments,
             )
         }
+
+    private fun readTtmlLineText(paragraphElement: Element): String {
+        val spanTexts = ArrayList<String>()
+        val children = paragraphElement.childNodes
+        for (i in 0 until children.length) {
+            val child = children.item(i) ?: continue
+            if (child.nodeType != Node.ELEMENT_NODE) continue
+            val childElement = child as? Element ?: continue
+            if (!childElement.tagName.endsWith("span", ignoreCase = true)) continue
+            val spanText = childElement.textContent?.trim().orEmpty()
+            if (spanText.isNotEmpty()) spanTexts.add(spanText)
+        }
+        if (spanTexts.isNotEmpty()) {
+            return spanTexts.joinToString(" ").trim().replace(Regex("\\s+"), " ")
+        }
+        return paragraphElement.textContent?.trim().orEmpty().replace(Regex("\\s+"), " ")
+    }
 
     private fun readAttributeBySuffix(
         element: Element,
@@ -154,6 +269,39 @@ object AiLyricsDocumentParser {
 
     private val SyncedLineRegex = Regex("""^(\s*(?:\[[^\]]+])+)(\s*)(.*?)(\s*)$""")
     private val PlainLineRegex = Regex("""^(\s*)(.*?)(\s*)$""")
+    private val QrcLineRegex = Regex("""^\[(\d{1,8}),(\d{1,8})](.*)$""")
+    private val QrcWordTimingRegex = Regex("""(.*?)\(\d{1,8},\d{1,8}(?:,\d{1,8})?\)""")
+    private val QrcMetadataLineRegex = Regex("""^\[[A-Za-z]+:.*]$""")
+}
+
+private data class QrcLineEntry(
+    val raw: String,
+    val segmentId: Int,
+    val timingPrefix: String,
+    val cleanText: String,
+)
+
+private data class QrcLyricsDocument(
+    private val entries: List<QrcLineEntry>,
+    override val segments: List<AiLyricsSegment>,
+) : AiLyricsDocument {
+    override val formatName: String = "QRC"
+
+    override fun rebuild(translations: Map<Int, String>): String =
+        entries.flatMap { entry ->
+            if (entry.segmentId < 0) {
+                listOf(entry.raw)
+            } else {
+                val translated = translations[entry.segmentId]?.trim().orEmpty()
+                if (translated.isBlank() || translated.equals(entry.cleanText, ignoreCase = true)) {
+                    listOf(entry.raw)
+                } else if (entry.timingPrefix.isEmpty()) {
+                    listOf(entry.raw, translated)
+                } else {
+                    listOf(entry.raw, "${entry.timingPrefix}${translated}")
+                }
+            }
+        }.joinToString("\n")
 }
 
 private data class LineTemplate(
@@ -187,6 +335,7 @@ private data class TtmlParagraph(
     val element: Element,
     val segmentId: Int,
     val key: String,
+    val cleanText: String,
 )
 
 private data class TtmlLyricsDocument(
@@ -207,12 +356,7 @@ private data class TtmlLyricsDocument(
                         ?.trim()
                         ?.takeIf {
                             it.isNotBlank() &&
-                                !it.equals(
-                                    paragraph.element.textContent
-                                        ?.trim()
-                                        .orEmpty(),
-                                    ignoreCase = true,
-                                )
+                                !it.equals(paragraph.cleanText, ignoreCase = true)
                         }
                         ?: return@mapNotNull null
                 paragraph to translated

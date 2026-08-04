@@ -58,8 +58,7 @@ class AutoLyricsTranslator
                         val existing = database.lyrics(mediaMetadata.id).first()
                         if (existing != null && existing.source == LyricsEntity.Source.AI_TRANSLATION.value) return@launch
 
-                        val sample = lyricsText.take(1000)
-                        val nonAsciiCount = sample.count { it.code > 0x7F }
+                        val nonAsciiCount = lyricsText.asSequence().take(4000).count { it.code > 0x7F }
                         if (nonAsciiCount < 5) return@launch
 
                         val targetLanguage = prefs[TranslatorTargetLangKey].orEmpty()

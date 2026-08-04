@@ -36,6 +36,8 @@ object LyricsUtils {
     private val INLINE_MILLISECONDS_TIME_REGEX = Regex("""<\d{1,8}(?:,\d{1,8})?>""")
     private val YRC_LINE_REGEX = Regex("""\[(\d{1,8}),\d{1,8}\](.*)""")
     private val YRC_WORD_TIME_REGEX = Regex("""\(\d{1,8},\d{1,8}(?:,\d{1,8})?\)""")
+    private val QrcTranslationLineRegex = Regex("""^\[(\d{1,8}),(\d{1,8})](.*)$""")
+    private val QrcWordTimingDetectRegex = Regex("""\(\d{1,8},\d{1,8}(?:,\d{1,8})?\)""")
     private val TTML_SPAN_REGEX =
         Regex(
             pattern = """<span\b[^>]*>""",
@@ -441,9 +443,11 @@ object LyricsUtils {
     fun parseLyrics(lyrics: String): List<LyricsEntry> {
         val normalizedLyrics = normalizeLyricsText(lyrics)
         if (QRCParser.isQrc(normalizedLyrics)) {
+            val translationsByStartMs = extractQrcTranslations(normalizedLyrics)
             return QRCParser.parseQrc(normalizedLyrics).map { line ->
+                val startMs = (line.startTime * 1000.0).toLong()
                 LyricsEntry(
-                    time = (line.startTime * 1000.0).toLong(),
+                    time = startMs,
                     text = line.text,
                     words =
                         line.words
@@ -455,6 +459,7 @@ object LyricsUtils {
                                 )
                             }.takeIf { it.isNotEmpty() },
                     agent = line.agent,
+                    providerTranslationText = translationsByStartMs[startMs],
                     durationMs = ((line.endTime - line.startTime) * 1000.0).toLong().coerceAtLeast(0L),
                 )
             }
@@ -470,6 +475,29 @@ object LyricsUtils {
             }
         }
         return mergeLineSyncedTranslations(result).sorted()
+    }
+
+    private fun extractQrcTranslations(lyrics: String): Map<Long, String> {
+        val wordTimedStartMs = mutableSetOf<Long>()
+        val translationCandidates = mutableListOf<Pair<Long, String>>()
+        lyrics.lineSequence().forEach { line ->
+            val trimmed = line.trim()
+            val match = QrcTranslationLineRegex.matchEntire(trimmed) ?: return@forEach
+            val startMs = match.groupValues[1].toLongOrNull() ?: return@forEach
+            val content = match.groupValues[3]
+            if (QrcWordTimingDetectRegex.containsMatchIn(content)) {
+                wordTimedStartMs.add(startMs)
+            } else if (content.isNotBlank()) {
+                translationCandidates.add(startMs to content.trim())
+            }
+        }
+        val translations = mutableMapOf<Long, String>()
+        translationCandidates.forEach { (startMs, text) ->
+            if (startMs in wordTimedStartMs && startMs !in translations) {
+                translations[startMs] = text
+            }
+        }
+        return translations
     }
 
     fun normalizeLyricsText(lyrics: String): String {
