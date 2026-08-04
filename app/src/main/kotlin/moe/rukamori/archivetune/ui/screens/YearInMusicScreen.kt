@@ -31,9 +31,11 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
@@ -213,6 +215,66 @@ private fun YearInMusicRecapScreen(
             modifier = Modifier.fillMaxSize(),
         )
 
+        val onShare: () -> Unit = {
+            if (!isGeneratingImage) {
+                isGeneratingImage = true
+                coroutineScope.launch {
+                    try {
+                        isShareCaptureMode = true
+                        awaitNextPreDraw(view)
+                        awaitNextPreDraw(view)
+
+                        val raw =
+                            ComposeToImage.captureViewBitmap(
+                                view = view,
+                                backgroundColor = RecapBlack.toArgb(),
+                            )
+                        val bounds = currentCardBounds
+                        val cardBitmap =
+                            if (bounds != null && bounds.width > 0f && bounds.height > 0f) {
+                                ComposeToImage.cropBitmap(
+                                    source = raw,
+                                    left = bounds.left.toInt().coerceAtLeast(0),
+                                    top = bounds.top.toInt().coerceAtLeast(0),
+                                    width = bounds.width.toInt().coerceAtLeast(1),
+                                    height = bounds.height.toInt().coerceAtLeast(1),
+                                )
+                            } else {
+                                raw
+                            }
+                        val fitted =
+                            ComposeToImage.fitBitmap(
+                                source = cardBitmap,
+                                targetWidth = 1080,
+                                targetHeight = 1920,
+                                backgroundColor = RecapBlack.toArgb(),
+                            )
+                        val uri =
+                            ComposeToImage.saveBitmapAsFile(
+                                context = context,
+                                bitmap = fitted,
+                                fileName = "ArchiveTune_YearInMusic_${content.selectedYear}_${currentPage + 1}",
+                            )
+                        val shareIntent =
+                            Intent(Intent.ACTION_SEND).apply {
+                                type = "image/png"
+                                putExtra(Intent.EXTRA_STREAM, uri)
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }
+                        context.startActivity(
+                            Intent.createChooser(
+                                shareIntent,
+                                context.getString(R.string.share_summary),
+                            ),
+                        )
+                    } finally {
+                        isShareCaptureMode = false
+                        isGeneratingImage = false
+                    }
+                }
+            }
+        }
+
         RecapCardPager(
             cards = cards,
             pagerState = pagerState,
@@ -238,73 +300,18 @@ private fun YearInMusicRecapScreen(
                     )
                 }
             },
+            onShare = onShare,
+            isGenerating = isGeneratingImage,
             modifier =
                 Modifier
                     .fillMaxSize(),
         )
 
-        if (canShare) {
+        if (canShare && pagerState.currentPage > 0) {
             Box(modifier = Modifier.align(Alignment.BottomEnd)) {
                 RecapShareButton(
                     isGenerating = isGeneratingImage,
-                    onClick = {
-                        if (isGeneratingImage) return@RecapShareButton
-                        isGeneratingImage = true
-                        coroutineScope.launch {
-                            try {
-                                isShareCaptureMode = true
-                                awaitNextPreDraw(view)
-                                awaitNextPreDraw(view)
-
-                                val raw =
-                                    ComposeToImage.captureViewBitmap(
-                                        view = view,
-                                        backgroundColor = RecapBlack.toArgb(),
-                                    )
-                                val bounds = currentCardBounds
-                                val cardBitmap =
-                                    if (bounds != null && bounds.width > 0f && bounds.height > 0f) {
-                                        ComposeToImage.cropBitmap(
-                                            source = raw,
-                                            left = bounds.left.toInt().coerceAtLeast(0),
-                                            top = bounds.top.toInt().coerceAtLeast(0),
-                                            width = bounds.width.toInt().coerceAtLeast(1),
-                                            height = bounds.height.toInt().coerceAtLeast(1),
-                                        )
-                                    } else {
-                                        raw
-                                    }
-                                val fitted =
-                                    ComposeToImage.fitBitmap(
-                                        source = cardBitmap,
-                                        targetWidth = 1080,
-                                        targetHeight = 1920,
-                                        backgroundColor = RecapBlack.toArgb(),
-                                    )
-                                val uri =
-                                    ComposeToImage.saveBitmapAsFile(
-                                        context = context,
-                                        bitmap = fitted,
-                                        fileName = "ArchiveTune_YearInMusic_${content.selectedYear}_${currentPage + 1}",
-                                    )
-                                val shareIntent =
-                                    Intent(Intent.ACTION_SEND).apply {
-                                        type = "image/png"
-                                        putExtra(Intent.EXTRA_STREAM, uri)
-                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                    }
-                                context.startActivity(
-                                    Intent.createChooser(
-                                        shareIntent,
-                                        context.getString(R.string.share_summary),
-                                    ),
-                                )
-                            } finally {
-                                isShareCaptureMode = false
-                                isGeneratingImage = false
-                            }
-                        }
-                    },
+                    onClick = onShare,
                     modifier =
                         Modifier
                             .windowInsetsPadding(
@@ -414,6 +421,8 @@ private fun RecapCardPager(
     onCardBoundsChanged: (Rect) -> Unit,
     onTopSongLongClick: (Song) -> Unit,
     onTopArtistLongClick: (Artist) -> Unit,
+    onShare: () -> Unit,
+    isGenerating: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val coroutineScope = rememberCoroutineScope()
@@ -444,6 +453,8 @@ private fun RecapCardPager(
             canAdvance = canAdvance,
             onTopSongLongClick = onTopSongLongClick,
             onTopArtistLongClick = onTopArtistLongClick,
+            onShare = onShare,
+            isGenerating = isGenerating,
             modifier =
                 Modifier
                     .fillMaxSize()
@@ -464,6 +475,8 @@ private fun RecapCardFrame(
     canAdvance: Boolean,
     onTopSongLongClick: (Song) -> Unit,
     onTopArtistLongClick: (Artist) -> Unit,
+    onShare: () -> Unit,
+    isGenerating: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val gradient =
@@ -503,6 +516,8 @@ private fun RecapCardFrame(
                     IntroRecapCard(
                         card = card,
                         applySafeContentInsets = applySafeContentInsets,
+                        onShare = onShare,
+                        isGenerating = isGenerating,
                     )
                 }
 
@@ -587,6 +602,8 @@ private fun EmptyRecapCard(
 private fun IntroRecapCard(
     card: YearInMusicRecapCard.Intro,
     applySafeContentInsets: Boolean,
+    onShare: () -> Unit,
+    isGenerating: Boolean,
 ) {
     Box(
         modifier =
@@ -686,21 +703,64 @@ private fun IntroRecapCard(
                 color = Color.White.copy(alpha = 0.82f),
                 lineHeight = 19.sp,
             )
-            Box(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(999.dp))
-                        .background(RecapInk)
-                        .padding(vertical = 14.dp),
-                contentAlignment = Alignment.Center,
+            Row(
+                modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Text(
-                    text = stringResource(R.string.year_in_music_swipe_begin),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Black,
-                    color = Color.White,
-                )
+                Box(
+                    modifier =
+                        Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(RecapInk)
+                            .padding(vertical = 14.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = stringResource(R.string.year_in_music_swipe_begin),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Black,
+                        color = Color.White,
+                        textAlign = TextAlign.Center,
+                    )
+                }
+                Box(
+                    modifier =
+                        Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(RecapRed)
+                            .clickable(onClick = onShare)
+                            .padding(vertical = 14.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        if (isGenerating) {
+                            CircularWavyProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                color = RecapCream,
+                            )
+                        } else {
+                            Icon(
+                                painter = painterResource(R.drawable.share),
+                                contentDescription = null,
+                                tint = RecapCream,
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
+                        Text(
+                            text = stringResource(R.string.year_in_music_current_card),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Black,
+                            color = RecapCream,
+                        )
+                    }
+                }
             }
         }
     }

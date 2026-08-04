@@ -712,6 +712,10 @@
     <string name="update_never_show_again">Never show again</string>
     <string name="settings_lyrics_providers_subtitle">Choose which lyrics providers are active and set priority</string>
     <string name="settings_lyrics_romanisation_subtitle">Romanise foreign-language lyrics (Japanese, Korean, Chinese, Hindi, etc.)</string>
+    <string name="settings_downloads_subtitle">Manage downloaded songs, sources, and external downloaders</string>
+    <string name="video_playback">Video playback</string>
+    <string name="extras">Extras</string>
+    <string name="settings_extras_subtitle">Toggles for home chips, library tags, and library mix cards</string>
     <string name="hide_liked_songs_card">Hide Liked songs card</string>
     <string name="hide_liked_songs_card_desc">Hide the Liked songs quick-access card on the Library Mix screen</string>
     <string name="hide_offline_card">Hide Offline card</string>

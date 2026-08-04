@@ -36,35 +36,28 @@ import moe.rukamori.archivetune.constants.ArchiveTuneCanvasKey
 import moe.rukamori.archivetune.constants.ArtistSeparatorsKey
 import moe.rukamori.archivetune.constants.AudioNormalizationKey
 import moe.rukamori.archivetune.constants.AudioOffload
-import moe.rukamori.archivetune.constants.AutoDownloadOnLikeKey
 import moe.rukamori.archivetune.constants.AutoSkipNextOnErrorKey
 import moe.rukamori.archivetune.constants.AutoStartOnBluetoothKey
 import moe.rukamori.archivetune.constants.CrossfadeDurationKey
 import moe.rukamori.archivetune.constants.CrossfadeEnabledKey
 import moe.rukamori.archivetune.constants.CrossfadeGaplessKey
 import moe.rukamori.archivetune.constants.DeviceMutePlaybackRecoveryVolumeKey
-import moe.rukamori.archivetune.constants.DownloadSource
-import moe.rukamori.archivetune.constants.DownloadSourceKey
 import moe.rukamori.archivetune.constants.EnableVideoPlaybackKey
 import moe.rukamori.archivetune.constants.EnablePipModeKey
-import moe.rukamori.archivetune.constants.ExternalDownloaderEnabledKey
-import moe.rukamori.archivetune.constants.ExternalDownloaderPackageKey
 import moe.rukamori.archivetune.constants.HISTORY_DURATION_DEFAULT
 import moe.rukamori.archivetune.constants.HistoryDuration
-import moe.rukamori.archivetune.constants.LowDataModeKey
 import moe.rukamori.archivetune.constants.PauseOnDeviceMuteKey
 import moe.rukamori.archivetune.constants.PermanentShuffleKey
 import moe.rukamori.archivetune.constants.PersistentQueueKey
 import moe.rukamori.archivetune.constants.SeekExtraSeconds
 import moe.rukamori.archivetune.constants.SkipSilenceKey
 import moe.rukamori.archivetune.constants.StopMusicOnTaskClearKey
+import moe.rukamori.archivetune.constants.SwipeToSongKey
 import moe.rukamori.archivetune.constants.TidalArtworkFallbackEnabledKey
 import moe.rukamori.archivetune.constants.TidalEnabledKey
 import moe.rukamori.archivetune.constants.WakelockKey
 import moe.rukamori.archivetune.ui.component.ArtistSeparatorsDialog
 import moe.rukamori.archivetune.ui.component.CrossfadeSliderPreference
-import moe.rukamori.archivetune.ui.component.EnumListPreference
-import moe.rukamori.archivetune.ui.component.ListPreference
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.NumberPickerPreference
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
@@ -72,19 +65,12 @@ import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.SliderPreference
 import moe.rukamori.archivetune.ui.component.SwitchPreference
 import moe.rukamori.archivetune.ui.component.TagsManagementDialog
-import moe.rukamori.archivetune.ui.component.TextFieldDialog
 import moe.rukamori.archivetune.ui.utils.backToMain
-import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
-    val (lowDataMode, onLowDataModeChange) =
-        rememberPreference(
-            LowDataModeKey,
-            defaultValue = true,
-        )
     val (persistentQueue, onPersistentQueueChange) =
         rememberPreference(
             PersistentQueueKey,
@@ -117,11 +103,6 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
             defaultValue = false,
         )
 
-    val (autoDownloadOnLike, onAutoDownloadOnLikeChange) =
-        rememberPreference(
-            AutoDownloadOnLikeKey,
-            defaultValue = false,
-        )
     val (enableVideoPlayback, onEnableVideoPlaybackChange) =
         rememberPreference(
             EnableVideoPlaybackKey,
@@ -206,30 +187,18 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
             ArtistSeparatorsKey,
             defaultValue = ",;/&",
         )
-    val (downloadSource, onDownloadSourceChange) =
-        rememberEnumPreference(
-            DownloadSourceKey,
-            defaultValue = DownloadSource.AUTO,
-        )
-    val (externalDownloaderEnabled, onExternalDownloaderEnabledChange) =
-        rememberPreference(
-            ExternalDownloaderEnabledKey,
-            defaultValue = false,
-        )
-    val (externalDownloaderPackage, onExternalDownloaderPackageChange) =
-        rememberPreference(
-            ExternalDownloaderPackageKey,
-            defaultValue = "",
-        )
-
     val (wakelockEnabled, onWakelockChange) =
         rememberPreference(
             WakelockKey,
             defaultValue = false,
         )
+    val (swipeToSong, onSwipeToSongChange) =
+        rememberPreference(
+            SwipeToSongKey,
+            defaultValue = false,
+        )
     var showArtistSeparatorsDialog by remember { mutableStateOf(false) }
     var showTagsManagementDialog by remember { mutableStateOf(false) }
-    var showExternalDownloaderPackageDialog by remember { mutableStateOf(false) }
 
     if (showArtistSeparatorsDialog) {
         ArtistSeparatorsDialog(
@@ -245,21 +214,6 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
     if (showTagsManagementDialog) {
         TagsManagementDialog(
             onDismiss = { showTagsManagementDialog = false },
-        )
-    }
-
-    if (showExternalDownloaderPackageDialog) {
-        TextFieldDialog(
-            initialTextFieldValue =
-                androidx.compose.ui.text.input
-                    .TextFieldValue(externalDownloaderPackage),
-            onDone = { pkg ->
-                onExternalDownloaderPackageChange(pkg)
-                showExternalDownloaderPackageDialog = false
-            },
-            onDismiss = { showExternalDownloaderPackageDialog = false },
-            singleLine = true,
-            maxLines = 1,
         )
     }
 
@@ -320,19 +274,9 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
             }
 
             PreferenceGroup(
-                modifier = positions.modifierFor("low_data_mode"),
-                title = stringResource(R.string.player),
+                modifier = positions.modifierFor("enable_video_playback"),
+                title = stringResource(R.string.video_playback),
             ) {
-                item {
-                    SwitchPreference(
-                        title = { Text(stringResource(R.string.low_data_mode_title)) },
-                        description = stringResource(R.string.low_data_mode_description),
-                        icon = { Icon(painterResource(R.drawable.android_cell), null) },
-                        checked = lowDataMode,
-                        onCheckedChange = onLowDataModeChange,
-                    )
-                }
-
                 item {
                     Column(modifier = positions.modifierFor("enable_video_playback")) {
                         SwitchPreference(
@@ -353,14 +297,16 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                             icon = { Icon(painterResource(R.drawable.player_pip), null) },
                             checked = enablePipMode,
                             onCheckedChange = onEnablePipModeChange,
-                            // PiP requires a video surface to float — disable the toggle
-                            // (and grey it out) when video playback is off, so the user
-                            // can't enable a setting that would have no effect.
                             isEnabled = enableVideoPlayback,
                         )
                     }
                 }
+            }
 
+            PreferenceGroup(
+                modifier = positions.modifierFor("low_data_mode"),
+                title = stringResource(R.string.player),
+            ) {
                 item {
                     Column(modifier = positions.modifierFor("history_duration")) {
                         SliderPreference(
@@ -575,47 +521,14 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                 }
 
                 item {
-                    Column(modifier = positions.modifierFor("auto_download_like")) {
+                    Column(modifier = positions.modifierFor("swipe_to_song")) {
                         SwitchPreference(
-                            title = { Text(stringResource(R.string.auto_download_on_like)) },
-                            description = stringResource(R.string.auto_download_on_like_desc),
-                            icon = { Icon(painterResource(R.drawable.download), null) },
-                            checked = autoDownloadOnLike,
-                            onCheckedChange = onAutoDownloadOnLikeChange,
+                            title = { Text(stringResource(R.string.swipe_song_to_add)) },
+                            icon = { Icon(painterResource(R.drawable.swipe), null) },
+                            checked = swipeToSong,
+                            onCheckedChange = onSwipeToSongChange,
                         )
                     }
-                }
-
-                item {
-                    // Only expose AUTO and YOUTUBE_MUSIC in the picker.
-                    // Qobuz / Tidal / Deezer remain valid enum values (so
-                    // existing user preferences still deserialize) but are
-                    // no longer selectable from the UI — the AUTO chain
-                    // already picks them up automatically when their
-                    // accounts are configured in the Integration screen.
-                    val selectableSources = remember {
-                        listOf(DownloadSource.AUTO, DownloadSource.YOUTUBE_MUSIC)
-                    }
-                    ListPreference(
-                        modifier = positions.modifierFor("download_source"),
-                        title = { Text(stringResource(R.string.download_source_title)) },
-                        icon = { Icon(painterResource(R.drawable.download), null) },
-                        selectedValue =
-                            if (downloadSource in selectableSources) {
-                                downloadSource
-                            } else {
-                                DownloadSource.AUTO
-                            },
-                        values = selectableSources,
-                        valueText = {
-                            when (it) {
-                                DownloadSource.AUTO -> stringResource(R.string.download_source_auto)
-                                DownloadSource.YOUTUBE_MUSIC -> stringResource(R.string.download_source_youtube_music)
-                                else -> it.name
-                            }
-                        },
-                        onValueSelected = onDownloadSourceChange,
-                    )
                 }
 
                 item {
@@ -676,30 +589,6 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                             description = stringResource(R.string.manage_playlist_tags_desc),
                             icon = { Icon(painterResource(R.drawable.style), null) },
                             onClick = { showTagsManagementDialog = true },
-                        )
-                    }
-                }
-
-                item {
-                    Column(modifier = positions.modifierFor("external_downloader")) {
-                        SwitchPreference(
-                            title = { Text(stringResource(R.string.external_downloader)) },
-                            description = stringResource(R.string.external_downloader_desc),
-                            icon = { Icon(painterResource(R.drawable.download), null) },
-                            checked = externalDownloaderEnabled,
-                            onCheckedChange = onExternalDownloaderEnabledChange,
-                        )
-                    }
-                }
-
-                item {
-                    Column(modifier = positions.modifierFor("external_downloader_package")) {
-                        PreferenceEntry(
-                            title = { Text(stringResource(R.string.external_downloader_package)) },
-                            description = externalDownloaderPackage.ifEmpty { stringResource(R.string.external_downloader_package_desc) },
-                            icon = { Icon(painterResource(R.drawable.integration), null) },
-                            onClick = { showExternalDownloaderPackageDialog = true },
-                            isEnabled = externalDownloaderEnabled,
                         )
                     }
                 }

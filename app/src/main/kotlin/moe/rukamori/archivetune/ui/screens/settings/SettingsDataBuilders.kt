@@ -200,15 +200,11 @@ fun buildSettingsGroups(
                 SettingsChild("Tidal artwork fallback", "tidal_artwork_fallback", listOf("tidal artwork", "artwork fallback", "tidal cover", "hi-res artwork")) { SearchResultSwitch(TidalArtworkFallbackEnabledKey, true) },
                 SettingsChild("Persistent queue", "persistent_queue", listOf("queue", "persistent", "save queue", "resume")) { SearchResultSwitch(PersistentQueueKey, true) },
                 SettingsChild("Permanent shuffle", "permanent_shuffle", listOf("shuffle", "random", "permanent")) { SearchResultSwitch(PermanentShuffleKey, false) },
-                SettingsChild("Auto download on like", "auto_download_like", listOf("auto download", "like", "download liked")) { SearchResultSwitch(AutoDownloadOnLikeKey, false) },
-                SettingsChild("Download source", "download_source", listOf("download source", "qobuz download", "tidal download", "youtube music download")),
                 SettingsChild("Auto skip on error", "auto_skip_error", listOf("skip", "error", "auto skip", "failed")) { SearchResultSwitch(AutoSkipNextOnErrorKey, false) },
                 SettingsChild("Stop music on task clear", "stop_task_clear", listOf("stop", "task clear", "background", "close app")) { SearchResultSwitch(StopMusicOnTaskClearKey, false) },
                 SettingsChild("Wakelock", "wakelock", listOf("wakelock", "wake lock", "keep awake", "cpu")) { SearchResultSwitch(WakelockKey, false) },
                 SettingsChild("Artist separators", "artist_separators", listOf("artist", "separator", "split", "featuring")),
                 SettingsChild("Manage playlist tags", "manage_playlist_tags", listOf("playlist tags", "tag management", "organize playlists")),
-                SettingsChild("External downloader", "external_downloader", listOf("external downloader", "download app", "custom downloader")),
-                SettingsChild("External downloader package", "external_downloader_package", listOf("downloader package", "downloader app name")),
             ),
         )
     val sources =
@@ -441,8 +437,6 @@ fun buildSettingsGroups(
             onClick = { navController.navigate("settings/storage") },
             children = listOf(
                 SettingsChild("Downloaded songs", "downloaded_songs", listOf("downloaded", "offline songs", "saved songs")),
-                SettingsChild("Clear all downloads", "clear_all_downloads", listOf("clear downloads", "delete downloads", "remove downloads")),
-                SettingsChild("Export downloaded songs", "export_downloaded_songs", listOf("export", "export songs", "save songs", "local storage", "file")),
                 SettingsChild("Song cache size", "song_cache_size", listOf("cache size", "song cache", "memory", "download cache")),
                 SettingsChild("Clear song cache", "clear_song_cache", listOf("clear song cache", "delete song cache", "wipe song cache")),
                 SettingsChild("Image cache size", "image_cache_size", listOf("image cache", "thumbnail cache", "artwork cache")),
@@ -452,6 +446,22 @@ fun buildSettingsGroups(
                 SettingsChild("Storage folder", "storage_folder", listOf("storage path", "storage location", "storage directory")),
                 SettingsChild("Download location", "download_location", listOf("download path", "location", "folder", "directory", "save to")),
                 SettingsChild("Smart trimmer", "smart_trimmer", listOf("smart trimmer", "trim cache", "auto clean cache")) { SearchResultSwitch(SmartTrimmerKey, false) },
+            ),
+        )
+    val downloads =
+        SettingsItem(
+            key = "downloads",
+            icon = painterResource(R.drawable.download),
+            title = stringResource(R.string.downloads),
+            subtitle = stringResource(R.string.settings_downloads_subtitle),
+            accentColor = MaterialTheme.colorScheme.primary,
+            keywords = listOf("download", "downloader", "external downloader", "download source", "auto download", "export songs", "clear downloads", "offline"),
+            onClick = { navController.navigate("settings/downloads") },
+            children = listOf(
+                SettingsChild("Clear all downloads", "clear_all_downloads", listOf("clear downloads", "delete downloads", "remove downloads")),
+                SettingsChild("Export downloaded songs", "export_downloaded_songs", listOf("export", "export songs", "save songs", "local storage", "file")),
+                SettingsChild("Auto download on like", "auto_download_like", listOf("auto download", "like", "download liked")) { SearchResultSwitch(AutoDownloadOnLikeKey, false) },
+                SettingsChild("Download source", "download_source", listOf("download source", "qobuz download", "tidal download", "youtube music download")),
                 SettingsChild("External downloader", "external_downloader", listOf("external downloader", "download app", "custom downloader")) { SearchResultSwitch(ExternalDownloaderEnabledKey, false) },
                 SettingsChild("External downloader package", "external_downloader_package", listOf("downloader package", "downloader app name")),
             ),
@@ -608,7 +618,7 @@ fun buildSettingsGroups(
         ),
         SettingsGroup(
             title = stringResource(R.string.storage),
-            items = listOf(storage, backupRestore),
+            items = listOf(storage, downloads, backupRestore),
         ),
         SettingsGroup(
             title = stringResource(R.string.about),

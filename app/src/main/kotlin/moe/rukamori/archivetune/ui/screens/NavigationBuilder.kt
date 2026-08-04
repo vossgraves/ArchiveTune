@@ -52,6 +52,7 @@ import moe.rukamori.archivetune.ui.screens.settings.AboutScreen
 import moe.rukamori.archivetune.ui.screens.settings.AccountSettings
 import moe.rukamori.archivetune.ui.screens.settings.AiIntegrationSettings
 import moe.rukamori.archivetune.ui.screens.settings.AodCustomizedScreen
+import moe.rukamori.archivetune.ui.screens.settings.AppearanceExtrasSettings
 import moe.rukamori.archivetune.ui.screens.settings.AppearanceSettings
 import moe.rukamori.archivetune.ui.screens.settings.BackupAndRestore
 import moe.rukamori.archivetune.ui.screens.settings.ChangelogScreen
@@ -94,6 +95,7 @@ import moe.rukamori.archivetune.ui.screens.settings.PrivacySettings
 import moe.rukamori.archivetune.ui.screens.settings.SettingsScreen
 import moe.rukamori.archivetune.ui.screens.settings.SourceSettings
 import moe.rukamori.archivetune.ui.screens.settings.StorageSettings
+import moe.rukamori.archivetune.ui.screens.settings.DownloadsSettings
 import moe.rukamori.archivetune.ui.screens.settings.ThemeCreatorScreen
 import moe.rukamori.archivetune.ui.screens.settings.UpdateScreen
 import moe.rukamori.archivetune.viewmodels.OnlineSearchSort
@@ -409,6 +411,9 @@ fun NavGraphBuilder.navigationBuilder(
     ) {
         AppearanceSettings(navController, it.savedStateHandle["scrollTo"])
     }
+    composable("settings/appearance/extras") {
+        AppearanceExtrasSettings(navController)
+    }
     composable("settings/appearance/icon") {
         IconScreen(navController)
     }
@@ -474,6 +479,12 @@ fun NavGraphBuilder.navigationBuilder(
     }
     composable("settings/storage/export_songs") {
         ExportDownloadedSongsScreen(navController)
+    }
+    composable(
+        route = "settings/downloads?scrollTo={scrollTo}",
+        arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
+    ) {
+        DownloadsSettings(navController, scrollTo = it.savedStateHandle["scrollTo"])
     }
     composable(
         route = "settings/privacy?scrollTo={scrollTo}",
