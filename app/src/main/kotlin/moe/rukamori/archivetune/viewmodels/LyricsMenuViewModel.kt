@@ -312,7 +312,13 @@ class LyricsMenuViewModel
                 } else {
                     emptyList()
                 }
-            val isWordSynced = ttmlEntries.any { !it.words.isNullOrEmpty() }
+            // Delegate to the shared detector so the badge shown here always agrees
+            // with what the "Prioritize Word Synced Lyrics" override in LyricsHelper
+            // considers word-synced. Previously this only checked TTML <span> entries,
+            // which missed Enhanced LRC ([mm:ss.xxx]<mm:ss.xxx>word) returned by
+            // YouLyPlus's fallback endpoint — causing the badge to say "Line Synced"
+            // while the override (correctly) skipped it, or vice versa.
+            val isWordSynced = LyricsUtils.hasWordSyncedLyrics(lyrics)
 
             return LyricsSearchResultUiModel(
                 id = "${providerName}_${lyrics.hashCode()}_$index",
@@ -325,7 +331,7 @@ class LyricsMenuViewModel
                     if (isTtmlLyrics) {
                         ttmlEntries.isNotEmpty() && !isWordSynced
                     } else {
-                        isLineSyncedLrc(lyrics)
+                        isLineSyncedLrc(lyrics) && !isWordSynced
                     },
                 isWordSynced = isWordSynced,
             )

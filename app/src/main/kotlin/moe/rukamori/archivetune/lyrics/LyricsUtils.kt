@@ -501,11 +501,26 @@ object LyricsUtils {
     fun hasWordSyncedLyrics(lyrics: String): Boolean {
         val normalized = normalizeLyricsText(lyrics)
         if (QRCParser.isQrc(normalized)) return QRCParser.hasWordTimings(normalized)
-        if (!isTtml(normalized)) return false
-
-        return TTML_SPAN_REGEX.findAll(normalized).any { match ->
-            TTML_BEGIN_ATTRIBUTE_REGEX.containsMatchIn(match.value) &&
-                TTML_END_ATTRIBUTE_REGEX.containsMatchIn(match.value)
+        if (isTtml(normalized)) {
+            return TTML_SPAN_REGEX.findAll(normalized).any { match ->
+                TTML_BEGIN_ATTRIBUTE_REGEX.containsMatchIn(match.value) &&
+                    TTML_END_ATTRIBUTE_REGEX.containsMatchIn(match.value)
+            }
+        }
+        // Enhanced LRC: lines like "[00:01.234]<00:01.500>Hello <00:01.700>world"
+        // where each word has its own <mm:ss.xxx> inline timestamp. This format is
+        // produced by YouLyPlus's v2/lyrics/get fallback endpoint (when v1/ttml/get
+        // is unavailable) and by some other providers. Without this check, those
+        // word-synced lyrics would be misclassified as plain line-synced LRC and
+        // the "Prioritize Word Synced Lyrics" feature would skip them.
+        //
+        // We require BOTH a line-level [mm:ss.xxx] tag AND an inline <mm:ss.xxx>
+        // word timestamp on the same line, so that plain text containing angle
+        // brackets (e.g. "<3") doesn't false-positive.
+        return normalized.lineSequence().any { line ->
+            LINE_REGEX.containsMatchIn(line) &&
+                (ENHANCED_LRC_WORD_TIME_REGEX.containsMatchIn(line) ||
+                    INLINE_MILLISECONDS_TIME_REGEX.containsMatchIn(line))
         }
     }
 
