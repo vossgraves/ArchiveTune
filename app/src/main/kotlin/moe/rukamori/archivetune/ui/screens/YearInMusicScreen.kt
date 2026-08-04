@@ -31,9 +31,11 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
@@ -702,13 +704,14 @@ private fun IntroRecapCard(
                 lineHeight = 19.sp,
             )
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Box(
                     modifier =
                         Modifier
                             .weight(1f)
+                            .fillMaxHeight()
                             .clip(RoundedCornerShape(999.dp))
                             .background(RecapInk)
                             .padding(vertical = 14.dp),
@@ -719,15 +722,18 @@ private fun IntroRecapCard(
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Black,
                         color = Color.White,
+                        textAlign = TextAlign.Center,
                     )
                 }
                 Box(
                     modifier =
                         Modifier
                             .weight(1f)
+                            .fillMaxHeight()
                             .clip(RoundedCornerShape(999.dp))
                             .background(RecapRed)
-                            .clickable(onClick = onShare),
+                            .clickable(onClick = onShare)
+                            .padding(vertical = 14.dp),
                     contentAlignment = Alignment.Center,
                 ) {
                     Row(

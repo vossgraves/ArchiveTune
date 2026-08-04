@@ -78,11 +78,6 @@ import moe.rukamori.archivetune.constants.CustomFontUriKey
 import moe.rukamori.archivetune.constants.DarkModeKey
 import moe.rukamori.archivetune.constants.DefaultOpenTabKey
 import moe.rukamori.archivetune.constants.HideNavigationBarLabelsKey
-import moe.rukamori.archivetune.constants.HideCachedCardKey
-import moe.rukamori.archivetune.constants.HideLikedSongsCardKey
-import moe.rukamori.archivetune.constants.HideLocalFilesCardKey
-import moe.rukamori.archivetune.constants.HideOfflineCardKey
-import moe.rukamori.archivetune.constants.HideTop50CardKey
 import moe.rukamori.archivetune.constants.NavigationBarFrostedBlurKey
 import moe.rukamori.archivetune.constants.NavigationBarStyle
 import moe.rukamori.archivetune.constants.NavigationBarStyleKey
@@ -109,9 +104,7 @@ import moe.rukamori.archivetune.constants.PureBlackKey
 import moe.rukamori.archivetune.constants.QuickPicksDisplayMode
 import moe.rukamori.archivetune.constants.QuickPicksDisplayModeKey
 import moe.rukamori.archivetune.constants.RandomThemeOnStartupKey
-import moe.rukamori.archivetune.constants.ShowHomeCategoryChipsKey
 import moe.rukamori.archivetune.constants.ShowPlayerVolumeBarKey
-import moe.rukamori.archivetune.constants.ShowTagsInLibraryKey
 import moe.rukamori.archivetune.constants.SliderStyle
 import moe.rukamori.archivetune.constants.SliderStyleKey
 import moe.rukamori.archivetune.constants.SwipeSensitivityKey
@@ -168,16 +161,6 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
             HidePlayerThumbnailKey,
             defaultValue = false,
         )
-    val (hideLikedSongsCard, onHideLikedSongsCardChange) =
-        rememberPreference(HideLikedSongsCardKey, defaultValue = false)
-    val (hideOfflineCard, onHideOfflineCardChange) =
-        rememberPreference(HideOfflineCardKey, defaultValue = false)
-    val (hideCachedCard, onHideCachedCardChange) =
-        rememberPreference(HideCachedCardKey, defaultValue = false)
-    val (hideLocalFilesCard, onHideLocalFilesCardChange) =
-        rememberPreference(HideLocalFilesCardKey, defaultValue = false)
-    val (hideTop50Card, onHideTop50CardChange) =
-        rememberPreference(HideTop50CardKey, defaultValue = false)
     // The ArchiveTune Canvas artwork toggle lives in Player Settings → Artwork.
     val (thumbnailCornerRadius, onThumbnailCornerRadiusChange) =
         rememberPreference(
@@ -266,16 +249,6 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
             defaultValue = GridItemSize.SMALL,
         )
 
-    val (showTagsInLibrary, onShowTagsInLibraryChange) =
-        rememberPreference(
-            ShowTagsInLibraryKey,
-            defaultValue = true,
-        )
-    val (showHomeCategoryChips, onShowHomeCategoryChipsChange) =
-        rememberPreference(
-            ShowHomeCategoryChipsKey,
-            defaultValue = true,
-        )
     val (quickPicksDisplayMode, onQuickPicksDisplayModeChange) =
         rememberEnumPreference(
             QuickPicksDisplayModeKey,
@@ -1105,72 +1078,11 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                 title = stringResource(R.string.extras),
             ) {
                 item {
-                    SwitchPreference(
-                        title = { Text(stringResource(R.string.show_home_category_chips)) },
-                        description = stringResource(R.string.show_home_category_chips_desc),
-                        icon = { Icon(painterResource(R.drawable.home_outlined), null) },
-                        checked = showHomeCategoryChips,
-                        onCheckedChange = onShowHomeCategoryChipsChange,
-                    )
-                }
-
-                item {
-                    SwitchPreference(
-                        title = { Text(stringResource(R.string.show_tags_in_library)) },
-                        description = stringResource(R.string.show_tags_in_library_desc),
-                        icon = { Icon(painterResource(R.drawable.filter_alt), null) },
-                        checked = showTagsInLibrary,
-                        onCheckedChange = onShowTagsInLibraryChange,
-                    )
-                }
-
-                item {
-                    SwitchPreference(
-                        title = { Text(stringResource(R.string.hide_liked_songs_card)) },
-                        description = stringResource(R.string.hide_liked_songs_card_desc),
-                        icon = { Icon(painterResource(R.drawable.favorite), null) },
-                        checked = hideLikedSongsCard,
-                        onCheckedChange = onHideLikedSongsCardChange,
-                    )
-                }
-
-                item {
-                    SwitchPreference(
-                        title = { Text(stringResource(R.string.hide_offline_card)) },
-                        description = stringResource(R.string.hide_offline_card_desc),
-                        icon = { Icon(painterResource(R.drawable.offline), null) },
-                        checked = hideOfflineCard,
-                        onCheckedChange = onHideOfflineCardChange,
-                    )
-                }
-
-                item {
-                    SwitchPreference(
-                        title = { Text(stringResource(R.string.hide_cached_card)) },
-                        description = stringResource(R.string.hide_cached_card_desc),
-                        icon = { Icon(painterResource(R.drawable.cached), null) },
-                        checked = hideCachedCard,
-                        onCheckedChange = onHideCachedCardChange,
-                    )
-                }
-
-                item {
-                    SwitchPreference(
-                        title = { Text(stringResource(R.string.hide_local_files_card)) },
-                        description = stringResource(R.string.hide_local_files_card_desc),
-                        icon = { Icon(painterResource(R.drawable.snippet_folder), null) },
-                        checked = hideLocalFilesCard,
-                        onCheckedChange = onHideLocalFilesCardChange,
-                    )
-                }
-
-                item {
-                    SwitchPreference(
-                        title = { Text(stringResource(R.string.hide_top50_card)) },
-                        description = stringResource(R.string.hide_top50_card_desc),
-                        icon = { Icon(painterResource(R.drawable.trending_up), null) },
-                        checked = hideTop50Card,
-                        onCheckedChange = onHideTop50CardChange,
+                    PreferenceEntry(
+                        title = { Text(stringResource(R.string.extras)) },
+                        description = stringResource(R.string.settings_extras_subtitle),
+                        icon = { Icon(painterResource(R.drawable.discover_tune), null) },
+                        onClick = { navController.navigate("settings/appearance/extras") },
                     )
                 }
             }

@@ -269,6 +269,7 @@ import moe.rukamori.archivetune.playback.artwork.isLocalArtworkUri
 import moe.rukamori.archivetune.innertube.models.response.PlayerResponse
 import moe.rukamori.archivetune.lastfm.LastFM
 import moe.rukamori.archivetune.lyrics.LyricsHelper
+import moe.rukamori.archivetune.ai.AutoLyricsTranslator
 import moe.rukamori.archivetune.lyrics.LyricsPreloadManager
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.models.PersistPlayerState
@@ -589,6 +590,8 @@ class MusicService :
     // before promoting the incoming player.
     private val crossfadeGeneration = AtomicLong(0)
     private var lyricsPreloadManager: LyricsPreloadManager? = null
+    @Inject
+    lateinit var autoLyricsTranslator: AutoLyricsTranslator
 
     // The currently active session-facing player. Replaced when a crossfade promotes the
     // incoming player. Observers (PlayerConnection) must follow this flow instead of
@@ -1366,6 +1369,7 @@ class MusicService :
                 stored == null ||
                     stored.lyrics == LyricsEntity.LYRICS_NOT_FOUND ||
                     stored.providerName.isBlank()
+            val finalLyricsText: String?
             if (shouldFetch) {
                 val result = lyricsHelper.getLyricsWithProvider(mediaMetadata)
                 database.query {
@@ -1382,7 +1386,11 @@ class MusicService :
                         )
                     }
                 }
+                finalLyricsText = result.lyrics
+            } else {
+                finalLyricsText = stored?.lyrics
             }
+            autoLyricsTranslator.onLyricsFetched(mediaMetadata, finalLyricsText)
         }
 
         dataStore.data
@@ -9854,6 +9862,7 @@ class MusicService :
         }
         lyricsPreloadManager?.destroy()
         lyricsPreloadManager = null
+        autoLyricsTranslator.destroy()
         abandonAudioFocus()
         try {
             releaseAudioEffects()

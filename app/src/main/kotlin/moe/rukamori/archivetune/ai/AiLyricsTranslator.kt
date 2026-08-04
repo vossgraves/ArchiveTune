@@ -7,6 +7,8 @@
 
 package moe.rukamori.archivetune.ai
 
+import kotlinx.coroutines.CancellationException
+
 class AiLyricsTranslator {
     suspend fun translate(
         config: AiServiceConfig,
@@ -24,18 +26,64 @@ class AiLyricsTranslator {
         val translated = mutableMapOf<Int, String>()
         document.segments.chunkedByBudget().forEach { batch ->
             val batchTranslations =
-                AiTextService.translateLines(
+                translateBatchResilient(
                     config = config,
                     targetLanguage = normalizedLanguage,
-                    lines = batch.map { it.text },
+                    batch = batch,
                     formatName = document.formatName,
                 )
             batch.forEachIndexed { index, segment ->
-                translated[segment.id] = batchTranslations[index]
+                translated[segment.id] = batchTranslations.getOrNull(index) ?: segment.text
             }
         }
         return document.rebuild(translated).also { result ->
             synchronized(resultCache) { resultCache[cacheKey] = result }
+        }
+    }
+
+    private suspend fun translateBatchResilient(
+        config: AiServiceConfig,
+        targetLanguage: String,
+        batch: List<AiLyricsSegment>,
+        formatName: String,
+    ): List<String> {
+        if (batch.isEmpty()) return emptyList()
+        return try {
+            val result =
+                AiTextService.translateLines(
+                    config = config,
+                    targetLanguage = targetLanguage,
+                    lines = batch.map { it.text },
+                    formatName = formatName,
+                )
+            if (result.size == batch.size) {
+                result
+            } else {
+                throw AiServiceException("AI response changed the lyric segment count")
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            if (batch.size <= 1) {
+                batch.map { it.text }
+            } else {
+                val mid = batch.size / 2
+                val left =
+                    translateBatchResilient(
+                        config = config,
+                        targetLanguage = targetLanguage,
+                        batch = batch.subList(0, mid),
+                        formatName = formatName,
+                    )
+                val right =
+                    translateBatchResilient(
+                        config = config,
+                        targetLanguage = targetLanguage,
+                        batch = batch.subList(mid, batch.size),
+                        formatName = formatName,
+                    )
+                left + right
+            }
         }
     }
 

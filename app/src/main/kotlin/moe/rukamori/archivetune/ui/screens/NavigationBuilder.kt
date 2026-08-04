@@ -52,6 +52,7 @@ import moe.rukamori.archivetune.ui.screens.settings.AboutScreen
 import moe.rukamori.archivetune.ui.screens.settings.AccountSettings
 import moe.rukamori.archivetune.ui.screens.settings.AiIntegrationSettings
 import moe.rukamori.archivetune.ui.screens.settings.AodCustomizedScreen
+import moe.rukamori.archivetune.ui.screens.settings.AppearanceExtrasSettings
 import moe.rukamori.archivetune.ui.screens.settings.AppearanceSettings
 import moe.rukamori.archivetune.ui.screens.settings.BackupAndRestore
 import moe.rukamori.archivetune.ui.screens.settings.ChangelogScreen
@@ -409,6 +410,9 @@ fun NavGraphBuilder.navigationBuilder(
         arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
     ) {
         AppearanceSettings(navController, it.savedStateHandle["scrollTo"])
+    }
+    composable("settings/appearance/extras") {
+        AppearanceExtrasSettings(navController)
     }
     composable("settings/appearance/icon") {
         IconScreen(navController)

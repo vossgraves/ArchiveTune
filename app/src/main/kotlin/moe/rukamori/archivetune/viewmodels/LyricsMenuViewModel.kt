@@ -288,8 +288,10 @@ class LyricsMenuViewModel
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
-                        val msg = context.getString(R.string.translation_failed) + ": " + (e.localizedMessage ?: e.toString())
-                        _aiTranslationEvents.emit(msg)
+                        if (!isAutomatic) {
+                            val msg = context.getString(R.string.translation_failed) + ": " + (e.localizedMessage ?: e.toString())
+                            _aiTranslationEvents.emit(msg)
+                        }
                     } finally {
                         isAiTranslating.value = false
                         aiTranslationJob = null
