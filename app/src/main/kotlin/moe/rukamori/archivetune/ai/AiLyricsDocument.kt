@@ -103,7 +103,8 @@ object AiLyricsDocumentParser {
     }
 
     private fun parseQrc(rawLyrics: String): AiLyricsDocument {
-        val lines = rawLyrics.split('\n')
+        val lyricContent = extractQrcLyricContent(rawLyrics)
+        val lines = lyricContent.split('\n')
         val entries = ArrayList<QrcLineEntry>(lines.size)
         val segments = ArrayList<AiLyricsSegment>()
         val seenTimingKeys = HashSet<String>()
@@ -188,12 +189,32 @@ object AiLyricsDocumentParser {
     private fun extractQrcCleanText(content: String): String {
         if (content.isEmpty()) return ""
         val words = ArrayList<String>()
+        var lastMatchEnd = 0
         QrcWordTimingRegex.findAll(content).forEach { match ->
             val wordText = match.groupValues[1]
             if (wordText.isNotEmpty()) words.add(wordText)
+            lastMatchEnd = match.range.last + 1
+        }
+        if (lastMatchEnd < content.length) {
+            val trailing = content.substring(lastMatchEnd).trim()
+            if (trailing.isNotEmpty()) words.add(trailing)
         }
         if (words.isEmpty()) return content.trim().replace(Regex("\\s+"), " ")
         return words.joinToString("").trim().replace(Regex("\\s+"), " ")
+    }
+
+    private fun extractQrcLyricContent(content: String): String {
+        val attributeMatch = QrcLyricContentAttributeRegex.find(content) ?: return content
+        val valueStart = attributeMatch.range.last + 1
+        val valueEnd = content.indexOf('"', startIndex = valueStart)
+        if (valueEnd < 0) return content
+        val raw = content.substring(valueStart, valueEnd)
+        return raw
+            .replace("&quot;", "\"")
+            .replace("&apos;", "'")
+            .replace("&lt;", "<")
+            .replace("&gt;", ">")
+            .replace("&amp;", "&")
     }
 
     private fun parseTtml(rawLyrics: String): Result<AiLyricsDocument> =
@@ -272,6 +293,7 @@ object AiLyricsDocumentParser {
     private val QrcLineRegex = Regex("""^\[(\d{1,8}),(\d{1,8})](.*)$""")
     private val QrcWordTimingRegex = Regex("""(.*?)\(\d{1,8},\d{1,8}(?:,\d{1,8})?\)""")
     private val QrcMetadataLineRegex = Regex("""^\[[A-Za-z]+:.*]$""")
+    private val QrcLyricContentAttributeRegex = Regex("""LyricContent\s*=\s*\"""", RegexOption.IGNORE_CASE)
 }
 
 private data class QrcLineEntry(

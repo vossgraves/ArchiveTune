@@ -387,6 +387,110 @@ object LyricsUtils {
             trimmed.contains("http://www.w3.org/ns/ttml", ignoreCase = true)
     }
 
+    fun shouldAutoTranslate(lyrics: String, targetLanguage: String): Boolean {
+        if (lyrics.isBlank()) return false
+        val allowedScripts = allowedScriptsForLanguage(targetLanguage)
+        return lyrics.asSequence().any { char ->
+            if (!char.isLetter()) return@any false
+            val script = UnicodeScript.of(char.code)
+            script !in allowedScripts
+        }
+    }
+
+    private fun allowedScriptsForLanguage(language: String): Set<UnicodeScript> {
+        val normalized = language.trim().lowercase().replace('_', '-').substringBefore('-')
+        val code = when (normalized) {
+            "english", "en" -> "en"
+            "japanese", "ja" -> "ja"
+            "korean", "ko" -> "ko"
+            "chinese", "zh", "mandarin", "cmn", "cantonese", "yue" -> "zh"
+            "hindi", "hi", "sanskrit", "sa", "marathi", "mr", "nepali", "ne" -> "hi"
+            "arabic", "ar", "persian", "fa", "urdu", "ur" -> "ar"
+            "russian", "ru", "ukrainian", "uk", "belarusian", "be", "bulgarian", "bg" -> "ru"
+            "thai", "th" -> "th"
+            "hebrew", "he", "yiddish", "yi" -> "he"
+            "greek", "el" -> "el"
+            "armenian", "hy" -> "hy"
+            "georgian", "ka" -> "ka"
+            else -> normalized
+        }
+        return when (code) {
+            "ja" -> setOf(
+                UnicodeScript.LATIN,
+                UnicodeScript.COMMON,
+                UnicodeScript.INHERITED,
+                UnicodeScript.HAN,
+                UnicodeScript.HIRAGANA,
+                UnicodeScript.KATAKANA,
+            )
+            "ko" -> setOf(
+                UnicodeScript.LATIN,
+                UnicodeScript.COMMON,
+                UnicodeScript.INHERITED,
+                UnicodeScript.HANGUL,
+            )
+            "zh" -> setOf(
+                UnicodeScript.LATIN,
+                UnicodeScript.COMMON,
+                UnicodeScript.INHERITED,
+                UnicodeScript.HAN,
+            )
+            "hi" -> setOf(
+                UnicodeScript.LATIN,
+                UnicodeScript.COMMON,
+                UnicodeScript.INHERITED,
+                UnicodeScript.DEVANAGARI,
+            )
+            "ar" -> setOf(
+                UnicodeScript.LATIN,
+                UnicodeScript.COMMON,
+                UnicodeScript.INHERITED,
+                UnicodeScript.ARABIC,
+            )
+            "ru" -> setOf(
+                UnicodeScript.LATIN,
+                UnicodeScript.COMMON,
+                UnicodeScript.INHERITED,
+                UnicodeScript.CYRILLIC,
+            )
+            "th" -> setOf(
+                UnicodeScript.LATIN,
+                UnicodeScript.COMMON,
+                UnicodeScript.INHERITED,
+                UnicodeScript.THAI,
+            )
+            "he" -> setOf(
+                UnicodeScript.LATIN,
+                UnicodeScript.COMMON,
+                UnicodeScript.INHERITED,
+                UnicodeScript.HEBREW,
+            )
+            "el" -> setOf(
+                UnicodeScript.LATIN,
+                UnicodeScript.COMMON,
+                UnicodeScript.INHERITED,
+                UnicodeScript.GREEK,
+            )
+            "hy" -> setOf(
+                UnicodeScript.LATIN,
+                UnicodeScript.COMMON,
+                UnicodeScript.INHERITED,
+                UnicodeScript.ARMENIAN,
+            )
+            "ka" -> setOf(
+                UnicodeScript.LATIN,
+                UnicodeScript.COMMON,
+                UnicodeScript.INHERITED,
+                UnicodeScript.GEORGIAN,
+            )
+            else -> setOf(
+                UnicodeScript.LATIN,
+                UnicodeScript.COMMON,
+                UnicodeScript.INHERITED,
+            )
+        }
+    }
+
     fun isLineSyncedLrc(lyrics: String): Boolean =
         QRCParser.isQrc(normalizeLyricsText(lyrics)) ||
             lyrics.lineSequence().any { line ->
