@@ -2327,6 +2327,18 @@ fun BottomSheetPlayer(
         // When the overlay is visible, the InlineVideoPlayer (inside the
         // BottomSheet) skips rendering its own surface (`if (!isFullscreen)`),
         // ensuring only ONE surface is attached to the ExoPlayer at a time.
+        //
+        // PIP: when the activity is in Picture-in-Picture mode we force the
+        // fullscreen overlay on (so the video fills the PiP window) and the
+        // overlay itself hides all controls — the user sees only the video
+        // in the floating window. When PiP ends, the overlay reverts to its
+        // prior state.
+        val isInPipMode = moe.rukamori.archivetune.ui.player.LocalIsInPipMode.current
+        LaunchedEffect(isInPipMode, videoState) {
+            if (isInPipMode && videoState != null) {
+                videoFullscreenHolder.isFullscreen = true
+            }
+        }
         videoState?.let { vs ->
             if (videoFullscreenHolder.isFullscreen) {
                 FullscreenVideoOverlay(

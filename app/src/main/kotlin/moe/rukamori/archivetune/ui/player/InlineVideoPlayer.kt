@@ -184,6 +184,17 @@ val LocalVideoOnPreferredHeightChange = compositionLocalOf<(Int?) -> Unit> { {} 
 val LocalVideoAvailableHeights = compositionLocalOf<List<Int>> { emptyList() }
 
 /**
+ * CompositionLocal that tracks whether the host Activity is currently in
+ * Picture-in-Picture mode. When true, the player UI hides non-essential
+ * controls (overlays, gesture handlers, etc.) so the PiP window shows
+ * only the video surface — matching the standard Android PiP experience.
+ *
+ * Provided by [MainActivity] via [LocalIsInPipMode]. Defaults to false
+ * when no provider is present (e.g. in previews or non-Activity hosts).
+ */
+val LocalIsInPipMode = compositionLocalOf { false }
+
+/**
  * Provides a [VideoFullscreenStateHolder] to the content subtree.
  *
  * The holder is created with `remember` (not `rememberSaveable`) because
@@ -407,8 +418,14 @@ fun FullscreenVideoOverlay(
 ) {
     val context = LocalContext.current
     val playerConnection = LocalPlayerConnection.current
+    // PIP: when the activity is in Picture-in-Picture mode we hide all
+    // controls and gestures — the PiP window shows only the video surface.
+    // Tap-to-toggle, gestures, and the overflow sheet are all suppressed.
+    val isInPipMode = LocalIsInPipMode.current
     var qualityMenuOpen by remember { mutableStateOf(false) }
     var aspectRatioMenuOpen by remember { mutableStateOf(false) }
+    // In PiP mode, controls are ALWAYS hidden (the user can't interact
+    // with the PiP window beyond tap-to-expand, which the system handles).
     var controlsVisible by remember { mutableStateOf(false) }
     var isUserSeeking by remember { mutableStateOf(false) }
     var sliderPosition by remember { mutableStateOf<Long?>(null) }
@@ -575,7 +592,14 @@ fun FullscreenVideoOverlay(
     // dragging the seekbar, has the quality menu open, or has the 3-dot
     // overflow sheet open (those interactions need the controls to stay
     // visible).
-    LaunchedEffect(controlsVisible, isUserSeeking, qualityMenuOpen, showOverflowSheet) {
+    LaunchedEffect(controlsVisible, isUserSeeking, qualityMenuOpen, showOverflowSheet, isInPipMode) {
+        // In PiP mode the controls are never shown — skip the auto-hide
+        // timer entirely (it would be a no-op since controlsVisible is
+        // forced false by the click handler below, but skipping is cleaner).
+        if (isInPipMode) {
+            controlsVisible = false
+            return@LaunchedEffect
+        }
         if (controlsVisible && !isUserSeeking && !qualityMenuOpen && !showOverflowSheet) {
             kotlinx.coroutines.delay(FullscreenControlsAutoHideMs)
             controlsVisible = false
@@ -601,6 +625,11 @@ fun FullscreenVideoOverlay(
                 .pointerInput(Unit) {
                     detectTapGestures(
                         onTap = { offset ->
+                            // PIP: suppress tap-to-toggle in PiP mode — the
+                            // system handles tap-to-expand on the PiP window
+                            // itself, and our controls would be unreadable
+                            // in the small PiP window anyway.
+                            if (isInPipMode) return@detectTapGestures
                             if (showOverflowSheet) {
                                 // Tapping outside the sheet dismisses it instead of toggling overlay.
                                 scope.launch { sheetState.hide() }.invokeOnCompletion {
@@ -614,6 +643,8 @@ fun FullscreenVideoOverlay(
                             }
                         },
                         onDoubleTap = { offset ->
+                            // PIP: suppress double-tap seek in PiP mode.
+                            if (isInPipMode) return@detectTapGestures
                             // Double-tap seek: left half rewinds 10s, right half skips 10s.
                             // Suppress when the overflow sheet is open.
                             if (!showOverflowSheet && playerConnection != null) {
@@ -782,8 +813,13 @@ fun FullscreenVideoOverlay(
         //   - Top-right: quality picker (if >1 height) + 3-dot overflow + fullscreen-exit
         //   - Center: previous | play/pause | next
         //   - Bottom: seekbar (uses selected slider style) + time labels
+        //
+        // PIP: the entire controls overlay is suppressed when in PiP mode
+        // (controlsVisible is forced false by the LaunchedEffect above, and
+        // we also gate the AnimatedVisibility on !isInPipMode for belt-and-
+        // suspenders safety).
         AnimatedVisibility(
-            visible = controlsVisible && !showOverflowSheet,
+            visible = controlsVisible && !showOverflowSheet && !isInPipMode,
             enter = fadeIn(animationSpec = tween(200)),
             exit = fadeOut(animationSpec = tween(200)),
             modifier = Modifier.fillMaxSize(),

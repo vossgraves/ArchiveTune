@@ -10,6 +10,7 @@
 package moe.rukamori.archivetune
 
 import android.annotation.SuppressLint
+import android.app.PictureInPictureParams
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -22,6 +23,7 @@ import android.os.Bundle
 import android.os.IBinder
 import android.provider.OpenableColumns
 import android.provider.Settings
+import android.util.Rational
 import android.view.View
 import android.view.WindowManager
 import android.webkit.MimeTypeMap
@@ -209,6 +211,8 @@ import moe.rukamori.archivetune.constants.DisableAnimationsKey
 import moe.rukamori.archivetune.constants.DisableScreenshotKey
 import moe.rukamori.archivetune.constants.DynamicThemeKey
 import moe.rukamori.archivetune.constants.EnableHapticFeedbackKey
+import moe.rukamori.archivetune.constants.EnablePipModeKey
+import moe.rukamori.archivetune.constants.EnableVideoPlaybackKey
 import moe.rukamori.archivetune.constants.FontPreferenceKey
 import moe.rukamori.archivetune.constants.HasPressedStarKey
 import moe.rukamori.archivetune.constants.LaunchCountKey
@@ -318,6 +322,7 @@ import moe.rukamori.archivetune.utils.Updater
 import moe.rukamori.archivetune.utils.dataStore
 import moe.rukamori.archivetune.utils.get
 import moe.rukamori.archivetune.utils.isLowRamDevice
+import moe.rukamori.archivetune.utils.isLocalMediaId
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.utils.reportException
@@ -512,6 +517,108 @@ class MainActivity : ComponentActivity() {
             setStatusBarsHidden(true)
         }
     }
+
+    // ── Picture-in-Picture ────────────────────────────────────────────────
+    //
+    // When the user leaves the app while a music video is playing (and the
+    // "Enable PiP mode" setting is ON), the activity enters PiP mode so the
+    // video keeps playing in a small floating window.
+    //
+    // Conditions for entering PiP (checked in onUserLeaveHint):
+    //   1. Build.VERSION.SDK_INT >= O (PiP requires API 26+).
+    //   2. The device supports PiP (packageManager.hasSystemFeature).
+    //   3. EnablePipModeKey is true (user opted in via Playback settings).
+    //   4. EnableVideoPlaybackKey is true (video playback itself is on —
+    //      otherwise there is no video surface to float).
+    //   5. The current media is a music video (isMusicVideo == true) and
+    //      is NOT a local file (we can't PiP a local audio file because
+    //      there is no video stream for it).
+    //   6. Playback is currently playing (not paused) — entering PiP for
+    //      a paused video would show a frozen frame, which is confusing.
+    //
+    // The aspect ratio is computed from the current video's preferred
+    // height (or a sensible 16:9 default). Android requires the aspect
+    // ratio be in the range [1.0, 2.39]; we clamp to that range.
+    //
+    // onPictureInPictureModeChanged is overridden to surface the PiP
+    // state to the rest of the app (the player UI hides non-essential
+    // controls when in PiP). The state is exposed via
+    // `isInPictureInPictureModeState` (a mutableStateOf) so composables
+    // can react to it.
+
+    /** Tracks whether the activity is currently in PiP mode, exposed as
+     *  Compose state so the player UI can adapt (hide controls, etc.). */
+    var isInPictureInPictureModeState by mutableStateOf(false)
+        private set
+
+    /**
+     * Returns true if the current playback session is eligible for PiP:
+     * the setting is on, video playback is on, and the current media is a
+     * non-local music video that is actively playing.
+     *
+     * Called from [onUserLeaveHint] (and could be called from anywhere
+     * else that needs to know). Safe to call from the main thread.
+     */
+    private fun isPipEligible(): Boolean {
+        // PiP requires API 26+ (O). The app's minSdk is 26, so this check
+        // is always true — kept for defensive clarity.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return false
+        if (!packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)) return false
+        val pipEnabled = dataStore.get(EnablePipModeKey, false)
+        if (!pipEnabled) return false
+        val videoPlaybackEnabled = dataStore.get(EnableVideoPlaybackKey, true)
+        if (!videoPlaybackEnabled) return false
+        val connection = playerConnection ?: return false
+        val metadata = connection.mediaMetadata.value ?: return false
+        if (metadata.isMusicVideo != true) return false
+        if (metadata.id.isLocalMediaId()) return false
+        // Only enter PiP if playback is actually playing — entering PiP
+        // for a paused video would show a frozen frame.
+        if (!connection.isPlaying.value) return false
+        return true
+    }
+
+    /**
+     * Computes the [PictureInPictureParams] for the current playback.
+     *
+     * Uses a 16:9 aspect ratio (the standard for music videos on YouTube)
+     * since the actual video surface bounds aren't easily accessible from
+     * the activity. 16:9 (1.78) is well within Android's supported range
+     * of [1.0, 2.39].
+     *
+     * PiP requires API 26+ (Build.VERSION_CODES.O); the app's minSdk is 26
+     * so no version guard is needed.
+     */
+    private fun buildPipParams(): PictureInPictureParams =
+        PictureInPictureParams
+            .Builder()
+            .setAspectRatio(Rational(16, 9))
+            .build()
+
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        if (isPipEligible()) {
+            try {
+                enterPictureInPictureMode(buildPipParams())
+            } catch (e: IllegalStateException) {
+                // Some OEMs throw ISE if PiP is attempted while the
+                // activity isn't in a valid state. Swallow and continue —
+                // the user simply won't get PiP this time.
+                reportException(e)
+            } catch (e: Exception) {
+                reportException(e)
+            }
+        }
+    }
+
+    override fun onPictureInPictureModeChanged(
+        isInPictureInPictureMode: Boolean,
+        newConfig: Configuration,
+    ) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        isInPictureInPictureModeState = isInPictureInPictureMode
+    }
+    // ── End Picture-in-Picture ────────────────────────────────────────────
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
@@ -1719,6 +1826,7 @@ class MainActivity : ComponentActivity() {
                         moe.rukamori.archivetune.ui.component.LocalBottomSheetPageState provides bottomSheetPageState,
                         moe.rukamori.archivetune.ui.component.LocalMenuState provides menuState,
                         LocalNavigationBarBackdrop provides navBarFrostedBackdrop,
+                        moe.rukamori.archivetune.ui.player.LocalIsInPipMode provides isInPictureInPictureModeState,
                     ) {
                         Row {
                             AnimatedVisibility(

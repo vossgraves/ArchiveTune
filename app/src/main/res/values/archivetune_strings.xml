@@ -411,6 +411,9 @@
     <!-- Enable video playback setting (Player & audio settings) -->
     <string name="enable_video_playback">Enable video playback</string>
     <string name="enable_video_playback_desc">Show music videos inline in the player and keep audio/video in sync. When disabled, music videos play as audio only.</string>
+    <!-- Enable PiP mode setting (Player & audio settings) -->
+    <string name="enable_pip_mode">Enable PiP mode</string>
+    <string name="enable_pip_mode_desc">When a music video is playing and you leave the app, it keeps playing in a small floating window (Picture-in-Picture). Requires video playback to be enabled.</string>
     <string name="percentage_format">%d%%</string>
     <string name="import_online">Import a \"m3u\" playlists</string>
     <string name="import_csv">Import a \"csv\" playlists</string>

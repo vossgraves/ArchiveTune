@@ -194,6 +194,11 @@ val HideVideoKey = booleanPreferencesKey("hideVideo")
 // music videos are treated as plain audio (album artwork shown, no video stream is loaded).
 // Distinct from HideVideoKey which filters videos out of the library/queue entirely.
 val EnableVideoPlaybackKey = booleanPreferencesKey("enableVideoPlayback")
+// When ON (default OFF), leaving the app while a music video is playing enters Picture-in-
+// Picture mode so the video keeps playing in a small floating window. Requires video playback
+// to be enabled (EnableVideoPlaybackKey) — if video playback is off, this setting has no
+// effect because there is no video surface to float.
+val EnablePipModeKey = booleanPreferencesKey("enablePipMode")
 val AllowAgeRestrictedKey = booleanPreferencesKey("allowAgeRestricted")
 enum class DownloadSource {
     /**
