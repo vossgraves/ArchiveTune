@@ -177,60 +177,11 @@ fun LyricsProvidersSettings(
                 .padding(bottom = SettingsDimensions.ScreenBottomPadding),
         ) {
             PreferenceGroup(title = stringResource(R.string.providers)) {
-                item {
-                    SwitchPreference(
-                        title = { Text(stringResource(R.string.enable_betterlyrics)) },
-                        icon = { Icon(painterResource(R.drawable.lyrics), null) },
-                        checked = enableBetterLyrics,
-                        onCheckedChange = onEnableBetterLyricsChange,
-                    )
-                }
-
-                item {
-                    SwitchPreference(
-                        title = { Text(stringResource(R.string.enable_betterlyrics_portato)) },
-                        icon = { Icon(painterResource(R.drawable.lyrics), null) },
-                        checked = enableBetterLyricsPortato,
-                        onCheckedChange = onEnableBetterLyricsPortatoChange,
-                    )
-                }
-
-                item {
-                    SwitchPreference(
-                        title = { Text(stringResource(R.string.enable_youlyplus_lyrics)) },
-                        icon = { Icon(painterResource(R.drawable.lyrics), null) },
-                        checked = enableYouLyPlusLyrics,
-                        onCheckedChange = onEnableYouLyPlusLyricsChange,
-                    )
-                }
-
-                item {
-                    SwitchPreference(
-                        title = { Text(stringResource(R.string.enable_lrclib)) },
-                        icon = { Icon(painterResource(R.drawable.lyrics), null) },
-                        checked = enableLrclib,
-                        onCheckedChange = onEnableLrclibChange,
-                    )
-                }
-
-                item {
-                    SwitchPreference(
-                        title = { Text(stringResource(R.string.enable_kugou)) },
-                        icon = { Icon(painterResource(R.drawable.lyrics), null) },
-                        checked = enableKugou,
-                        onCheckedChange = onEnableKugouChange,
-                    )
-                }
-
-                item {
-                    SwitchPreference(
-                        title = { Text(stringResource(R.string.enable_unison_lyrics)) },
-                        icon = { Icon(painterResource(R.drawable.lyrics), null) },
-                        checked = enableUnisonLyrics,
-                        onCheckedChange = onEnableUnisonLyricsChange,
-                    )
-                }
-
+                // "Prioritize Word Synced Lyrics" sits at the TOP of the providers
+                // group because when it's ON it overrides every other toggle and the
+                // Lyrics Priority order below — the app queries only BetterLyrics,
+                // BetterLyrics Portato, YouLyPlus, and Unison directly. Putting it
+                // first makes the override relationship visually obvious.
                 item {
                     SwitchPreference(
                         title = { Text(stringResource(R.string.prioritize_word_synced_lyrics)) },
@@ -241,12 +192,82 @@ fun LyricsProvidersSettings(
                     )
                 }
 
+                // When "Prioritize Word Synced Lyrics" is ON, the per-provider
+                // toggles and Lyrics Priority order are ignored by LyricsHelper
+                // (the four word-sync-capable providers are queried directly).
+                // We grey them out here to signal that they have no effect while
+                // the override is active. They remain visible (not hidden) so the
+                // user can still see their state and understand what will resume
+                // when the override is turned back off.
+                val providerTogglesEnabled = !prioritizeWordSynced
+
+                item {
+                    SwitchPreference(
+                        title = { Text(stringResource(R.string.enable_betterlyrics)) },
+                        icon = { Icon(painterResource(R.drawable.lyrics), null) },
+                        checked = enableBetterLyrics,
+                        onCheckedChange = onEnableBetterLyricsChange,
+                        isEnabled = providerTogglesEnabled,
+                    )
+                }
+
+                item {
+                    SwitchPreference(
+                        title = { Text(stringResource(R.string.enable_betterlyrics_portato)) },
+                        icon = { Icon(painterResource(R.drawable.lyrics), null) },
+                        checked = enableBetterLyricsPortato,
+                        onCheckedChange = onEnableBetterLyricsPortatoChange,
+                        isEnabled = providerTogglesEnabled,
+                    )
+                }
+
+                item {
+                    SwitchPreference(
+                        title = { Text(stringResource(R.string.enable_youlyplus_lyrics)) },
+                        icon = { Icon(painterResource(R.drawable.lyrics), null) },
+                        checked = enableYouLyPlusLyrics,
+                        onCheckedChange = onEnableYouLyPlusLyricsChange,
+                        isEnabled = providerTogglesEnabled,
+                    )
+                }
+
+                item {
+                    SwitchPreference(
+                        title = { Text(stringResource(R.string.enable_lrclib)) },
+                        icon = { Icon(painterResource(R.drawable.lyrics), null) },
+                        checked = enableLrclib,
+                        onCheckedChange = onEnableLrclibChange,
+                        isEnabled = providerTogglesEnabled,
+                    )
+                }
+
+                item {
+                    SwitchPreference(
+                        title = { Text(stringResource(R.string.enable_kugou)) },
+                        icon = { Icon(painterResource(R.drawable.lyrics), null) },
+                        checked = enableKugou,
+                        onCheckedChange = onEnableKugouChange,
+                        isEnabled = providerTogglesEnabled,
+                    )
+                }
+
+                item {
+                    SwitchPreference(
+                        title = { Text(stringResource(R.string.enable_unison_lyrics)) },
+                        icon = { Icon(painterResource(R.drawable.lyrics), null) },
+                        checked = enableUnisonLyrics,
+                        onCheckedChange = onEnableUnisonLyricsChange,
+                        isEnabled = providerTogglesEnabled,
+                    )
+                }
+
                 item {
                     SwitchPreference(
                         title = { Text(stringResource(R.string.enable_simpmusic_lyrics)) },
                         icon = { Icon(painterResource(R.drawable.lyrics), null) },
                         checked = enableSimpMusicLyrics,
                         onCheckedChange = onEnableSimpMusicLyricsChange,
+                        isEnabled = providerTogglesEnabled,
                     )
                 }
 
@@ -256,6 +277,7 @@ fun LyricsProvidersSettings(
                         icon = { Icon(painterResource(R.drawable.lyrics), null) },
                         checked = enableMegalobizLyrics,
                         onCheckedChange = onEnableMegalobizLyricsChange,
+                        isEnabled = providerTogglesEnabled,
                     )
                 }
 
@@ -265,6 +287,7 @@ fun LyricsProvidersSettings(
                         icon = { Icon(painterResource(R.drawable.lyrics), null) },
                         checked = enablePaxsenixLyrics,
                         onCheckedChange = onEnablePaxsenixLyricsChange,
+                        isEnabled = providerTogglesEnabled,
                     )
                 }
 
@@ -273,6 +296,7 @@ fun LyricsProvidersSettings(
                         title = { Text(stringResource(R.string.paxsenix_stats)) },
                         icon = { Icon(painterResource(R.drawable.stats), null) },
                         onClick = { showPaxsenixStatsDialog = true },
+                        isEnabled = providerTogglesEnabled,
                     )
                 }
 
@@ -282,6 +306,7 @@ fun LyricsProvidersSettings(
                         icon = { Icon(painterResource(R.drawable.lyrics), null) },
                         checked = enablePaxsenixAppleMusicLyrics,
                         onCheckedChange = onEnablePaxsenixAppleMusicLyricsChange,
+                        isEnabled = providerTogglesEnabled,
                     )
                 }
 
@@ -291,6 +316,7 @@ fun LyricsProvidersSettings(
                         icon = { Icon(painterResource(R.drawable.lyrics), null) },
                         checked = enablePaxsenixNeteaseLyrics,
                         onCheckedChange = onEnablePaxsenixNeteaseLyricsChange,
+                        isEnabled = providerTogglesEnabled,
                     )
                 }
 
@@ -300,6 +326,7 @@ fun LyricsProvidersSettings(
                         icon = { Icon(painterResource(R.drawable.lyrics), null) },
                         checked = enablePaxsenixSpotifyLyrics,
                         onCheckedChange = onEnablePaxsenixSpotifyLyricsChange,
+                        isEnabled = providerTogglesEnabled,
                     )
                 }
 
@@ -309,6 +336,7 @@ fun LyricsProvidersSettings(
                         icon = { Icon(painterResource(R.drawable.lyrics), null) },
                         checked = enablePaxsenixMusixmatchLyrics,
                         onCheckedChange = onEnablePaxsenixMusixmatchLyricsChange,
+                        isEnabled = providerTogglesEnabled,
                     )
                 }
 
@@ -318,6 +346,7 @@ fun LyricsProvidersSettings(
                         icon = { Icon(painterResource(R.drawable.lyrics), null) },
                         checked = enablePaxsenixYouTubeLyrics,
                         onCheckedChange = onEnablePaxsenixYouTubeLyricsChange,
+                        isEnabled = providerTogglesEnabled,
                     )
                 }
 
@@ -327,6 +356,7 @@ fun LyricsProvidersSettings(
                         description = providerOrder.firstOrNull()?.displayName(),
                         icon = { Icon(painterResource(R.drawable.lyrics), null) },
                         onClick = { showProviderOrderDialog = true },
+                        isEnabled = providerTogglesEnabled,
                     )
                 }
             }
@@ -339,6 +369,7 @@ fun LyricsProvidersSettings(
                         icon = { Icon(painterResource(R.drawable.lyrics), null) },
                         checked = enableMusixmatchExperimental,
                         onCheckedChange = onEnableMusixmatchExperimentalChange,
+                        isEnabled = !prioritizeWordSynced,
                     )
                 }
                 item(visible = enableMusixmatchExperimental) {

@@ -138,26 +138,25 @@ class LyricsHelper
                 return LyricsResult(providerName = "", lyrics = LYRICS_NOT_FOUND)
             }
 
-            val ordered =
-                orderedProviders()
-                    .filter { it.isEnabled(context) }
-                    .filter { supportsMediaId(it, mediaMetadata.id) }
-            val providers = if (preferredProviderOnly) ordered.take(1) else ordered
-
             // When "Prioritize Word Synced Lyrics" is ON (and the caller isn't asking
             // for the preferred provider only), first try to obtain word-synced lyrics
             // from the four word-sync-capable providers (BetterLyrics, BetterLyrics
-            // Portato, YouLyPlus, Unison) — regardless of their position in the user's
-            // provider priority order. If any of them returns word-synced lyrics, we
-            // use that immediately. Otherwise we fall through to the normal priority
-            // ranking across all enabled providers.
+            // Portato, YouLyPlus, Unison). These are queried DIRECTLY — bypassing
+            // both the per-provider enable toggles AND the user's provider-priority
+            // order — because when this feature is on the user has explicitly said
+            // they want word-synced lyrics from these four sources first, full stop.
+            //
+            // If any of the four returns lyrics that are actually word-synced
+            // (QRC/YRC/TTML with word-level timings), we use that immediately.
+            // Otherwise we fall through to the normal priority ranking across all
+            // enabled providers (the regular flow below).
             if (prioritizeWordSynced) {
                 GlobalLog.append(
                     Log.DEBUG,
                     "LyricsHelper",
                     "PrioritizeWordSynced=on: querying BetterLyrics/BetterLyrics Portato/YouLyPlus/Unison for word-synced lyrics",
                 )
-                val wordSyncedResult = tryFetchWordSyncedFromPriorityProviders(ordered, mediaMetadata)
+                val wordSyncedResult = tryFetchWordSyncedFromPriorityProviders(mediaMetadata)
                 if (wordSyncedResult != null && isMeaningfulLyrics(wordSyncedResult.lyrics)) {
                     GlobalLog.append(
                         Log.DEBUG,
@@ -174,6 +173,12 @@ class LyricsHelper
                 )
             }
 
+            val ordered =
+                orderedProviders()
+                    .filter { it.isEnabled(context) }
+                    .filter { supportsMediaId(it, mediaMetadata.id) }
+            val providers = if (preferredProviderOnly) ordered.take(1) else ordered
+
             val result = fetchPriorityLyricsResult(providers, mediaMetadata)
             if (isMeaningfulLyrics(result.lyrics)) {
                 singleLyricsCache.put(cacheKey, result)
@@ -183,24 +188,40 @@ class LyricsHelper
         }
 
         /**
-         * Queries the subset of [orderedProviders] that are capable of returning
-         * word-synced lyrics (BetterLyrics, BetterLyrics Portato, YouLyPlus, Unison)
-         * in parallel and returns the first one whose response is actually word-synced
-         * (QRC/YRC/TTML with word-level timings). Returns null if none of them return
-         * word-synced lyrics, so the caller can fall back to the normal priority flow.
+         * Queries the four word-sync-capable providers (BetterLyrics, BetterLyrics
+         * Portato, YouLyPlus, Unison) IN PARALLEL and returns the first one whose
+         * response is actually word-synced (QRC/YRC/TTML with word-level timings).
+         * Returns null if none of them return word-synced lyrics, so the caller can
+         * fall back to the normal priority flow.
          *
-         * The four candidate providers are filtered from [orderedProviders] (rather
-         * than hard-coded) so that if the user has disabled one of them via the
-         * provider toggles, it is correctly skipped here too. Provider-priority order
-         * is preserved when filtering, so when multiple candidates return word-synced
-         * lyrics the highest-priority one wins.
+         * IMPORTANT: This is invoked when the "Prioritize Word Synced Lyrics" toggle
+         * is ON. The four providers are queried DIRECTLY — their per-provider enable
+         * toggles in the Lyrics Providers settings screen are deliberately bypassed,
+         * because the toggle being ON is an explicit override that says "I want
+         * word-synced lyrics from these four sources regardless of any other
+         * provider config". Likewise the user's provider-priority order is ignored
+         * here — among these four, the first one (in the fixed order below) that
+         * returns word-synced lyrics wins. This matches the user's expectation:
+         * "It searches word synced lyrics from Betterlyrics, Betterlyrics Portato,
+         * YouLyPlus and Unison (If it finds one it should show)".
+         *
+         * Only results that pass [LyricsUtils.hasWordSyncedLyrics] are eligible —
+         * a provider returning plain LRC or plain text is ignored, even if it was
+         * the only one to respond. This satisfies: "between these 4 providers it
+         * should only use the lyrics which has a tag of word sync".
          */
         private suspend fun tryFetchWordSyncedFromPriorityProviders(
-            orderedProviders: List<LyricsProvider>,
             mediaMetadata: MediaMetadata,
         ): LyricsResult? {
-            val wordSyncCapable = orderedProviders.filter { it.isWordSyncCapableProvider }
-            if (wordSyncCapable.isEmpty()) return null
+            // Fixed canonical order. This is independent of the user's provider
+            // priority order so the behaviour is predictable when the toggle is ON.
+            val wordSyncCapable: List<LyricsProvider> =
+                listOf(
+                    BetterLyricsProvider,
+                    BetterLyricsPortatoProvider,
+                    YouLyPlusLyricsProvider,
+                    UnisonLyricsProvider,
+                )
 
             val artist = mediaMetadata.artists.joinToString { it.name }
             val results =
@@ -212,18 +233,33 @@ class LyricsHelper
                                     withTimeoutOrNull(PROVIDER_TIMEOUT_MS) {
                                         fetchProviderLyrics(provider, mediaMetadata, artist)
                                     }
-                                if (lyrics == null) null else provider.name to lyrics
+                                if (lyrics == null) {
+                                    GlobalLog.append(
+                                        Log.DEBUG,
+                                        "LyricsHelper",
+                                        "${provider.name} returned no lyrics (timeout or error)",
+                                    )
+                                    null
+                                } else {
+                                    val isWordSynced = LyricsUtils.hasWordSyncedLyrics(lyrics)
+                                    GlobalLog.append(
+                                        Log.DEBUG,
+                                        "LyricsHelper",
+                                        "${provider.name} returned lyrics (word-synced=$isWordSynced, length=${lyrics.length})",
+                                    )
+                                    if (isWordSynced) provider.name to lyrics else null
+                                }
                             }
                         }.mapNotNull { it.await() }
                 }
 
             if (results.isEmpty()) return null
 
-            // Walk results in provider-priority order and return the first one that is
-            // actually word-synced. Provider-priority order is preserved because
-            // `wordSyncCapable` was filtered from `orderedProviders`.
-            val wordSynced = results.firstOrNull { LyricsUtils.hasWordSyncedLyrics(it.second) }
-            return wordSynced?.let { LyricsResult(providerName = it.first, lyrics = it.second) }
+            // Walk results in canonical provider order (because `wordSyncCapable`
+            // is ordered) and return the first one. We already filtered out
+            // non-word-synced responses above, so every entry here is word-synced.
+            val first = results.first()
+            return LyricsResult(providerName = first.first, lyrics = first.second)
         }
 
         suspend fun getAllLyrics(
@@ -458,16 +494,3 @@ data class LyricsResult(
     val providerName: String,
     val lyrics: String,
 )
-
-/**
- * True for the four lyrics providers that can return word-synced lyrics
- * (QRC/YRC/TTML with word-level timings): BetterLyrics, BetterLyrics Portato,
- * YouLyPlus, and Unison. Used by [LyricsHelper.tryFetchWordSyncedFromPriorityProviders]
- * to filter the enabled provider list when "Prioritize Word Synced Lyrics" is on.
- */
-private val LyricsProvider.isWordSyncCapableProvider: Boolean
-    get() =
-        this is BetterLyricsProvider ||
-            this is BetterLyricsPortatoProvider ||
-            this is YouLyPlusLyricsProvider ||
-            this is UnisonLyricsProvider
