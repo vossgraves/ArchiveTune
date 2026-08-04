@@ -28,6 +28,7 @@ import moe.rukamori.archivetune.constants.TranslatorTargetLangKey
 import moe.rukamori.archivetune.db.MusicDatabase
 import moe.rukamori.archivetune.db.entities.LyricsEntity
 import moe.rukamori.archivetune.extensions.toEnum
+import moe.rukamori.archivetune.lyrics.LyricsUtils
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.utils.dataStore
 import javax.inject.Inject
@@ -58,11 +59,9 @@ class AutoLyricsTranslator
                         val existing = database.lyrics(mediaMetadata.id).first()
                         if (existing != null && existing.source == LyricsEntity.Source.AI_TRANSLATION.value) return@launch
 
-                        val sample = lyricsText.take(1000)
-                        val nonAsciiCount = sample.count { it.code > 0x7F }
-                        if (nonAsciiCount < 5) return@launch
-
                         val targetLanguage = prefs[TranslatorTargetLangKey].orEmpty()
+                        if (!LyricsUtils.shouldAutoTranslate(lyricsText, targetLanguage)) return@launch
+
                         val config =
                             AiServiceConfig(
                                 provider = provider,

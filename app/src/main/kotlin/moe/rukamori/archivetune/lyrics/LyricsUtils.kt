@@ -36,6 +36,8 @@ object LyricsUtils {
     private val INLINE_MILLISECONDS_TIME_REGEX = Regex("""<\d{1,8}(?:,\d{1,8})?>""")
     private val YRC_LINE_REGEX = Regex("""\[(\d{1,8}),\d{1,8}\](.*)""")
     private val YRC_WORD_TIME_REGEX = Regex("""\(\d{1,8},\d{1,8}(?:,\d{1,8})?\)""")
+    private val QrcTranslationLineRegex = Regex("""^\[(\d{1,8}),(\d{1,8})](.*)$""")
+    private val QrcWordTimingDetectRegex = Regex("""\(\d{1,8},\d{1,8}(?:,\d{1,8})?\)""")
     private val TTML_SPAN_REGEX =
         Regex(
             pattern = """<span\b[^>]*>""",
@@ -385,6 +387,110 @@ object LyricsUtils {
             trimmed.contains("http://www.w3.org/ns/ttml", ignoreCase = true)
     }
 
+    fun shouldAutoTranslate(lyrics: String, targetLanguage: String): Boolean {
+        if (lyrics.isBlank()) return false
+        val allowedScripts = allowedScriptsForLanguage(targetLanguage)
+        return lyrics.asSequence().any { char ->
+            if (!char.isLetter()) return@any false
+            val script = UnicodeScript.of(char.code)
+            script !in allowedScripts
+        }
+    }
+
+    private fun allowedScriptsForLanguage(language: String): Set<UnicodeScript> {
+        val normalized = language.trim().lowercase().replace('_', '-').substringBefore('-')
+        val code = when (normalized) {
+            "english", "en" -> "en"
+            "japanese", "ja" -> "ja"
+            "korean", "ko" -> "ko"
+            "chinese", "zh", "mandarin", "cmn", "cantonese", "yue" -> "zh"
+            "hindi", "hi", "sanskrit", "sa", "marathi", "mr", "nepali", "ne" -> "hi"
+            "arabic", "ar", "persian", "fa", "urdu", "ur" -> "ar"
+            "russian", "ru", "ukrainian", "uk", "belarusian", "be", "bulgarian", "bg" -> "ru"
+            "thai", "th" -> "th"
+            "hebrew", "he", "yiddish", "yi" -> "he"
+            "greek", "el" -> "el"
+            "armenian", "hy" -> "hy"
+            "georgian", "ka" -> "ka"
+            else -> normalized
+        }
+        return when (code) {
+            "ja" -> setOf(
+                UnicodeScript.LATIN,
+                UnicodeScript.COMMON,
+                UnicodeScript.INHERITED,
+                UnicodeScript.HAN,
+                UnicodeScript.HIRAGANA,
+                UnicodeScript.KATAKANA,
+            )
+            "ko" -> setOf(
+                UnicodeScript.LATIN,
+                UnicodeScript.COMMON,
+                UnicodeScript.INHERITED,
+                UnicodeScript.HANGUL,
+            )
+            "zh" -> setOf(
+                UnicodeScript.LATIN,
+                UnicodeScript.COMMON,
+                UnicodeScript.INHERITED,
+                UnicodeScript.HAN,
+            )
+            "hi" -> setOf(
+                UnicodeScript.LATIN,
+                UnicodeScript.COMMON,
+                UnicodeScript.INHERITED,
+                UnicodeScript.DEVANAGARI,
+            )
+            "ar" -> setOf(
+                UnicodeScript.LATIN,
+                UnicodeScript.COMMON,
+                UnicodeScript.INHERITED,
+                UnicodeScript.ARABIC,
+            )
+            "ru" -> setOf(
+                UnicodeScript.LATIN,
+                UnicodeScript.COMMON,
+                UnicodeScript.INHERITED,
+                UnicodeScript.CYRILLIC,
+            )
+            "th" -> setOf(
+                UnicodeScript.LATIN,
+                UnicodeScript.COMMON,
+                UnicodeScript.INHERITED,
+                UnicodeScript.THAI,
+            )
+            "he" -> setOf(
+                UnicodeScript.LATIN,
+                UnicodeScript.COMMON,
+                UnicodeScript.INHERITED,
+                UnicodeScript.HEBREW,
+            )
+            "el" -> setOf(
+                UnicodeScript.LATIN,
+                UnicodeScript.COMMON,
+                UnicodeScript.INHERITED,
+                UnicodeScript.GREEK,
+            )
+            "hy" -> setOf(
+                UnicodeScript.LATIN,
+                UnicodeScript.COMMON,
+                UnicodeScript.INHERITED,
+                UnicodeScript.ARMENIAN,
+            )
+            "ka" -> setOf(
+                UnicodeScript.LATIN,
+                UnicodeScript.COMMON,
+                UnicodeScript.INHERITED,
+                UnicodeScript.GEORGIAN,
+            )
+            else -> setOf(
+                UnicodeScript.LATIN,
+                UnicodeScript.COMMON,
+                UnicodeScript.INHERITED,
+            )
+        }
+    }
+
     fun isLineSyncedLrc(lyrics: String): Boolean =
         QRCParser.isQrc(normalizeLyricsText(lyrics)) ||
             lyrics.lineSequence().any { line ->
@@ -441,9 +547,11 @@ object LyricsUtils {
     fun parseLyrics(lyrics: String): List<LyricsEntry> {
         val normalizedLyrics = normalizeLyricsText(lyrics)
         if (QRCParser.isQrc(normalizedLyrics)) {
+            val translationsByStartMs = extractQrcTranslations(normalizedLyrics)
             return QRCParser.parseQrc(normalizedLyrics).map { line ->
+                val startMs = (line.startTime * 1000.0).toLong()
                 LyricsEntry(
-                    time = (line.startTime * 1000.0).toLong(),
+                    time = startMs,
                     text = line.text,
                     words =
                         line.words
@@ -455,6 +563,7 @@ object LyricsUtils {
                                 )
                             }.takeIf { it.isNotEmpty() },
                     agent = line.agent,
+                    providerTranslationText = translationsByStartMs[startMs],
                     durationMs = ((line.endTime - line.startTime) * 1000.0).toLong().coerceAtLeast(0L),
                 )
             }
@@ -470,6 +579,29 @@ object LyricsUtils {
             }
         }
         return mergeLineSyncedTranslations(result).sorted()
+    }
+
+    private fun extractQrcTranslations(lyrics: String): Map<Long, String> {
+        val wordTimedStartMs = mutableSetOf<Long>()
+        val translationCandidates = mutableListOf<Pair<Long, String>>()
+        lyrics.lineSequence().forEach { line ->
+            val trimmed = line.trim()
+            val match = QrcTranslationLineRegex.matchEntire(trimmed) ?: return@forEach
+            val startMs = match.groupValues[1].toLongOrNull() ?: return@forEach
+            val content = match.groupValues[3]
+            if (QrcWordTimingDetectRegex.containsMatchIn(content)) {
+                wordTimedStartMs.add(startMs)
+            } else if (content.isNotBlank()) {
+                translationCandidates.add(startMs to content.trim())
+            }
+        }
+        val translations = mutableMapOf<Long, String>()
+        translationCandidates.forEach { (startMs, text) ->
+            if (startMs in wordTimedStartMs && startMs !in translations) {
+                translations[startMs] = text
+            }
+        }
+        return translations
     }
 
     fun normalizeLyricsText(lyrics: String): String {

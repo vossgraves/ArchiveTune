@@ -141,6 +141,7 @@ import moe.rukamori.archivetune.constants.AutoTranslateLyricsKey
 import moe.rukamori.archivetune.constants.TranslatorTargetLangKey
 import moe.rukamori.archivetune.db.entities.LyricsEntity
 import moe.rukamori.archivetune.extensions.togglePlayPause
+import moe.rukamori.archivetune.lyrics.LyricsUtils
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.LyricsEnhanced
@@ -357,12 +358,7 @@ fun LyricsScreen(
         if (text.isBlank() || text == LyricsEntity.LYRICS_NOT_FOUND) return@LaunchedEffect
         if (snapshot.source == LyricsEntity.Source.AI_TRANSLATION.value) return@LaunchedEffect
 
-        // Heuristic: at least 5 non-ASCII letters in the first ~1000 chars of lyrics →
-        // treat as foreign script. LRC tags ([00:12.34]) and timestamps are ASCII so
-        // they don't trip the detector.
-        val sample = text.take(1000)
-        val nonAsciiCount = sample.count { it.code > 0x7F }
-        if (nonAsciiCount < 5) return@LaunchedEffect
+        if (!LyricsUtils.shouldAutoTranslate(text, translatorTargetLang)) return@LaunchedEffect
 
         lyricsMenuViewModel.translateLyricsWithAi(
             mediaMetadata = mediaMetadata,
