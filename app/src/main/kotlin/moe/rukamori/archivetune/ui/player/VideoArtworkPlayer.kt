@@ -115,22 +115,23 @@ private const val VideoSyncIgnoreToleranceMs = 60L
  * [VideoSyncSpeedCorrectionFactorMax]); above it, the video is seeked
  * straight to the audio's current position while the audio keeps playing.
  *
- * 400ms is the crossover because the user's complaint is that desync is
- * *always* visible and only pause/resume or a quality change ever fixed
- * it. The previous 3000ms threshold meant a typical 300–1500ms decoder
- * stall produced a desync the speed-correction loop (max ±20%, normalised
- * over 3000ms) needed ~15 seconds to fix — i.e. permanently out of sync.
+ * The previous 400ms value was a regression: a re-anchor seek re-buffers
+ * (a visible 1–2s stall), and a 400ms threshold fired repeatedly during
+ * the first seconds of playback — the video's decoder warms up slightly
+ * behind the audio, so the poller kept seeking it back, which kept
+ * re-buffering it → "lags for the initial seconds after first play".
  *
- * With 400ms, any drift beyond "barely perceptible" is snapped back to
- * the audio clock immediately. The video is normally buffered far enough
- * ahead that a ~400ms re-anchor seek re-decodes in tens of milliseconds
- * with no network re-buffer (it is the *position* that is off, not the
- * buffer). This is exactly what the manual pause/resume fix does — minus
- * the pause. The [VideoSeekSettlingTimeMs] settling window plus the
- * READY-state gating in the drift poller prevent the re-buffer loop that
- * previously plagued this path.
+ * 2000ms keeps the seek-based correction for *genuine* large drift while
+ * never firing during normal warm-up. The user's actual "video is laggy"
+ * problem is NOT a position error — it's a stale/frozen presentation on
+ * the surface (their pause/resume "fix" doesn't seek either). That is
+ * handled separately by [VideoArtworkState.kickRenderer] (a video-only
+ * pause/resume micro-cycle), which the surface re-attach path and the
+ * frozen-renderer detector use. The seek here is the last resort for real
+ * desync (e.g. a long decode stall) where a brief re-buffer stall is
+ * preferable to staying out of sync.
  */
-private const val VideoSoftSeekDriftThresholdMs = 400L
+private const val VideoSoftSeekDriftThresholdMs = 2000L
 
 /**
  * Maximum proportional speed adjustment applied for drift correction.
@@ -143,20 +144,18 @@ private const val VideoSoftSeekDriftThresholdMs = 400L
  * `video-sync=audio` mode).
  *
  * The correction is proportional: drift = 0 → factor = 1.0; drift =
- * +200ms (video ahead) → factor ≈ 0.90; drift = -200ms (video behind)
- * → factor ≈ 1.10; drift = ±400ms → factor = 0.80 / 1.20 (capped).
+ * +1000ms (video ahead) → factor ≈ 0.90; drift = -1000ms (video behind)
+ * → factor ≈ 1.10; drift = ±2000ms → factor = 0.80 / 1.20 (capped).
  *
  * The factor is recomputed every poll cycle ([VideoSyncPollIntervalMs]
  * = 250ms), so it continuously narrows as drift approaches zero. Once
  * drift drops below [VideoSyncIgnoreToleranceMs] the factor resets to
  * 1.0 and the video returns to the user's preferred playback speed.
  *
- * The normalization is over [VideoSoftSeekDriftThresholdMs] (400ms), so
- * the whole 60–400ms correction band converges in roughly 2–3 seconds —
- * fast enough that a drift caused by a brief decoder stall is fixed
- * before the user registers it as "desynced". Above 400ms the drift
- * poller switches to an immediate re-anchor seek (see
- * [VideoSoftSeekDriftThresholdMs]), which is even faster.
+ * The normalization is over [VideoSoftSeekDriftThresholdMs] (2000ms), so
+ * a moderate drift converges within a few seconds — gently, with no
+ * re-buffer stall. Above 2000ms the drift poller switches to a re-anchor
+ * seek (see [VideoSoftSeekDriftThresholdMs]).
  *
  * 20% is noticeable to the user IF sustained, but because it's
  * proportional and only sustained while drift is being corrected (a
@@ -185,23 +184,43 @@ private const val VideoSyncSpeedCorrectionFactorMax = 0.20f
 private const val VideoSeekSettlingTimeMs = 2000L
 
 /**
- * Minimum time between automatic surface re-anchors in
- * [Player.Listener.onRenderedFirstFrame].
+ * Minimum time between [VideoArtworkState.kickRenderer] micro-cycles.
  *
  * When the video surface is re-attached while the player is already
- * playing (fullscreen toggle, orientation change, window resize), the
- * TextureView can hold a stale frame while the ExoPlayer clock keeps
- * advancing — the video looks frozen/laggy and the drift poller can't
- * detect it (it compares clocks, not displayed frames). We force the
- * renderer to present the frame at the audio position with a seekTo.
+ * playing (fullscreen toggle, orientation change, window resize), or a
+ * frozen renderer is detected by the drift poller, we restart the video
+ * renderer with a video-only pause/resume micro-cycle (the same action as
+ * the user's manual "pause and resume" fix, but without touching the
+ * audio and without re-buffering).
  *
- * That seekTo itself triggers another onRenderedFirstFrame, which would
- * re-trigger the seek → infinite loop. The min-interval guard breaks the
- * cycle: a re-anchor can only fire once every 2s, and the drift poller
- * also stamps [VideoArtworkState.lastSurfaceReanchorAtMs] when *it*
- * re-anchors, so a poller re-anchor doesn't get double-handled either.
+ * That pause/resume can itself produce another `onRenderedFirstFrame`
+ * (and a renderer that immediately re-sticks would re-trigger the
+ * detector), so the min-interval guard in [VideoArtworkState.kickRenderer]
+ * stamps [VideoArtworkState.lastSurfaceReanchorAtMs] and drops any
+ * request within 2s of the previous one.
  */
 private const val SurfaceReanchorMinIntervalMs = 2000L
+
+/**
+ * Number of consecutive drift-poll cycles over which the video position
+ * must fail to advance (while the audio position advances) before we
+ * conclude the renderer is frozen and fire a
+ * [VideoArtworkState.kickRenderer] micro-cycle.
+ *
+ * With a [VideoSyncPollIntervalMs] of 250ms, this detects a frozen
+ * renderer within ~750ms — BEFORE its accumulated drift reaches the
+ * [VideoSoftSeekDriftThresholdMs] re-anchor threshold, so the normal
+ * path is a no-stall renderer restart instead of a re-buffer seek.
+ */
+private const val VideoFrozenRendererCycles = 3
+
+/**
+ * A video position is considered "not advancing" in the frozen-renderer
+ * detector if it moved less than this many milliseconds over a poll cycle.
+ * A renderer that is presenting frames advances its position by roughly
+ * the poll interval each cycle; a frozen one barely moves at all.
+ */
+private const val VideoFrozenRendererMaxAdvanceMs = 50L
 
 /**
  * Tight drift tolerance used ONLY for the initial sync in
@@ -240,11 +259,9 @@ private const val VideoHardResyncCooldownMs = 30_000L
 /**
  * How often to poll the main player's position and re-sync the video.
  *
- * 250ms (previously 500ms) bounds how long a decoder stall can go
- * uncorrected: with a 400ms re-anchor threshold and a 250ms poll the
- * worst-case visible desync before self-correction is ~650ms, and the
- * typical case is under 300ms. The polling cost is negligible (a couple
- * of reads every 250ms).
+ * 250ms (previously 500ms) makes the frozen-renderer detector respond
+ * within ~750ms (3 cycles) and keeps speed correction responsive. The
+ * polling cost is negligible (a couple of reads every 250ms).
  */
 private const val VideoSyncPollIntervalMs = 250L
 
@@ -400,18 +417,19 @@ class VideoArtworkState internal constructor(
 
     /**
      * Epoch-millis (from [SystemClock.elapsedRealtime]) of the last
-     * **surface re-anchor** — a forced `seekTo(audioPosition)` performed
-     * either by [Player.Listener.onRenderedFirstFrame] when the video
-     * surface is re-attached while already playing (fullscreen toggle /
-     * orientation change) or by the drift poller when it re-anchors the
-     * video to the audio clock.
+     * **renderer restart** — a video-only pause/resume micro-cycle
+     * performed by [kickRenderer], either from
+     * [Player.Listener.onRenderedFirstFrame] when the video surface is
+     * re-attached while already playing (fullscreen toggle / orientation
+     * change) or by the drift poller's frozen-renderer detector.
      *
-     * [SurfaceReanchorMinIntervalMs] uses this to stop the re-anchor from
-     * re-triggering itself: the forced seekTo produces another
-     * `onRenderedFirstFrame`, and without the interval guard that callback
-     * would seekTo again → infinite loop. Stamp this BEFORE the seekTo in
-     * both places so the follow-up callback sees a recent timestamp and
-     * stands down.
+     * [SurfaceReanchorMinIntervalMs] uses this to rate-limit the
+     * micro-cycles: the pause/resume can itself produce another
+     * `onRenderedFirstFrame` (and a renderer that immediately re-sticks
+     * would re-trigger the detector), so without the interval guard the
+     * restart could loop. The drift poller also stamps this when it
+     * performs a large-drift re-anchor seek, so that seek's follow-up
+     * `onRenderedFirstFrame` stands down instead of double-restarting.
      *
      * Reset to 0 when the video id changes (the new video's own first-frame
      * flow handles its initial sync).
@@ -572,34 +590,49 @@ class VideoArtworkState internal constructor(
     }
 
     /**
-     * Force the video to re-anchor to the main audio's position at
-     * [mainPos] WITHOUT pausing the audio.
+     * Video-only pause/resume micro-cycle — the automated version of the
+     * user's manual "pause and resume" that fixes a laggy video.
      *
-     * This is the same action the drift poller performs for large drift,
-     * but invoked directly by the host at moments when the video surface is
-     * re-created (fullscreen toggle, orientation change, window resize). A
-     * freshly-attached TextureView can present a stale or mis-timed frame
-     * while the ExoPlayer clock keeps advancing — the "video is laggy after
-     * fullscreen, only pause/resume fixes it" bug. The drift poller can't
-     * detect that state (it compares clocks, not displayed frames), so we
-     * force the renderer to present the frame at the audio position here.
+     * The video can look laggy/frozen while the audio keeps playing even
+     * though its *position* is fine (or frozen) — the surface is holding a
+     * stale frame or the renderer has stopped presenting frames. This is
+     * NOT a position error, so the drift poller's seek-based correction
+     * can't fix it (and a seek makes it worse by adding a re-buffer stall).
      *
-     * The seekTo keeps the video in the already-buffered range (the target
-     * is the current playback position), so the re-anchor re-decodes in tens
-     * of milliseconds rather than re-buffering from the network.
+     * Pausing and resuming the video player forces the renderer to
+     * re-sync its presentation clock to the current position and start
+     * presenting fresh frames — WITHOUT pausing the main audio and
+     * WITHOUT seeking/re-buffering. This is exactly what the manual
+     * pause/resume fix does, minus the audio interruption.
      *
-     * No-op unless the video is actively rendering ([Player.STATE_READY]).
+     * Called deterministically when the video surface is re-created
+     * (fullscreen toggle / orientation change / window resize, via
+     * [Player.Listener.onRenderedFirstFrame]) and by the drift poller when
+     * it detects a frozen renderer.
+     *
+     * Rate-limited by [SurfaceReanchorMinIntervalMs] so a renderer that
+     * immediately re-sticks can't cause a busy loop.
+     *
+     * @return `true` if the micro-cycle was performed, `false` if it was
+     *   dropped (not playing / not ready / resyncing / failed / within the
+     *   rate-limit window).
      */
-    internal fun reanchorToAudio(mainPos: Long) {
-        if (hasPlaybackFailed) return
-        if (isResyncing) return
-        if (mainPos <= 0L) return
-        if (exoPlayer.playbackState != Player.STATE_READY) return
-        val now = SystemClock.elapsedRealtime()
-        currentSpeedCorrectionFactor = 1.0f
-        exoPlayer.seekTo(mainPos)
-        lastSeekAtMs = now
+    internal fun kickRenderer(now: Long = SystemClock.elapsedRealtime()): Boolean {
+        if (hasPlaybackFailed) return false
+        if (isResyncing) return false
+        if (exoPlayer.playbackState != Player.STATE_READY) return false
+        if (!exoPlayer.playWhenReady) return false
+        if (lastSurfaceReanchorAtMs != 0L && now - lastSurfaceReanchorAtMs < SurfaceReanchorMinIntervalMs) {
+            return false
+        }
         lastSurfaceReanchorAtMs = now
+        // Pause then resume in the same call. ExoPlayer processes these in
+        // order on the playback thread: the renderer stops presenting,
+        // re-derives its presentation clock from the current position, and
+        // resumes presenting fresh frames. No seek → no re-buffer stall.
+        exoPlayer.pause()
+        exoPlayer.play()
+        return true
     }
 }
 
@@ -644,14 +677,23 @@ class VideoArtworkState internal constructor(
  * up to [VideoSoftSeekDriftThresholdMs]) are corrected by gently adjusting
  * the video's playback speed. Larger drifts (> [VideoSoftSeekDriftThresholdMs])
  * are corrected with an immediate "re-anchor" — seeking the video to the
- * audio's current position WITHOUT pausing the main audio. This is exactly
- * what the manual pause/resume fix does, minus the pause, and it is the
- * primary desync correction: any drift beyond "barely perceptible" snaps
- * back to the audio clock within one poll cycle. The video may freeze
- * briefly while it re-decodes, but the audio continues uninterrupted.
- * Corrections only run while the video is in STATE_READY (its position is
- * trustworthy) and are suppressed for [VideoSeekSettlingTimeMs] after any
- * seek, so a re-anchor can never re-trigger itself in a loop.
+ * audio's current position WITHOUT pausing the main audio. The threshold is
+ * deliberately high (2000ms) so the re-buffer stall a seek causes only
+ * happens for genuine large drift, never during normal warm-up. Corrections
+ * only run while the video is in STATE_READY (its position is trustworthy)
+ * and are suppressed for [VideoSeekSettlingTimeMs] after any seek, so a
+ * re-anchor can never re-trigger itself in a loop.
+ *
+ * Frozen/laggy renderer handling: a video can LOOK laggy or frozen while
+ * the audio plays on even though its position is fine (or frozen) — the
+ * surface is holding a stale frame or the renderer stopped presenting
+ * frames. That is NOT a position drift, so seeking can't fix it (and a
+ * seek makes it worse with a re-buffer stall). The surface re-attach path
+ * (fullscreen toggle / orientation change) restarts the renderer with a
+ * video-only pause/resume micro-cycle ([VideoArtworkState.kickRenderer]),
+ * and the poller's frozen-renderer detector does the same mid-playback —
+ * both are the automated version of the user's manual "pause and resume"
+ * fix, without pausing the audio and without re-buffering.
  *
  * Stuck-buffering recovery: if the ExoPlayer stays in STATE_BUFFERING for
  * longer than [VideoStuckBufferingTimeoutMs], the poller forces a
@@ -1249,6 +1291,13 @@ fun rememberVideoArtworkState(
     // ── Periodic position sync + stuck-buffering recovery ──
     LaunchedEffect(state.streamUrl, exoPlayer) {
         if (state.streamUrl == null) return@LaunchedEffect
+        // Positions from the previous poll cycle, used by the frozen-renderer
+        // detector below to tell whether the video advanced at all while the
+        // audio did. Declared inside the effect so they reset whenever the
+        // video (streamUrl) changes.
+        var prevVideoPos = -1L
+        var prevAudioPos = -1L
+        var frozenCycles = 0
         while (isActive) {
             delay(VideoSyncPollIntervalMs)
             if (state.hasPlaybackFailed) continue
@@ -1286,22 +1335,22 @@ fun rememberVideoArtworkState(
             //    top of the user's preferred speed. Video behind audio →
             //    speed up; video ahead → slow down. No seek, no
             //    re-buffer. Normalized over [VideoSoftSeekDriftThresholdMs]
-            //    (400ms), so the whole band converges in ~2–3s.
+            //    (2000ms), so a moderate drift converges within a few
+            //    seconds.
             //
             // 3. RE-ANCHOR / SOFT SEEK
             //    ([VideoSoftSeekDriftThresholdMs] < |drift| <=
             //    [VideoHardResyncThresholdMs]):
             //    Seek the video to the audio's current position WITHOUT
-            //    pausing the main audio. This is exactly what the manual
-            //    pause/resume fix does — minus the pause — and it is the
-            //    PRIMARY desync fix. The old 3000ms threshold left
-            //    300–1500ms decoder stalls out of sync for ~15s; at 400ms
-            //    any drift beyond "barely perceptible" snaps back within
-            //    one poll cycle. The video is normally buffered far enough
-            //    ahead that a small re-anchor re-decodes in tens of ms with
-            //    no network re-buffer. Stamps [lastSeekAtMs] (SETTLING) and
-            //    [lastSurfaceReanchorAtMs] (so onRenderedFirstFrame's own
-            //    re-anchor doesn't double-seek).
+            //    pausing the main audio. Reserved for GENUINE large drift
+            //    (a long decode stall), where the brief re-buffer stall a
+            //    seek causes is preferable to staying out of sync. The
+            //    threshold is deliberately high (2000ms) so it never fires
+            //    during normal decoder warm-up — a low threshold here was
+            //    the regression that made first-play "lag for the initial
+            //    seconds". Stamps [lastSeekAtMs] (SETTLING) and
+            //    [lastSurfaceReanchorAtMs] (so onRenderedFirstFrame's
+            //    kickRenderer call doesn't double-restart).
             //
             // 4. HARD RESYNC (|drift| > [VideoHardResyncThresholdMs]):
             //    Coordinated pause-load-resume via [requestAutoResync].
@@ -1311,6 +1360,12 @@ fun rememberVideoArtworkState(
             //    exhausted), we STILL fall back to a plain re-anchor seek
             //    rather than giving up — the video must never be allowed
             //    to stay desynced with no self-healing path.
+            //
+            // The "video is laggy / frozen, only pause/resume fixes it"
+            // complaint is NOT a position error — it's a stale/frozen
+            // presentation, detected separately below (frozen-renderer
+            // detector) and fixed with a no-stall pause/resume micro-cycle
+            // ([VideoArtworkState.kickRenderer]) rather than a seek.
             //
             // For explicit seekbar seeks, the user-initiated
             // [VideoArtworkState.requestResync] bypasses the cooldown.
@@ -1356,6 +1411,58 @@ fun rememberVideoArtworkState(
             // speed correction (tier 2).
             val signedDrift = videoPos - mainPos
             val absDrift = kotlin.math.abs(signedDrift)
+
+            // ── Frozen-renderer detection ──
+            //
+            // A video renderer can get STUCK while still reporting
+            // STATE_READY: it stops presenting frames to the surface (the
+            // displayed frame freezes) and its own clock stops advancing.
+            // The audio clock keeps going, so the user sees "the video is
+            // laggy/frozen" and their only fix is to pause and resume.
+            //
+            // This is NOT a position drift (which the tiers above seek- or
+            // speed-correct); it's a presentation stall. We detect it by
+            // comparing the video's position across poll cycles: if the
+            // audio advanced a full poll interval while the video barely
+            // moved at all, sustained over [VideoFrozenRendererCycles]
+            // consecutive cycles (~750ms), the renderer is frozen. The fix
+            // is a video-only pause/resume micro-cycle
+            // ([VideoArtworkState.kickRenderer]) — the same action as the
+            // user's manual pause/resume — which restarts the presentation
+            // clock without a re-buffer stall. The micro-cycle is
+            // rate-limited inside kickRenderer, so a renderer that
+            // immediately re-sticks can't busy-loop.
+            //
+            // After the restart we re-arm the detector (prevVideoPos = -1)
+            // so it can't fire again on the same frozen stretch.
+            if (exoPlayer.playWhenReady && prevVideoPos >= 0L) {
+                val audioAdvanced = mainPos - prevAudioPos
+                val videoAdvanced = videoPos - prevVideoPos
+                if (audioAdvanced >= VideoSyncPollIntervalMs && videoAdvanced <= VideoFrozenRendererMaxAdvanceMs) {
+                    frozenCycles++
+                    if (frozenCycles >= VideoFrozenRendererCycles) {
+                        Timber
+                            .tag(VideoPlaybackLogTag)
+                            .w(
+                                "Video renderer frozen: position stuck at ${videoPos}ms while " +
+                                    "audio advanced to ${mainPos}ms (${frozenCycles} cycles) — " +
+                                    "restarting renderer",
+                            )
+                        frozenCycles = 0
+                        prevVideoPos = -1L
+                        state.kickRenderer(now)
+                    }
+                } else {
+                    frozenCycles = 0
+                }
+            } else if (!exoPlayer.playWhenReady) {
+                // Video paused — a paused position naturally doesn't advance.
+                // Reset the freeze counter so a pause doesn't look like a
+                // frozen renderer.
+                frozenCycles = 0
+            }
+            prevVideoPos = videoPos
+            prevAudioPos = mainPos
 
             if (absDrift > VideoHardResyncThresholdMs) {
                 // Tier 4: hard resync.
@@ -1516,40 +1623,35 @@ fun rememberVideoArtworkState(
                         val mainPos = currentPosition()
                         if (mainPos > 0) {
                             if (wasAlreadyReady) {
-                                // ── Surface re-attach re-anchor ──
+                                // ── Surface re-attach: restart the renderer ──
                                 //
                                 // The video was already rendering and its
                                 // surface got re-created (fullscreen toggle,
-                                // orientation change, window resize). A
-                                // TextureView can hold a STALE frame through
-                                // this while the ExoPlayer clock keeps
-                                // advancing — the video looks frozen/laggy
-                                // while the drift poller sees no drift (it
-                                // compares clocks, not displayed frames).
-                                // This is the "entering/exiting fullscreen
-                                // makes the video laggy, only pause/resume
-                                // fixes it" bug. Force the renderer to
-                                // present the frame at the audio position.
+                                // orientation change, window resize). A fresh
+                                // TextureView can hold a STALE frame while the
+                                // video clock keeps advancing — the video looks
+                                // frozen/laggy while the drift poller sees no
+                                // drift (it compares clocks, not displayed
+                                // frames). This is the "entering/exiting
+                                // fullscreen makes the video laggy, only
+                                // pause/resume fixes it" bug.
                                 //
-                                // The seekTo itself produces another
-                                // onRenderedFirstFrame; the min-interval
-                                // guard (SurfaceReanchorMinIntervalMs) breaks
-                                // that self-triggering loop, and the drift
-                                // poller also stamps lastSurfaceReanchorAtMs
-                                // when it re-anchors so it isn't double
-                                // handled either.
-                                if (
-                                    exoPlayer.playbackState == Player.STATE_READY &&
-                                        (state.lastSurfaceReanchorAtMs == 0L ||
-                                            now - state.lastSurfaceReanchorAtMs >
-                                            SurfaceReanchorMinIntervalMs)
-                                ) {
-                                    state.lastSurfaceReanchorAtMs = now
-                                    exoPlayer.seekTo(mainPos)
-                                    // Start the settling window so the drift
-                                    // poller doesn't immediately re-seek while
-                                    // the video re-buffers from this snap.
-                                    state.lastSeekAtMs = now
+                                // We fix it with a video-only pause/resume
+                                // micro-cycle ([state.kickRenderer]) — the SAME
+                                // action as the user's manual pause/resume, but
+                                // without touching the audio and without a
+                                // re-buffer stall. A seekTo here would re-buffer
+                                // the video for 1–2s on every toggle (that was
+                                // the regression: fullscreen ALWAYS lagged).
+                                //
+                                // The pause/resume itself can produce another
+                                // onRenderedFirstFrame; the min-interval guard
+                                // inside kickRenderer (SurfaceReanchorMinIntervalMs)
+                                // breaks that self-triggering loop.
+                                if (state.kickRenderer(now)) {
+                                    Timber
+                                        .tag(VideoPlaybackLogTag)
+                                        .d("Surface re-attached while playing — restarted video renderer")
                                 }
                             } else {
                                 val videoPos = exoPlayer.currentPosition

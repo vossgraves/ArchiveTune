@@ -1026,31 +1026,6 @@ fun BottomSheetPlayer(
             onRequestResumeMain = { playerConnection.player.play() },
         )
 
-    // Re-anchor the video whenever the user toggles fullscreen.
-    //
-    // Entering/exiting fullscreen re-creates the video surface (the inline
-    // TextureView unmounts and the overlay's TextureView mounts, or vice
-    // versa) and forces an orientation change. During this the TextureView
-    // can present a stale or mis-timed frame while the ExoPlayer clock keeps
-    // advancing — the "video is laggy after fullscreen toggle, only
-    // pause/resume fixes it" bug. The drift poller can't detect that state
-    // (it compares clocks, not displayed frames), so we explicitly re-anchor
-    // the video to the audio position on every toggle. This runs even if the
-    // surface re-attach never re-fires onRenderedFirstFrame.
-    var prevFullscreen by remember(videoMediaId) {
-        mutableStateOf(videoFullscreenHolder.isFullscreen)
-    }
-    LaunchedEffect(videoFullscreenHolder.isFullscreen) {
-        val nowFullscreen = videoFullscreenHolder.isFullscreen
-        if (prevFullscreen != nowFullscreen) {
-            prevFullscreen = nowFullscreen
-            val vs = videoState
-            if (vs != null && vs.isVideoReady) {
-                vs.reanchorToAudio(playerConnection.player.currentPosition)
-            }
-        }
-    }
-
     // Wrap BottomSheet + FullscreenVideoOverlay in a Box so the overlay
     // can be rendered as a sibling of the BottomSheet, filling the entire
     // screen on top of it. This avoids using a Compose Dialog (which has
