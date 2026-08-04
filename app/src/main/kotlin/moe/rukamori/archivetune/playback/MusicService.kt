@@ -4049,9 +4049,10 @@ class MusicService :
                     }
                 if (!autoLoadMoreEnabled && queue.shouldExpandToFullQueueWhenAutoLoadMoreDisabled() && queue.hasNextPage()) {
                     val expandedItems = initialStatus.items.toMutableList()
-                    var pagesLoaded = 0
-                    while (queue.hasNextPage() && pagesLoaded < 200) {
-                        pagesLoaded++
+                    // No page cap — paginate the entire queue so the user sees every song.
+                    // The loop terminates naturally when `queue.hasNextPage()` returns false.
+                    // (Previously capped at 200 pages, which truncated large playlists — Task 13.)
+                    while (queue.hasNextPage()) {
                         val nextItems =
                             withContext(Dispatchers.IO) {
                                 queue

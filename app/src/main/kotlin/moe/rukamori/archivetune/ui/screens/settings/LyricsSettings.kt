@@ -368,6 +368,56 @@ fun LyricsSettings(
             }
         }
 
+        // Language packs entry moved here from the main settings page (Task 6).
+        // Sits above the display group so users can install/enable packs before
+        // toggling romanization for the relevant languages below.
+        PreferenceGroup(
+            modifier = positions.modifierFor("language_packs"),
+            title = stringResource(R.string.language_packs),
+        ) {
+            item {
+                PreferenceEntry(
+                    title = { Text(stringResource(R.string.language_packs)) },
+                    description = stringResource(R.string.settings_language_packs_subtitle),
+                    icon = { Icon(painterResource(R.drawable.translate), null) },
+                    onClick = { navController.navigate("settings/language_packs") },
+                )
+            }
+        }
+
+        // "Providers" sub-page entry — opens the new LyricsProvidersSettings screen which
+        // houses all provider toggles + experimental lyrics (Task 2). The inline provider
+        // group that used to live below is moved there.
+        PreferenceGroup(
+            modifier = positions.modifierFor("lyrics_provider"),
+            title = stringResource(R.string.providers),
+        ) {
+            item {
+                PreferenceEntry(
+                    title = { Text(stringResource(R.string.providers)) },
+                    description = stringResource(R.string.settings_lyrics_providers_subtitle),
+                    icon = { Icon(painterResource(R.drawable.lyrics), null) },
+                    onClick = { navController.navigate("settings/lyrics/providers") },
+                )
+            }
+        }
+
+        // "Romanisation" sub-page entry — opens the new LyricsRomanisationSettings screen
+        // which houses all per-language romanisation toggles (Task 3).
+        PreferenceGroup(
+            modifier = positions.modifierFor("lyrics_romanize"),
+            title = stringResource(R.string.romanization),
+        ) {
+            item {
+                PreferenceEntry(
+                    title = { Text(stringResource(R.string.romanization)) },
+                    description = stringResource(R.string.settings_lyrics_romanisation_subtitle),
+                    icon = { Icon(painterResource(R.drawable.lyrics), null) },
+                    onClick = { navController.navigate("settings/lyrics/romanisation") },
+                )
+            }
+        }
+
         PreferenceGroup(
             modifier = positions.modifierFor("lyrics_font_size"),
             title = stringResource(R.string.display),
@@ -445,239 +495,10 @@ fun LyricsSettings(
             }
         }
 
-        PreferenceGroup(
-            modifier = positions.modifierFor("lyrics_provider"),
-            title = stringResource(R.string.providers),
-        ) {
-            item {
-                SwitchPreference(
-                    title = { Text(stringResource(R.string.enable_betterlyrics)) },
-                    icon = { Icon(painterResource(R.drawable.lyrics), null) },
-                    checked = enableBetterLyrics,
-                    onCheckedChange = onEnableBetterLyricsChange,
-                )
-            }
-
-            item {
-                SwitchPreference(
-                    title = { Text(stringResource(R.string.enable_betterlyrics_portato)) },
-                    icon = { Icon(painterResource(R.drawable.lyrics), null) },
-                    checked = enableBetterLyricsPortato,
-                    onCheckedChange = onEnableBetterLyricsPortatoChange,
-                )
-            }
-
-            item {
-                SwitchPreference(
-                    title = { Text(stringResource(R.string.enable_youlyplus_lyrics)) },
-                    icon = { Icon(painterResource(R.drawable.lyrics), null) },
-                    checked = enableYouLyPlusLyrics,
-                    onCheckedChange = onEnableYouLyPlusLyricsChange,
-                )
-            }
-
-            item {
-                SwitchPreference(
-                    title = { Text(stringResource(R.string.enable_lrclib)) },
-                    icon = { Icon(painterResource(R.drawable.lyrics), null) },
-                    checked = enableLrclib,
-                    onCheckedChange = onEnableLrclibChange,
-                )
-            }
-
-            item {
-                SwitchPreference(
-                    title = { Text(stringResource(R.string.enable_kugou)) },
-                    icon = { Icon(painterResource(R.drawable.lyrics), null) },
-                    checked = enableKugou,
-                    onCheckedChange = onEnableKugouChange,
-                )
-            }
-
-            item {
-                SwitchPreference(
-                    title = { Text(stringResource(R.string.enable_unison_lyrics)) },
-                    icon = { Icon(painterResource(R.drawable.lyrics), null) },
-                    checked = enableUnisonLyrics,
-                    onCheckedChange = onEnableUnisonLyricsChange,
-                )
-            }
-
-            item {
-                SwitchPreference(
-                    title = { Text(stringResource(R.string.enable_simpmusic_lyrics)) },
-                    icon = { Icon(painterResource(R.drawable.lyrics), null) },
-                    checked = enableSimpMusicLyrics,
-                    onCheckedChange = onEnableSimpMusicLyricsChange,
-                )
-            }
-
-            item {
-                SwitchPreference(
-                    title = { Text(stringResource(R.string.enable_megalobiz_lyrics)) },
-                    icon = { Icon(painterResource(R.drawable.lyrics), null) },
-                    checked = enableMegalobizLyrics,
-                    onCheckedChange = onEnableMegalobizLyricsChange,
-                )
-            }
-
-            item {
-                SwitchPreference(
-                    title = { Text(stringResource(R.string.enable_paxsenix_lyrics)) },
-                    icon = { Icon(painterResource(R.drawable.lyrics), null) },
-                    checked = enablePaxsenixLyrics,
-                    onCheckedChange = onEnablePaxsenixLyricsChange,
-                )
-            }
-
-            item(visible = enablePaxsenixLyrics) {
-                PreferenceEntry(
-                    title = { Text(stringResource(R.string.paxsenix_stats)) },
-                    icon = { Icon(painterResource(R.drawable.stats), null) },
-                    onClick = { showPaxsenixStatsDialog = true },
-                )
-            }
-
-            item(visible = enablePaxsenixLyrics) {
-                SwitchPreference(
-                    title = { Text("Paxsenix: Apple Music") },
-                    icon = { Icon(painterResource(R.drawable.lyrics), null) },
-                    checked = enablePaxsenixAppleMusicLyrics,
-                    onCheckedChange = onEnablePaxsenixAppleMusicLyricsChange,
-                )
-            }
-
-            item(visible = enablePaxsenixLyrics) {
-                SwitchPreference(
-                    title = { Text("Paxsenix: NetEase") },
-                    icon = { Icon(painterResource(R.drawable.lyrics), null) },
-                    checked = enablePaxsenixNeteaseLyrics,
-                    onCheckedChange = onEnablePaxsenixNeteaseLyricsChange,
-                )
-            }
-
-            item(visible = enablePaxsenixLyrics) {
-                SwitchPreference(
-                    title = { Text("Paxsenix: Spotify") },
-                    icon = { Icon(painterResource(R.drawable.lyrics), null) },
-                    checked = enablePaxsenixSpotifyLyrics,
-                    onCheckedChange = onEnablePaxsenixSpotifyLyricsChange,
-                )
-            }
-
-            item(visible = enablePaxsenixLyrics) {
-                SwitchPreference(
-                    title = { Text("Paxsenix: Musixmatch") },
-                    icon = { Icon(painterResource(R.drawable.lyrics), null) },
-                    checked = enablePaxsenixMusixmatchLyrics,
-                    onCheckedChange = onEnablePaxsenixMusixmatchLyricsChange,
-                )
-            }
-
-            item(visible = enablePaxsenixLyrics) {
-                SwitchPreference(
-                    title = { Text("Paxsenix: YouTube") },
-                    icon = { Icon(painterResource(R.drawable.lyrics), null) },
-                    checked = enablePaxsenixYouTubeLyrics,
-                    onCheckedChange = onEnablePaxsenixYouTubeLyricsChange,
-                )
-            }
-
-            item {
-                PreferenceEntry(
-                    title = { Text(stringResource(R.string.set_first_lyrics_provider)) },
-                    description = providerOrder.firstOrNull()?.displayName(),
-                    icon = { Icon(painterResource(R.drawable.lyrics), null) },
-                    onClick = { showProviderOrderDialog = true },
-                )
-            }
-        }
-
-        PreferenceGroup(
-            modifier = positions.modifierFor("lyrics_experimental"),
-            title = stringResource(R.string.musixmatch_experimental_section),
-        ) {
-            item {
-                SwitchPreference(
-                    title = { Text(stringResource(R.string.enable_musixmatch_experimental)) },
-                    description = stringResource(R.string.enable_musixmatch_experimental_desc),
-                    icon = { Icon(painterResource(R.drawable.lyrics), null) },
-                    checked = enableMusixmatchExperimental,
-                    onCheckedChange = onEnableMusixmatchExperimentalChange,
-                )
-            }
-            item(visible = enableMusixmatchExperimental) {
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = MaterialTheme.shapes.large,
-                    color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.4f),
-                ) {
-                    Text(
-                        text = stringResource(R.string.musixmatch_experimental_warning),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onErrorContainer,
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-                    )
-                }
-            }
-        }
-
-        PreferenceGroup(
-            modifier = positions.modifierFor("lyrics_romanize"),
-            title = stringResource(R.string.romanization),
-        ) {
-            item {
-                SwitchPreference(
-                    title = { Text(stringResource(R.string.lyrics_romanize_japanese)) },
-                    description =
-                        if (japaneseLanguagePackState is JapaneseLanguagePackState.Installed) {
-                            null
-                        } else {
-                            stringResource(R.string.language_pack_required)
-                        },
-                    icon = { Icon(painterResource(R.drawable.lyrics), null) },
-                    checked = lyricsRomanizeJapanese,
-                    onCheckedChange = onLyricsRomanizeJapaneseChange,
-                    isEnabled = japaneseLanguagePackState is JapaneseLanguagePackState.Installed,
-                )
-            }
-
-            item {
-                SwitchPreference(
-                    title = { Text(stringResource(R.string.lyrics_romanize_korean)) },
-                    icon = { Icon(painterResource(R.drawable.lyrics), null) },
-                    checked = lyricsRomanizeKorean,
-                    onCheckedChange = onLyricsRomanizeKoreanChange,
-                )
-            }
-
-            item {
-                SwitchPreference(
-                    title = { Text(stringResource(R.string.lyrics_romanize_chinese)) },
-                    icon = { Icon(painterResource(R.drawable.lyrics), null) },
-                    checked = lyricsRomanizeChinese,
-                    onCheckedChange = onLyricsRomanizeChineseChange,
-                )
-            }
-
-            item {
-                SwitchPreference(
-                    title = { Text(stringResource(R.string.lyrics_romanize_hindi)) },
-                    icon = { Icon(painterResource(R.drawable.lyrics), null) },
-                    checked = lyricsRomanizeHindi,
-                    onCheckedChange = onLyricsRomanizeHindiChange,
-                )
-            }
-
-            item {
-                SwitchPreference(
-                    title = { Text(stringResource(R.string.lyrics_romanize_other_languages)) },
-                    icon = { Icon(painterResource(R.drawable.lyrics), null) },
-                    checked = lyricsRomanizeOtherLanguages,
-                    onCheckedChange = onLyricsRomanizeOtherLanguagesChange,
-                )
-            }
-        }
+        // Provider toggles, experimental lyrics, and romanisation settings have been moved
+        // into dedicated sub-pages (see `settings/lyrics/providers` and
+        // `settings/lyrics/romanisation` routes, plus the new entries above that navigate
+        // to them). The inline groups that used to render them here are removed.
 
         PreferenceGroup(
             modifier = positions.modifierFor("lyrics_preload"),
@@ -723,9 +544,9 @@ fun LyricsSettings(
     )
 }
 
-private enum class PaxsenixServerStatus { Operational, Degraded, Down }
+internal enum class PaxsenixServerStatus { Operational, Degraded, Down }
 
-private fun PreferredLyricsProvider.displayName(): String =
+internal fun PreferredLyricsProvider.displayName(): String =
     when (this) {
         PreferredLyricsProvider.LRCLIB -> "LrcLib"
         PreferredLyricsProvider.KUGOU -> "KuGou"
@@ -744,7 +565,7 @@ private fun PreferredLyricsProvider.displayName(): String =
     }
 
 @Composable
-private fun LyricsProviderOrderDialog(
+internal fun LyricsProviderOrderDialog(
     initialOrder: List<PreferredLyricsProvider>,
     onDismiss: () -> Unit,
     onConfirm: (List<PreferredLyricsProvider>) -> Unit,
@@ -844,14 +665,14 @@ private fun LyricsProviderOrderDialog(
     }
 }
 
-private fun successRateToStatus(rate: Float): PaxsenixServerStatus =
+internal fun successRateToStatus(rate: Float): PaxsenixServerStatus =
     when {
         rate >= 90f -> PaxsenixServerStatus.Operational
         rate >= 70f -> PaxsenixServerStatus.Degraded
         else -> PaxsenixServerStatus.Down
     }
 
-private fun formatUptimeSeconds(seconds: Double): String {
+internal fun formatUptimeSeconds(seconds: Double): String {
     val total = seconds.toLong()
     val days = total / 86400L
     val hours = (total % 86400L) / 3600L
@@ -864,7 +685,7 @@ private fun formatUptimeSeconds(seconds: Double): String {
 }
 
 @Composable
-private fun PaxsenixStatsDialog(
+internal fun PaxsenixStatsDialog(
     state: PaxsenixStatsState,
     onDismiss: () -> Unit,
     onRetry: () -> Unit,
@@ -935,7 +756,7 @@ private fun PaxsenixStatsDialog(
 }
 
 @Composable
-private fun PaxsenixStatsContent(stats: PaxsenixStats) {
+internal fun PaxsenixStatsContent(stats: PaxsenixStats) {
     val overallRate =
         remember(stats.overallSuccessRate) {
             stats.overallSuccessRate.trimEnd('%').toFloatOrNull() ?: 0f
@@ -1082,7 +903,7 @@ private fun PaxsenixStatsContent(stats: PaxsenixStats) {
 }
 
 @Composable
-private fun PaxsenixStatusBar(successRate: Float) {
+internal fun PaxsenixStatusBar(successRate: Float) {
     val status = remember(successRate) { successRateToStatus(successRate) }
     val statusColor =
         when (status) {
@@ -1139,7 +960,7 @@ private fun PaxsenixStatusBar(successRate: Float) {
 }
 
 @Composable
-private fun PaxsenixProviderRow(
+internal fun PaxsenixProviderRow(
     name: String,
     providerStats: ProviderStats,
 ) {

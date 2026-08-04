@@ -220,6 +220,9 @@ fun buildSettingsGroups(
             accentColor = MaterialTheme.colorScheme.tertiary,
             keywords = listOf("source", "music source", "youtube music", "tidal", "qobuz", "provider", "streaming", "telegram", "telegram channel", "flac", "lossless", "private channel"),
             onClick = { navController.navigate("settings/sources") },
+            // Moved to the Playback sub-page (Task 4). Kept in the search index so existing
+            // search shortcuts still work.
+            hidden = true,
             children = listOf(
                 SettingsChild("YouTube Music", "youtube_music", listOf("youtube", "youtube music", "yt music")),
                 SettingsChild("Qobuz", "qobuz", listOf("qobuz", "hires", "hi-res", "flac", "lossless", "cd quality")),
@@ -235,6 +238,9 @@ fun buildSettingsGroups(
             accentColor = MaterialTheme.colorScheme.secondary,
             keywords = listOf("lyrics", "lyric", "subtitle", "text", "sing along", "lrc", "translation", "romanize", "karaoke"),
             onClick = { navController.navigate("settings/lyrics") },
+            // Moved to the Playback sub-page (Task 5). Kept in the search index so existing
+            // search shortcuts still work.
+            hidden = true,
             children = listOf(
                 SettingsChild("Lyrics provider", "lyrics_provider", listOf("lyrics provider", "source", "lrclib", "kugou", "netease", "musixmatch", "paxsenix", "betterlyrics", "portato", "youlyplus", "unison", "simpmusic", "megalobiz")),
                 SettingsChild("Lyrics mode", "lyrics_mode", listOf("lyrics mode", "lyrics style", "lyrics display mode", "karaoke mode")),
@@ -299,6 +305,9 @@ fun buildSettingsGroups(
             accentColor = MaterialTheme.colorScheme.secondary,
             keywords = listOf("language pack", "translation", "translate", "localization", "i18n"),
             onClick = { navController.navigate("settings/language_packs") },
+            // Moved into the Lyrics sub-page (Task 6). Kept in the search index so existing
+            // search shortcuts still work.
+            hidden = true,
         )
     val behavior =
         SettingsItem(
@@ -369,6 +378,9 @@ fun buildSettingsGroups(
             accentColor = MaterialTheme.colorScheme.secondary,
             keywords = listOf("ai", "artificial intelligence", "chatgpt", "openai", "gemini", "llm", "ai integration", "mix", "smart mix"),
             onClick = { navController.navigate("settings/ai_integration") },
+            // Moved to the top of the Integration sub-page (Task 8). Kept in the search
+            // index so existing search shortcuts still work.
+            hidden = true,
             children = listOf(
                 SettingsChild("AI provider", "ai_provider", listOf("ai provider", "provider", "openai", "gemini", "claude", "anthropic", "model provider")),
                 SettingsChild("Custom endpoint", "ai_custom_endpoint", listOf("custom endpoint", "endpoint", "base url", "api url", "custom api")),
@@ -414,6 +426,9 @@ fun buildSettingsGroups(
             accentColor = MaterialTheme.colorScheme.secondary,
             keywords = listOf("po token", "potoken", "botguard", "youtube token", "playability"),
             onClick = { navController.navigate(PO_TOKEN_ROUTE) },
+            // Moved into the Accounts sub-page (Task 9). Kept in the search index so existing
+            // search shortcuts still work.
+            hidden = true,
         )
     val storage =
         SettingsItem(
@@ -524,6 +539,9 @@ fun buildSettingsGroups(
                         }
                     }
                 },
+                // Moved into the Behaviour sub-page (Task 10). Kept in the search index so
+                // existing search shortcuts still work.
+                hidden = true,
             )
         } else {
             null

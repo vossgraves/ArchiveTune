@@ -475,7 +475,7 @@ fun UpdateScreen(
         }
 
         Updater
-            .getCommitHistory(30)
+            .getCommitHistory(0)
             .onSuccess {
                 commits = it
             }.onFailure {

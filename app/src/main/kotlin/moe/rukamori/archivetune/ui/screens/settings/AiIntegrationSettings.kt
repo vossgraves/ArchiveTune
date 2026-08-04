@@ -97,6 +97,7 @@ import moe.rukamori.archivetune.constants.AiCustomModelKey
 import moe.rukamori.archivetune.constants.AiProvider
 import moe.rukamori.archivetune.constants.AiProviderKey
 import moe.rukamori.archivetune.constants.AiSelectedModelKey
+import moe.rukamori.archivetune.constants.AutoTranslateLyricsKey
 import moe.rukamori.archivetune.constants.HideAiMixKey
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.EditTextPreference
@@ -128,6 +129,8 @@ fun AiIntegrationSettings(
     val (selectedModel, setSelectedModel) = rememberPreference(AiSelectedModelKey, "")
     val (customModel, setCustomModel) = rememberPreference(AiCustomModelKey, "")
     val (hideAiMix, onHideAiMixChange) = rememberPreference(HideAiMixKey, defaultValue = false)
+    val (autoTranslateLyrics, onAutoTranslateLyricsChange) =
+        rememberPreference(AutoTranslateLyricsKey, defaultValue = false)
     var showApiKeyDialog by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
@@ -351,6 +354,19 @@ fun AiIntegrationSettings(
                     icon = { Icon(painterResource(R.drawable.auto_awesome), null) },
                     checked = hideAiMix,
                     onCheckedChange = onHideAiMixChange,
+                )
+            }
+
+            item {
+                SwitchPreference(
+                    title = { Text(stringResource(R.string.auto_translate_lyrics)) },
+                    description = stringResource(R.string.auto_translate_lyrics_desc),
+                    icon = { Icon(painterResource(R.drawable.translate), null) },
+                    checked = autoTranslateLyrics,
+                    onCheckedChange = onAutoTranslateLyricsChange,
+                    // Without an AI provider + API key, there's no engine to run the
+                    // translation, so the toggle is greyed out rather than silently ignored.
+                    isEnabled = hasApiConfiguration,
                 )
             }
         }

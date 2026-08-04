@@ -294,6 +294,31 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                 .verticalScroll(scrollState)
                 .padding(bottom = SettingsDimensions.ScreenBottomPadding),
         ) {
+            // "Sources" group: music source + lyrics settings now live on the Playback page
+            // (moved from the main settings list per Tasks 4 & 5). Each row navigates to its
+            // own dedicated sub-page so the existing screens stay reachable.
+            PreferenceGroup(
+                title = stringResource(R.string.settings_section_player_content),
+            ) {
+                item {
+                    PreferenceEntry(
+                        title = { Text(stringResource(R.string.source_settings)) },
+                        description = stringResource(R.string.source_settings_subtitle),
+                        icon = { Icon(painterResource(R.drawable.provider_tidal), null) },
+                        onClick = { navController.navigate("settings/sources") },
+                    )
+                }
+
+                item {
+                    PreferenceEntry(
+                        title = { Text(stringResource(R.string.lyrics)) },
+                        description = stringResource(R.string.settings_lyrics_subtitle),
+                        icon = { Icon(painterResource(R.drawable.lyrics), null) },
+                        onClick = { navController.navigate("settings/lyrics") },
+                    )
+                }
+            }
+
             PreferenceGroup(
                 modifier = positions.modifierFor("low_data_mode"),
                 title = stringResource(R.string.player),

@@ -241,6 +241,7 @@ import moe.rukamori.archivetune.constants.SearchSourceKey
 import moe.rukamori.archivetune.constants.StopMusicOnTaskClearKey
 import moe.rukamori.archivetune.constants.UpdateChannel
 import moe.rukamori.archivetune.constants.UpdateChannelKey
+import moe.rukamori.archivetune.constants.NeverShowUpdatePopupKey
 import moe.rukamori.archivetune.constants.UseSystemFontKey
 import moe.rukamori.archivetune.db.MusicDatabase
 import moe.rukamori.archivetune.db.entities.Album
@@ -759,6 +760,17 @@ class MainActivity : ComponentActivity() {
                         .MenuState()
                 }
             val releaseNotesState = remember { mutableStateOf<String?>(null) }
+            // `neverShowUpdatePopupMarker` stores "<versionName>|<versionCode>" of the version
+            // the user suppressed the popup for. It's "not suppressed" when it matches the
+            // currently running version, and treated as "stale, re-enable" otherwise — which
+            // happens automatically after an upgrade because the stored marker no longer
+            // matches BuildConfig.
+            val currentVersionMarker = remember {
+                "${BuildConfig.VERSION_NAME}|${BuildConfig.VERSION_CODE}"
+            }
+            val (neverShowUpdatePopupMarker, onNeverShowUpdatePopupMarkerChange) =
+                rememberPreference(NeverShowUpdatePopupKey, defaultValue = "")
+            val neverShowUpdatePopup = neverShowUpdatePopupMarker == currentVersionMarker
             val updateSheetContent: @Composable ColumnScope.() -> Unit = {
                 // receiver: ColumnScope
                 Text(
@@ -823,12 +835,46 @@ class MainActivity : ComponentActivity() {
                 ) {
                     Text(text = stringResource(R.string.update_text))
                 }
+
+                Spacer(Modifier.height(8.dp))
+
+                // Secondary actions row:
+                //   • "Remind me later" — just dismiss the sheet; the popup will reappear next
+                //     app launch as long as the version remains older than the latest.
+                //   • "Never show again" — persistently suppress the popup for the current
+                //     app version. Auto-clears after an upgrade (the stored version marker
+                //     stops matching BuildConfig), so the popup fires once for the next new
+                //     release too. Users can still check for updates manually via Settings →
+                //     Updates at any time.
+                androidx.compose.foundation.layout.Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
+                ) {
+                    androidx.compose.material3.OutlinedButton(
+                        onClick = { bottomSheetPageState.dismiss() },
+                        modifier = Modifier.weight(1f),
+                        shapes = ButtonDefaults.shapes(),
+                    ) {
+                        Text(text = stringResource(R.string.update_remind_later))
+                    }
+                    androidx.compose.material3.OutlinedButton(
+                        onClick = {
+                            onNeverShowUpdatePopupMarkerChange(currentVersionMarker)
+                            bottomSheetPageState.dismiss()
+                        },
+                        modifier = Modifier.weight(1f),
+                        shapes = ButtonDefaults.shapes(),
+                    ) {
+                        Text(text = stringResource(R.string.update_never_show_again))
+                    }
+                }
             }
 
             // fetch release notes and show sheet when a new version is detected
-            LaunchedEffect(latestVersionName, latestUpdateChannel, effectiveUpdateChannel) {
+            LaunchedEffect(latestVersionName, latestUpdateChannel, effectiveUpdateChannel, neverShowUpdatePopup) {
                 if (
                     BuildConfig.UPDATER_AVAILABLE &&
+                    !neverShowUpdatePopup &&
                     latestUpdateChannel == effectiveUpdateChannel &&
                     Updater.isUpdateAvailable(latestVersionName, BuildConfig.VERSION_NAME)
                 ) {

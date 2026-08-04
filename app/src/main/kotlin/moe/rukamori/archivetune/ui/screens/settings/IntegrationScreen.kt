@@ -88,6 +88,23 @@ fun IntegrationScreen(navController: NavController, scrollTo: String? = null) {
                 .verticalScroll(scrollState)
                 .padding(bottom = SettingsDimensions.ScreenBottomPadding),
         ) {
+            // AI integration lives at the top of the Integration page (Task 8). It used to
+            // be a top-level pill on the main settings page; moving it here co-locates it
+            // with the other integrations (Discord, Last.fm, Tidal, Qobuz, Telegram, …).
+            PreferenceGroup(
+                modifier = positions.modifierFor("ai_integration"),
+                title = stringResource(R.string.ai_integration),
+            ) {
+                item {
+                    PreferenceEntry(
+                        title = { Text(stringResource(R.string.ai_integration)) },
+                        description = stringResource(R.string.ai_integration_desc),
+                        icon = { Icon(painterResource(R.drawable.ai), null) },
+                        onClick = { navController.navigate("settings/ai_integration") },
+                    )
+                }
+            }
+
             PreferenceGroup(
                 modifier = positions.modifierFor("discord_presence"),
                 title = stringResource(R.string.general),

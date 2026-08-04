@@ -181,6 +181,17 @@ class App :
         ArchiveTuneCanvas.initialize(BuildConfig.CANVAS_BEARER_TOKEN)
         PaxsenixLyrics.setUserAgent("ArchiveTune", BuildConfig.VERSION_NAME)
 
+        // Eagerly start TDLib so playback of a Telegram-backed playlist works right after an
+        // app update. TDLib's session DB persists across upgrades (it lives in
+        // filesDir/telegram), so the user IS still logged in from TDLib's perspective — but
+        // `TelegramClient.client` is null and `_authState` is `Idle` until something calls
+        // `ensureStarted(context)`. Previously that only happened when the user navigated
+        // to TelegramSettings or TelegramLoginScreen, so any Telegram playlist playback
+        // attempt immediately after an update would throw "Telegram is not logged in".
+        // `ensureStarted` is idempotent (short-circuits when `client != null`), so this is
+        // safe even if the user opens the Telegram settings screen later.
+        runCatching { moe.rukamori.archivetune.telegram.TelegramClient.ensureStarted(this) }
+
         val locale = Locale.getDefault()
         val languageTag = locale.toLanguageTag().replace("-Hant", "")
         YouTube.locale =

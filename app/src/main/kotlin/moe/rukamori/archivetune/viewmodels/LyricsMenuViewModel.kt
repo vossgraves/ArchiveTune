@@ -47,6 +47,7 @@ import moe.rukamori.archivetune.lyrics.LyricsUtils
 import moe.rukamori.archivetune.lyrics.LyricsUtils.displayLyricsText
 import moe.rukamori.archivetune.lyrics.LyricsUtils.isLineSyncedLrc
 import moe.rukamori.archivetune.lyrics.LyricsUtils.isTtml
+import moe.rukamori.archivetune.constants.AutoTranslateLyricsKey
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.utils.NetworkConnectivityObserver
 import moe.rukamori.archivetune.utils.dataStore
@@ -275,8 +276,15 @@ class LyricsMenuViewModel
                                 source = LyricsEntity.Source.AI_TRANSLATION.value,
                             )
                         }
-                        val msg = context.getString(R.string.translation_success)
-                        _aiTranslationEvents.emit(msg)
+                        // Suppress the success toast when the translation was triggered by the
+                        // "Automatic translation" preference — auto-translations happen on every
+                        // foreign-language lyrics load and would otherwise spam the user with a
+                        // toast per song. Failures are still surfaced so the user can debug.
+                        val isAutomatic = prefs[AutoTranslateLyricsKey] ?: false
+                        if (!isAutomatic) {
+                            val msg = context.getString(R.string.translation_success)
+                            _aiTranslationEvents.emit(msg)
+                        }
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {

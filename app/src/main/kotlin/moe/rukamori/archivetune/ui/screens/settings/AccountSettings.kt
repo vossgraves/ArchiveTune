@@ -437,7 +437,7 @@ fun AccountSettings(
                             subtitle = stringResource(R.string.hidden_playlists_description),
                             onClick = { navController.navigate("settings/hidden_playlists") },
                             index = 0,
-                            count = 2,
+                            count = 3,
                         )
 
                         ExpressiveActionRow(
@@ -455,7 +455,19 @@ fun AccountSettings(
                                 }
                             },
                             index = 1,
-                            count = 2,
+                            count = 3,
+                        )
+
+                        // PO Token Generation moved here from the main settings page (Task 9).
+                        // Belongs with the other account-credential rows; opens the existing
+                        // PoTokenScreen route.
+                        ExpressiveActionRow(
+                            icon = painterResource(R.drawable.token),
+                            title = stringResource(R.string.po_token_generation),
+                            subtitle = stringResource(R.string.settings_po_token_subtitle),
+                            onClick = { navController.navigate(PO_TOKEN_ROUTE) },
+                            index = 2,
+                            count = 3,
                         )
                     }
                 }

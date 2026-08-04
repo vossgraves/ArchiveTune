@@ -382,7 +382,11 @@ fun SettingsScreen(
     }
     val filteredGroups = remember(searchQuery, allSettingsGroups) {
         if (searchQuery.isBlank()) {
-            allSettingsGroups
+            // Hide items flagged `hidden = true` from the main settings page rendering,
+            // but keep them in `allSettingsGroups` so their children stay searchable.
+            allSettingsGroups.map { group ->
+                group.copy(items = group.items.filterNot { it.hidden })
+            }.filter { it.items.isNotEmpty() }
         } else {
             val query = searchQuery.trim().lowercase()
             allSettingsGroups.map { group ->
