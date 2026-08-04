@@ -188,6 +188,12 @@ val EnablePaxsenixSpotifyLyricsKey = booleanPreferencesKey("enablePaxsenixSpotif
 val EnablePaxsenixMusixmatchLyricsKey = booleanPreferencesKey("enablePaxsenixMusixmatchLyrics")
 val EnablePaxsenixYouTubeLyricsKey = booleanPreferencesKey("enablePaxsenixYouTubeLyrics")
 val EnableUnisonLyricsKey = booleanPreferencesKey("enableUnisonLyrics")
+// When ON, lyrics lookup first queries the four word-sync-capable providers
+// (BetterLyrics, BetterLyrics Portato, YouLyPlus, Unison) in parallel and uses
+// whichever returns word-synced lyrics (QRC/YRC/TTML with word timings). If none
+// of those four return word-synced lyrics, the lookup falls back to the normal
+// priority flow across all enabled providers.
+val PrioritizeWordSyncedLyricsKey = booleanPreferencesKey("prioritizeWordSyncedLyrics")
 val HideExplicitKey = booleanPreferencesKey("hideExplicit")
 val HideVideoKey = booleanPreferencesKey("hideVideo")
 // When ON (default), music videos render an inline video surface in the player. When OFF,

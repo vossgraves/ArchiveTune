@@ -56,6 +56,7 @@ import moe.rukamori.archivetune.constants.EnableUnisonLyricsKey
 import moe.rukamori.archivetune.constants.EnableYouLyPlusLyricsKey
 import moe.rukamori.archivetune.constants.LyricsProviderOrderKey
 import moe.rukamori.archivetune.constants.PreferredLyricsProvider
+import moe.rukamori.archivetune.constants.PrioritizeWordSyncedLyricsKey
 import moe.rukamori.archivetune.constants.deserializeLyricsProviderOrder
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
@@ -108,6 +109,8 @@ fun LyricsProvidersSettings(
         rememberPreference(key = EnablePaxsenixYouTubeLyricsKey, defaultValue = true)
     val (enableUnisonLyrics, onEnableUnisonLyricsChange) =
         rememberPreference(key = EnableUnisonLyricsKey, defaultValue = true)
+    val (prioritizeWordSynced, onPrioritizeWordSyncedChange) =
+        rememberPreference(key = PrioritizeWordSyncedLyricsKey, defaultValue = false)
     val (enableMusixmatchExperimental, onEnableMusixmatchExperimentalChange) =
         rememberPreference(key = EnableMusixmatchExperimentalKey, defaultValue = false)
     val (providerOrderStr, onProviderOrderStrChange) =
@@ -225,6 +228,16 @@ fun LyricsProvidersSettings(
                         icon = { Icon(painterResource(R.drawable.lyrics), null) },
                         checked = enableUnisonLyrics,
                         onCheckedChange = onEnableUnisonLyricsChange,
+                    )
+                }
+
+                item {
+                    SwitchPreference(
+                        title = { Text(stringResource(R.string.prioritize_word_synced_lyrics)) },
+                        description = stringResource(R.string.prioritize_word_synced_lyrics_desc),
+                        icon = { Icon(painterResource(R.drawable.lyrics), null) },
+                        checked = prioritizeWordSynced,
+                        onCheckedChange = onPrioritizeWordSyncedChange,
                     )
                 }
 
