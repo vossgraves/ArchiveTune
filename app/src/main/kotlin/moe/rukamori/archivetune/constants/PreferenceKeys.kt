@@ -272,6 +272,18 @@ val AiCustomModelKey = stringPreferencesKey("ai_custom_model")
 // Hides the AI-generated "Top mixes" section in the library Mix tab (and stops auto-generation).
 val HideAiMixKey = booleanPreferencesKey("hide_ai_mix")
 
+// When on, any foreign-language lyrics that have an AI provider configured will be translated
+// to the user's preferred language automatically on lyrics load — no manual tap through the
+// translate dialog required. The "Translation saved" toast is also suppressed in this mode so
+// background translations don't fire a notification every time a new song starts.
+val AutoTranslateLyricsKey = booleanPreferencesKey("autoTranslateLyrics")
+
+// Set by the "Never show again" pill on the startup update popup. Stores the
+// "<versionName>|<versionCode>" of the version the user suppressed the popup for, so we
+// can detect when they've upgraded and re-enable the popup for the next new release.
+// Empty string means "not suppressed".
+val NeverShowUpdatePopupKey = stringPreferencesKey("neverShowUpdatePopupVersion")
+
 val HideLikedSongsCardKey = booleanPreferencesKey("hide_liked_songs_card")
 val HideOfflineCardKey = booleanPreferencesKey("hide_offline_card")
 val HideCachedCardKey = booleanPreferencesKey("hide_cached_card")

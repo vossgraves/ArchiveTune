@@ -31,9 +31,6 @@ object TelegramChannelSync {
     private const val PLAYLIST_ID_PREFIX = "LPtg"
     private const val PAGE_FETCH_LIMIT = 100
 
-    // A channel can hold thousands of files; cap the materialised playlist to keep it manageable.
-    private const val MAX_TRACKS = 1_000
-
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     // Guards against two concurrent syncs of the same channel racing on membership positions.
@@ -102,9 +99,12 @@ object TelegramChannelSync {
         var inserted = 0
         val seen = mutableSetOf<Long>()
 
+        // No MAX_TRACKS cap — page through the entire channel. The `page.nextFromMessageId == 0L`
+        // check terminates the loop once TDLib reports there are no more audio messages to
+        // return, so this is bounded by the actual size of the channel.
         for (filter in filters) {
             var fromMessageId = 0L
-            while (inserted < MAX_TRACKS) {
+            while (true) {
                 val page =
                     runCatching {
                         TelegramClient.fetchAudioPage(chatId, fromMessageId, PAGE_FETCH_LIMIT, filter)
@@ -114,7 +114,6 @@ object TelegramChannelSync {
                     if (losslessOnly && !track.isLossless) continue
                     if (!seen.add(track.messageId)) continue
                     if (insertTrack(database, playlistId, track, title)) inserted++
-                    if (inserted >= MAX_TRACKS) break
                 }
 
                 if (page.nextFromMessageId == 0L) break

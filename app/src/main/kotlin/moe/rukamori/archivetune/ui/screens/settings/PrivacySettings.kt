@@ -9,6 +9,11 @@
 
 package moe.rukamori.archivetune.ui.screens.settings
 
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
+import android.widget.Toast
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.only
@@ -32,6 +37,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -55,6 +61,8 @@ import moe.rukamori.archivetune.utils.rememberPreference
 @Composable
 fun PrivacySettings(navController: NavController, scrollTo: String? = null) {
     val database = LocalDatabase.current
+    val context = LocalContext.current
+    val isAndroid12OrLater = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S
     val (pauseListenHistory, onPauseListenHistoryChange) =
         rememberPreference(
             key = PauseListenHistoryKey,
@@ -247,6 +255,37 @@ fun PrivacySettings(navController: NavController, scrollTo: String? = null) {
                         checked = disableScreenshot,
                         onCheckedChange = onDisableScreenshotChange,
                     )
+                }
+
+                // "Open supported links" moved here from the main settings page (Task 10).
+                // Android 12+ only — same gate the original pill had.
+                if (isAndroid12OrLater) {
+                    item {
+                        PreferenceEntry(
+                            title = { Text(stringResource(R.string.open_supported_links)) },
+                            description = stringResource(R.string.default_links),
+                            icon = { Icon(painterResource(R.drawable.link), null) },
+                            onClick = {
+                                try {
+                                    val intent =
+                                        Intent(
+                                            Settings.ACTION_APP_OPEN_BY_DEFAULT_SETTINGS,
+                                            Uri.parse("package:${context.packageName}"),
+                                        ).apply {
+                                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        }
+                                    context.startActivity(intent)
+                                } catch (e: Exception) {
+                                    Toast
+                                        .makeText(
+                                            context,
+                                            R.string.open_app_settings_error,
+                                            Toast.LENGTH_LONG,
+                                        ).show()
+                                }
+                            },
+                        )
+                    }
                 }
             }
         }

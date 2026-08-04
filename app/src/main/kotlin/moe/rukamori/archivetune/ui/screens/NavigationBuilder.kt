@@ -83,6 +83,8 @@ import moe.rukamori.archivetune.ui.screens.settings.LanguagePackSettings
 import moe.rukamori.archivetune.ui.screens.settings.LogcatScreen
 import moe.rukamori.archivetune.ui.screens.settings.LyricsAnimationSettings
 import moe.rukamori.archivetune.ui.screens.settings.LyricsSettings
+import moe.rukamori.archivetune.ui.screens.settings.LyricsProvidersSettings
+import moe.rukamori.archivetune.ui.screens.settings.LyricsRomanisationSettings
 import moe.rukamori.archivetune.ui.screens.settings.MusicTogetherScreen
 import moe.rukamori.archivetune.ui.screens.settings.PO_TOKEN_ROUTE
 import moe.rukamori.archivetune.ui.screens.settings.PalettePickerScreen
@@ -433,6 +435,12 @@ fun NavGraphBuilder.navigationBuilder(
         arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
     ) {
         LyricsSettings(navController, scrollTo = it.savedStateHandle["scrollTo"])
+    }
+    composable("settings/lyrics/providers") {
+        LyricsProvidersSettings(navController)
+    }
+    composable("settings/lyrics/romanisation") {
+        LyricsRomanisationSettings(navController)
     }
     composable("settings/language_packs") {
         LanguagePackSettings(navController)

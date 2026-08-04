@@ -100,6 +100,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.media3.common.C
 import androidx.media3.common.Player.STATE_BUFFERING
 import androidx.media3.common.Player.STATE_READY
@@ -136,6 +137,8 @@ import moe.rukamori.archivetune.constants.PlayerCustomBrightnessKey
 import moe.rukamori.archivetune.constants.PlayerCustomContrastKey
 import moe.rukamori.archivetune.constants.PlayerCustomImageUriKey
 import moe.rukamori.archivetune.constants.ShowLyricsPlayerControlsKey
+import moe.rukamori.archivetune.constants.AutoTranslateLyricsKey
+import moe.rukamori.archivetune.constants.TranslatorTargetLangKey
 import moe.rukamori.archivetune.db.entities.LyricsEntity
 import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.models.MediaMetadata
@@ -152,6 +155,7 @@ import moe.rukamori.archivetune.utils.ImageBlurUtils
 import moe.rukamori.archivetune.utils.makeTimeString
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
+import moe.rukamori.archivetune.viewmodels.LyricsMenuViewModel
 import kotlin.coroutines.cancellation.CancellationException
 
 private val AppleMusicFallbackGradient =
@@ -325,6 +329,46 @@ fun LyricsScreen(
             throw e
         } catch (_: Exception) {
         }
+    }
+
+    // ─── Automatic AI translation ───────────────────────────────────────
+    // When the user has enabled "Automatic translation" in AI Integration
+    // settings, we kick off a background AI translation as soon as lyrics
+    // arrive in a foreign script. Detection is conservative: only lyrics
+    // with a meaningful run of non-Latin characters (CJK, Cyrillic, Arabic,
+    // Devanagari, etc.) trigger auto-translation, so Spanish-to-English
+    // and other Latin-to-Latin cases don't waste API calls. Lyrics that
+    // are already an AI translation are skipped to avoid re-translating
+    // the same song on every visit. The success toast is suppressed
+    // inside the ViewModel when this pref is on (see LyricsMenuViewModel).
+    val (autoTranslateLyrics) = rememberPreference(AutoTranslateLyricsKey, defaultValue = false)
+    val (translatorTargetLang) = rememberPreference(TranslatorTargetLangKey, defaultValue = "")
+    val lyricsMenuViewModel: LyricsMenuViewModel = hiltViewModel()
+    LaunchedEffect(
+        mediaMetadata.id,
+        currentLyrics?.lyrics,
+        currentLyrics?.source,
+        autoTranslateLyrics,
+        translatorTargetLang,
+    ) {
+        if (!autoTranslateLyrics) return@LaunchedEffect
+        val snapshot = currentLyrics ?: return@LaunchedEffect
+        val text = snapshot.lyrics ?: return@LaunchedEffect
+        if (text.isBlank() || text == LyricsEntity.LYRICS_NOT_FOUND) return@LaunchedEffect
+        if (snapshot.source == LyricsEntity.Source.AI_TRANSLATION.value) return@LaunchedEffect
+
+        // Heuristic: at least 5 non-ASCII letters in the first ~1000 chars of lyrics →
+        // treat as foreign script. LRC tags ([00:12.34]) and timestamps are ASCII so
+        // they don't trip the detector.
+        val sample = text.take(1000)
+        val nonAsciiCount = sample.count { it.code > 0x7F }
+        if (nonAsciiCount < 5) return@LaunchedEffect
+
+        lyricsMenuViewModel.translateLyricsWithAi(
+            mediaMetadata = mediaMetadata,
+            lyrics = text,
+            targetLanguage = translatorTargetLang,
+        )
     }
 
     val positionState = remember(mediaMetadata.id) { mutableLongStateOf(0L) }

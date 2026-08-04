@@ -246,12 +246,22 @@ object Updater {
 
     internal fun findLatestRelease(releases: List<ReleaseInfo>): ReleaseInfo? {
         if (releases.isEmpty()) return null
+
+        // Exclude canary-tagged releases up front. Canary tags look like `N202608041230` and
+        // are matched by `canaryTagRegex`. Without this filter, a canary release whose *name*
+        // is "Canary 13.7.5" would slip through the `preRelease.isEmpty()` stable filter
+        // below — `parseReleaseSemVerOrNull` falls back to parsing the release name when the
+        // tag itself isn't SemVer, and "13.7.5" has no pre-release identifier — and a stable-
+        // channel user would see a canary-release popup. This is the root cause of issue #11.
+        val nonCanary = releases.filterNot { canaryTagRegex.matches(it.tagName) }
+        if (nonCanary.isEmpty()) return null
+
         val parsed =
-            releases.mapNotNull { release ->
+            nonCanary.mapNotNull { release ->
                 parseReleaseSemVerOrNull(release)?.let { version -> version to release }
             }
 
-        if (parsed.isEmpty()) return releases.firstOrNull()
+        if (parsed.isEmpty()) return nonCanary.firstOrNull()
 
         val stable = parsed.filter { it.first.preRelease.isEmpty() }
         val candidates = stable.ifEmpty { parsed }
@@ -413,27 +423,55 @@ object Updater {
                 return@runCatchingCancellable emptyList()
             }
 
-            val response =
-                client
-                    .get("https://api.github.com/repos/$OWNER/commits?sha=$branch&per_page=$count")
-                    .bodyAsText()
-            val jsonArray = JSONArray(response)
+            // GitHub's `/commits` endpoint caps `per_page` at 100. To honour a request larger
+            // than that (or an "unlimited" request when callers pass a very large `count`),
+            // we paginate by following the `Link: rel="next"` header until we've collected
+            // `count` commits or run out of pages. A `count <= 0` is treated as unlimited
+            // and pages until the API stops returning a next link.
+            val perPage = if (count <= 0) 100 else count.coerceAtMost(100)
+            val unlimited = count <= 0
             val commits = mutableListOf<GitCommit>()
-            for (i in 0 until jsonArray.length()) {
-                val commitObj = jsonArray.getJSONObject(i)
-                val commit = commitObj.getJSONObject("commit")
-                val authorObj = commit.optJSONObject("author")
-                val githubAuthorObj = commitObj.optJSONObject("author")
-                commits.add(
-                    GitCommit(
-                        sha = commitObj.optString("sha", "").take(7),
-                        message = commit.optString("message", "").lines().firstOrNull() ?: "",
-                        author = authorObj?.optString("name", "Unknown") ?: "Unknown",
-                        date = authorObj?.optString("date", "") ?: "",
-                        url = commitObj.optString("html_url", ""),
-                        authorAvatarUrl = githubAuthorObj?.optString("avatar_url")?.takeIf { it.isNotBlank() },
-                    ),
-                )
+            var pageUrl: String? =
+                "https://api.github.com/repos/$OWNER/commits?sha=$branch&per_page=$perPage&page=1"
+
+            while (pageUrl != null) {
+                val response = client.get(pageUrl) {
+                    headers {
+                        append("Accept", "application/vnd.github+json")
+                        append("User-Agent", "ArchiveTune")
+                    }
+                }
+                if (response.status.value !in 200..299) break
+
+                val body = response.bodyAsText()
+                val jsonArray = JSONArray(body)
+                if (jsonArray.length() == 0) break
+
+                for (i in 0 until jsonArray.length()) {
+                    if (!unlimited && commits.size >= count) break
+                    val commitObj = jsonArray.getJSONObject(i)
+                    val commit = commitObj.getJSONObject("commit")
+                    val authorObj = commit.optJSONObject("author")
+                    val githubAuthorObj = commitObj.optJSONObject("author")
+                    commits.add(
+                        GitCommit(
+                            sha = commitObj.optString("sha", "").take(7),
+                            message = commit.optString("message", "").lines().firstOrNull() ?: "",
+                            author = authorObj?.optString("name", "Unknown") ?: "Unknown",
+                            date = authorObj?.optString("date", "") ?: "",
+                            url = commitObj.optString("html_url", ""),
+                            authorAvatarUrl = githubAuthorObj?.optString("avatar_url")?.takeIf { it.isNotBlank() },
+                        ),
+                    )
+                }
+
+                if (!unlimited && commits.size >= count) break
+
+                // Parse `Link: <url>; rel="next", <url>; rel="last"` if present.
+                pageUrl = response.headers["Link"]?.let { linkHeader ->
+                    val nextRegex = Regex("""<([^>]+)>;\s*rel="next"""")
+                    nextRegex.find(linkHeader)?.groupValues?.getOrNull(1)
+                }
             }
             commits
         }

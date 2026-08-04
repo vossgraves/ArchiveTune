@@ -706,6 +706,12 @@
     <string name="ai_translation_menu">AI Translation</string>
     <string name="hide_ai_mix">Hide AI Mix</string>
     <string name="hide_ai_mix_desc">Hide the AI-generated mixes section in your library and stop generating new mixes</string>
+    <string name="auto_translate_lyrics">Automatic translation</string>
+    <string name="auto_translate_lyrics_desc">When on, foreign-language lyrics are translated to your preferred language automatically using the configured AI provider. The "Translation saved" toast is suppressed while this is active.</string>
+    <string name="update_remind_later">Remind me later</string>
+    <string name="update_never_show_again">Never show again</string>
+    <string name="settings_lyrics_providers_subtitle">Choose which lyrics providers are active and set priority</string>
+    <string name="settings_lyrics_romanisation_subtitle">Romanise foreign-language lyrics (Japanese, Korean, Chinese, Hindi, etc.)</string>
     <string name="hide_liked_songs_card">Hide Liked songs card</string>
     <string name="hide_liked_songs_card_desc">Hide the Liked songs quick-access card on the Library Mix screen</string>
     <string name="hide_offline_card">Hide Offline card</string>
