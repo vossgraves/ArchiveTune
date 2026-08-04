@@ -109,23 +109,28 @@ import java.util.Locale
 private const val VideoSyncIgnoreToleranceMs = 60L
 
 /**
- * Drift above this threshold triggers a **soft seek** instead of
- * speed-based correction. Below this, drift is corrected gradually by
+ * Drift above this threshold triggers a **soft seek** (a re-anchor) instead
+ * of speed-based correction. Below this, drift is corrected gradually by
  * adjusting the video ExoPlayer's playback speed (see
  * [VideoSyncSpeedCorrectionFactorMax]); above it, the video is seeked
- * to the audio's current position (which causes a brief re-buffer).
+ * straight to the audio's current position while the audio keeps playing.
  *
- * 3000ms is the crossover because at ±20% max speed correction, closing
- * a 3000ms drift would take ~15 seconds — too slow for the user to
- * perceive it as "fixed". A soft seek re-buffers for ~1s and is done.
+ * 400ms is the crossover because the user's complaint is that desync is
+ * *always* visible and only pause/resume or a quality change ever fixed
+ * it. The previous 3000ms threshold meant a typical 300–1500ms decoder
+ * stall produced a desync the speed-correction loop (max ±20%, normalised
+ * over 3000ms) needed ~15 seconds to fix — i.e. permanently out of sync.
  *
- * The settling period ([VideoSeekSettlingTimeMs]) after a seek prevents
- * the re-buffer loop that previously plagued this path: after a seek we
- * suppress drift checks for 2s while the video re-buffers, so the
- * natural decoder lag during re-buffer doesn't immediately re-trigger
- * another seek.
+ * With 400ms, any drift beyond "barely perceptible" is snapped back to
+ * the audio clock immediately. The video is normally buffered far enough
+ * ahead that a ~400ms re-anchor seek re-decodes in tens of milliseconds
+ * with no network re-buffer (it is the *position* that is off, not the
+ * buffer). This is exactly what the manual pause/resume fix does — minus
+ * the pause. The [VideoSeekSettlingTimeMs] settling window plus the
+ * READY-state gating in the drift poller prevent the re-buffer loop that
+ * previously plagued this path.
  */
-private const val VideoSoftSeekDriftThresholdMs = 3000L
+private const val VideoSoftSeekDriftThresholdMs = 400L
 
 /**
  * Maximum proportional speed adjustment applied for drift correction.
@@ -138,13 +143,20 @@ private const val VideoSoftSeekDriftThresholdMs = 3000L
  * `video-sync=audio` mode).
  *
  * The correction is proportional: drift = 0 → factor = 1.0; drift =
- * +1500ms (video ahead) → factor ≈ 0.90; drift = -1500ms (video behind)
- * → factor ≈ 1.10; drift = ±3000ms → factor = 0.80 / 1.20 (capped).
+ * +200ms (video ahead) → factor ≈ 0.90; drift = -200ms (video behind)
+ * → factor ≈ 1.10; drift = ±400ms → factor = 0.80 / 1.20 (capped).
  *
  * The factor is recomputed every poll cycle ([VideoSyncPollIntervalMs]
- * = 500ms), so it continuously narrows as drift approaches zero. Once
+ * = 250ms), so it continuously narrows as drift approaches zero. Once
  * drift drops below [VideoSyncIgnoreToleranceMs] the factor resets to
  * 1.0 and the video returns to the user's preferred playback speed.
+ *
+ * The normalization is over [VideoSoftSeekDriftThresholdMs] (400ms), so
+ * the whole 60–400ms correction band converges in roughly 2–3 seconds —
+ * fast enough that a drift caused by a brief decoder stall is fixed
+ * before the user registers it as "desynced". Above 400ms the drift
+ * poller switches to an immediate re-anchor seek (see
+ * [VideoSoftSeekDriftThresholdMs]), which is even faster.
  *
  * 20% is noticeable to the user IF sustained, but because it's
  * proportional and only sustained while drift is being corrected (a
@@ -171,6 +183,25 @@ private const val VideoSyncSpeedCorrectionFactorMax = 0.20f
  * decoders separately.
  */
 private const val VideoSeekSettlingTimeMs = 2000L
+
+/**
+ * Minimum time between automatic surface re-anchors in
+ * [Player.Listener.onRenderedFirstFrame].
+ *
+ * When the video surface is re-attached while the player is already
+ * playing (fullscreen toggle, orientation change, window resize), the
+ * TextureView can hold a stale frame while the ExoPlayer clock keeps
+ * advancing — the video looks frozen/laggy and the drift poller can't
+ * detect it (it compares clocks, not displayed frames). We force the
+ * renderer to present the frame at the audio position with a seekTo.
+ *
+ * That seekTo itself triggers another onRenderedFirstFrame, which would
+ * re-trigger the seek → infinite loop. The min-interval guard breaks the
+ * cycle: a re-anchor can only fire once every 2s, and the drift poller
+ * also stamps [VideoArtworkState.lastSurfaceReanchorAtMs] when *it*
+ * re-anchors, so a poller re-anchor doesn't get double-handled either.
+ */
+private const val SurfaceReanchorMinIntervalMs = 2000L
 
 /**
  * Tight drift tolerance used ONLY for the initial sync in
@@ -208,8 +239,14 @@ private const val VideoHardResyncCooldownMs = 30_000L
 
 /**
  * How often to poll the main player's position and re-sync the video.
+ *
+ * 250ms (previously 500ms) bounds how long a decoder stall can go
+ * uncorrected: with a 400ms re-anchor threshold and a 250ms poll the
+ * worst-case visible desync before self-correction is ~650ms, and the
+ * typical case is under 300ms. The polling cost is negligible (a couple
+ * of reads every 250ms).
  */
-private const val VideoSyncPollIntervalMs = 500L
+private const val VideoSyncPollIntervalMs = 250L
 
 /**
  * Maximum time the video ExoPlayer is allowed to stay in STATE_BUFFERING
@@ -362,6 +399,27 @@ class VideoArtworkState internal constructor(
         internal set
 
     /**
+     * Epoch-millis (from [SystemClock.elapsedRealtime]) of the last
+     * **surface re-anchor** — a forced `seekTo(audioPosition)` performed
+     * either by [Player.Listener.onRenderedFirstFrame] when the video
+     * surface is re-attached while already playing (fullscreen toggle /
+     * orientation change) or by the drift poller when it re-anchors the
+     * video to the audio clock.
+     *
+     * [SurfaceReanchorMinIntervalMs] uses this to stop the re-anchor from
+     * re-triggering itself: the forced seekTo produces another
+     * `onRenderedFirstFrame`, and without the interval guard that callback
+     * would seekTo again → infinite loop. Stamp this BEFORE the seekTo in
+     * both places so the follow-up callback sees a recent timestamp and
+     * stands down.
+     *
+     * Reset to 0 when the video id changes (the new video's own first-frame
+     * flow handles its initial sync).
+     */
+    var lastSurfaceReanchorAtMs: Long by mutableStateOf(0L)
+        internal set
+
+    /**
      * Epoch-millis (from [SystemClock.elapsedRealtime]) at which the
      * pending resume should fire. Set by [Player.Listener.onRenderedFirstFrame]
      * to `now + [VideoLoadResumeDelayMs]` when the first frame renders.
@@ -489,21 +547,59 @@ class VideoArtworkState internal constructor(
      * cooldown: if two auto-resyncs fire within [VideoHardResyncCooldownMs],
      * [autoResyncDisabled] is latched true and subsequent auto-resync
      * requests are dropped until the video id changes.
+     *
+     * @return `true` if the resync was accepted (a pending pause-load-resume
+     *   will run), `false` if it was dropped (cooldown / latch / already
+     *   resyncing / failed). The drift poller falls back to a plain re-anchor
+     *   seek when this returns `false` so the video still self-heals without
+     *   ever pausing the audio.
      */
-    internal fun requestAutoResync(position: Long, isPlaying: Boolean) {
-        if (hasPlaybackFailed) return
-        if (isResyncing) return
-        if (autoResyncDisabled) return
+    internal fun requestAutoResync(position: Long, isPlaying: Boolean): Boolean {
+        if (hasPlaybackFailed) return false
+        if (isResyncing) return false
+        if (autoResyncDisabled) return false
         val now = SystemClock.elapsedRealtime()
         if (lastAutoResyncAtMs != 0L && now - lastAutoResyncAtMs < VideoHardResyncCooldownMs) {
             Timber
                 .tag(VideoPlaybackLogTag)
                 .w("Auto-resync cooldown hit — disabling automatic resync for this video")
             autoResyncDisabled = true
-            return
+            return false
         }
         lastAutoResyncAtMs = now
         pendingResync = Triple(position, isPlaying, true)
+        return true
+    }
+
+    /**
+     * Force the video to re-anchor to the main audio's position at
+     * [mainPos] WITHOUT pausing the audio.
+     *
+     * This is the same action the drift poller performs for large drift,
+     * but invoked directly by the host at moments when the video surface is
+     * re-created (fullscreen toggle, orientation change, window resize). A
+     * freshly-attached TextureView can present a stale or mis-timed frame
+     * while the ExoPlayer clock keeps advancing — the "video is laggy after
+     * fullscreen, only pause/resume fixes it" bug. The drift poller can't
+     * detect that state (it compares clocks, not displayed frames), so we
+     * force the renderer to present the frame at the audio position here.
+     *
+     * The seekTo keeps the video in the already-buffered range (the target
+     * is the current playback position), so the re-anchor re-decodes in tens
+     * of milliseconds rather than re-buffering from the network.
+     *
+     * No-op unless the video is actively rendering ([Player.STATE_READY]).
+     */
+    internal fun reanchorToAudio(mainPos: Long) {
+        if (hasPlaybackFailed) return
+        if (isResyncing) return
+        if (mainPos <= 0L) return
+        if (exoPlayer.playbackState != Player.STATE_READY) return
+        val now = SystemClock.elapsedRealtime()
+        currentSpeedCorrectionFactor = 1.0f
+        exoPlayer.seekTo(mainPos)
+        lastSeekAtMs = now
+        lastSurfaceReanchorAtMs = now
     }
 }
 
@@ -544,10 +640,18 @@ class VideoArtworkState internal constructor(
  * it caused the "video keeps pausing repeatedly" bug.
  *
  * Automatic drift handling: the periodic poller detects drift between the
- * audio and video positions. For large drifts (> [VideoSoftSeekDriftThresholdMs])
- * while playing, it performs a "soft seek" — seeking the video WITHOUT
- * pausing the main audio. The video may freeze briefly while it re-buffers,
- * but the audio continues uninterrupted.
+ * audio and video positions. Small drifts (> [VideoSyncIgnoreToleranceMs],
+ * up to [VideoSoftSeekDriftThresholdMs]) are corrected by gently adjusting
+ * the video's playback speed. Larger drifts (> [VideoSoftSeekDriftThresholdMs])
+ * are corrected with an immediate "re-anchor" — seeking the video to the
+ * audio's current position WITHOUT pausing the main audio. This is exactly
+ * what the manual pause/resume fix does, minus the pause, and it is the
+ * primary desync correction: any drift beyond "barely perceptible" snaps
+ * back to the audio clock within one poll cycle. The video may freeze
+ * briefly while it re-decodes, but the audio continues uninterrupted.
+ * Corrections only run while the video is in STATE_READY (its position is
+ * trustworthy) and are suppressed for [VideoSeekSettlingTimeMs] after any
+ * seek, so a re-anchor can never re-trigger itself in a loop.
  *
  * Stuck-buffering recovery: if the ExoPlayer stays in STATE_BUFFERING for
  * longer than [VideoStuckBufferingTimeoutMs], the poller forces a
@@ -781,6 +885,10 @@ fun rememberVideoArtworkState(
         // settling window if it actually seeks).
         state.currentSpeedCorrectionFactor = 1.0f
         state.lastSeekAtMs = 0L
+        // Clear the surface re-anchor timestamp — the new video's own
+        // first-frame flow handles its initial sync, so a stale timestamp
+        // from the previous video must not suppress it.
+        state.lastSurfaceReanchorAtMs = 0L
         // Cancel any pending resume from the previous video. Setting
         // `pendingResumeAtMs = 0L` causes the LaunchedEffect keyed on
         // it to re-launch and immediately return (the early-return
@@ -1177,25 +1285,32 @@ fun rememberVideoArtworkState(
             //    Proportional speed adjustment — up to ±20% (capped) on
             //    top of the user's preferred speed. Video behind audio →
             //    speed up; video ahead → slow down. No seek, no
-            //    re-buffer. This is the MPV / VLC approach and is what
-            //    fixes the user's "always desynced, only pause/resume
-            //    fixes it" complaint: drifts of 100–2000ms (the band
-            //    that was previously IGNORED up to 2000ms) are now
-            //    continuously corrected without any user-visible
-            //    disruption.
+            //    re-buffer. Normalized over [VideoSoftSeekDriftThresholdMs]
+            //    (400ms), so the whole band converges in ~2–3s.
             //
-            // 3. SOFT SEEK ([VideoSoftSeekDriftThresholdMs] < |drift|
-            //    <= [VideoHardResyncThresholdMs], while playing):
-            //    Seek the video WITHOUT pausing the main audio. The
-            //    video freezes briefly while re-buffering, but the audio
-            //    continues uninterrupted. Sets [lastSeekAtMs] to trigger
-            //    the SETTLING tier afterward.
+            // 3. RE-ANCHOR / SOFT SEEK
+            //    ([VideoSoftSeekDriftThresholdMs] < |drift| <=
+            //    [VideoHardResyncThresholdMs]):
+            //    Seek the video to the audio's current position WITHOUT
+            //    pausing the main audio. This is exactly what the manual
+            //    pause/resume fix does — minus the pause — and it is the
+            //    PRIMARY desync fix. The old 3000ms threshold left
+            //    300–1500ms decoder stalls out of sync for ~15s; at 400ms
+            //    any drift beyond "barely perceptible" snaps back within
+            //    one poll cycle. The video is normally buffered far enough
+            //    ahead that a small re-anchor re-decodes in tens of ms with
+            //    no network re-buffer. Stamps [lastSeekAtMs] (SETTLING) and
+            //    [lastSurfaceReanchorAtMs] (so onRenderedFirstFrame's own
+            //    re-anchor doesn't double-seek).
             //
             // 4. HARD RESYNC (|drift| > [VideoHardResyncThresholdMs]):
             //    Coordinated pause-load-resume via [requestAutoResync].
             //    Rate-limited by [VideoHardResyncCooldownMs] and latches
             //    [VideoArtworkState.autoResyncDisabled] if two fire
-            //    within the cooldown.
+            //    within the cooldown. If the request is dropped (cooldown
+            //    exhausted), we STILL fall back to a plain re-anchor seek
+            //    rather than giving up — the video must never be allowed
+            //    to stay desynced with no self-healing path.
             //
             // For explicit seekbar seeks, the user-initiated
             // [VideoArtworkState.requestResync] bypasses the cooldown.
@@ -1217,6 +1332,22 @@ fun rememberVideoArtworkState(
                 continue
             }
 
+            // The video must be actively rendering. While it is BUFFERING
+            // (or ENDED/IDLE) its currentPosition is stale — it has frozen
+            // at the last rendered frame while the audio kept advancing, so
+            // any drift computed now is meaningless and would either trigger
+            // a redundant seek into still-loading data or a runaway
+            // correction. The stuck-buffering recovery above handles
+            // genuinely stuck decoders; once the video returns to READY the
+            // tiers below snap it back into sync (drift has meanwhile grown
+            // past the re-anchor threshold, which is what we want).
+            if (exoPlayer.playbackState != Player.STATE_READY) {
+                if (state.currentSpeedCorrectionFactor != 1.0f) {
+                    state.currentSpeedCorrectionFactor = 1.0f
+                }
+                continue
+            }
+
             val mainPos = currentPosition()
             if (mainPos <= 0) continue
             val videoPos = exoPlayer.currentPosition
@@ -1232,25 +1363,37 @@ fun rememberVideoArtworkState(
                     .tag(VideoPlaybackLogTag)
                     .w("Hard resync: drift=${signedDrift}ms (main=$mainPos, video=$videoPos, playing=$shouldPlay)")
                 state.currentSpeedCorrectionFactor = 1.0f
-                state.requestAutoResync(mainPos, shouldPlay)
+                val accepted = state.requestAutoResync(mainPos, shouldPlay)
+                if (!accepted) {
+                    // Cooldown/latch hit — never leave the video desynced
+                    // with no automatic path. Fall back to a plain re-anchor
+                    // seek (no audio pause) so it still self-heals.
+                    exoPlayer.seekTo(mainPos)
+                    state.lastSeekAtMs = now
+                    state.lastSurfaceReanchorAtMs = now
+                }
             } else if (absDrift > VideoSoftSeekDriftThresholdMs) {
-                // Tier 3: soft seek. Triggered for both playing AND
-                // paused states — when paused, a large drift means the
-                // user seeked the audio while the video was idle, so we
-                // need to snap the video to the new audio position.
+                // Tier 3: re-anchor / soft seek. Triggered for both playing
+                // AND paused states — when paused, a large drift means the
+                // user seeked the audio while the video was idle, so we need
+                // to snap the video to the new audio position.
                 Timber
                     .tag(VideoPlaybackLogTag)
-                    .d("Soft seek: drift=${signedDrift}ms (main=$mainPos, video=$videoPos)")
+                    .d("Re-anchor: drift=${signedDrift}ms (main=$mainPos, video=$videoPos)")
                 state.currentSpeedCorrectionFactor = 1.0f
                 exoPlayer.seekTo(mainPos)
                 state.lastSeekAtMs = now
+                // Stamp the re-anchor so the onRenderedFirstFrame triggered by
+                // this seek doesn't perform a redundant (and self-perpetuating)
+                // forced re-anchor on top of it.
+                state.lastSurfaceReanchorAtMs = now
             } else if (absDrift > VideoSyncIgnoreToleranceMs) {
                 // Tier 2: proportional speed correction.
                 //
                 // normalizedDrift ∈ [-1, 1]: +1 = video ahead by
                 // [VideoSoftSeekDriftThresholdMs]; -1 = video behind by
                 // the same. We cap at ±1 so a borderline drift just
-                // before the soft-seek threshold still applies the max
+                // before the re-anchor threshold still applies the max
                 // correction (no runaway).
                 val normalizedDrift =
                     (signedDrift.toFloat() / VideoSoftSeekDriftThresholdMs.toFloat())
@@ -1322,6 +1465,13 @@ fun rememberVideoArtworkState(
                 }
 
                 override fun onRenderedFirstFrame() {
+                    // `wasAlreadyReady` distinguishes a re-render on an
+                    // already-playing player (surface re-attached during a
+                    // fullscreen toggle / orientation change / window resize,
+                    // or a seek re-rendered a new frame) from the first frame
+                    // of a fresh load / quality change / resync. It must be
+                    // captured BEFORE `isVideoReady` is set true below.
+                    val wasAlreadyReady = state.isVideoReady
                     state.isVideoReady = true
                     // Capture `resumeAudioAfterVideoReady` BEFORE
                     // releaseAudioHold() — releaseAudioHold() clears
@@ -1361,17 +1511,56 @@ fun rememberVideoArtworkState(
                     // because the seekTo(position) in the pendingResync
                     // consumer already placed the video exactly where
                     // the user wants it.
+                    val now = SystemClock.elapsedRealtime()
                     if (!wasResync) {
                         val mainPos = currentPosition()
                         if (mainPos > 0) {
-                            val videoPos = exoPlayer.currentPosition
-                            val drift = kotlin.math.abs(videoPos - mainPos)
-                            if (drift > VideoInitialSyncToleranceMs) {
-                                exoPlayer.seekTo(mainPos)
-                                // Start the settling window so the drift
-                                // poller doesn't immediately re-seek while
-                                // the video re-buffers from this snap.
-                                state.lastSeekAtMs = SystemClock.elapsedRealtime()
+                            if (wasAlreadyReady) {
+                                // ── Surface re-attach re-anchor ──
+                                //
+                                // The video was already rendering and its
+                                // surface got re-created (fullscreen toggle,
+                                // orientation change, window resize). A
+                                // TextureView can hold a STALE frame through
+                                // this while the ExoPlayer clock keeps
+                                // advancing — the video looks frozen/laggy
+                                // while the drift poller sees no drift (it
+                                // compares clocks, not displayed frames).
+                                // This is the "entering/exiting fullscreen
+                                // makes the video laggy, only pause/resume
+                                // fixes it" bug. Force the renderer to
+                                // present the frame at the audio position.
+                                //
+                                // The seekTo itself produces another
+                                // onRenderedFirstFrame; the min-interval
+                                // guard (SurfaceReanchorMinIntervalMs) breaks
+                                // that self-triggering loop, and the drift
+                                // poller also stamps lastSurfaceReanchorAtMs
+                                // when it re-anchors so it isn't double
+                                // handled either.
+                                if (
+                                    exoPlayer.playbackState == Player.STATE_READY &&
+                                        (state.lastSurfaceReanchorAtMs == 0L ||
+                                            now - state.lastSurfaceReanchorAtMs >
+                                            SurfaceReanchorMinIntervalMs)
+                                ) {
+                                    state.lastSurfaceReanchorAtMs = now
+                                    exoPlayer.seekTo(mainPos)
+                                    // Start the settling window so the drift
+                                    // poller doesn't immediately re-seek while
+                                    // the video re-buffers from this snap.
+                                    state.lastSeekAtMs = now
+                                }
+                            } else {
+                                val videoPos = exoPlayer.currentPosition
+                                val drift = kotlin.math.abs(videoPos - mainPos)
+                                if (drift > VideoInitialSyncToleranceMs) {
+                                    exoPlayer.seekTo(mainPos)
+                                    // Start the settling window so the drift
+                                    // poller doesn't immediately re-seek while
+                                    // the video re-buffers from this snap.
+                                    state.lastSeekAtMs = now
+                                }
                             }
                         }
                     }
@@ -1409,7 +1598,15 @@ fun rememberVideoArtworkState(
                             (wasResync && wasPlayingBeforeResyncLocal) ||
                             (wasChangingQuality && state.wasPlayingBeforeQualityChange) ||
                             shouldResumeAudioAfterHold
-                    if (effectiveShouldPlay && !state.hasPlaybackFailed && exoPlayer.playerError == null) {
+                    // A pure surface re-attach (video already playing) has
+                    // nothing to resume — no audio was paused and the video
+                    // never stopped. Skipping the delayed resume here avoids
+                    // a pointless 1s "resume" log and any edge-case double
+                    // play() call.
+                    val nothingToResume = wasAlreadyReady && !wasChangingQuality && !wasResync
+                    if (effectiveShouldPlay && !nothingToResume && !state.hasPlaybackFailed &&
+                        exoPlayer.playerError == null
+                    ) {
                         // Compute the resume flags. The main audio
                         // should be resumed if it was paused — which
                         // is true for all three paths now that
@@ -1429,7 +1626,7 @@ fun rememberVideoArtworkState(
                                 "First frame rendered — resume scheduled in ${VideoLoadResumeDelayMs}ms " +
                                     "(audio=$resumeMainAudio, video=true)",
                             )
-                    } else {
+                    } else if (!nothingToResume) {
                         // We're not resuming (e.g. the user paused
                         // during loading, or playback failed). Clear
                         // any stale pending resume so a previously-
@@ -1439,6 +1636,11 @@ fun rememberVideoArtworkState(
                         state.pendingResumeMainAudio = false
                         state.pendingResumeVideo = false
                     }
+                    // When `nothingToResume` (pure surface re-attach), leave
+                    // any in-flight pending resume untouched — e.g. a load's
+                    // first-frame already scheduled the resume and a surface
+                    // re-attach happened inside the 1s window; cancelling it
+                    // here would strand the main audio paused forever.
                     // `resumeAudioAfterVideoReady` has now served its
                     // purpose (captured into `shouldResumeAudioAfterHold`
                     // above). Clear it so it doesn't leak into the next
