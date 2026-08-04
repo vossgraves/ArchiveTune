@@ -242,6 +242,34 @@ private const val MaxVideoHeightCap = 1080
 private const val VideoReadyHoldTimeoutMs = 10000L
 
 /**
+ * Delay between the video's first frame rendering and the actual resume
+ * of both audio and video playback.
+ *
+ * When a music video loads (initial load OR quality change OR resync),
+ * the main audio player is paused (see [beginAudioHold] /
+ * `state.isChangingQuality` / `state.isResyncing`) and the video
+ * ExoPlayer is held paused while it buffers. When the video's first
+ * frame renders ([Player.Listener.onRenderedFirstFrame]) we DON'T
+ * resume immediately — instead we schedule the resume for
+ * [VideoLoadResumeDelayMs] ms later (see the `pendingResumeAtMs`
+ * LaunchedEffect in [rememberVideoArtworkState]).
+ *
+ * This deliberate 1-second pause-after-ready window is the user's
+ * explicit request: it gives both the audio decoder (which had gone
+ * idle while paused) and the video decoder (which just finished
+ * buffering) time to fully pre-roll in parallel BEFORE either starts
+ * advancing its clock. Both then start together from a known-aligned
+ * position, eliminating the "audio starts first, video catches up"
+ * desync that occurred when audio resumed immediately on first frame
+ * while the video decoder was still spinning up.
+ *
+ * 1000ms is long enough for both decoders to fully pre-roll on a
+ * typical mobile chipset, and short enough that the user perceives it
+ * as a brief loading pause rather than a stall.
+ */
+private const val VideoLoadResumeDelayMs = 1000L
+
+/**
  * Resolved information about a video stream — the playable URL plus the
  * menu of formats YouTube offered, so the user can pick a different
  * quality after playback has started.
@@ -331,6 +359,53 @@ class VideoArtworkState internal constructor(
      * settling window from its own initial-load snap).
      */
     var lastSeekAtMs: Long by mutableStateOf(0L)
+        internal set
+
+    /**
+     * Epoch-millis (from [SystemClock.elapsedRealtime]) at which the
+     * pending resume should fire. Set by [Player.Listener.onRenderedFirstFrame]
+     * to `now + [VideoLoadResumeDelayMs]` when the first frame renders.
+     *
+     * A `LaunchedEffect(state.pendingResumeAtMs)` in
+     * [rememberVideoArtworkState] watches this field; when it transitions
+     * to a non-zero value the effect `delay`s until the scheduled time
+     * and then resumes both the main audio player and the video
+     * ExoPlayer together (see [state.pendingResumeMainAudio] and
+     * [state.pendingResumeVideo]).
+     *
+     * Setting this to a new non-zero value automatically cancels any
+     * previously-pending resume (LaunchedEffect re-launches on key
+     * change), so it's safe to overwrite if a new load completes while
+     * an old resume is still pending.
+     *
+     * Reset to 0 when the video id changes (no resume should fire for
+     * the previous video).
+     */
+    var pendingResumeAtMs: Long by mutableStateOf(0L)
+        internal set
+
+    /**
+     * Whether the pending resume (see [pendingResumeAtMs]) should call
+     * `updatedOnRequestResumeMain()` to resume the main audio player.
+     *
+     * True for the initial-load path (where [beginAudioHold] paused the
+     * main audio), for the quality-change path (where the
+     * `state.isChangingQuality` block paused it), and for the resync
+     * path (where `state.isResyncing` paused it). All three paths set
+     * this to true when scheduling the resume.
+     */
+    var pendingResumeMainAudio: Boolean by mutableStateOf(false)
+        internal set
+
+    /**
+     * Whether the pending resume (see [pendingResumeAtMs]) should
+     * `exoPlayer.play()` the video ExoPlayer.
+     *
+     * Mirrors [pendingResumeMainAudio] but for the video side. Kept as a
+     * separate flag in case a future code path wants to resume only one
+     * of the two (currently they always resume together).
+     */
+    var pendingResumeVideo: Boolean by mutableStateOf(false)
         internal set
 
     /**
@@ -622,33 +697,44 @@ fun rememberVideoArtworkState(
         if (awaitingVideoReady) return
         awaitingVideoReady = true
         resumeAudioAfterVideoReady = shouldPlay
-        // DON'T pause the main audio. Previously we called
-        // updatedOnRequestPauseMain() here to hold the audio while the
-        // video loaded. But when the video's first frame rendered and we
-        // resumed the audio via player.play(), the audio had to re-buffer
-        // (its decoder had been idle during the hold) while the video
-        // started immediately — creating the "video plays first, audio
-        // catches up" desync the user reported on first play and next.
+        // PAUSE the main audio player for the duration of the video
+        // load + the [VideoLoadResumeDelayMs] settling period after the
+        // first frame renders. Both audio and video resume together
+        // after the 1-second delay — see the `pendingResumeAtMs`
+        // LaunchedEffect below.
         //
-        // Instead, let the audio play continuously. The video loads in
-        // the background; when its first frame renders we snap it to the
-        // audio's current position (see onRenderedFirstFrame). This
-        // matches the quality-change path which the user confirmed is in
-        // sync.
+        // This is the user's explicit request: when a music video
+        // loads, pause BOTH audio and video for ~1 second, then resume
+        // them together. This eliminates the "audio starts first,
+        // video catches up" desync that occurred when the audio played
+        // continuously during load (the previous behavior) AND the
+        // "video starts first, audio catches up" desync that occurred
+        // when only the audio was paused and resumed immediately on
+        // the first frame (the behavior before that). Both decoders
+        // pre-roll in parallel during the pause; when they resume
+        // together their clocks are aligned from the start.
+        if (shouldPlay) updatedOnRequestPauseMain()
         Timber
             .tag(VideoPlaybackLogTag)
-            .d("Video for $videoId loading — audio continues playing")
+            .d("Video for $videoId loading — audio paused for 1s settling")
     }
 
     fun releaseAudioHold() {
         if (!awaitingVideoReady) return
         awaitingVideoReady = false
-        resumeAudioAfterVideoReady = false
-        // No audio resume needed — we never paused it. Just clear the flag
-        // so the play/pause follower stops force-pausing the video.
+        // DON'T clear `resumeAudioAfterVideoReady` here —
+        // `onRenderedFirstFrame` captures it BEFORE calling this
+        // function so it can decide whether to schedule an audio
+        // resume. Clearing it now would race with that capture. It
+        // gets cleared after the scheduled resume fires (or when the
+        // video id changes).
+        //
+        // No audio resume here — let the `pendingResumeAtMs`
+        // LaunchedEffect resume it after the 1-second settling delay
+        // so both audio and video start together.
         Timber
             .tag(VideoPlaybackLogTag)
-            .d("Video ready — clearing hold flag")
+            .d("Video ready — clearing hold flag (resume scheduled)")
     }
 
     // Propagate loading state to the parent so it can render a spinner.
@@ -695,6 +781,15 @@ fun rememberVideoArtworkState(
         // settling window if it actually seeks).
         state.currentSpeedCorrectionFactor = 1.0f
         state.lastSeekAtMs = 0L
+        // Cancel any pending resume from the previous video. Setting
+        // `pendingResumeAtMs = 0L` causes the LaunchedEffect keyed on
+        // it to re-launch and immediately return (the early-return
+        // guard), so no stale resume fires for the new video. The new
+        // video will schedule its own resume when its first frame
+        // renders.
+        state.pendingResumeAtMs = 0L
+        state.pendingResumeMainAudio = false
+        state.pendingResumeVideo = false
         // Reset the "last loaded" trackers so the next media-item load is
         // treated as a fresh load (not a caption-only change).
         lastLoadedStreamUrl = null
@@ -854,18 +949,25 @@ fun rememberVideoArtworkState(
         if (state.hasPlaybackFailed) {
             exoPlayer.pause()
         } else if (awaitingVideoReady) {
-            // The video isn't ready yet — keep ONLY the video paused. The
-            // main audio continues playing so its decoder stays warm and
-            // buffered; when the video's first frame renders we snap the
-            // video to the audio's current position (see onRenderedFirstFrame).
-            // This eliminates the "video plays first, audio catches up"
-            // desync that occurred when we used to pause the audio too.
+            // The video isn't ready yet — keep the video paused. The
+            // main audio is ALSO paused (see [beginAudioHold], which
+            // calls `updatedOnRequestPauseMain()` when the load begins).
+            // Both stay paused until the video's first frame renders,
+            // at which point `onRenderedFirstFrame` schedules a
+            // delayed resume via `state.pendingResumeAtMs` — both
+            // audio and video resume together 1 second later. This is
+            // the user's explicit "pause both for a second, then
+            // resume" request and eliminates the audio-first /
+            // video-first desync that occurred under previous
+            // behaviors.
             exoPlayer.pause()
         } else if (state.isChangingQuality) {
-            // A quality or caption change is in progress — keep BOTH paused
-            // until the first frame of the new media item renders. This
-            // ensures neither audio nor video resumes on its own while the
-            // other is still loading.
+            // A quality or caption change is in progress — keep BOTH
+            // paused until the first frame of the new media item
+            // renders. This ensures neither audio nor video resumes on
+            // its own while the other is still loading. The actual
+            // resume is scheduled by `onRenderedFirstFrame` (see the
+            // `pendingResumeAtMs` LaunchedEffect).
             if (isPlaying) updatedOnRequestPauseMain()
             exoPlayer.pause()
         } else {
@@ -903,7 +1005,20 @@ fun rememberVideoArtworkState(
             Timber
                 .tag(VideoPlaybackLogTag)
                 .w("Video not ready within ${VideoReadyHoldTimeoutMs}ms — releasing audio hold")
+            // Capture whether the audio was paused and should be resumed
+            // before releaseAudioHold() (which no longer clears the flag).
+            val shouldResumeAudio = resumeAudioAfterVideoReady
             releaseAudioHold()
+            // Cancel any pending resume — the video isn't coming, so
+            // don't let a stale scheduled resume fire later.
+            state.pendingResumeAtMs = 0L
+            state.pendingResumeMainAudio = false
+            state.pendingResumeVideo = false
+            resumeAudioAfterVideoReady = false
+            // Resume the main audio immediately so the user isn't stuck
+            // in silence — playback falls back to audio-only with the
+            // artwork.
+            if (shouldResumeAudio) updatedOnRequestResumeMain()
         }
     }
 
@@ -965,6 +1080,62 @@ fun rememberVideoArtworkState(
         exoPlayer.pause()
         exoPlayer.seekTo(position)
         state.bufferingStartedAtMs = SystemClock.elapsedRealtime()
+    }
+
+    // ── Delayed resume after the video's first frame renders ──
+    //
+    // The user's explicit request: when a music video loads, pause BOTH
+    // audio and video for ~1 second, then resume them together.
+    //
+    // `onRenderedFirstFrame` (above) sets `state.pendingResumeAtMs` to
+    // `now + [VideoLoadResumeDelayMs]` and stores the resume flags in
+    // `state.pendingResumeMainAudio` / `state.pendingResumeVideo`. This
+    // LaunchedEffect watches `pendingResumeAtMs` and fires the resume
+    // when the scheduled time arrives.
+    //
+    // Using a LaunchedEffect (vs. `Handler.postDelayed`) gives us
+    // automatic cancellation: if a NEW resume is scheduled before this
+    // one fires (e.g. the user changes quality while a load is
+    // settling), the LaunchedEffect re-launches on the key change and
+    // the old `delay` is cancelled. If the composable leaves the
+    // tree (user navigates away), the effect is also cancelled — no
+    // stale resume fires.
+    //
+    // We also re-check failure / error conditions after the delay
+    // elapses, in case the video failed during the 1-second window.
+    LaunchedEffect(state.pendingResumeAtMs) {
+        if (state.pendingResumeAtMs == 0L) return@LaunchedEffect
+        val resumeMainAudio = state.pendingResumeMainAudio
+        val resumeVideo = state.pendingResumeVideo
+        val now = SystemClock.elapsedRealtime()
+        val delayMs = (state.pendingResumeAtMs - now).coerceAtLeast(0L)
+        delay(delayMs)
+        // Re-check: if playback failed or the player errored during the
+        // delay window, don't resume. The user will see the error UI.
+        if (state.hasPlaybackFailed || exoPlayer.playerError != null) {
+            Timber
+                .tag(VideoPlaybackLogTag)
+                .w("Pending resume cancelled — playback failed during delay window")
+            state.pendingResumeAtMs = 0L
+            state.pendingResumeMainAudio = false
+            state.pendingResumeVideo = false
+            return@LaunchedEffect
+        }
+        Timber
+            .tag(VideoPlaybackLogTag)
+            .d("Firing delayed resume (audio=$resumeMainAudio, video=$resumeVideo)")
+        if (resumeMainAudio) {
+            updatedOnRequestResumeMain()
+        }
+        if (resumeVideo) {
+            exoPlayer.playWhenReady = true
+            exoPlayer.play()
+        }
+        // Clear the pending state so the effect doesn't re-fire on
+        // recomposition.
+        state.pendingResumeAtMs = 0L
+        state.pendingResumeMainAudio = false
+        state.pendingResumeVideo = false
     }
 
     // ── Periodic position sync + stuck-buffering recovery ──
@@ -1152,6 +1323,14 @@ fun rememberVideoArtworkState(
 
                 override fun onRenderedFirstFrame() {
                     state.isVideoReady = true
+                    // Capture `resumeAudioAfterVideoReady` BEFORE
+                    // releaseAudioHold() — releaseAudioHold() clears
+                    // `awaitingVideoReady` (which lets the play/pause
+                    // follower stop force-pausing the video) but no
+                    // longer clears `resumeAudioAfterVideoReady`, so
+                    // we can read it here to decide whether to
+                    // schedule an audio resume.
+                    val shouldResumeAudioAfterHold = resumeAudioAfterVideoReady
                     releaseAudioHold()
                     val wasChangingQuality = state.isChangingQuality
                     state.isChangingQuality = false
@@ -1163,22 +1342,25 @@ fun rememberVideoArtworkState(
 
                     // ── Snap video to the audio's CURRENT position ──
                     //
-                    // During the initial load the audio was NOT paused (see
-                    // beginAudioHold), so its position has been advancing
-                    // while the video buffered. The video was seeked to the
-                    // audio's position when the URL was loaded, but that
-                    // position is now stale. We re-snap to the live audio
-                    // position so the video starts in sync.
+                    // During the initial load the audio was paused (see
+                    // [beginAudioHold]), so its position has been frozen
+                    // while the video buffered. The video was seeked to
+                    // the audio's position when the URL was loaded; both
+                    // should still be at that position. We re-snap to
+                    // the audio's position only if drift exceeds the
+                    // tight initial-sync tolerance, in case the audio
+                    // decoder advanced a few ms during its pre-roll.
                     //
-                    // We use a tight 200ms tolerance (vs. the 2s tolerance
-                    // used by the continuous drift poller) because the
-                    // initial sync must be near-exact — anything wider lets
-                    // the video start up to 2s behind the audio.
+                    // We use a tight 200ms tolerance (vs. the 60ms
+                    // ignore tolerance used by the continuous drift
+                    // poller) because the initial sync must be
+                    // near-exact — anything wider lets the video start
+                    // audibly behind the audio.
                     //
                     // We skip this snap during a manual (seekbar) resync
                     // because the seekTo(position) in the pendingResync
-                    // consumer already placed the video exactly where the
-                    // user wants it.
+                    // consumer already placed the video exactly where
+                    // the user wants it.
                     if (!wasResync) {
                         val mainPos = currentPosition()
                         if (mainPos > 0) {
@@ -1194,40 +1376,74 @@ fun rememberVideoArtworkState(
                         }
                     }
 
-                    // Decide whether to resume playback. During a quality or
-                    // caption change, the main audio player was paused — so
-                    // shouldPlay (which tracks the main player's state) is
-                    // false at that point. We must use wasPlayingBeforeQualityChange
-                    // to decide whether to resume BOTH the video and the main
-                    // audio together.
+                    // ── Schedule the resume after a 1-second settling delay ──
                     //
-                    // For the INITIAL LOAD path (shouldPlay == true,
-                    // wasChangingQuality == false, wasResync == false), the
-                    // audio was never paused — it's been playing continuously.
-                    // We only need to start the video; calling
-                    // updatedOnRequestResumeMain() here would be a no-op but
-                    // we omit it to make the intent clear.
+                    // The user's explicit request: when a music video
+                    // loads, pause BOTH audio and video for ~1 second,
+                    // then resume them together. We DON'T resume here
+                    // on the first frame — instead we set
+                    // `state.pendingResumeAtMs` to `now + VideoLoadResumeDelayMs`,
+                    // and a LaunchedEffect in
+                    // `rememberVideoArtworkState` watches that field
+                    // and fires the resume when the time arrives.
+                    //
+                    // The 1-second pause gives both the audio decoder
+                    // (which was idle while paused) and the video
+                    // decoder (which just finished buffering) time to
+                    // fully pre-roll in parallel BEFORE either starts
+                    // advancing its clock. Both then start together
+                    // from a known-aligned position, eliminating the
+                    // "audio starts first, video catches up" desync
+                    // that occurred when audio resumed immediately on
+                    // the first frame.
+                    //
+                    // `shouldPlay` (which tracks the main player's
+                    // state) is false during quality-change and resync
+                    // flows because the main audio was paused; we must
+                    // consult `wasPlayingBeforeQualityChange` /
+                    // `wasPlayingBeforeResyncLocal` /
+                    // `shouldResumeAudioAfterHold` to decide whether
+                    // to resume.
                     val effectiveShouldPlay =
                         shouldPlay ||
                             (wasResync && wasPlayingBeforeResyncLocal) ||
-                            (wasChangingQuality && state.wasPlayingBeforeQualityChange)
+                            (wasChangingQuality && state.wasPlayingBeforeQualityChange) ||
+                            shouldResumeAudioAfterHold
                     if (effectiveShouldPlay && !state.hasPlaybackFailed && exoPlayer.playerError == null) {
-                        // Resume the main audio for quality-change and resync
-                        // paths only — it was paused during those flows.
-                        if (wasChangingQuality && state.wasPlayingBeforeQualityChange) {
-                            updatedOnRequestResumeMain()
-                        }
-                        if (wasResync && wasPlayingBeforeResyncLocal) {
-                            updatedOnRequestResumeMain()
-                        }
-                        // Start the video. For the initial-load path, the
-                        // audio is already playing; for quality-change /
-                        // resync, we just resumed it above. Either way, the
-                        // video snaps to the audio position (above) and
-                        // starts now.
-                        exoPlayer.playWhenReady = true
-                        exoPlayer.play()
+                        // Compute the resume flags. The main audio
+                        // should be resumed if it was paused — which
+                        // is true for all three paths now that
+                        // `beginAudioHold` also pauses the audio for
+                        // the initial-load path.
+                        val resumeMainAudio =
+                            (wasChangingQuality && state.wasPlayingBeforeQualityChange) ||
+                                (wasResync && wasPlayingBeforeResyncLocal) ||
+                                shouldResumeAudioAfterHold
+                        state.pendingResumeMainAudio = resumeMainAudio
+                        state.pendingResumeVideo = true
+                        state.pendingResumeAtMs =
+                            SystemClock.elapsedRealtime() + VideoLoadResumeDelayMs
+                        Timber
+                            .tag(VideoPlaybackLogTag)
+                            .d(
+                                "First frame rendered — resume scheduled in ${VideoLoadResumeDelayMs}ms " +
+                                    "(audio=$resumeMainAudio, video=true)",
+                            )
+                    } else {
+                        // We're not resuming (e.g. the user paused
+                        // during loading, or playback failed). Clear
+                        // any stale pending resume so a previously-
+                        // scheduled one doesn't fire on this state
+                        // change.
+                        state.pendingResumeAtMs = 0L
+                        state.pendingResumeMainAudio = false
+                        state.pendingResumeVideo = false
                     }
+                    // `resumeAudioAfterVideoReady` has now served its
+                    // purpose (captured into `shouldResumeAudioAfterHold`
+                    // above). Clear it so it doesn't leak into the next
+                    // load cycle.
+                    resumeAudioAfterVideoReady = false
                 }
 
                 override fun onPlaybackStateChanged(playbackState: Int) {
@@ -1239,20 +1455,48 @@ fun rememberVideoArtworkState(
                         }
                         Player.STATE_READY -> {
                             state.bufferingStartedAtMs = 0L
-                            // During a quality or caption change, the main
-                            // audio player is paused (shouldPlay == false),
-                            // so we must consult wasPlayingBeforeQualityChange
-                            // to decide whether to resume the video. The main
-                            // audio itself is resumed in onRenderedFirstFrame.
+                            // The player has buffered enough to start
+                            // playing. We DON'T resume here — we let
+                            // `onRenderedFirstFrame` schedule the
+                            // delayed resume (see above) so both audio
+                            // and video resume together after the
+                            // [VideoLoadResumeDelayMs] settling period.
+                            //
+                            // `onRenderedFirstFrame` typically fires
+                            // within a few ms of STATE_READY (once the
+                            // surface has drawn the first decoded
+                            // frame). If for some reason it never fires
+                            // (e.g. surface not attached), the
+                            // [VideoStuckBufferingTimeoutMs] safety net
+                            // in the periodic position sync poller
+                            // forces a re-prepare, which will re-enter
+                            // STATE_READY and eventually trigger the
+                            // first-frame callback.
+                            //
+                            // We DO schedule a pending resume here as a
+                            // fallback — if `onRenderedFirstFrame`
+                            // fires later it will overwrite this
+                            // schedule (the LaunchedEffect re-launches
+                            // on the key change, cancelling the old
+                            // delay). If `onRenderedFirstFrame` never
+                            // fires, this schedule still fires the
+                            // resume after 1s.
                             val effectiveShouldPlay =
                                 shouldPlay ||
                                     (state.isResyncing && state.wasPlayingBeforeResync) ||
-                                    (state.isChangingQuality && state.wasPlayingBeforeQualityChange)
+                                    (state.isChangingQuality && state.wasPlayingBeforeQualityChange) ||
+                                    resumeAudioAfterVideoReady
                             if (effectiveShouldPlay && !state.hasPlaybackFailed &&
                                 exoPlayer.playerError == null
                             ) {
-                                exoPlayer.playWhenReady = true
-                                exoPlayer.play()
+                                val resumeMainAudio =
+                                    (state.isChangingQuality && state.wasPlayingBeforeQualityChange) ||
+                                        (state.isResyncing && state.wasPlayingBeforeResync) ||
+                                        resumeAudioAfterVideoReady
+                                state.pendingResumeMainAudio = resumeMainAudio
+                                state.pendingResumeVideo = true
+                                state.pendingResumeAtMs =
+                                    SystemClock.elapsedRealtime() + VideoLoadResumeDelayMs
                             }
                         }
                         Player.STATE_ENDED -> {

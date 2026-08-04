@@ -9,6 +9,34 @@ pluginManagement {
                 includeGroupAndSubgroups("androidx")
             }
         }
+        // Google Cloud Storage mirror of Maven Central.
+        //
+        // Declared BEFORE mavenCentral()/gradlePluginPortal() because Gradle's
+        // HTTP retry on 429 (Too Many Requests) does NOT fall back to the next
+        // declared repository — it exhausts retries on the first repo and then
+        // fails the build. Maven Central (repo.maven.apache.org) rate-limits
+        // GitHub Actions runner IPs aggressively, causing transient 429 build
+        // failures (e.g. when resolving transitive deps like org.jsoup:jsoup
+        // pulled in by MetrolistExtractor).
+        //
+        // The GCS mirror (maven-central.storage-download.googleapis.com) is
+        // operated by Google Cloud, mirrors all of Maven Central, is NOT
+        // rate-limited like Maven Central, AND — critically — returns proper
+        // HTTP 404 for missing artifacts (unlike Aliyun's
+        // maven.aliyun.com/repository/public which returns HTTP 502 Bad
+        // Gateway for artifacts it hasn't mirrored, which Gradle treats as a
+        // fatal error and stops the resolution chain). GCS was verified to
+        // serve both jsoup 1.15.3 and KSP 2.3.10 plugin marker + actual
+        // artifacts.
+        //
+        // mavenCentral()/gradlePluginPortal() remain as fallbacks for any
+        // artifact GCS hasn't mirrored yet (GCS mirrors Maven Central only,
+        // not Google Maven or Gradle Plugin Portal — those still need their
+        // own `google()` / `gradlePluginPortal()` entries, which are kept).
+        maven {
+            name = "GcsCentral"
+            setUrl("https://maven-central.storage-download.googleapis.com/maven2/")
+        }
         mavenCentral()
         gradlePluginPortal()
     }
@@ -19,6 +47,15 @@ dependencyResolutionManagement {
 
     repositories {
         google()
+        // GCS mirror of Maven Central — declared BEFORE mavenCentral() for
+        // the same reason as in pluginManagement (see comment above). Maven
+        // Central's 429 rate-limiting on GitHub Actions IPs was causing
+        // dependency-resolution failures for transitive deps (jsoup,
+        // rhino, ...) pulled in by MetrolistExtractor.
+        maven {
+            name = "GcsCentral"
+            setUrl("https://maven-central.storage-download.googleapis.com/maven2/")
+        }
         mavenCentral {
             mavenContent {
                 releasesOnly()
