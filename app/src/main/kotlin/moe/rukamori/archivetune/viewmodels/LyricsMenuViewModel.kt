@@ -250,8 +250,10 @@ class LyricsMenuViewModel
             aiTranslationJob =
                 viewModelScope.launch(Dispatchers.IO) {
                     isAiTranslating.value = true
+                    var isAutomatic = false
                     try {
                         val prefs = context.dataStore.data.first()
+                        isAutomatic = prefs[AutoTranslateLyricsKey] ?: false
                         val translatedLyrics =
                             AiLyricsTranslator().translate(
                                 config =
@@ -276,11 +278,6 @@ class LyricsMenuViewModel
                                 source = LyricsEntity.Source.AI_TRANSLATION.value,
                             )
                         }
-                        // Suppress the success toast when the translation was triggered by the
-                        // "Automatic translation" preference — auto-translations happen on every
-                        // foreign-language lyrics load and would otherwise spam the user with a
-                        // toast per song. Failures are still surfaced so the user can debug.
-                        val isAutomatic = prefs[AutoTranslateLyricsKey] ?: false
                         if (!isAutomatic) {
                             val msg = context.getString(R.string.translation_success)
                             _aiTranslationEvents.emit(msg)
