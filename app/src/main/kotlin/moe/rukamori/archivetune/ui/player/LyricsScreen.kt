@@ -139,6 +139,7 @@ import moe.rukamori.archivetune.constants.PlayerCustomImageUriKey
 import moe.rukamori.archivetune.constants.ShowLyricsPlayerControlsKey
 import moe.rukamori.archivetune.constants.AutoTranslateLyricsKey
 import moe.rukamori.archivetune.constants.TranslatorTargetLangKey
+import moe.rukamori.archivetune.constants.PrioritizeWordSyncedLyricsKey
 import moe.rukamori.archivetune.db.entities.LyricsEntity
 import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.lyrics.LyricsUtils
@@ -153,6 +154,8 @@ import moe.rukamori.archivetune.ui.theme.PlayerPaletteCache
 import moe.rukamori.archivetune.playback.artwork.PlayerPaletteCacheKey
 import moe.rukamori.archivetune.playback.artwork.guessArtworkProvider
 import moe.rukamori.archivetune.utils.ImageBlurUtils
+import moe.rukamori.archivetune.utils.dataStore
+import moe.rukamori.archivetune.utils.get
 import moe.rukamori.archivetune.utils.makeTimeString
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
@@ -302,7 +305,16 @@ fun LyricsScreen(
             val hasValidLyrics =
                 existingLyrics != null &&
                     existingLyrics.lyrics != LyricsEntity.LYRICS_NOT_FOUND
-            if (hasValidLyrics && existingLyrics != null && existingLyrics.providerName.isNotBlank()) {
+            // When "Prioritize Word Synced Lyrics" is ON, don't short-circuit on
+            // stored lyrics unless they are word-synced — otherwise the word-synced
+            // priority lookup in LyricsHelper never gets a chance to run for songs
+            // that were previously cached with line-synced/plain lyrics.
+            val prioritizeWordSynced = context.dataStore[PrioritizeWordSyncedLyricsKey] ?: false
+            val storedIsWordSynced =
+                existingLyrics != null && LyricsUtils.hasWordSyncedLyrics(existingLyrics.lyrics)
+            if (hasValidLyrics && existingLyrics != null && existingLyrics.providerName.isNotBlank() &&
+                (!prioritizeWordSynced || storedIsWordSynced)
+            ) {
                 return@LaunchedEffect
             }
 

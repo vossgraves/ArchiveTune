@@ -79,18 +79,42 @@ class LyricsHelper
             forceRefresh: Boolean = false,
         ): LyricsResult {
             val cacheKey = mediaMetadata.lyricsCacheKey
+
+            // Read the "Prioritize Word Synced Lyrics" toggle once up-front. We need
+            // it during the cache check below because when the toggle is ON, cached
+            // non-word-synced lyrics must be treated as stale — otherwise turning the
+            // toggle on and replaying a song that was already cached would keep
+            // returning the old line-synced/plain result and the word-synced lookup
+            // would never run.
+            val prioritizeWordSynced =
+                !preferredProviderOnly && (context.dataStore[PrioritizeWordSyncedLyricsKey] ?: false)
+
             if (forceRefresh) {
                 invalidateCache(cacheKey)
             } else {
                 singleLyricsCache.get(cacheKey)?.let { cached ->
-                    GlobalLog.append(Log.DEBUG, "LyricsHelper", "Found lyrics in cache for ${mediaMetadata.title}")
-                    return cached
+                    val cachedIsWordSynced = LyricsUtils.hasWordSyncedLyrics(cached.lyrics)
+                    // When prioritizing word-synced lyrics, only honor the cache if the
+                    // cached lyrics are themselves word-synced. Otherwise skip the cache
+                    // so the word-synced lookup gets a chance to find better lyrics.
+                    if (!prioritizeWordSynced || cachedIsWordSynced) {
+                        GlobalLog.append(Log.DEBUG, "LyricsHelper", "Found lyrics in cache for ${mediaMetadata.title}")
+                        return cached
+                    }
+                    GlobalLog.append(
+                        Log.DEBUG,
+                        "LyricsHelper",
+                        "Skipping cache for ${mediaMetadata.title}: prioritizeWordSynced=true, cached lyrics not word-synced",
+                    )
                 }
 
                 val cached = cache.get(cacheKey)?.firstOrNull()
                 if (cached != null) {
-                    GlobalLog.append(Log.DEBUG, "LyricsHelper", "Found lyrics in cache for ${mediaMetadata.title}")
-                    return cached
+                    val cachedIsWordSynced = LyricsUtils.hasWordSyncedLyrics(cached.lyrics)
+                    if (!prioritizeWordSynced || cachedIsWordSynced) {
+                        GlobalLog.append(Log.DEBUG, "LyricsHelper", "Found lyrics in cache for ${mediaMetadata.title}")
+                        return cached
+                    }
                 }
             }
 
@@ -127,14 +151,27 @@ class LyricsHelper
             // provider priority order. If any of them returns word-synced lyrics, we
             // use that immediately. Otherwise we fall through to the normal priority
             // ranking across all enabled providers.
-            val prioritizeWordSynced =
-                !preferredProviderOnly && (context.dataStore[PrioritizeWordSyncedLyricsKey] ?: false)
             if (prioritizeWordSynced) {
+                GlobalLog.append(
+                    Log.DEBUG,
+                    "LyricsHelper",
+                    "PrioritizeWordSynced=on: querying BetterLyrics/BetterLyrics Portato/YouLyPlus/Unison for word-synced lyrics",
+                )
                 val wordSyncedResult = tryFetchWordSyncedFromPriorityProviders(ordered, mediaMetadata)
                 if (wordSyncedResult != null && isMeaningfulLyrics(wordSyncedResult.lyrics)) {
+                    GlobalLog.append(
+                        Log.DEBUG,
+                        "LyricsHelper",
+                        "Word-synced lyrics found via ${wordSyncedResult.providerName}",
+                    )
                     singleLyricsCache.put(cacheKey, wordSyncedResult)
                     return wordSyncedResult
                 }
+                GlobalLog.append(
+                    Log.DEBUG,
+                    "LyricsHelper",
+                    "No word-synced lyrics from priority providers, falling back to normal priority flow",
+                )
             }
 
             val result = fetchPriorityLyricsResult(providers, mediaMetadata)
