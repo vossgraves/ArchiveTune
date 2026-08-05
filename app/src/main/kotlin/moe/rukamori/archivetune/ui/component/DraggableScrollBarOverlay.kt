@@ -55,6 +55,10 @@ fun DraggableScrollbar(
     minScrollRangeForDrag: Int = 5,
     headerItems: Int = 0,
 ) {
+    // Task 8: respect the app-wide "Hide scrollbar" toggle. The toggle is provided by
+    // MainActivity from HideScrollbarKey; when it's true, we render nothing at all so
+    // no scrollbar shows anywhere in the app (playlist screens, etc.).
+    if (moe.rukamori.archivetune.LocalHideScrollbar.current) return
     val density = LocalDensity.current
     val coroutineScope = rememberCoroutineScope()
     var isDragging by remember { mutableStateOf(false) }

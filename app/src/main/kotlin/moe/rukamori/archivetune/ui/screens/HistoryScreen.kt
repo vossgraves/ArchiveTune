@@ -508,7 +508,7 @@ fun HistoryScreen(
                     colors =
                         TopAppBarDefaults.topAppBarColors(
                             containerColor = MaterialTheme.colorScheme.surface,
-                            scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer,
+                            scrolledContainerColor = Color.Transparent,
                         ),
                 )
             }

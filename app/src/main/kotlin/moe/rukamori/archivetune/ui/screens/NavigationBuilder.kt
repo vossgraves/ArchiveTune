@@ -53,6 +53,7 @@ import moe.rukamori.archivetune.ui.screens.settings.AccountSettings
 import moe.rukamori.archivetune.ui.screens.settings.AiIntegrationSettings
 import moe.rukamori.archivetune.ui.screens.settings.AodCustomizedScreen
 import moe.rukamori.archivetune.ui.screens.settings.AppearanceExtrasSettings
+import moe.rukamori.archivetune.ui.screens.settings.NavigationBarSettings
 import moe.rukamori.archivetune.ui.screens.settings.AppearanceSettings
 import moe.rukamori.archivetune.ui.screens.settings.BackupAndRestore
 import moe.rukamori.archivetune.ui.screens.settings.ChangelogScreen
@@ -410,6 +411,9 @@ fun NavGraphBuilder.navigationBuilder(
     }
     composable("settings/appearance/extras") {
         AppearanceExtrasSettings(navController)
+    }
+    composable("settings/appearance/navigation_bar") {
+        NavigationBarSettings(navController)
     }
     composable("settings/appearance/icon") {
         IconScreen(navController)

@@ -24,16 +24,21 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.ListenBrainzEnabledKey
 import moe.rukamori.archivetune.constants.ListenBrainzTokenKey
 import moe.rukamori.archivetune.constants.ManualSourceLoginEnabledKey
+import moe.rukamori.archivetune.constants.ShowSpotifyPlaylistsKey
+import moe.rukamori.archivetune.spotify.SpotifyAccountViewModel
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.InfoLabel
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
@@ -53,6 +58,20 @@ fun IntegrationScreen(navController: NavController, scrollTo: String? = null) {
     // "Manual source sign-in" experimental toggle. Off by default: the app auto-uses the community
     // source pool, so most users never need to see raw instance/token fields.
     val (manualSourceLogin, _) = rememberPreference(ManualSourceLoginEnabledKey, false)
+
+    // Task 3: Spotify account management moved here from Backup & Restore. It's a music-source
+    // integration, not a backup/restore feature — co-locating it with Tidal/Qobuz/Deezer/Telegram
+    // makes the Integration page the single home for all streaming-service connections.
+    val spotifyAccountViewModel: SpotifyAccountViewModel = hiltViewModel()
+    val spotifyState by spotifyAccountViewModel.uiState.collectAsStateWithLifecycle()
+    val (showSpotifyPlaylists, onShowSpotifyPlaylistsChange) = rememberPreference(ShowSpotifyPlaylistsKey, false)
+    var showSpotifyLogin by rememberSaveable { mutableStateOf(false) }
+
+    LaunchedEffect(spotifyState.isAuthenticated) {
+        if (spotifyState.isAuthenticated) {
+            showSpotifyLogin = false
+        }
+    }
 
     var showListenBrainzTokenEditor = remember { mutableStateOf(false) }
     var showCrossServiceImport by remember { mutableStateOf(false) }
@@ -131,6 +150,19 @@ fun IntegrationScreen(navController: NavController, scrollTo: String? = null) {
                 modifier = positions.modifierFor("music_sources"),
                 title = stringResource(R.string.music_sources),
             ) {
+                // Spotify lives at the top of Music Sources (Task 3). Moved here from
+                // Backup & Restore so all streaming-service integrations are co-located.
+                spotifyAccountPreferences(
+                    state = spotifyState,
+                    showPlaylists = showSpotifyPlaylists,
+                    onConnectClick = { showSpotifyLogin = true },
+                    onShowPlaylistsChange = onShowSpotifyPlaylistsChange,
+                    onReloadClick = spotifyAccountViewModel::reloadPlaylists,
+                    onLogoutClick = {
+                        spotifyAccountViewModel.logout()
+                    },
+                )
+
                 if (manualSourceLogin) {
                     item {
                         PreferenceEntry(
@@ -275,4 +307,21 @@ fun IntegrationScreen(navController: NavController, scrollTo: String? = null) {
         isVisible = showCrossServiceImport,
         onDismiss = { showCrossServiceImport = false },
     )
+
+    if (showSpotifyLogin) {
+        SpotifyLoginSheet(
+            onDismiss = { showSpotifyLogin = false },
+            onCookiesCaptured = { spDc, spKey ->
+                showSpotifyLogin = false
+                spotifyAccountViewModel.connectWithCookies(spDc = spDc, spKey = spKey)
+            },
+        )
+    }
+
+    spotifyState.errorMessage?.let { error ->
+        SpotifyErrorDialog(
+            message = error,
+            onDismiss = spotifyAccountViewModel::dismissError,
+        )
+    }
 }

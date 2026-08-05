@@ -3706,8 +3706,19 @@ class MusicService :
 
         var throwable: Throwable? = error.cause
         while (throwable != null) {
-            if (throwable.message?.contains("Skipping atom with length", ignoreCase = true) == true) {
-                return true
+            val msg = throwable.message
+            if (msg != null) {
+                if (msg.contains("Skipping atom with length", ignoreCase = true)) {
+                    return true
+                }
+                // ExoPlayer's MP4 extractor throws this when a downloaded file
+                // is truncated mid-atom (typical when a previous download
+                // failed mid-stream and the partial bytes were left in the
+                // cache). The error is fully recoverable by purging the
+                // partial cache and re-fetching.
+                if (msg.contains("Multiple Segment elements not supported", ignoreCase = true)) {
+                    return true
+                }
             }
             throwable = throwable.cause
         }
@@ -3723,7 +3734,12 @@ class MusicService :
                 error.errorCode == PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE
         val isContainerParseError =
             error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED
-
+        // Error code 3001 (ERROR_CODE_PARSING_CONTAINER_MALFORMED) covers
+        // extractor-level failures such as "Multiple Segment elements not
+        // supported" — these happen when a partial / truncated MP4 file was
+        // served from the cache. Treat them as cache corruption when content
+        // is cached so the player purges the bad spans and re-fetches from
+        // the network.
         if (!isIoError && !isContainerParseError) {
             return false
         }
@@ -3754,7 +3770,8 @@ class MusicService :
                     throwable.message?.let {
                         it.contains("Invalid integer size", ignoreCase = true) ||
                             it.contains("Skipping atom with length", ignoreCase = true) ||
-                            it.contains("contentIsMalformed=true", ignoreCase = true)
+                            it.contains("contentIsMalformed=true", ignoreCase = true) ||
+                            it.contains("Multiple Segment elements not supported", ignoreCase = true)
                     } == true -> {
                     return true
                 }

@@ -92,6 +92,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.Color
 import androidx.core.content.ContextCompat
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
@@ -410,7 +411,7 @@ fun LocalSongScreen(
                         colors =
                             TopAppBarDefaults.largeTopAppBarColors(
                                 containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
-                                scrolledContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
+                                scrolledContainerColor = Color.Transparent,
                             ),
                         scrollBehavior = scrollBehavior,
                     )

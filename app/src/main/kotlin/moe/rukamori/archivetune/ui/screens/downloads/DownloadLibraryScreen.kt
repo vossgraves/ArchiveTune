@@ -79,6 +79,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.Color
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
@@ -282,7 +283,7 @@ private fun DownloadLibraryScreenContent(
                             colors =
                                 TopAppBarDefaults.topAppBarColors(
                                     containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
-                                    scrolledContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
+                                    scrolledContainerColor = Color.Transparent,
                                 ),
                             scrollBehavior = scrollBehavior,
                         )

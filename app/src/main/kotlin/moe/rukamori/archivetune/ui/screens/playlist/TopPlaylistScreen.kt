@@ -525,7 +525,7 @@ fun TopPlaylistScreen(
                 } else {
                     TopAppBarDefaults.topAppBarColors(
                         containerColor = MaterialTheme.colorScheme.surface,
-                        scrolledContainerColor = MaterialTheme.colorScheme.surface,
+                        scrolledContainerColor = Color.Transparent,
                     )
                 },
             title = {
