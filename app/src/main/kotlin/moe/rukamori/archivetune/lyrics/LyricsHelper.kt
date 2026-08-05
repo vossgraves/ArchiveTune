@@ -230,7 +230,7 @@ class LyricsHelper
                         .map { provider ->
                             async(Dispatchers.IO) {
                                 val lyrics =
-                                    withTimeoutOrNull(PROVIDER_TIMEOUT_MS) {
+                                    withTimeoutOrNull(WORD_SYNC_PROVIDER_TIMEOUT_MS) {
                                         fetchProviderLyrics(provider, mediaMetadata, artist)
                                     }
                                 if (lyrics == null) {
@@ -482,11 +482,22 @@ class LyricsHelper
         companion object {
             private const val MAX_CACHE_SIZE = 16
 
-            // Per-provider hard timeout. Provider calls that exceed this are cancelled
-            // and dropped from ranking. Tuned to be long enough for typical provider
-            // latency (~3–5s for Musixmatch under good conditions) but short enough
-            // that a hung provider can't pin the lyrics panel.
+            // Per-provider hard timeout for the normal priority flow. Provider calls
+            // that exceed this are cancelled and dropped from ranking. Tuned to be
+            // long enough for typical provider latency (~3–5s for Musixmatch under
+            // good conditions) but short enough that a hung provider can't pin the
+            // lyrics panel.
             private const val PROVIDER_TIMEOUT_MS = 8_000L
+
+            // Longer timeout for the "Prioritize Word Synced Lyrics" path. YouLyPlus
+            // in particular fans out across 5 mirrors × 2 endpoints (up to 10 HTTP
+            // requests in sequence) and can legitimately take 10–15s. Using the
+            // regular 8s timeout here caused YouLyPlus to be silently skipped even
+            // when it had word-synced lyrics available — exactly the bug the user
+            // reported. Since this path only runs once per song when the toggle is
+            // ON (and the user has explicitly opted in for higher-quality lyrics),
+            // the extra latency is acceptable.
+            private const val WORD_SYNC_PROVIDER_TIMEOUT_MS = 15_000L
         }
     }
 
