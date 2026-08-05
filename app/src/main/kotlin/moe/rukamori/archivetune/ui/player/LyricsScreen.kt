@@ -139,7 +139,6 @@ import moe.rukamori.archivetune.constants.PlayerCustomImageUriKey
 import moe.rukamori.archivetune.constants.ShowLyricsPlayerControlsKey
 import moe.rukamori.archivetune.constants.AutoTranslateLyricsKey
 import moe.rukamori.archivetune.constants.TranslatorTargetLangKey
-import moe.rukamori.archivetune.constants.PrioritizeWordSyncedLyricsKey
 import moe.rukamori.archivetune.db.entities.LyricsEntity
 import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.lyrics.LyricsUtils
@@ -283,26 +282,11 @@ fun LyricsScreen(
         }
 
     LaunchedEffect(mediaMetadata.id, currentLyrics?.lyrics, currentLyrics?.providerName) {
-
-        
-
-        
-
-        
-        
         val snapshot = currentLyrics
-        // Honor the "Prioritize Word Synced Lyrics" toggle even when the panel
-        // already has lyrics loaded: if the toggle is ON and the displayed lyrics
-        // are line-synced/plain, treat them as stale so the word-synced lookup
-        // below gets a chance to upgrade them.
-        val prioritizeWordSyncedSnapshot = context.dataStore[PrioritizeWordSyncedLyricsKey] ?: false
         val needsFetch =
             snapshot == null ||
                 snapshot.lyrics == LyricsEntity.LYRICS_NOT_FOUND ||
-                snapshot.providerName.isBlank() ||
-                (prioritizeWordSyncedSnapshot &&
-                    snapshot.lyrics != LyricsEntity.LYRICS_NOT_FOUND &&
-                    !LyricsUtils.hasWordSyncedLyrics(snapshot.lyrics))
+                snapshot.providerName.isBlank()
         if (!needsFetch) return@LaunchedEffect
         try {
             val existingLyrics =
@@ -313,16 +297,7 @@ fun LyricsScreen(
             val hasValidLyrics =
                 existingLyrics != null &&
                     existingLyrics.lyrics != LyricsEntity.LYRICS_NOT_FOUND
-            // When "Prioritize Word Synced Lyrics" is ON, don't short-circuit on
-            // stored lyrics unless they are word-synced — otherwise the word-synced
-            // priority lookup in LyricsHelper never gets a chance to run for songs
-            // that were previously cached with line-synced/plain lyrics.
-            val prioritizeWordSynced = context.dataStore[PrioritizeWordSyncedLyricsKey] ?: false
-            val storedIsWordSynced =
-                existingLyrics != null && LyricsUtils.hasWordSyncedLyrics(existingLyrics.lyrics)
-            if (hasValidLyrics && existingLyrics != null && existingLyrics.providerName.isNotBlank() &&
-                (!prioritizeWordSynced || storedIsWordSynced)
-            ) {
+            if (hasValidLyrics && existingLyrics != null && existingLyrics.providerName.isNotBlank()) {
                 return@LaunchedEffect
             }
 
@@ -332,20 +307,7 @@ fun LyricsScreen(
                 }
             withContext(Dispatchers.IO) {
                 database.query {
-                    val fetchedIsWordSynced = LyricsUtils.hasWordSyncedLyrics(lyricsResult.lyrics)
-                    if (hasValidLyrics && prioritizeWordSynced && fetchedIsWordSynced) {
-                        // Persist the word-synced upgrade over previously stored
-                        // line-synced/plain lyrics when the toggle is ON. Backfilling
-                        // only the provider name would keep the stale line-synced
-                        // text and make the toggle appear broken (see MusicService).
-                        upsert(
-                            LyricsEntity(
-                                id = mediaMetadata.id,
-                                lyrics = lyricsResult.lyrics,
-                                providerName = lyricsResult.providerName,
-                            ),
-                        )
-                    } else if (hasValidLyrics) {
+                    if (hasValidLyrics) {
                         backfillLyricsProviderName(
                             id = mediaMetadata.id,
                             providerName = lyricsResult.providerName,
