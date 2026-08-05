@@ -82,6 +82,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
 import coil3.request.CachePolicy
@@ -198,6 +199,7 @@ fun HomeSectionHeader(
     modifier: Modifier = Modifier,
     label: String? = null,
     thumbnail: (@Composable () -> Unit)? = null,
+    leadingIcon: (@Composable () -> Unit)? = null,
     onClick: (() -> Unit)? = null,
 ) {
     Row(
@@ -210,6 +212,7 @@ fun HomeSectionHeader(
                 .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
                 .padding(horizontal = 16.dp, vertical = 8.dp),
     ) {
+        leadingIcon?.invoke()
         thumbnail?.invoke()
         Column(
             verticalArrangement = Arrangement.Center,
@@ -1514,4 +1517,499 @@ fun HomePageSectionTitle(
             },
         modifier = modifier,
     )
+}
+
+// ============================================================
+// Apple Music–style Home Redesign Components
+// ============================================================
+
+/**
+ * Personalized greeting header — "Good morning/afternoon/evening, [name]".
+ *
+ * Mirrors the Apple Music / Muzo-style home header: large bold greeting with
+ * the user's name highlighted in the primary accent color. The time-of-day
+ * prefix is computed from the system clock at composition time so it stays
+ * correct without needing to observe a flow.
+ */
+@Composable
+fun HomeGreetingHeader(
+    accountName: String,
+    modifier: Modifier = Modifier,
+) {
+    val hour = remember {
+        java.util.Calendar
+            .getInstance()
+            .get(java.util.Calendar.HOUR_OF_DAY)
+    }
+    val greetingRes =
+        when (hour) {
+            in 5..11 -> R.string.greeting_morning
+            in 12..16 -> R.string.greeting_afternoon
+            in 17..21 -> R.string.greeting_evening
+            else -> R.string.greeting_night
+        }
+    val greeting = stringResource(greetingRes)
+    val displayName = accountName.ifBlank { stringResource(R.string.greeting_default_name) }
+
+    Column(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 14.dp),
+    ) {
+        Text(
+            text = "$greeting,",
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        Text(
+            text = displayName,
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+/**
+ * "Jump back in" hero section — a two-column layout with one large hero card
+ * on the left (~58% width) and two stacked smaller cards on the right (~42%
+ * width). The hero card has a "JUMP BACK IN" pill badge at the top-left and
+ * title/artist overlaid at the bottom. The smaller cards have title/artist
+ * overlaid on the image.
+ *
+ * Uses the top 3 [recentlyPlayed] songs. Falls back gracefully if fewer are
+ * available (collapses to 1 or 2 cards).
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun JumpBackInHeroSection(
+    recentlyPlayed: List<Song>,
+    mediaMetadata: MediaMetadata?,
+    isPlaying: Boolean,
+    navController: NavController,
+    playerConnection: PlayerConnection,
+    menuState: MenuState,
+    haptic: HapticFeedback,
+    modifier: Modifier = Modifier,
+) {
+    if (recentlyPlayed.isEmpty()) return
+    val hero = recentlyPlayed.first()
+    val sideCards = recentlyPlayed.drop(1).take(2)
+
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+    ) {
+        // Large hero card — ~58% width, taller aspect.
+        BoxWithConstraints(modifier = Modifier.weight(0.58f)) {
+            val heroWidth = maxWidth
+            val heroHeight = (heroWidth * 1.35f).coerceIn(220.dp, 320.dp)
+            JumpBackInHeroCard(
+                song = hero,
+                isHero = true,
+                width = heroWidth,
+                height = heroHeight,
+                mediaMetadata = mediaMetadata,
+                isPlaying = isPlaying,
+                playerConnection = playerConnection,
+                menuState = menuState,
+                haptic = haptic,
+                navController = navController,
+            )
+        }
+        // Stacked side cards — ~42% width.
+        Column(
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.weight(0.42f),
+        ) {
+            if (sideCards.isEmpty()) {
+                // No side cards — fill with a placeholder so the hero doesn't
+                // stretch the full width (keeps the visual ratio consistent).
+                Spacer(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .height(150.dp),
+                )
+            } else {
+                sideCards.forEach { song ->
+                    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                        val sideWidth = maxWidth
+                        val sideHeight = 150.dp
+                        JumpBackInHeroCard(
+                            song = song,
+                            isHero = false,
+                            width = sideWidth,
+                            height = sideHeight,
+                            mediaMetadata = mediaMetadata,
+                            isPlaying = isPlaying,
+                            playerConnection = playerConnection,
+                            menuState = menuState,
+                            haptic = haptic,
+                            navController = navController,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun JumpBackInHeroCard(
+    song: Song,
+    isHero: Boolean,
+    width: Dp,
+    height: Dp,
+    mediaMetadata: MediaMetadata?,
+    isPlaying: Boolean,
+    playerConnection: PlayerConnection,
+    menuState: MenuState,
+    haptic: HapticFeedback,
+    navController: NavController,
+) {
+    val context = LocalContext.current
+    val density = LocalDensity.current
+    val requestWidthPx = with(density) { width.roundToPx().coerceAtLeast(1) }
+    val requestHeightPx = with(density) { height.roundToPx().coerceAtLeast(1) }
+    val isActive = song.id == mediaMetadata?.id
+    val imageRequest =
+        remember(song.song.thumbnailUrl, requestWidthPx, requestHeightPx) {
+            ImageRequest
+                .Builder(context)
+                .data(song.song.thumbnailUrl)
+                .size(Size(requestWidthPx, requestHeightPx))
+                .crossfade(true)
+                .build()
+        }
+
+    Box(
+        modifier =
+            Modifier
+                .size(width = width, height = height)
+                .clip(RoundedCornerShape(20.dp))
+                .combinedClickable(
+                    onClick = {
+                        if (isActive) {
+                            playerConnection.player.togglePlayPause()
+                        } else {
+                            playerConnection.playQueue(
+                                if (song.song.isLocal) {
+                                    ListQueue(items = listOf(song.toMediaItem()))
+                                } else {
+                                    YouTubeQueue.radio(song.toMediaMetadata())
+                                },
+                            )
+                        }
+                    },
+                    onLongClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        menuState.show {
+                            SongMenu(
+                                originalSong = song,
+                                navController = navController,
+                                onDismiss = menuState::dismiss,
+                            )
+                        }
+                    },
+                ),
+    ) {
+        AsyncImage(
+            model = imageRequest,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize(),
+        )
+        // Bottom-to-top scrim so the overlaid text stays legible on any artwork.
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            0f to Color.Transparent,
+                            0.55f to Color.Black.copy(alpha = 0.10f),
+                            1f to Color.Black.copy(alpha = 0.70f),
+                        ),
+                    ),
+        )
+        // "JUMP BACK IN" badge — only on the hero card.
+        if (isHero) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier =
+                    Modifier
+                        .align(Alignment.TopStart)
+                        .padding(14.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(Color.Black.copy(alpha = 0.55f))
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.history),
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(14.dp),
+                )
+                Text(
+                    text = stringResource(R.string.home_jump_back_in_badge).uppercase(),
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    letterSpacing = 0.8.sp,
+                )
+            }
+        }
+        // Title + artist overlay at the bottom.
+        Column(
+            modifier =
+                Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(14.dp),
+        ) {
+            Text(
+                text = song.song.title,
+                style = if (isHero) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = song.artists.joinToString { it.name },
+                style = MaterialTheme.typography.bodySmall,
+                color = Color.White.copy(alpha = 0.80f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        // Active / playing indicator — small dot at top-right.
+        if (isActive) {
+            Box(
+                modifier =
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(10.dp)
+                        .size(10.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (isPlaying) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                        ),
+            )
+        }
+    }
+}
+
+/**
+ * "Recently Played" section — horizontal row of square cards. Each card is
+ * album-art-dominant with a 3-dot menu floating at the top-right corner and
+ * title/artist beneath the artwork (matching the screenshot).
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun RecentlyPlayedSection(
+    recentlyPlayed: List<Song>,
+    mediaMetadata: MediaMetadata?,
+    isPlaying: Boolean,
+    navController: NavController,
+    playerConnection: PlayerConnection,
+    menuState: MenuState,
+    haptic: HapticFeedback,
+    modifier: Modifier = Modifier,
+) {
+    val distinctSongs = remember(recentlyPlayed) { recentlyPlayed.distinctBy { it.id } }
+    if (distinctSongs.isEmpty()) return
+
+    LazyRow(
+        contentPadding =
+            WindowInsets.systemBars
+                .only(WindowInsetsSides.Horizontal)
+                .asPaddingValues(),
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+        modifier = modifier.fillMaxWidth(),
+    ) {
+        items(
+            items = distinctSongs,
+            key = { "recent_${it.id}" },
+            contentType = { "recent_song" },
+        ) { song ->
+            RecentlyPlayedCard(
+                song = song,
+                mediaMetadata = mediaMetadata,
+                isPlaying = isPlaying,
+                playerConnection = playerConnection,
+                menuState = menuState,
+                haptic = haptic,
+                navController = navController,
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun RecentlyPlayedCard(
+    song: Song,
+    mediaMetadata: MediaMetadata?,
+    isPlaying: Boolean,
+    playerConnection: PlayerConnection,
+    menuState: MenuState,
+    haptic: HapticFeedback,
+    navController: NavController,
+) {
+    val context = LocalContext.current
+    val cardWidth = 150.dp
+    val artworkSize = cardWidth
+    val isActive = song.id == mediaMetadata?.id
+    val artworkSizePx = with(LocalDensity.current) { artworkSize.roundToPx() }
+    val imageRequest =
+        remember(song.song.thumbnailUrl, artworkSizePx) {
+            ImageRequest
+                .Builder(context)
+                .data(song.song.thumbnailUrl)
+                .size(Size(artworkSizePx, artworkSizePx))
+                .crossfade(true)
+                .build()
+        }
+
+    Column(
+        modifier =
+            Modifier
+                .width(cardWidth)
+                .combinedClickable(
+                    onClick = {
+                        if (isActive) {
+                            playerConnection.player.togglePlayPause()
+                        } else {
+                            playerConnection.playQueue(
+                                if (song.song.isLocal) {
+                                    ListQueue(items = listOf(song.toMediaItem()))
+                                } else {
+                                    YouTubeQueue.radio(song.toMediaMetadata())
+                                },
+                            )
+                        }
+                    },
+                    onLongClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        menuState.show {
+                            SongMenu(
+                                originalSong = song,
+                                navController = navController,
+                                onDismiss = menuState::dismiss,
+                            )
+                        }
+                    },
+                ),
+    ) {
+        Box(
+            modifier =
+                Modifier
+                    .size(width = artworkSize, height = artworkSize)
+                    .clip(RoundedCornerShape(16.dp)),
+        ) {
+            AsyncImage(
+                model = imageRequest,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+            // 3-dot menu floating at top-right of the artwork.
+            Box(
+                modifier =
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(6.dp)
+                        .size(28.dp)
+                        .clip(CircleShape)
+                        .background(Color.Black.copy(alpha = 0.45f))
+                        .clickable {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            menuState.show {
+                                SongMenu(
+                                    originalSong = song,
+                                    navController = navController,
+                                    onDismiss = menuState::dismiss,
+                                )
+                            }
+                        },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.more_vert),
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(16.dp),
+                )
+            }
+            // Active / playing indicator — small dot at top-left.
+            if (isActive) {
+                Box(
+                    modifier =
+                        Modifier
+                            .align(Alignment.TopStart)
+                            .padding(8.dp)
+                            .size(8.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (isPlaying) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                            ),
+                )
+            }
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = song.song.title,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Text(
+            text = song.artists.joinToString { it.name },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+}
+
+/**
+ * Helper that renders a small circular-tinted icon used as the leading icon
+ * for section headers (clock for "Recently Played", bolt for "Quick Picks").
+ * Matches the screenshot's coral-pink icon style.
+ */
+@Composable
+fun HomeSectionLeadingIcon(
+    iconRes: Int,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier =
+            modifier
+                .size(32.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.primaryContainer),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            painter = painterResource(iconRes),
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+            modifier = Modifier.size(18.dp),
+        )
+    }
 }

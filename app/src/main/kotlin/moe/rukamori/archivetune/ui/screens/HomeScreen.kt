@@ -319,6 +319,20 @@ private fun HomeContent(
                             .fillMaxWidth()
                             .align(Alignment.TopCenter),
                 ) {
+                    // Personalized greeting header — "Good [time], [name]".
+                    // Always shown when the home content is loaded, mirroring
+                    // the Apple Music / Muzo home style. Sits above the chips
+                    // row so the greeting is the first thing the user sees.
+                    item(
+                        key = "home_greeting",
+                        contentType = "greeting",
+                    ) {
+                        HomeGreetingHeader(
+                            accountName = uiState.accountName,
+                            modifier = Modifier.animateItem(),
+                        )
+                    }
+
                     if (uiState.showCategoryChips) {
                         item(
                             key = "home_category_chips",
@@ -333,13 +347,72 @@ private fun HomeContent(
                         }
                     }
 
+                    // "Jump back in" hero — large card + 2 stacked side cards,
+                    // uses the top 3 recently-played songs. Mirrors the Apple
+                    // Music / Muzo home hero. Skipped entirely if the user has
+                    // no recents yet (e.g. fresh install).
+                    if (uiState.recentlyPlayed.isNotEmpty()) {
+                        item(
+                            key = "home_jump_back_in",
+                            contentType = "jump_back_in",
+                        ) {
+                            JumpBackInHeroSection(
+                                recentlyPlayed = uiState.recentlyPlayed,
+                                mediaMetadata = mediaMetadata,
+                                isPlaying = isPlaying,
+                                navController = navController,
+                                playerConnection = playerConnection,
+                                menuState = menuState,
+                                haptic = haptic,
+                                modifier = Modifier.animateItem(),
+                            )
+                        }
+                    }
+
+                    // "Recently Played" — horizontal square-card row with a
+                    // clock-icon header (matches the screenshot).
+                    if (uiState.recentlyPlayed.size > 1) {
+                        sectionSpacer("recently_played")
+                        item(
+                            key = "home_recently_played_header",
+                            contentType = "section_header",
+                        ) {
+                            HomeSectionHeader(
+                                title = stringResource(R.string.home_recently_played),
+                                leadingIcon = {
+                                    HomeSectionLeadingIcon(iconRes = R.drawable.history)
+                                },
+                                modifier = Modifier.animateItem(),
+                            )
+                        }
+                        item(
+                            key = "home_recently_played",
+                            contentType = "recently_played",
+                        ) {
+                            RecentlyPlayedSection(
+                                recentlyPlayed = uiState.recentlyPlayed,
+                                mediaMetadata = mediaMetadata,
+                                isPlaying = isPlaying,
+                                navController = navController,
+                                playerConnection = playerConnection,
+                                menuState = menuState,
+                                haptic = haptic,
+                                modifier = Modifier.animateItem(),
+                            )
+                        }
+                    }
+
                     if (uiState.quickPicks.isNotEmpty()) {
+                        sectionSpacer("quick_picks")
                         item(
                             key = "home_quick_picks_header",
                             contentType = "section_header",
                         ) {
                             HomeSectionHeader(
                                 title = stringResource(R.string.quick_picks),
+                                leadingIcon = {
+                                    HomeSectionLeadingIcon(iconRes = R.drawable.bolt)
+                                },
                                 modifier = Modifier.animateItem(),
                             )
                         }
