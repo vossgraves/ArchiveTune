@@ -744,4 +744,13 @@
     <string name="about_content_desc_discord">Discord</string>
     <string name="about_content_desc_telegram">Telegram</string>
     <string name="about_content_desc_donate">Donate</string>
+
+    <!-- Search redesign -->
+    <string name="search_recent_searches">Recent Searches</string>
+    <string name="search_recent_label">Recent</string>
+    <string name="search_based_on_what_you_like">Based on what you like</string>
+    <string name="search_trending_searches">Trending Searches</string>
+    <string name="search_recommended_artists">Recommended Artists</string>
+    <string name="search_recommended_albums">Recommended Albums</string>
+    <string name="search_recommended_songs">Recommended Songs</string>
 </resources>

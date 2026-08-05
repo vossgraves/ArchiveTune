@@ -523,6 +523,14 @@
     <string name="sleep_timer_cancel_timer">Turn off timer</string>
     <string name="sleep_timer_remaining">%1$s remaining</string>
     <string name="sleep_timer_pick_a_time">Pick a time for the sleep timer</string>
+    <string name="sleep_timer_custom">Custom</string>
+    <string name="greeting_morning">Good morning</string>
+    <string name="greeting_afternoon">Good afternoon</string>
+    <string name="greeting_evening">Good evening</string>
+    <string name="greeting_night">Good night</string>
+    <string name="greeting_default_name">there</string>
+    <string name="home_jump_back_in_badge">Jump back in</string>
+    <string name="home_recently_played">Recently Played</string>
     <string name="album_backdrop">Backdrop blur</string>
     <string name="album_backdrop_desc">Show artwork as blurred backdrop on the player</string>
     <string name="backdrop_blur_amount">Backdrop blur amount</string>

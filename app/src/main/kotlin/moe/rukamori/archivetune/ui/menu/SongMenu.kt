@@ -246,6 +246,12 @@ fun SongMenu(
         mutableStateOf(false)
     }
 
+    // Apple Music–style sleep timer sheet. Rendered inline at the top of the
+    // menu (replacing the rest of the body) so the user can pick a duration
+    // without leaving the song's overflow menu — mirrors the behaviour of
+    // PlayerMenu's sleep timer entry.
+    var showSleepTimerSheet by rememberSaveable { mutableStateOf(false) }
+
     val TextFieldValueSaver: Saver<TextFieldValue, *> =
         Saver(
             save = { it.text },
@@ -598,18 +604,34 @@ fun SongMenu(
                 bottom = 8.dp + WindowInsets.systemBars.asPaddingValues().calculateBottomPadding(),
             ),
     ) {
-        item {
-            Spacer(modifier = Modifier.height(8.dp))
-        }
-
-        item {
-            MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
-                NewActionGrid(
-                    actions = primaryActions,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
+        // When the user taps "Sleep timer", replace the menu body with the
+        // Apple Music–style picker sheet. Keeping the song header above gives
+        // the user context that this sheet still belongs to the current song,
+        // while the rest of the menu items are hidden so the sheet is
+        // immediately visible without scrolling.
+        if (showSleepTimerSheet) {
+            item {
+                AppleMusicSleepTimerSheet(
+                    sleepTimer = playerConnection.service.sleepTimer,
+                    onDismiss = {
+                        showSleepTimerSheet = false
+                        onDismiss()
+                    },
                 )
             }
-        }
+        } else {
+            item {
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+
+            item {
+                MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+                    NewActionGrid(
+                        actions = primaryActions,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
+                    )
+                }
+            }
 
         item {
             Spacer(modifier = Modifier.height(12.dp))
@@ -1046,6 +1068,28 @@ fun SongMenu(
                             colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                         )
                     }
+
+                    HorizontalDivider(
+                        modifier = Modifier.padding(start = 56.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant,
+                    )
+
+                    // Sleep timer row — appears in the secondary section alongside
+                    // View Artist / View Album. Tapping it opens the inline Apple
+                    // Music–style sheet at the top of the menu with a 0..120 min
+                    // slider and the standard preset chips.
+                    ListItem(
+                        headlineContent = { Text(text = stringResource(R.string.sleep_timer)) },
+                        leadingContent = {
+                            Icon(
+                                painter = painterResource(R.drawable.bedtime),
+                                contentDescription = null,
+                            )
+                        },
+                        modifier =
+                            Modifier.clickable { showSleepTimerSheet = true },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    )
                 }
             }
         }
@@ -1163,6 +1207,7 @@ fun SongMenu(
                 }
             }
         }
+        } // end else (showSleepTimerSheet)
     }
 }
 

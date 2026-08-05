@@ -108,6 +108,7 @@ fun NavGraphBuilder.navigationBuilder(
     latestVersionName: () -> String,
     disableAnimations: Boolean = false,
     onClearUpdateBadge: () -> Unit = {},
+    onSearchQuery: (String) -> Unit = {},
     homeScrollConnection: NestedScrollConnection? = null,
     searchScrollConnection: NestedScrollConnection? = null,
     onlineSearchSort: OnlineSearchSort = OnlineSearchSort.DEFAULT,
@@ -123,11 +124,7 @@ fun NavGraphBuilder.navigationBuilder(
     composable(Screens.Search.route) {
         SearchScreen(
             navController = navController,
-            onSearchClick = {
-                navController.currentBackStackEntry
-                    ?.savedStateHandle
-                    ?.set("openSearch", true)
-            },
+            onSearchQuery = onSearchQuery,
             headerScrollConnection = searchScrollConnection,
         )
     }
