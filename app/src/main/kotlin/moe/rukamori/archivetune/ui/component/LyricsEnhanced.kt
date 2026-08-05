@@ -63,6 +63,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -151,10 +152,29 @@ private const val TTML_LEAD_MS = 0L
 private const val LYRIC_VISUAL_TUNING_OFFSET_MS = 150L
 private const val MANUAL_SCROLL_TIMEOUT_MS = 3000L
 private const val MANUAL_SCROLL_DEBOUNCE_MS = 50L
-private const val LYRIC_FOCUS_ANCHOR_RATIO = 0.42f
-private const val LYRIC_LINE_SYNC_TOP_ANCHOR_RATIO = 0.35f
-private const val LYRIC_FOCUS_TOP_GUARD_RATIO = 0.18f
-private const val LYRIC_FOCUS_BOTTOM_GUARD_RATIO = 0.24f
+// The active line is pinned close to the TOP of the lyrics pane — right below the
+// song title in the track header — instead of the middle of the screen. Both the
+// mocharealm karaoke library's `offset` parameter (which drives its internal
+// auto-scroll anchor AND the LazyColumn's top content padding) and our custom
+// `scrollLyricIntoFocus` target MUST agree on this ratio, otherwise the two scroll
+// systems fight every frame: the library re-pins the active line at `offset` while
+// our animateScrollBy tries to move it to LYRIC_FOCUS_TOP_ANCHOR_RATIO, producing
+// jitter. Keeping them in lockstep means our scroll only fires on line boundaries
+// to nudge the line into place; the library's per-frame auto-scroll then holds it
+// there.
+//
+// 0.08 ≈ 8% of the lyrics pane height. On a typical phone the pane starts ~132dp
+// below the top of the screen (status bar + grabber + track header), so 8% of a
+// ~668dp pane ≈ 53dp — the active line ends up ~185dp from the top of the screen,
+// i.e. directly under the song title. This matches Apple Music / Spotify / YouTube
+// Music's "read-ahead" layout.
+private const val LYRIC_FOCUS_TOP_ANCHOR_RATIO = 0.08f
+// Guards define the "close enough" zone inside which the custom scroll is skipped.
+// The top guard MUST be smaller than LYRIC_FOCUS_TOP_ANCHOR_RATIO so the resting
+// position (8%) is inside the zone — otherwise the custom scroll would re-fire on
+// every line change to "fix" a position that's already correct.
+private const val LYRIC_FOCUS_TOP_GUARD_RATIO = 0.04f
+private const val LYRIC_FOCUS_BOTTOM_GUARD_RATIO = 0.30f
 private const val LYRIC_FOCUS_MIN_SCROLL_PX = 6
 private const val LYRIC_FOCUS_ANIMATED_DISTANCE = 12
 private const val SMOOTH_PLAYBACK_MAX_FORWARD_DRIFT_MS = 80L
@@ -338,6 +358,32 @@ fun LyricsEnhanced(
         remember(player) {
             mutableLongStateOf(player.currentPosition.coerceAtLeast(0L))
         }
+    val playbackSyncPosition: () -> Int =
+        remember {
+            {
+                (
+                    playbackPositionMs.longValue +
+                        latestLyricsSyncOffset.value.toLong() +
+                        latestLeadMs.value +
+                        LYRIC_VISUAL_TUNING_OFFSET_MS
+                ).coerceIn(0L, Int.MAX_VALUE.toLong())
+                    .toInt()
+            }
+        }
+    // The current line index is computed in the playback-position loop (below) and stored
+    // in this state. It ONLY changes when the active line actually changes — not on every
+    // 16 ms position tick. The auto-scroll LaunchedEffect reads this state via snapshotFlow,
+    // so its block re-evaluates only on line boundaries (every few seconds) instead of every
+    // frame. This eliminates per-frame work in the scroll trigger: previously the snapshotFlow
+    // read lineFocusPosition() → playbackPositionMs every frame, ran TWO binary searches
+    // (one in positionForStableLineFocus, one in the library's
+    // getCurrentFirstHighlightLineIndexByTime), and paid snapshot read-tracking overhead —
+    // all to produce a value that only changes a few times per song.
+    val currentLineIndexState = remember { mutableIntStateOf(-1) }
+    // rememberUpdatedState so the playback loop sees the latest syncedLyrics (which can be
+    // rebuilt when romanization finishes) without re-launching the loop and stuttering the
+    // 60 Hz position interpolation.
+    val latestSyncedLyrics = rememberUpdatedState(syncedLyrics)
     var isManualScrolling by remember { mutableStateOf(false) }
     var lastManualScrollTime by remember { mutableLongStateOf(0L) }
     val listState = key(lyricsSessionKey) { rememberLazyListState() }
@@ -348,6 +394,9 @@ fun LyricsEnhanced(
         lastManualScrollTime = 0L
         isSelectionModeActive = false
         selectedLineKeys.clear()
+        // Reset the cached line index so the auto-scroll effect force-scrolls to the
+        // new track's first active line instead of inheriting the previous track's index.
+        currentLineIndexState.intValue = -1
     }
 
     LaunchedEffect(player, lyricsSessionKey, animationsDisabled, playbackParameters.speed) {
@@ -406,27 +455,24 @@ fun LyricsEnhanced(
                     playbackPositionMs.longValue = nextPosition
                 }
             }
+
+            // Hoisted line-index computation: do the (cheap, O(log n)) binary search once
+            // per frame here, in the playback loop, and only publish to currentLineIndexState
+            // when the index actually changes. This replaces the previous design where the
+            // auto-scroll LaunchedEffect's snapshotFlow read lineFocusPosition() every frame,
+            // which (a) re-ran the snapshotFlow machinery per tick and (b) chained TWO binary
+            // searches (ours inside positionForStableLineFocus + the library's
+            // getCurrentFirstHighlightLineIndexByTime). Now the snapshotFlow only re-evaluates
+            // on line boundaries — every few seconds, not every 16 ms.
+            val syncedLyricsNow = latestSyncedLyrics.value
+            if (syncedLyricsNow.lines.isNotEmpty()) {
+                val newLineIdx = syncedLyricsNow.findLastStartedLineIndex(playbackSyncPosition())
+                if (newLineIdx != currentLineIndexState.intValue) {
+                    currentLineIndexState.intValue = newLineIdx
+                }
+            }
         }
     }
-
-    val playbackSyncPosition: () -> Int =
-        remember {
-            {
-                (
-                    playbackPositionMs.longValue +
-                        latestLyricsSyncOffset.value.toLong() +
-                        latestLeadMs.value +
-                        LYRIC_VISUAL_TUNING_OFFSET_MS
-                ).coerceIn(0L, Int.MAX_VALUE.toLong())
-                    .toInt()
-            }
-        }
-    val lineFocusPosition: () -> Int =
-        remember(syncedLyrics) {
-            {
-                syncedLyrics.positionForStableLineFocus(playbackSyncPosition())
-            }
-        }
 
     val nestedScrollConnection =
         remember {
@@ -477,12 +523,16 @@ fun LyricsEnhanced(
         }.first { it }
 
         var forceNextScroll = true
+        // Read currentLineIndexState (which only changes on line boundaries) instead of
+        // lineFocusPosition() (which read playbackPositionMs and thus re-evaluated every
+        // 16 ms). The snapshotFlow block now only re-runs when the active line actually
+        // changes — every few seconds — so the binary search + library lookup + snapshot
+        // read-tracking overhead disappear from the per-frame hot path.
         snapshotFlow {
             if (isManualScrolling || isSelectionModeActive) {
                 null
             } else {
-                syncedLyrics
-                    .getCurrentFirstHighlightLineIndexByTime(lineFocusPosition())
+                currentLineIndexState.intValue
                     .takeIf { index -> index in syncedLyrics.lines.indices }
             }
         }.distinctUntilChanged()
@@ -496,7 +546,6 @@ fun LyricsEnhanced(
                     index = index,
                     animateToNearbyItem = !forceNextScroll,
                     force = forceNextScroll,
-                    alignByItemCenter = isTtmlFormat,
                 )
                 forceNextScroll = false
             }
@@ -715,7 +764,15 @@ fun LyricsEnhanced(
                             .fillMaxSize()
                             .nestedScroll(nestedScrollConnection),
                 ) {
-                    val lyricsViewportOffset = remember(maxHeight) { maxHeight * 0.38f }
+                    // The karaoke library uses `offset` as BOTH the LazyColumn's top content
+                    // padding AND the anchor its internal auto-scroll pins the active line to.
+                    // 0.38 (the previous value) put the active line at ~38% of the pane —
+                    // visually the middle of the screen. Dropping it to 0.08 (matching
+                    // LYRIC_FOCUS_TOP_ANCHOR_RATIO) pins the active line just under the song
+                    // title, and — critically — keeps the library's per-frame auto-scroll
+                    // target aligned with our `scrollLyricIntoFocus` target so they don't
+                    // fight each other every frame.
+                    val lyricsViewportOffset = remember(maxHeight) { maxHeight * 0.08f }
 
                     // Keyed on the session only: romanization updates flow in as new state instead
                     // of disposing and rebuilding the whole karaoke view mid-playback.
@@ -1132,7 +1189,6 @@ private suspend fun LazyListState.scrollLyricIntoFocus(
     index: Int,
     animateToNearbyItem: Boolean,
     force: Boolean,
-    alignByItemCenter: Boolean,
 ) {
     val itemCount = layoutInfo.totalItemsCount
     if (itemCount == 0) return
@@ -1157,23 +1213,17 @@ private suspend fun LazyListState.scrollLyricIntoFocus(
     val viewportHeight = viewportEnd - viewportStart
     if (viewportHeight <= 0) return
 
-    val itemFocusPoint =
-        if (alignByItemCenter) {
-            itemInfo.offset + itemInfo.size / 2
-        } else {
-            itemInfo.offset
-        }
+    // Anchor by the item's TOP edge (not its center) at LYRIC_FOCUS_TOP_ANCHOR_RATIO of the
+    // viewport. Both word-synced and line-synced lyrics use this — the active line stays
+    // pinned near the top of the lyrics pane (right below the song title) so users can
+    // read ahead. This ratio MUST match the `offset` passed to KaraokeLyricsView, otherwise
+    // the library's internal auto-scroll and our animateScrollBy fight every frame.
+    val itemFocusPoint = itemInfo.offset
     val topGuard = viewportStart + (viewportHeight * LYRIC_FOCUS_TOP_GUARD_RATIO).roundToInt()
     val bottomGuard = viewportEnd - (viewportHeight * LYRIC_FOCUS_BOTTOM_GUARD_RATIO).roundToInt()
     if (!force && itemFocusPoint in topGuard..bottomGuard) return
 
-    val anchorRatio =
-        if (alignByItemCenter) {
-            LYRIC_FOCUS_ANCHOR_RATIO
-        } else {
-            LYRIC_LINE_SYNC_TOP_ANCHOR_RATIO
-        }
-    val targetFocusPoint = viewportStart + (viewportHeight * anchorRatio).roundToInt()
+    val targetFocusPoint = viewportStart + (viewportHeight * LYRIC_FOCUS_TOP_ANCHOR_RATIO).roundToInt()
     val scrollDelta = itemFocusPoint - targetFocusPoint
     if (abs(scrollDelta) > LYRIC_FOCUS_MIN_SCROLL_PX) {
         animateScrollBy(
@@ -1195,17 +1245,6 @@ private fun ISyncedLine.lineText(): String =
     }
 
 private fun ISyncedLine.selectionKey(text: String = lineText()): String = "$start:$end:${text.hashCode()}"
-
-private fun SyncedLyrics.positionForStableLineFocus(time: Int): Int {
-    if (lines.isEmpty()) return time
-    val index = findLastStartedLineIndex(time)
-    if (index < 0) return time
-
-    val line = lines[index]
-    if (time < line.end) return time
-
-    return (line.end - 1).coerceAtLeast(line.start)
-}
 
 private fun SyncedLyrics.findLastStartedLineIndex(time: Int): Int {
     var low = 0

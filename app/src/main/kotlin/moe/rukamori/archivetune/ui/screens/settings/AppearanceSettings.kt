@@ -109,7 +109,9 @@ import moe.rukamori.archivetune.constants.SliderStyle
 import moe.rukamori.archivetune.constants.SliderStyleKey
 import moe.rukamori.archivetune.constants.SwipeSensitivityKey
 import moe.rukamori.archivetune.constants.SwipeThumbnailKey
+import moe.rukamori.archivetune.constants.TabletModeEnabledKey
 import moe.rukamori.archivetune.constants.ThumbnailCornerRadiusKey
+import moe.rukamori.archivetune.constants.UiScaleFactorKey
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.EnumListPreference
 import moe.rukamori.archivetune.ui.component.IconButton
@@ -197,6 +199,16 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
     val (forceHighRefreshRate, onForceHighRefreshRateChange) =
         rememberPreference(
             ForceHighRefreshRateKey,
+            defaultValue = false,
+        )
+    val (uiScale, onUiScaleChange) =
+        rememberPreference(
+            UiScaleFactorKey,
+            defaultValue = 1.0f,
+        )
+    val (tabletModeEnabled, onTabletModeEnabledChange) =
+        rememberPreference(
+            TabletModeEnabledKey,
             defaultValue = false,
         )
     val (blurRadius, onBlurRadiusChange) = rememberPreference(BlurRadiusKey, defaultValue = 48f)
@@ -540,6 +552,37 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                         checked = disableAnimations,
                         onCheckedChange = onDisableAnimationsChange,
                     )
+                }
+
+                item {
+                    Column(modifier = positions.modifierFor("ui_scale")) {
+                        PreferenceEntry(
+                            title = { Text(stringResource(R.string.ui_scale)) },
+                            description = stringResource(R.string.ui_scale_desc),
+                            icon = { Icon(painterResource(R.drawable.text_fields), null) },
+                            content = {
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Slider(
+                                    value = uiScale,
+                                    onValueChange = { v ->
+                                        // Round to the nearest 1% so the displayed value and the
+                                        // stored value stay in sync (otherwise dragging produces
+                                        // long-tail floats like 0.92371 that look messy in backups).
+                                        onUiScaleChange((v * 100f).roundToInt() / 100f)
+                                    },
+                                    valueRange = 0.85f..1.30f,
+                                    steps = 44, // 45 discrete positions = 1% increments
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                                Text(
+                                    text = stringResource(R.string.ui_scale_value, (uiScale * 100f).roundToInt()),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(start = 56.dp, top = 4.dp),
+                                )
+                            },
+                        )
+                    }
                 }
 
                 item {
@@ -959,6 +1002,16 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                 modifier = positions.modifierFor("app_language"),
                 title = stringResource(R.string.misc),
             ) {
+                item {
+                    SwitchPreference(
+                        title = { Text(stringResource(R.string.tablet_mode)) },
+                        description = stringResource(R.string.tablet_mode_desc),
+                        icon = { Icon(painterResource(R.drawable.desktop_windows), null) },
+                        checked = tabletModeEnabled,
+                        onCheckedChange = onTabletModeEnabledChange,
+                    )
+                }
+
                 item {
                     EnumListPreference(
                         title = { Text(stringResource(R.string.quick_picks_display_mode)) },

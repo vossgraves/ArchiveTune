@@ -82,7 +82,6 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -456,19 +455,19 @@ fun BottomSheetPlayer(
             MaterialTheme.colorScheme.surfaceContainer.copy(alpha = progress)
         }
 
-    val playbackState by playerConnection.playbackState.collectAsState()
-    val isPlaying by playerConnection.isPlaying.collectAsState()
-    val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
-    val currentSong by playerConnection.currentSong.collectAsState(initial = null)
+    val playbackState by playerConnection.playbackState.collectAsStateWithLifecycle()
+    val isPlaying by playerConnection.isPlaying.collectAsStateWithLifecycle()
+    val mediaMetadata by playerConnection.mediaMetadata.collectAsStateWithLifecycle()
+    val currentSong by playerConnection.currentSong.collectAsStateWithLifecycle(initialValue = null)
     val currentSongLiked = currentSong?.song?.liked == true
-    val queueTitle by playerConnection.queueTitle.collectAsState()
-    val currentFormat by playerConnection.currentFormat.collectAsState(initial = null)
+    val queueTitle by playerConnection.queueTitle.collectAsStateWithLifecycle()
+    val currentFormat by playerConnection.currentFormat.collectAsStateWithLifecycle(initialValue = null)
     // Snapshot the lyrics entity for the AOD screen — AOD shows only the current line, so we
     // pass the raw text down rather than the full Lyrics composable tree (cheaper to render,
     // and matches the "dim, low-power" goal of always-on display).
-    val currentLyricsEntity by playerConnection.currentLyrics.collectAsState(initial = null)
-    val queueWindows by playerConnection.queueWindows.collectAsState()
-    val currentWindowIndex by playerConnection.currentWindowIndex.collectAsState()
+    val currentLyricsEntity by playerConnection.currentLyrics.collectAsStateWithLifecycle(initialValue = null)
+    val queueWindows by playerConnection.queueWindows.collectAsStateWithLifecycle()
+    val currentWindowIndex by playerConnection.currentWindowIndex.collectAsStateWithLifecycle()
     val deviceMusicVolumeController = rememberDeviceMusicVolumeController()
     val onPlayerVolumeChange =
         remember(deviceMusicVolumeController) {
@@ -477,10 +476,10 @@ fun BottomSheetPlayer(
             }
         }
 
-    val repeatMode by playerConnection.repeatMode.collectAsState()
+    val repeatMode by playerConnection.repeatMode.collectAsStateWithLifecycle()
 
-    val canSkipPrevious by playerConnection.canSkipPrevious.collectAsState()
-    val canSkipNext by playerConnection.canSkipNext.collectAsState()
+    val canSkipPrevious by playerConnection.canSkipPrevious.collectAsStateWithLifecycle()
+    val canSkipNext by playerConnection.canSkipNext.collectAsStateWithLifecycle()
 
     val aodModeEnabled by playerConnection.aodModeEnabled.collectAsStateWithLifecycle()
     val (thumbnailCornerRadius) = rememberPreference(ThumbnailCornerRadiusKey, defaultValue = 8f)
@@ -682,7 +681,7 @@ fun BottomSheetPlayer(
 
     val download by LocalDownloadUtil.current
         .getDownload(mediaMetadata?.id ?: "")
-        .collectAsState(initial = null)
+        .collectAsStateWithLifecycle(initialValue = null)
 
     val sleepTimerEnabled =
         remember(
@@ -2430,14 +2429,29 @@ private fun MikoLyricsTransition(
     }
     val progressState = progress.asState()
     val showContent by remember {
-        // Defer composing the heavy LyricsScreen tree until the sheet has crossed the halfway
-        // mark (progress > 0.5). On open, the slow spring takes ~250 ms to reach this point,
-        // which is enough time for the slide-up to visually "commit" before the lyrics tree is
-        // composed — this avoids jank on low-end devices and avoids the "blank panel then
-        // pop-in" artifact that immediate composition introduced on devices where the first
-        // frame of the lyrics tree takes longer than 16ms to compute. On close, the lyrics
-        // tree stays composed until progress drops back below 0.5, so the slide-down is smooth.
-        derivedStateOf { visible || progressState.value > 0.5f }
+        // Keep the heavy LyricsScreen tree composed for the ENTIRE close transition —
+        // the lyrics content must still be visible on the very last frame the sheet
+        // is on screen (progress → 0, translationY → height).
+        //
+        // The outer Box's graphicsLayer slides the whole sheet on/off screen via
+        // translationY = size.height * (1 - progress). Earlier thresholds (0.5, then
+        // 0.02) unmounted the lyrics tree before the slide-down finished, leaving an
+        // empty surface sliding off-screen — visible as the animation "ending
+        // abruptly" for the final frames.
+        //
+        // `progressState.value > 0f` keeps the tree composed for the whole spring
+        // glide. The close spring is critically damped (dampingRatio = 1f) so it
+        // approaches 0 monotonically with no overshoot; when the deviation drops
+        // below the visibilityThreshold (0.001f) Animatable snaps to exactly 0.0f,
+        // at which point `progress > 0f` flips false and the tree unmounts — by then
+        // translationY is exactly `height`, i.e. the sheet is 100% off-screen, so
+        // unmounting is invisible.
+        //
+        // Open path is unchanged: `visible` flips to true immediately on open,
+        // short-circuiting the `||` and composing the tree right away (no first-
+        // frame jank regression because the slide-up is already moving by the time
+        // the first frame of the lyrics tree is ready).
+        derivedStateOf { visible || progressState.value > 0f }
     }
 
     if (showContent) {

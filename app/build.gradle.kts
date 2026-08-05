@@ -387,6 +387,30 @@ android {
             excludes += "META-INF/LICENSE.md"
             // Installed on demand from Lyrics settings; saves roughly 13 MiB per APK.
             excludes += "com/atilika/kuromoji/ipadic/*.bin"
+            // Additional safe META-INF / metadata excludes — none of these are read at runtime by
+            // the app or any of its libraries (verified by checking for ServiceLoader / reflection
+            // usage on each). They are pure build-time / IDE metadata and just bloat every APK.
+            // - META-INF/DEPENDENCIES: Maven dependency manifest, only used by build tooling.
+            // - META-INF/INDEX.LIST: JAR index used by desktop ClassLoaders, never by Android.
+            // - META-INF/io.netty.versions.properties: Netty version manifest, runtime-irrelevant.
+            // - META-INF/*.version: per-library version files (e.g. kotlin-stdlib.version).
+            // - DebugProbesKt.bin: kotlinx.coroutines debug binary, only consulted by debugger.
+            // - kotlin-tooling-metadata.json: Kotlin tooling manifest, build-time only.
+            // - META-INF/buildinfo.properties / build.archives: Gradle/AGP build metadata.
+            // - META-INF/com.android.tools/**: AGP build-metadata, not consumed at runtime.
+            // - META-INF/proguard/**: bundled proguard configs, only needed at minify time.
+            // DO NOT add: META-INF/services/** (ServiceLoader), META-INF/MANIFEST.MF (signing +
+            // attributes), META-INF/*.kotlin_module (Kotlin reflection) — those are load-bearing.
+            excludes += "META-INF/DEPENDENCIES"
+            excludes += "META-INF/INDEX.LIST"
+            excludes += "META-INF/io.netty.versions.properties"
+            excludes += "META-INF/*.version"
+            excludes += "DebugProbesKt.bin"
+            excludes += "kotlin-tooling-metadata.json"
+            excludes += "META-INF/buildinfo.properties"
+            excludes += "META-INF/build.archives"
+            excludes += "META-INF/com.android.tools/**"
+            excludes += "META-INF/proguard/**"
         }
     }
 

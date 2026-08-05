@@ -1346,43 +1346,6 @@ private fun RecapCardContent(
 }
 
 @Composable
-private fun HeroMetricTile(
-    label: String,
-    value: String,
-    modifier: Modifier = Modifier,
-) {
-    Column(
-        modifier =
-            modifier
-                .clip(RoundedCornerShape(RecapTokens.SectionRadius))
-                .background(RecapCream.copy(alpha = 0.13f))
-                .border(
-                    width = 1.dp,
-                    color = RecapCream.copy(alpha = 0.14f),
-                    shape = RoundedCornerShape(RecapTokens.SectionRadius),
-                ).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelSmall,
-            fontWeight = FontWeight.SemiBold,
-            color = RecapCream.copy(alpha = 0.66f),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Black,
-            color = RecapCream,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
-}
-
-@Composable
 private fun RankedArtistRow(
     rank: Int,
     artist: Artist,
@@ -1522,21 +1485,6 @@ private fun RankNumber(
             color = color,
         )
     }
-}
-
-@Composable
-private fun SummaryHighlightRow(
-    icon: Int,
-    label: String,
-    value: String,
-    color: Color,
-) {
-    RecapStatRow(
-        icon = icon,
-        label = label,
-        value = value,
-        color = color,
-    )
 }
 
 @Composable

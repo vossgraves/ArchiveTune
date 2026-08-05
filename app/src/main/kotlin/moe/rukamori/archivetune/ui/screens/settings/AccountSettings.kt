@@ -1324,11 +1324,3 @@ private fun TokenEditorDialog(
         },
     )
 }
-
-private fun previewSecureValue(value: String): String {
-    val normalized = value.replace("\n", " ").replace("\r", " ").trim()
-    if (normalized.length <= 76) {
-        return normalized
-    }
-    return normalized.take(52) + "\u2025" + normalized.takeLast(18)
-}
