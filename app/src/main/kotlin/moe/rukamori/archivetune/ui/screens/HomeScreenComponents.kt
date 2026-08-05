@@ -221,7 +221,7 @@ fun HomeSectionHeader(
             }
             Text(
                 text = title,
-                style = MaterialTheme.typography.titleLarge.copy(fontSize = 24.sp),
+                style = MaterialTheme.typography.titleLarge.copy(fontSize = 20.sp),
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
@@ -408,7 +408,6 @@ fun SpeedDialSection(
             BoxWithConstraints(
                 modifier =
                     Modifier
-                        .padding(horizontal = 12.dp)
                         .fillMaxWidth(),
             ) {
                 val tileSize = (maxWidth - spacing * (SpeedDialGridColumns - 1)) / SpeedDialGridColumns
@@ -650,7 +649,7 @@ fun KeepListeningSection(
     LazyHorizontalGrid(
         state = rememberLazyGridState(),
         rows = GridCells.Fixed(rows),
-        contentPadding = PaddingValues(horizontal = 24.dp),
+        contentPadding = PaddingValues(horizontal = 12.dp),
         modifier =
             modifier
                 .fillMaxWidth()
@@ -707,7 +706,7 @@ fun ForgottenFavoritesSection(
         state = lazyGridState,
         rows = GridCells.Fixed(rows),
         flingBehavior = rememberSnapFlingBehavior(snapLayoutInfoProvider),
-        contentPadding = PaddingValues(horizontal = 24.dp),
+        contentPadding = PaddingValues(horizontal = 8.dp),
         modifier =
             modifier
                 .fillMaxWidth()
@@ -796,7 +795,7 @@ fun AccountPlaylistsSection(
     val distinctPlaylists = remember(accountPlaylists) { accountPlaylists.distinctBy { it.id } }
 
     LazyRow(
-        contentPadding = PaddingValues(horizontal = 24.dp),
+        contentPadding = PaddingValues(horizontal = 12.dp),
         modifier = modifier,
     ) {
         items(
@@ -835,7 +834,7 @@ fun SimilarRecommendationsSection(
     modifier: Modifier = Modifier,
 ) {
     LazyRow(
-        contentPadding = PaddingValues(horizontal = 24.dp),
+        contentPadding = PaddingValues(horizontal = 12.dp),
         modifier = modifier,
     ) {
         items(
@@ -874,7 +873,7 @@ fun HomePageSectionContent(
     modifier: Modifier = Modifier,
 ) {
     LazyRow(
-        contentPadding = PaddingValues(horizontal = 24.dp),
+        contentPadding = PaddingValues(horizontal = 12.dp),
         modifier = modifier,
     ) {
         items(
@@ -1277,7 +1276,7 @@ fun HomeGreetingHeader(
 
     Text(
         text = text,
-        style = MaterialTheme.typography.headlineMedium.copy(fontSize = 32.sp),
+        style = MaterialTheme.typography.headlineMedium.copy(fontSize = 28.sp),
         fontWeight = FontWeight.Bold,
         color = foreground,
         maxLines = 1,
@@ -1493,7 +1492,7 @@ private fun JumpBackInHeroCard(
                 )
                 Text(
                     text = stringResource(R.string.home_jump_back_in_badge).uppercase(),
-                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
                     fontWeight = FontWeight.Bold,
                     color = Color.White,
                     letterSpacing = 0.8.sp,
@@ -1509,7 +1508,7 @@ private fun JumpBackInHeroCard(
         ) {
             Text(
                 text = song.song.title,
-                style = if (isHero) MaterialTheme.typography.titleLarge.copy(fontSize = 18.sp) else MaterialTheme.typography.titleMedium.copy(fontSize = 16.sp),
+                style = if (isHero) MaterialTheme.typography.titleMedium.copy(fontSize = 16.sp) else MaterialTheme.typography.titleSmall.copy(fontSize = 14.sp),
                 fontWeight = FontWeight.Bold,
                 color = Color.White,
                 maxLines = 1,
@@ -1517,7 +1516,7 @@ private fun JumpBackInHeroCard(
             )
             Text(
                 text = song.artists.joinToString { it.name },
-                style = MaterialTheme.typography.bodyMedium.copy(fontSize = if (isHero) 15.sp else 13.sp),
+                style = MaterialTheme.typography.bodySmall.copy(fontSize = if (isHero) 13.sp else 12.sp),
                 color = Color.White.copy(alpha = 0.78f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -1697,7 +1696,7 @@ private fun RecentlyPlayedCard(
         Spacer(modifier = Modifier.height(10.dp))
         Text(
             text = song.song.title,
-            style = MaterialTheme.typography.titleMedium.copy(fontSize = 18.sp),
+            style = MaterialTheme.typography.titleSmall.copy(fontSize = 16.sp),
             fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.onSurface,
             maxLines = 1,
@@ -1706,7 +1705,7 @@ private fun RecentlyPlayedCard(
         )
         Text(
             text = song.artists.joinToString { it.name },
-            style = MaterialTheme.typography.bodyMedium.copy(fontSize = 15.sp),
+            style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
