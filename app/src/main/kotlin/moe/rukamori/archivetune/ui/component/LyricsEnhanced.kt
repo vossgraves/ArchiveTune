@@ -133,7 +133,7 @@ import moe.rukamori.archivetune.lyrics.LyricsUtils.providedRomanizedTextForEntry
 import moe.rukamori.archivetune.lyrics.LyricsUtils.providedRomanizedWordsForEntry
 import moe.rukamori.archivetune.lyrics.LyricsUtils.providedTranslationTextForEntry
 import moe.rukamori.archivetune.lyrics.LyricsUtils.romanizeLyricsLine
-import moe.rukamori.archivetune.lyrics.LyricsUtils.romanizeLyricsWordWithLineContext
+import moe.rukamori.archivetune.lyrics.LyricsUtils.romanizeWordsForLine
 import moe.rukamori.archivetune.lyrics.LyricsUtils.shouldRomanizeLyricsLine
 import moe.rukamori.archivetune.lyrics.WordTimestamp
 import moe.rukamori.archivetune.ui.component.shimmer.ShimmerHost
@@ -316,9 +316,14 @@ fun LyricsEnhanced(
                             if (isTtmlFormat && entry.words != null) {
                                 val mainWordCount = entry.words!!.count { !it.isBackground }
                                 providedRomanizedWordsForEntry(entry, mainWordCount, romanizationPreferences)
-                                    ?: entry.words!!.filter { !it.isBackground }.map { word ->
-                                        romanizeLyricsWordWithLineContext(word.text, entry.text, romanizationPreferences)
-                                    }
+                                    ?: romanizeWordsForLine(
+                                        // Japanese: single-pass line tokenization (6x fewer
+                                        // Kuromoji calls than per-word). Other languages:
+                                        // per-word character-by-character (already cheap).
+                                        words = entry.words!!.filter { !it.isBackground }.map { it.text },
+                                        lineText = entry.text,
+                                        preferences = romanizationPreferences,
+                                    )
                             } else {
                                 listOf(
                                     providedRomanizedTextForEntry(entry, romanizationPreferences)
@@ -810,7 +815,15 @@ fun LyricsEnhanced(
                             showTranslation = showTranslations,
                             showPhonetic = romanizationPreferences.isEnabled,
                             offset = lyricsViewportOffset,
-                            keepAliveZone = 72.dp,
+                            // keepAliveZone controls how many off-screen lines are kept composed
+                            // above/below the viewport. 72dp was too generous for Japanese/CJK
+                            // lyrics where every line carries per-word phonetic text (romaji) —
+                            // the extra composed-but-invisible lines multiplied text layout work
+                            // and memory pressure. 36dp still keeps 1-2 lines of read-ahead
+                            // composed for smooth auto-scroll, but halves the off-screen
+                            // composition cost. No visual difference — the lines outside the
+                            // viewport are not visible anyway.
+                            keepAliveZone = 36.dp,
                             modifier = Modifier.fillMaxSize(),
                         )
                     }
