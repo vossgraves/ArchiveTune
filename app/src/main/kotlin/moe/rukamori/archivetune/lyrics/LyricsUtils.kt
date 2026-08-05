@@ -1546,6 +1546,137 @@ object LyricsUtils {
         return normalizeRomanizedText(word, romanized)
     }
 
+    /**
+     * Romanizes a list of words from a single line using ONE tokenization pass for Japanese.
+     *
+     * This is the critical performance fix for Japanese word-synced (TTML) lyrics.
+     * Previously, [romanizeLyricsWordWithLineContext] was called once per word, and each
+     * call ran Kuromoji's full Viterbi morphological analysis (trie traversal + lattice
+     * search over the entire IPADIC dictionary) on a single isolated word. For a typical
+     * 40-line song with 6 words per line, that's **240 tokenize calls** — each with
+     * non-trivial per-call overhead (dictionary loading is cached, but the Viterbi search
+     * is O(text × trie depth) per call).
+     *
+     * This function tokenizes the FULL LINE once (40 calls instead of 240 — a **6x
+     * reduction** in tokenize calls), then maps each token back to the original word
+     * boundaries by character position. Words that span multiple tokens get their
+     * romaji concatenated.
+     *
+     * Tokenizing the full line also gives **better romanization quality**: Kuromoji's
+     * morphological analyzer sees full context, so compounds like "日本語" tokenize as
+     * one token in context but may split into "日本" + "語" when isolated. The per-line
+     * path produces more accurate readings.
+     *
+     * For non-Japanese text, falls back to [romanizeLyricsWordWithLineContext] per word
+     * (character-by-character romanization for Korean/Hindi/Chinese is already cheap —
+     * no tokenizer involved).
+     */
+    suspend fun romanizeWordsForLine(
+        words: List<String>,
+        lineText: String,
+        preferences: LyricsRomanizationPreferences,
+    ): List<String?> {
+        if (words.isEmpty()) return emptyList()
+        // Japanese: single-pass line tokenization (Nx faster than per-word).
+        if (preferences.romanizeJapanese && looksJapanese(lineText)) {
+            return romanizeJapaneseWordsForLine(words, lineText)
+        }
+        // Other languages: per-word is cheap (character-by-character), keep as-is.
+        return words.map { word ->
+            romanizeLyricsWordWithLineContext(word, lineText, preferences)
+        }
+    }
+
+    /**
+     * Japanese-specific per-line tokenization. See [romanizeWordsForLine] for the
+     * rationale.
+     *
+     * Token-to-word mapping uses character positions: Kuromoji's [Token.getPosition]
+     * returns the character offset of each token in the input line. We find each word's
+     * start offset in the line (via [String.indexOf] with a running scan cursor to handle
+     * repeated words), then collect all tokens whose `[start, end)` range overlaps with
+     * the word's `[wordStart, wordEnd)` range. The romaji of overlapping tokens is
+     * concatenated to form the word's phonetic.
+     */
+    private suspend fun romanizeJapaneseWordsForLine(
+        words: List<String>,
+        lineText: String,
+    ): List<String?> = withContext(Dispatchers.Default) {
+        if (words.isEmpty()) return@withContext emptyList()
+        val tokenizer = JapaneseLanguagePackManager.tokenizerOrNull()
+            ?: return@withContext words.map { null }
+
+        val tokens = tokenizer.tokenize(lineText)
+        if (tokens.isEmpty()) return@withContext words.map { null }
+
+        // Pre-compute each token's [start, end) range and its romaji.
+        // The next token's reading is kept for sokuon-at-boundary gemination
+        // (same logic as romanizeJapanese, just vectorized).
+        val tokenCount = tokens.size
+        val tokenStarts = IntArray(tokenCount)
+        val tokenEnds = IntArray(tokenCount)
+        val tokenRomaji = ArrayList<String>(tokenCount)
+        for (i in 0 until tokenCount) {
+            val token = tokens[i]
+            val surface = token.surface
+            tokenStarts[i] = token.position
+            tokenEnds[i] = token.position + surface.length
+
+            val currentReading =
+                if (token.reading.isNullOrEmpty() || token.reading == "*") {
+                    surface
+                } else {
+                    token.reading
+                }
+            val katakanaReading = hiraganaToKatakana(currentReading)
+            val nextTokenReading =
+                if (i + 1 < tokenCount) {
+                    val nr = tokens[i + 1].reading
+                    val nextReading =
+                        if (nr.isNullOrEmpty() || nr == "*") tokens[i + 1].surface else nr
+                    hiraganaToKatakana(nextReading)
+                } else {
+                    null
+                }
+            tokenRomaji.add(katakanaToRomaji(katakanaReading, nextTokenReading))
+        }
+
+        // Walk through words and tokens in parallel (both are in text order).
+        // This is O(words + tokens) — no nested loops.
+        val result = ArrayList<String?>(words.size)
+        var scanOffset = 0
+        var tokenIdx = 0
+        for (word in words) {
+            val wordStart = lineText.indexOf(word, startIndex = scanOffset)
+            if (wordStart < 0) {
+                // Word not found in line text (malformed TTML or whitespace mismatch).
+                // Skip — the word will have no phonetic, which is a graceful degradation.
+                result.add(null)
+                continue
+            }
+            val wordEnd = wordStart + word.length
+
+            // Advance tokenIdx past tokens that end before this word starts.
+            while (tokenIdx < tokenCount && tokenEnds[tokenIdx] <= wordStart) {
+                tokenIdx++
+            }
+
+            // Collect all tokens that overlap [wordStart, wordEnd).
+            val romajiBuilder = StringBuilder()
+            var tIdx = tokenIdx
+            while (tIdx < tokenCount && tokenStarts[tIdx] < wordEnd) {
+                if (tokenEnds[tIdx] > wordStart) {
+                    romajiBuilder.append(tokenRomaji[tIdx])
+                }
+                tIdx++
+            }
+
+            result.add(romajiBuilder.toString().takeIf { it.isNotEmpty() })
+            scanOffset = wordEnd
+        }
+        result
+    }
+
     private suspend fun romanizeWithIcu(text: String): String =
         withContext(Dispatchers.Default) {
             genericRomanizationTransliterator.get().transliterate(text)
