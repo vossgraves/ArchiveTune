@@ -35,6 +35,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -49,19 +52,26 @@ import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -69,6 +79,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import androidx.navigation.compose.currentBackStackEntryAsState
+import coil3.compose.AsyncImage
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
@@ -76,6 +87,7 @@ import moe.rukamori.archivetune.db.entities.SearchHistory
 import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.innertube.models.AlbumItem
 import moe.rukamori.archivetune.innertube.models.ArtistItem
+import moe.rukamori.archivetune.innertube.models.BrowseEndpoint
 import moe.rukamori.archivetune.innertube.models.SongItem
 import moe.rukamori.archivetune.innertube.models.WatchEndpoint
 import moe.rukamori.archivetune.models.toMediaMetadata
@@ -87,6 +99,8 @@ import moe.rukamori.archivetune.ui.component.YouTubeListItem
 import moe.rukamori.archivetune.ui.component.shimmer.ShimmerHost
 import moe.rukamori.archivetune.ui.component.shimmer.TextPlaceholder
 import moe.rukamori.archivetune.ui.menu.YouTubeSongMenu
+import moe.rukamori.archivetune.ui.screens.rememberMoodAndGenresArtworkModel
+import moe.rukamori.archivetune.ui.screens.rememberMoodAndGenresArtworkUrl
 import moe.rukamori.archivetune.viewmodels.SearchDiscoveryScreenState
 import moe.rukamori.archivetune.viewmodels.SearchDiscoveryTab
 import moe.rukamori.archivetune.viewmodels.SearchDiscoveryViewModel
@@ -103,11 +117,12 @@ private val SearchBarCornerRadius = 20.dp
 @Composable
 fun SearchScreen(
     navController: NavController,
-    onSearchClick: () -> Unit,
+    onSearchQuery: (String) -> Unit,
     headerScrollConnection: NestedScrollConnection? = null,
     viewModel: SearchDiscoveryViewModel = hiltViewModel(),
     historyViewModel: SearchHistoryViewModel = hiltViewModel(),
 ) {
+    var searchQuery by rememberSaveable { mutableStateOf("") }
     val state by viewModel.state.collectAsStateWithLifecycle()
     val selectedTab by viewModel.selectedTab.collectAsStateWithLifecycle()
     val recentSearches by historyViewModel.recentSearches.collectAsStateWithLifecycle()
@@ -156,7 +171,9 @@ fun SearchScreen(
                 contentType = "search_field",
             ) {
                 SearchEntryField(
-                    onClick = onSearchClick,
+                    query = searchQuery,
+                    onQueryChange = { searchQuery = it },
+                    onSearch = onSearchQuery,
                     modifier =
                         Modifier
                             .fillMaxWidth()
@@ -233,7 +250,7 @@ fun SearchScreen(
                                         recent = recentSearches,
                                         onClear = historyViewModel::clearAll,
                                         onDelete = historyViewModel::delete,
-                                        onSearchClick = onSearchClick,
+                                        onQueryClick = onSearchQuery,
                                         modifier = Modifier.animateItem(),
                                     )
                                 }
@@ -353,12 +370,22 @@ fun SearchScreen(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SearchEntryField(
-    onClick: () -> Unit,
+    query: String,
+    onQueryChange: (String) -> Unit,
+    onSearch: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val containerColor = MaterialTheme.colorScheme.surfaceContainerLow
     val onSurfaceVariant = MaterialTheme.colorScheme.onSurfaceVariant
+    val onSurface = MaterialTheme.colorScheme.onSurface
+    val primary = MaterialTheme.colorScheme.primary
+    val keyboardController = LocalSoftwareKeyboardController.current
 
+    // The search bar is a real inline input — tapping it focuses the field
+    // and shows the keyboard WITHOUT navigating away, so the Recent Searches
+    // and "Based on what you like" content stays on screen. Pressing the
+    // search IME action submits the query (navigates to results + records
+    // history) just like the old overlay flow.
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier =
@@ -366,8 +393,7 @@ private fun SearchEntryField(
                 .fillMaxWidth()
                 .height(SearchBarHeight)
                 .clip(RoundedCornerShape(SearchBarCornerRadius))
-                .background(containerColor)
-                .clickable(onClick = onClick),
+                .background(containerColor),
     ) {
         Icon(
             painter = painterResource(R.drawable.search),
@@ -378,28 +404,56 @@ private fun SearchEntryField(
                     .padding(start = 20.dp)
                     .size(24.dp),
         )
-        Text(
-            text = stringResource(R.string.search_yt_music),
-            style = MaterialTheme.typography.titleMedium.copy(fontSize = 16.sp),
-            color = onSurfaceVariant,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+        BasicTextField(
+            value = query,
+            onValueChange = onQueryChange,
+            singleLine = true,
+            textStyle =
+                MaterialTheme.typography.titleMedium
+                    .copy(fontSize = 16.sp)
+                    .copy(color = onSurface),
+            cursorBrush = SolidColor(primary),
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+            keyboardActions =
+                KeyboardActions(
+                    onSearch = {
+                        if (query.isNotEmpty()) {
+                            onSearch(query)
+                            keyboardController?.hide()
+                        }
+                    },
+                ),
+            modifier = Modifier.weight(1f),
+            decorationBox = { innerTextField ->
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp),
+                    contentAlignment = Alignment.CenterStart,
+                ) {
+                    if (query.isEmpty()) {
+                        Text(
+                            text = stringResource(R.string.search_yt_music),
+                            style = MaterialTheme.typography.titleMedium.copy(fontSize = 16.sp),
+                            color = onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    innerTextField()
+                }
+            },
+        )
+        Icon(
+            painter = painterResource(R.drawable.language),
+            contentDescription = null,
+            tint = onSurfaceVariant,
             modifier =
                 Modifier
-                    .weight(1f)
-                    .padding(horizontal = 14.dp),
+                    .padding(end = 20.dp)
+                    .size(22.dp),
         )
-        IconButton(
-            onClick = onClick,
-            modifier = Modifier.padding(end = 8.dp),
-        ) {
-            Icon(
-                painter = painterResource(R.drawable.language),
-                contentDescription = null,
-                tint = onSurfaceVariant,
-                modifier = Modifier.size(22.dp),
-            )
-        }
     }
 }
 
@@ -508,7 +562,7 @@ private fun RecentSearchesSection(
     recent: List<SearchHistory>,
     onClear: () -> Unit,
     onDelete: (SearchHistory) -> Unit,
-    onSearchClick: () -> Unit,
+    onQueryClick: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
@@ -539,7 +593,7 @@ private fun RecentSearchesSection(
                 RecentSearchRow(
                     history = item,
                     onDelete = onDelete,
-                    onClick = onSearchClick,
+                    onClick = { onQueryClick(item.query) },
                 )
             }
         }
@@ -683,6 +737,7 @@ private fun BasedOnWhatYouLikeGrid(
                     MoodCard(
                         title = item.title,
                         stripeColor = item.stripeColor,
+                        endpoint = item.endpoint,
                         onClick = {
                             navController.navigate(
                                 "youtube_browse/${item.endpoint.browseId}?params=${item.endpoint.params}",
@@ -707,12 +762,19 @@ private fun BasedOnWhatYouLikeGrid(
 private fun MoodCard(
     title: String,
     stripeColor: Long,
+    endpoint: BrowseEndpoint,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val base = remember(stripeColor) { Color(stripeColor) }
     val surface = MaterialTheme.colorScheme.surface
     val scrim = MaterialTheme.colorScheme.scrim
+    // Reuse the same artwork cache as the MoodAndGenres screen so tiles that
+    // were already resolved there appear instantly here too. The artwork is
+    // loaded async from YouTube browse (the gradient remains as a graceful
+    // placeholder while the thumbnail loads or if it never resolves).
+    val artworkUrl = rememberMoodAndGenresArtworkUrl(endpoint)
+    val artworkModel = rememberMoodAndGenresArtworkModel(endpoint = endpoint, artworkUrl = artworkUrl)
     val cardBrush =
         remember(base, surface) {
             Brush.linearGradient(
@@ -729,7 +791,7 @@ private fun MoodCard(
                 colors =
                     listOf(
                         Color.Transparent,
-                        scrim.copy(alpha = 0.55f),
+                        scrim.copy(alpha = 0.7f),
                     ),
             )
         }
@@ -743,6 +805,15 @@ private fun MoodCard(
                 .background(cardBrush)
                 .clickable(onClick = onClick),
     ) {
+        // Artwork thumbnail — fills the card, cropped.
+        if (artworkModel != null) {
+            AsyncImage(
+                model = artworkModel,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
         // Bottom gradient for title legibility.
         Box(
             modifier =
