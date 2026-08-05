@@ -20,6 +20,17 @@
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
 
+# Move all classes that R8 is allowed to move into a single 'r8' package.
+# This shortens class name strings in the DEX constant pool and removes
+# per-package directory entries, reducing DEX size by ~1–3%. It does NOT
+# rename or move any class covered by a -keep rule (media3, tdlib, kuromoji,
+# jaudiotagger, newpipe.extractor, ktor, guava, Glance widgets, queue
+# persistence models, @Serializable companions). Reflection by system class
+# name (e.g. Class.forName("android.os.SystemProperties")) is unaffected.
+# Using a non-empty package name ('r8') avoids edge cases with the default
+# package that some class loaders trip over.
+-repackageclasses 'r8'
+
 ## Kotlin Serialization
 # Keep `Companion` object fields of serializable classes.
 # This avoids serializer lookup through `getDeclaredClasses` as done for named companion objects.
