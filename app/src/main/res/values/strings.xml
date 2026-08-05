@@ -512,6 +512,17 @@
     <string name="max_supported_refresh_rate">Max supported: %1$d Hz</string>
     <string name="blur_intensity">Blur intensity</string>
     <string name="blur_intensity_value">%1$d dp</string>
+    <string name="ui_scale">UI scale</string>
+    <string name="ui_scale_desc">Adjust the size of all UI elements (smaller = more content, larger = easier to read)</string>
+    <string name="ui_scale_value">%1$d%%</string>
+    <string name="tablet_mode">Tablet mode</string>
+    <string name="tablet_mode_desc">Use the two-pane tablet layout (side navigation rail) on all screen sizes. Recommended for tablets and landscape phones.</string>
+    <string name="sleep_timer_off">Off</string>
+    <string name="sleep_timer_set_for">Sleep timer: %1$s</string>
+    <string name="sleep_timer_end_of_song">End of song</string>
+    <string name="sleep_timer_cancel_timer">Turn off timer</string>
+    <string name="sleep_timer_remaining">%1$s remaining</string>
+    <string name="sleep_timer_pick_a_time">Pick a time for the sleep timer</string>
     <string name="album_backdrop">Backdrop blur</string>
     <string name="album_backdrop_desc">Show artwork as blurred backdrop on the player</string>
     <string name="backdrop_blur_amount">Backdrop blur amount</string>

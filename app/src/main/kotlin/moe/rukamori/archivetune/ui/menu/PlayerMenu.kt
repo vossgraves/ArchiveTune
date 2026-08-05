@@ -56,7 +56,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -156,13 +155,13 @@ fun PlayerMenu(
         }
     val activityResultLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { }
-    val librarySong by database.song(mediaMetadata.id).collectAsState(initial = null)
+    val librarySong by database.song(mediaMetadata.id).collectAsStateWithLifecycle(initialValue = null)
     val coroutineScope = rememberCoroutineScope()
 
     val downloadUtil = LocalDownloadUtil.current
     val download by downloadUtil
         .getDownload(mediaMetadata.id)
-        .collectAsState(initial = null)
+        .collectAsStateWithLifecycle(initialValue = null)
 
     val artists =
         remember(mediaMetadata.artists) {
@@ -449,6 +448,11 @@ fun PlayerMenu(
         )
     }
 
+    // Apple Music–style sleep timer sheet. Rendered as an extra item at the
+    // bottom of the same scrollable menu (no second modal layer) so the user
+    // can pick a duration without leaving the song's overflow menu.
+    var showSleepTimerSheet by rememberSaveable { mutableStateOf(false) }
+
     var showEqualizerDialog by rememberSaveable {
         mutableStateOf(false)
     }
@@ -573,6 +577,22 @@ fun PlayerMenu(
                 bottom = 8.dp + WindowInsets.systemBars.asPaddingValues().calculateBottomPadding(),
             ),
     ) {
+        // When the user taps "Sleep timer", replace the menu body with the
+        // Apple Music–style picker sheet. Keeping the surface header (album art
+        // + title) above gives the user context that this sheet still belongs
+        // to the current song, while the rest of the menu items are hidden so
+        // the sheet is immediately visible without scrolling.
+        if (showSleepTimerSheet) {
+            item {
+                AppleMusicSleepTimerSheet(
+                    sleepTimer = playerConnection.service.sleepTimer,
+                    onDismiss = {
+                        showSleepTimerSheet = false
+                        onDismiss()
+                    },
+                )
+            }
+        } else {
         item {
             MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
                 NewActionGrid(
@@ -1041,6 +1061,27 @@ fun PlayerMenu(
                             color = MaterialTheme.colorScheme.outlineVariant,
                         )
 
+                        // Sleep timer row — appears in the secondary list section alongside
+                        // Equalizer and Tempo & Pitch. Tapping it opens the inline Apple
+                        // Music–style sheet at the bottom of the menu.
+                        ListItem(
+                            headlineContent = { Text(text = stringResource(R.string.sleep_timer)) },
+                            leadingContent = {
+                                Icon(
+                                    painter = painterResource(R.drawable.bedtime),
+                                    contentDescription = null,
+                                )
+                            },
+                            modifier =
+                                Modifier.clickable { showSleepTimerSheet = true },
+                            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                        )
+
+                        HorizontalDivider(
+                            modifier = Modifier.padding(start = 56.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant,
+                        )
+
                         ListItem(
                             headlineContent = { Text(text = stringResource(R.string.equalizer)) },
                             leadingContent = {
@@ -1067,7 +1108,7 @@ fun PlayerMenu(
                                 )
                             },
                             supportingContent = {
-                                val playbackParameters by playerConnection.playbackParameters.collectAsState()
+                                val playbackParameters by playerConnection.playbackParameters.collectAsStateWithLifecycle()
                                 Text(
                                     text = "x${formatMultiplier(
                                         playbackParameters.speed,
@@ -1083,6 +1124,7 @@ fun PlayerMenu(
                 }
             }
         }
+        } // end else (menu body)
     }
 }
 

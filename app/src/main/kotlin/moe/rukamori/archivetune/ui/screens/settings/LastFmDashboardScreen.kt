@@ -572,37 +572,6 @@ private fun UserCard(
 }
 
 @Composable
-private fun DashboardSectionHeader(
-    text: String,
-    count: Int,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Surface(
-            modifier = Modifier.size(8.dp),
-            shape = CircleShape,
-            color = DashboardAccentColor,
-        ) {}
-        Spacer(Modifier.width(8.dp))
-        Text(
-            text = text,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-        )
-        Spacer(Modifier.weight(1f))
-        Text(
-            text = "$count ${stringResource(R.string.songs)}",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
-}
-
-@Composable
 private fun EmptyHint(text: String) {
     Text(
         text = text,

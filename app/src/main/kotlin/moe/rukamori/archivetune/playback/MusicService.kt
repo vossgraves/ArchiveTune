@@ -29,7 +29,6 @@ import android.media.AudioDeviceCallback
 import android.media.AudioDeviceInfo
 import android.media.AudioFocusRequest
 import android.media.AudioManager
-import android.media.MediaCodecList
 import android.media.audiofx.AudioEffect
 import android.media.audiofx.BassBoost
 import android.media.audiofx.Equalizer
@@ -9293,14 +9292,6 @@ class MusicService :
             normalizedScheme == "android.resource" ||
             normalizedScheme == "telegram"
     }
-
-    private fun deviceSupportsMimeType(mimeType: String): Boolean =
-        runCatching {
-            val codecList = MediaCodecList(MediaCodecList.ALL_CODECS)
-            codecList.codecInfos.any { info ->
-                !info.isEncoder && info.supportedTypes.any { it.equals(mimeType, ignoreCase = true) }
-            }
-        }.getOrDefault(false)
 
     private fun createMediaSourceFactory() =
         DefaultMediaSourceFactory(

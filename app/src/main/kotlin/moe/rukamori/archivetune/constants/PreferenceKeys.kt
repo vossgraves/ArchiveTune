@@ -23,6 +23,16 @@ val DarkModeKey = stringPreferencesKey("darkMode")
 val PureBlackKey = booleanPreferencesKey("pureBlack")
 val DisableAnimationsKey = booleanPreferencesKey("disableAnimations")
 val ForceHighRefreshRateKey = booleanPreferencesKey("forceHighRefreshRate")
+
+// UI scale (DPI-like) multiplier applied via a LocalDensity override in MainActivity.
+// 1.0f = system default. Range clamped to [0.85f, 1.30f] in AppearanceSettings.
+// Stored as a float so the slider is continuous (1% steps via 46 discrete positions).
+val UiScaleFactorKey = floatPreferencesKey("uiScaleFactor")
+
+// When true, forces the two-pane NavigationRail layout (normally reserved for
+// tablet-width windows) on phone-sized windows too. Useful on landscape phones
+// and on tablets where the dp breakpoint misclassifies the window.
+val TabletModeEnabledKey = booleanPreferencesKey("tabletModeEnabled")
 val EnableHapticFeedbackKey = booleanPreferencesKey("enableHapticFeedback")
 val UseSystemFontKey = booleanPreferencesKey("useSystemFont")
 val FontPreferenceKey = stringPreferencesKey("fontPreference")
