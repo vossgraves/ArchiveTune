@@ -56,6 +56,7 @@ import moe.rukamori.archivetune.constants.EnableUnisonLyricsKey
 import moe.rukamori.archivetune.constants.EnableYouLyPlusLyricsKey
 import moe.rukamori.archivetune.constants.LyricsProviderOrderKey
 import moe.rukamori.archivetune.constants.PreferredLyricsProvider
+import moe.rukamori.archivetune.constants.PrioritizeWordSyncedLyricsKey
 import moe.rukamori.archivetune.constants.deserializeLyricsProviderOrder
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
@@ -108,6 +109,8 @@ fun LyricsProvidersSettings(
         rememberPreference(key = EnablePaxsenixYouTubeLyricsKey, defaultValue = true)
     val (enableUnisonLyrics, onEnableUnisonLyricsChange) =
         rememberPreference(key = EnableUnisonLyricsKey, defaultValue = true)
+    val (prioritizeWordSynced, onPrioritizeWordSyncedChange) =
+        rememberPreference(key = PrioritizeWordSyncedLyricsKey, defaultValue = false)
     val (enableMusixmatchExperimental, onEnableMusixmatchExperimentalChange) =
         rememberPreference(key = EnableMusixmatchExperimentalKey, defaultValue = false)
     val (providerOrderStr, onProviderOrderStrChange) =
@@ -174,12 +177,37 @@ fun LyricsProvidersSettings(
                 .padding(bottom = SettingsDimensions.ScreenBottomPadding),
         ) {
             PreferenceGroup(title = stringResource(R.string.providers)) {
+                // "Prioritize Word Synced Lyrics" sits at the TOP of the providers
+                // group because when it's ON it overrides every other toggle and the
+                // Lyrics Priority order below — the app queries only BetterLyrics,
+                // BetterLyrics Portato, YouLyPlus, and Unison directly. Putting it
+                // first makes the override relationship visually obvious.
+                item {
+                    SwitchPreference(
+                        title = { Text(stringResource(R.string.prioritize_word_synced_lyrics)) },
+                        description = stringResource(R.string.prioritize_word_synced_lyrics_desc),
+                        icon = { Icon(painterResource(R.drawable.lyrics), null) },
+                        checked = prioritizeWordSynced,
+                        onCheckedChange = onPrioritizeWordSyncedChange,
+                    )
+                }
+
+                // When "Prioritize Word Synced Lyrics" is ON, the per-provider
+                // toggles and Lyrics Priority order are ignored by LyricsHelper
+                // (the four word-sync-capable providers are queried directly).
+                // We grey them out here to signal that they have no effect while
+                // the override is active. They remain visible (not hidden) so the
+                // user can still see their state and understand what will resume
+                // when the override is turned back off.
+                val providerTogglesEnabled = !prioritizeWordSynced
+
                 item {
                     SwitchPreference(
                         title = { Text(stringResource(R.string.enable_betterlyrics)) },
                         icon = { Icon(painterResource(R.drawable.lyrics), null) },
                         checked = enableBetterLyrics,
                         onCheckedChange = onEnableBetterLyricsChange,
+                        isEnabled = providerTogglesEnabled,
                     )
                 }
 
@@ -189,6 +217,7 @@ fun LyricsProvidersSettings(
                         icon = { Icon(painterResource(R.drawable.lyrics), null) },
                         checked = enableBetterLyricsPortato,
                         onCheckedChange = onEnableBetterLyricsPortatoChange,
+                        isEnabled = providerTogglesEnabled,
                     )
                 }
 
@@ -198,6 +227,7 @@ fun LyricsProvidersSettings(
                         icon = { Icon(painterResource(R.drawable.lyrics), null) },
                         checked = enableYouLyPlusLyrics,
                         onCheckedChange = onEnableYouLyPlusLyricsChange,
+                        isEnabled = providerTogglesEnabled,
                     )
                 }
 
@@ -207,6 +237,7 @@ fun LyricsProvidersSettings(
                         icon = { Icon(painterResource(R.drawable.lyrics), null) },
                         checked = enableLrclib,
                         onCheckedChange = onEnableLrclibChange,
+                        isEnabled = providerTogglesEnabled,
                     )
                 }
 
@@ -216,6 +247,7 @@ fun LyricsProvidersSettings(
                         icon = { Icon(painterResource(R.drawable.lyrics), null) },
                         checked = enableKugou,
                         onCheckedChange = onEnableKugouChange,
+                        isEnabled = providerTogglesEnabled,
                     )
                 }
 
@@ -225,6 +257,7 @@ fun LyricsProvidersSettings(
                         icon = { Icon(painterResource(R.drawable.lyrics), null) },
                         checked = enableUnisonLyrics,
                         onCheckedChange = onEnableUnisonLyricsChange,
+                        isEnabled = providerTogglesEnabled,
                     )
                 }
 
@@ -234,6 +267,7 @@ fun LyricsProvidersSettings(
                         icon = { Icon(painterResource(R.drawable.lyrics), null) },
                         checked = enableSimpMusicLyrics,
                         onCheckedChange = onEnableSimpMusicLyricsChange,
+                        isEnabled = providerTogglesEnabled,
                     )
                 }
 
@@ -243,6 +277,7 @@ fun LyricsProvidersSettings(
                         icon = { Icon(painterResource(R.drawable.lyrics), null) },
                         checked = enableMegalobizLyrics,
                         onCheckedChange = onEnableMegalobizLyricsChange,
+                        isEnabled = providerTogglesEnabled,
                     )
                 }
 
@@ -252,6 +287,7 @@ fun LyricsProvidersSettings(
                         icon = { Icon(painterResource(R.drawable.lyrics), null) },
                         checked = enablePaxsenixLyrics,
                         onCheckedChange = onEnablePaxsenixLyricsChange,
+                        isEnabled = providerTogglesEnabled,
                     )
                 }
 
@@ -260,6 +296,7 @@ fun LyricsProvidersSettings(
                         title = { Text(stringResource(R.string.paxsenix_stats)) },
                         icon = { Icon(painterResource(R.drawable.stats), null) },
                         onClick = { showPaxsenixStatsDialog = true },
+                        isEnabled = providerTogglesEnabled,
                     )
                 }
 
@@ -269,6 +306,7 @@ fun LyricsProvidersSettings(
                         icon = { Icon(painterResource(R.drawable.lyrics), null) },
                         checked = enablePaxsenixAppleMusicLyrics,
                         onCheckedChange = onEnablePaxsenixAppleMusicLyricsChange,
+                        isEnabled = providerTogglesEnabled,
                     )
                 }
 
@@ -278,6 +316,7 @@ fun LyricsProvidersSettings(
                         icon = { Icon(painterResource(R.drawable.lyrics), null) },
                         checked = enablePaxsenixNeteaseLyrics,
                         onCheckedChange = onEnablePaxsenixNeteaseLyricsChange,
+                        isEnabled = providerTogglesEnabled,
                     )
                 }
 
@@ -287,6 +326,7 @@ fun LyricsProvidersSettings(
                         icon = { Icon(painterResource(R.drawable.lyrics), null) },
                         checked = enablePaxsenixSpotifyLyrics,
                         onCheckedChange = onEnablePaxsenixSpotifyLyricsChange,
+                        isEnabled = providerTogglesEnabled,
                     )
                 }
 
@@ -296,6 +336,7 @@ fun LyricsProvidersSettings(
                         icon = { Icon(painterResource(R.drawable.lyrics), null) },
                         checked = enablePaxsenixMusixmatchLyrics,
                         onCheckedChange = onEnablePaxsenixMusixmatchLyricsChange,
+                        isEnabled = providerTogglesEnabled,
                     )
                 }
 
@@ -305,6 +346,7 @@ fun LyricsProvidersSettings(
                         icon = { Icon(painterResource(R.drawable.lyrics), null) },
                         checked = enablePaxsenixYouTubeLyrics,
                         onCheckedChange = onEnablePaxsenixYouTubeLyricsChange,
+                        isEnabled = providerTogglesEnabled,
                     )
                 }
 
@@ -314,6 +356,7 @@ fun LyricsProvidersSettings(
                         description = providerOrder.firstOrNull()?.displayName(),
                         icon = { Icon(painterResource(R.drawable.lyrics), null) },
                         onClick = { showProviderOrderDialog = true },
+                        isEnabled = providerTogglesEnabled,
                     )
                 }
             }
@@ -326,6 +369,7 @@ fun LyricsProvidersSettings(
                         icon = { Icon(painterResource(R.drawable.lyrics), null) },
                         checked = enableMusixmatchExperimental,
                         onCheckedChange = onEnableMusixmatchExperimentalChange,
+                        isEnabled = !prioritizeWordSynced,
                     )
                 }
                 item(visible = enableMusixmatchExperimental) {
