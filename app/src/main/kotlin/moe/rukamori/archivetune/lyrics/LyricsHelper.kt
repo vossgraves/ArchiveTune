@@ -140,13 +140,13 @@ class LyricsHelper
 
             // When "Prioritize Word Synced Lyrics" is ON (and the caller isn't asking
             // for the preferred provider only), first try to obtain word-synced lyrics
-            // from the four word-sync-capable providers (BetterLyrics, BetterLyrics
-            // Portato, YouLyPlus, Unison). These are queried DIRECTLY — bypassing
-            // both the per-provider enable toggles AND the user's provider-priority
-            // order — because when this feature is on the user has explicitly said
-            // they want word-synced lyrics from these four sources first, full stop.
+            // from the three word-sync-capable providers (BetterLyrics, YouLyPlus,
+            // Unison). These are queried DIRECTLY — bypassing both the per-provider
+            // enable toggles AND the user's provider-priority order — because when
+            // this feature is on the user has explicitly said they want word-synced
+            // lyrics from these three sources first, full stop.
             //
-            // If any of the four returns lyrics that are actually word-synced
+            // If any of the three returns lyrics that are actually word-synced
             // (QRC/YRC/TTML with word-level timings), we use that immediately.
             // Otherwise we fall through to the normal priority ranking across all
             // enabled providers (the regular flow below).
@@ -154,7 +154,7 @@ class LyricsHelper
                 GlobalLog.append(
                     Log.DEBUG,
                     "LyricsHelper",
-                    "PrioritizeWordSynced=on: querying BetterLyrics/BetterLyrics Portato/YouLyPlus/Unison for word-synced lyrics",
+                    "PrioritizeWordSynced=on: querying BetterLyrics/YouLyPlus/Unison for word-synced lyrics",
                 )
                 val wordSyncedResult = tryFetchWordSyncedFromPriorityProviders(mediaMetadata)
                 if (wordSyncedResult != null && isMeaningfulLyrics(wordSyncedResult.lyrics)) {
@@ -188,27 +188,24 @@ class LyricsHelper
         }
 
         /**
-         * Queries the four word-sync-capable providers (BetterLyrics, BetterLyrics
-         * Portato, YouLyPlus, Unison) IN PARALLEL and returns the first one whose
-         * response is actually word-synced (QRC/YRC/TTML with word-level timings).
-         * Returns null if none of them return word-synced lyrics, so the caller can
-         * fall back to the normal priority flow.
+         * Queries the three word-sync-capable providers (BetterLyrics, YouLyPlus,
+         * Unison) IN PARALLEL and returns the first one whose response is actually
+         * word-synced (QRC/YRC/TTML with word-level timings). Returns null if none
+         * of them return word-synced lyrics, so the caller can fall back to the
+         * normal priority flow.
          *
          * IMPORTANT: This is invoked when the "Prioritize Word Synced Lyrics" toggle
-         * is ON. The four providers are queried DIRECTLY — their per-provider enable
+         * is ON. The three providers are queried DIRECTLY — their per-provider enable
          * toggles in the Lyrics Providers settings screen are deliberately bypassed,
          * because the toggle being ON is an explicit override that says "I want
-         * word-synced lyrics from these four sources regardless of any other
+         * word-synced lyrics from these three sources regardless of any other
          * provider config". Likewise the user's provider-priority order is ignored
-         * here — among these four, the first one (in the fixed order below) that
-         * returns word-synced lyrics wins. This matches the user's expectation:
-         * "It searches word synced lyrics from Betterlyrics, Betterlyrics Portato,
-         * YouLyPlus and Unison (If it finds one it should show)".
+         * here — among these three, the first one (in the fixed order below) that
+         * returns word-synced lyrics wins.
          *
          * Only results that pass [LyricsUtils.hasWordSyncedLyrics] are eligible —
          * a provider returning plain LRC or plain text is ignored, even if it was
-         * the only one to respond. This satisfies: "between these 4 providers it
-         * should only use the lyrics which has a tag of word sync".
+         * the only one to respond.
          */
         private suspend fun tryFetchWordSyncedFromPriorityProviders(
             mediaMetadata: MediaMetadata,
@@ -218,7 +215,6 @@ class LyricsHelper
             val wordSyncCapable: List<LyricsProvider> =
                 listOf(
                     BetterLyricsProvider,
-                    BetterLyricsPortatoProvider,
                     YouLyPlusLyricsProvider,
                     UnisonLyricsProvider,
                 )
