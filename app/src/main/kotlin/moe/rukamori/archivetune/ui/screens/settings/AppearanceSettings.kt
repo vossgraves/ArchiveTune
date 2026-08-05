@@ -915,6 +915,15 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                 }
 
                 item {
+                    PreferenceEntry(
+                        title = { Text(stringResource(R.string.navigation_bar_settings_title)) },
+                        description = stringResource(R.string.navigation_bar_settings_subtitle),
+                        icon = { Icon(painterResource(R.drawable.tune), null) },
+                        onClick = { navController.navigate("settings/appearance/navigation_bar") },
+                    )
+                }
+
+                item {
                     Column(modifier = positions.modifierFor("default_open_tab")) {
                         EnumListPreference(
                             title = { Text(stringResource(R.string.default_open_tab)) },

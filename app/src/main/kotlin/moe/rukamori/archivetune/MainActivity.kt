@@ -1244,10 +1244,12 @@ class MainActivity : ComponentActivity() {
                     // (see [rememberPreSFrostedBitmap]). Both paths need the same GraphicsLayer,
                     // so we create it on every API level — `rememberGraphicsLayer` and
                     // `layer.record { ... }` work without RenderEffect.
+                    // Always capture the app content into a GraphicsLayer every frame so both
+                    // the frosted nav bar / mini player AND the frosted header pills can draw
+                    // it blurred. The recording cost is negligible (GPU layer copy) and the
+                    // layer is only read by consumers that opt into frosted blur.
                     val navBarFrostedBackdrop =
-                        if ((navigationBarFrostedBlur || miniPlayerBgStyle == MiniPlayerBackgroundStyle.FROSTED) &&
-                            !useRail
-                        ) {
+                        if (!useRail) {
                             val frostedLayer = rememberGraphicsLayer()
                             remember(frostedLayer) { NavigationBarBackdrop(frostedLayer) }
                         } else {

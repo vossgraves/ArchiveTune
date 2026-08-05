@@ -105,6 +105,7 @@ import moe.rukamori.archivetune.models.toMediaMetadata
 import moe.rukamori.archivetune.playback.queues.ListQueue
 import moe.rukamori.archivetune.playback.queues.YouTubeQueue
 import moe.rukamori.archivetune.ui.component.ChoiceChipsRow
+import moe.rukamori.archivetune.ui.component.FrostedHeaderPill
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.ItemThumbnail
 import moe.rukamori.archivetune.ui.component.LocalAlbumsGrid
@@ -247,46 +248,51 @@ fun StatsScreen(
                 .nestedScroll(topAppBarScrollBehavior.nestedScrollConnection),
         topBar = {
             LargeFlexibleTopAppBar(
+                colors = TopAppBarDefaults.largeTopAppBarColors(
+                    containerColor = Color.Transparent,
+                    scrolledContainerColor = Color.Transparent,
+                ),
                 title = {
-                    Text(
-                        text = stringResource(R.string.stats),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    FrostedHeaderPill {
+                        Text(
+                            text = stringResource(R.string.stats),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 },
                 subtitle = {
-                    Text(
-                        text = stringResource(R.string.settings_stats_subtitle),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    FrostedHeaderPill {
+                        Text(
+                            text = stringResource(R.string.settings_stats_subtitle),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 },
                 navigationIcon = {
-                    IconButton(
-                        onClick = navController::navigateUp,
-                        onLongClick = navController::backToMain,
-                    ) {
-                        Icon(painterResource(R.drawable.arrow_back), contentDescription = null)
+                    FrostedHeaderPill {
+                        IconButton(
+                            onClick = navController::navigateUp,
+                            onLongClick = navController::backToMain,
+                        ) {
+                            Icon(painterResource(R.drawable.arrow_back), contentDescription = null)
+                        }
                     }
                 },
                 actions = {
-                    IconButton(
-                        onClick = viewModel::retry,
-                        onLongClick = {},
+                    FrostedHeaderPill(
+                        modifier = Modifier.padding(end = 8.dp),
                     ) {
-                        Icon(
-                            painterResource(R.drawable.sync),
-                            contentDescription = stringResource(R.string.refresh),
-                        )
-                    }
-                    IconButton(
-                        onClick = viewModel::showYearPicker,
-                        onLongClick = {},
-                    ) {
-                        Icon(
-                            painterResource(R.drawable.auto_awesome),
-                            contentDescription = stringResource(R.string.year_in_music),
-                        )
+                        IconButton(
+                            onClick = viewModel::showYearPicker,
+                            onLongClick = {},
+                        ) {
+                            Icon(
+                                painterResource(R.drawable.auto_awesome),
+                                contentDescription = stringResource(R.string.year_in_music),
+                            )
+                        }
                     }
                 },
                 scrollBehavior = topAppBarScrollBehavior,

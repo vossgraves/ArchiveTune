@@ -169,8 +169,8 @@ fun FloatingNavigationToolbar(
     onSearchItemDoubleClick: (() -> Unit)? = null,
 ) {
     val isFloating = style == NavigationBarStyle.FLOATING
-    // Navigation bar customization (Task 6). Read directly here so the toolbar picks up
-    // the user's tuning without the call site needing to thread 6 extra params.
+    // Navigation bar customization. Read directly here so the toolbar picks up the user's
+    // tuning without the call site needing to thread 6 extra params.
     val (navBarWidthFraction) =
         rememberPreference(NavigationBarWidthKey, defaultValue = NAVIGATION_BAR_WIDTH_DEFAULT)
     val (navBarHeightMultiplier) =
@@ -504,7 +504,7 @@ fun FloatingNavigationToolbar(
                                     null
                                 } else {
                                     {
-                                        // User-configurable spacing between icon and label (Task 6).
+                                        // User-configurable spacing between icon and label.
                                         Spacer(Modifier.height(navBarLabelSpacing.dp))
                                         Text(
                                             text = stringResource(screen.titleId),

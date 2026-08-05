@@ -23,16 +23,6 @@ val DarkModeKey = stringPreferencesKey("darkMode")
 val PureBlackKey = booleanPreferencesKey("pureBlack")
 val DisableAnimationsKey = booleanPreferencesKey("disableAnimations")
 val ForceHighRefreshRateKey = booleanPreferencesKey("forceHighRefreshRate")
-
-// UI scale (DPI-like) multiplier applied via a LocalDensity override in MainActivity.
-// 1.0f = system default. Range clamped to [0.85f, 1.30f] in AppearanceSettings.
-// Stored as a float so the slider is continuous (1% steps via 46 discrete positions).
-val UiScaleFactorKey = floatPreferencesKey("uiScaleFactor")
-
-// When true, forces the two-pane NavigationRail layout (normally reserved for
-// tablet-width windows) on phone-sized windows too. Useful on landscape phones
-// and on tablets where the dp breakpoint misclassifies the window.
-val TabletModeEnabledKey = booleanPreferencesKey("tabletModeEnabled")
 val EnableHapticFeedbackKey = booleanPreferencesKey("enableHapticFeedback")
 val UseSystemFontKey = booleanPreferencesKey("useSystemFont")
 val FontPreferenceKey = stringPreferencesKey("fontPreference")
@@ -794,12 +784,9 @@ val NavigationBarStyleKey = stringPreferencesKey("navigationBarStyle")
 val NavigationBarFrostedBlurKey = booleanPreferencesKey("navigationBarFrostedBlur")
 val HideNavigationBarLabelsKey = booleanPreferencesKey("hideNavigationBarLabels")
 
-// ── Navigation bar customization (Task 6) ───────────────────────────────────
-// Advanced tuning knobs exposed in the new "Navigation bar" sub-page under
-// Appearance. Defaults preserve the pre-existing look: 80.dp width, 64.dp
-// height, 0.18 alpha for the floating surface, 4.dp label spacing, 28.dp
-// corner radius. The DEFAULT style is unaffected; these only meaningfully
-// change the FLOATING style (and provide a small radius tweak for DEFAULT).
+// ── Navigation bar dimension customization ──────────────────────────────────
+// Advanced tuning knobs for the FLOATING nav bar style (and corner radius for
+// DEFAULT). Defaults preserve the pre-existing look.
 val NavigationBarWidthKey = floatPreferencesKey("navigationBarWidth")
 const val NAVIGATION_BAR_WIDTH_DEFAULT = 0.8f // fraction of screen width when FLOATING
 
@@ -817,11 +804,6 @@ const val NAVIGATION_BAR_LABEL_SPACING_DEFAULT = 4f // dp between icon and label
 
 val NavigationBarCornerRadiusKey = floatPreferencesKey("navigationBarCornerRadius")
 const val NAVIGATION_BAR_CORNER_RADIUS_DEFAULT = 28f // dp
-
-// App-wide scrollbar toggle (Task 8). When false, all LazyColumn / LazyGrid /
-// ScrollState scrollbars in the app are suppressed. (Slider thumb tracks and
-// player position bars are not affected — those are not "scrollbars".)
-val HideScrollbarKey = booleanPreferencesKey("hideScrollbar")
 
 // Keys for customized background
 val PlayerCustomImageUriKey = stringPreferencesKey("playerCustomImageUri")
