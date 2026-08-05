@@ -2429,21 +2429,29 @@ private fun MikoLyricsTransition(
     }
     val progressState = progress.asState()
     val showContent by remember {
-        // Keep the heavy LyricsScreen tree composed for almost the entire close transition.
+        // Keep the heavy LyricsScreen tree composed for the ENTIRE close transition —
+        // the lyrics content must still be visible on the very last frame the sheet
+        // is on screen (progress → 0, translationY → height).
         //
-        // The outer Box's graphicsLayer slides the whole sheet on/off screen via translationY
-        // = size.height * (1 - progress). The previous threshold of 0.5 unmounted the lyrics
-        // tree when the sheet was only halfway down — so for the last ~350 ms of the ~700 ms
-        // close spring the user saw an empty surface slide off-screen instead of the lyrics
-        // content, which read as the animation "ending abruptly".
+        // The outer Box's graphicsLayer slides the whole sheet on/off screen via
+        // translationY = size.height * (1 - progress). Earlier thresholds (0.5, then
+        // 0.02) unmounted the lyrics tree before the slide-down finished, leaving an
+        // empty surface sliding off-screen — visible as the animation "ending
+        // abruptly" for the final frames.
         //
-        // Dropping the threshold to 0.02 keeps the lyrics tree alive until the sheet is 98%
-        // off-screen (translationY ≈ 0.98 * height), at which point unmounting is invisible.
-        // The open path is unchanged: `visible` flips to true immediately on open, which
-        // short-circuits the `||` and composes the tree right away (no first-frame jank
-        // regression because the slide-up is already moving by the time the first frame of
-        // the lyrics tree is ready).
-        derivedStateOf { visible || progressState.value > 0.02f }
+        // `progressState.value > 0f` keeps the tree composed for the whole spring
+        // glide. The close spring is critically damped (dampingRatio = 1f) so it
+        // approaches 0 monotonically with no overshoot; when the deviation drops
+        // below the visibilityThreshold (0.001f) Animatable snaps to exactly 0.0f,
+        // at which point `progress > 0f` flips false and the tree unmounts — by then
+        // translationY is exactly `height`, i.e. the sheet is 100% off-screen, so
+        // unmounting is invisible.
+        //
+        // Open path is unchanged: `visible` flips to true immediately on open,
+        // short-circuiting the `||` and composing the tree right away (no first-
+        // frame jank regression because the slide-up is already moving by the time
+        // the first frame of the lyrics tree is ready).
+        derivedStateOf { visible || progressState.value > 0f }
     }
 
     if (showContent) {
