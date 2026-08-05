@@ -3699,8 +3699,7 @@ class MusicService :
     private fun isRetryableRemoteParserFailure(error: PlaybackException): Boolean {
         if (
             error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED ||
-            error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED ||
-            error.errorCode == PlaybackException.ERROR_CODE_PARSING_MEDIA_MALFORMED
+            error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED
         ) {
             return true
         }
@@ -3735,15 +3734,13 @@ class MusicService :
                 error.errorCode == PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE
         val isContainerParseError =
             error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED
-        // ERROR_CODE_PARSING_MEDIA_MALFORMED (3001) covers extractor-level
-        // failures such as "Multiple Segment elements not supported" — these
-        // happen when a partial / truncated MP4 file was served from the
-        // cache. Treat them as cache corruption when content is cached so
-        // the player purges the bad spans and re-fetches from the network.
-        val isMediaParseError =
-            error.errorCode == PlaybackException.ERROR_CODE_PARSING_MEDIA_MALFORMED
-
-        if (!isIoError && !isContainerParseError && !isMediaParseError) {
+        // Error code 3001 (ERROR_CODE_PARSING_CONTAINER_MALFORMED) covers
+        // extractor-level failures such as "Multiple Segment elements not
+        // supported" — these happen when a partial / truncated MP4 file was
+        // served from the cache. Treat them as cache corruption when content
+        // is cached so the player purges the bad spans and re-fetches from
+        // the network.
+        if (!isIoError && !isContainerParseError) {
             return false
         }
 
@@ -3765,11 +3762,11 @@ class MusicService :
                     }
                 }
 
-                (isContainerParseError || isMediaParseError) && isContentCached && throwable is ParserException -> {
+                isContainerParseError && isContentCached && throwable is ParserException -> {
                     return true
                 }
 
-                (isContainerParseError || isMediaParseError) && isContentCached &&
+                isContainerParseError && isContentCached &&
                     throwable.message?.let {
                         it.contains("Invalid integer size", ignoreCase = true) ||
                             it.contains("Skipping atom with length", ignoreCase = true) ||
