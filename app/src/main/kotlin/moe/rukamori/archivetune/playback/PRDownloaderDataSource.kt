@@ -20,6 +20,7 @@ import com.downloader.PRDownloader
 import com.downloader.Status
 import com.downloader.request.DownloadRequest
 import moe.rukamori.archivetune.innertube.YouTube
+import moe.rukamori.archivetune.utils.StreamClientUtils
 import okhttp3.ConnectionPool
 import okhttp3.OkHttpClient
 import okhttp3.Protocol
@@ -121,12 +122,54 @@ internal class PRDownloaderDataSource private constructor(
         // which converts it into a DownloadRequest (which only supports
         // progress/pause/cancel listeners + start()).
         val requestBuilder = PRDownloader.download(url, tempDir.absolutePath, safeName)
-        if (userAgent.isNotBlank()) requestBuilder.setUserAgent(userAgent)
+
+        // YouTube's googlevideo CDN enforces strict User-Agent / Origin / Referer
+        // matching against the `c` (client) query parameter embedded in the
+        // stream URL. If the UA doesn't match what the client expects (e.g.
+        // "ArchiveTune/1.2.3" sent for a `c=WEB_REMIX` URL that expects a
+        // Firefox UA), googlevideo returns HTTP 403 and every download fails.
+        //
+        // Resolve the correct UA + Origin + Referer from the URL's `c` param
+        // via StreamClientUtils (the same path the player's OkHttp interceptor
+        // uses). For non-YouTube URLs, fall back to the configured default UA.
+        val youTubeMediaProfile = runCatching {
+            StreamClientUtils.resolveRequestProfile(url)
+        }.getOrNull()
+        val resolvedUserAgent = youTubeMediaProfile?.userAgent?.takeIf(String::isNotBlank)
+            ?: userAgent
+        if (resolvedUserAgent.isNotBlank()) requestBuilder.setUserAgent(resolvedUserAgent)
+        if (youTubeMediaProfile != null) {
+            youTubeMediaProfile.origin?.takeIf(String::isNotBlank)?.let {
+                requestBuilder.setHeader("Origin", it)
+            }
+            youTubeMediaProfile.referer?.takeIf(String::isNotBlank)?.let {
+                requestBuilder.setHeader("Referer", it)
+            }
+            // YouTube media endpoints reject transparent gzip on audio/mp4
+            // streams — without this, PRDownloader's OkHttp client may
+            // advertise gzip and the response comes back compressed, which
+            // both corrupts the cached bytes and triggers
+            // ParserException("Multiple Segment elements not supported")
+            // when the player later tries to decode the gzipped payload as
+            // an MP4 container.
+            requestBuilder.setHeader("Accept-Encoding", "identity")
+            requestBuilder.setHeader("Connection", "keep-alive")
+        }
         dataSpec.httpRequestHeaders.forEach { (k, v) ->
             // PRDownloader doesn't accept "Range" via setHeader — it
             // manages its own range requests internally for resume.
             // We drop any caller-supplied Range header to avoid conflict.
-            if (!k.equals("Range", ignoreCase = true)) requestBuilder.setHeader(k, v)
+            // We also drop User-Agent / Origin / Referer / Accept-Encoding
+            // because we just set them from the stream-client profile.
+            val lower = k.lowercase()
+            if (lower != "range" &&
+                lower != "user-agent" &&
+                lower != "origin" &&
+                lower != "referer" &&
+                lower != "accept-encoding"
+            ) {
+                requestBuilder.setHeader(k, v)
+            }
         }
         val builder: DownloadRequest = requestBuilder.build()
 

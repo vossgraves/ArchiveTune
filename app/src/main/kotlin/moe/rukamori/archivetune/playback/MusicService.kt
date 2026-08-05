@@ -3699,15 +3699,27 @@ class MusicService :
     private fun isRetryableRemoteParserFailure(error: PlaybackException): Boolean {
         if (
             error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED ||
-            error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED
+            error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED ||
+            error.errorCode == PlaybackException.ERROR_CODE_PARSING_MEDIA_FAILED
         ) {
             return true
         }
 
         var throwable: Throwable? = error.cause
         while (throwable != null) {
-            if (throwable.message?.contains("Skipping atom with length", ignoreCase = true) == true) {
-                return true
+            val msg = throwable.message
+            if (msg != null) {
+                if (msg.contains("Skipping atom with length", ignoreCase = true)) {
+                    return true
+                }
+                // ExoPlayer's MP4 extractor throws this when a downloaded file
+                // is truncated mid-atom (typical when a previous download
+                // failed mid-stream and the partial bytes were left in the
+                // cache). The error is fully recoverable by purging the
+                // partial cache and re-fetching.
+                if (msg.contains("Multiple Segment elements not supported", ignoreCase = true)) {
+                    return true
+                }
             }
             throwable = throwable.cause
         }
@@ -3723,8 +3735,15 @@ class MusicService :
                 error.errorCode == PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE
         val isContainerParseError =
             error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED
+        // ERROR_CODE_PARSING_MEDIA_FAILED (3001) covers extractor-level
+        // failures such as "Multiple Segment elements not supported" — these
+        // happen when a partial / truncated MP4 file was served from the
+        // cache. Treat them as cache corruption when content is cached so
+        // the player purges the bad spans and re-fetches from the network.
+        val isMediaParseError =
+            error.errorCode == PlaybackException.ERROR_CODE_PARSING_MEDIA_FAILED
 
-        if (!isIoError && !isContainerParseError) {
+        if (!isIoError && !isContainerParseError && !isMediaParseError) {
             return false
         }
 
@@ -3746,15 +3765,16 @@ class MusicService :
                     }
                 }
 
-                isContainerParseError && isContentCached && throwable is ParserException -> {
+                (isContainerParseError || isMediaParseError) && isContentCached && throwable is ParserException -> {
                     return true
                 }
 
-                isContainerParseError && isContentCached &&
+                (isContainerParseError || isMediaParseError) && isContentCached &&
                     throwable.message?.let {
                         it.contains("Invalid integer size", ignoreCase = true) ||
                             it.contains("Skipping atom with length", ignoreCase = true) ||
-                            it.contains("contentIsMalformed=true", ignoreCase = true)
+                            it.contains("contentIsMalformed=true", ignoreCase = true) ||
+                            it.contains("Multiple Segment elements not supported", ignoreCase = true)
                     } == true -> {
                     return true
                 }

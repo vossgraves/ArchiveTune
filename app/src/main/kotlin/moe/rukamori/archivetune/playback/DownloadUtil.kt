@@ -395,6 +395,28 @@ class DownloadUtil
                             if (finalException != null || download.state == Download.STATE_FAILED) {
                                 songUrlCache.keys.removeIf { it.startsWith("${download.request.id}:") }
                                 runCatching { downloadCache.removeResource(download.request.id) }
+                                // Also purge any partial bytes that may have been
+                                // written to playerCache during the prewarm
+                                // (prewarmSongForDownload) or a prior playback
+                                // attempt. Without this, the resolver in
+                                // youtubeDataSourceFactory sees the partial
+                                // spans in playerCache, returns the dataSpec
+                                // unchanged, and the player tries to decode a
+                                // truncated MP4 — producing
+                                // "ParserException: Multiple Segment elements
+                                // not supported" (ExoPlayer error 3001) on
+                                // subsequent playback attempts.
+                                //
+                                // Both the bare mediaId key and the
+                                // source-prefixed keys (qobuz:/tidal:/deezer:)
+                                // are purged so a failed pre-warm under one
+                                // source doesn't poison the next attempt via
+                                // a different source.
+                                val mediaId = download.request.id
+                                runCatching { playerCache.removeResource(mediaId) }
+                                for (sourcePrefix in listOf("qobuz:", "tidal:", "deezer:")) {
+                                    runCatching { playerCache.removeResource("$sourcePrefix$mediaId") }
+                                }
                             }
                             downloads.update { map ->
                                 map.toMutableMap().apply {
@@ -407,6 +429,16 @@ class DownloadUtil
                             downloadManager: DownloadManager,
                             download: Download,
                         ) {
+                            // Mirror the failure path: when a download is
+                            // removed (user-initiated delete), also purge
+                            // any related playerCache spans so stale partial
+                            // bytes don't cause parser errors on the next
+                            // playback attempt.
+                            val mediaId = download.request.id
+                            runCatching { playerCache.removeResource(mediaId) }
+                            for (sourcePrefix in listOf("qobuz:", "tidal:", "deezer:")) {
+                                runCatching { playerCache.removeResource("$sourcePrefix$mediaId") }
+                            }
                             downloads.update { map -> map - download.request.id }
                         }
                     },
@@ -610,35 +642,47 @@ class DownloadUtil
                         .setFragmentSize(DOWNLOAD_FRAGMENT_SIZE)
                         .createDataSink()
                     val buffer = ByteArray(DOWNLOAD_WRITE_BUFFER_SIZE)
-                    cacheSink.open(dataSpec)
                     try {
-                        response.body?.byteStream()?.use { input ->
-                            while (true) {
-                                val read = input.read(buffer)
-                                if (read < 0) break
-                                cacheSink.write(buffer, 0, read)
+                        cacheSink.open(dataSpec)
+                        try {
+                            response.body?.byteStream()?.use { input ->
+                                while (true) {
+                                    val read = input.read(buffer)
+                                    if (read < 0) break
+                                    cacheSink.write(buffer, 0, read)
+                                }
+                            }
+                            // CacheDataSink has no flush() — close() is what
+                            // finalizes the last fragment. Don't call flush.
+                        } finally {
+                            runCatching { cacheSink.close() }
+                        }
+                        // Verify the cached spans actually cover the full range
+                        // before declaring success. A partial cache would cause
+                        // a corrupt export.
+                        val spans = playerCache.getCachedSpans(cacheKey)
+                        if (spans.isEmpty()) throw IOException("Cache empty after fetch for $cacheKey")
+                        if (contentLength > 0) {
+                            val cachedBytes = spans.sumOf { it.length }
+                            if (cachedBytes < contentLength) {
+                                // Partial — remove what we have so the next attempt
+                                // starts fresh instead of serving partial bytes.
+                                runCatching { playerCache.removeResource(cacheKey) }
+                                throw IOException("Partial cache: $cachedBytes / $contentLength bytes for $cacheKey")
                             }
                         }
-                        // CacheDataSink has no flush() — close() is what
-                        // finalizes the last fragment. Don't call flush.
-                    } finally {
-                        runCatching { cacheSink.close() }
+                        true
+                    } catch (e: Exception) {
+                        // Any exception during the streaming body read (network
+                        // drop, server-side abort, etc.) leaves a partial cache
+                        // that would later trigger
+                        // "ParserException: Multiple Segment elements not supported"
+                        // when the player tries to decode the truncated MP4.
+                        // Purge the cacheKey on any failure so the next attempt
+                        // starts from scratch.
+                        runCatching { playerCache.removeResource(cacheKey) }
+                        throw e
                     }
-                    // Verify the cached spans actually cover the full range
-                    // before declaring success. A partial cache would cause
-                    // a corrupt export.
-                    val spans = playerCache.getCachedSpans(cacheKey)
-                    if (spans.isEmpty()) throw IOException("Cache empty after fetch for $cacheKey")
-                    if (contentLength > 0) {
-                        val cachedBytes = spans.sumOf { it.length }
-                        if (cachedBytes < contentLength) {
-                            // Partial — remove what we have so the next attempt
-                            // starts fresh instead of serving partial bytes.
-                            runCatching { playerCache.removeResource(cacheKey) }
-                            throw IOException("Partial cache: $cachedBytes / $contentLength bytes for $cacheKey")
-                        }
-                    }
-                    true
                 }
             }.onFailure { e ->
                 Timber.tag("DownloadUtil").w(e, "prewarm fetch failed for %s", cacheKey)
