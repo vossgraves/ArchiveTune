@@ -105,6 +105,7 @@ private data class HomeLocalContent(
     val speedDialItems: List<LocalItem>,
     val forgottenFavorites: List<Song>,
     val keepListening: List<LocalItem>,
+    val recentlyPlayed: List<Song>,
 )
 
 private data class HomeRemoteContent(
@@ -126,6 +127,7 @@ private data class HomeContent(
                 local.speedDialItems.isNotEmpty() ||
                 local.forgottenFavorites.isNotEmpty() ||
                 local.keepListening.isNotEmpty() ||
+                local.recentlyPlayed.isNotEmpty() ||
                 remote.similarRecommendations.isNotEmpty() ||
                 remote.accountPlaylists.isNotEmpty() ||
                 remote.homePage?.sections?.any { it.items.isNotEmpty() } == true
@@ -158,6 +160,7 @@ private data class HomeStateInputs(
                 speedDialItems = ImmutableList.copyOf(content.local.speedDialItems),
                 forgottenFavorites = ImmutableList.copyOf(content.local.forgottenFavorites),
                 keepListening = ImmutableList.copyOf(content.local.keepListening),
+                recentlyPlayed = ImmutableList.copyOf(content.local.recentlyPlayed),
                 similarRecommendations = ImmutableList.copyOf(content.remote.similarRecommendations),
                 accountPlaylists = ImmutableList.copyOf(content.remote.accountPlaylists),
                 homePage = content.remote.homePage,
@@ -203,6 +206,7 @@ class HomeViewModel
         private val speedDialItems = MutableStateFlow<List<LocalItem>>(emptyList())
         private val forgottenFavorites = MutableStateFlow<List<Song>?>(null)
         private val keepListening = MutableStateFlow<List<LocalItem>?>(null)
+        private val recentlyPlayed = MutableStateFlow<List<Song>?>(null)
         private val similarRecommendations = MutableStateFlow<List<SimilarRecommendation>?>(null)
         private val accountPlaylists = MutableStateFlow<List<PlaylistItem>?>(null)
         private val homePage = MutableStateFlow<HomePage?>(null)
@@ -233,12 +237,14 @@ class HomeViewModel
                 speedDialItems,
                 forgottenFavorites,
                 keepListening,
-            ) { quickPicks, speedDialItems, forgottenFavorites, keepListening ->
+                recentlyPlayed,
+            ) { quickPicks, speedDialItems, forgottenFavorites, keepListening, recentlyPlayed ->
                 HomeLocalContent(
                     quickPicks = quickPicks.orEmpty(),
                     speedDialItems = speedDialItems,
                     forgottenFavorites = forgottenFavorites.orEmpty(),
                     keepListening = keepListening.orEmpty(),
+                    recentlyPlayed = recentlyPlayed.orEmpty(),
                 )
             }
 
@@ -334,7 +340,7 @@ class HomeViewModel
 
         private fun updateAllLocalItems() {
             _allLocalItems.value =
-                (quickPicks.value.orEmpty() + forgottenFavorites.value.orEmpty() + keepListening.value.orEmpty())
+                (quickPicks.value.orEmpty() + forgottenFavorites.value.orEmpty() + keepListening.value.orEmpty() + recentlyPlayed.value.orEmpty())
                     .filter { it is Song || it is Album }
         }
 
@@ -478,6 +484,21 @@ class HomeViewModel
                                 .filter { song -> song.artists.none { it.blockedAt != null } }
                                 .shuffled()
                                 .take(20)
+                    }
+
+                    launch {
+                        // Recently played — chronological recents, used by both
+                        // the "Jump back in" hero (top 3) and the "Recently
+                        // Played" square-card row. Filter out blocked artists
+                        // and cap at 30 so both sections have enough to draw
+                        // from without over-fetching.
+                        recentlyPlayed.value =
+                            database
+                                .recentSongs(limit = 30)
+                                .first()
+                                .filter { song -> song.artists.none { it.blockedAt != null } }
+                                .distinctBy { it.id }
+                                .take(30)
                     }
 
                     launch {

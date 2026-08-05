@@ -70,7 +70,7 @@ import moe.rukamori.archivetune.ui.utils.SnapLayoutInfoProvider
 import moe.rukamori.archivetune.viewmodels.HomeViewModel
 
 private val HomeFeedMaxWidth = 1_200.dp
-private val HomeSectionSpacing = 18.dp
+private val HomeSectionSpacing = 28.dp
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -283,8 +283,8 @@ private fun HomeContent(
                         .drawWithCache {
                             val brush =
                                 Brush.verticalGradient(
-                                    0f to tonalStart.copy(alpha = 0.30f),
-                                    0.42f to tonalMiddle.copy(alpha = 0.14f),
+                                    0f to tonalStart.copy(alpha = 0.18f),
+                                    0.42f to tonalMiddle.copy(alpha = 0.08f),
                                     1f to Color.Transparent,
                                 )
                             onDrawBehind { drawRect(brush) }
@@ -319,39 +319,63 @@ private fun HomeContent(
                             .fillMaxWidth()
                             .align(Alignment.TopCenter),
                 ) {
-                    if (uiState.showCategoryChips) {
+                    // Minimal home layout — the greeting and category-chips
+                    // rows are intentionally omitted so the "Jump back in"
+                    // hero artwork sits directly under the floating ArchiveTune
+                    // top bar with only the window-inset padding in between.
+                    // Sections below are curated to keep the feed focused:
+                    //   hero -> Recently Played -> Speed Dial -> Keep Listening
+                    //   -> Live Performances -> Forgotten Favourites.
+                    // Algorithmic shelves (account playlists, similar
+                    // recommendations, and the rest of the remote home sections
+                    // such as "Fresh finds" / "Old favourites") are dropped.
+
+                    // "Jump back in" hero — large card + 2 stacked side cards,
+                    // uses the top 3 recently-played songs. Mirrors the Apple
+                    // Music / Muzo home hero. Skipped entirely if the user has
+                    // no recents yet (e.g. fresh install).
+                    if (uiState.recentlyPlayed.isNotEmpty()) {
                         item(
-                            key = "home_category_chips",
-                            contentType = "category_chips",
+                            key = "home_jump_back_in",
+                            contentType = "jump_back_in",
                         ) {
-                            HomeCategoryChips(
-                                chips = uiState.homePage?.chips.orEmpty(),
-                                selectedChip = uiState.selectedChip,
-                                onChipSelected = { onAction(HomeAction.SelectChip(it)) },
+                            JumpBackInHeroSection(
+                                recentlyPlayed = uiState.recentlyPlayed,
+                                mediaMetadata = mediaMetadata,
+                                isPlaying = isPlaying,
+                                navController = navController,
+                                playerConnection = playerConnection,
+                                menuState = menuState,
+                                haptic = haptic,
                                 modifier = Modifier.animateItem(),
                             )
                         }
                     }
 
-                    if (uiState.quickPicks.isNotEmpty()) {
+                    // "Recently Played" — horizontal square-card row with a
+                    // clock-icon header (matches the screenshot).
+                    if (uiState.recentlyPlayed.size > 1) {
+                        sectionSpacer("recently_played")
                         item(
-                            key = "home_quick_picks_header",
+                            key = "home_recently_played_header",
                             contentType = "section_header",
                         ) {
                             HomeSectionHeader(
-                                title = stringResource(R.string.quick_picks),
+                                title = stringResource(R.string.home_recently_played),
+                                leadingIcon = {
+                                    HomeSectionLeadingIcon(iconRes = R.drawable.history)
+                                },
                                 modifier = Modifier.animateItem(),
                             )
                         }
                         item(
-                            key = "home_quick_picks",
-                            contentType = "quick_picks",
+                            key = "home_recently_played",
+                            contentType = "recently_played",
                         ) {
-                            QuickPicksSection(
-                                quickPicks = uiState.quickPicks,
+                            RecentlyPlayedSection(
+                                recentlyPlayed = uiState.recentlyPlayed,
                                 mediaMetadata = mediaMetadata,
                                 isPlaying = isPlaying,
-                                displayMode = uiState.quickPicksDisplayMode,
                                 navController = navController,
                                 playerConnection = playerConnection,
                                 menuState = menuState,
@@ -419,29 +443,42 @@ private fun HomeContent(
                         }
                     }
 
-                    if (uiState.accountPlaylists.isNotEmpty()) {
-                        sectionSpacer("account_playlists")
+                    // "Live performances" — surfaced from the YouTube Music
+                    // home feed. The remote `homePage.sections` list contains
+                    // several algorithmic shelves ("Fresh finds", "Old
+                    // favourites", …); only the one whose title mentions
+                    // "Live performance" is rendered so the home stays
+                    // minimal. Placed directly below Keep Listening.
+                    uiState.homePage?.sections.orEmpty().forEachIndexed { index, section ->
+                        if (!section.title.contains("Live performance", ignoreCase = true)) return@forEachIndexed
+
+                        val sectionKey = "${section.endpoint?.browseId ?: section.title}_$index"
+                        sectionSpacer("live_performances_$sectionKey")
                         item(
-                            key = "home_account_playlists",
+                            key = "home_live_performances_header_$sectionKey",
+                            contentType = "section_header",
+                        ) {
+                            HomePageSectionTitle(
+                                section = section,
+                                navController = navController,
+                                modifier = Modifier.animateItem(),
+                            )
+                        }
+                        item(
+                            key = "home_live_performances_$sectionKey",
                             contentType = "media_shelf",
                         ) {
-                            Column(modifier = Modifier.animateItem()) {
-                                AccountPlaylistsTitle(
-                                    accountName = uiState.accountName,
-                                    accountImageUrl = uiState.accountImageUrl,
-                                    onClick = { navController.navigate("account") },
-                                )
-                                AccountPlaylistsSection(
-                                    accountPlaylists = uiState.accountPlaylists,
-                                    mediaMetadata = mediaMetadata,
-                                    isPlaying = isPlaying,
-                                    navController = navController,
-                                    playerConnection = playerConnection,
-                                    menuState = menuState,
-                                    haptic = haptic,
-                                    scope = scope,
-                                )
-                            }
+                            HomePageSectionContent(
+                                section = section,
+                                mediaMetadata = mediaMetadata,
+                                isPlaying = isPlaying,
+                                navController = navController,
+                                playerConnection = playerConnection,
+                                menuState = menuState,
+                                haptic = haptic,
+                                scope = scope,
+                                modifier = Modifier.animateItem(),
+                            )
                         }
                     }
 
@@ -471,67 +508,6 @@ private fun HomeContent(
                                 playerConnection = playerConnection,
                                 menuState = menuState,
                                 haptic = haptic,
-                                modifier = Modifier.animateItem(),
-                            )
-                        }
-                    }
-
-                    uiState.similarRecommendations.forEach { recommendation ->
-                        sectionSpacer("similar_${recommendation.title.id}")
-                        item(
-                            key = "home_similar_header_${recommendation.title.id}",
-                            contentType = "section_header",
-                        ) {
-                            SimilarRecommendationsTitle(
-                                recommendation = recommendation,
-                                navController = navController,
-                                modifier = Modifier.animateItem(),
-                            )
-                        }
-                        item(
-                            key = "home_similar_${recommendation.title.id}",
-                            contentType = "media_shelf",
-                        ) {
-                            SimilarRecommendationsSection(
-                                recommendation = recommendation,
-                                mediaMetadata = mediaMetadata,
-                                isPlaying = isPlaying,
-                                navController = navController,
-                                playerConnection = playerConnection,
-                                menuState = menuState,
-                                haptic = haptic,
-                                scope = scope,
-                                modifier = Modifier.animateItem(),
-                            )
-                        }
-                    }
-
-                    uiState.homePage?.sections.orEmpty().forEachIndexed { index, section ->
-                        val sectionKey = "${section.endpoint?.browseId ?: section.title}_$index"
-                        sectionSpacer("remote_$sectionKey")
-                        item(
-                            key = "home_remote_header_$sectionKey",
-                            contentType = "section_header",
-                        ) {
-                            HomePageSectionTitle(
-                                section = section,
-                                navController = navController,
-                                modifier = Modifier.animateItem(),
-                            )
-                        }
-                        item(
-                            key = "home_remote_$sectionKey",
-                            contentType = "media_shelf",
-                        ) {
-                            HomePageSectionContent(
-                                section = section,
-                                mediaMetadata = mediaMetadata,
-                                isPlaying = isPlaying,
-                                navController = navController,
-                                playerConnection = playerConnection,
-                                menuState = menuState,
-                                haptic = haptic,
-                                scope = scope,
                                 modifier = Modifier.animateItem(),
                             )
                         }
