@@ -10,21 +10,30 @@
 package moe.rukamori.archivetune.ui.screens.settings
 
 import android.os.Build
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBarDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -38,8 +47,12 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
@@ -53,6 +66,7 @@ import moe.rukamori.archivetune.constants.NAVIGATION_BAR_TRANSPARENCY_DEFAULT
 import moe.rukamori.archivetune.constants.NAVIGATION_BAR_WIDTH_DEFAULT
 import moe.rukamori.archivetune.constants.NavigationBarCornerRadiusKey
 import moe.rukamori.archivetune.constants.NavigationBarFrostedBlurKey
+import moe.rukamori.archivetune.constants.NavigationBarHeight
 import moe.rukamori.archivetune.constants.NavigationBarHeightKey
 import moe.rukamori.archivetune.constants.NavigationBarLabelSpacingKey
 import moe.rukamori.archivetune.constants.NavigationBarOpacityKey
@@ -66,6 +80,7 @@ import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.SwitchPreference
+import moe.rukamori.archivetune.ui.screens.Screens
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
@@ -195,7 +210,10 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
 
             // Customization sliders: only meaningfully affect the FLOATING style (and the
             // corner radius for DEFAULT). They are shown unconditionally so the user can
-            // pre-configure the floating look before switching to it.
+            // pre-configure the floating look before switching to it. Each slider opens a
+            // dialog with a live preview that reflects the in-progress value (and the
+            // committed values of the other dimensions) so the user can see exactly how
+            // the bar will look before committing.
             PreferenceGroup(title = stringResource(R.string.navigation_bar_dimensions)) {
                 item {
                     SliderPreferenceRow(
@@ -206,6 +224,17 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                         onValueChange = onNavigationBarWidthChange,
                         range = 0.5f..1.0f,
                         valueLabel = { "${(it * 100).roundToInt()}%" },
+                        preview = { tempWidth ->
+                            NavBarPreview(
+                                widthFraction = tempWidth,
+                                heightMultiplier = navigationBarHeight,
+                                opacity = navigationBarOpacity,
+                                transparency = navigationBarTransparency,
+                                labelSpacing = navigationBarLabelSpacing,
+                                cornerRadius = navigationBarCornerRadius,
+                                style = navigationBarStyle,
+                            )
+                        },
                     )
                 }
 
@@ -218,6 +247,17 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                         onValueChange = onNavigationBarHeightChange,
                         range = 0.8f..1.4f,
                         valueLabel = { "${(it * 100).roundToInt()}%" },
+                        preview = { tempHeight ->
+                            NavBarPreview(
+                                widthFraction = navigationBarWidth,
+                                heightMultiplier = tempHeight,
+                                opacity = navigationBarOpacity,
+                                transparency = navigationBarTransparency,
+                                labelSpacing = navigationBarLabelSpacing,
+                                cornerRadius = navigationBarCornerRadius,
+                                style = navigationBarStyle,
+                            )
+                        },
                     )
                 }
 
@@ -230,6 +270,17 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                         onValueChange = onNavigationBarOpacityChange,
                         range = 0.2f..1.0f,
                         valueLabel = { "${(it * 100).roundToInt()}%" },
+                        preview = { tempOpacity ->
+                            NavBarPreview(
+                                widthFraction = navigationBarWidth,
+                                heightMultiplier = navigationBarHeight,
+                                opacity = tempOpacity,
+                                transparency = navigationBarTransparency,
+                                labelSpacing = navigationBarLabelSpacing,
+                                cornerRadius = navigationBarCornerRadius,
+                                style = navigationBarStyle,
+                            )
+                        },
                     )
                 }
 
@@ -242,6 +293,17 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                         onValueChange = onNavigationBarTransparencyChange,
                         range = 0.0f..0.95f,
                         valueLabel = { "${(it * 100).roundToInt()}%" },
+                        preview = { tempTransparency ->
+                            NavBarPreview(
+                                widthFraction = navigationBarWidth,
+                                heightMultiplier = navigationBarHeight,
+                                opacity = navigationBarOpacity,
+                                transparency = tempTransparency,
+                                labelSpacing = navigationBarLabelSpacing,
+                                cornerRadius = navigationBarCornerRadius,
+                                style = navigationBarStyle,
+                            )
+                        },
                     )
                 }
 
@@ -254,6 +316,17 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                         onValueChange = onNavigationBarLabelSpacingChange,
                         range = 0f..16f,
                         valueLabel = { "${it.roundToInt()} dp" },
+                        preview = { tempSpacing ->
+                            NavBarPreview(
+                                widthFraction = navigationBarWidth,
+                                heightMultiplier = navigationBarHeight,
+                                opacity = navigationBarOpacity,
+                                transparency = navigationBarTransparency,
+                                labelSpacing = tempSpacing,
+                                cornerRadius = navigationBarCornerRadius,
+                                style = navigationBarStyle,
+                            )
+                        },
                     )
                 }
 
@@ -266,6 +339,17 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                         onValueChange = onNavigationBarCornerRadiusChange,
                         range = 0f..48f,
                         valueLabel = { "${it.roundToInt()} dp" },
+                        preview = { tempRadius ->
+                            NavBarPreview(
+                                widthFraction = navigationBarWidth,
+                                heightMultiplier = navigationBarHeight,
+                                opacity = navigationBarOpacity,
+                                transparency = navigationBarTransparency,
+                                labelSpacing = navigationBarLabelSpacing,
+                                cornerRadius = tempRadius,
+                                style = navigationBarStyle,
+                            )
+                        },
                     )
                 }
             }
@@ -277,6 +361,10 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
  * A preference row that opens a slider dialog when tapped. Mirrors the swipe-sensitivity
  * UX used in PlayerSettings / AppearanceSettings so all float-valued tuning knobs share
  * the same interaction model.
+ *
+ * When [preview] is non-null, the dialog renders a live preview above the slider that
+ * reflects the in-progress [tempValue] (passed to the preview lambda) so the user can
+ * see exactly how the change will look before committing.
  */
 @Composable
 private fun SliderPreferenceRow(
@@ -287,6 +375,7 @@ private fun SliderPreferenceRow(
     onValueChange: (Float) -> Unit,
     range: ClosedFloatingPointRange<Float>,
     valueLabel: (Float) -> String,
+    preview: (@Composable (Float) -> Unit)? = null,
 ) {
     var showDialog by rememberSaveable { mutableStateOf(false) }
 
@@ -327,13 +416,28 @@ private fun SliderPreferenceRow(
                 Text(
                     text = title,
                     style = MaterialTheme.typography.headlineSmall,
-                    modifier = Modifier.padding(bottom = 16.dp),
+                    modifier = Modifier.padding(bottom = 12.dp),
                 )
+
+                // Live preview — re-rendered on every tempValue change so the user sees
+                // the effect of dragging the slider in real time. The preview lambda
+                // receives tempValue and applies it to the dimension being adjusted,
+                // while the other dimensions use their committed (saved) values.
+                if (preview != null) {
+                    Text(
+                        text = stringResource(R.string.preview),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 8.dp),
+                    )
+                    preview(tempValue)
+                    Spacer(modifier = Modifier.padding(top = 16.dp))
+                }
 
                 Text(
                     text = valueLabel(tempValue),
                     style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.padding(bottom = 16.dp),
+                    modifier = Modifier.padding(bottom = 12.dp),
                 )
 
                 Slider(
@@ -361,4 +465,139 @@ private fun SliderPreferenceRow(
         icon = { Icon(painterResource(iconRes), null) },
         onClick = { showDialog = true },
     )
+}
+
+/**
+ * A miniature, self-contained mock of the floating / docked navigation bar used inside
+ * the slider-dialog preview. It mirrors the visual language of [FloatingNavigationToolbar]
+ * — same surface color logic (opacity × (1 − transparency)), same indicator pill behind
+ * the selected icon, same corner-radius / width / height / label-spacing knobs — but is
+ * intentionally simplified: no sliding-pill animation, no frosted backdrop, no real
+ * navigation. The bar floats over a faux-screen gradient so transparency / opacity
+ * changes are immediately visible.
+ *
+ * The preview always shows all three labels (Home / Search / Library) and always marks
+ * Home as selected, even when the user has globally hidden labels — the point of the
+ * preview is to show the effect of the dimension being adjusted, and hiding labels would
+ * make the "label spacing" slider invisible.
+ */
+@Composable
+private fun NavBarPreview(
+    widthFraction: Float,
+    heightMultiplier: Float,
+    opacity: Float,
+    transparency: Float,
+    labelSpacing: Float,
+    cornerRadius: Float,
+    style: NavigationBarStyle,
+) {
+    val isFloating = style == NavigationBarStyle.FLOATING
+    val resolvedBarHeight = NavigationBarHeight * heightMultiplier
+    val shape =
+        if (isFloating) {
+            RoundedCornerShape(cornerRadius.dp)
+        } else {
+            RoundedCornerShape(
+                topStart = 12.dp,
+                topEnd = 12.dp,
+                bottomStart = cornerRadius.dp,
+                bottomEnd = cornerRadius.dp,
+            )
+        }
+    // Mirror the production color logic: opacity always applies; transparency only
+    // applies when frosted blur is off (the preview never enables frost, so transparency
+    // always applies here).
+    val baseColor = MaterialTheme.colorScheme.surfaceContainer
+    val effectiveAlpha = opacity * (1f - transparency)
+    val barColor = baseColor.copy(alpha = effectiveAlpha.coerceIn(0.05f, 1f))
+    val indicatorColor =
+        if (isFloating) {
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.30f)
+        } else {
+            MaterialTheme.colorScheme.secondaryContainer
+        }
+
+    // Faux screen background: a vertical gradient from primary-tinted to surface-variant
+    // so opacity / transparency changes in the bar are immediately visible against it.
+    val fauxScreenBrush =
+        Brush.verticalGradient(
+            colors = listOf(
+                MaterialTheme.colorScheme.primary.copy(alpha = 0.35f),
+                MaterialTheme.colorScheme.surfaceVariant,
+            ),
+        )
+
+    Box(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .height(150.dp)
+                .clip(RoundedCornerShape(20.dp))
+                .background(fauxScreenBrush),
+        contentAlignment = Alignment.BottomCenter,
+    ) {
+        Surface(
+            modifier =
+                Modifier
+                    .padding(
+                        bottom = if (isFloating) 16.dp else 0.dp,
+                        start = if (isFloating) 16.dp else 0.dp,
+                        end = if (isFloating) 16.dp else 0.dp,
+                    ).fillMaxWidth(if (isFloating) widthFraction.coerceIn(0.5f, 1f) else 1f)
+                    .height(resolvedBarHeight),
+            shape = shape,
+            color = barColor,
+            tonalElevation = NavigationBarDefaults.Elevation,
+            shadowElevation = if (isFloating) 8.dp else NavigationBarDefaults.Elevation,
+        ) {
+            Row(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceEvenly,
+            ) {
+                val items = Screens.MainScreens
+                items.forEachIndexed { index, screen ->
+                    val selected = index == 0 // Home is always selected in the preview
+                    val selectedColor = MaterialTheme.colorScheme.primary
+                    val unselectedColor = MaterialTheme.colorScheme.onSurfaceVariant
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        // Indicator pill wraps just the icon (label sits outside, matching
+                        // the production bar's layout).
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier =
+                                Modifier
+                                    .clip(RoundedCornerShape(percent = 50))
+                                    .background(if (selected) indicatorColor else Color.Transparent)
+                                    .padding(horizontal = 18.dp, vertical = 7.dp),
+                        ) {
+                            Icon(
+                                painter =
+                                    painterResource(
+                                        if (selected) screen.iconIdActive else screen.iconIdInactive,
+                                    ),
+                                contentDescription = null,
+                                tint = if (selected) selectedColor else unselectedColor,
+                            )
+                        }
+                        Spacer(Modifier.height(labelSpacing.dp))
+                        Text(
+                            text = stringResource(screen.titleId),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (selected) selectedColor else unselectedColor,
+                            maxLines = 1,
+                            textAlign = TextAlign.Center,
+                        )
+                    }
+                }
+            }
+        }
+    }
 }
