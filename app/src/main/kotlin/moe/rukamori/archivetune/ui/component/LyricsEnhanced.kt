@@ -152,13 +152,29 @@ private const val TTML_LEAD_MS = 0L
 private const val LYRIC_VISUAL_TUNING_OFFSET_MS = 150L
 private const val MANUAL_SCROLL_TIMEOUT_MS = 3000L
 private const val MANUAL_SCROLL_DEBOUNCE_MS = 50L
-// Both word-synced (TTML) and line-synced (LRC) lyrics anchor the active line at the
-// same upper-third ratio. Previously TTML used 0.42f (middle) which pushed the active
-// line to the centre of the screen and felt laggy/awkward; users expect the active
-// line near the top so they can read ahead.
-private const val LYRIC_FOCUS_TOP_ANCHOR_RATIO = 0.30f
-private const val LYRIC_FOCUS_TOP_GUARD_RATIO = 0.18f
-private const val LYRIC_FOCUS_BOTTOM_GUARD_RATIO = 0.24f
+// The active line is pinned close to the TOP of the lyrics pane — right below the
+// song title in the track header — instead of the middle of the screen. Both the
+// mocharealm karaoke library's `offset` parameter (which drives its internal
+// auto-scroll anchor AND the LazyColumn's top content padding) and our custom
+// `scrollLyricIntoFocus` target MUST agree on this ratio, otherwise the two scroll
+// systems fight every frame: the library re-pins the active line at `offset` while
+// our animateScrollBy tries to move it to LYRIC_FOCUS_TOP_ANCHOR_RATIO, producing
+// jitter. Keeping them in lockstep means our scroll only fires on line boundaries
+// to nudge the line into place; the library's per-frame auto-scroll then holds it
+// there.
+//
+// 0.08 ≈ 8% of the lyrics pane height. On a typical phone the pane starts ~132dp
+// below the top of the screen (status bar + grabber + track header), so 8% of a
+// ~668dp pane ≈ 53dp — the active line ends up ~185dp from the top of the screen,
+// i.e. directly under the song title. This matches Apple Music / Spotify / YouTube
+// Music's "read-ahead" layout.
+private const val LYRIC_FOCUS_TOP_ANCHOR_RATIO = 0.08f
+// Guards define the "close enough" zone inside which the custom scroll is skipped.
+// The top guard MUST be smaller than LYRIC_FOCUS_TOP_ANCHOR_RATIO so the resting
+// position (8%) is inside the zone — otherwise the custom scroll would re-fire on
+// every line change to "fix" a position that's already correct.
+private const val LYRIC_FOCUS_TOP_GUARD_RATIO = 0.04f
+private const val LYRIC_FOCUS_BOTTOM_GUARD_RATIO = 0.30f
 private const val LYRIC_FOCUS_MIN_SCROLL_PX = 6
 private const val LYRIC_FOCUS_ANIMATED_DISTANCE = 12
 private const val SMOOTH_PLAYBACK_MAX_FORWARD_DRIFT_MS = 80L
@@ -748,7 +764,15 @@ fun LyricsEnhanced(
                             .fillMaxSize()
                             .nestedScroll(nestedScrollConnection),
                 ) {
-                    val lyricsViewportOffset = remember(maxHeight) { maxHeight * 0.38f }
+                    // The karaoke library uses `offset` as BOTH the LazyColumn's top content
+                    // padding AND the anchor its internal auto-scroll pins the active line to.
+                    // 0.38 (the previous value) put the active line at ~38% of the pane —
+                    // visually the middle of the screen. Dropping it to 0.08 (matching
+                    // LYRIC_FOCUS_TOP_ANCHOR_RATIO) pins the active line just under the song
+                    // title, and — critically — keeps the library's per-frame auto-scroll
+                    // target aligned with our `scrollLyricIntoFocus` target so they don't
+                    // fight each other every frame.
+                    val lyricsViewportOffset = remember(maxHeight) { maxHeight * 0.08f }
 
                     // Keyed on the session only: romanization updates flow in as new state instead
                     // of disposing and rebuilding the whole karaoke view mid-playback.
@@ -1191,7 +1215,9 @@ private suspend fun LazyListState.scrollLyricIntoFocus(
 
     // Anchor by the item's TOP edge (not its center) at LYRIC_FOCUS_TOP_ANCHOR_RATIO of the
     // viewport. Both word-synced and line-synced lyrics use this — the active line stays
-    // in the upper third so users can read ahead.
+    // pinned near the top of the lyrics pane (right below the song title) so users can
+    // read ahead. This ratio MUST match the `offset` passed to KaraokeLyricsView, otherwise
+    // the library's internal auto-scroll and our animateScrollBy fight every frame.
     val itemFocusPoint = itemInfo.offset
     val topGuard = viewportStart + (viewportHeight * LYRIC_FOCUS_TOP_GUARD_RATIO).roundToInt()
     val bottomGuard = viewportEnd - (viewportHeight * LYRIC_FOCUS_BOTTOM_GUARD_RATIO).roundToInt()

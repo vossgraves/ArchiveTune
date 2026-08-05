@@ -2429,14 +2429,21 @@ private fun MikoLyricsTransition(
     }
     val progressState = progress.asState()
     val showContent by remember {
-        // Defer composing the heavy LyricsScreen tree until the sheet has crossed the halfway
-        // mark (progress > 0.5). On open, the slow spring takes ~250 ms to reach this point,
-        // which is enough time for the slide-up to visually "commit" before the lyrics tree is
-        // composed — this avoids jank on low-end devices and avoids the "blank panel then
-        // pop-in" artifact that immediate composition introduced on devices where the first
-        // frame of the lyrics tree takes longer than 16ms to compute. On close, the lyrics
-        // tree stays composed until progress drops back below 0.5, so the slide-down is smooth.
-        derivedStateOf { visible || progressState.value > 0.5f }
+        // Keep the heavy LyricsScreen tree composed for almost the entire close transition.
+        //
+        // The outer Box's graphicsLayer slides the whole sheet on/off screen via translationY
+        // = size.height * (1 - progress). The previous threshold of 0.5 unmounted the lyrics
+        // tree when the sheet was only halfway down — so for the last ~350 ms of the ~700 ms
+        // close spring the user saw an empty surface slide off-screen instead of the lyrics
+        // content, which read as the animation "ending abruptly".
+        //
+        // Dropping the threshold to 0.02 keeps the lyrics tree alive until the sheet is 98%
+        // off-screen (translationY ≈ 0.98 * height), at which point unmounting is invisible.
+        // The open path is unchanged: `visible` flips to true immediately on open, which
+        // short-circuits the `||` and composes the tree right away (no first-frame jank
+        // regression because the slide-up is already moving by the time the first frame of
+        // the lyrics tree is ready).
+        derivedStateOf { visible || progressState.value > 0.02f }
     }
 
     if (showContent) {
