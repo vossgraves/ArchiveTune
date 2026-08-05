@@ -7,6 +7,8 @@
 
 package moe.rukamori.archivetune.ui.screens
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -67,8 +69,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -138,7 +143,7 @@ fun HomeCategoryChips(
                 .fillMaxWidth()
                 .heightIn(min = 68.dp)
                 .horizontalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 10.dp),
+                .padding(horizontal = 24.dp, vertical = 10.dp),
     ) {
         chips.forEach { chip ->
             val selected = chip == selectedChip
@@ -195,9 +200,9 @@ fun HomeSectionHeader(
         modifier =
             modifier
                 .fillMaxWidth()
-                .heightIn(min = 64.dp)
+                .heightIn(min = 56.dp)
                 .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
-                .padding(horizontal = 16.dp, vertical = 8.dp),
+                .padding(horizontal = 24.dp, vertical = 6.dp),
     ) {
         leadingIcon?.invoke()
         thumbnail?.invoke()
@@ -208,7 +213,7 @@ fun HomeSectionHeader(
             label?.let {
                 Text(
                     text = it,
-                    style = MaterialTheme.typography.labelLarge,
+                    style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.sp),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -216,8 +221,8 @@ fun HomeSectionHeader(
             }
             Text(
                 text = title,
-                style = MaterialTheme.typography.titleLargeEmphasized,
-                fontWeight = FontWeight.SemiBold,
+                style = MaterialTheme.typography.titleLarge.copy(fontSize = 24.sp),
+                fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -228,6 +233,7 @@ fun HomeSectionHeader(
                 painter = painterResource(R.drawable.arrow_forward),
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(22.dp),
             )
         }
     }
@@ -395,7 +401,7 @@ fun SpeedDialSection(
         tonalElevation = 1.dp,
         modifier =
             modifier
-                .padding(horizontal = 12.dp)
+                .padding(horizontal = 24.dp)
                 .fillMaxWidth(),
     ) {
         Column(modifier = Modifier.padding(vertical = 12.dp)) {
@@ -644,7 +650,7 @@ fun KeepListeningSection(
     LazyHorizontalGrid(
         state = rememberLazyGridState(),
         rows = GridCells.Fixed(rows),
-        contentPadding = PaddingValues(horizontal = 16.dp),
+        contentPadding = PaddingValues(horizontal = 24.dp),
         modifier =
             modifier
                 .fillMaxWidth()
@@ -701,7 +707,7 @@ fun ForgottenFavoritesSection(
         state = lazyGridState,
         rows = GridCells.Fixed(rows),
         flingBehavior = rememberSnapFlingBehavior(snapLayoutInfoProvider),
-        contentPadding = PaddingValues(horizontal = 16.dp),
+        contentPadding = PaddingValues(horizontal = 24.dp),
         modifier =
             modifier
                 .fillMaxWidth()
@@ -790,7 +796,7 @@ fun AccountPlaylistsSection(
     val distinctPlaylists = remember(accountPlaylists) { accountPlaylists.distinctBy { it.id } }
 
     LazyRow(
-        contentPadding = PaddingValues(horizontal = 16.dp),
+        contentPadding = PaddingValues(horizontal = 24.dp),
         modifier = modifier,
     ) {
         items(
@@ -829,7 +835,7 @@ fun SimilarRecommendationsSection(
     modifier: Modifier = Modifier,
 ) {
     LazyRow(
-        contentPadding = PaddingValues(horizontal = 16.dp),
+        contentPadding = PaddingValues(horizontal = 24.dp),
         modifier = modifier,
     ) {
         items(
@@ -868,7 +874,7 @@ fun HomePageSectionContent(
     modifier: Modifier = Modifier,
 ) {
     LazyRow(
-        contentPadding = PaddingValues(horizontal = 16.dp),
+        contentPadding = PaddingValues(horizontal = 24.dp),
         modifier = modifier,
     ) {
         items(
@@ -1230,10 +1236,10 @@ fun HomePageSectionTitle(
 /**
  * Personalized greeting header — "Good morning/afternoon/evening, [name]".
  *
- * Mirrors the Apple Music / Muzo-style home header: large bold greeting with
- * the user's name highlighted in the primary accent color. The time-of-day
- * prefix is computed from the system clock at composition time so it stays
- * correct without needing to observe a flow.
+ * Mirrors the Apple Music / Muzo-style home header: a single line with a
+ * large bold greeting and the user's name highlighted in the primary accent
+ * color. The time-of-day prefix is computed from the system clock at
+ * composition time so it stays correct without needing to observe a flow.
  */
 @Composable
 fun HomeGreetingHeader(
@@ -1254,28 +1260,33 @@ fun HomeGreetingHeader(
         }
     val greeting = stringResource(greetingRes)
     val displayName = accountName.ifBlank { stringResource(R.string.greeting_default_name) }
+    val accent = MaterialTheme.colorScheme.primary
+    val foreground = MaterialTheme.colorScheme.onSurface
 
-    Column(
+    val text =
+        remember(greeting, displayName, accent, foreground) {
+            buildAnnotatedString {
+                withStyle(SpanStyle(color = foreground, fontWeight = FontWeight.Bold)) {
+                    append("$greeting, ")
+                }
+                withStyle(SpanStyle(color = accent, fontWeight = FontWeight.Bold)) {
+                    append(displayName)
+                }
+            }
+        }
+
+    Text(
+        text = text,
+        style = MaterialTheme.typography.headlineMedium.copy(fontSize = 32.sp),
+        fontWeight = FontWeight.Bold,
+        color = foreground,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
         modifier =
             modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 14.dp),
-    ) {
-        Text(
-            text = "$greeting,",
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-        Text(
-            text = displayName,
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.primary,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
+                .padding(horizontal = 24.dp, vertical = 14.dp),
+    )
 }
 
 /**
@@ -1305,7 +1316,7 @@ fun JumpBackInHeroSection(
     val sideCards = recentlyPlayed.drop(1).take(2)
     if (sideCards.isEmpty()) {
         // No side cards — render a single full-width hero card.
-        BoxWithConstraints(modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+        BoxWithConstraints(modifier = modifier.fillMaxWidth().padding(horizontal = 24.dp)) {
             val heroWidth = maxWidth
             val heroHeight = (heroWidth * 0.75f).coerceIn(180.dp, 260.dp)
             JumpBackInHeroCard(
@@ -1328,7 +1339,7 @@ fun JumpBackInHeroSection(
         modifier =
             modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp),
+                .padding(horizontal = 24.dp),
     ) {
         val spacing = 10.dp
         val availableWidth = maxWidth - spacing
@@ -1498,7 +1509,7 @@ private fun JumpBackInHeroCard(
         ) {
             Text(
                 text = song.song.title,
-                style = if (isHero) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleSmall,
+                style = if (isHero) MaterialTheme.typography.titleLarge.copy(fontSize = 18.sp) else MaterialTheme.typography.titleMedium.copy(fontSize = 16.sp),
                 fontWeight = FontWeight.Bold,
                 color = Color.White,
                 maxLines = 1,
@@ -1506,8 +1517,8 @@ private fun JumpBackInHeroCard(
             )
             Text(
                 text = song.artists.joinToString { it.name },
-                style = MaterialTheme.typography.bodySmall,
-                color = Color.White.copy(alpha = 0.80f),
+                style = MaterialTheme.typography.bodyMedium.copy(fontSize = if (isHero) 15.sp else 13.sp),
+                color = Color.White.copy(alpha = 0.78f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -1550,7 +1561,7 @@ fun RecentlyPlayedSection(
     if (distinctSongs.isEmpty()) return
 
     LazyRow(
-        contentPadding = PaddingValues(horizontal = 16.dp),
+        contentPadding = PaddingValues(horizontal = 24.dp),
         horizontalArrangement = Arrangement.spacedBy(14.dp),
         modifier = modifier.fillMaxWidth(),
     ) {
@@ -1584,7 +1595,7 @@ private fun RecentlyPlayedCard(
     navController: NavController,
 ) {
     val context = LocalContext.current
-    val cardWidth = 150.dp
+    val cardWidth = 165.dp
     val artworkSize = cardWidth
     val isActive = song.id == mediaMetadata?.id
     val artworkSizePx = with(LocalDensity.current) { artworkSize.roundToPx() }
@@ -1632,7 +1643,7 @@ private fun RecentlyPlayedCard(
             modifier =
                 Modifier
                     .size(width = artworkSize, height = artworkSize)
-                    .clip(RoundedCornerShape(16.dp)),
+                    .clip(RoundedCornerShape(20.dp)),
         ) {
             AsyncImage(
                 model = imageRequest,
@@ -1683,10 +1694,10 @@ private fun RecentlyPlayedCard(
                 )
             }
         }
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(10.dp))
         Text(
             text = song.song.title,
-            style = MaterialTheme.typography.bodyMedium,
+            style = MaterialTheme.typography.titleMedium.copy(fontSize = 18.sp),
             fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.onSurface,
             maxLines = 1,
@@ -1695,7 +1706,7 @@ private fun RecentlyPlayedCard(
         )
         Text(
             text = song.artists.joinToString { it.name },
-            style = MaterialTheme.typography.bodySmall,
+            style = MaterialTheme.typography.bodyMedium.copy(fontSize = 15.sp),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -1705,9 +1716,10 @@ private fun RecentlyPlayedCard(
 }
 
 /**
- * Helper that renders a small circular-tinted icon used as the leading icon
- * for section headers (clock for "Recently Played", bolt for "Quick Picks").
- * Matches the screenshot's coral-pink icon style.
+ * Helper that renders a small neutral-tinted circular icon used as the leading
+ * icon for section headers (clock for "Recently Played", bolt for "Quick Picks").
+ * Uses surfaceContainerHigh so the accent color is reserved for the username,
+ * play button, active indicators, and progress bars — per the redesign spec.
  */
 @Composable
 fun HomeSectionLeadingIcon(
@@ -1719,13 +1731,13 @@ fun HomeSectionLeadingIcon(
             modifier
                 .size(32.dp)
                 .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.primaryContainer),
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
             painter = painterResource(iconRes),
             contentDescription = null,
-            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+            tint = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.size(18.dp),
         )
     }

@@ -70,7 +70,7 @@ import moe.rukamori.archivetune.ui.utils.SnapLayoutInfoProvider
 import moe.rukamori.archivetune.viewmodels.HomeViewModel
 
 private val HomeFeedMaxWidth = 1_200.dp
-private val HomeSectionSpacing = 18.dp
+private val HomeSectionSpacing = 28.dp
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -283,8 +283,8 @@ private fun HomeContent(
                         .drawWithCache {
                             val brush =
                                 Brush.verticalGradient(
-                                    0f to tonalStart.copy(alpha = 0.30f),
-                                    0.42f to tonalMiddle.copy(alpha = 0.14f),
+                                    0f to tonalStart.copy(alpha = 0.18f),
+                                    0.42f to tonalMiddle.copy(alpha = 0.08f),
                                     1f to Color.Transparent,
                                 )
                             onDrawBehind { drawRect(brush) }
