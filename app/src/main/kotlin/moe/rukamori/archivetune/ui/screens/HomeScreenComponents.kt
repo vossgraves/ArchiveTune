@@ -7,9 +7,6 @@
 
 package moe.rukamori.archivetune.ui.screens
 
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -25,18 +22,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.WindowInsetsSides
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -51,7 +43,6 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -60,8 +51,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.carousel.HorizontalCenteredHeroCarousel
-import androidx.compose.material3.carousel.rememberCarouselState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -94,7 +83,6 @@ import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.GridThumbnailHeight
 import moe.rukamori.archivetune.constants.ListItemHeight
 import moe.rukamori.archivetune.constants.ListThumbnailSize
-import moe.rukamori.archivetune.constants.QuickPicksDisplayMode
 import moe.rukamori.archivetune.constants.ThumbnailCornerRadius
 import moe.rukamori.archivetune.db.entities.Album
 import moe.rukamori.archivetune.db.entities.Artist
@@ -134,7 +122,6 @@ import moe.rukamori.archivetune.ui.menu.YouTubeSongMenu
 import kotlin.math.min
 import kotlin.math.roundToInt
 import kotlin.random.Random
-import moe.rukamori.archivetune.ui.utils.SnapLayoutInfoProvider as buildSnapLayoutInfoProvider
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -242,266 +229,6 @@ fun HomeSectionHeader(
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-        }
-    }
-}
-
-@OptIn(
-    ExperimentalMaterial3Api::class,
-    ExperimentalMaterial3ExpressiveApi::class,
-    ExperimentalFoundationApi::class,
-)
-@Composable
-fun QuickPicksSection(
-    quickPicks: List<Song>,
-    mediaMetadata: MediaMetadata?,
-    isPlaying: Boolean,
-    displayMode: QuickPicksDisplayMode,
-    navController: NavController,
-    playerConnection: PlayerConnection,
-    menuState: MenuState,
-    haptic: HapticFeedback,
-    modifier: Modifier = Modifier,
-) {
-    val distinctQuickPicks = remember(quickPicks) { quickPicks.distinctBy { it.id } }
-
-    when (displayMode) {
-        QuickPicksDisplayMode.CARD -> {
-            BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
-                val heroHeight =
-                    when {
-                        maxWidth >= 840.dp -> 380.dp
-                        maxWidth >= 600.dp -> 356.dp
-                        else -> 332.dp
-                    }
-                val heroMaxWidth =
-                    (maxWidth - 48.dp)
-                        .coerceAtLeast(232.dp)
-                        .coerceAtMost(440.dp)
-                val density = LocalDensity.current
-                val requestWidthPx = with(density) { heroMaxWidth.roundToPx().coerceAtLeast(1) }
-                val requestHeightPx = with(density) { heroHeight.roundToPx().coerceAtLeast(1) }
-
-                HorizontalCenteredHeroCarousel(
-                    state = rememberCarouselState { distinctQuickPicks.size },
-                    maxItemWidth = heroMaxWidth,
-                    itemSpacing = 10.dp,
-                    contentPadding = PaddingValues(horizontal = 16.dp),
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .height(heroHeight),
-                ) { index ->
-                    val song = distinctQuickPicks[index]
-                    val isActive = song.id == mediaMetadata?.id
-                    val context = LocalContext.current
-                    val imageRequest =
-                        remember(song.song.thumbnailUrl, requestWidthPx, requestHeightPx) {
-                            ImageRequest
-                                .Builder(context)
-                                .data(song.song.thumbnailUrl)
-                                .size(Size(requestWidthPx, requestHeightPx))
-                                .crossfade(true)
-                                .build()
-                        }
-
-                    Box(
-                        modifier =
-                            Modifier
-                                .fillMaxSize()
-                                .maskClip(MaterialTheme.shapes.extraLarge)
-                                .maskBorder(
-                                    BorderStroke(
-                                        1.dp,
-                                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.72f),
-                                    ),
-                                    MaterialTheme.shapes.extraLarge,
-                                ).focusable()
-                                .combinedClickable(
-                                    onClick = {
-                                        if (isActive) {
-                                            playerConnection.player.togglePlayPause()
-                                        } else {
-                                            playerConnection.playQueue(
-                                                if (song.song.isLocal) {
-                                                    ListQueue(items = listOf(song.toMediaItem()))
-                                                } else {
-                                                    YouTubeQueue.radio(song.toMediaMetadata())
-                                                },
-                                            )
-                                        }
-                                    },
-                                    onLongClick = {
-                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        menuState.show {
-                                            SongMenu(
-                                                originalSong = song,
-                                                navController = navController,
-                                                onDismiss = menuState::dismiss,
-                                            )
-                                        }
-                                    },
-                                ),
-                    ) {
-                        AsyncImage(
-                            model = imageRequest,
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize(),
-                        )
-
-                        Box(
-                            modifier =
-                                Modifier
-                                    .fillMaxSize()
-                                    .background(
-                                        Brush.verticalGradient(
-                                            0f to Color.Transparent,
-                                            0.48f to Color.Black.copy(alpha = 0.08f),
-                                            1f to Color.Black.copy(alpha = 0.84f),
-                                        ),
-                                    ),
-                        )
-
-                        if (isActive && isPlaying) {
-                            Surface(
-                                color = MaterialTheme.colorScheme.primary,
-                                contentColor = MaterialTheme.colorScheme.onPrimary,
-                                shape = CircleShape,
-                                tonalElevation = 2.dp,
-                                modifier =
-                                    Modifier
-                                        .align(Alignment.TopEnd)
-                                        .padding(14.dp)
-                                        .size(36.dp),
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        painter = painterResource(R.drawable.volume_up),
-                                        contentDescription = null,
-                                        modifier = Modifier.size(19.dp),
-                                    )
-                                }
-                            }
-                        }
-
-                        Column(
-                            verticalArrangement = Arrangement.spacedBy(2.dp),
-                            modifier =
-                                Modifier
-                                    .align(Alignment.BottomStart)
-                                    .padding(20.dp),
-                        ) {
-                            Text(
-                                text = song.song.title,
-                                style = MaterialTheme.typography.titleLargeEmphasized,
-                                color = Color.White,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            Text(
-                                text = song.artists.joinToString { it.name },
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = Color.White.copy(alpha = 0.78f),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        QuickPicksDisplayMode.LIST -> {
-            BoxWithConstraints(
-                modifier = modifier.fillMaxWidth(),
-            ) {
-                val widthFactor = if (maxWidth * 0.475f >= 320.dp) 0.475f else 0.9f
-                val itemWidth = maxWidth * widthFactor
-                val lazyGridState = rememberLazyGridState()
-                val snapLayoutInfoProvider =
-                    remember(lazyGridState, widthFactor) {
-                        buildSnapLayoutInfoProvider(
-                            lazyGridState = lazyGridState,
-                            positionInLayout = { layoutSize, itemSize ->
-                                layoutSize * widthFactor / 2f - itemSize / 2f
-                            },
-                        )
-                    }
-                LazyHorizontalGrid(
-                    state = lazyGridState,
-                    rows = GridCells.Fixed(4),
-                    flingBehavior = rememberSnapFlingBehavior(snapLayoutInfoProvider),
-                    contentPadding =
-                        WindowInsets.systemBars
-                            .only(WindowInsetsSides.Horizontal)
-                            .asPaddingValues(),
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .height(ListItemHeight * 4),
-                ) {
-                    items(
-                        items = distinctQuickPicks,
-                        key = { it.id },
-                        contentType = { "quick_pick_song" },
-                    ) { song ->
-                        SongListItem(
-                            song = song,
-                            showInLibraryIcon = true,
-                            isActive = song.id == mediaMetadata?.id,
-                            isPlaying = isPlaying,
-                            isSwipeable = false,
-                            trailingContent = {
-                                IconButton(
-                                    onClick = {
-                                        menuState.show {
-                                            SongMenu(
-                                                originalSong = song,
-                                                navController = navController,
-                                                onDismiss = menuState::dismiss,
-                                            )
-                                        }
-                                    },
-                                ) {
-                                    Icon(
-                                        painter = painterResource(R.drawable.more_vert),
-                                        contentDescription = null,
-                                    )
-                                }
-                            },
-                            modifier =
-                                Modifier
-                                    .width(itemWidth)
-                                    .combinedClickable(
-                                        onClick = {
-                                            if (song.id == mediaMetadata?.id) {
-                                                playerConnection.player.togglePlayPause()
-                                            } else {
-                                                playerConnection.playQueue(
-                                                    if (song.song.isLocal) {
-                                                        ListQueue(items = listOf(song.toMediaItem()))
-                                                    } else {
-                                                        YouTubeQueue.radio(song.toMediaMetadata())
-                                                    },
-                                                )
-                                            }
-                                        },
-                                        onLongClick = {
-                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                            menuState.show {
-                                                SongMenu(
-                                                    originalSong = song,
-                                                    navController = navController,
-                                                    onDismiss = menuState::dismiss,
-                                                )
-                                            }
-                                        },
-                                    ),
-                        )
-                    }
-                }
-            }
         }
     }
 }
@@ -917,6 +644,7 @@ fun KeepListeningSection(
     LazyHorizontalGrid(
         state = rememberLazyGridState(),
         rows = GridCells.Fixed(rows),
+        contentPadding = PaddingValues(horizontal = 16.dp),
         modifier =
             modifier
                 .fillMaxWidth()
@@ -973,10 +701,7 @@ fun ForgottenFavoritesSection(
         state = lazyGridState,
         rows = GridCells.Fixed(rows),
         flingBehavior = rememberSnapFlingBehavior(snapLayoutInfoProvider),
-        contentPadding =
-            WindowInsets.systemBars
-                .only(WindowInsetsSides.Horizontal)
-                .asPaddingValues(),
+        contentPadding = PaddingValues(horizontal = 16.dp),
         modifier =
             modifier
                 .fillMaxWidth()
@@ -1065,10 +790,7 @@ fun AccountPlaylistsSection(
     val distinctPlaylists = remember(accountPlaylists) { accountPlaylists.distinctBy { it.id } }
 
     LazyRow(
-        contentPadding =
-            WindowInsets.systemBars
-                .only(WindowInsetsSides.Horizontal)
-                .asPaddingValues(),
+        contentPadding = PaddingValues(horizontal = 16.dp),
         modifier = modifier,
     ) {
         items(
@@ -1107,10 +829,7 @@ fun SimilarRecommendationsSection(
     modifier: Modifier = Modifier,
 ) {
     LazyRow(
-        contentPadding =
-            WindowInsets.systemBars
-                .only(WindowInsetsSides.Horizontal)
-                .asPaddingValues(),
+        contentPadding = PaddingValues(horizontal = 16.dp),
         modifier = modifier,
     ) {
         items(
@@ -1149,10 +868,7 @@ fun HomePageSectionContent(
     modifier: Modifier = Modifier,
 ) {
     LazyRow(
-        contentPadding =
-            WindowInsets.systemBars
-                .only(WindowInsetsSides.Horizontal)
-                .asPaddingValues(),
+        contentPadding = PaddingValues(horizontal = 16.dp),
         modifier = modifier,
     ) {
         items(
@@ -1407,7 +1123,7 @@ fun AccountPlaylistsTitle(
                     modifier =
                         Modifier
                             .size(ListThumbnailSize)
-                            .clip(CircleShape),
+                            .clip(RoundedCornerShape(ThumbnailCornerRadius)),
                 )
             } else {
                 Icon(
@@ -1437,19 +1153,13 @@ fun SimilarRecommendationsTitle(
         thumbnail =
             recommendation.title.thumbnailUrl?.let { thumbnailUrl ->
                 {
-                    val shape =
-                        if (recommendation.title is Artist) {
-                            CircleShape
-                        } else {
-                            RoundedCornerShape(ThumbnailCornerRadius)
-                        }
                     AsyncImage(
                         model = thumbnailUrl,
                         contentDescription = null,
                         modifier =
                             Modifier
                                 .size(ListThumbnailSize)
-                                .clip(shape),
+                                .clip(RoundedCornerShape(ThumbnailCornerRadius)),
                     )
                 }
             },
@@ -1489,19 +1199,13 @@ fun HomePageSectionTitle(
         thumbnail =
             section.thumbnail?.let { thumbnailUrl ->
                 {
-                    val shape =
-                        if (section.endpoint?.isArtistEndpoint == true) {
-                            CircleShape
-                        } else {
-                            RoundedCornerShape(ThumbnailCornerRadius)
-                        }
                     AsyncImage(
                         model = thumbnailUrl,
                         contentDescription = null,
                         modifier =
                             Modifier
                                 .size(ListThumbnailSize)
-                                .clip(shape),
+                                .clip(RoundedCornerShape(ThumbnailCornerRadius)),
                     )
                 }
             },
@@ -1599,18 +1303,11 @@ fun JumpBackInHeroSection(
     if (recentlyPlayed.isEmpty()) return
     val hero = recentlyPlayed.first()
     val sideCards = recentlyPlayed.drop(1).take(2)
-
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp),
-    ) {
-        // Large hero card — ~58% width, taller aspect.
-        BoxWithConstraints(modifier = Modifier.weight(0.58f)) {
+    if (sideCards.isEmpty()) {
+        // No side cards — render a single full-width hero card.
+        BoxWithConstraints(modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
             val heroWidth = maxWidth
-            val heroHeight = (heroWidth * 1.35f).coerceIn(220.dp, 320.dp)
+            val heroHeight = (heroWidth * 0.75f).coerceIn(180.dp, 260.dp)
             JumpBackInHeroCard(
                 song = hero,
                 isHero = true,
@@ -1624,38 +1321,61 @@ fun JumpBackInHeroSection(
                 navController = navController,
             )
         }
-        // Stacked side cards — ~42% width.
-        Column(
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-            modifier = Modifier.weight(0.42f),
+        return
+    }
+
+    BoxWithConstraints(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+    ) {
+        val spacing = 10.dp
+        val availableWidth = maxWidth - spacing
+        // Hero ~58% width, side column ~42% width — both deterministic.
+        val heroWidth = availableWidth * 0.58f
+        val sideColumnWidth = availableWidth * 0.42f
+        // Side cards are rounded squares (matching the Recently Played style)
+        // — both equal in shape so the "two pills" look identical.
+        val sideCardHeight = sideColumnWidth
+        val sideColumnHeight =
+            (sideCardHeight * sideCards.size) + (spacing * (sideCards.size - 1))
+        // Match hero height to the side column so the row has no empty gap.
+        val heroHeight = sideColumnHeight
+
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(spacing),
+            modifier = Modifier.fillMaxWidth(),
         ) {
-            if (sideCards.isEmpty()) {
-                // No side cards — fill with a placeholder so the hero doesn't
-                // stretch the full width (keeps the visual ratio consistent).
-                Spacer(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .height(150.dp),
-                )
-            } else {
+            JumpBackInHeroCard(
+                song = hero,
+                isHero = true,
+                width = heroWidth,
+                height = heroHeight,
+                mediaMetadata = mediaMetadata,
+                isPlaying = isPlaying,
+                playerConnection = playerConnection,
+                menuState = menuState,
+                haptic = haptic,
+                navController = navController,
+            )
+            Column(
+                verticalArrangement = Arrangement.spacedBy(spacing),
+                modifier = Modifier.width(sideColumnWidth),
+            ) {
                 sideCards.forEach { song ->
-                    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-                        val sideWidth = maxWidth
-                        val sideHeight = 150.dp
-                        JumpBackInHeroCard(
-                            song = song,
-                            isHero = false,
-                            width = sideWidth,
-                            height = sideHeight,
-                            mediaMetadata = mediaMetadata,
-                            isPlaying = isPlaying,
-                            playerConnection = playerConnection,
-                            menuState = menuState,
-                            haptic = haptic,
-                            navController = navController,
-                        )
-                    }
+                    JumpBackInHeroCard(
+                        song = song,
+                        isHero = false,
+                        width = sideColumnWidth,
+                        height = sideCardHeight,
+                        mediaMetadata = mediaMetadata,
+                        isPlaying = isPlaying,
+                        playerConnection = playerConnection,
+                        menuState = menuState,
+                        haptic = haptic,
+                        navController = navController,
+                    )
                 }
             }
         }
@@ -1830,10 +1550,7 @@ fun RecentlyPlayedSection(
     if (distinctSongs.isEmpty()) return
 
     LazyRow(
-        contentPadding =
-            WindowInsets.systemBars
-                .only(WindowInsetsSides.Horizontal)
-                .asPaddingValues(),
+        contentPadding = PaddingValues(horizontal = 16.dp),
         horizontalArrangement = Arrangement.spacedBy(14.dp),
         modifier = modifier.fillMaxWidth(),
     ) {

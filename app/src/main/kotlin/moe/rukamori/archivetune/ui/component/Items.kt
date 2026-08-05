@@ -516,7 +516,7 @@ fun ArtistListItem(
             thumbnailUrl = artist.artist.thumbnailUrl,
             isActive = false,
             isPlaying = false,
-            shape = CircleShape,
+            shape = RoundedCornerShape(ThumbnailCornerRadius),
             contentScale = ContentScale.Crop,
             maxSizePx = 200,
             modifier = Modifier.size(ListThumbnailSize),
@@ -545,7 +545,7 @@ fun ArtistGridItem(
             thumbnailUrl = artist.artist.thumbnailUrl,
             isActive = false,
             isPlaying = false,
-            shape = CircleShape,
+            shape = RoundedCornerShape(GridThumbnailCornerRadius),
             contentScale = ContentScale.Crop,
             maxSizePx = 544,
             modifier = Modifier.fillMaxSize(),
@@ -1243,7 +1243,7 @@ fun LibraryArtistSpotlightCard(
                         .size(LibraryCardThumbnailSize)
                         .shadow(
                             elevation = LibraryCardGlowElevation,
-                            shape = CircleShape,
+                            shape = RoundedCornerShape(ThumbnailCornerRadius),
                             clip = false,
                             ambientColor = glowColor.copy(alpha = LibraryCardGlowAmbientAlpha),
                             spotColor = glowColor.copy(alpha = LibraryCardGlowSpotAlpha),
@@ -1253,7 +1253,7 @@ fun LibraryArtistSpotlightCard(
                     thumbnailUrl = artist.artist.thumbnailUrl,
                     isActive = false,
                     isPlaying = false,
-                    shape = CircleShape,
+                    shape = RoundedCornerShape(ThumbnailCornerRadius),
                     modifier = Modifier.fillMaxSize(),
                 )
             }
@@ -1393,7 +1393,7 @@ fun YouTubeListItem(
                     isSelected = isSelected,
                     isActive = isActive,
                     isPlaying = isPlaying,
-                    shape = if (item is ArtistItem) CircleShape else RoundedCornerShape(ThumbnailCornerRadius),
+                    shape = RoundedCornerShape(ThumbnailCornerRadius),
                     modifier = Modifier.size(ListThumbnailSize),
                 )
             },
@@ -1493,7 +1493,7 @@ fun YouTubeGridItem(
         thumbnailContent = {
             val database = LocalDatabase.current
             val playerConnection = LocalPlayerConnection.current ?: return@GridItem
-            val shape = if (item is ArtistItem) CircleShape else RoundedCornerShape(GridThumbnailCornerRadius)
+            val shape = RoundedCornerShape(GridThumbnailCornerRadius)
 
             ItemThumbnail(
                 thumbnailUrl = item.thumbnail,
@@ -1586,7 +1586,7 @@ fun LocalArtistsGrid(
             thumbnailUrl = thumbnailUrl,
             isActive = false,
             isPlaying = false,
-            shape = CircleShape,
+            shape = RoundedCornerShape(GridThumbnailCornerRadius),
             modifier = if (fillMaxWidth) Modifier.fillMaxWidth() else Modifier,
             showCenterPlay = false,
             playButtonVisible = false,

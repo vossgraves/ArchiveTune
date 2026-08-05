@@ -402,38 +402,6 @@ private fun HomeContent(
                         }
                     }
 
-                    if (uiState.quickPicks.isNotEmpty()) {
-                        sectionSpacer("quick_picks")
-                        item(
-                            key = "home_quick_picks_header",
-                            contentType = "section_header",
-                        ) {
-                            HomeSectionHeader(
-                                title = stringResource(R.string.quick_picks),
-                                leadingIcon = {
-                                    HomeSectionLeadingIcon(iconRes = R.drawable.bolt)
-                                },
-                                modifier = Modifier.animateItem(),
-                            )
-                        }
-                        item(
-                            key = "home_quick_picks",
-                            contentType = "quick_picks",
-                        ) {
-                            QuickPicksSection(
-                                quickPicks = uiState.quickPicks,
-                                mediaMetadata = mediaMetadata,
-                                isPlaying = isPlaying,
-                                displayMode = uiState.quickPicksDisplayMode,
-                                navController = navController,
-                                playerConnection = playerConnection,
-                                menuState = menuState,
-                                haptic = haptic,
-                                modifier = Modifier.animateItem(),
-                            )
-                        }
-                    }
-
                     if (uiState.speedDialItems.isNotEmpty()) {
                         sectionSpacer("speed_dial")
                         item(
