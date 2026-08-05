@@ -77,10 +77,6 @@ import moe.rukamori.archivetune.constants.CustomFontNameKey
 import moe.rukamori.archivetune.constants.CustomFontUriKey
 import moe.rukamori.archivetune.constants.DarkModeKey
 import moe.rukamori.archivetune.constants.DefaultOpenTabKey
-import moe.rukamori.archivetune.constants.HideNavigationBarLabelsKey
-import moe.rukamori.archivetune.constants.NavigationBarFrostedBlurKey
-import moe.rukamori.archivetune.constants.NavigationBarStyle
-import moe.rukamori.archivetune.constants.NavigationBarStyleKey
 import moe.rukamori.archivetune.constants.DisableAnimationsKey
 import moe.rukamori.archivetune.constants.DisableBlurKey
 import moe.rukamori.archivetune.constants.DynamicThemeKey
@@ -89,6 +85,7 @@ import moe.rukamori.archivetune.constants.ForceHighRefreshRateKey
 import moe.rukamori.archivetune.constants.GridItemSize
 import moe.rukamori.archivetune.constants.GridItemsSizeKey
 import moe.rukamori.archivetune.constants.HidePlayerThumbnailKey
+import moe.rukamori.archivetune.constants.HideScrollbarKey
 import moe.rukamori.archivetune.constants.LibraryFilter
 import moe.rukamori.archivetune.constants.LyricsBackgroundStyle
 import moe.rukamori.archivetune.constants.LyricsBackgroundStyleKey
@@ -101,14 +98,10 @@ import moe.rukamori.archivetune.constants.PlayerButtonsStyleKey
 import moe.rukamori.archivetune.constants.PlayerDesignStyle
 import moe.rukamori.archivetune.constants.PlayerDesignStyleKey
 import moe.rukamori.archivetune.constants.PureBlackKey
-import moe.rukamori.archivetune.constants.QuickPicksDisplayMode
-import moe.rukamori.archivetune.constants.QuickPicksDisplayModeKey
 import moe.rukamori.archivetune.constants.RandomThemeOnStartupKey
 import moe.rukamori.archivetune.constants.ShowPlayerVolumeBarKey
 import moe.rukamori.archivetune.constants.SliderStyle
 import moe.rukamori.archivetune.constants.SliderStyleKey
-import moe.rukamori.archivetune.constants.SwipeSensitivityKey
-import moe.rukamori.archivetune.constants.SwipeThumbnailKey
 import moe.rukamori.archivetune.constants.TabletModeEnabledKey
 import moe.rukamori.archivetune.constants.ThumbnailCornerRadiusKey
 import moe.rukamori.archivetune.constants.UiScaleFactorKey
@@ -226,15 +219,6 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
             DefaultOpenTabKey,
             defaultValue = NavigationTab.HOME,
         )
-    val (navigationBarStyle, onNavigationBarStyleChange) =
-        rememberEnumPreference(
-            NavigationBarStyleKey,
-            defaultValue = NavigationBarStyle.DEFAULT,
-        )
-    val (navigationBarFrostedBlur, onNavigationBarFrostedBlurChange) =
-        rememberPreference(NavigationBarFrostedBlurKey, defaultValue = false)
-    val (hideNavigationBarLabels, onHideNavigationBarLabelsChange) =
-        rememberPreference(HideNavigationBarLabelsKey, defaultValue = false)
     val (playerButtonsStyle, onPlayerButtonsStyleChange) =
         rememberEnumPreference(
             PlayerButtonsStyleKey,
@@ -245,27 +229,13 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
             SliderStyleKey,
             defaultValue = SliderStyle.Standard,
         )
-    val (swipeThumbnail, onSwipeThumbnailChange) =
-        rememberPreference(
-            SwipeThumbnailKey,
-            defaultValue = true,
-        )
-    val (swipeSensitivity, onSwipeSensitivityChange) =
-        rememberPreference(
-            SwipeSensitivityKey,
-            defaultValue = 0.73f,
-        )
     val (gridItemSize, onGridItemSizeChange) =
         rememberEnumPreference(
             GridItemsSizeKey,
             defaultValue = GridItemSize.SMALL,
         )
-
-    val (quickPicksDisplayMode, onQuickPicksDisplayModeChange) =
-        rememberEnumPreference(
-            QuickPicksDisplayModeKey,
-            defaultValue = QuickPicksDisplayMode.CARD,
-        )
+    val (hideScrollbar, onHideScrollbarChange) =
+        rememberPreference(HideScrollbarKey, defaultValue = false)
 
     val customFontPickerLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -908,94 +878,6 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                         )
                     }
                 }
-
-                item {
-                    SwitchPreference(
-                        title = { Text(stringResource(R.string.enable_swipe_thumbnail)) },
-                        icon = { Icon(painterResource(R.drawable.swipe), null) },
-                        checked = swipeThumbnail,
-                        onCheckedChange = onSwipeThumbnailChange,
-                    )
-                }
-
-                item(visible = swipeThumbnail) {
-                    var showSensitivityDialog by rememberSaveable { mutableStateOf(false) }
-
-                    if (showSensitivityDialog) {
-                        var tempSensitivity by remember { mutableFloatStateOf(swipeSensitivity) }
-
-                        DefaultDialog(
-                            onDismiss = {
-                                tempSensitivity = swipeSensitivity
-                                showSensitivityDialog = false
-                            },
-                            buttons = {
-                                TextButton(
-                                    onClick = {
-                                        tempSensitivity = 0.73f
-                                    },
-                                    shapes = ButtonDefaults.shapes(),
-                                ) {
-                                    Text(stringResource(R.string.reset))
-                                }
-
-                                Spacer(modifier = Modifier.weight(1f))
-
-                                TextButton(
-                                    onClick = {
-                                        tempSensitivity = swipeSensitivity
-                                        showSensitivityDialog = false
-                                    },
-                                    shapes = ButtonDefaults.shapes(),
-                                ) {
-                                    Text(stringResource(android.R.string.cancel))
-                                }
-                                TextButton(
-                                    onClick = {
-                                        onSwipeSensitivityChange(tempSensitivity)
-                                        showSensitivityDialog = false
-                                    },
-                                    shapes = ButtonDefaults.shapes(),
-                                ) {
-                                    Text(stringResource(android.R.string.ok))
-                                }
-                            },
-                        ) {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                modifier = Modifier.padding(16.dp),
-                            ) {
-                                Text(
-                                    text = stringResource(R.string.swipe_sensitivity),
-                                    style = MaterialTheme.typography.headlineSmall,
-                                    modifier = Modifier.padding(bottom = 16.dp),
-                                )
-
-                                Text(
-                                    text = stringResource(R.string.sensitivity_percentage, (tempSensitivity * 100).roundToInt()),
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    modifier = Modifier.padding(bottom = 16.dp),
-                                )
-
-                                Slider(
-                                    value = tempSensitivity,
-                                    onValueChange = { tempSensitivity = it },
-                                    valueRange = 0f..1f,
-                                    modifier = Modifier.fillMaxWidth(),
-                                )
-                            }
-                        }
-                    }
-
-                    Column(modifier = positions.modifierFor("swipe_sensitivity")) {
-                        PreferenceEntry(
-                            title = { Text(stringResource(R.string.swipe_sensitivity)) },
-                            description = stringResource(R.string.sensitivity_percentage, (swipeSensitivity * 100).roundToInt()),
-                            icon = { Icon(painterResource(R.drawable.tune), null) },
-                            onClick = { showSensitivityDialog = true },
-                        )
-                    }
-                }
             }
 
             PreferenceGroup(
@@ -1013,70 +895,22 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                 }
 
                 item {
-                    EnumListPreference(
-                        title = { Text(stringResource(R.string.quick_picks_display_mode)) },
-                        icon = { Icon(painterResource(R.drawable.grid_view), null) },
-                        selectedValue = quickPicksDisplayMode,
-                        onValueSelected = onQuickPicksDisplayModeChange,
-                        valueText = {
-                            when (it) {
-                                QuickPicksDisplayMode.CARD -> stringResource(R.string.quick_picks_display_mode_card)
-                                QuickPicksDisplayMode.LIST -> stringResource(R.string.quick_picks_display_mode_list)
-                            }
-                        },
+                    PreferenceEntry(
+                        modifier = positions.modifierFor("navigation_bar_style"),
+                        title = { Text(stringResource(R.string.navigation_bar_settings_title)) },
+                        description = stringResource(R.string.navigation_bar_settings_subtitle),
+                        icon = { Icon(painterResource(R.drawable.nav_bar), null) },
+                        onClick = { navController.navigate("settings/appearance/navigation_bar") },
                     )
                 }
 
                 item {
-                    Column(modifier = positions.modifierFor("navigation_bar_style")) {
-                        EnumListPreference(
-                            title = { Text(stringResource(R.string.navigation_bar_style)) },
-                            icon = { Icon(painterResource(R.drawable.nav_bar), null) },
-                            selectedValue = navigationBarStyle,
-                            onValueSelected = onNavigationBarStyleChange,
-                            valueText = {
-                                when (it) {
-                                    NavigationBarStyle.DEFAULT ->
-                                        stringResource(R.string.navigation_bar_style_default)
-                                    NavigationBarStyle.FLOATING ->
-                                        stringResource(R.string.navigation_bar_style_floating)
-                                }
-                            },
-                        )
-                    }
-                }
-
-                item {
-                    Column {
-                        SwitchPreference(
-                            title = { Text(stringResource(R.string.navigation_bar_frosted_blur)) },
-                            description = stringResource(R.string.navigation_bar_frosted_blur_desc),
-                            icon = { Icon(painterResource(R.drawable.blur_on), null) },
-                            checked = navigationBarFrostedBlur,
-                            onCheckedChange = onNavigationBarFrostedBlurChange,
-                        )
-                        // Pre-Android 12 warning: frosted navigation bar uses RenderEffect (API 31+).
-                        // On pre-S the toggle is a no-op (bar stays solid) — surface a warning so
-                        // users on older devices know the setting won't take effect.
-                        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S && navigationBarFrostedBlur) {
-                            Text(
-                                text = stringResource(R.string.navigation_bar_frosted_blur_unsupported),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(start = 56.dp, top = 4.dp, end = 16.dp),
-                            )
-                        }
-                    }
-                }
-
-                item {
                     SwitchPreference(
-                        modifier = positions.modifierFor("hide_navigation_bar_labels"),
-                        title = { Text(stringResource(R.string.hide_navigation_bar_labels)) },
-                        description = stringResource(R.string.hide_navigation_bar_labels_desc),
-                        icon = { Icon(painterResource(R.drawable.nav_bar), null) },
-                        checked = hideNavigationBarLabels,
-                        onCheckedChange = onHideNavigationBarLabelsChange,
+                        title = { Text(stringResource(R.string.hide_scrollbar)) },
+                        description = stringResource(R.string.hide_scrollbar_desc),
+                        icon = { Icon(painterResource(R.drawable.filter_alt), null) },
+                        checked = hideScrollbar,
+                        onCheckedChange = onHideScrollbarChange,
                     )
                 }
 

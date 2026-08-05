@@ -18,6 +18,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -86,9 +87,21 @@ import moe.rukamori.archivetune.utils.ImageBlurUtils
 import moe.rukamori.archivetune.constants.DisableAnimationsKey
 import moe.rukamori.archivetune.constants.FloatingNavigationBarMaxWidth
 import moe.rukamori.archivetune.constants.HideNavigationBarLabelsKey
+import moe.rukamori.archivetune.constants.NAVIGATION_BAR_CORNER_RADIUS_DEFAULT
+import moe.rukamori.archivetune.constants.NAVIGATION_BAR_HEIGHT_DEFAULT
+import moe.rukamori.archivetune.constants.NAVIGATION_BAR_LABEL_SPACING_DEFAULT
+import moe.rukamori.archivetune.constants.NAVIGATION_BAR_OPACITY_DEFAULT
+import moe.rukamori.archivetune.constants.NAVIGATION_BAR_TRANSPARENCY_DEFAULT
+import moe.rukamori.archivetune.constants.NAVIGATION_BAR_WIDTH_DEFAULT
+import moe.rukamori.archivetune.constants.NavigationBarCornerRadiusKey
 import moe.rukamori.archivetune.constants.NavigationBarHeight
+import moe.rukamori.archivetune.constants.NavigationBarHeightKey
+import moe.rukamori.archivetune.constants.NavigationBarLabelSpacingKey
 import moe.rukamori.archivetune.constants.NavigationBarMaxWidth
+import moe.rukamori.archivetune.constants.NavigationBarOpacityKey
 import moe.rukamori.archivetune.constants.NavigationBarStyle
+import moe.rukamori.archivetune.constants.NavigationBarTransparencyKey
+import moe.rukamori.archivetune.constants.NavigationBarWidthKey
 import moe.rukamori.archivetune.ui.screens.Screens
 import moe.rukamori.archivetune.utils.rememberPreference
 import kotlin.math.roundToInt
@@ -156,17 +169,32 @@ fun FloatingNavigationToolbar(
     onSearchItemDoubleClick: (() -> Unit)? = null,
 ) {
     val isFloating = style == NavigationBarStyle.FLOATING
+    // Navigation bar customization (Task 6). Read directly here so the toolbar picks up
+    // the user's tuning without the call site needing to thread 6 extra params.
+    val (navBarWidthFraction) =
+        rememberPreference(NavigationBarWidthKey, defaultValue = NAVIGATION_BAR_WIDTH_DEFAULT)
+    val (navBarHeightMultiplier) =
+        rememberPreference(NavigationBarHeightKey, defaultValue = NAVIGATION_BAR_HEIGHT_DEFAULT)
+    val (navBarOpacity) =
+        rememberPreference(NavigationBarOpacityKey, defaultValue = NAVIGATION_BAR_OPACITY_DEFAULT)
+    val (navBarTransparency) =
+        rememberPreference(NavigationBarTransparencyKey, defaultValue = NAVIGATION_BAR_TRANSPARENCY_DEFAULT)
+    val (navBarLabelSpacing) =
+        rememberPreference(NavigationBarLabelSpacingKey, defaultValue = NAVIGATION_BAR_LABEL_SPACING_DEFAULT)
+    val (navBarCornerRadius) =
+        rememberPreference(NavigationBarCornerRadiusKey, defaultValue = NAVIGATION_BAR_CORNER_RADIUS_DEFAULT)
+    val resolvedBarHeight = NavigationBarHeight * navBarHeightMultiplier
     val navigationShape =
-        remember(isPairedWithMiniPlayer, isFloating) {
+        remember(isPairedWithMiniPlayer, isFloating, navBarCornerRadius) {
             when {
-                // A detached pill keeps the full radius; it never docks with the mini player.
-                isFloating -> RoundedCornerShape(percent = 50)
+                // A detached pill keeps the user-configurable corner radius (default 28 dp).
+                isFloating -> RoundedCornerShape(navBarCornerRadius.dp)
                 isPairedWithMiniPlayer ->
                     RoundedCornerShape(
                         topStart = 12.dp,
                         topEnd = 12.dp,
-                        bottomStart = 28.dp,
-                        bottomEnd = 28.dp,
+                        bottomStart = navBarCornerRadius.dp,
+                        bottomEnd = navBarCornerRadius.dp,
                     )
                 else -> null
             }
@@ -179,7 +207,17 @@ fun FloatingNavigationToolbar(
     val isPreS = Build.VERSION.SDK_INT < Build.VERSION_CODES.S
     val canBlurBackdrop = frostedBlur && frostedBackdrop != null && !isPreS
     val navigationContainerColor =
-        if (pureBlack) Color.Black else MaterialTheme.colorScheme.surfaceContainer
+        if (pureBlack) {
+            Color.Black
+        } else {
+            // Apply user-configured opacity (always) and transparency (only when frosted blur
+            // is off — when frosted blur is on, the frost overlay already provides the
+            // see-through effect and adding transparency here would double-count).
+            val baseColor = MaterialTheme.colorScheme.surfaceContainer
+            val effectiveAlpha =
+                navBarOpacity * (if (frostedBlur) 1f else (1f - navBarTransparency))
+            baseColor.copy(alpha = effectiveAlpha.coerceIn(0.05f, 1f))
+        }
     val motionScheme = MaterialTheme.motionScheme
     val (disableAnimations) = rememberPreference(DisableAnimationsKey, defaultValue = false)
     val (hideNavigationLabels) = rememberPreference(HideNavigationBarLabelsKey, defaultValue = false)
@@ -270,8 +308,8 @@ fun FloatingNavigationToolbar(
             modifier =
                 Modifier
                     .widthIn(max = if (isFloating) FloatingNavigationBarMaxWidth else NavigationBarMaxWidth)
-                    .fillMaxWidth()
-                    .height(NavigationBarHeight)
+                    .fillMaxWidth(if (isFloating) navBarWidthFraction.coerceIn(0.5f, 1f) else 1f)
+                    .height(resolvedBarHeight)
                     .onGloballyPositioned {
                         barPositionInRoot = it.positionInRoot()
                         barSize = it.size
@@ -466,6 +504,8 @@ fun FloatingNavigationToolbar(
                                     null
                                 } else {
                                     {
+                                        // User-configurable spacing between icon and label (Task 6).
+                                        Spacer(Modifier.height(navBarLabelSpacing.dp))
                                         Text(
                                             text = stringResource(screen.titleId),
                                             maxLines = 1,

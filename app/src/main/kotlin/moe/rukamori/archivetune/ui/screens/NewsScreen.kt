@@ -231,7 +231,7 @@ fun NewsScreen(
                         colors =
                             TopAppBarDefaults.largeTopAppBarColors(
                                 containerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
-                                scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                scrolledContainerColor = Color.Transparent,
                             ),
                         scrollBehavior = scrollBehavior,
                     )

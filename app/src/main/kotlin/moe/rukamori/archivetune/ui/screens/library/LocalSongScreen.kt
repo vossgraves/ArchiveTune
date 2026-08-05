@@ -410,7 +410,7 @@ fun LocalSongScreen(
                         colors =
                             TopAppBarDefaults.largeTopAppBarColors(
                                 containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
-                                scrolledContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
+                                scrolledContainerColor = Color.Transparent,
                             ),
                         scrollBehavior = scrollBehavior,
                     )

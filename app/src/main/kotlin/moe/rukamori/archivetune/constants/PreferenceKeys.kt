@@ -794,6 +794,35 @@ val NavigationBarStyleKey = stringPreferencesKey("navigationBarStyle")
 val NavigationBarFrostedBlurKey = booleanPreferencesKey("navigationBarFrostedBlur")
 val HideNavigationBarLabelsKey = booleanPreferencesKey("hideNavigationBarLabels")
 
+// ── Navigation bar customization (Task 6) ───────────────────────────────────
+// Advanced tuning knobs exposed in the new "Navigation bar" sub-page under
+// Appearance. Defaults preserve the pre-existing look: 80.dp width, 64.dp
+// height, 0.18 alpha for the floating surface, 4.dp label spacing, 28.dp
+// corner radius. The DEFAULT style is unaffected; these only meaningfully
+// change the FLOATING style (and provide a small radius tweak for DEFAULT).
+val NavigationBarWidthKey = floatPreferencesKey("navigationBarWidth")
+const val NAVIGATION_BAR_WIDTH_DEFAULT = 0.8f // fraction of screen width when FLOATING
+
+val NavigationBarHeightKey = floatPreferencesKey("navigationBarHeight")
+const val NAVIGATION_BAR_HEIGHT_DEFAULT = 1.0f // multiplier on NavigationBarHeight
+
+val NavigationBarOpacityKey = floatPreferencesKey("navigationBarOpacity")
+const val NAVIGATION_BAR_OPACITY_DEFAULT = 1.0f // 1 = opaque, <1 = translucent
+
+val NavigationBarTransparencyKey = floatPreferencesKey("navigationBarTransparency")
+const val NAVIGATION_BAR_TRANSPARENCY_DEFAULT = 0.0f // 0 = solid, >0 = see-through (only when frosted blur is off)
+
+val NavigationBarLabelSpacingKey = floatPreferencesKey("navigationBarLabelSpacing")
+const val NAVIGATION_BAR_LABEL_SPACING_DEFAULT = 4f // dp between icon and label
+
+val NavigationBarCornerRadiusKey = floatPreferencesKey("navigationBarCornerRadius")
+const val NAVIGATION_BAR_CORNER_RADIUS_DEFAULT = 28f // dp
+
+// App-wide scrollbar toggle (Task 8). When false, all LazyColumn / LazyGrid /
+// ScrollState scrollbars in the app are suppressed. (Slider thumb tracks and
+// player position bars are not affected — those are not "scrollbars".)
+val HideScrollbarKey = booleanPreferencesKey("hideScrollbar")
+
 // Keys for customized background
 val PlayerCustomImageUriKey = stringPreferencesKey("playerCustomImageUri")
 val PlayerCustomBlurKey = floatPreferencesKey("playerCustomBlur")

@@ -46,6 +46,7 @@ import moe.rukamori.archivetune.constants.HideAiMixKey
 import moe.rukamori.archivetune.constants.HideExplicitKey
 import moe.rukamori.archivetune.constants.HideNavigationBarLabelsKey
 import moe.rukamori.archivetune.constants.HidePlayerThumbnailKey
+import moe.rukamori.archivetune.constants.HideScrollbarKey
 import moe.rukamori.archivetune.constants.HideVideoKey
 import moe.rukamori.archivetune.constants.EnableHapticFeedbackKey
 import moe.rukamori.archivetune.constants.ListenBrainzEnabledKey
@@ -167,6 +168,8 @@ fun buildSettingsGroups(
                 SettingsChild("Navigation bar style", "navigation_bar_style", listOf("navigation bar", "nav bar", "bottom bar")),
                 SettingsChild("Frosted navigation bar", "frosted_nav_bar", listOf("frosted nav", "frosted navigation", "frosted blur")) { SearchResultSwitch(NavigationBarFrostedBlurKey, false) },
                 SettingsChild("Hide labels in navigation bar", "hide_navigation_bar_labels", listOf("hide labels", "navigation labels", "nav labels", "icons only")) { SearchResultSwitch(HideNavigationBarLabelsKey, false) },
+                SettingsChild("Navigation bar customization", "navigation_bar_settings", listOf("navigation bar", "nav bar dimensions", "nav bar opacity", "nav bar width", "nav bar height", "nav bar corner radius", "nav bar label spacing")),
+                SettingsChild("Hide scrollbar", "hide_scrollbar", listOf("scrollbar", "scroll bar", "hide scroll", "no scrollbar")) { SearchResultSwitch(HideScrollbarKey, false) },
                 SettingsChild("Default open tab", "default_open_tab", listOf("default tab", "home tab", "start page", "open tab")),
                 SettingsChild("Grid layout", "grid_layout", listOf("grid", "layout", "list view", "artist grid")),
                 SettingsChild("Show home category chips", "show_home_category_chips", listOf("home chips", "category chips", "home category", "chips")) { SearchResultSwitch(ShowHomeCategoryChipsKey, false) },
@@ -473,7 +476,7 @@ fun buildSettingsGroups(
             title = stringResource(R.string.backup_restore),
             subtitle = stringResource(R.string.settings_backup_restore_subtitle),
             accentColor = MaterialTheme.colorScheme.primary,
-            keywords = listOf("backup", "restore", "export", "import", "data", "save", "scheduled", "spotify", "playlist", "csv", "m3u"),
+            keywords = listOf("backup", "restore", "export", "import", "data", "save", "scheduled", "playlist", "csv", "m3u"),
             onClick = { navController.navigate("settings/backup_restore") },
             children = listOf(
                 SettingsChild("Scheduled backup", "scheduled_backup", listOf("scheduled backup", "auto backup", "schedule", "automatic backup", "backup schedule", "periodic backup")),
@@ -484,7 +487,6 @@ fun buildSettingsGroups(
                 SettingsChild("Restore", "restore", listOf("restore", "import", "recover")),
                 SettingsChild("Import online (m3u)", "import_online", listOf("import online", "m3u", "playlist import")),
                 SettingsChild("Import CSV", "import_csv", listOf("import csv", "csv", "playlist csv")),
-                SettingsChild("Spotify", "spotify_backup", listOf("spotify", "spotify connect", "spotify playlists")) { SearchResultSwitch(ShowSpotifyPlaylistsKey, false) },
             ),
         )
     val developerOptions =

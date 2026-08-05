@@ -7,8 +7,11 @@
 
 package moe.rukamori.archivetune.ui.screens.settings
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -16,19 +19,27 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
@@ -53,11 +64,14 @@ import moe.rukamori.archivetune.constants.SeekExtraSeconds
 import moe.rukamori.archivetune.constants.SkipSilenceKey
 import moe.rukamori.archivetune.constants.StopMusicOnTaskClearKey
 import moe.rukamori.archivetune.constants.SwipeToSongKey
+import moe.rukamori.archivetune.constants.SwipeSensitivityKey
+import moe.rukamori.archivetune.constants.SwipeThumbnailKey
 import moe.rukamori.archivetune.constants.TidalArtworkFallbackEnabledKey
 import moe.rukamori.archivetune.constants.TidalEnabledKey
 import moe.rukamori.archivetune.constants.WakelockKey
 import moe.rukamori.archivetune.ui.component.ArtistSeparatorsDialog
 import moe.rukamori.archivetune.ui.component.CrossfadeSliderPreference
+import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.NumberPickerPreference
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
@@ -67,6 +81,7 @@ import moe.rukamori.archivetune.ui.component.SwitchPreference
 import moe.rukamori.archivetune.ui.component.TagsManagementDialog
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.rememberPreference
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -196,6 +211,18 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
         rememberPreference(
             SwipeToSongKey,
             defaultValue = false,
+        )
+    // Swipe-to-change-song (Task 7): moved from Appearance → Playback / queue group.
+    // Lets the user swipe the player thumbnail left/right to skip tracks.
+    val (swipeThumbnail, onSwipeThumbnailChange) =
+        rememberPreference(
+            SwipeThumbnailKey,
+            defaultValue = true,
+        )
+    val (swipeSensitivity, onSwipeSensitivityChange) =
+        rememberPreference(
+            SwipeSensitivityKey,
+            defaultValue = 0.73f,
         )
     var showArtistSeparatorsDialog by remember { mutableStateOf(false) }
     var showTagsManagementDialog by remember { mutableStateOf(false) }
@@ -527,6 +554,101 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                             icon = { Icon(painterResource(R.drawable.swipe), null) },
                             checked = swipeToSong,
                             onCheckedChange = onSwipeToSongChange,
+                        )
+                    }
+                }
+
+                // Swipe-to-change-song: moved here from Appearance (Task 7). Belongs with
+                // the other queue/skip behaviours. Includes the sensitivity dialog that
+                // was previously shown inline on the Appearance page.
+                item {
+                    SwitchPreference(
+                        title = { Text(stringResource(R.string.enable_swipe_thumbnail)) },
+                        icon = { Icon(painterResource(R.drawable.swipe), null) },
+                        checked = swipeThumbnail,
+                        onCheckedChange = onSwipeThumbnailChange,
+                    )
+                }
+
+                item(visible = swipeThumbnail) {
+                    var showSensitivityDialog by rememberSaveable { mutableStateOf(false) }
+
+                    if (showSensitivityDialog) {
+                        var tempSensitivity by remember { mutableFloatStateOf(swipeSensitivity) }
+
+                        DefaultDialog(
+                            onDismiss = {
+                                tempSensitivity = swipeSensitivity
+                                showSensitivityDialog = false
+                            },
+                            buttons = {
+                                TextButton(
+                                    onClick = { tempSensitivity = 0.73f },
+                                    shapes = ButtonDefaults.shapes(),
+                                ) {
+                                    Text(stringResource(R.string.reset))
+                                }
+
+                                Spacer(modifier = Modifier.weight(1f))
+
+                                TextButton(
+                                    onClick = {
+                                        tempSensitivity = swipeSensitivity
+                                        showSensitivityDialog = false
+                                    },
+                                    shapes = ButtonDefaults.shapes(),
+                                ) {
+                                    Text(stringResource(android.R.string.cancel))
+                                }
+                                TextButton(
+                                    onClick = {
+                                        onSwipeSensitivityChange(tempSensitivity)
+                                        showSensitivityDialog = false
+                                    },
+                                    shapes = ButtonDefaults.shapes(),
+                                ) {
+                                    Text(stringResource(android.R.string.ok))
+                                }
+                            },
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier.padding(16.dp),
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.swipe_sensitivity),
+                                    style = MaterialTheme.typography.headlineSmall,
+                                    modifier = Modifier.padding(bottom = 16.dp),
+                                )
+
+                                Text(
+                                    text = stringResource(
+                                        R.string.sensitivity_percentage,
+                                        (tempSensitivity * 100).roundToInt(),
+                                    ),
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    modifier = Modifier.padding(bottom = 16.dp),
+                                )
+
+                                Slider(
+                                    value = tempSensitivity,
+                                    onValueChange = { tempSensitivity = it },
+                                    valueRange = 0f..1f,
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            }
+                        }
+                    }
+
+                    Column(modifier = positions.modifierFor("swipe_sensitivity")) {
+                        PreferenceEntry(
+                            title = { Text(stringResource(R.string.swipe_sensitivity)) },
+                            description = stringResource(
+                                R.string.sensitivity_percentage,
+                                (swipeSensitivity * 100).roundToInt(),
+                            ),
+                            icon = { Icon(painterResource(R.drawable.tune), null) },
+                            onClick = { showSensitivityDialog = true },
                         )
                     }
                 }

@@ -102,10 +102,8 @@ import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.backup.ScheduledBackupFrequency
-import moe.rukamori.archivetune.constants.ShowSpotifyPlaylistsKey
 import moe.rukamori.archivetune.db.entities.Song
 import moe.rukamori.archivetune.spotify.SpotifyAccountUiState
-import moe.rukamori.archivetune.spotify.SpotifyAccountViewModel
 import moe.rukamori.archivetune.spotify.SpotifyAuth
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.EnumListPreference
@@ -145,15 +143,14 @@ private val CSV_MIME_TYPES =
         "application/octet-stream",
     )
 
-private val SpotifyAccountIconSize = 44.dp
-private const val SpotifyLoginUserAgent =
+val SpotifyAccountIconSize = 44.dp
+const val SpotifyLoginUserAgent =
     "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"
 
 @Composable
 fun BackupAndRestore(
     navController: NavController,
     viewModel: BackupRestoreViewModel = hiltViewModel(),
-    spotifyAccountViewModel: SpotifyAccountViewModel = hiltViewModel(),
     scrollTo: String? = null,
 ) {
     val importedSongs = remember { mutableStateListOf<Song>() }
@@ -165,7 +162,6 @@ fun BackupAndRestore(
     var showRestoreOptionsDialog by rememberSaveable { mutableStateOf(false) }
     var showRestoreValidationError by rememberSaveable { mutableStateOf(false) }
     var restoreValidationErrorMessage by remember { mutableStateOf("") }
-    var showSpotifyLogin by rememberSaveable { mutableStateOf(false) }
     var pendingBackupCategories by remember { mutableStateOf(BackupCategory.entries.toSet()) }
     var pendingRestoreCategories by remember { mutableStateOf(BackupCategory.entries.toSet()) }
     var pendingRestoreUri by remember { mutableStateOf<Uri?>(null) }
@@ -183,8 +179,6 @@ fun BackupAndRestore(
     val backupRestoreProgress by viewModel.backupRestoreProgress.collectAsStateWithLifecycle()
     val scheduledBackupState by viewModel.scheduledBackupState.collectAsStateWithLifecycle()
     val googleDriveSyncState by viewModel.googleDriveSyncState.collectAsStateWithLifecycle()
-    val spotifyState by spotifyAccountViewModel.uiState.collectAsStateWithLifecycle()
-    val (showSpotifyPlaylists, onShowSpotifyPlaylistsChange) = rememberPreference(ShowSpotifyPlaylistsKey, false)
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -291,11 +285,6 @@ fun BackupAndRestore(
             }
         }
 
-    LaunchedEffect(spotifyState.isAuthenticated) {
-        if (spotifyState.isAuthenticated) {
-            showSpotifyLogin = false
-        }
-    }
     Scaffold(
         topBar = {
             TopAppBar(
@@ -459,22 +448,6 @@ fun BackupAndRestore(
                     )
                 }
             }
-
-            PreferenceGroup(
-                modifier = positions.modifierFor("restore"),
-                title = stringResource(R.string.external_service),
-            ) {
-                spotifyAccountPreferences(
-                    state = spotifyState,
-                    showPlaylists = showSpotifyPlaylists,
-                    onConnectClick = { showSpotifyLogin = true },
-                    onShowPlaylistsChange = onShowSpotifyPlaylistsChange,
-                    onReloadClick = spotifyAccountViewModel::reloadPlaylists,
-                    onLogoutClick = {
-                        spotifyAccountViewModel.logout()
-                    },
-                )
-            }
         }
     }
 
@@ -628,23 +601,6 @@ fun BackupAndRestore(
                     Text(stringResource(R.string.google_drive_sync_local_folder_try_again))
                 }
             },
-        )
-    }
-
-    if (showSpotifyLogin) {
-        SpotifyLoginSheet(
-            onDismiss = { showSpotifyLogin = false },
-            onCookiesCaptured = { spDc, spKey ->
-                showSpotifyLogin = false
-                spotifyAccountViewModel.connectWithCookies(spDc = spDc, spKey = spKey)
-            },
-        )
-    }
-
-    spotifyState.errorMessage?.let { error ->
-        SpotifyErrorDialog(
-            message = error,
-            onDismiss = spotifyAccountViewModel::dismissError,
         )
     }
 
@@ -1072,7 +1028,7 @@ private fun GoogleDriveSyncDatePickerDialog(
     }
 }
 
-private fun PreferenceGroupScope.spotifyAccountPreferences(
+fun PreferenceGroupScope.spotifyAccountPreferences(
     state: SpotifyAccountUiState,
     showPlaylists: Boolean,
     onConnectClick: () -> Unit,
@@ -1166,7 +1122,7 @@ private fun PreferenceGroupScope.spotifyAccountPreferences(
 }
 
 @Composable
-private fun SpotifyAccountIcon(avatarUrl: String?) {
+fun SpotifyAccountIcon(avatarUrl: String?) {
     val context = LocalContext.current
     val requestSize = with(LocalDensity.current) { SpotifyAccountIconSize.roundToPx() }
     val accountIcon = painterResource(R.drawable.spotify_icon)
@@ -1213,7 +1169,7 @@ private fun SpotifyAccountIcon(avatarUrl: String?) {
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
-private fun SpotifyLoginSheet(
+fun SpotifyLoginSheet(
     onDismiss: () -> Unit,
     onCookiesCaptured: (spDc: String, spKey: String) -> Unit,
 ) {
@@ -1557,7 +1513,7 @@ private fun String.toSpotifyCookieOrigin(): String? {
 }
 
 @Composable
-private fun SpotifyErrorDialog(
+fun SpotifyErrorDialog(
     message: String,
     onDismiss: () -> Unit,
 ) {
