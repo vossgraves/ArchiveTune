@@ -2804,6 +2804,7 @@ class MainActivity : ComponentActivity() {
                                         { latestVersionName },
                                         disableAnimations,
                                         onClearUpdateBadge = { latestVersionName = BuildConfig.VERSION_NAME },
+                                        onSearchQuery = onSearch,
                                         homeScrollConnection = homeScrollBehavior.nestedScrollConnection,
                                         searchScrollConnection = searchScrollBehavior.nestedScrollConnection,
                                         onlineSearchSort = onlineSearchSort,
