@@ -215,6 +215,8 @@ import moe.rukamori.archivetune.constants.EnableVideoPlaybackKey
 import moe.rukamori.archivetune.constants.FontPreferenceKey
 import moe.rukamori.archivetune.constants.HasPressedStarKey
 import moe.rukamori.archivetune.constants.LaunchCountKey
+import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
+import moe.rukamori.archivetune.constants.LiquidGlassNavBarEnabledKey
 import moe.rukamori.archivetune.constants.MiniPlayerBottomSpacing
 import moe.rukamori.archivetune.constants.MiniPlayerHeight
 import moe.rukamori.archivetune.constants.MiniPlayerLastAnchorKey
@@ -230,6 +232,7 @@ import moe.rukamori.archivetune.constants.PlayerBackgroundStyleKey
 import moe.rukamori.archivetune.constants.PlayerDesignStyle
 import moe.rukamori.archivetune.constants.PlayerDesignStyleKey
 import moe.rukamori.archivetune.constants.NavigationBarFrostedBlurKey
+import moe.rukamori.archivetune.constants.NavigationBarTintFrostedBlurKey
 import moe.rukamori.archivetune.constants.NavigationBarStyle
 import moe.rukamori.archivetune.constants.NavigationBarStyleKey
 import moe.rukamori.archivetune.constants.PureBlackKey
@@ -271,8 +274,12 @@ import moe.rukamori.archivetune.ui.component.EXPANDED_ANCHOR
 import moe.rukamori.archivetune.ui.component.FloatingNavigationToolbar
 import moe.rukamori.archivetune.constants.MiniPlayerBackgroundStyle
 import moe.rukamori.archivetune.constants.MiniPlayerBackgroundStyleKey
+import moe.rukamori.archivetune.ui.component.LocalLiquidGlassBackdrop
 import moe.rukamori.archivetune.ui.component.LocalNavigationBarBackdrop
 import moe.rukamori.archivetune.ui.component.NavigationBarBackdrop
+import com.kyant.backdrop.backdrops.LayerBackdrop
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import moe.rukamori.archivetune.ui.component.ProfileMenuDialog
 import moe.rukamori.archivetune.ui.component.ProfileMenuItem
 import moe.rukamori.archivetune.ui.component.AutoResizeText
@@ -919,6 +926,23 @@ class MainActivity : ComponentActivity() {
                 NavigationBarFrostedBlurKey,
                 defaultValue = false,
             )
+            val navigationBarTintFrostedBlur by rememberPreference(
+                NavigationBarTintFrostedBlurKey,
+                defaultValue = false,
+            )
+            // Liquid Glass master toggle and nav-bar sub-toggle. The master toggle
+            // gates all Liquid Glass surfaces (header pills on detail screens, the
+            // Liquid Glass mini player background, and the Liquid Glass nav bar style).
+            // The kyant RuntimeShader stack requires Android 12+, so we read the keys
+            // but the actual LayerBackdrop is only created on S+.
+            val liquidGlassEnabled by rememberPreference(
+                LiquidGlassEnabledKey,
+                defaultValue = false,
+            )
+            val liquidGlassNavBarEnabled by rememberPreference(
+                LiquidGlassNavBarEnabledKey,
+                defaultValue = false,
+            )
 
             val customThemeSeedPalette =
                 remember(customThemeColorValue) {
@@ -1244,12 +1268,34 @@ class MainActivity : ComponentActivity() {
                     // (see [rememberPreSFrostedBitmap]). Both paths need the same GraphicsLayer,
                     // so we create it on every API level — `rememberGraphicsLayer` and
                     // `layer.record { ... }` work without RenderEffect.
+                    // Always capture the app content into a GraphicsLayer every frame so both
+                    // the frosted nav bar / mini player AND the frosted header pills can draw
+                    // it blurred. The recording cost is negligible (GPU layer copy) and the
+                    // layer is only read by consumers that opt into frosted blur.
                     val navBarFrostedBackdrop =
-                        if ((navigationBarFrostedBlur || miniPlayerBgStyle == MiniPlayerBackgroundStyle.FROSTED) &&
-                            !useRail
-                        ) {
+                        if (!useRail) {
                             val frostedLayer = rememberGraphicsLayer()
                             remember(frostedLayer) { NavigationBarBackdrop(frostedLayer) }
+                        } else {
+                            null
+                        }
+
+                    // Liquid Glass backdrop: a separate kyant LayerBackdrop that captures the
+                    // app content for the Liquid Glass mini player and the Liquid Glass nav bar.
+                    // Only allocated when the master Liquid Glass toggle is on AND we're on
+                    // Android 12+ (the kyant RuntimeShader stack requires API 31+). Kept separate
+                    // from [navBarFrostedBackdrop] so the two systems don't interfere — the
+                    // frosted path records into its own GraphicsLayer via drawWithContent, the
+                    // Liquid Glass path records via kyant's Modifier.layerBackdrop (which also
+                    // tracks the source LayoutCoordinates so the liquidGlass drawBackdrop can
+                    // compute the correct offset between source and consumer).
+                    val liquidGlassActive =
+                        liquidGlassEnabled &&
+                            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                            !useRail
+                    val liquidGlassBackdrop: LayerBackdrop? =
+                        if (liquidGlassActive) {
+                            rememberLayerBackdrop()
                         } else {
                             null
                         }
@@ -1877,6 +1923,7 @@ class MainActivity : ComponentActivity() {
                         moe.rukamori.archivetune.ui.component.LocalBottomSheetPageState provides bottomSheetPageState,
                         moe.rukamori.archivetune.ui.component.LocalMenuState provides menuState,
                         LocalNavigationBarBackdrop provides navBarFrostedBackdrop,
+                        LocalLiquidGlassBackdrop provides liquidGlassBackdrop,
                         moe.rukamori.archivetune.ui.player.LocalIsInPipMode provides isInPictureInPictureModeState,
                     ) {
                         Row {
@@ -2526,7 +2573,10 @@ class MainActivity : ComponentActivity() {
                                                 isPairedWithMiniPlayer = areBottomBarsPaired,
                                                 style = navigationBarStyle,
                                                 frostedBlur = navigationBarFrostedBlur,
+                                                tintFrostedBlur = navigationBarTintFrostedBlur,
                                                 frostedBackdrop = navBarFrostedBackdrop,
+                                                liquidGlass = liquidGlassEnabled && liquidGlassNavBarEnabled,
+                                                liquidGlassBackdrop = liquidGlassBackdrop,
                                                 modifier =
                                                     Modifier
                                                         .align(Alignment.BottomCenter)
@@ -2678,6 +2728,21 @@ class MainActivity : ComponentActivity() {
                                                             }
                                                             drawLayer(navBarFrostedBackdrop.layer)
                                                         }
+                                                } else {
+                                                    Modifier
+                                                },
+                                            ).then(
+                                                // Liquid Glass: capture the app content into a
+                                                // kyant LayerBackdrop so the Liquid Glass mini player
+                                                // and the Liquid Glass nav bar can sample it with
+                                                // Modifier.liquidGlass. This is a SEPARATE recording
+                                                // from the frosted path above — the kyant
+                                                // LayerBackdrop also tracks the source LayoutCoordinates
+                                                // (via Modifier.layerBackdrop's onGloballyPositioned)
+                                                // so the liquidGlass drawBackdrop can compute the
+                                                // correct offset between source and consumer.
+                                                if (liquidGlassBackdrop != null) {
+                                                    Modifier.layerBackdrop(liquidGlassBackdrop)
                                                 } else {
                                                     Modifier
                                                 },

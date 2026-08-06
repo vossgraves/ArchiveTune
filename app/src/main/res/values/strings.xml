@@ -552,6 +552,8 @@
     <string name="navigation_bar_frosted_blur">Frosted navigation bar</string>
     <string name="navigation_bar_frosted_blur_desc">Apply a frosted blur behind the navigation bar</string>
     <string name="navigation_bar_frosted_blur_unsupported">Frosted navigation bar is not supported on Android versions below 12</string>
+    <string name="navigation_bar_tint_frosted_blur">Tint frosted navigation bar</string>
+    <string name="navigation_bar_tint_frosted_blur_desc">Frosted blur tinted with the accent color (turns off the neutral frosted option)</string>
     <string name="hide_navigation_bar_labels">Hide labels in navigation bar</string>
     <string name="hide_navigation_bar_labels_desc">Show only icons in the bottom navigation bar</string>
     <string name="navigation_bar_settings_title">Navigation bar</string>
@@ -569,6 +571,7 @@
     <string name="navigation_bar_label_spacing_desc">Gap between icon and label (dp)</string>
     <string name="navigation_bar_corner_radius">Corner radius</string>
     <string name="navigation_bar_corner_radius_desc">Roundedness of the floating bar corners (dp)</string>
+    <string name="navigation_bar_reset_dimensions">Reset dimensions to default</string>
     <string name="hide_scrollbar">Hide scrollbar</string>
     <string name="hide_scrollbar_desc">Hide scrollbars across the whole app</string>
     <string name="fork_warning_unofficial">This is an unofficial Fork of Archivetune and is only made for my personal use. If you run into any issues i probably would never fix them unless it\'s serious</string>
@@ -841,6 +844,7 @@
 
     <!-- Tidal music source integration -->
     <string name="music_sources">Music Sources</string>
+    <string name="external_sources">External Sources</string>
     <string name="streaming_sources">Streaming sources</string>
     <string name="streaming_sources_description">Configure Tidal and Qobuz lossless sources and priority</string>
     <string name="tidal_integration">Tidal</string>

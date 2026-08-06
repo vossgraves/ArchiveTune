@@ -89,10 +89,14 @@ import moe.rukamori.archivetune.ui.component.DraggableScrollbar
 import moe.rukamori.archivetune.ui.component.EmptyPlaceholder
 import moe.rukamori.archivetune.ui.component.ExpressivePullToRefreshBox
 import moe.rukamori.archivetune.ui.component.IconButton
+import moe.rukamori.archivetune.ui.component.LiquidGlassActionPill
+import moe.rukamori.archivetune.ui.component.LiquidGlassIconButton
 import moe.rukamori.archivetune.ui.component.MediaDetailAction
 import moe.rukamori.archivetune.ui.component.MediaDetailHero
 import moe.rukamori.archivetune.ui.component.MediaDetailIconAction
 import moe.rukamori.archivetune.ui.component.SpotifyTrackListItem
+import moe.rukamori.archivetune.ui.component.layerBackdrop
+import moe.rukamori.archivetune.ui.component.rememberBackdrop
 import moe.rukamori.archivetune.ui.utils.HeaderDownloadItem
 import moe.rukamori.archivetune.ui.utils.HeaderDownloadProgressIndicator
 import moe.rukamori.archivetune.ui.utils.HeaderDownloadState
@@ -353,7 +357,10 @@ fun SpotifyPlaylistScreen(
                                     ?.let(::makeTimeString),
                             ).joinToString(MediaDetailMetadataSeparator)
 
-                        MediaDetailHero(
+                        // SimpMusic-style liquid glass backdrop source.
+                        val artworkBackdrop = rememberBackdrop(Color.Black)
+                        Box(modifier = Modifier.layerBackdrop(artworkBackdrop)) {
+                            MediaDetailHero(
                             title = currentPlaylist.name,
                             thumbnailUrl = thumbnailUrl,
                             fallbackIcon = R.drawable.queue_music,
@@ -434,7 +441,42 @@ fun SpotifyPlaylistScreen(
                                     }
                                 }
                             },
+                            useBlurredPlayButton = true,
                         )
+                            // SimpMusic-style floating liquid glass buttons.
+                            LiquidGlassIconButton(
+                                backdrop = artworkBackdrop,
+                                painter = painterResource(R.drawable.arrow_back),
+                                contentDescription = null,
+                                modifier =
+                                    Modifier
+                                        .align(Alignment.TopStart)
+                                        .padding(start = 12.dp, top = systemBarsTopPadding + 12.dp)
+                                        .size(48.dp),
+                                onClick = { navController.navigateUp() },
+                            )
+                            LiquidGlassActionPill(
+                                backdrop = artworkBackdrop,
+                                modifier =
+                                    Modifier
+                                        .align(Alignment.TopEnd)
+                                        .padding(end = 12.dp, top = systemBarsTopPadding + 12.dp),
+                            ) {
+                                // Search
+                                Box(
+                                    modifier = Modifier.size(48.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    androidx.compose.material3.IconButton(onClick = { isSearching = true }) {
+                                        Icon(
+                                            painter = painterResource(R.drawable.search),
+                                            contentDescription = null,
+                                            tint = Color.White,
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -567,30 +609,35 @@ fun SpotifyPlaylistScreen(
                 }
             },
             navigationIcon = {
-                IconButton(
-                    onClick = {
-                        if (isSearching) {
-                            isSearching = false
-                            query = TextFieldValue()
-                        } else {
-                            navController.navigateUp()
-                        }
-                    },
-                    onLongClick = {
-                        if (!isSearching) navController.backToMain()
-                    },
-                ) {
-                    Icon(
-                        painter =
-                            painterResource(
-                                if (isSearching) R.drawable.close else R.drawable.arrow_back,
-                            ),
-                        contentDescription = null,
-                    )
+                // Hide the back arrow when the SimpMusic-style floating liquid
+                // glass back button is visible (artwork shown, not searching,
+                // not scrolled).
+                if (isSearching || showTopBarTitle) {
+                    IconButton(
+                        onClick = {
+                            if (isSearching) {
+                                isSearching = false
+                                query = TextFieldValue()
+                            } else {
+                                navController.navigateUp()
+                            }
+                        },
+                        onLongClick = {
+                            if (!isSearching) navController.backToMain()
+                        },
+                    ) {
+                        Icon(
+                            painter =
+                                painterResource(
+                                    if (isSearching) R.drawable.close else R.drawable.arrow_back,
+                                ),
+                            contentDescription = null,
+                        )
+                    }
                 }
             },
             actions = {
-                if (!isSearching) {
+                if (!isSearching && showTopBarTitle) {
                     IconButton(
                         onClick = { isSearching = true },
                         onLongClick = {},

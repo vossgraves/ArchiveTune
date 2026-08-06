@@ -31,12 +31,12 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBarDefaults
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -66,6 +66,9 @@ import moe.rukamori.archivetune.constants.NAVIGATION_BAR_TRANSPARENCY_DEFAULT
 import moe.rukamori.archivetune.constants.NAVIGATION_BAR_WIDTH_DEFAULT
 import moe.rukamori.archivetune.constants.NavigationBarCornerRadiusKey
 import moe.rukamori.archivetune.constants.NavigationBarFrostedBlurKey
+import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
+import moe.rukamori.archivetune.constants.LiquidGlassNavBarEnabledKey
+import moe.rukamori.archivetune.constants.NavigationBarTintFrostedBlurKey
 import moe.rukamori.archivetune.constants.NavigationBarHeight
 import moe.rukamori.archivetune.constants.NavigationBarHeightKey
 import moe.rukamori.archivetune.constants.NavigationBarLabelSpacingKey
@@ -76,7 +79,7 @@ import moe.rukamori.archivetune.constants.NavigationBarTransparencyKey
 import moe.rukamori.archivetune.constants.NavigationBarWidthKey
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.EnumListPreference
-import moe.rukamori.archivetune.ui.component.IconButton
+import moe.rukamori.archivetune.ui.component.FrostedTopAppBar
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.SwitchPreference
@@ -95,10 +98,32 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
         )
     val (navigationBarFrostedBlur, onNavigationBarFrostedBlurChange) =
         rememberPreference(NavigationBarFrostedBlurKey, defaultValue = false)
+    val (navigationBarTintFrostedBlur, onNavigationBarTintFrostedBlurChange) =
+        rememberPreference(NavigationBarTintFrostedBlurKey, defaultValue = false)
+    // Liquid Glass master toggle (Appearance) + nav-bar sub-toggle. The sub-toggle
+    // is only effective when the master is on AND on Android 12+; otherwise the
+    // FloatingNavigationToolbar falls back to its non-glass style.
+    val (liquidGlassEnabled) =
+        rememberPreference(LiquidGlassEnabledKey, defaultValue = false)
+    val (liquidGlassNavBarEnabled, onLiquidGlassNavBarEnabledChange) =
+        rememberPreference(LiquidGlassNavBarEnabledKey, defaultValue = false)
+    // Mutual-exclusivity wrappers: turning one frosted variant on turns the other off.
+    val onFrostedBlurChange: (Boolean) -> Unit = { checked ->
+        onNavigationBarFrostedBlurChange(checked)
+        if (checked && navigationBarTintFrostedBlur) {
+            onNavigationBarTintFrostedBlurChange(false)
+        }
+    }
+    val onTintFrostedBlurChange: (Boolean) -> Unit = { checked ->
+        onNavigationBarTintFrostedBlurChange(checked)
+        if (checked && navigationBarFrostedBlur) {
+            onNavigationBarFrostedBlurChange(false)
+        }
+    }
     val (hideNavigationBarLabels, onHideNavigationBarLabelsChange) =
         rememberPreference(HideNavigationBarLabelsKey, defaultValue = false)
 
-    // Customization sliders (Task 6). Defaults are the constants defined alongside
+    // Customization sliders. Defaults are the constants defined alongside
     // their preference keys so the pre-existing look is preserved.
     val (navigationBarWidth, onNavigationBarWidthChange) =
         rememberPreference(NavigationBarWidthKey, defaultValue = NAVIGATION_BAR_WIDTH_DEFAULT)
@@ -124,19 +149,10 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.navigation_bar_settings_title)) },
-                navigationIcon = {
-                    IconButton(
-                        onClick = navController::navigateUp,
-                        onLongClick = navController::backToMain,
-                    ) {
-                        Icon(
-                            painterResource(R.drawable.arrow_back),
-                            contentDescription = null,
-                        )
-                    }
-                },
+            FrostedTopAppBar(
+                titleRes = R.string.navigation_bar_settings_title,
+                onBack = navController::navigateUp,
+                onBackLongClick = navController::backToMain,
             )
         },
     ) { innerPadding ->
@@ -183,7 +199,7 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                             description = stringResource(R.string.navigation_bar_frosted_blur_desc),
                             icon = { Icon(painterResource(R.drawable.blur_on), null) },
                             checked = navigationBarFrostedBlur,
-                            onCheckedChange = onNavigationBarFrostedBlurChange,
+                            onCheckedChange = onFrostedBlurChange,
                         )
                         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S && navigationBarFrostedBlur) {
                             Text(
@@ -192,6 +208,60 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.padding(start = 56.dp, top = 4.dp, end = 16.dp),
                             )
+                        }
+                    }
+                }
+
+                item {
+                    Column {
+                        SwitchPreference(
+                            title = { Text(stringResource(R.string.navigation_bar_tint_frosted_blur)) },
+                            description = stringResource(R.string.navigation_bar_tint_frosted_blur_desc),
+                            icon = { Icon(painterResource(R.drawable.blur_on), null) },
+                            checked = navigationBarTintFrostedBlur,
+                            onCheckedChange = onTintFrostedBlurChange,
+                        )
+                        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S && navigationBarTintFrostedBlur) {
+                            Text(
+                                text = stringResource(R.string.navigation_bar_frosted_blur_unsupported),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(start = 56.dp, top = 4.dp, end = 16.dp),
+                            )
+                        }
+                    }
+                }
+
+                item {
+                    Column {
+                        SwitchPreference(
+                            title = { Text(stringResource(R.string.liquid_glass_nav_bar)) },
+                            description = stringResource(R.string.liquid_glass_nav_bar_desc),
+                            icon = { Icon(painterResource(R.drawable.blur_on), null) },
+                            checked = liquidGlassNavBarEnabled,
+                            // Disable the toggle when the master Liquid Glass switch is off
+                            // (Appearance → Liquid Glass effects) or on pre-Android 12. The
+                            // kyant RuntimeShader stack requires API 31+.
+                            isEnabled = liquidGlassEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S,
+                            onCheckedChange = onLiquidGlassNavBarEnabledChange,
+                        )
+                        when {
+                            !liquidGlassEnabled -> {
+                                Text(
+                                    text = stringResource(R.string.liquid_glass_nav_bar_disabled),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(start = 56.dp, top = 4.dp, end = 16.dp),
+                                )
+                            }
+                            Build.VERSION.SDK_INT < Build.VERSION_CODES.S && liquidGlassNavBarEnabled -> {
+                                Text(
+                                    text = stringResource(R.string.liquid_glass_effects_unsupported),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(start = 56.dp, top = 4.dp, end = 16.dp),
+                                )
+                            }
                         }
                     }
                 }
@@ -224,6 +294,7 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                         onValueChange = onNavigationBarWidthChange,
                         range = 0.5f..1.0f,
                         valueLabel = { "${(it * 100).roundToInt()}%" },
+                        default = NAVIGATION_BAR_WIDTH_DEFAULT,
                         preview = { tempWidth ->
                             NavBarPreview(
                                 widthFraction = tempWidth,
@@ -247,6 +318,7 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                         onValueChange = onNavigationBarHeightChange,
                         range = 0.8f..1.4f,
                         valueLabel = { "${(it * 100).roundToInt()}%" },
+                        default = NAVIGATION_BAR_HEIGHT_DEFAULT,
                         preview = { tempHeight ->
                             NavBarPreview(
                                 widthFraction = navigationBarWidth,
@@ -270,6 +342,7 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                         onValueChange = onNavigationBarOpacityChange,
                         range = 0.2f..1.0f,
                         valueLabel = { "${(it * 100).roundToInt()}%" },
+                        default = NAVIGATION_BAR_OPACITY_DEFAULT,
                         preview = { tempOpacity ->
                             NavBarPreview(
                                 widthFraction = navigationBarWidth,
@@ -293,6 +366,7 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                         onValueChange = onNavigationBarTransparencyChange,
                         range = 0.0f..0.95f,
                         valueLabel = { "${(it * 100).roundToInt()}%" },
+                        default = NAVIGATION_BAR_TRANSPARENCY_DEFAULT,
                         preview = { tempTransparency ->
                             NavBarPreview(
                                 widthFraction = navigationBarWidth,
@@ -316,6 +390,7 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                         onValueChange = onNavigationBarLabelSpacingChange,
                         range = 0f..16f,
                         valueLabel = { "${it.roundToInt()} dp" },
+                        default = NAVIGATION_BAR_LABEL_SPACING_DEFAULT,
                         preview = { tempSpacing ->
                             NavBarPreview(
                                 widthFraction = navigationBarWidth,
@@ -339,6 +414,7 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                         onValueChange = onNavigationBarCornerRadiusChange,
                         range = 0f..48f,
                         valueLabel = { "${it.roundToInt()} dp" },
+                        default = NAVIGATION_BAR_CORNER_RADIUS_DEFAULT,
                         preview = { tempRadius ->
                             NavBarPreview(
                                 widthFraction = navigationBarWidth,
@@ -351,6 +427,42 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                             )
                         },
                     )
+                }
+
+                // Reset all six dimension values to their defaults in one tap. The button is
+                // disabled (greyed out) when every value is already at its default, so the
+                // user can see at a glance whether they have any unsaved customizations.
+                item {
+                    val allDefaults =
+                        navigationBarWidth == NAVIGATION_BAR_WIDTH_DEFAULT &&
+                            navigationBarHeight == NAVIGATION_BAR_HEIGHT_DEFAULT &&
+                            navigationBarOpacity == NAVIGATION_BAR_OPACITY_DEFAULT &&
+                            navigationBarTransparency == NAVIGATION_BAR_TRANSPARENCY_DEFAULT &&
+                            navigationBarLabelSpacing == NAVIGATION_BAR_LABEL_SPACING_DEFAULT &&
+                            navigationBarCornerRadius == NAVIGATION_BAR_CORNER_RADIUS_DEFAULT
+
+                    OutlinedButton(
+                        onClick = {
+                            onNavigationBarWidthChange(NAVIGATION_BAR_WIDTH_DEFAULT)
+                            onNavigationBarHeightChange(NAVIGATION_BAR_HEIGHT_DEFAULT)
+                            onNavigationBarOpacityChange(NAVIGATION_BAR_OPACITY_DEFAULT)
+                            onNavigationBarTransparencyChange(NAVIGATION_BAR_TRANSPARENCY_DEFAULT)
+                            onNavigationBarLabelSpacingChange(NAVIGATION_BAR_LABEL_SPACING_DEFAULT)
+                            onNavigationBarCornerRadiusChange(NAVIGATION_BAR_CORNER_RADIUS_DEFAULT)
+                        },
+                        enabled = !allDefaults,
+                        shapes = ButtonDefaults.shapes(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                    ) {
+                        Icon(
+                            painterResource(R.drawable.restore),
+                            contentDescription = null,
+                            modifier = Modifier.padding(end = 8.dp),
+                        )
+                        Text(stringResource(R.string.navigation_bar_reset_dimensions))
+                    }
                 }
             }
         }
@@ -365,6 +477,9 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
  * When [preview] is non-null, the dialog renders a live preview above the slider that
  * reflects the in-progress [tempValue] (passed to the preview lambda) so the user can
  * see exactly how the change will look before committing.
+ *
+ * When [default] is non-null, the dialog includes a "Reset" button that snaps the slider
+ * back to the default value before the user confirms.
  */
 @Composable
 private fun SliderPreferenceRow(
@@ -375,6 +490,7 @@ private fun SliderPreferenceRow(
     onValueChange: (Float) -> Unit,
     range: ClosedFloatingPointRange<Float>,
     valueLabel: (Float) -> String,
+    default: Float? = null,
     preview: (@Composable (Float) -> Unit)? = null,
 ) {
     var showDialog by rememberSaveable { mutableStateOf(false) }
@@ -388,6 +504,17 @@ private fun SliderPreferenceRow(
                 showDialog = false
             },
             buttons = {
+                // Reset button — snaps the slider to the default value (or the range start
+                // if no explicit default was supplied). Stays in the dialog so the user can
+                // preview the default and then either confirm or keep adjusting.
+                if (default != null) {
+                    TextButton(
+                        onClick = { tempValue = default },
+                        shapes = ButtonDefaults.shapes(),
+                    ) {
+                        Text(stringResource(R.string.reset))
+                    }
+                }
                 Spacer(modifier = Modifier.weight(1f))
                 TextButton(
                     onClick = {

@@ -18,7 +18,8 @@ permissions:
   actions: write
 
 jobs:
-  notifyTelegram:
+
+notifyTelegram:
     name: Notify Telegram
     runs-on: ubuntu-latest
     steps:

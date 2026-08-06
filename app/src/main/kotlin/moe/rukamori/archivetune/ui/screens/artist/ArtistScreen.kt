@@ -14,6 +14,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.widget.Toast
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -106,6 +107,7 @@ import moe.rukamori.archivetune.constants.CONTENT_TYPE_LIST
 import moe.rukamori.archivetune.constants.CONTENT_TYPE_PLAYLIST
 import moe.rukamori.archivetune.constants.CONTENT_TYPE_SONG
 import moe.rukamori.archivetune.constants.HideExplicitKey
+import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
 import moe.rukamori.archivetune.db.entities.ArtistEntity
 import moe.rukamori.archivetune.extensions.toMediaItem
 import moe.rukamori.archivetune.extensions.togglePlayPause
@@ -124,6 +126,8 @@ import moe.rukamori.archivetune.playback.queues.YouTubeQueue
 import moe.rukamori.archivetune.ui.component.AlbumGridItem
 import moe.rukamori.archivetune.ui.component.HideOnScrollFAB
 import moe.rukamori.archivetune.ui.component.IconButton
+import moe.rukamori.archivetune.ui.component.LiquidGlassActionPill
+import moe.rukamori.archivetune.ui.component.LiquidGlassIconButton
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.MediaDetailIconAction
 import moe.rukamori.archivetune.ui.component.MediaDetailPrimaryActions
@@ -131,6 +135,8 @@ import moe.rukamori.archivetune.ui.component.NavigationTitle
 import moe.rukamori.archivetune.ui.component.SongListItem
 import moe.rukamori.archivetune.ui.component.YouTubeGridItem
 import moe.rukamori.archivetune.ui.component.YouTubeListItem
+import moe.rukamori.archivetune.ui.component.layerBackdrop
+import moe.rukamori.archivetune.ui.component.rememberBackdrop
 import moe.rukamori.archivetune.ui.component.shimmer.ButtonPlaceholder
 import moe.rukamori.archivetune.ui.component.shimmer.ListItemPlaceHolder
 import moe.rukamori.archivetune.ui.component.shimmer.ShimmerHost
@@ -173,6 +179,12 @@ fun ArtistScreen(
     val loadedLibraryAlbums by viewModel.libraryAlbums.collectAsStateWithLifecycle()
     val blockState by viewModel.blockState.collectAsStateWithLifecycle()
     val hideExplicit by rememberPreference(key = HideExplicitKey, defaultValue = false)
+    // Liquid Glass master toggle. When off, the Liquid Glass header pills are
+    // not shown and the standard TopAppBar is used instead. The kyant
+    // RuntimeShader stack requires Android 12+.
+    val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = false)
+    val liquidGlassHeaderActive =
+        liquidGlassEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     val isArtistBlocked = (blockState as? ArtistBlockState.Success)?.isBlocked == true
     val artistPage =
         remember(loadedArtistPage, isArtistBlocked) {
@@ -306,6 +318,12 @@ fun ArtistScreen(
         }
     }
 
+    // Liquid Glass backdrop: created unconditionally (cheap — just a GraphicsLayer
+    // handle). The actual content recording only happens when
+    // `Modifier.layerBackdrop(artworkBackdrop)` is applied to the LazyColumn below,
+    // which is gated on `liquidGlassHeaderActive`.
+    val artworkBackdrop = rememberBackdrop(Color.Black)
+
     Box(
         modifier =
             Modifier
@@ -313,6 +331,12 @@ fun ArtistScreen(
                 .background(surfaceColor),
     ) {
         LazyColumn(
+            modifier =
+                if (liquidGlassHeaderActive) {
+                    Modifier.layerBackdrop(artworkBackdrop)
+                } else {
+                    Modifier
+                },
             state = lazyListState,
             contentPadding =
                 PaddingValues(
@@ -390,6 +414,20 @@ fun ArtistScreen(
                         }
                     val isSubscribed = libraryArtist?.artist?.bookmarkedAt != null
 
+                    // SimpMusic-style liquid glass backdrop source: the
+                    // LazyColumn itself carries the layerBackdrop modifier
+                    // (see the LazyColumn definition above), so the entire
+                    // scrolling content is recorded into the backdrop. The
+                    // floating Liquid Glass back button (top-start) and
+                    // more-actions pill (top-end) are siblings of the
+                    // LazyColumn (children of the outer Box), so they sample
+                    // the backdrop without being recorded into it. They are
+                    // PERSISTENT — they stay at the top of the screen no
+                    // matter how far the user scrolls.
+                    //
+                    // The hero item itself just renders the artwork + gradient
+                    // + title column directly in the hero Box; no inner
+                    // backdrop-source Box wrapper is needed here.
                     Box(
                         modifier =
                             Modifier
@@ -584,6 +622,8 @@ fun ArtistScreen(
                                         }
                                     },
                                 modifier = Modifier.padding(top = 12.dp),
+                                useBlurredPlayButton = liquidGlassHeaderActive,
+                                thumbnailUrl = thumbnail,
                             )
                         }
                     }
@@ -1013,8 +1053,57 @@ fun ArtistScreen(
                     .windowInsetsPadding(LocalPlayerAwareWindowInsets.current)
                     .align(Alignment.BottomCenter),
         )
+
+        // Persistent Liquid Glass header buttons. Siblings of the LazyColumn
+        // (children of this outer Box), positioned at top-start and top-end.
+        // They sample the artworkBackdrop (which captures the entire scrolling
+        // content via Modifier.layerBackdrop on the LazyColumn) to render the
+        // frosted-glass effect. PERSISTENT — stay at the top no matter how far
+        // the user scrolls.
+        //
+        // Shown only when:
+        //  - Liquid Glass master toggle is on (liquidGlassHeaderActive)
+        //  - The artist page is loaded (artistPage != null OR showLocal)
+        if (liquidGlassHeaderActive && (artistPage != null || showLocal)) {
+            LiquidGlassIconButton(
+                backdrop = artworkBackdrop,
+                painter = painterResource(R.drawable.arrow_back),
+                contentDescription = null,
+                modifier =
+                    Modifier
+                        .align(Alignment.TopStart)
+                        .padding(start = 12.dp, top = systemBarsTopPadding + 12.dp)
+                        .size(48.dp),
+                onClick = { navController.navigateUp() },
+            )
+            LiquidGlassActionPill(
+                backdrop = artworkBackdrop,
+                modifier =
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(end = 12.dp, top = systemBarsTopPadding + 12.dp),
+            ) {
+                // More
+                Box(
+                    modifier = Modifier.size(48.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    androidx.compose.material3.IconButton(onClick = showArtistOverflowMenu) {
+                        Icon(
+                            painter = painterResource(R.drawable.more_horiz),
+                            contentDescription = null,
+                            tint = Color.White,
+                        )
+                    }
+                }
+            }
+        }
     }
 
+    // Top App Bar: shown when Liquid Glass is disabled. When Liquid Glass is
+    // active, the persistent Liquid Glass buttons above handle navigation and
+    // actions, so the TopAppBar is hidden entirely.
+    if (!liquidGlassHeaderActive) {
     // Top App Bar
     TopAppBar(
         title = {
@@ -1031,6 +1120,10 @@ fun ArtistScreen(
             )
         },
         navigationIcon = {
+            // Always show the back arrow when the TopAppBar is visible (i.e.
+            // when Liquid Glass is OFF). The Liquid Glass back button isn't
+            // there, so the TopAppBar must provide back navigation at all
+            // times — including when the hero is visible.
             IconButton(
                 onClick = navController::navigateUp,
                 onLongClick = navController::backToMain,
@@ -1042,6 +1135,9 @@ fun ArtistScreen(
             }
         },
         actions = {
+            // Always show the more action when the TopAppBar is visible (i.e.
+            // when Liquid Glass is OFF). The Liquid Glass more button isn't
+            // there, so the TopAppBar must provide it at all times.
             IconButton(
                 onClick = showArtistOverflowMenu,
                 onLongClick = {},
@@ -1069,6 +1165,7 @@ fun ArtistScreen(
                 )
             },
     )
+    }
 }
 
 @Composable
@@ -1181,6 +1278,8 @@ private fun ArtistPrimaryActions(
     onToggleSubscription: () -> Unit,
     onRadio: (() -> Unit)?,
     modifier: Modifier = Modifier,
+    useBlurredPlayButton: Boolean = false,
+    thumbnailUrl: String? = null,
 ) {
     MediaDetailPrimaryActions(
         isAdded = isSubscribed,
@@ -1202,6 +1301,8 @@ private fun ArtistPrimaryActions(
             }
         },
         modifier = modifier,
+        thumbnailUrl = thumbnailUrl,
+        useBlurredPlayButton = useBlurredPlayButton,
     )
 }
 

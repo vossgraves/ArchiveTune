@@ -665,10 +665,22 @@ fun Queue(
         },
     ) {
         val queueWindows by playerConnection.queueWindows.collectAsStateWithLifecycle()
+        val currentPlayingUid =
+            remember(currentWindowIndex, queueWindows) {
+                if (currentWindowIndex in queueWindows.indices) {
+                    queueWindows[currentWindowIndex].uid
+                } else {
+                    null
+                }
+            }
+        // Display list: current song at index 0, upcoming next, then previously-played
+        // songs in reverse chronological order. See the sync LaunchedEffect below for
+        // the full rationale. The initial value is pre-reordered so the first frame
+        // doesn't flicker in timeline order.
         val mutableQueueWindows =
             remember {
                 mutableStateListOf<Timeline.Window>().apply {
-                    addAll(queueWindows)
+                    addAll(reorderedForDisplay(queueWindows, currentPlayingUid))
                 }
             }
         val queueLength by remember {
@@ -680,15 +692,12 @@ fun Queue(
         val headerItems = 1
         val lazyListState = rememberLazyListState()
         var dragInfo by remember { mutableStateOf<QueueDragInfo?>(null) }
-
-        val currentPlayingUid =
-            remember(currentWindowIndex, queueWindows) {
-                if (currentWindowIndex in queueWindows.indices) {
-                    queueWindows[currentWindowIndex].uid
-                } else {
-                    null
-                }
-            }
+        // UIDs of items that we just committed via moveMediaItem. Used to skip the
+        // mutableQueueWindows reset for ONE LaunchedEffect cycle so the player's
+        // timeline update has time to propagate. Without this, the else-branch
+        // resets mutableQueueWindows to the OLD queueWindows (before the move),
+        // causing the dragged item to "snap back" to its original position.
+        var justCommittedDragUid by remember { mutableStateOf<Any?>(null) }
 
         val reorderableState =
             rememberReorderableLazyListState(
@@ -768,6 +777,10 @@ fun Queue(
                     destinationIndex != null &&
                     sourceIndex != destinationIndex
                 ) {
+                    // Mark this drag as just-committed so the next LaunchedEffect
+                    // invocation (triggered by the player's onTimelineChanged)
+                    // doesn't reset mutableQueueWindows to the pre-move order.
+                    justCommittedDragUid = completedDrag.draggedItemUid
                     if (!playerConnection.player.shuffleModeEnabled) {
                         playerConnection.player.moveMediaItem(sourceIndex, destinationIndex)
                     } else {
@@ -786,16 +799,33 @@ fun Queue(
                 }
             }
 
-            // Only display the current song and upcoming songs in the queue list.
-            // Previously-played songs are excluded so the currently playing track is
-            // always at the top of the queue list — matching the "Continue Playing"
-            // header and the behaviour of mainstream music apps (Spotify, Apple Music).
-            // The full `queueWindows` (including played songs) is still used for
-            // queue stats, clear-queue, and drag-source resolution.
+            // If we just committed a drag, skip the reset for one cycle to let
+            // the player's timeline update propagate. The next LaunchedEffect
+            // invocation (with the updated queueWindows) will clear the flag
+            // and apply the reset using the post-move order.
+            if (justCommittedDragUid != null) {
+                justCommittedDragUid = null
+                // Keep the local drag move visible until the player's queue
+                // update arrives. The next LaunchedEffect (triggered by the
+                // queueWindows change from onTimelineChanged) will do the reset.
+                return@LaunchedEffect
+            }
+
+            // Display the full queue list including previously-played songs,
+            // REORDERED so that:
+            //   1. The currently playing song is at index 0 (top of the list).
+            //   2. Upcoming songs follow (indices 1..upcomingCount).
+            //   3. Previously-played songs are at the end, in reverse
+            //      chronological order (most recently played first), so the
+            //      user can swipe up to scroll through upcoming and then
+            //      review what just played.
+            // The drag logic continues to work because the final moveMediaItem
+            // call resolves UIDs against `queueWindows` (timeline order), not
+            // against this reordered display list.
+            val reordered = reorderedForDisplay(queueWindows, currentPlayingUid)
             Snapshot.withMutableSnapshot {
                 mutableQueueWindows.clear()
-                val startIndex = currentWindowIndex.coerceAtLeast(0)
-                mutableQueueWindows.addAll(queueWindows.drop(startIndex))
+                mutableQueueWindows.addAll(reordered)
             }
         }
 
@@ -1212,6 +1242,37 @@ private val Timeline.Window.queueItemKey: Long
     get() =
         (uid.hashCode().toLong() shl Int.SIZE_BITS) xor
             (mediaItem.mediaId.hashCode().toLong() and UInt.MAX_VALUE.toLong())
+
+/**
+ * Reorders [windows] for queue display so that:
+ *  1. The currently playing song (identified by [currentPlayingUid]) is at
+ *     index 0 (top of the list).
+ *  2. Upcoming songs follow in playback order.
+ *  3. Previously-played songs are at the end, in reverse chronological order
+ *     (most recently played first), so the user can swipe up to scroll through
+ *     upcoming and then review what just played.
+ *
+ * The underlying [windows] list is assumed to be in timeline order
+ * ([previous, current, upcoming]) as produced by
+ * [moe.rukamori.archivetune.extensions.getQueueWindows]. If [currentPlayingUid]
+ * is null or not found, the list is returned unchanged.
+ */
+private fun reorderedForDisplay(
+    windows: List<Timeline.Window>,
+    currentPlayingUid: Any?,
+): List<Timeline.Window> {
+    if (currentPlayingUid == null) return windows
+    val currentIdx = windows.indexOfFirst { it.uid == currentPlayingUid }
+    if (currentIdx == -1) return windows
+    val current = windows[currentIdx]
+    val upcoming = windows.drop(currentIdx + 1)
+    val previous = windows.take(currentIdx).asReversed()
+    return buildList {
+        add(current)
+        addAll(upcoming)
+        addAll(previous)
+    }
+}
 
 @Immutable
 private data class QueueDragInfo(

@@ -261,8 +261,19 @@ internal class DeviceMusicVolumeController(
         val targetVolume =
             (minVolume + (safeFraction * volumeRange).roundToInt())
                 .coerceIn(minVolume, maxVolume)
+        // If the user dragged the slider above 0 but the rounded target is still at minVolume
+        // (happens for very small fractions on devices with many volume steps — e.g. 3% of a
+        // 15-step range rounds to 0), bump it up by one step so the volume actually changes.
+        // Without this, dragging from 0% would show the percentage increasing in the UI while
+        // the actual device volume stayed silent at 0.
+        val adjustedTarget =
+            if (safeFraction > 0f && targetVolume <= minVolume) {
+                (minVolume + 1).coerceAtMost(maxVolume)
+            } else {
+                targetVolume
+            }
 
-        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, targetVolume, 0)
+        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, adjustedTarget, 0)
         refresh()
     }
 

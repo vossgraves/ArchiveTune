@@ -326,6 +326,14 @@
     <string name="mini_player_background_style">Mini player background style</string>
     <string name="follow_theme">Follow theme</string>
     <string name="gradient">Gradient</string>
+    <string name="liquid_glass">Liquid Glass</string>
+    <string name="liquid_glass_effects">Liquid Glass effects</string>
+    <string name="liquid_glass_effects_desc">Enable Liquid Glass style for the header, mini player and navigation bar. When off, all Liquid Glass surfaces are unavailable.</string>
+    <string name="liquid_glass_effects_unsupported">Liquid Glass requires Android 12 or above</string>
+    <string name="liquid_glass_nav_bar">Liquid Glass navigation bar</string>
+    <string name="liquid_glass_nav_bar_desc">Use the Liquid Glass effect for the bottom navigation bar</string>
+    <string name="liquid_glass_nav_bar_disabled">Turn on Liquid Glass effects in Appearance first</string>
+    <string name="liquid_glass_mini_player_unsupported">Liquid Glass mini player requires Android 12 or above</string>
     <string name="player_design_style">Player design style</string>
     <string name="player_design_v1">Classic</string>
     <string name="player_design_v2">Modern</string>

@@ -95,6 +95,15 @@ public fun MediaDetailHero(
     canvasPrimaryUrl: String? = null,
     canvasFallbackUrl: String? = null,
     canvasIsPlaying: Boolean = false,
+    // DEPRECATED / NO-OP: previously, when true, the big "Play" pill button
+    // rendered a self-contained blurred copy of the hero artwork behind the
+    // icon + "Play" text (a frosted-glass play button). The sampled artwork
+    // background was removed because it read as a "misplaced image" /
+    // "glitched preview" that clashed with the dark theme. The parameter is
+    // kept for source compatibility with the 6 call sites that pass it, but
+    // the play button now ALWAYS renders as a clean solid `contentColor`
+    // pill regardless of this flag's value.
+    useBlurredPlayButton: Boolean = false,
 ) {
     val surfaceColor = MaterialTheme.colorScheme.surface
     val menuState = LocalMenuState.current
@@ -301,6 +310,8 @@ public fun MediaDetailHero(
                     },
                 additionalActions = additionalPrimaryActions,
                 modifier = Modifier.padding(top = 12.dp),
+                thumbnailUrl = thumbnailUrl,
+                useBlurredPlayButton = useBlurredPlayButton,
             )
         }
     }
@@ -356,6 +367,16 @@ public fun MediaDetailPrimaryActions(
     onToggleAdd: (() -> Unit)?,
     modifier: Modifier = Modifier,
     additionalActions: (@Composable RowScope.(Color) -> Unit)? = null,
+    // The hero artwork URL. Used for the main hero artwork above. (Previously
+    // also used as the backdrop source for the liquid-glass play button — that
+    // sampling has been removed; see useBlurredPlayButton below.)
+    thumbnailUrl: String? = null,
+    // DEPRECATED / NO-OP: the liquid-glass play button (which sampled
+    // `thumbnailUrl` as a blurred background behind the play icon) has been
+    // removed. The play button now ALWAYS renders as a clean solid
+    // `contentColor` pill. Kept for source compatibility with the public
+    // MediaDetailHero signature.
+    useBlurredPlayButton: Boolean = false,
 ) {
     val secondaryButtonColors =
         IconButtonDefaults.filledTonalIconButtonColors(
@@ -439,6 +460,18 @@ public fun MediaDetailPrimaryActions(
 
                 onPlay?.let { play ->
                     val playButtonHeight = ButtonDefaults.MediumContainerHeight
+                    // The liquid-glass play button (which sampled the hero artwork via a
+                    // dedicated LayerBackdrop and rendered it as a blurred multicolored
+                    // background behind the play icon) has been REMOVED. The user reported
+                    // the sampled artwork background looked like a "misplaced image" /
+                    // "glitched preview" that clashed with the dark theme — the blurred
+                    // album-art colors behind the play icon read as a broken render rather
+                    // than intentional glassmorphism. The `useBlurredPlayButton` parameter
+                    // is kept for source compatibility with the 6 call sites that pass it,
+                    // but is now a no-op: the play button always renders as a clean solid
+                    // `contentColor` pill (same as the non-liquid-glass path). The
+                    // `thumbnailUrl` is still used for the main hero artwork above; only
+                    // the play-button backdrop sampling is removed.
                     Button(
                         onClick = play,
                         shape = RoundedCornerShape(percent = 50),

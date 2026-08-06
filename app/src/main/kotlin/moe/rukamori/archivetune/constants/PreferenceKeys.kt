@@ -99,6 +99,19 @@ val BackdropBlurAmountKey = intPreferencesKey("backdropBlurAmount")
 val MiniPlayerLastAnchorKey = intPreferencesKey("miniPlayerLastAnchor")
 val MiniPlayerBackgroundStyleKey = stringPreferencesKey("miniPlayerBackgroundStyle")
 
+// ── Liquid Glass effects ──────────────────────────────────────────────────────
+// Master toggle: when off, all Liquid Glass surfaces (header pills on detail
+// pages, the Liquid Glass mini player background, and the Liquid Glass nav bar
+// style) are unavailable / hidden / forced to their non-glass fallback.
+//
+// Sub-toggles:
+//  - LiquidGlassNavBarEnabledKey: opt-in Liquid Glass style for the bottom
+//    navigation bar (uses kyant-backdrop LayerBackdrop). Independent of the
+//    existing frostedBlur / tintFrostedBlur booleans, which use a different
+//    RenderEffect-based recipe.
+val LiquidGlassEnabledKey = booleanPreferencesKey("liquidGlassEnabled")
+val LiquidGlassNavBarEnabledKey = booleanPreferencesKey("liquidGlassNavBarEnabled")
+
 enum class AodThumbnailShape {
     ROUNDED,
     SQUARE,
@@ -778,6 +791,7 @@ enum class MiniPlayerBackgroundStyle {
     GRADIENT,
     GLOW,
     FROSTED,
+    LIQUID_GLASS,
 }
 
 // Bottom navigation bar look: DEFAULT keeps the docked full-width bar; FLOATING detaches it into
@@ -792,14 +806,16 @@ val NavigationBarStyleKey = stringPreferencesKey("navigationBarStyle")
 // Draws a frosted (blurred app content) backdrop behind the navigation bar. True backdrop blur on
 // Android 12+; a translucent surface fallback below that.
 val NavigationBarFrostedBlurKey = booleanPreferencesKey("navigationBarFrostedBlur")
+
+// Tinted variant of frosted blur: the same backdrop blur as [NavigationBarFrostedBlurKey], but the
+// bar surface is tinted with the accent (primary) color instead of the neutral surface container.
+// Mutually exclusive with [NavigationBarFrostedBlurKey] — turning one on turns the other off.
+val NavigationBarTintFrostedBlurKey = booleanPreferencesKey("navigationBarTintFrostedBlur")
 val HideNavigationBarLabelsKey = booleanPreferencesKey("hideNavigationBarLabels")
 
-// ── Navigation bar customization (Task 6) ───────────────────────────────────
-// Advanced tuning knobs exposed in the new "Navigation bar" sub-page under
-// Appearance. Defaults preserve the pre-existing look: 80.dp width, 64.dp
-// height, 0.18 alpha for the floating surface, 4.dp label spacing, 28.dp
-// corner radius. The DEFAULT style is unaffected; these only meaningfully
-// change the FLOATING style (and provide a small radius tweak for DEFAULT).
+// ── Navigation bar dimension customization ──────────────────────────────────
+// Advanced tuning knobs for the FLOATING nav bar style (and corner radius for
+// DEFAULT). Defaults preserve the pre-existing look.
 val NavigationBarWidthKey = floatPreferencesKey("navigationBarWidth")
 const val NAVIGATION_BAR_WIDTH_DEFAULT = 0.8f // fraction of screen width when FLOATING
 
@@ -818,7 +834,7 @@ const val NAVIGATION_BAR_LABEL_SPACING_DEFAULT = 4f // dp between icon and label
 val NavigationBarCornerRadiusKey = floatPreferencesKey("navigationBarCornerRadius")
 const val NAVIGATION_BAR_CORNER_RADIUS_DEFAULT = 28f // dp
 
-// App-wide scrollbar toggle (Task 8). When false, all LazyColumn / LazyGrid /
+// App-wide scrollbar toggle. When false, all LazyColumn / LazyGrid /
 // ScrollState scrollbars in the app are suppressed. (Slider thumb tracks and
 // player position bars are not affected — those are not "scrollbars".)
 val HideScrollbarKey = booleanPreferencesKey("hideScrollbar")

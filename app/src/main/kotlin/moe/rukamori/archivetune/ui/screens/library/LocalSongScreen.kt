@@ -111,6 +111,7 @@ import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.localmedia.LocalSongScanConfig
 import moe.rukamori.archivetune.localmedia.SupportedLocalAudio
 import moe.rukamori.archivetune.playback.queues.ListQueue
+import moe.rukamori.archivetune.ui.component.LargeFrostedTopAppBar
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.SongListItem
 import moe.rukamori.archivetune.ui.component.SortHeader
@@ -377,23 +378,9 @@ fun LocalSongScreen(
                                 .padding(top = 8.dp, bottom = 4.dp),
                     ) {}
                 } else {
-                    LargeFlexibleTopAppBar(
-                        title = {
-                            Text(
-                                text = stringResource(R.string.local_history),
-                                fontWeight = FontWeight.Bold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        },
-                        navigationIcon = {
-                            IconButton(onClick = navController::navigateUp) {
-                                Icon(
-                                    painter = painterResource(R.drawable.arrow_back),
-                                    contentDescription = null,
-                                )
-                            }
-                        },
+                    LargeFrostedTopAppBar(
+                        titleRes = R.string.local_history,
+                        onBack = navController::navigateUp,
                         actions = {
                             IconButton(onClick = { isSearchActive = true }) {
                                 Icon(
@@ -408,11 +395,6 @@ fun LocalSongScreen(
                                 )
                             }
                         },
-                        colors =
-                            TopAppBarDefaults.largeTopAppBarColors(
-                                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
-                                scrolledContainerColor = Color.Transparent,
-                            ),
                         scrollBehavior = scrollBehavior,
                     )
                 }

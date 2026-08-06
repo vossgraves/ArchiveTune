@@ -1433,7 +1433,10 @@ private fun AppleMusicSlider(
                 trackHeight = trackHeight,
             )
         },
-        modifier = modifier.height(28.dp),
+        // NOTE: do NOT constrain the Slider's height. The Material3 Slider's
+        // internal touch target is 48dp tall; forcing a smaller height clips
+        // the touch area and makes the slider impossible to drag.
+        modifier = modifier,
     )
 }
 

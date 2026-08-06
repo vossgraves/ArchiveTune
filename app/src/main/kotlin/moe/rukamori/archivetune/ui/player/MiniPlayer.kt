@@ -64,6 +64,8 @@ import moe.rukamori.archivetune.constants.SwipeSensitivityKey
 import moe.rukamori.archivetune.playback.artwork.PlayerPaletteCacheKey
 import moe.rukamori.archivetune.playback.artwork.guessArtworkProvider
 import moe.rukamori.archivetune.ui.component.LocalNavigationBarBackdrop
+import moe.rukamori.archivetune.ui.component.LocalLiquidGlassBackdrop
+import moe.rukamori.archivetune.ui.component.liquidGlass
 import moe.rukamori.archivetune.ui.component.rememberPreSFrostedBitmap
 import moe.rukamori.archivetune.ui.theme.PlayerColorExtractor
 import moe.rukamori.archivetune.ui.theme.PlayerPaletteCache
@@ -113,7 +115,8 @@ private fun NewMiniPlayer(
     }
     var hasValidPalette by remember { mutableStateOf(false) }
     val fallbackColor = MaterialTheme.colorScheme.surface.toArgb()
-    // Only the artwork-derived styles need palette extraction; THEME and FROSTED don't.
+    // Only the artwork-derived styles need palette extraction; THEME, FROSTED and
+    // LIQUID_GLASS don't.
     val shouldUseArtworkBackground =
         miniPlayerBackgroundStyle == MiniPlayerBackgroundStyle.GRADIENT ||
             miniPlayerBackgroundStyle == MiniPlayerBackgroundStyle.GLOW
@@ -213,8 +216,31 @@ private fun NewMiniPlayer(
         remember(gradientColors) {
             MiniPlayerBackgroundPalette.from(gradientColors)
         }
+    // Master Liquid Glass toggle: when off, the LIQUID_GLASS style is downgraded
+    // to THEME so the mini player never tries to sample the (unavailable) kyant
+    // LayerBackdrop. The check is here (not in the enum selection) so the user's
+    // preference is preserved — turning the master toggle back on restores the
+    // LIQUID_GLASS style without re-selecting it in the picker.
+    val liquidGlassMaster by rememberPreference(
+        moe.rukamori.archivetune.constants.LiquidGlassEnabledKey,
+        defaultValue = false,
+    )
     val effectiveBackgroundStyle =
         when {
+            // LIQUID_GLASS downgrades: master toggle off OR pre-S → THEME.
+            // Otherwise it stays LIQUID_GLASS. The previous chain was missing the
+            // positive branch — when both checks passed, control fell through to
+            // `shouldUseArtworkBackground && backgroundPalette != null` (false for
+            // LIQUID_GLASS because it is not GRADIENT/GLOW) and then to `else -> THEME`,
+            // so the Liquid Glass mini player NEVER activated even with the master
+            // toggle on. The user's "Liquid glass Mini player doesn't work" was this
+            // fall-through bug.
+            miniPlayerBackgroundStyle == MiniPlayerBackgroundStyle.LIQUID_GLASS && !liquidGlassMaster ->
+                MiniPlayerBackgroundStyle.THEME
+            miniPlayerBackgroundStyle == MiniPlayerBackgroundStyle.LIQUID_GLASS &&
+                Build.VERSION.SDK_INT < Build.VERSION_CODES.S -> MiniPlayerBackgroundStyle.THEME
+            miniPlayerBackgroundStyle == MiniPlayerBackgroundStyle.LIQUID_GLASS ->
+                MiniPlayerBackgroundStyle.LIQUID_GLASS
             miniPlayerBackgroundStyle == MiniPlayerBackgroundStyle.FROSTED -> MiniPlayerBackgroundStyle.FROSTED
             shouldUseArtworkBackground && backgroundPalette != null -> miniPlayerBackgroundStyle
             else -> MiniPlayerBackgroundStyle.THEME
@@ -224,7 +250,8 @@ private fun NewMiniPlayer(
         rememberMiniPlayerContentColors(
             useArtworkBackground =
                 effectiveBackgroundStyle == MiniPlayerBackgroundStyle.GRADIENT ||
-                    effectiveBackgroundStyle == MiniPlayerBackgroundStyle.GLOW,
+                    effectiveBackgroundStyle == MiniPlayerBackgroundStyle.GLOW ||
+                    effectiveBackgroundStyle == MiniPlayerBackgroundStyle.LIQUID_GLASS,
         )
     val miniPlayerShape =
         remember(isPairedWithNavigation) {
@@ -344,6 +371,8 @@ private fun MiniPlayerBackground(
     val isPreS = Build.VERSION.SDK_INT < Build.VERSION_CODES.S
     val effectiveStyle = if (isPreS && style == MiniPlayerBackgroundStyle.FROSTED) {
         MiniPlayerBackgroundStyle.THEME
+    } else if (isPreS && style == MiniPlayerBackgroundStyle.LIQUID_GLASS) {
+        MiniPlayerBackgroundStyle.THEME
     } else {
         style
     }
@@ -352,6 +381,44 @@ private fun MiniPlayerBackground(
             Box(
                 modifier = modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh),
             )
+        }
+
+        MiniPlayerBackgroundStyle.LIQUID_GLASS -> {
+            // Liquid Glass mini player: samples the app content (captured by
+            // Modifier.layerBackdrop in MainActivity) with the kyant vibrancy/blur/lens
+            // effect stack. The LocalLiquidGlassBackdrop is null when the master
+            // toggle is off or on pre-S devices; the effectiveStyle downgrade above
+            // guarantees we only reach this branch when the backdrop is available,
+            // but we still null-check for safety (falls back to a solid surface).
+            //
+            // BASE COLOR UNDER THE GLASS: the `baseColor` parameter passes an OPAQUE
+            // surfaceContainerHigh fill that is drawn UNDER the backdrop sample (via
+            // the kyant `onDrawBehind` callback). When the backdrop has content (e.g.
+            // the playlist list behind the mini player — the user confirmed this
+            // works in playlists), the backdrop sample covers the base color —
+            // producing the liquid glass refraction. When the backdrop is EMPTY (e.g.
+            // bottom of a short page with no content behind the mini player), the
+            // backdrop sample is transparent and the opaque base color shows through
+            // — so the mini player is always visible instead of "completely
+            // transparent". This mirrors how the FROSTED variant (and the frosted
+            // nav bar) handles the empty backdrop case.
+            val liquidGlassBackdrop = LocalLiquidGlassBackdrop.current
+            val baseColor = MaterialTheme.colorScheme.surfaceContainerHigh
+            if (liquidGlassBackdrop != null) {
+                Box(
+                    modifier =
+                        modifier.liquidGlass(
+                            backdrop = liquidGlassBackdrop,
+                            shape = MaterialTheme.shapes.extraLarge,
+                            interactive = false,
+                            baseColor = baseColor,
+                        ),
+                )
+            } else {
+                Box(
+                    modifier = modifier.background(baseColor),
+                )
+            }
         }
 
         MiniPlayerBackgroundStyle.FROSTED -> {

@@ -747,31 +747,15 @@ private fun AppleMusicControlsColumn(
             )
         }
 
-        // Flat volume slider with speaker glyphs.
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
+        // Flat volume slider with speaker glyphs. Uses the shared AppleMusicVolumeRow
+        // which has proper drag tracking (dragging state + rememberUpdatedState) so the
+        // fill follows the finger during a drag instead of lagging behind the rounded
+        // device-volume step.
+        AppleMusicVolumeRow(
+            volume = volume,
+            onVolumeChange = onVolumeChange,
             modifier = Modifier.fillMaxWidth(),
-        ) {
-            Icon(
-                painter = painterResource(R.drawable.player_volume_min),
-                contentDescription = null,
-                tint = Color.White.copy(alpha = 0.55f),
-                modifier = Modifier.size(18.dp),
-            )
-            Spacer(Modifier.width(12.dp))
-            AppleMusicVolumeSlider(
-                volume = volume,
-                onVolumeChange = onVolumeChange,
-                modifier = Modifier.weight(1f),
-            )
-            Spacer(Modifier.width(12.dp))
-            Icon(
-                painter = painterResource(R.drawable.player_volume_up),
-                contentDescription = null,
-                tint = Color.White.copy(alpha = 0.55f),
-                modifier = Modifier.size(18.dp),
-            )
-        }
+        )
 
         // Bottom action row: lyrics / media output / queue.
         Row(
@@ -950,44 +934,11 @@ private fun AppleMusicSeekBar(
 }
 
 /** Flat volume slider matching the scrubber's look. */
-@Composable
-private fun AppleMusicVolumeSlider(
-    volume: Float,
-    onVolumeChange: (Float) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Box(
-        modifier =
-            modifier
-                .height(26.dp)
-                .pointerInput(Unit) {
-                    detectTapGestures { offset ->
-                        onVolumeChange((offset.x / size.width).coerceIn(0f, 1f))
-                    }
-                }.pointerInput(Unit) {
-                    detectHorizontalDragGestures { change, _ ->
-                        change.consume()
-                        onVolumeChange((change.position.x / size.width).coerceIn(0f, 1f))
-                    }
-                }.drawWithContent {
-                    val trackHeight = 6.dp.toPx()
-                    val top = (size.height - trackHeight) / 2f
-                    val radius = CornerRadius(trackHeight / 2f)
-                    drawRoundRect(
-                        color = Color.White.copy(alpha = 0.28f),
-                        topLeft = Offset(0f, top),
-                        size = Size(size.width, trackHeight),
-                        cornerRadius = radius,
-                    )
-                    drawRoundRect(
-                        color = Color.White.copy(alpha = 0.85f),
-                        topLeft = Offset(0f, top),
-                        size = Size(size.width * volume.coerceIn(0f, 1f), trackHeight),
-                        cornerRadius = radius,
-                    )
-                },
-    )
-}
+/** NOTE: The local AppleMusicVolumeSlider was removed in favor of the shared
+ *  AppleMusicVolumeRow (in AppleMusicSlider.kt) which has proper drag tracking
+ *  via `dragging` state + `rememberUpdatedState`. The old local slider used
+ *  `pointerInput(Unit)` which captured stale callbacks and didn't track drag
+ *  state, causing the fill to lag behind the finger. */
 
 /**
  * Quality chip rendered between the elapsed and -remaining timestamps on the

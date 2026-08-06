@@ -9,6 +9,7 @@
 
 package moe.rukamori.archivetune.ui.screens
 
+import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -86,16 +87,21 @@ import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.AppBarHeight
 import moe.rukamori.archivetune.constants.HideExplicitKey
+import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
 import moe.rukamori.archivetune.db.entities.Album
 import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.playback.queues.LocalAlbumRadio
 import moe.rukamori.archivetune.ui.component.IconButton
+import moe.rukamori.archivetune.ui.component.LiquidGlassActionPill
+import moe.rukamori.archivetune.ui.component.LiquidGlassIconButton
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.MediaDetailAction
 import moe.rukamori.archivetune.ui.component.MediaDetailHero
 import moe.rukamori.archivetune.ui.component.NavigationTitle
 import moe.rukamori.archivetune.ui.component.SongListItem
 import moe.rukamori.archivetune.ui.component.YouTubeGridItem
+import moe.rukamori.archivetune.ui.component.layerBackdrop
+import moe.rukamori.archivetune.ui.component.rememberBackdrop
 import moe.rukamori.archivetune.ui.component.shimmer.ButtonPlaceholder
 import moe.rukamori.archivetune.ui.component.shimmer.ListItemPlaceHolder
 import moe.rukamori.archivetune.ui.component.shimmer.ShimmerHost
@@ -140,6 +146,15 @@ fun AlbumScreen(
     val otherVersions by viewModel.otherVersions.collectAsStateWithLifecycle()
     val canvasArtwork by viewModel.canvasArtwork.collectAsStateWithLifecycle()
     val hideExplicit by rememberPreference(key = HideExplicitKey, defaultValue = false)
+    // Liquid Glass master toggle. When off, the Liquid Glass header pills are not
+    // shown and the standard TopAppBar is used instead. The kyant RuntimeShader
+    // stack requires Android 12+, so we also gate on SDK_INT.
+    val liquidGlassEnabled by rememberPreference(
+        key = LiquidGlassEnabledKey,
+        defaultValue = false,
+    )
+    val liquidGlassHeaderActive =
+        liquidGlassEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
 
     // System bars padding
     val systemBarsTopPadding = WindowInsets.systemBars.asPaddingValues().calculateTopPadding()
@@ -225,6 +240,14 @@ fun AlbumScreen(
         }
     }
 
+    // Liquid Glass backdrop: created unconditionally (cheap — just a GraphicsLayer
+    // handle). The actual content recording only happens when
+    // `Modifier.layerBackdrop(artworkBackdrop)` is applied to the LazyColumn below,
+    // which is gated on `liquidGlassHeaderActive`. The Liquid Glass header pills
+    // sample this backdrop to render the frosted-glass effect over the scrolling
+    // content (artwork when at the top, songs list when scrolled).
+    val artworkBackdrop = rememberBackdrop(Color.Black)
+
     Box(
         modifier =
             Modifier
@@ -232,6 +255,12 @@ fun AlbumScreen(
                 .background(surfaceColor),
     ) {
         LazyColumn(
+            modifier =
+                if (liquidGlassHeaderActive) {
+                    Modifier.layerBackdrop(artworkBackdrop)
+                } else {
+                    Modifier
+                },
             state = lazyListState,
             contentPadding =
                 PaddingValues(
@@ -290,6 +319,19 @@ fun AlbumScreen(
                         ).joinToString(MediaDetailMetadataSeparator)
                     val isBookmarked = albumWithSongs.album.bookmarkedAt != null
 
+                    // SimpMusic-style liquid glass backdrop source: the LazyColumn
+                    // itself carries the layerBackdrop modifier (see the LazyColumn
+                    // definition below), so the entire scrolling content is recorded
+                    // into the backdrop. The floating Liquid Glass back button
+                    // (top-start) and heart+more pill (top-end) are siblings of the
+                    // LazyColumn (children of the outer Box), so they sample the
+                    // backdrop without being recorded into it (which would cause a
+                    // RuntimeShader feedback crash). They are PERSISTENT — they stay
+                    // at the top of the screen no matter how far the user scrolls,
+                    // matching the SimpMusic reference look and the user's request.
+                    //
+                    // The hero item itself just renders the MediaDetailHero; no
+                    // inner Box / layerBackdrop wrapper is needed here.
                     MediaDetailHero(
                         title = albumWithSongs.album.title,
                         thumbnailUrl = albumWithSongs.album.thumbnailUrl,
@@ -411,6 +453,7 @@ fun AlbumScreen(
                                 }
                             }
                         },
+                        useBlurredPlayButton = liquidGlassHeaderActive,
                     )
                 }
 
@@ -667,6 +710,98 @@ fun AlbumScreen(
             }
         }
 
+        // Persistent Liquid Glass header buttons. These are siblings of the
+        // LazyColumn (children of the outer Box), positioned at top-start and
+        // top-end. They sample the artworkBackdrop (which captures the entire
+        // scrolling content via Modifier.layerBackdrop on the LazyColumn) to
+        // render the frosted-glass effect. They are PERSISTENT — they stay at
+        // the top of the screen no matter how far the user scrolls, matching
+        // the SimpMusic reference look.
+        //
+        // Shown only when:
+        //  - Liquid Glass master toggle is on (liquidGlassHeaderActive)
+        //  - Not in selection mode (selection mode uses the TopAppBar below)
+        //  - The album has songs (so there's a hero to show)
+        //  - The albumWithSongs is loaded (for the heart toggle state)
+        val currentAlbumWithSongs = albumWithSongs
+        if (liquidGlassHeaderActive && !selection && currentAlbumWithSongs != null &&
+            currentAlbumWithSongs.songs.isNotEmpty()
+        ) {
+            LiquidGlassIconButton(
+                backdrop = artworkBackdrop,
+                painter = painterResource(R.drawable.arrow_back),
+                contentDescription = null,
+                modifier =
+                    Modifier
+                        .align(Alignment.TopStart)
+                        .padding(start = 12.dp, top = systemBarsTopPadding + 12.dp)
+                        .size(48.dp),
+                onClick = { navController.navigateUp() },
+            )
+            LiquidGlassActionPill(
+                backdrop = artworkBackdrop,
+                modifier =
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(end = 12.dp, top = systemBarsTopPadding + 12.dp),
+            ) {
+                // Bookmark toggle (heart)
+                Box(
+                    modifier = Modifier.size(48.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    androidx.compose.material3.IconButton(onClick = {
+                        database.query {
+                            update(currentAlbumWithSongs.album.toggleLike())
+                        }
+                    }) {
+                        Icon(
+                            painter =
+                                painterResource(
+                                    if (currentAlbumWithSongs.album.bookmarkedAt != null) {
+                                        R.drawable.favorite
+                                    } else {
+                                        R.drawable.favorite_border
+                                    },
+                                ),
+                            contentDescription = null,
+                            tint = Color.White,
+                        )
+                    }
+                }
+                // Album menu
+                Box(
+                    modifier = Modifier.size(48.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    androidx.compose.material3.IconButton(onClick = {
+                        menuState.show {
+                            AlbumMenu(
+                                originalAlbum =
+                                    Album(
+                                        currentAlbumWithSongs.album,
+                                        currentAlbumWithSongs.artists,
+                                    ),
+                                navController = navController,
+                                onDismiss = menuState::dismiss,
+                            )
+                        }
+                    }) {
+                        Icon(
+                            painter = painterResource(R.drawable.more_horiz),
+                            contentDescription = null,
+                            tint = Color.White,
+                        )
+                    }
+                }
+            }
+        }
+
+        // Top App Bar: shown when Liquid Glass is disabled OR in selection mode.
+        // When Liquid Glass is active and not in selection mode, the persistent
+        // Liquid Glass buttons above handle navigation and actions, so the
+        // TopAppBar is hidden entirely (no overlay, no click interception).
+        if (!liquidGlassHeaderActive || selection) {
         // Top App Bar
         val topAppBarColors =
             if (transparentAppBar) {
@@ -705,27 +840,35 @@ fun AlbumScreen(
                 }
             },
             navigationIcon = {
-                IconButton(
-                    onClick = {
-                        if (selection) {
-                            selection = false
-                        } else {
-                            navController.navigateUp()
-                        }
-                    },
-                    onLongClick = {
-                        if (!selection) {
-                            navController.backToMain()
-                        }
-                    },
-                ) {
-                    Icon(
-                        painter =
-                            painterResource(
-                                if (selection) R.drawable.close else R.drawable.arrow_back,
-                            ),
-                        contentDescription = null,
-                    )
+                // Show the back/close arrow when:
+                //  - In selection mode (close button)
+                //  - Scrolled past the hero (showTopBarTitle)
+                //  - Liquid Glass is OFF (the persistent LiquidGlass back button
+                //    isn't there, so the TopAppBar must provide back navigation
+                //    even when the hero is visible)
+                if (selection || showTopBarTitle || !liquidGlassHeaderActive) {
+                    IconButton(
+                        onClick = {
+                            if (selection) {
+                                selection = false
+                            } else {
+                                navController.navigateUp()
+                            }
+                        },
+                        onLongClick = {
+                            if (!selection) {
+                                navController.backToMain()
+                            }
+                        },
+                    ) {
+                        Icon(
+                            painter =
+                                painterResource(
+                                    if (selection) R.drawable.close else R.drawable.arrow_back,
+                                ),
+                            contentDescription = null,
+                        )
+                    }
                 }
             },
             actions = {
@@ -771,32 +914,40 @@ fun AlbumScreen(
                         )
                     }
                 } else {
-                    albumWithSongs?.let { currentAlbum ->
-                        IconButton(
-                            onClick = {
-                                menuState.show {
-                                    AlbumMenu(
-                                        originalAlbum =
-                                            Album(
-                                                currentAlbum.album,
-                                                currentAlbum.artists,
-                                            ),
-                                        navController = navController,
-                                        onDismiss = menuState::dismiss,
-                                    )
-                                }
-                            },
-                            onLongClick = {},
-                        ) {
-                            Icon(
-                                painter = painterResource(R.drawable.more_horiz),
-                                contentDescription = stringResource(R.string.more_options),
-                            )
+                    // Show the more-horiz action when:
+                    //  - Scrolled past the hero (showTopBarTitle)
+                    //  - Liquid Glass is OFF (the persistent LiquidGlass more
+                    //    button isn't there, so the TopAppBar must provide it
+                    //    even when the hero is visible)
+                    if (showTopBarTitle || !liquidGlassHeaderActive) {
+                        albumWithSongs?.let { currentAlbum ->
+                            IconButton(
+                                onClick = {
+                                    menuState.show {
+                                        AlbumMenu(
+                                            originalAlbum =
+                                                Album(
+                                                    currentAlbum.album,
+                                                    currentAlbum.artists,
+                                                ),
+                                            navController = navController,
+                                            onDismiss = menuState::dismiss,
+                                        )
+                                    }
+                                },
+                                onLongClick = {},
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.more_horiz),
+                                    contentDescription = stringResource(R.string.more_options),
+                                )
+                            }
                         }
                     }
                 }
             },
         )
+        } // end if (!liquidGlassHeaderActive || selection)
     }
 }
 

@@ -69,13 +69,31 @@ class TelegramThumbnailFetcher(
         }
 
         // 2. Embedded album cover from the Telegram file.
+        // We read the TDLib-downloaded file into a Buffer and return it as
+        // DataSource.NETWORK so Coil writes it to its own disk cache. Without
+        // this, the TDLib file is treated as already-on-disk (DataSource.DISK)
+        // and never enters Coil's cache — so the next time the same track's
+        // artwork is requested, we'd re-download from TDLib (and possibly
+        // re-fetch the embedded cover) every time.
         if (fileId > 0) {
             val path = TelegramClient.downloadFileBlocking(fileId) ?: return null
-            return SourceFetchResult(
-                source = ImageSource(file = path.toPath(), fileSystem = options.fileSystem),
-                mimeType = null,
-                dataSource = DataSource.DISK,
-            )
+            return withContext(Dispatchers.IO) {
+                runCatching {
+                    val source = java.io.File(path)
+                    val bytes = source.readBytes()
+                    SourceFetchResult(
+                        source =
+                            ImageSource(
+                                source = Buffer().write(bytes),
+                                fileSystem = options.fileSystem,
+                            ),
+                        mimeType = null,
+                        // Mark as NETWORK so Coil persists the bytes into its
+                        // disk cache for future lookups.
+                        dataSource = DataSource.NETWORK,
+                    )
+                }.getOrNull()
+            }
         }
         return null
     }

@@ -10,12 +10,14 @@
 package moe.rukamori.archivetune.ui.screens.playlist
 
 import android.annotation.SuppressLint
+import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
@@ -91,6 +93,7 @@ import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.AppBarHeight
+import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
 import moe.rukamori.archivetune.constants.PlaylistEditLockKey
 import moe.rukamori.archivetune.constants.PlaylistSongSortType
 import moe.rukamori.archivetune.constants.SwipeToSongKey
@@ -110,9 +113,13 @@ import moe.rukamori.archivetune.ui.component.EditPlaylistDialog
 import moe.rukamori.archivetune.ui.component.EmptyPlaceholder
 import moe.rukamori.archivetune.ui.component.ExpressivePullToRefreshBox
 import moe.rukamori.archivetune.ui.component.IconButton
+import moe.rukamori.archivetune.ui.component.LiquidGlassActionPill
+import moe.rukamori.archivetune.ui.component.LiquidGlassIconButton
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.MediaDetailAction
 import moe.rukamori.archivetune.ui.component.MediaDetailHero
+import moe.rukamori.archivetune.ui.component.layerBackdrop
+import moe.rukamori.archivetune.ui.component.rememberBackdrop
 import moe.rukamori.archivetune.ui.component.MediaDetailIconAction
 import moe.rukamori.archivetune.ui.component.SongListItem
 import moe.rukamori.archivetune.ui.component.SortHeader
@@ -170,6 +177,12 @@ fun LocalPlaylistScreen(
     val onSortDescendingChange: (Boolean) -> Unit = { viewModel.updateSortPreference(sortType, it) }
     var locked by rememberPreference(PlaylistEditLockKey, defaultValue = true)
     val swipeToSongEnabled by rememberPreference(SwipeToSongKey, defaultValue = true)
+    // Liquid Glass master toggle. When off, the Liquid Glass header pills are
+    // not shown and the standard TopAppBar is used instead. The kyant
+    // RuntimeShader stack requires Android 12+.
+    val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = false)
+    val liquidGlassHeaderActive =
+        liquidGlassEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     var showAssignTagsDialog by remember { mutableStateOf(false) }
 
     if (showAssignTagsDialog && playlist != null) {
@@ -507,6 +520,13 @@ fun LocalPlaylistScreen(
             !selection && !showTopBarTitle && !isSearching
         }
     }
+
+    // Liquid Glass backdrop: created unconditionally (cheap — just a GraphicsLayer
+    // handle). The actual content recording only happens when
+    // `Modifier.layerBackdrop(artworkBackdrop)` is applied to the LazyColumn below,
+    // which is gated on `liquidGlassHeaderActive`.
+    val artworkBackdrop = rememberBackdrop(Color.Black)
+
     ExpressivePullToRefreshBox(
         isRefreshing = isRefreshing,
         onRefresh = viewModel::refresh,
@@ -520,6 +540,13 @@ fun LocalPlaylistScreen(
             modifier =
                 Modifier
                     .fillMaxSize()
+                    .then(
+                        if (liquidGlassHeaderActive) {
+                            Modifier.layerBackdrop(artworkBackdrop)
+                        } else {
+                            Modifier
+                        },
+                    )
                     .padding(
                         top = if (isSearching) systemBarsTopPadding + AppBarHeight else 0.dp,
                     ),
@@ -565,6 +592,19 @@ fun LocalPlaylistScreen(
                                 ).joinToString(MediaDetailMetadataSeparator)
                             val isBookmarked = playlist.playlist.bookmarkedAt != null
 
+                            // SimpMusic-style liquid glass backdrop source: the
+                            // LazyColumn itself carries the layerBackdrop modifier
+                            // (see the LazyColumn definition above), so the entire
+                            // scrolling content is recorded into the backdrop. The
+                            // floating Liquid Glass back button (top-start) and
+                            // search+more pill (top-end) are siblings of the
+                            // LazyColumn (children of the ExpressivePullToRefreshBox),
+                            // so they sample the backdrop without being recorded into
+                            // it. They are PERSISTENT — they stay at the top of the
+                            // screen no matter how far the user scrolls.
+                            //
+                            // The hero item itself just renders the MediaDetailHero;
+                            // no inner Box / layerBackdrop wrapper is needed here.
                             MediaDetailHero(
                                 title = playlist.playlist.name,
                                 thumbnailUrl =
@@ -670,6 +710,7 @@ fun LocalPlaylistScreen(
                                     }
                                 },
                                 modifier = Modifier.animateItem(),
+                                useBlurredPlayButton = liquidGlassHeaderActive,
                             )
                         }
                     }
@@ -968,6 +1009,107 @@ fun LocalPlaylistScreen(
             headerItems = headerItems,
         )
 
+        // Persistent Liquid Glass header buttons. Siblings of the LazyColumn
+        // (children of the ExpressivePullToRefreshBox), positioned at top-start
+        // and top-end. They sample the artworkBackdrop (which captures the
+        // entire scrolling content via Modifier.layerBackdrop on the LazyColumn)
+        // to render the frosted-glass effect. PERSISTENT — stay at the top no
+        // matter how far the user scrolls.
+        //
+        // Shown only when:
+        //  - Liquid Glass master toggle is on (liquidGlassHeaderActive)
+        //  - Not in selection mode
+        //  - Not searching
+        //  - Playlist is loaded
+        // Capture playlist in a local val so the compiler can smart-cast it
+        // to non-null inside the block (playlist is a delegate, so the
+        // compiler can't smart-cast the property directly).
+        val currentPlaylist = playlist
+        if (liquidGlassHeaderActive && !selection && !isSearching && currentPlaylist != null) {
+            LiquidGlassIconButton(
+                backdrop = artworkBackdrop,
+                painter = painterResource(R.drawable.arrow_back),
+                contentDescription = null,
+                modifier =
+                    Modifier
+                        .align(Alignment.TopStart)
+                        .padding(start = 12.dp, top = systemBarsTopPadding + 12.dp)
+                        .size(48.dp),
+                onClick = { navController.navigateUp() },
+            )
+            LiquidGlassActionPill(
+                backdrop = artworkBackdrop,
+                modifier =
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(end = 12.dp, top = systemBarsTopPadding + 12.dp),
+            ) {
+                // Search
+                Box(
+                    modifier = Modifier.size(48.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    androidx.compose.material3.IconButton(onClick = { isSearching = true }) {
+                        Icon(
+                            painter = painterResource(R.drawable.search),
+                            contentDescription = null,
+                            tint = Color.White,
+                        )
+                    }
+                }
+                // More
+                Box(
+                    modifier = Modifier.size(48.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    androidx.compose.material3.IconButton(onClick = {
+                        menuState.show {
+                            PlaylistMenu(
+                                playlist = currentPlaylist,
+                                coroutineScope = coroutineScope,
+                                onDismiss = menuState::dismiss,
+                                onChangeCover =
+                                    if (
+                                        currentPlaylist.playlist.isEditable == true &&
+                                        coverState !is PlaylistCoverState.Loading
+                                    ) {
+                                        {
+                                            menuState.dismiss()
+                                            pickCoverLauncher.launch(arrayOf("image/*"))
+                                        }
+                                    } else {
+                                        null
+                                    },
+                                onRemoveCover =
+                                    if (
+                                        currentPlaylist.playlist.hasCustomCover &&
+                                        coverState !is PlaylistCoverState.Loading
+                                    ) {
+                                        {
+                                            menuState.dismiss()
+                                            viewModel.removeCover()
+                                        }
+                                    } else {
+                                        null
+                                    },
+                            )
+                        }
+                    }) {
+                        Icon(
+                            painter = painterResource(R.drawable.more_horiz),
+                            contentDescription = null,
+                            tint = Color.White,
+                        )
+                    }
+                }
+            }
+        }
+
+        // Top App Bar: shown when Liquid Glass is disabled, OR in selection mode,
+        // OR when searching. When Liquid Glass is active and not in selection mode
+        // and not searching, the persistent Liquid Glass buttons above handle
+        // navigation and actions, so the TopAppBar is hidden entirely.
+        if (!liquidGlassHeaderActive || selection || isSearching) {
         // Top App Bar
         val topAppBarColors =
             if (transparentAppBar) {
@@ -1025,30 +1167,39 @@ fun LocalPlaylistScreen(
                 }
             },
             navigationIcon = {
-                IconButton(
-                    onClick = {
-                        if (isSearching) {
-                            isSearching = false
-                            query = TextFieldValue()
-                        } else if (selection) {
-                            selection = false
-                        } else {
-                            navController.navigateUp()
-                        }
-                    },
-                    onLongClick = {
-                        if (!isSearching) {
-                            navController.backToMain()
-                        }
-                    },
-                ) {
-                    Icon(
-                        painter =
-                            painterResource(
-                                if (selection || isSearching) R.drawable.close else R.drawable.arrow_back,
-                            ),
-                        contentDescription = null,
-                    )
+                // Show the back/close arrow when:
+                //  - Searching
+                //  - In selection mode
+                //  - Scrolled past the hero (showTopBarTitle)
+                //  - Liquid Glass is OFF (the persistent LiquidGlass back button
+                //    isn't there, so the TopAppBar must provide back navigation
+                //    even when the hero is visible)
+                if (isSearching || selection || showTopBarTitle || !liquidGlassHeaderActive) {
+                    IconButton(
+                        onClick = {
+                            if (isSearching) {
+                                isSearching = false
+                                query = TextFieldValue()
+                            } else if (selection) {
+                                selection = false
+                            } else {
+                                navController.navigateUp()
+                            }
+                        },
+                        onLongClick = {
+                            if (!isSearching) {
+                                navController.backToMain()
+                            }
+                        },
+                    ) {
+                        Icon(
+                            painter =
+                                painterResource(
+                                    if (selection || isSearching) R.drawable.close else R.drawable.arrow_back,
+                                ),
+                            contentDescription = null,
+                        )
+                    }
                 }
             },
             actions = {
@@ -1097,61 +1248,69 @@ fun LocalPlaylistScreen(
                         )
                     }
                 } else if (!isSearching) {
-                    IconButton(
-                        onClick = { isSearching = true },
-                        onLongClick = {},
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.search),
-                            contentDescription = null,
-                        )
-                    }
-                    playlist?.let { currentPlaylist ->
+                    // Show search + more when:
+                    //  - Scrolled past the hero (showTopBarTitle)
+                    //  - Liquid Glass is OFF (the persistent LiquidGlass pill
+                    //    isn't there, so the TopAppBar must provide search+more
+                    //    even when the hero is visible)
+                    if (showTopBarTitle || !liquidGlassHeaderActive) {
                         IconButton(
-                            onClick = {
-                                menuState.show {
-                                    PlaylistMenu(
-                                        playlist = currentPlaylist,
-                                        coroutineScope = coroutineScope,
-                                        onDismiss = menuState::dismiss,
-                                        onChangeCover =
-                                            if (
-                                                currentPlaylist.playlist.isEditable == true &&
-                                                coverState !is PlaylistCoverState.Loading
-                                            ) {
-                                                {
-                                                    menuState.dismiss()
-                                                    pickCoverLauncher.launch(arrayOf("image/*"))
-                                                }
-                                            } else {
-                                                null
-                                            },
-                                        onRemoveCover =
-                                            if (
-                                                currentPlaylist.playlist.hasCustomCover &&
-                                                coverState !is PlaylistCoverState.Loading
-                                            ) {
-                                                {
-                                                    menuState.dismiss()
-                                                    viewModel.removeCover()
-                                                }
-                                            } else {
-                                                null
-                                            },
-                                    )
-                                }
-                            },
+                            onClick = { isSearching = true },
                             onLongClick = {},
                         ) {
                             Icon(
-                                painter = painterResource(R.drawable.more_horiz),
-                                contentDescription = stringResource(R.string.more_options),
+                                painter = painterResource(R.drawable.search),
+                                contentDescription = null,
                             )
+                        }
+                        playlist?.let { currentPlaylist ->
+                            IconButton(
+                                onClick = {
+                                    menuState.show {
+                                        PlaylistMenu(
+                                            playlist = currentPlaylist,
+                                            coroutineScope = coroutineScope,
+                                            onDismiss = menuState::dismiss,
+                                            onChangeCover =
+                                                if (
+                                                    currentPlaylist.playlist.isEditable == true &&
+                                                    coverState !is PlaylistCoverState.Loading
+                                                ) {
+                                                    {
+                                                        menuState.dismiss()
+                                                        pickCoverLauncher.launch(arrayOf("image/*"))
+                                                    }
+                                                } else {
+                                                    null
+                                                },
+                                            onRemoveCover =
+                                                if (
+                                                    currentPlaylist.playlist.hasCustomCover &&
+                                                    coverState !is PlaylistCoverState.Loading
+                                                ) {
+                                                    {
+                                                        menuState.dismiss()
+                                                        viewModel.removeCover()
+                                                    }
+                                                } else {
+                                                    null
+                                                },
+                                        )
+                                    }
+                                },
+                                onLongClick = {},
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.more_horiz),
+                                    contentDescription = stringResource(R.string.more_options),
+                                )
+                            }
                         }
                     }
                 }
             },
         )
+        } // end if (!liquidGlassHeaderActive || selection || isSearching)
 
         SnackbarHost(
             hostState = snackbarHostState,

@@ -108,6 +108,7 @@ import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import moe.rukamori.archivetune.ui.component.IconButton as AppIconButton
+import moe.rukamori.archivetune.ui.component.LargeFrostedTopAppBar
 
 @Composable
 fun NewsScreen(
@@ -195,25 +196,10 @@ fun NewsScreen(
                                 .padding(top = 8.dp, bottom = 4.dp),
                     ) {}
                 } else {
-                    LargeFlexibleTopAppBar(
-                        title = {
-                            Text(
-                                text = stringResource(R.string.news),
-                                style = MaterialTheme.typography.headlineSmall,
-                                fontWeight = FontWeight.Bold,
-                            )
-                        },
-                        navigationIcon = {
-                            AppIconButton(
-                                onClick = navController::navigateUp,
-                                onLongClick = navController::backToMain,
-                            ) {
-                                Icon(
-                                    painter = painterResource(R.drawable.arrow_back),
-                                    contentDescription = stringResource(R.string.back_button_desc),
-                                )
-                            }
-                        },
+                    LargeFrostedTopAppBar(
+                        titleRes = R.string.news,
+                        onBack = navController::navigateUp,
+                        onBackLongClick = navController::backToMain,
                         actions = {
                             IconButton(onClick = { isSearchActive = true }) {
                                 Icon(
@@ -228,11 +214,6 @@ fun NewsScreen(
                                 )
                             }
                         },
-                        colors =
-                            TopAppBarDefaults.largeTopAppBarColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
-                                scrolledContainerColor = Color.Transparent,
-                            ),
                         scrollBehavior = scrollBehavior,
                     )
                 }
