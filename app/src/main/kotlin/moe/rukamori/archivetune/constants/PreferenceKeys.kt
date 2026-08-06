@@ -99,6 +99,19 @@ val BackdropBlurAmountKey = intPreferencesKey("backdropBlurAmount")
 val MiniPlayerLastAnchorKey = intPreferencesKey("miniPlayerLastAnchor")
 val MiniPlayerBackgroundStyleKey = stringPreferencesKey("miniPlayerBackgroundStyle")
 
+// ── Liquid Glass effects ──────────────────────────────────────────────────────
+// Master toggle: when off, all Liquid Glass surfaces (header pills on detail
+// pages, the Liquid Glass mini player background, and the Liquid Glass nav bar
+// style) are unavailable / hidden / forced to their non-glass fallback.
+//
+// Sub-toggles:
+//  - LiquidGlassNavBarEnabledKey: opt-in Liquid Glass style for the bottom
+//    navigation bar (uses kyant-backdrop LayerBackdrop). Independent of the
+//    existing frostedBlur / tintFrostedBlur booleans, which use a different
+//    RenderEffect-based recipe.
+val LiquidGlassEnabledKey = booleanPreferencesKey("liquidGlassEnabled")
+val LiquidGlassNavBarEnabledKey = booleanPreferencesKey("liquidGlassNavBarEnabled")
+
 enum class AodThumbnailShape {
     ROUNDED,
     SQUARE,
@@ -778,6 +791,7 @@ enum class MiniPlayerBackgroundStyle {
     GRADIENT,
     GLOW,
     FROSTED,
+    LIQUID_GLASS,
 }
 
 // Bottom navigation bar look: DEFAULT keeps the docked full-width bar; FLOATING detaches it into

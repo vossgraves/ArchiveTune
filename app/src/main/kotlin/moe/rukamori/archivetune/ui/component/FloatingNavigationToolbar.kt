@@ -104,6 +104,7 @@ import moe.rukamori.archivetune.constants.NavigationBarTransparencyKey
 import moe.rukamori.archivetune.constants.NavigationBarWidthKey
 import moe.rukamori.archivetune.ui.screens.Screens
 import moe.rukamori.archivetune.utils.rememberPreference
+import com.kyant.backdrop.backdrops.LayerBackdrop
 import kotlin.math.roundToInt
 
 /**
@@ -165,6 +166,8 @@ fun FloatingNavigationToolbar(
     frostedBlur: Boolean = false,
     tintFrostedBlur: Boolean = false,
     frostedBackdrop: NavigationBarBackdrop? = null,
+    liquidGlass: Boolean = false,
+    liquidGlassBackdrop: LayerBackdrop? = null,
     isSelected: (Screens) -> Boolean,
     onItemClick: (Screens, Boolean) -> Unit,
     onSearchItemDoubleClick: (() -> Unit)? = null,
@@ -210,9 +213,19 @@ fun FloatingNavigationToolbar(
     // bar surface with the accent (primary) color so the frost reads as a colored glass.
     val anyFrosted = frostedBlur || tintFrostedBlur
     val canBlurBackdrop = anyFrosted && frostedBackdrop != null && !isPreS
+    // Liquid Glass nav bar: requires the master toggle on, the kyant LayerBackdrop
+    // available (Android 12+), and not in pure-black mode (the liquid glass effect
+    // needs a translucent surface to show the backdrop through).
+    val canLiquidGlass = liquidGlass && liquidGlassBackdrop != null && !isPreS && !pureBlack
     val navigationContainerColor =
         if (pureBlack) {
             Color.Black
+        } else if (canLiquidGlass) {
+            // Liquid Glass: the surface must be transparent so the kyant drawBackdrop
+            // (which samples the app content with vibrancy/blur/lens) shows through.
+            // The onDrawSurface darken overlay in the liquidGlass modifier provides
+            // the contrast for the icons/labels.
+            Color.Transparent
         } else {
             // Apply user-configured opacity (always) and transparency (only when no frosted
             // variant is active — when frosted blur is on, the frost overlay already provides
@@ -339,7 +352,25 @@ fun FloatingNavigationToolbar(
                     .onGloballyPositioned {
                         barPositionInRoot = it.positionInRoot()
                         barSize = it.size
-                    },
+                    }
+                    .then(
+                        // Liquid Glass nav bar: apply the kyant liquidGlass modifier to the
+                        // Surface itself. This samples the app content (captured by
+                        // Modifier.layerBackdrop in MainActivity) with vibrancy/blur/lens and
+                        // draws it as the bar background, with a darken overlay for contrast.
+                        // The Surface's color is already transparent (see [navigationContainerColor]),
+                        // so the liquid glass backdrop shows through. The Surface's shape clips
+                        // the liquid glass to the pill / docked shape.
+                        if (canLiquidGlass && liquidGlassBackdrop != null) {
+                            Modifier.liquidGlass(
+                                backdrop = liquidGlassBackdrop,
+                                shape = navigationShape,
+                                interactive = false,
+                            )
+                        } else {
+                            Modifier
+                        },
+                    ),
             shape = navigationShape,
             color = navigationContainerColor,
             tonalElevation = NavigationBarDefaults.Elevation,

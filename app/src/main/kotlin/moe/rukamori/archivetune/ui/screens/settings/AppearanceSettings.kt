@@ -87,6 +87,7 @@ import moe.rukamori.archivetune.constants.GridItemsSizeKey
 import moe.rukamori.archivetune.constants.HidePlayerThumbnailKey
 import moe.rukamori.archivetune.constants.HideScrollbarKey
 import moe.rukamori.archivetune.constants.LibraryFilter
+import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
 import moe.rukamori.archivetune.constants.LyricsBackgroundStyle
 import moe.rukamori.archivetune.constants.LyricsBackgroundStyleKey
 import moe.rukamori.archivetune.constants.MiniPlayerBackgroundStyle
@@ -181,6 +182,11 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
         rememberEnumPreference(
             MiniPlayerBackgroundStyleKey,
             defaultValue = MiniPlayerBackgroundStyle.THEME,
+        )
+    val (liquidGlassEnabled, onLiquidGlassEnabledChange) =
+        rememberPreference(
+            LiquidGlassEnabledKey,
+            defaultValue = false,
         )
     val (pureBlack, onPureBlackChange) = rememberPreference(PureBlackKey, defaultValue = false)
     val (disableBlur, onDisableBlurChange) = rememberPreference(DisableBlurKey, defaultValue = false)
@@ -430,6 +436,31 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                 .verticalScroll(scrollState)
                 .padding(bottom = SettingsDimensions.ScreenBottomPadding),
         ) {
+            PreferenceGroup(
+                modifier = positions.modifierFor("liquid_glass_effects"),
+                title = stringResource(R.string.theme),
+            ) {
+                item {
+                    Column {
+                        SwitchPreference(
+                            title = { Text(stringResource(R.string.liquid_glass_effects)) },
+                            description = stringResource(R.string.liquid_glass_effects_desc),
+                            icon = { Icon(painterResource(R.drawable.blur_on), null) },
+                            checked = liquidGlassEnabled,
+                            onCheckedChange = onLiquidGlassEnabledChange,
+                        )
+                        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S && liquidGlassEnabled) {
+                            Text(
+                                text = stringResource(R.string.liquid_glass_effects_unsupported),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(start = 56.dp, top = 4.dp, end = 16.dp),
+                            )
+                        }
+                    }
+                }
+            }
+
             PreferenceGroup(
                 modifier = positions.modifierFor("dynamic_theme"),
                 title = stringResource(R.string.theme),
@@ -780,13 +811,32 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                             title = { Text(stringResource(R.string.mini_player_background_style)) },
                             icon = { Icon(painterResource(R.drawable.gradient), null) },
                             selectedValue = miniPlayerBackground,
-                            onValueSelected = onMiniPlayerBackgroundChange,
+                            onValueSelected = { newStyle ->
+                                // Guard the LIQUID_GLASS style: only commit it when the master
+                                // Liquid Glass toggle is on AND we're on Android 12+. Otherwise
+                                // silently downgrade to THEME so the picker still closes but no
+                                // unsupported state is persisted. The user sees the warning below
+                                // telling them why their selection didn't apply.
+                                val canUseLiquidGlass =
+                                    liquidGlassEnabled &&
+                                        Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+                                val effective =
+                                    if (newStyle == MiniPlayerBackgroundStyle.LIQUID_GLASS &&
+                                        !canUseLiquidGlass
+                                    ) {
+                                        MiniPlayerBackgroundStyle.THEME
+                                    } else {
+                                        newStyle
+                                    }
+                                onMiniPlayerBackgroundChange(effective)
+                            },
                             valueText = {
                                 when (it) {
                                     MiniPlayerBackgroundStyle.THEME -> stringResource(R.string.follow_theme)
                                     MiniPlayerBackgroundStyle.GRADIENT -> stringResource(R.string.gradient)
                                     MiniPlayerBackgroundStyle.GLOW -> stringResource(R.string.glow)
                                     MiniPlayerBackgroundStyle.FROSTED -> stringResource(R.string.frosted_blur)
+                                    MiniPlayerBackgroundStyle.LIQUID_GLASS -> stringResource(R.string.liquid_glass)
                                 }
                             },
                         )
@@ -798,6 +848,21 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                         ) {
                             Text(
                                 text = stringResource(R.string.frosted_mini_player_unsupported),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(start = 56.dp, top = 4.dp, end = 16.dp),
+                            )
+                        }
+                        // Liquid Glass mini player requires the master Liquid Glass toggle
+                        // (Appearance → Liquid Glass effects) AND Android 12+. If the user
+                        // somehow has LIQUID_GLASS selected but the master toggle is off (e.g.
+                        // they turned the master off after selecting LIQUID_GLASS), surface a
+                        // hint that the master toggle needs to be on for the style to apply.
+                        if (miniPlayerBackground == MiniPlayerBackgroundStyle.LIQUID_GLASS &&
+                            (!liquidGlassEnabled || Build.VERSION.SDK_INT < Build.VERSION_CODES.S)
+                        ) {
+                            Text(
+                                text = stringResource(R.string.liquid_glass_mini_player_unsupported),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.padding(start = 56.dp, top = 4.dp, end = 16.dp),

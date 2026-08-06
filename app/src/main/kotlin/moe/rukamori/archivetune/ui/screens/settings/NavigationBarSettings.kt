@@ -66,6 +66,8 @@ import moe.rukamori.archivetune.constants.NAVIGATION_BAR_TRANSPARENCY_DEFAULT
 import moe.rukamori.archivetune.constants.NAVIGATION_BAR_WIDTH_DEFAULT
 import moe.rukamori.archivetune.constants.NavigationBarCornerRadiusKey
 import moe.rukamori.archivetune.constants.NavigationBarFrostedBlurKey
+import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
+import moe.rukamori.archivetune.constants.LiquidGlassNavBarEnabledKey
 import moe.rukamori.archivetune.constants.NavigationBarTintFrostedBlurKey
 import moe.rukamori.archivetune.constants.NavigationBarHeight
 import moe.rukamori.archivetune.constants.NavigationBarHeightKey
@@ -98,6 +100,13 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
         rememberPreference(NavigationBarFrostedBlurKey, defaultValue = false)
     val (navigationBarTintFrostedBlur, onNavigationBarTintFrostedBlurChange) =
         rememberPreference(NavigationBarTintFrostedBlurKey, defaultValue = false)
+    // Liquid Glass master toggle (Appearance) + nav-bar sub-toggle. The sub-toggle
+    // is only effective when the master is on AND on Android 12+; otherwise the
+    // FloatingNavigationToolbar falls back to its non-glass style.
+    val (liquidGlassEnabled) =
+        rememberPreference(LiquidGlassEnabledKey, defaultValue = false)
+    val (liquidGlassNavBarEnabled, onLiquidGlassNavBarEnabledChange) =
+        rememberPreference(LiquidGlassNavBarEnabledKey, defaultValue = false)
     // Mutual-exclusivity wrappers: turning one frosted variant on turns the other off.
     val onFrostedBlurChange: (Boolean) -> Unit = { checked ->
         onNavigationBarFrostedBlurChange(checked)
@@ -219,6 +228,40 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.padding(start = 56.dp, top = 4.dp, end = 16.dp),
                             )
+                        }
+                    }
+                }
+
+                item {
+                    Column {
+                        SwitchPreference(
+                            title = { Text(stringResource(R.string.liquid_glass_nav_bar)) },
+                            description = stringResource(R.string.liquid_glass_nav_bar_desc),
+                            icon = { Icon(painterResource(R.drawable.blur_on), null) },
+                            checked = liquidGlassNavBarEnabled,
+                            // Disable the toggle when the master Liquid Glass switch is off
+                            // (Appearance → Liquid Glass effects) or on pre-Android 12. The
+                            // kyant RuntimeShader stack requires API 31+.
+                            isEnabled = liquidGlassEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S,
+                            onCheckedChange = onLiquidGlassNavBarEnabledChange,
+                        )
+                        when {
+                            !liquidGlassEnabled -> {
+                                Text(
+                                    text = stringResource(R.string.liquid_glass_nav_bar_disabled),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(start = 56.dp, top = 4.dp, end = 16.dp),
+                                )
+                            }
+                            Build.VERSION.SDK_INT < Build.VERSION_CODES.S && liquidGlassNavBarEnabled -> {
+                                Text(
+                                    text = stringResource(R.string.liquid_glass_effects_unsupported),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(start = 56.dp, top = 4.dp, end = 16.dp),
+                                )
+                            }
                         }
                     }
                 }

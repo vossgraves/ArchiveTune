@@ -24,6 +24,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton as Material3IconButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -57,6 +58,19 @@ fun rememberBackdrop(color: Color): PlatformBackdrop =
     }
 
 fun Modifier.layerBackdrop(backdrop: PlatformBackdrop): Modifier = this.layerBackdrop(backdrop)
+
+/**
+ * App-content [LayerBackdrop] used by the Liquid Glass mini player and the Liquid
+ * Glass navigation bar. Created in [moe.rukamori.archivetune.MainActivity] and
+ * applied via [Modifier.layerBackdrop] to the same Box that already records
+ * content for the frosted nav bar — so the backdrop captures the entire app
+ * surface every frame, and any sibling consumer (mini player / nav bar) can
+ * sample it with [Modifier.liquidGlass].
+ *
+ * Null when Liquid Glass is disabled or the device is below Android 12 (the
+ * kyant RuntimeShader stack requires API 31+).
+ */
+val LocalLiquidGlassBackdrop = compositionLocalOf<LayerBackdrop?> { null }
 
 /**
  * Applies the SimpMusic liquid-glass effect to any element.
