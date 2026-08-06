@@ -86,7 +86,6 @@ private const val SpotifyLoginUserAgent =
  * the `showSpotifyLogin` / error-dialog state; this function only renders the preference
  * rows and invokes the supplied callbacks.
  */
-@Composable
 internal fun PreferenceGroupScope.spotifyAccountPreferences(
     state: SpotifyAccountUiState,
     showPlaylists: Boolean,

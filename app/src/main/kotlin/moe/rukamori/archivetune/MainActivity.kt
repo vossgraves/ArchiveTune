@@ -230,6 +230,7 @@ import moe.rukamori.archivetune.constants.PlayerBackgroundStyleKey
 import moe.rukamori.archivetune.constants.PlayerDesignStyle
 import moe.rukamori.archivetune.constants.PlayerDesignStyleKey
 import moe.rukamori.archivetune.constants.NavigationBarFrostedBlurKey
+import moe.rukamori.archivetune.constants.NavigationBarTintFrostedBlurKey
 import moe.rukamori.archivetune.constants.NavigationBarStyle
 import moe.rukamori.archivetune.constants.NavigationBarStyleKey
 import moe.rukamori.archivetune.constants.PureBlackKey
@@ -917,6 +918,10 @@ class MainActivity : ComponentActivity() {
             )
             val navigationBarFrostedBlur by rememberPreference(
                 NavigationBarFrostedBlurKey,
+                defaultValue = false,
+            )
+            val navigationBarTintFrostedBlur by rememberPreference(
+                NavigationBarTintFrostedBlurKey,
                 defaultValue = false,
             )
 
@@ -2528,6 +2533,7 @@ class MainActivity : ComponentActivity() {
                                                 isPairedWithMiniPlayer = areBottomBarsPaired,
                                                 style = navigationBarStyle,
                                                 frostedBlur = navigationBarFrostedBlur,
+                                                tintFrostedBlur = navigationBarTintFrostedBlur,
                                                 frostedBackdrop = navBarFrostedBackdrop,
                                                 modifier =
                                                     Modifier

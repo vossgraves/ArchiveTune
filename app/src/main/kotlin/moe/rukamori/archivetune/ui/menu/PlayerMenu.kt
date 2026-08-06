@@ -1215,6 +1215,10 @@ private fun VolumeSliderL(
         if (!isDragging) sliderValue = safeValue
     }
 
+    // NOTE: do NOT constrain the Slider's height. The Material3 Slider's internal
+    // touch target is 48dp tall; forcing a smaller height (we previously used
+    // height(36.dp)) clips the touch area and makes the thumb impossible to
+    // drag — the value updates in state but the thumb never visibly moves.
     Slider(
         value = sliderValue,
         onValueChange = { updated ->
@@ -1225,7 +1229,7 @@ private fun VolumeSliderL(
         },
         onValueChangeFinished = { isDragging = false },
         valueRange = 0f..1f,
-        modifier = modifier.height(36.dp),
+        modifier = modifier,
         thumb = {
             Box(
                 modifier =

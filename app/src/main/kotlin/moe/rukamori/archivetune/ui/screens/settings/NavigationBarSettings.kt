@@ -66,6 +66,7 @@ import moe.rukamori.archivetune.constants.NAVIGATION_BAR_TRANSPARENCY_DEFAULT
 import moe.rukamori.archivetune.constants.NAVIGATION_BAR_WIDTH_DEFAULT
 import moe.rukamori.archivetune.constants.NavigationBarCornerRadiusKey
 import moe.rukamori.archivetune.constants.NavigationBarFrostedBlurKey
+import moe.rukamori.archivetune.constants.NavigationBarTintFrostedBlurKey
 import moe.rukamori.archivetune.constants.NavigationBarHeight
 import moe.rukamori.archivetune.constants.NavigationBarHeightKey
 import moe.rukamori.archivetune.constants.NavigationBarLabelSpacingKey
@@ -95,6 +96,21 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
         )
     val (navigationBarFrostedBlur, onNavigationBarFrostedBlurChange) =
         rememberPreference(NavigationBarFrostedBlurKey, defaultValue = false)
+    val (navigationBarTintFrostedBlur, onNavigationBarTintFrostedBlurChange) =
+        rememberPreference(NavigationBarTintFrostedBlurKey, defaultValue = false)
+    // Mutual-exclusivity wrappers: turning one frosted variant on turns the other off.
+    val onFrostedBlurChange: (Boolean) -> Unit = { checked ->
+        onNavigationBarFrostedBlurChange(checked)
+        if (checked && navigationBarTintFrostedBlur) {
+            onNavigationBarTintFrostedBlurChange(false)
+        }
+    }
+    val onTintFrostedBlurChange: (Boolean) -> Unit = { checked ->
+        onNavigationBarTintFrostedBlurChange(checked)
+        if (checked && navigationBarFrostedBlur) {
+            onNavigationBarFrostedBlurChange(false)
+        }
+    }
     val (hideNavigationBarLabels, onHideNavigationBarLabelsChange) =
         rememberPreference(HideNavigationBarLabelsKey, defaultValue = false)
 
@@ -174,9 +190,29 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                             description = stringResource(R.string.navigation_bar_frosted_blur_desc),
                             icon = { Icon(painterResource(R.drawable.blur_on), null) },
                             checked = navigationBarFrostedBlur,
-                            onCheckedChange = onNavigationBarFrostedBlurChange,
+                            onCheckedChange = onFrostedBlurChange,
                         )
                         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S && navigationBarFrostedBlur) {
+                            Text(
+                                text = stringResource(R.string.navigation_bar_frosted_blur_unsupported),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(start = 56.dp, top = 4.dp, end = 16.dp),
+                            )
+                        }
+                    }
+                }
+
+                item {
+                    Column {
+                        SwitchPreference(
+                            title = { Text(stringResource(R.string.navigation_bar_tint_frosted_blur)) },
+                            description = stringResource(R.string.navigation_bar_tint_frosted_blur_desc),
+                            icon = { Icon(painterResource(R.drawable.blur_on), null) },
+                            checked = navigationBarTintFrostedBlur,
+                            onCheckedChange = onTintFrostedBlurChange,
+                        )
+                        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S && navigationBarTintFrostedBlur) {
                             Text(
                                 text = stringResource(R.string.navigation_bar_frosted_blur_unsupported),
                                 style = MaterialTheme.typography.bodySmall,

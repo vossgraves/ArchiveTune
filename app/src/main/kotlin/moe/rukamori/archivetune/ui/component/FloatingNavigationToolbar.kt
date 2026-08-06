@@ -163,6 +163,7 @@ fun FloatingNavigationToolbar(
     isPairedWithMiniPlayer: Boolean = false,
     style: NavigationBarStyle = NavigationBarStyle.DEFAULT,
     frostedBlur: Boolean = false,
+    tintFrostedBlur: Boolean = false,
     frostedBackdrop: NavigationBarBackdrop? = null,
     isSelected: (Screens) -> Boolean,
     onItemClick: (Screens, Boolean) -> Unit,
@@ -205,17 +206,27 @@ fun FloatingNavigationToolbar(
     // The Settings screen surfaces a "not supported on Android versions below 12" warning under
     // the toggle when running on pre-S.
     val isPreS = Build.VERSION.SDK_INT < Build.VERSION_CODES.S
-    val canBlurBackdrop = frostedBlur && frostedBackdrop != null && !isPreS
+    // Either frosted variant enables backdrop blur. The tint variant additionally tints the
+    // bar surface with the accent (primary) color so the frost reads as a colored glass.
+    val anyFrosted = frostedBlur || tintFrostedBlur
+    val canBlurBackdrop = anyFrosted && frostedBackdrop != null && !isPreS
     val navigationContainerColor =
         if (pureBlack) {
             Color.Black
         } else {
-            // Apply user-configured opacity (always) and transparency (only when frosted blur
-            // is off — when frosted blur is on, the frost overlay already provides the
-            // see-through effect and adding transparency here would double-count).
-            val baseColor = MaterialTheme.colorScheme.surfaceContainer
+            // Apply user-configured opacity (always) and transparency (only when no frosted
+            // variant is active — when frosted blur is on, the frost overlay already provides
+            // the see-through effect and adding transparency here would double-count).
+            val baseColor =
+                if (tintFrostedBlur) {
+                    // Tint variant: use the accent color as the bar base so the frosted
+                    // overlay reads as a colored glass rather than a neutral one.
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.surfaceContainer
+                }
             val effectiveAlpha =
-                navBarOpacity * (if (frostedBlur) 1f else (1f - navBarTransparency))
+                navBarOpacity * (if (anyFrosted) 1f else (1f - navBarTransparency))
             baseColor.copy(alpha = effectiveAlpha.coerceIn(0.05f, 1f))
         }
     val motionScheme = MaterialTheme.motionScheme
@@ -237,6 +248,8 @@ fun FloatingNavigationToolbar(
 
     // The built-in per-item indicator just fades in place; hide it so our single pill can slide
     // between items instead. On pure-black we also pin the icon/label colors for contrast.
+    // For the tint-frosted variant, the bar surface is the primary color, so icons/labels use
+    // onPrimary for contrast (selected = full opacity, unselected = 60% opacity).
     val itemColors =
         when {
             isFloating ->
@@ -256,6 +269,14 @@ fun FloatingNavigationToolbar(
                     selectedTextColor = Color.White,
                     unselectedIconColor = Color.White.copy(alpha = 0.6f),
                     unselectedTextColor = Color.White.copy(alpha = 0.6f),
+                )
+            tintFrostedBlur ->
+                ShortNavigationBarItemDefaults.colors(
+                    selectedIndicatorColor = Color.Transparent,
+                    selectedIconColor = MaterialTheme.colorScheme.onPrimary,
+                    selectedTextColor = MaterialTheme.colorScheme.onPrimary,
+                    unselectedIconColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.6f),
+                    unselectedTextColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.6f),
                 )
             else -> ShortNavigationBarItemDefaults.colors(selectedIndicatorColor = Color.Transparent)
         }
@@ -379,7 +400,12 @@ fun FloatingNavigationToolbar(
             ShortNavigationBar(
                 modifier = Modifier.fillMaxSize(),
                 containerColor = Color.Transparent,
-                contentColor = if (pureBlack) Color.White else MaterialTheme.colorScheme.onSurface,
+                contentColor =
+                    when {
+                        pureBlack -> Color.White
+                        tintFrostedBlur -> MaterialTheme.colorScheme.onPrimary
+                        else -> MaterialTheme.colorScheme.onSurface
+                    },
                 windowInsets = WindowInsets(0, 0, 0, 0),
                 arrangement = ShortNavigationBarArrangement.EqualWeight,
             ) {

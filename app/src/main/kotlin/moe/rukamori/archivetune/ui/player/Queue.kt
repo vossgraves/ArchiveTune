@@ -680,6 +680,12 @@ fun Queue(
         val headerItems = 1
         val lazyListState = rememberLazyListState()
         var dragInfo by remember { mutableStateOf<QueueDragInfo?>(null) }
+        // UIDs of items that we just committed via moveMediaItem. Used to skip the
+        // mutableQueueWindows reset for ONE LaunchedEffect cycle so the player's
+        // timeline update has time to propagate. Without this, the else-branch
+        // resets mutableQueueWindows to the OLD queueWindows (before the move),
+        // causing the dragged item to "snap back" to its original position.
+        var justCommittedDragUid by remember { mutableStateOf<Any?>(null) }
 
         val currentPlayingUid =
             remember(currentWindowIndex, queueWindows) {
@@ -768,6 +774,10 @@ fun Queue(
                     destinationIndex != null &&
                     sourceIndex != destinationIndex
                 ) {
+                    // Mark this drag as just-committed so the next LaunchedEffect
+                    // invocation (triggered by the player's onTimelineChanged)
+                    // doesn't reset mutableQueueWindows to the pre-move order.
+                    justCommittedDragUid = completedDrag.draggedItemUid
                     if (!playerConnection.player.shuffleModeEnabled) {
                         playerConnection.player.moveMediaItem(sourceIndex, destinationIndex)
                     } else {
@@ -784,6 +794,18 @@ fun Queue(
                     }
                     return@LaunchedEffect
                 }
+            }
+
+            // If we just committed a drag, skip the reset for one cycle to let
+            // the player's timeline update propagate. The next LaunchedEffect
+            // invocation (with the updated queueWindows) will clear the flag
+            // and apply the reset using the post-move order.
+            if (justCommittedDragUid != null) {
+                justCommittedDragUid = null
+                // Keep the local drag move visible until the player's queue
+                // update arrives. The next LaunchedEffect (triggered by the
+                // queueWindows change from onTimelineChanged) will do the reset.
+                return@LaunchedEffect
             }
 
             // Only display the current song and upcoming songs in the queue list.

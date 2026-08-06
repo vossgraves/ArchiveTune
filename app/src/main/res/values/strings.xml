@@ -552,6 +552,8 @@
     <string name="navigation_bar_frosted_blur">Frosted navigation bar</string>
     <string name="navigation_bar_frosted_blur_desc">Apply a frosted blur behind the navigation bar</string>
     <string name="navigation_bar_frosted_blur_unsupported">Frosted navigation bar is not supported on Android versions below 12</string>
+    <string name="navigation_bar_tint_frosted_blur">Tint frosted navigation bar</string>
+    <string name="navigation_bar_tint_frosted_blur_desc">Frosted blur tinted with the accent color (turns off the neutral frosted option)</string>
     <string name="hide_navigation_bar_labels">Hide labels in navigation bar</string>
     <string name="hide_navigation_bar_labels_desc">Show only icons in the bottom navigation bar</string>
     <string name="navigation_bar_settings_title">Navigation bar</string>

@@ -84,6 +84,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
+import moe.rukamori.archivetune.ui.component.ItemThumbnail
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
@@ -682,13 +683,13 @@ private fun DownloadEntry(
                 }
             },
             leadingContent = {
-                AsyncImage(
-                    model = entry.thumbnailUrl,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    placeholder = painterResource(entry.placeholderIcon()),
-                    error = painterResource(entry.placeholderIcon()),
-                    modifier = Modifier.size(64.dp).clip(MaterialTheme.shapes.medium),
+                ItemThumbnail(
+                    thumbnailUrl = entry.thumbnailUrl,
+                    isActive = false,
+                    isPlaying = false,
+                    shape = MaterialTheme.shapes.medium,
+                    placeholderIconRes = entry.placeholderIcon(),
+                    modifier = Modifier.size(64.dp),
                 )
             },
             trailingContent = {
