@@ -57,7 +57,6 @@ import moe.rukamori.archivetune.viewmodels.AiContentFilterSettingsEffect
 import moe.rukamori.archivetune.viewmodels.AiContentFilterSettingsState
 import moe.rukamori.archivetune.viewmodels.ContentSettingsViewModel
 import java.util.Locale
-import moe.rukamori.archivetune.ui.component.FrostedTopAppBar
 
 @Composable
 fun ContentSettings(
@@ -300,10 +299,19 @@ fun ContentSettings(
         }
     }
 
-    FrostedTopAppBar(
-        titleRes = R.string.content,
-        onBack = navController::navigateUp,
-        onBackLongClick = navController::backToMain,
+    TopAppBar(
+        title = { Text(stringResource(R.string.content)) },
+        navigationIcon = {
+            IconButton(
+                onClick = navController::navigateUp,
+                onLongClick = navController::backToMain,
+            ) {
+                Icon(
+                    painterResource(R.drawable.arrow_back),
+                    contentDescription = null,
+                )
+            }
+        },
     )
 
     Box(Modifier.fillMaxSize()) {

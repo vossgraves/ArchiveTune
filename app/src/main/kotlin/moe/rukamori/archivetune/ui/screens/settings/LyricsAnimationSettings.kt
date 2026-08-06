@@ -33,7 +33,6 @@ import moe.rukamori.archivetune.constants.LyricsV2BounceFactorKey
 import moe.rukamori.archivetune.constants.LyricsV2FillTransitionWidthKey
 import moe.rukamori.archivetune.constants.LyricsV2GlowFactorKey
 import moe.rukamori.archivetune.constants.LyricsV2LrcBounceEnabledKey
-import moe.rukamori.archivetune.ui.component.FrostedTopAppBar
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
@@ -50,10 +49,19 @@ fun LyricsAnimationSettings(navController: NavController) {
 
     Scaffold(
         topBar = {
-            FrostedTopAppBar(
-                titleRes = R.string.lyrics_animation_style,
-                onBack = navController::navigateUp,
-                onBackLongClick = navController::backToMain,
+            TopAppBar(
+                title = { Text(text = stringResource(R.string.lyrics_animation_style)) },
+                navigationIcon = {
+                    IconButton(
+                        onClick = navController::navigateUp,
+                        onLongClick = navController::backToMain,
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.arrow_back),
+                            contentDescription = null,
+                        )
+                    }
+                },
             )
         },
     ) { innerPadding ->

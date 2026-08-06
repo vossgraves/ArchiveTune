@@ -43,7 +43,6 @@ import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.QobuzTokensKey
 import moe.rukamori.archivetune.qobuz.QobuzToken
-import moe.rukamori.archivetune.ui.component.FrostedTopAppBar
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.TextFieldDialog
 import moe.rukamori.archivetune.ui.utils.backToMain
@@ -232,10 +231,16 @@ fun QobuzLoginScreen(navController: NavController) {
         }
     }
 
-    FrostedTopAppBar(
-        titleRes = R.string.qobuz_login,
-        onBack = navController::navigateUp,
-        onBackLongClick = navController::backToMain,
+    TopAppBar(
+        title = { Text(stringResource(R.string.qobuz_login)) },
+        navigationIcon = {
+            IconButton(
+                onClick = navController::navigateUp,
+                onLongClick = navController::backToMain,
+            ) {
+                Icon(painterResource(R.drawable.arrow_back), contentDescription = null)
+            }
+        },
     )
 
     BackHandler(enabled = webView?.canGoBack() == true) {

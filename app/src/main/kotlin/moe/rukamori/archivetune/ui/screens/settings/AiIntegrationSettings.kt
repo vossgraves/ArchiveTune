@@ -101,7 +101,6 @@ import moe.rukamori.archivetune.constants.AutoTranslateLyricsKey
 import moe.rukamori.archivetune.constants.HideAiMixKey
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.EditTextPreference
-import moe.rukamori.archivetune.ui.component.FrostedTopAppBar
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.ListPreference
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
@@ -373,10 +372,19 @@ fun AiIntegrationSettings(
         }
     }
 
-    FrostedTopAppBar(
-        titleRes = R.string.ai_integration,
-        onBack = navController::navigateUp,
-        onBackLongClick = navController::backToMain,
+    TopAppBar(
+        title = { Text(stringResource(R.string.ai_integration)) },
+        navigationIcon = {
+            IconButton(
+                onClick = navController::navigateUp,
+                onLongClick = navController::backToMain,
+            ) {
+                Icon(
+                    painterResource(R.drawable.arrow_back),
+                    contentDescription = stringResource(R.string.back_button_desc),
+                )
+            }
+        },
     )
 }
 

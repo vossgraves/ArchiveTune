@@ -72,7 +72,6 @@ import moe.rukamori.archivetune.viewmodels.LastFmSettingsViewModel
 import moe.rukamori.archivetune.viewmodels.LastFmTimingEditorUiModel
 import moe.rukamori.archivetune.viewmodels.LastFmTimingSetting
 import kotlin.math.roundToInt
-import moe.rukamori.archivetune.ui.component.FrostedTopAppBar
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -85,11 +84,20 @@ fun LastFMSettings(
 
     Scaffold(
         topBar = {
-            FrostedTopAppBar(
-        titleRes = R.string.lastfm_integration,
-        onBack = navController::navigateUp,
-        onBackLongClick = navController::backToMain,
-    )
+            TopAppBar(
+                title = { Text(stringResource(R.string.lastfm_integration)) },
+                navigationIcon = {
+                    IconButton(
+                        onClick = navController::navigateUp,
+                        onLongClick = navController::backToMain,
+                    ) {
+                        Icon(
+                            painterResource(R.drawable.arrow_back),
+                            contentDescription = null,
+                        )
+                    }
+                },
+            )
         },
     ) { innerPadding ->
         val topPadding = innerPadding.calculateTopPadding()

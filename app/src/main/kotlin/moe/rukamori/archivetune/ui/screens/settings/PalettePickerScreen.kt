@@ -108,7 +108,6 @@ import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.CustomThemeColorKey
 import moe.rukamori.archivetune.constants.DynamicThemeKey
-import moe.rukamori.archivetune.ui.component.FrostedTopAppBar
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.svg.DynamicSVGImage
 import moe.rukamori.archivetune.ui.svg.PALETTE
@@ -1004,10 +1003,17 @@ fun PalettePickerScreen(navController: NavController) {
 
     Scaffold(
         topBar = {
-            FrostedTopAppBar(
-                titleRes = R.string.color_palette,
-                onBack = navController::navigateUp,
-                onBackLongClick = navController::backToMain,
+            TopAppBar(
+                title = { Text(stringResource(R.string.color_palette)) },
+                navigationIcon = {
+                    IconButton(
+                        onClick = navController::navigateUp,
+                        onLongClick = navController::backToMain,
+                    ) {
+                        Icon(painterResource(R.drawable.arrow_back), contentDescription = null)
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
             )
         },
         floatingActionButton = {
@@ -1182,10 +1188,16 @@ fun ThemeCreatorScreen(navController: NavController) {
 
     Scaffold(
         topBar = {
-            FrostedTopAppBar(
-                titleRes = R.string.theme_creator_title,
-                onBack = navController::navigateUp,
-                onBackLongClick = navController::backToMain,
+            TopAppBar(
+                title = { Text(text = stringResource(R.string.theme_creator_title)) },
+                navigationIcon = {
+                    IconButton(
+                        onClick = navController::navigateUp,
+                        onLongClick = navController::backToMain,
+                    ) {
+                        Icon(painter = painterResource(R.drawable.arrow_back), contentDescription = null)
+                    }
+                },
                 actions = {
                     TextButton(
                         onClick = {
@@ -1203,6 +1215,7 @@ fun ThemeCreatorScreen(navController: NavController) {
                         Text(text = stringResource(R.string.save))
                     }
                 },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
             )
         },
         floatingActionButton = {

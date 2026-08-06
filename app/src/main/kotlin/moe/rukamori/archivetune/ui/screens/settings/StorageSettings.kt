@@ -111,7 +111,6 @@ import moe.rukamori.archivetune.viewmodels.StorageMigrationUiModel
 import moe.rukamori.archivetune.viewmodels.StorageMigrationUiPhase
 import moe.rukamori.archivetune.viewmodels.StorageSettingsScreenState
 import moe.rukamori.archivetune.viewmodels.StorageSettingsViewModel
-import moe.rukamori.archivetune.ui.component.FrostedTopAppBar
 
 @OptIn(ExperimentalCoilApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -302,11 +301,20 @@ fun StorageSettings(
 
     Scaffold(
         topBar = {
-            FrostedTopAppBar(
-        titleRes = R.string.storage,
-        onBack = navController::navigateUp,
-        onBackLongClick = navController::backToMain,
-    )
+            TopAppBar(
+                title = { Text(stringResource(R.string.storage)) },
+                navigationIcon = {
+                    IconButton(
+                        onClick = navController::navigateUp,
+                        onLongClick = navController::backToMain,
+                    ) {
+                        Icon(
+                            painterResource(R.drawable.arrow_back),
+                            contentDescription = null,
+                        )
+                    }
+                },
+            )
         },
         snackbarHost = {
             SnackbarHost(

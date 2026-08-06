@@ -58,7 +58,6 @@ import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.SwitchPreference
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.rememberPreference
-import moe.rukamori.archivetune.ui.component.FrostedTopAppBar
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -173,11 +172,20 @@ fun PrivacySettings(navController: NavController, scrollTo: String? = null) {
 
     Scaffold(
         topBar = {
-            FrostedTopAppBar(
-        titleRes = R.string.settings_behavior_title,
-        onBack = navController::navigateUp,
-        onBackLongClick = navController::backToMain,
-    )
+            TopAppBar(
+                title = { Text(stringResource(R.string.settings_behavior_title)) },
+                navigationIcon = {
+                    IconButton(
+                        onClick = navController::navigateUp,
+                        onLongClick = navController::backToMain,
+                    ) {
+                        Icon(
+                            painterResource(R.drawable.arrow_back),
+                            contentDescription = null,
+                        )
+                    }
+                },
+            )
         },
     ) { innerPadding ->
         val topPadding = innerPadding.calculateTopPadding()

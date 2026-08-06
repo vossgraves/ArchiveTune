@@ -90,12 +90,16 @@ import moe.rukamori.archivetune.db.entities.Album
 import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.playback.queues.LocalAlbumRadio
 import moe.rukamori.archivetune.ui.component.IconButton
+import moe.rukamori.archivetune.ui.component.LiquidGlassActionPill
+import moe.rukamori.archivetune.ui.component.LiquidGlassIconButton
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.MediaDetailAction
 import moe.rukamori.archivetune.ui.component.MediaDetailHero
 import moe.rukamori.archivetune.ui.component.NavigationTitle
 import moe.rukamori.archivetune.ui.component.SongListItem
 import moe.rukamori.archivetune.ui.component.YouTubeGridItem
+import moe.rukamori.archivetune.ui.component.layerBackdrop
+import moe.rukamori.archivetune.ui.component.rememberBackdrop
 import moe.rukamori.archivetune.ui.component.shimmer.ButtonPlaceholder
 import moe.rukamori.archivetune.ui.component.shimmer.ListItemPlaceHolder
 import moe.rukamori.archivetune.ui.component.shimmer.ShimmerHost
@@ -290,7 +294,15 @@ fun AlbumScreen(
                         ).joinToString(MediaDetailMetadataSeparator)
                     val isBookmarked = albumWithSongs.album.bookmarkedAt != null
 
-                    MediaDetailHero(
+                    // SimpMusic-style liquid glass backdrop source: wraps the
+                    // MediaDetailHero so the floating circular back button
+                    // (top-start) and the heart+more pill (top-end) can sample
+                    // the artwork behind them. Glass buttons MUST be siblings
+                    // of the backdrop source (not children) to avoid the
+                    // RuntimeShader render-feedback loop.
+                    val artworkBackdrop = rememberBackdrop(Color.Black)
+                    Box(modifier = Modifier.layerBackdrop(artworkBackdrop)) {
+                        MediaDetailHero(
                         title = albumWithSongs.album.title,
                         thumbnailUrl = albumWithSongs.album.thumbnailUrl,
                         fallbackIcon = R.drawable.album,
@@ -412,6 +424,77 @@ fun AlbumScreen(
                             }
                         },
                     )
+                        // SimpMusic-style floating liquid glass buttons.
+                        // Back button (top-start): circular liquid-glass capsule.
+                        // Heart + more pill (top-end): rounded-rect liquid-glass
+                        // pill hosting the bookmark toggle and the album menu.
+                        // Both float OVER the artwork and scroll out of view
+                        // with the hero (they live inside the header item).
+                        LiquidGlassIconButton(
+                            backdrop = artworkBackdrop,
+                            painter = painterResource(R.drawable.arrow_back),
+                            contentDescription = null,
+                            modifier =
+                                Modifier
+                                    .align(Alignment.TopStart)
+                                    .padding(start = 12.dp, top = systemBarsTopPadding + 12.dp)
+                                    .size(48.dp),
+                            onClick = { navController.navigateUp() },
+                        )
+                        LiquidGlassActionPill(
+                            backdrop = artworkBackdrop,
+                            modifier =
+                                Modifier
+                                    .align(Alignment.TopEnd)
+                                    .padding(end = 12.dp, top = systemBarsTopPadding + 12.dp),
+                        ) {
+                            // Bookmark toggle (heart)
+                            Box(
+                                modifier = Modifier.size(48.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                androidx.compose.material3.IconButton(onClick = {
+                                    database.query {
+                                        update(albumWithSongs.album.toggleLike())
+                                    }
+                                }) {
+                                    Icon(
+                                        painter =
+                                            painterResource(
+                                                if (isBookmarked) R.drawable.favorite else R.drawable.favorite_border,
+                                            ),
+                                        contentDescription = null,
+                                        tint = Color.White,
+                                    )
+                                }
+                            }
+                            // Album menu
+                            Box(
+                                modifier = Modifier.size(48.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                androidx.compose.material3.IconButton(onClick = {
+                                    menuState.show {
+                                        AlbumMenu(
+                                            originalAlbum =
+                                                Album(
+                                                    albumWithSongs.album,
+                                                    albumWithSongs.artists,
+                                                ),
+                                            navController = navController,
+                                            onDismiss = menuState::dismiss,
+                                        )
+                                    }
+                                }) {
+                                    Icon(
+                                        painter = painterResource(R.drawable.more_horiz),
+                                        contentDescription = null,
+                                        tint = Color.White,
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
 
                 // Songs Section Header
@@ -705,27 +788,34 @@ fun AlbumScreen(
                 }
             },
             navigationIcon = {
-                IconButton(
-                    onClick = {
-                        if (selection) {
-                            selection = false
-                        } else {
-                            navController.navigateUp()
-                        }
-                    },
-                    onLongClick = {
-                        if (!selection) {
-                            navController.backToMain()
-                        }
-                    },
-                ) {
-                    Icon(
-                        painter =
-                            painterResource(
-                                if (selection) R.drawable.close else R.drawable.arrow_back,
-                            ),
-                        contentDescription = null,
-                    )
+                // Hide the back arrow when the SimpMusic-style floating liquid
+                // glass back button is visible (artwork shown, not in selection
+                // mode, not scrolled). In selection mode or once the user has
+                // scrolled past the hero, the floating button has scrolled out
+                // of view so we need the TopAppBar's own back/close icon.
+                if (selection || showTopBarTitle) {
+                    IconButton(
+                        onClick = {
+                            if (selection) {
+                                selection = false
+                            } else {
+                                navController.navigateUp()
+                            }
+                        },
+                        onLongClick = {
+                            if (!selection) {
+                                navController.backToMain()
+                            }
+                        },
+                    ) {
+                        Icon(
+                            painter =
+                                painterResource(
+                                    if (selection) R.drawable.close else R.drawable.arrow_back,
+                                ),
+                            contentDescription = null,
+                        )
+                    }
                 }
             },
             actions = {
@@ -771,27 +861,34 @@ fun AlbumScreen(
                         )
                     }
                 } else {
-                    albumWithSongs?.let { currentAlbum ->
-                        IconButton(
-                            onClick = {
-                                menuState.show {
-                                    AlbumMenu(
-                                        originalAlbum =
-                                            Album(
-                                                currentAlbum.album,
-                                                currentAlbum.artists,
-                                            ),
-                                        navController = navController,
-                                        onDismiss = menuState::dismiss,
-                                    )
-                                }
-                            },
-                            onLongClick = {},
-                        ) {
-                            Icon(
-                                painter = painterResource(R.drawable.more_horiz),
-                                contentDescription = stringResource(R.string.more_options),
-                            )
+                    // Hide the more-horiz action when the SimpMusic-style
+                    // floating liquid glass pill is visible (artwork shown,
+                    // not scrolled). Once scrolled, the floating pill has
+                    // scrolled out of view, so the TopAppBar's own more
+                    // button takes over.
+                    if (showTopBarTitle) {
+                        albumWithSongs?.let { currentAlbum ->
+                            IconButton(
+                                onClick = {
+                                    menuState.show {
+                                        AlbumMenu(
+                                            originalAlbum =
+                                                Album(
+                                                    currentAlbum.album,
+                                                    currentAlbum.artists,
+                                                ),
+                                            navController = navController,
+                                            onDismiss = menuState::dismiss,
+                                        )
+                                    }
+                                },
+                                onLongClick = {},
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.more_horiz),
+                                    contentDescription = stringResource(R.string.more_options),
+                                )
+                            }
                         }
                     }
                 }

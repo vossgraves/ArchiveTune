@@ -60,7 +60,6 @@ import moe.rukamori.archivetune.BuildConfig
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.ui.component.IconButton
-import moe.rukamori.archivetune.ui.component.LargeFrostedTopAppBar
 import moe.rukamori.archivetune.ui.component.LocalSettingsDialogShowing
 import moe.rukamori.archivetune.ui.component.rememberSettingsDialogHostState
 import moe.rukamori.archivetune.ui.utils.appBarScrollBehavior
@@ -429,10 +428,29 @@ fun SettingsScreen(
             containerColor = MaterialTheme.colorScheme.surface,
             contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
-            LargeFrostedTopAppBar(
-                titleRes = R.string.settings,
-                onBack = navController::navigateUp,
-                onBackLongClick = navController::backToMain,
+            LargeFlexibleTopAppBar(
+                title = {
+                    Text(
+                        text = stringResource(R.string.settings),
+                        fontWeight = FontWeight.Bold,
+                    )
+                },
+                navigationIcon = {
+                    IconButton(
+                        onClick = navController::navigateUp,
+                        onLongClick = navController::backToMain,
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.arrow_back),
+                            contentDescription = stringResource(R.string.back_button_desc),
+                        )
+                    }
+                },
+                colors =
+                    TopAppBarDefaults.largeTopAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        scrolledContainerColor = Color.Transparent,
+                    ),
                 scrollBehavior = scrollBehavior,
             )
         },

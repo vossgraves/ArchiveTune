@@ -87,7 +87,6 @@ import moe.rukamori.archivetune.ui.component.TextFieldDialog
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.dataStore
 import moe.rukamori.archivetune.utils.rememberPreference
-import moe.rukamori.archivetune.ui.component.FrostedTopAppBar
 
 /**
  * Process-lived cache of the last instance health-check results so the checked status (and ping)
@@ -403,11 +402,20 @@ fun TidalSettings(navController: NavController, scrollTo: String? = null) {
 
     Scaffold(
         topBar = {
-            FrostedTopAppBar(
-        titleRes = R.string.tidal_integration,
-        onBack = navController::navigateUp,
-        onBackLongClick = navController::backToMain,
-    )
+            TopAppBar(
+                title = { Text(stringResource(R.string.tidal_integration)) },
+                navigationIcon = {
+                    IconButton(
+                        onClick = navController::navigateUp,
+                        onLongClick = navController::backToMain,
+                    ) {
+                        Icon(
+                            painterResource(R.drawable.arrow_back),
+                            contentDescription = null,
+                        )
+                    }
+                },
+            )
         },
     ) { innerPadding ->
         val topPadding = innerPadding.calculateTopPadding()

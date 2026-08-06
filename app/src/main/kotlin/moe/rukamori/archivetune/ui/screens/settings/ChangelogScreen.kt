@@ -33,7 +33,6 @@ import moe.rukamori.archivetune.utils.ReleaseInfo
 import moe.rukamori.archivetune.utils.Updater
 import java.text.SimpleDateFormat
 import java.util.Locale
-import moe.rukamori.archivetune.ui.component.FrostedTopAppBar
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -79,11 +78,20 @@ fun ChangelogScreen(
 
     Scaffold(
         topBar = {
-            FrostedTopAppBar(
-        titleRes = R.string.changelog,
-        onBack = navController::navigateUp,
-        onBackLongClick = navController::backToMain,
-    )
+            TopAppBar(
+                title = { Text(stringResource(R.string.changelog)) },
+                navigationIcon = {
+                    IconButton(
+                        onClick = navController::navigateUp,
+                        onLongClick = navController::backToMain,
+                    ) {
+                        Icon(
+                            painterResource(R.drawable.arrow_back),
+                            contentDescription = null,
+                        )
+                    }
+                },
+            )
         },
     ) { paddingValues ->
         Box(

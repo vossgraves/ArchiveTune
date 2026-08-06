@@ -497,6 +497,10 @@ dependencies {
 
     implementation(libs.apache.lang3)
 
+    // Liquid glass / backdrop blur effect for the SimpMusic-style floating
+    // header pills on album / artist / playlist screens.
+    implementation(libs.liquid.glass)
+
     implementation(libs.hilt)
     implementation(libs.re2j)
     annotationProcessor(libs.kotlin.metadata.jvm)

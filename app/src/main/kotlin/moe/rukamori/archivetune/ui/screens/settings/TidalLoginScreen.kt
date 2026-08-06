@@ -57,7 +57,6 @@ import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.dataStore
 import moe.rukamori.archivetune.utils.resetAuthWebViewSession
 import java.util.concurrent.atomic.AtomicBoolean
-import moe.rukamori.archivetune.ui.component.FrostedTopAppBar
 
 const val TIDAL_LOGIN_ROUTE = "settings/tidal/login"
 
@@ -249,10 +248,19 @@ fun TidalLoginScreen(navController: NavController) {
         },
     )
 
-    FrostedTopAppBar(
-        titleRes = R.string.tidal_login,
-        onBack = navController::navigateUp,
-        onBackLongClick = navController::backToMain,
+    TopAppBar(
+        title = { Text(stringResource(R.string.tidal_login)) },
+        navigationIcon = {
+            IconButton(
+                onClick = navController::navigateUp,
+                onLongClick = navController::backToMain,
+            ) {
+                Icon(
+                    painterResource(R.drawable.arrow_back),
+                    contentDescription = null,
+                )
+            }
+        },
     )
 
     BackHandler(enabled = webView?.canGoBack() == true) {

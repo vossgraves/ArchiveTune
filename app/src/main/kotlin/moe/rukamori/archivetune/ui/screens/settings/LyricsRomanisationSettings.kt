@@ -42,7 +42,6 @@ import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.SwitchPreference
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.rememberPreference
-import moe.rukamori.archivetune.ui.component.FrostedTopAppBar
 
 /**
  * Romanisation sub-page (Task 3): houses every per-language romanisation toggle that
@@ -66,11 +65,20 @@ fun LyricsRomanisationSettings(navController: NavController) {
 
     Scaffold(
         topBar = {
-            FrostedTopAppBar(
-        titleRes = R.string.romanization,
-        onBack = navController::navigateUp,
-        onBackLongClick = navController::backToMain,
-    )
+            TopAppBar(
+                title = { Text(stringResource(R.string.romanization)) },
+                navigationIcon = {
+                    IconButton(
+                        onClick = navController::navigateUp,
+                        onLongClick = navController::backToMain,
+                    ) {
+                        Icon(
+                            painterResource(R.drawable.arrow_back),
+                            contentDescription = null,
+                        )
+                    }
+                },
+            )
         },
     ) { innerPadding ->
         val scrollState = rememberScrollState()
