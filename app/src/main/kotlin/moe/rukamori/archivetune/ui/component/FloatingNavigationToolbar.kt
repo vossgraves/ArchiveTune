@@ -141,6 +141,41 @@ val LocalNavigationBarBackdrop = compositionLocalOf<NavigationBarBackdrop?> { nu
 private val NavigationItemsMaxWidth = 360.dp
 private val NavigationItemVerticalPadding = 8.dp
 
+// ─── SukiSU-Ultra Liquid Glass nav bar dimensions ───────────────────────────
+// Ported EXACTLY from com.sukisu.ultra.ui.component.FloatingBottomBar
+// (https://github.com/sukisu-ultra/sukisu-ultra/blob/main/manager/app/src/main/java/com/sukisu/ultra/ui/component/FloatingBottomBar.kt).
+// When the Liquid Glass nav bar is active, these dimensions OVERRIDE the user's
+// customization preferences — the Liquid Glass bar uses SukiSU's exact dimensions
+// to match the reference look pixel-for-pixel. The user explicitly asked for this:
+// "Port exactly same height, behaviour, appearance, working, height and width of
+// glass navigation bar, highlighted icon and label exactly same from suki su.
+// just keep the visibility change. Customisation of navigation bar in Liquid
+// Glass should be unavailable because it should use the exact same dimensions
+// from suki su for everything".
+//
+// SukiSU's FloatingBottomBar layout:
+//   Row(.height(64.dp).padding(4.dp))  ← outer bar, 64dp tall, 4dp padding on ALL sides
+//     └─ items (Column per tab, fillMaxHeight, weight(1f))
+//   Pill: .height(56.dp).width(tabWidthDp)  ← matches content area (64 - 2×4 = 56dp)
+//
+// The 4.dp padding on the items Row means:
+//   - The items Row's content area is 8.dp narrower than the bar's outer width
+//     (4.dp on each side).
+//   - The items Row's content area is 8.dp shorter than the bar's outer height
+//     (4.dp on top + 4.dp on bottom).
+//   - The pill (sized to the item bounds) therefore has a 4.dp inset from the
+//     bar's edges on ALL sides — matching SukiSU's "pill floats inside the bar
+//     with breathing room on every edge" look.
+//
+// SukiSU's tabWidthPx calculation:
+//   totalWidthPx = coords.size.width  (the OUTER Row width, including padding)
+//   contentWidthPx = totalWidthPx - 8.dp.toPx()  (subtract horizontal padding)
+//   tabWidthPx = contentWidthPx / tabsCount
+//
+// We replicate this exactly when canLiquidGlass is true.
+private val SukiSUBarHeight = 64.dp
+private val SukiSUItemPadding = 4.dp // applied to the items Row on ALL sides (matches SukiSU's Row.padding(4.dp))
+
 // Frosted nav-bar backdrop blur radius, in px (RenderEffect works in raw pixels).
 private const val FrostedNavBarBlurRadiusPx = 60f
 
@@ -206,22 +241,6 @@ fun FloatingNavigationToolbar(
         rememberPreference(NavigationBarLabelSpacingKey, defaultValue = NAVIGATION_BAR_LABEL_SPACING_DEFAULT)
     val (navBarCornerRadius) =
         rememberPreference(NavigationBarCornerRadiusKey, defaultValue = NAVIGATION_BAR_CORNER_RADIUS_DEFAULT)
-    val resolvedBarHeight = NavigationBarHeight * navBarHeightMultiplier
-    val navigationShape =
-        remember(isPairedWithMiniPlayer, isFloating, navBarCornerRadius) {
-            when {
-                // A detached pill keeps the user-configurable corner radius (default 28 dp).
-                isFloating -> RoundedCornerShape(navBarCornerRadius.dp)
-                isPairedWithMiniPlayer ->
-                    RoundedCornerShape(
-                        topStart = 12.dp,
-                        topEnd = 12.dp,
-                        bottomStart = navBarCornerRadius.dp,
-                        bottomEnd = navBarCornerRadius.dp,
-                    )
-                else -> null
-            }
-        } ?: MaterialTheme.shapes.extraLarge
     // True backdrop blur on Android 12+ uses RenderEffect (hardware-accelerated, every frame).
     // Below API 31 the frosted effect is disabled entirely: the pre-S CPU-blurred-bitmap fallback
     // produced visible glitches and tearing on older devices, so we degrade to a plain solid bar.
@@ -236,6 +255,43 @@ fun FloatingNavigationToolbar(
     // available (Android 12+), and not in pure-black mode (the liquid glass effect
     // needs a translucent surface to show the backdrop through).
     val canLiquidGlass = liquidGlass && liquidGlassBackdrop != null && !isPreS && !pureBlack
+    // SukiSU-Ultra: when the Liquid Glass nav bar is active, OVERRIDE the user's
+    // height multiplier with SukiSU's exact 64.dp bar height. The user's
+    // customization preferences are ignored for the Liquid Glass variant —
+    // it always uses SukiSU's dimensions. The non-Liquid-Glass variants
+    // continue to respect the user's navBarHeightMultiplier.
+    val resolvedBarHeight =
+        if (canLiquidGlass) SukiSUBarHeight else NavigationBarHeight * navBarHeightMultiplier
+    // SukiSU-Ultra: when the Liquid Glass nav bar is active, the items Row uses
+    // 4.dp padding on ALL sides (matching SukiSU's Row.padding(4.dp)). The non-
+    // Liquid-Glass variants keep the original 8.dp vertical-only padding.
+    val itemVerticalPadding =
+        if (canLiquidGlass) SukiSUItemPadding else NavigationItemVerticalPadding
+    val itemHorizontalPadding = if (canLiquidGlass) SukiSUItemPadding else 0.dp
+    // SukiSU-Ultra: when the Liquid Glass nav bar is active, the bar's outer shape
+    // is ALWAYS a fully-rounded pill (CircleShape ≡ RoundedCornerShape(percent = 50)),
+    // matching SukiSU's FloatingBottomBar which uses `val pillShape = remember { CircleShape }`.
+    // The user's navBarCornerRadius preference is IGNORED for the Liquid Glass variant.
+    // The non-Liquid-Glass variants keep the original user-configurable corner radius.
+    val navigationShape =
+        if (canLiquidGlass) {
+            RoundedCornerShape(percent = 50)
+        } else {
+            remember(isPairedWithMiniPlayer, isFloating, navBarCornerRadius) {
+                when {
+                    // A detached pill keeps the user-configurable corner radius (default 28 dp).
+                    isFloating -> RoundedCornerShape(navBarCornerRadius.dp)
+                    isPairedWithMiniPlayer ->
+                        RoundedCornerShape(
+                            topStart = 12.dp,
+                            topEnd = 12.dp,
+                            bottomStart = navBarCornerRadius.dp,
+                            bottomEnd = navBarCornerRadius.dp,
+                        )
+                    else -> null
+                }
+            } ?: MaterialTheme.shapes.extraLarge
+        }
     val navigationContainerColor =
         if (pureBlack) {
             Color.Black
@@ -807,11 +863,22 @@ fun FloatingNavigationToolbar(
                                             // panelOffset. The pill is centered within the slide
                                             // slot via (tabWidthPx - pillWidthPx) / 2.
                                             //
+                                            // SukiSU-Ultra: the pill's X also accounts for the
+                                            // items Row's horizontal padding (itemHorizontalPadding),
+                                            // which is 4.dp when canLiquidGlass. The pill is
+                                            // positioned at `itemsRowLeftInContainer +
+                                            // itemHorizontalPadding + slide_offset` so it starts
+                                            // at the items Row's CONTENT left edge (not the outer
+                                            // Row left edge) — matching SukiSU's "pill is inset
+                                            // 4.dp from the bar's left edge" look.
+                                            //
                                             // For non-LG variants, keep the existing indicatorX
                                             // Animatable path (snappy spring slide on tap).
                                             val x = if (canLiquidGlass && dampedDragAnimation != null && tabWidthPx > 0f) {
                                                 val pillWidthPx = pillWidth.toPx()
+                                                val hPaddingPx = itemHorizontalPadding.toPx()
                                                 itemsRowLeftInContainer +
+                                                    hPaddingPx +
                                                     dampedDragAnimation.value * tabWidthPx +
                                                     (tabWidthPx - pillWidthPx) / 2f +
                                                     panelOffset
@@ -899,7 +966,16 @@ fun FloatingNavigationToolbar(
                                 .widthIn(max = NavigationItemsMaxWidth)
                                 .fillMaxWidth()
                                 .fillMaxHeight()
-                                .padding(vertical = NavigationItemVerticalPadding)
+                                // SukiSU-Ultra: when Liquid Glass is active, the items Row uses
+                                // 4.dp padding on ALL sides (matching SukiSU's Row.padding(4.dp)).
+                                // This gives the pill a 4.dp inset from the bar's edges on every
+                                // side — the "pill floats inside the bar with breathing room"
+                                // look. The non-Liquid-Glass variants keep the original 8.dp
+                                // vertical-only padding (no horizontal padding).
+                                .padding(
+                                    vertical = itemVerticalPadding,
+                                    horizontal = itemHorizontalPadding,
+                                )
                                 .onGloballyPositioned { coordinates ->
                                     // Track the items Row's geometry so the sliding pill can:
                                     //   1. Compute its X position from dampedDragAnimation.value
@@ -911,7 +987,18 @@ fun FloatingNavigationToolbar(
                                     val rowPosInRoot = coordinates.positionInRoot()
                                     itemsRowLeftInContainer = rowPosInRoot.x - containerPos.x
                                     totalWidthPx = coordinates.size.width.toFloat()
-                                    tabWidthPx = if (tabsCount > 0) (totalWidthPx / tabsCount).coerceAtLeast(0f) else 0f
+                                    // SukiSU-Ultra: SukiSU's FloatingBottomBar computes tabWidthPx
+                                    // as `(totalWidthPx - 8.dp.toPx()) / tabsCount` — i.e. it
+                                    // SUBTRACTS the horizontal padding from the outer Row width
+                                    // before dividing by tabsCount, so the pill spans the actual
+                                    // CONTENT width (not the outer Row width including padding).
+                                    // We replicate this exactly when canLiquidGlass is true.
+                                    // The non-Liquid-Glass variants keep the original behavior
+                                    // (tabWidthPx = totalWidthPx / tabsCount) since they have no
+                                    // horizontal padding.
+                                    val horizontalPaddingPx = with(density) { itemHorizontalPadding.toPx() }
+                                    val contentWidthPx = (totalWidthPx - 2f * horizontalPaddingPx).coerceAtLeast(0f)
+                                    tabWidthPx = if (tabsCount > 0) (contentWidthPx / tabsCount).coerceAtLeast(0f) else 0f
                                 }
                                 // Attach the SukiSU-style drag detector. Uses
                                 // PointerEventPass.Initial so it observes touches BEFORE
