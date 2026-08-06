@@ -390,7 +390,20 @@ private fun MiniPlayerBackground(
             // toggle is off or on pre-S devices; the effectiveStyle downgrade above
             // guarantees we only reach this branch when the backdrop is available,
             // but we still null-check for safety (falls back to a solid surface).
+            //
+            // BASE COLOR UNDER THE GLASS: the `baseColor` parameter passes an OPAQUE
+            // surfaceContainerHigh fill that is drawn UNDER the backdrop sample (via
+            // the kyant `onDrawBehind` callback). When the backdrop has content (e.g.
+            // the playlist list behind the mini player — the user confirmed this
+            // works in playlists), the backdrop sample covers the base color —
+            // producing the liquid glass refraction. When the backdrop is EMPTY (e.g.
+            // bottom of a short page with no content behind the mini player), the
+            // backdrop sample is transparent and the opaque base color shows through
+            // — so the mini player is always visible instead of "completely
+            // transparent". This mirrors how the FROSTED variant (and the frosted
+            // nav bar) handles the empty backdrop case.
             val liquidGlassBackdrop = LocalLiquidGlassBackdrop.current
+            val baseColor = MaterialTheme.colorScheme.surfaceContainerHigh
             if (liquidGlassBackdrop != null) {
                 Box(
                     modifier =
@@ -398,11 +411,12 @@ private fun MiniPlayerBackground(
                             backdrop = liquidGlassBackdrop,
                             shape = MaterialTheme.shapes.extraLarge,
                             interactive = false,
+                            baseColor = baseColor,
                         ),
                 )
             } else {
                 Box(
-                    modifier = modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                    modifier = modifier.background(baseColor),
                 )
             }
         }

@@ -453,6 +453,7 @@ fun AlbumScreen(
                                 }
                             }
                         },
+                        backdrop = if (liquidGlassHeaderActive) artworkBackdrop else null,
                     )
                 }
 

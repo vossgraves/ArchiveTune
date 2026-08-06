@@ -85,12 +85,24 @@ val LocalLiquidGlassBackdrop = compositionLocalOf<LayerBackdrop?> { null }
  * The element MUST be a sibling of the backdrop source (the box carrying
  * [layerBackdrop]); nesting it inside the source creates a render-feedback
  * loop that crashes the RuntimeShader.
+ *
+ * @param baseColor Optional OPAQUE color drawn UNDER the backdrop sample
+ *   (via the kyant `onDrawBehind` callback). When the backdrop has content
+ *   (e.g. album art behind the nav bar), the backdrop sample covers the
+ *   base color — producing the liquid glass refraction effect. When the
+ *   backdrop is EMPTY (e.g. bottom of a short page with no content behind),
+ *   the backdrop sample is transparent and the opaque base color shows
+ *   through — so the element is always visible instead of "completely
+ *   transparent". Pass `Color.Unspecified` to skip the base color (the
+ *   original SimpMusic behavior — relies on the backdrop always having
+ *   content).
  */
 @Composable
 fun Modifier.liquidGlass(
     backdrop: PlatformBackdrop,
     shape: Shape = CircleShape,
     interactive: Boolean = true,
+    baseColor: Color = Color.Unspecified,
 ): Modifier {
     // Match SimpMusic's theme-aware overlay: in dark theme add a black veil
     // ("đục đen"); in light theme add a white veil ("đục trắng"). The previous
@@ -135,6 +147,19 @@ fun Modifier.liquidGlass(
             drawBackdrop()
         },
         shape = { shape },
+        // Draw the opaque base color UNDER the backdrop sample. The kyant
+        // DrawBackdropNode.draw() order is: onDrawBehind → drawBackdropLayer
+        // (backdrop sample) → onDrawSurface (darken overlay) → drawContent
+        // (the composable's content). So onDrawBehind is the ONLY place to
+        // put a fallback color that the backdrop sample can composite on top
+        // of — drawContent (where the Surface's `color` is drawn) is ABOVE
+        // the backdrop sample and would cover it.
+        onDrawBehind =
+            if (baseColor != Color.Unspecified) {
+                { drawRect(baseColor) }
+            } else {
+                null
+            },
         onDrawSurface = {
             // luminanceAnimation = 0.5f gives a fixed darken alpha of ~0.272 (the
             // lerp(0.12, 0.5, 0.4) midpoint). SimpMusic animates this from a real

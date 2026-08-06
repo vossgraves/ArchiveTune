@@ -221,10 +221,14 @@ fun FloatingNavigationToolbar(
         if (pureBlack) {
             Color.Black
         } else if (canLiquidGlass) {
-            // Liquid Glass: the surface must be transparent so the kyant drawBackdrop
-            // (which samples the app content with vibrancy/blur/lens) shows through.
-            // The onDrawSurface darken overlay in the liquidGlass modifier provides
-            // the contrast for the icons/labels.
+            // Liquid Glass: the surface must be transparent so the kyant
+            // drawBackdrop sample (the app content with vibrancy/blur/lens)
+            // is visible. The opaque fallback base color is drawn UNDER the
+            // backdrop sample via the `liquidGlass(baseColor = ...)` modifier
+            // (using the kyant `onDrawBehind` callback) — see the modifier
+            // chain below. This mirrors how the FROSTED variant handles the
+            // empty-backdrop case: an always-opaque surface with the blurred
+            // content composited on top.
             Color.Transparent
         } else {
             // Apply user-configured opacity (always) and transparency (only when no frosted
@@ -361,11 +365,21 @@ fun FloatingNavigationToolbar(
                         // The Surface's color is already transparent (see [navigationContainerColor]),
                         // so the liquid glass backdrop shows through. The Surface's shape clips
                         // the liquid glass to the pill / docked shape.
+                        //
+                        // The `baseColor` parameter passes an OPAQUE surfaceContainerHigh fill
+                        // that is drawn UNDER the backdrop sample (via the kyant `onDrawBehind`
+                        // callback). When the backdrop has content (e.g. scrolling album art
+                        // behind the bar), the backdrop sample covers the base color — producing
+                        // the liquid glass refraction effect. When the backdrop is EMPTY (e.g.
+                        // bottom of a short page with no content behind the bar), the backdrop
+                        // sample is transparent and the opaque base color shows through — so
+                        // the bar is always visible instead of "completely transparent".
                         if (canLiquidGlass && liquidGlassBackdrop != null) {
                             Modifier.liquidGlass(
                                 backdrop = liquidGlassBackdrop,
                                 shape = navigationShape,
                                 interactive = false,
+                                baseColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                             )
                         } else {
                             Modifier

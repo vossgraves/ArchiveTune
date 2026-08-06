@@ -137,6 +137,7 @@ import moe.rukamori.archivetune.ui.component.YouTubeGridItem
 import moe.rukamori.archivetune.ui.component.YouTubeListItem
 import moe.rukamori.archivetune.ui.component.layerBackdrop
 import moe.rukamori.archivetune.ui.component.rememberBackdrop
+import com.kyant.backdrop.backdrops.LayerBackdrop
 import moe.rukamori.archivetune.ui.component.shimmer.ButtonPlaceholder
 import moe.rukamori.archivetune.ui.component.shimmer.ListItemPlaceHolder
 import moe.rukamori.archivetune.ui.component.shimmer.ShimmerHost
@@ -622,6 +623,7 @@ fun ArtistScreen(
                                         }
                                     },
                                 modifier = Modifier.padding(top = 12.dp),
+                                backdrop = if (liquidGlassHeaderActive) artworkBackdrop else null,
                             )
                         }
                     }
@@ -1276,6 +1278,7 @@ private fun ArtistPrimaryActions(
     onToggleSubscription: () -> Unit,
     onRadio: (() -> Unit)?,
     modifier: Modifier = Modifier,
+    backdrop: LayerBackdrop? = null,
 ) {
     MediaDetailPrimaryActions(
         isAdded = isSubscribed,
@@ -1297,6 +1300,7 @@ private fun ArtistPrimaryActions(
             }
         },
         modifier = modifier,
+        backdrop = backdrop,
     )
 }
 

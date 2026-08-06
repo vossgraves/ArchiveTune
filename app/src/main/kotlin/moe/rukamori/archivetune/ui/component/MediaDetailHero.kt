@@ -12,6 +12,7 @@ package moe.rukamori.archivetune.ui.component
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -42,6 +43,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -62,6 +64,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
+import com.kyant.backdrop.backdrops.LayerBackdrop
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.AppBarHeight
 import moe.rukamori.archivetune.ui.utils.YtimgResizePolicy
@@ -95,6 +98,14 @@ public fun MediaDetailHero(
     canvasPrimaryUrl: String? = null,
     canvasFallbackUrl: String? = null,
     canvasIsPlaying: Boolean = false,
+    // Optional Liquid Glass backdrop source for the play button. When non-null
+    // (i.e. the Liquid Glass master toggle is on and the screen has set up a
+    // `Modifier.layerBackdrop(artworkBackdrop)` on its scrolling content), the
+    // big "Play" pill button samples the artwork behind it with the kyant
+    // vibrancy/blur/lens effect stack — producing a frosted-glass play button
+    // that shows the blurred album artwork through it. When null, the play
+    // button uses the original solid `contentColor` fill.
+    backdrop: LayerBackdrop? = null,
 ) {
     val surfaceColor = MaterialTheme.colorScheme.surface
     val menuState = LocalMenuState.current
@@ -301,6 +312,7 @@ public fun MediaDetailHero(
                     },
                 additionalActions = additionalPrimaryActions,
                 modifier = Modifier.padding(top = 12.dp),
+                backdrop = backdrop,
             )
         }
     }
@@ -356,6 +368,12 @@ public fun MediaDetailPrimaryActions(
     onToggleAdd: (() -> Unit)?,
     modifier: Modifier = Modifier,
     additionalActions: (@Composable RowScope.(Color) -> Unit)? = null,
+    // Optional Liquid Glass backdrop source for the play button. When non-null,
+    // the "Play" pill button uses `Modifier.liquidGlass` to sample the artwork
+    // behind it (captured by the screen's `Modifier.layerBackdrop(artworkBackdrop)`),
+    // producing a frosted-glass play button. When null, the play button uses the
+    // original solid `contentColor` fill.
+    backdrop: LayerBackdrop? = null,
 ) {
     val secondaryButtonColors =
         IconButtonDefaults.filledTonalIconButtonColors(
@@ -439,31 +457,89 @@ public fun MediaDetailPrimaryActions(
 
                 onPlay?.let { play ->
                     val playButtonHeight = ButtonDefaults.MediumContainerHeight
-                    Button(
-                        onClick = play,
-                        shape = RoundedCornerShape(percent = 50),
-                        colors =
-                            ButtonDefaults.buttonColors(
-                                containerColor = contentColor,
-                                contentColor = contrastingColor,
-                            ),
-                        contentPadding = ButtonDefaults.contentPaddingFor(playButtonHeight, hasStartIcon = true),
-                        modifier =
-                            Modifier
-                                .layoutId(MediaDetailActionLayoutId.Play)
-                                .heightIn(min = playButtonHeight),
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.play),
-                            contentDescription = null,
-                            modifier = Modifier.size(ButtonDefaults.iconSizeFor(playButtonHeight)),
-                        )
-                        Spacer(modifier = Modifier.width(ButtonDefaults.iconSpacingFor(playButtonHeight)))
-                        Text(
-                            text = stringResource(R.string.play),
-                            style = ButtonDefaults.textStyleFor(playButtonHeight),
-                            fontWeight = FontWeight.Bold,
-                        )
+                    if (backdrop != null) {
+                        // Liquid Glass play button: samples the artwork backdrop
+                        // (captured by the screen's `Modifier.layerBackdrop`) with
+                        // the kyant vibrancy/blur/lens effect stack. The pill
+                        // shape is preserved via `clip`. The icon + "Play" text
+                        // are drawn ON TOP of the liquidGlass effect (the
+                        // drawBackdrop modifier draws the backdrop sample first,
+                        // then the content, then the darken overlay — so the
+                        // icon/text remain visible).
+                        //
+                        // We use the contrastingColor (surfaceColor) for the
+                        // icon/text because the liquidGlass effect produces a
+                        // bright/translucent background — the dark surfaceColor
+                        // provides the same contrast as the solid button variant.
+                        Box(
+                            modifier =
+                                Modifier
+                                    .layoutId(MediaDetailActionLayoutId.Play)
+                                    .heightIn(min = playButtonHeight)
+                                    .clip(RoundedCornerShape(percent = 50))
+                                    .liquidGlass(
+                                        backdrop = backdrop,
+                                        shape = RoundedCornerShape(percent = 50),
+                                        interactive = false,
+                                        // Use the contentColor (white in dark theme, onSurface
+                                        // in light theme) as the opaque base color UNDER the
+                                        // backdrop sample. When the artwork backdrop has content
+                                        // (the normal case — the play button is positioned on top
+                                        // of the album artwork), the backdrop sample covers the
+                                        // base color — producing the liquid glass refraction.
+                                        // When the artwork is loading or empty, the base color
+                                        // shows through — matching the original solid button
+                                        // appearance so the play button is always visible.
+                                        baseColor = contentColor,
+                                    ).clickable(onClick = play)
+                                    .padding(
+                                        ButtonDefaults.contentPaddingFor(playButtonHeight, hasStartIcon = true),
+                                    ),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    painter = painterResource(R.drawable.play),
+                                    contentDescription = null,
+                                    tint = contrastingColor,
+                                    modifier = Modifier.size(ButtonDefaults.iconSizeFor(playButtonHeight)),
+                                )
+                                Spacer(modifier = Modifier.width(ButtonDefaults.iconSpacingFor(playButtonHeight)))
+                                Text(
+                                    text = stringResource(R.string.play),
+                                    style = ButtonDefaults.textStyleFor(playButtonHeight),
+                                    fontWeight = FontWeight.Bold,
+                                    color = contrastingColor,
+                                )
+                            }
+                        }
+                    } else {
+                        Button(
+                            onClick = play,
+                            shape = RoundedCornerShape(percent = 50),
+                            colors =
+                                ButtonDefaults.buttonColors(
+                                    containerColor = contentColor,
+                                    contentColor = contrastingColor,
+                                ),
+                            contentPadding = ButtonDefaults.contentPaddingFor(playButtonHeight, hasStartIcon = true),
+                            modifier =
+                                Modifier
+                                    .layoutId(MediaDetailActionLayoutId.Play)
+                                    .heightIn(min = playButtonHeight),
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.play),
+                                contentDescription = null,
+                                modifier = Modifier.size(ButtonDefaults.iconSizeFor(playButtonHeight)),
+                            )
+                            Spacer(modifier = Modifier.width(ButtonDefaults.iconSpacingFor(playButtonHeight)))
+                            Text(
+                                text = stringResource(R.string.play),
+                                style = ButtonDefaults.textStyleFor(playButtonHeight),
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
                     }
                 }
 
