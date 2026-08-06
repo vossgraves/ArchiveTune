@@ -109,6 +109,20 @@ private data class HomeLocalContent(
     val heroPicks: List<Song>,
 )
 
+/**
+ * Intermediate bundle used to stage the first 5 nullable home-content flows
+ * before combining with `heroPicks`. Kotlin's `combine()` only natively
+ * supports up to 5 flows, so we split the 6-way combine into two stages
+ * to keep type inference working.
+ */
+private data class HomeLocalContentStage(
+    val quickPicks: List<Song>?,
+    val speedDialItems: List<LocalItem>,
+    val forgottenFavorites: List<Song>?,
+    val keepListening: List<LocalItem>?,
+    val recentlyPlayed: List<Song>?,
+)
+
 private data class HomeRemoteContent(
     val homePage: HomePage?,
     val similarRecommendations: List<SimilarRecommendation>,
@@ -246,14 +260,21 @@ class HomeViewModel
                 forgottenFavorites,
                 keepListening,
                 recentlyPlayed,
-                heroPicks,
-            ) { quickPicks, speedDialItems, forgottenFavorites, keepListening, recentlyPlayed, heroPicks ->
-                HomeLocalContent(
-                    quickPicks = quickPicks.orEmpty(),
+            ) { quickPicks, speedDialItems, forgottenFavorites, keepListening, recentlyPlayed ->
+                HomeLocalContentStage(
+                    quickPicks = quickPicks,
                     speedDialItems = speedDialItems,
-                    forgottenFavorites = forgottenFavorites.orEmpty(),
-                    keepListening = keepListening.orEmpty(),
-                    recentlyPlayed = recentlyPlayed.orEmpty(),
+                    forgottenFavorites = forgottenFavorites,
+                    keepListening = keepListening,
+                    recentlyPlayed = recentlyPlayed,
+                )
+            }.combine(heroPicks) { stage, heroPicks ->
+                HomeLocalContent(
+                    quickPicks = stage.quickPicks.orEmpty(),
+                    speedDialItems = stage.speedDialItems,
+                    forgottenFavorites = stage.forgottenFavorites.orEmpty(),
+                    keepListening = stage.keepListening.orEmpty(),
+                    recentlyPlayed = stage.recentlyPlayed.orEmpty(),
                     heroPicks = heroPicks,
                 )
             }
@@ -412,7 +433,7 @@ class HomeViewModel
                         emit(quickPicksWithFallback(emptyList()))
                     }.collect { picks ->
                         quickPicks.value = picks
-                        refreshHeroPicks(picks)
+                        refreshHeroPicks(picks.orEmpty())
                         updateAllLocalItems()
                     }
             }
