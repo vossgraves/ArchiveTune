@@ -10,7 +10,6 @@
 package moe.rukamori.archivetune.ui.screens.settings
 
 import android.os.Build
-<<<<<<< HEAD
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,39 +18,25 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
-=======
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsetsSides
->>>>>>> 61d35a52b (feat: Spotify move, nav bar dimensions+reset, volume fix, stats refresh removal)
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
-<<<<<<< HEAD
 import androidx.compose.foundation.shape.RoundedCornerShape
-=======
->>>>>>> 61d35a52b (feat: Spotify move, nav bar dimensions+reset, volume fix, stats refresh removal)
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-<<<<<<< HEAD
 import androidx.compose.material3.NavigationBarDefaults
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Slider
-import androidx.compose.material3.Surface
-=======
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
->>>>>>> 61d35a52b (feat: Spotify move, nav bar dimensions+reset, volume fix, stats refresh removal)
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -62,17 +47,12 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-<<<<<<< HEAD
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
-=======
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.res.stringResource
->>>>>>> 61d35a52b (feat: Spotify move, nav bar dimensions+reset, volume fix, stats refresh removal)
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
@@ -86,10 +66,7 @@ import moe.rukamori.archivetune.constants.NAVIGATION_BAR_TRANSPARENCY_DEFAULT
 import moe.rukamori.archivetune.constants.NAVIGATION_BAR_WIDTH_DEFAULT
 import moe.rukamori.archivetune.constants.NavigationBarCornerRadiusKey
 import moe.rukamori.archivetune.constants.NavigationBarFrostedBlurKey
-<<<<<<< HEAD
 import moe.rukamori.archivetune.constants.NavigationBarHeight
-=======
->>>>>>> 61d35a52b (feat: Spotify move, nav bar dimensions+reset, volume fix, stats refresh removal)
 import moe.rukamori.archivetune.constants.NavigationBarHeightKey
 import moe.rukamori.archivetune.constants.NavigationBarLabelSpacingKey
 import moe.rukamori.archivetune.constants.NavigationBarOpacityKey
@@ -100,14 +77,10 @@ import moe.rukamori.archivetune.constants.NavigationBarWidthKey
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.EnumListPreference
 import moe.rukamori.archivetune.ui.component.FrostedTopAppBar
-import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.SwitchPreference
-<<<<<<< HEAD
 import moe.rukamori.archivetune.ui.screens.Screens
-=======
->>>>>>> 61d35a52b (feat: Spotify move, nav bar dimensions+reset, volume fix, stats refresh removal)
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
@@ -125,11 +98,8 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
     val (hideNavigationBarLabels, onHideNavigationBarLabelsChange) =
         rememberPreference(HideNavigationBarLabelsKey, defaultValue = false)
 
-<<<<<<< HEAD
-    // Customization sliders (Task 6). Defaults are the constants defined alongside
+    // Customization sliders. Defaults are the constants defined alongside
     // their preference keys so the pre-existing look is preserved.
-=======
->>>>>>> 61d35a52b (feat: Spotify move, nav bar dimensions+reset, volume fix, stats refresh removal)
     val (navigationBarWidth, onNavigationBarWidthChange) =
         rememberPreference(NavigationBarWidthKey, defaultValue = NAVIGATION_BAR_WIDTH_DEFAULT)
     val (navigationBarHeight, onNavigationBarHeightChange) =
@@ -231,14 +201,10 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
 
             // Customization sliders: only meaningfully affect the FLOATING style (and the
             // corner radius for DEFAULT). They are shown unconditionally so the user can
-<<<<<<< HEAD
             // pre-configure the floating look before switching to it. Each slider opens a
             // dialog with a live preview that reflects the in-progress value (and the
             // committed values of the other dimensions) so the user can see exactly how
             // the bar will look before committing.
-=======
-            // pre-configure the floating look before switching to it.
->>>>>>> 61d35a52b (feat: Spotify move, nav bar dimensions+reset, volume fix, stats refresh removal)
             PreferenceGroup(title = stringResource(R.string.navigation_bar_dimensions)) {
                 item {
                     SliderPreferenceRow(
@@ -249,7 +215,7 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                         onValueChange = onNavigationBarWidthChange,
                         range = 0.5f..1.0f,
                         valueLabel = { "${(it * 100).roundToInt()}%" },
-<<<<<<< HEAD
+                        default = NAVIGATION_BAR_WIDTH_DEFAULT,
                         preview = { tempWidth ->
                             NavBarPreview(
                                 widthFraction = tempWidth,
@@ -261,9 +227,6 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                                 style = navigationBarStyle,
                             )
                         },
-=======
-                        default = NAVIGATION_BAR_WIDTH_DEFAULT,
->>>>>>> 61d35a52b (feat: Spotify move, nav bar dimensions+reset, volume fix, stats refresh removal)
                     )
                 }
 
@@ -276,7 +239,7 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                         onValueChange = onNavigationBarHeightChange,
                         range = 0.8f..1.4f,
                         valueLabel = { "${(it * 100).roundToInt()}%" },
-<<<<<<< HEAD
+                        default = NAVIGATION_BAR_HEIGHT_DEFAULT,
                         preview = { tempHeight ->
                             NavBarPreview(
                                 widthFraction = navigationBarWidth,
@@ -288,9 +251,6 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                                 style = navigationBarStyle,
                             )
                         },
-=======
-                        default = NAVIGATION_BAR_HEIGHT_DEFAULT,
->>>>>>> 61d35a52b (feat: Spotify move, nav bar dimensions+reset, volume fix, stats refresh removal)
                     )
                 }
 
@@ -303,7 +263,7 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                         onValueChange = onNavigationBarOpacityChange,
                         range = 0.2f..1.0f,
                         valueLabel = { "${(it * 100).roundToInt()}%" },
-<<<<<<< HEAD
+                        default = NAVIGATION_BAR_OPACITY_DEFAULT,
                         preview = { tempOpacity ->
                             NavBarPreview(
                                 widthFraction = navigationBarWidth,
@@ -315,9 +275,6 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                                 style = navigationBarStyle,
                             )
                         },
-=======
-                        default = NAVIGATION_BAR_OPACITY_DEFAULT,
->>>>>>> 61d35a52b (feat: Spotify move, nav bar dimensions+reset, volume fix, stats refresh removal)
                     )
                 }
 
@@ -330,7 +287,7 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                         onValueChange = onNavigationBarTransparencyChange,
                         range = 0.0f..0.95f,
                         valueLabel = { "${(it * 100).roundToInt()}%" },
-<<<<<<< HEAD
+                        default = NAVIGATION_BAR_TRANSPARENCY_DEFAULT,
                         preview = { tempTransparency ->
                             NavBarPreview(
                                 widthFraction = navigationBarWidth,
@@ -342,9 +299,6 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                                 style = navigationBarStyle,
                             )
                         },
-=======
-                        default = NAVIGATION_BAR_TRANSPARENCY_DEFAULT,
->>>>>>> 61d35a52b (feat: Spotify move, nav bar dimensions+reset, volume fix, stats refresh removal)
                     )
                 }
 
@@ -357,7 +311,7 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                         onValueChange = onNavigationBarLabelSpacingChange,
                         range = 0f..16f,
                         valueLabel = { "${it.roundToInt()} dp" },
-<<<<<<< HEAD
+                        default = NAVIGATION_BAR_LABEL_SPACING_DEFAULT,
                         preview = { tempSpacing ->
                             NavBarPreview(
                                 widthFraction = navigationBarWidth,
@@ -369,9 +323,6 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                                 style = navigationBarStyle,
                             )
                         },
-=======
-                        default = NAVIGATION_BAR_LABEL_SPACING_DEFAULT,
->>>>>>> 61d35a52b (feat: Spotify move, nav bar dimensions+reset, volume fix, stats refresh removal)
                     )
                 }
 
@@ -384,7 +335,7 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                         onValueChange = onNavigationBarCornerRadiusChange,
                         range = 0f..48f,
                         valueLabel = { "${it.roundToInt()} dp" },
-<<<<<<< HEAD
+                        default = NAVIGATION_BAR_CORNER_RADIUS_DEFAULT,
                         preview = { tempRadius ->
                             NavBarPreview(
                                 widthFraction = navigationBarWidth,
@@ -396,10 +347,6 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                                 style = navigationBarStyle,
                             )
                         },
-                    )
-                }
-=======
-                        default = NAVIGATION_BAR_CORNER_RADIUS_DEFAULT,
                     )
                 }
 
@@ -438,7 +385,6 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                         Text(stringResource(R.string.navigation_bar_reset_dimensions))
                     }
                 }
->>>>>>> 61d35a52b (feat: Spotify move, nav bar dimensions+reset, volume fix, stats refresh removal)
             }
         }
     }
@@ -447,16 +393,14 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
 /**
  * A preference row that opens a slider dialog when tapped. Mirrors the swipe-sensitivity
  * UX used in PlayerSettings / AppearanceSettings so all float-valued tuning knobs share
-<<<<<<< HEAD
  * the same interaction model.
  *
  * When [preview] is non-null, the dialog renders a live preview above the slider that
  * reflects the in-progress [tempValue] (passed to the preview lambda) so the user can
  * see exactly how the change will look before committing.
-=======
- * the same interaction model. The dialog includes a "Reset" button that snaps the slider
+ *
+ * When [default] is non-null, the dialog includes a "Reset" button that snaps the slider
  * back to the default value before the user confirms.
->>>>>>> 61d35a52b (feat: Spotify move, nav bar dimensions+reset, volume fix, stats refresh removal)
  */
 @Composable
 private fun SliderPreferenceRow(
@@ -467,11 +411,8 @@ private fun SliderPreferenceRow(
     onValueChange: (Float) -> Unit,
     range: ClosedFloatingPointRange<Float>,
     valueLabel: (Float) -> String,
-<<<<<<< HEAD
-    preview: (@Composable (Float) -> Unit)? = null,
-=======
     default: Float? = null,
->>>>>>> 61d35a52b (feat: Spotify move, nav bar dimensions+reset, volume fix, stats refresh removal)
+    preview: (@Composable (Float) -> Unit)? = null,
 ) {
     var showDialog by rememberSaveable { mutableStateOf(false) }
 
@@ -484,8 +425,6 @@ private fun SliderPreferenceRow(
                 showDialog = false
             },
             buttons = {
-<<<<<<< HEAD
-=======
                 // Reset button — snaps the slider to the default value (or the range start
                 // if no explicit default was supplied). Stays in the dialog so the user can
                 // preview the default and then either confirm or keep adjusting.
@@ -497,7 +436,6 @@ private fun SliderPreferenceRow(
                         Text(stringResource(R.string.reset))
                     }
                 }
->>>>>>> 61d35a52b (feat: Spotify move, nav bar dimensions+reset, volume fix, stats refresh removal)
                 Spacer(modifier = Modifier.weight(1f))
                 TextButton(
                     onClick = {
@@ -526,7 +464,6 @@ private fun SliderPreferenceRow(
                 Text(
                     text = title,
                     style = MaterialTheme.typography.headlineSmall,
-<<<<<<< HEAD
                     modifier = Modifier.padding(bottom = 12.dp),
                 )
 
@@ -549,15 +486,6 @@ private fun SliderPreferenceRow(
                     text = valueLabel(tempValue),
                     style = MaterialTheme.typography.bodyLarge,
                     modifier = Modifier.padding(bottom = 12.dp),
-=======
-                    modifier = Modifier.padding(bottom = 16.dp),
-                )
-
-                Text(
-                    text = valueLabel(tempValue),
-                    style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.padding(bottom = 16.dp),
->>>>>>> 61d35a52b (feat: Spotify move, nav bar dimensions+reset, volume fix, stats refresh removal)
                 )
 
                 Slider(
@@ -586,7 +514,6 @@ private fun SliderPreferenceRow(
         onClick = { showDialog = true },
     )
 }
-<<<<<<< HEAD
 
 /**
  * A miniature, self-contained mock of the floating / docked navigation bar used inside
@@ -722,5 +649,3 @@ private fun NavBarPreview(
         }
     }
 }
-=======
->>>>>>> 61d35a52b (feat: Spotify move, nav bar dimensions+reset, volume fix, stats refresh removal)

@@ -23,6 +23,16 @@ val DarkModeKey = stringPreferencesKey("darkMode")
 val PureBlackKey = booleanPreferencesKey("pureBlack")
 val DisableAnimationsKey = booleanPreferencesKey("disableAnimations")
 val ForceHighRefreshRateKey = booleanPreferencesKey("forceHighRefreshRate")
+
+// UI scale (DPI-like) multiplier applied via a LocalDensity override in MainActivity.
+// 1.0f = system default. Range clamped to [0.85f, 1.30f] in AppearanceSettings.
+// Stored as a float so the slider is continuous (1% steps via 46 discrete positions).
+val UiScaleFactorKey = floatPreferencesKey("uiScaleFactor")
+
+// When true, forces the two-pane NavigationRail layout (normally reserved for
+// tablet-width windows) on phone-sized windows too. Useful on landscape phones
+// and on tablets where the dp breakpoint misclassifies the window.
+val TabletModeEnabledKey = booleanPreferencesKey("tabletModeEnabled")
 val EnableHapticFeedbackKey = booleanPreferencesKey("enableHapticFeedback")
 val UseSystemFontKey = booleanPreferencesKey("useSystemFont")
 val FontPreferenceKey = stringPreferencesKey("fontPreference")
@@ -804,6 +814,11 @@ const val NAVIGATION_BAR_LABEL_SPACING_DEFAULT = 4f // dp between icon and label
 
 val NavigationBarCornerRadiusKey = floatPreferencesKey("navigationBarCornerRadius")
 const val NAVIGATION_BAR_CORNER_RADIUS_DEFAULT = 28f // dp
+
+// App-wide scrollbar toggle. When false, all LazyColumn / LazyGrid /
+// ScrollState scrollbars in the app are suppressed. (Slider thumb tracks and
+// player position bars are not affected — those are not "scrollbars".)
+val HideScrollbarKey = booleanPreferencesKey("hideScrollbar")
 
 // Keys for customized background
 val PlayerCustomImageUriKey = stringPreferencesKey("playerCustomImageUri")
