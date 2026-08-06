@@ -9,8 +9,6 @@
 
 package moe.rukamori.archivetune.ui.component
 
-import android.os.Build
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -20,45 +18,20 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.BlurEffect
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.TileMode
-import androidx.compose.ui.graphics.drawscope.translate
-import androidx.compose.ui.graphics.layer.drawLayer
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInRoot
-import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.asAndroidBitmap
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.ui.graphics.ImageBitmap
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.withContext
-import moe.rukamori.archivetune.utils.ImageBlurUtils
-
-private const val FrostedHeaderBlurRadiusPx = 40f
-private const val FrostedHeaderOverlayAlpha = 0.45f
 
 /**
- * A frosted-glass pill that wraps header content (title text, icon buttons) so the header
- * can be transparent while the content inside it stays legible against any background.
+ * A frosted-glass-looking pill that wraps header content (title text, icon buttons) so the
+ * header can be transparent while the content inside it stays legible against any background.
  *
- * Mirrors the frosted mechanism in [FloatingNavigationToolbar]: on Android 12+ it uses
- * [BlurEffect] (hardware-accelerated, every frame) composited over the shared app-content
- * [GraphicsLayer] from [LocalNavigationBarBackdrop]. On pre-S it falls back to a periodic
- * CPU-blurred bitmap slice (same approach as the nav bar's pre-S path). If no backdrop
- * layer is available (frosted blur disabled), it degrades to a semi-transparent
- * `surfaceContainer` pill — still legible, just not blurred.
+ * The pill renders as a high-alpha `surfaceContainer` surface. Earlier iterations tried to
+ * composite a real backdrop blur over [LocalNavigationBarBackdrop], but the pill lives
+ * INSIDE the NavHost content that is recorded into that same backdrop layer every frame
+ * (`drawWithContent` in `MainActivity`), so drawing `backdrop.layer` from inside the pill is
+ * re-entrant and crashes the app — both the S+ `drawLayer` path and the pre-S bitmap capture
+ * read a layer that is currently being recorded. Degrading to a plain surface is the same
+ * fallback those paths already used when no backdrop was available, and matches how the pill
+ * behaves in rail layouts where the backdrop is null.
  *
  * Usage: wrap the title / actions of a `TopAppBar` (or any header) in this pill. The
  * outer `TopAppBar` should have `containerColor = Color.Transparent`.
@@ -71,157 +44,14 @@ fun FrostedHeaderPill(
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
-    val backdrop = LocalNavigationBarBackdrop.current
-    val isPreS = Build.VERSION.SDK_INT < Build.VERSION_CODES.S
-    val canBlur = backdrop != null && !isPreS
-
     val baseColor = MaterialTheme.colorScheme.surfaceContainer
-    val pillColor =
-        if (canBlur) {
-            // When blurring, the pill surface is mostly transparent so the blurred content
-            // shows through. A slight tint provides a frosted milkiness.
-            baseColor.copy(alpha = FrostedHeaderOverlayAlpha)
-        } else {
-            // No blur available: use a higher-alpha surface so the text stays legible.
-            baseColor.copy(alpha = 0.85f)
-        }
-
-    var pillPositionInRoot by remember { mutableStateOf(Offset.Zero) }
-    var pillSize by remember { mutableStateOf(IntSize.Zero) }
-
     Surface(
-        modifier = modifier
-            .clip(RoundedCornerShape(percent = 50))
-            .onGloballyPositioned {
-                pillPositionInRoot = it.positionInRoot()
-                pillSize = it.size
-            },
+        modifier = modifier.clip(RoundedCornerShape(percent = 50)),
         shape = RoundedCornerShape(percent = 50),
-        color = pillColor,
+        color = baseColor.copy(alpha = 0.85f),
     ) {
-        Box {
-            // Frosted backdrop: draw the blurred app-content slice behind the pill content.
-            if (canBlur && backdrop != null) {
-                if (isPreS) {
-                    val blurredBitmap = rememberPreSFrostedHeaderBitmap(
-                        backdrop = backdrop,
-                        barPositionInRoot = pillPositionInRoot,
-                        barSize = pillSize,
-                        blurRadiusPx = FrostedHeaderBlurRadiusPx,
-                    )
-                    if (blurredBitmap != null) {
-                        Box(
-                            modifier = Modifier
-                                .graphicsLayer {
-                                    alpha = FrostedHeaderOverlayAlpha
-                                    clip = true
-                                }
-                                .drawBehind { drawImage(blurredBitmap) },
-                        )
-                    }
-                } else {
-                    Box(
-                        modifier = Modifier
-                            .graphicsLayer {
-                                renderEffect = BlurEffect(
-                                    radiusX = FrostedHeaderBlurRadiusPx,
-                                    radiusY = FrostedHeaderBlurRadiusPx,
-                                    edgeTreatment = TileMode.Clamp,
-                                )
-                                alpha = FrostedHeaderOverlayAlpha
-                                clip = true
-                            }
-                            .drawBehind {
-                                val offset = backdrop.contentOffsetInRoot - pillPositionInRoot
-                                translate(offset.x, offset.y) {
-                                    drawLayer(backdrop.layer)
-                                }
-                            },
-                    )
-                }
-            }
-            // Actual content on top.
-            Row(modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
-                content()
-            }
+        Row(modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
+            content()
         }
     }
-}
-
-/**
- * Pre-S fallback that captures a slice of the shared backdrop layer, blurs it on the CPU,
- * and returns it for compositing. Mirrors [rememberPreSFrostedBitmap] in
- * FloatingNavigationToolbar but is duplicated here to keep the header component
- * self-contained (the nav bar version is `internal` to the component file).
- */
-@Composable
-private fun rememberPreSFrostedHeaderBitmap(
-    backdrop: NavigationBarBackdrop?,
-    barPositionInRoot: Offset,
-    barSize: IntSize,
-    blurRadiusPx: Float,
-    updateIntervalMs: Long = 80L,
-): ImageBitmap? {
-    if (backdrop == null) return null
-    var blurred by remember(backdrop, blurRadiusPx, updateIntervalMs) {
-        mutableStateOf<ImageBitmap?>(null)
-    }
-    val barPositionState = rememberUpdatedState(barPositionInRoot)
-    val barSizeState = rememberUpdatedState(barSize)
-
-    androidx.compose.runtime.LaunchedEffect(backdrop, blurRadiusPx, updateIntervalMs) {
-        while (isActive) {
-            val layer = backdrop.layer
-            val layerW = layer.size.width
-            val layerH = layer.size.height
-            if (layerW > 0 && layerH > 0) {
-                try {
-                    val next = withContext(Dispatchers.Default) {
-                        val pos = barPositionState.value
-                        val size = barSizeState.value
-                        if (size.width <= 0 || size.height <= 0) return@withContext null
-
-                        val contentOffset = backdrop.contentOffsetInRoot
-                        val rawX = (pos.x - contentOffset.x).toInt()
-                        val rawY = (pos.y - contentOffset.y).toInt()
-                        val pad = blurRadiusPx.toInt().coerceIn(8, 64)
-                        val paddedX = rawX - pad
-                        val paddedY = rawY - pad
-                        val paddedW = size.width + 2 * pad
-                        val paddedH = size.height + 2 * pad
-                        val clampedX = paddedX.coerceIn(0, layerW - 1)
-                        val clampedY = paddedY.coerceIn(0, layerH - 1)
-                        val clampedRight = (paddedX + paddedW).coerceIn(1, layerW)
-                        val clampedBottom = (paddedY + paddedH).coerceIn(1, layerH)
-                        val clampedW = clampedRight - clampedX
-                        val clampedH = clampedBottom - clampedY
-                        if (clampedW <= 0 || clampedH <= 0) return@withContext null
-
-                        val imageBitmap = layer.toImageBitmap()
-                        val fullBitmap = imageBitmap.asAndroidBitmap()
-                        val sliceBitmap = android.graphics.Bitmap.createBitmap(
-                            fullBitmap, clampedX, clampedY, clampedW, clampedH,
-                        )
-                        val blurredSlice = ImageBlurUtils.blur(sliceBitmap, blurRadiusPx)
-                        val barXInSlice = (rawX - clampedX).coerceIn(0, blurredSlice.width - 1)
-                        val barYInSlice = (rawY - clampedY).coerceIn(0, blurredSlice.height - 1)
-                        val barW = size.width.coerceAtMost(blurredSlice.width - barXInSlice)
-                        val barH = size.height.coerceAtMost(blurredSlice.height - barYInSlice)
-                        if (barW <= 0 || barH <= 0) {
-                            blurredSlice.asImageBitmap()
-                        } else {
-                            android.graphics.Bitmap.createBitmap(
-                                blurredSlice, barXInSlice, barYInSlice, barW, barH,
-                            ).asImageBitmap()
-                        }
-                    }
-                    if (next != null) blurred = next
-                } catch (_: Throwable) {
-                    // Keep previous frame on failure.
-                }
-            }
-            delay(updateIntervalMs)
-        }
-    }
-    return blurred
 }
