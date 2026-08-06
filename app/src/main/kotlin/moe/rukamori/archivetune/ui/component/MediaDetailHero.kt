@@ -12,7 +12,6 @@ package moe.rukamori.archivetune.ui.component
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -43,7 +42,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -64,8 +62,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
-import com.kyant.backdrop.backdrops.LayerBackdrop
-import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.AppBarHeight
 import moe.rukamori.archivetune.ui.utils.YtimgResizePolicy
@@ -99,20 +95,14 @@ public fun MediaDetailHero(
     canvasPrimaryUrl: String? = null,
     canvasFallbackUrl: String? = null,
     canvasIsPlaying: Boolean = false,
-    // When true, the big "Play" pill button renders a self-contained blurred
-    // copy of the hero artwork behind the icon + "Play" text — producing a
-    // frosted-glass play button. This is gated on the Liquid Glass master
-    // toggle (and Android 12+, which the caller enforces via
-    // `liquidGlassHeaderActive`).
-    //
-    // IMPORTANT: we deliberately do NOT use the kyant `Modifier.liquidGlass`
-    // backdrop here. The play button lives INSIDE the scrolling content
-    // (LazyColumn item), which is the SAME composable that carries
-    // `Modifier.layerBackdrop(artworkBackdrop)`. Per the kyant library's own
-    // warning, sampling a backdrop from inside the backdrop source creates a
-    // render-feedback loop that crashes the RuntimeShader. The self-contained
-    // `AsyncImage + Modifier.blur` approach sidesteps this entirely — it
-    // blurs the artwork image directly, with no backdrop sampling.
+    // DEPRECATED / NO-OP: previously, when true, the big "Play" pill button
+    // rendered a self-contained blurred copy of the hero artwork behind the
+    // icon + "Play" text (a frosted-glass play button). The sampled artwork
+    // background was removed because it read as a "misplaced image" /
+    // "glitched preview" that clashed with the dark theme. The parameter is
+    // kept for source compatibility with the 6 call sites that pass it, but
+    // the play button now ALWAYS renders as a clean solid `contentColor`
+    // pill regardless of this flag's value.
     useBlurredPlayButton: Boolean = false,
 ) {
     val surfaceColor = MaterialTheme.colorScheme.surface
@@ -377,16 +367,15 @@ public fun MediaDetailPrimaryActions(
     onToggleAdd: (() -> Unit)?,
     modifier: Modifier = Modifier,
     additionalActions: (@Composable RowScope.(Color) -> Unit)? = null,
-    // The hero artwork URL. When `useBlurredPlayButton` is true and this is
-    // non-null, the "Play" pill button renders a blurred copy of this artwork
-    // behind the icon + text. Pass the same `thumbnailUrl` the hero uses.
+    // The hero artwork URL. Used for the main hero artwork above. (Previously
+    // also used as the backdrop source for the liquid-glass play button — that
+    // sampling has been removed; see useBlurredPlayButton below.)
     thumbnailUrl: String? = null,
-    // When true (and thumbnailUrl is non-null), the "Play" pill button uses a
-    // self-contained blurred-artwork background instead of the solid
-    // `contentColor` fill. See MediaDetailHero.useBlurredPlayButton for the
-    // full rationale (short version: kyant backdrop sampling from inside the
-    // backdrop source crashes the RuntimeShader, so we blur the artwork image
-    // directly instead).
+    // DEPRECATED / NO-OP: the liquid-glass play button (which sampled
+    // `thumbnailUrl` as a blurred background behind the play icon) has been
+    // removed. The play button now ALWAYS renders as a clean solid
+    // `contentColor` pill. Kept for source compatibility with the public
+    // MediaDetailHero signature.
     useBlurredPlayButton: Boolean = false,
 ) {
     val secondaryButtonColors =
@@ -471,130 +460,43 @@ public fun MediaDetailPrimaryActions(
 
                 onPlay?.let { play ->
                     val playButtonHeight = ButtonDefaults.MediumContainerHeight
-                    if (useBlurredPlayButton && thumbnailUrl != null) {
-                        // Liquid-glass play button: the play pill samples the hero
-                        // artwork via a DEDICATED LayerBackdrop (not the outer
-                        // playlist backdrop) and applies the kyant vibrancy/blur/lens
-                        // stack, producing the translucent glass-with-refraction look.
-                        //
-                        // Why a dedicated backdrop: the previous implementation used
-                        // the outer playlist `artworkBackdrop` (the same one the
-                        // FrostedTopAppBar samples). The play button lives INSIDE the
-                        // LazyColumn that carries `Modifier.layerBackdrop(artworkBackdrop)`,
-                        // so sampling that same backdrop created a render-feedback loop
-                        // that crashed the RuntimeShader. The fix is to create a NEW
-                        // `LayerBackdrop` just for the play button area and register a
-                        // sibling Box (containing only the AsyncImage artwork) as its
-                        // source. The play button samples ONLY that sibling's artwork —
-                        // never itself — so no feedback loop is possible.
-                        //
-                        // Layer order (bottom → top):
-                        //   1. Sibling Box (layerBackdrop source): AsyncImage artwork
-                        //      at full opacity, NOT blurred — the liquidGlass modifier
-                        //      applies the blur/refraction.
-                        //   2. Play pill Box (liquidGlass consumer): samples the
-                        //      sibling's artwork, applies vibrancy/blur/lens, draws a
-                        //      theme-aware veil (dark in dark theme, white in light
-                        //      theme) for contrast, then the icon + "Play" text.
-                        //   3. `baseColor` (contentColor) is drawn UNDER the backdrop
-                        //      sample via the kyant `onDrawBehind` callback, so it
-                        //      shows through while the artwork loads or if it fails.
-                        val playButtonBackdrop: LayerBackdrop = rememberLayerBackdrop()
-                        Box(
-                            modifier =
-                                Modifier
-                                    .layoutId(MediaDetailActionLayoutId.Play)
-                                    .heightIn(min = playButtonHeight),
-                        ) {
-                            // Sibling Box 1: backdrop source (artwork only).
-                            // matchParentSize() makes this Box match the outer
-                            // Box's size, which is determined by sibling Box 2
-                            // (the play pill with its content + padding). So the
-                            // artwork fills exactly the area the pill covers.
-                            Box(
-                                modifier =
-                                    Modifier
-                                        .matchParentSize()
-                                        .layerBackdrop(playButtonBackdrop),
-                            ) {
-                                AsyncImage(
-                                    model =
-                                        thumbnailUrl.resize(
-                                            width = MediaDetailHeroArtworkSizePx,
-                                            height = MediaDetailHeroArtworkSizePx,
-                                            sizeBuckets = MediaDetailHeroArtworkSizeBuckets,
-                                            ytimgResizePolicy = YtimgResizePolicy.PreserveOriginal,
-                                        ),
-                                    contentDescription = null,
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier.matchParentSize(),
-                                )
-                            }
-                            // Sibling Box 2: liquid-glass play pill (consumer).
-                            // Sized by its content (Row with icon + text) + padding,
-                            // NOT matchParentSize() — this is what determines the
-                            // outer Box's size. Samples the artwork from the
-                            // dedicated backdrop (sibling Box 1).
-                            Box(
-                                modifier =
-                                    Modifier
-                                        .clip(RoundedCornerShape(percent = 50))
-                                        .liquidGlass(
-                                            backdrop = playButtonBackdrop,
-                                            shape = RoundedCornerShape(percent = 50),
-                                            interactive = false,
-                                            baseColor = contentColor,
-                                        )
-                                        .clickable(onClick = play)
-                                        .padding(
-                                            ButtonDefaults.contentPaddingFor(playButtonHeight, hasStartIcon = true),
-                                        ),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        painter = painterResource(R.drawable.play),
-                                        contentDescription = null,
-                                        tint = contrastingColor,
-                                        modifier = Modifier.size(ButtonDefaults.iconSizeFor(playButtonHeight)),
-                                    )
-                                    Spacer(modifier = Modifier.width(ButtonDefaults.iconSpacingFor(playButtonHeight)))
-                                    Text(
-                                        text = stringResource(R.string.play),
-                                        style = ButtonDefaults.textStyleFor(playButtonHeight),
-                                        fontWeight = FontWeight.Bold,
-                                        color = contrastingColor,
-                                    )
-                                }
-                            }
-                        }
-                    } else {
-                        Button(
-                            onClick = play,
-                            shape = RoundedCornerShape(percent = 50),
-                            colors =
-                                ButtonDefaults.buttonColors(
-                                    containerColor = contentColor,
-                                    contentColor = contrastingColor,
-                                ),
-                            contentPadding = ButtonDefaults.contentPaddingFor(playButtonHeight, hasStartIcon = true),
-                            modifier =
-                                Modifier
-                                    .layoutId(MediaDetailActionLayoutId.Play)
-                                    .heightIn(min = playButtonHeight),
-                        ) {
-                            Icon(
-                                painter = painterResource(R.drawable.play),
-                                contentDescription = null,
-                                modifier = Modifier.size(ButtonDefaults.iconSizeFor(playButtonHeight)),
-                            )
-                            Spacer(modifier = Modifier.width(ButtonDefaults.iconSpacingFor(playButtonHeight)))
-                            Text(
-                                text = stringResource(R.string.play),
-                                style = ButtonDefaults.textStyleFor(playButtonHeight),
-                                fontWeight = FontWeight.Bold,
-                            )
-                        }
+                    // The liquid-glass play button (which sampled the hero artwork via a
+                    // dedicated LayerBackdrop and rendered it as a blurred multicolored
+                    // background behind the play icon) has been REMOVED. The user reported
+                    // the sampled artwork background looked like a "misplaced image" /
+                    // "glitched preview" that clashed with the dark theme — the blurred
+                    // album-art colors behind the play icon read as a broken render rather
+                    // than intentional glassmorphism. The `useBlurredPlayButton` parameter
+                    // is kept for source compatibility with the 6 call sites that pass it,
+                    // but is now a no-op: the play button always renders as a clean solid
+                    // `contentColor` pill (same as the non-liquid-glass path). The
+                    // `thumbnailUrl` is still used for the main hero artwork above; only
+                    // the play-button backdrop sampling is removed.
+                    Button(
+                        onClick = play,
+                        shape = RoundedCornerShape(percent = 50),
+                        colors =
+                            ButtonDefaults.buttonColors(
+                                containerColor = contentColor,
+                                contentColor = contrastingColor,
+                            ),
+                        contentPadding = ButtonDefaults.contentPaddingFor(playButtonHeight, hasStartIcon = true),
+                        modifier =
+                            Modifier
+                                .layoutId(MediaDetailActionLayoutId.Play)
+                                .heightIn(min = playButtonHeight),
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.play),
+                            contentDescription = null,
+                            modifier = Modifier.size(ButtonDefaults.iconSizeFor(playButtonHeight)),
+                        )
+                        Spacer(modifier = Modifier.width(ButtonDefaults.iconSpacingFor(playButtonHeight)))
+                        Text(
+                            text = stringResource(R.string.play),
+                            style = ButtonDefaults.textStyleFor(playButtonHeight),
+                            fontWeight = FontWeight.Bold,
+                        )
                     }
                 }
 

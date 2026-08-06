@@ -83,6 +83,7 @@ import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -322,6 +323,24 @@ fun FloatingNavigationToolbar(
     // onPrimary for contrast (selected = full opacity, unselected = 0.85 opacity for legibility).
     val itemColors =
         when {
+            // SukiSU-Ultra style: the selected icon+label use a BRIGHT, vibrant
+            // primary color (full opacity, reads as "electric blue" against the
+            // dark glass bar) so they pop against the dark glass backdrop + the
+            // darker pill. Unselected items use a medium-bright white (0.78 alpha)
+            // — bright enough to be clearly legible on the dark glass, but
+            // de-emphasized relative to the vibrant selected primary. The previous
+            // implementation let this case fall through to the default `else`
+            // branch which used `onSurfaceVariant` (a muted gray) — readable but
+            // not the high-contrast SukiSU look. Matching SukiSU: selected is
+            // saturated + bright, unselected is neutral but legible.
+            canLiquidGlass ->
+                ShortNavigationBarItemDefaults.colors(
+                    selectedIndicatorColor = Color.Transparent,
+                    selectedIconColor = MaterialTheme.colorScheme.primary,
+                    selectedTextColor = MaterialTheme.colorScheme.primary,
+                    unselectedIconColor = Color.White.copy(alpha = 0.78f),
+                    unselectedTextColor = Color.White.copy(alpha = 0.78f),
+                )
             isFloating ->
                 ShortNavigationBarItemDefaults.colors(
                     selectedIndicatorColor = Color.Transparent,
@@ -748,10 +767,23 @@ fun FloatingNavigationToolbar(
                             // the non-composable draw lambda.
                             val pillTintColor =
                                 if (canLiquidGlass) {
-                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.22f)
+                                    // SukiSU-Ultra: the pill is a DARK glass blob with a subtle
+                                    // primary tint on top — so the bright primary icon/label pop
+                                    // against the dark pill (high contrast). The previous 0.22
+                                    // alpha primary-only tint was too light: against the bright
+                                    // app-content backdrop sample, the pill read as a faint
+                                    // primary wash that the primary-colored icon/label blended
+                                    // into (low contrast). The dark base (0.32 alpha black) +
+                                    // bumped primary tint (0.28 alpha) creates the "dark glass
+                                    // pill floating on the glass bar" look that SukiSU uses.
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.28f)
                                 } else {
                                     Color.Transparent
                                 }
+                            // Dark base drawn UNDER the primary tint. Extracted here (outside
+                            // the non-composable drawWithContent lambda) for clarity.
+                            val pillDarkBase =
+                                if (canLiquidGlass) Color.Black.copy(alpha = 0.32f) else Color.Transparent
                             Box(
                                 modifier =
                                     Modifier
@@ -830,6 +862,13 @@ fun FloatingNavigationToolbar(
                                                     }
                                                     .drawWithContent {
                                                         drawContent()
+                                                        // SukiSU-Ultra pill: dark base (for contrast
+                                                        // with the bright primary icon/label) + primary
+                                                        // tint on top (so the pill reads as colored
+                                                        // glass matching the selected item's primary).
+                                                        if (canLiquidGlass) {
+                                                            drawRect(color = pillDarkBase)
+                                                        }
                                                         drawRect(color = pillTintColor)
                                                     }
                                             } else {
@@ -989,6 +1028,19 @@ fun FloatingNavigationToolbar(
                                         Text(
                                             text = stringResource(screen.titleId),
                                             maxLines = 1,
+                                            // SukiSU-Ultra: the selected label is SemiBold so it
+                                            // reads as "heavier" than unselected labels — matching
+                                            // the reference bar's "Medium/Semi-Bold selected,
+                                            // Regular unselected" type treatment. The Liquid Glass
+                                            // variant applies this always (the bright primary color
+                                            // + SemiBold weight together create the strong selected
+                                            // emphasis); other variants keep the default weight.
+                                            fontWeight =
+                                                if (selected && canLiquidGlass) {
+                                                    FontWeight.SemiBold
+                                                } else {
+                                                    FontWeight.Normal
+                                                },
                                         )
                                     }
                                 },
