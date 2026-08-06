@@ -13,6 +13,7 @@ import android.os.SystemClock
 import android.view.ViewConfiguration
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.EaseOut
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
@@ -46,13 +47,17 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import android.graphics.Bitmap
 import android.os.Build
 import androidx.compose.ui.Alignment
@@ -81,9 +86,13 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.util.fastCoerceIn
+import androidx.compose.ui.util.lerp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.utils.ImageBlurUtils
 import moe.rukamori.archivetune.constants.DisableAnimationsKey
@@ -107,7 +116,9 @@ import moe.rukamori.archivetune.constants.NavigationBarWidthKey
 import moe.rukamori.archivetune.ui.screens.Screens
 import moe.rukamori.archivetune.utils.rememberPreference
 import com.kyant.backdrop.backdrops.LayerBackdrop
+import kotlin.math.abs
 import kotlin.math.roundToInt
+import kotlin.math.sign
 
 /**
  * Shared handle for the frosted navigation bar: the app records its content into [layer] each
@@ -369,35 +380,157 @@ fun FloatingNavigationToolbar(
     var liquidGlassPillWidth by remember { mutableStateOf(0.dp) }
     var liquidGlassPillHeight by remember { mutableStateOf(0.dp) }
 
+    // ─── SukiSU-Ultra-style drag-to-slide animation for the Liquid Glass pill ───
+    // The Liquid Glass variant replaces the simple `indicatorX.animateTo()` slide
+    // with a full `LiquidGlassDragAnimation`: tap → spring slide with transient
+    // press feedback (scale up + inner shadow + lens deepen); hold + drag →
+    // pill follows finger with rubber-band edges + velocity-stretch.
+    //
+    // Non-Liquid-Glass variants keep the existing `indicatorX` Animatable path.
+    val animationScope = rememberCoroutineScope()
+    val isLtr = true // ArchiveTune doesn't currently support RTL layout flipping
+    var tabWidthPx by remember { mutableFloatStateOf(0f) }
+    var totalWidthPx by remember { mutableFloatStateOf(0f) }
+    // The items Row is centered inside the container Box (via the Box's
+    // `contentAlignment = Alignment.Center`). To position the sliding pill at
+    // `dampedDragAnimation.value × tabWidthPx`, we need to know the items
+    // Row's left edge within the container Box — tracked here.
+    var itemsRowLeftInContainer by remember { mutableFloatStateOf(0f) }
+    val rubberBandPx = with(density) { 4.dp.toPx() }
+    // Accumulated raw drag delta (unclamped). Used as the source for the
+    // clamped rubber-band `panelOffset` — at most ±4dp, with an EaseOut curve
+    // so it ramps up quickly then slows down (the iOS liquid-glass feel).
+    val rubberBandOffset = remember { Animatable(0f) }
+    val panelOffset by remember(rubberBandPx, totalWidthPx) {
+        derivedStateOf {
+            if (totalWidthPx == 0f) {
+                0f
+            } else {
+                val fraction = (rubberBandOffset.value / totalWidthPx).fastCoerceIn(-1f, 1f)
+                rubberBandPx * fraction.sign * EaseOut.transform(abs(fraction))
+            }
+        }
+    }
+
+    val tabsCount = items.size
+    // Wrap selectedIndex + onItemClick in rememberUpdatedState so the
+    // dampedDragAnimation's onDragStopped callback (which is captured at
+    // animation-creation time via `remember(tabsCount, canLiquidGlass)`)
+    // always sees the LATEST values. Without this, the callback would use
+    // the stale selectedIndex from when the animation was first created,
+    // breaking the "switch tab on drag release" logic after the user taps
+    // a different tab.
+    val selectedIndexUpdated = rememberUpdatedState(selectedIndex)
+    val onItemClickUpdated = rememberUpdatedState(onItemClick)
+    val dampedDragAnimation =
+        remember(tabsCount, canLiquidGlass) {
+            if (canLiquidGlass && tabsCount > 0) {
+                LiquidGlassDragAnimation(
+                    animationScope = animationScope,
+                    initialValue = selectedIndex.coerceIn(0, tabsCount - 1).toFloat(),
+                    valueRange = 0f..(tabsCount - 1).toFloat(),
+                    visibilityThreshold = 0.001f,
+                    initialScale = 1f,
+                    pressedScale = 78f / 56f, // SukiSU: 56dp tab → 78dp pressed pill
+                    canDrag = { offset ->
+                        // Only accept drags that begin inside the bar's content area
+                        // (totalWidthPx × bar height). This prevents the drag from
+                        // triggering when the user touches outside the items Row.
+                        if (totalWidthPx == 0f) return@LiquidGlassDragAnimation false
+                        offset.x in 0f..totalWidthPx && offset.y >= 0f
+                    },
+                    onDragStarted = { /* no-op — press() is called by the modifier */ },
+                    onDragStopped = {
+                        // Snap to the nearest integer index, then notify the host so
+                        // the external selected state matches. The animateToValue
+                        // call below runs press()+release() — since press is already
+                        // at 1 from the drag, this just slides to the snap target
+                        // and fades the press out.
+                        val targetIndex = targetValue.roundToInt().coerceIn(0, tabsCount - 1)
+                        animationScope.launch {
+                            rubberBandOffset.animateTo(0f, spring(1f, 300f, 0.5f))
+                        }
+                        // Read the LATEST selectedIndex via the State wrapper —
+                        // otherwise we'd compare against the stale value captured
+                        // at animation-creation time.
+                        if (targetIndex != selectedIndexUpdated.value) {
+                            onItemClickUpdated.value(items[targetIndex], false)
+                        }
+                        animateToValue(targetIndex.toFloat())
+                    },
+                    onDrag = { _, dragAmount ->
+                        if (tabWidthPx > 0f) {
+                            updateValue(
+                                (targetValue + dragAmount.x / tabWidthPx * if (isLtr) 1f else -1f)
+                                    .fastCoerceIn(0f, (tabsCount - 1).toFloat()),
+                            )
+                            animationScope.launch {
+                                rubberBandOffset.snapTo(rubberBandOffset.value + dragAmount.x)
+                            }
+                        }
+                    },
+                )
+            } else {
+                null
+            }
+        }
+
+    // External selectedIndex changes (tab tap, back button, deep-link, etc.)
+    // drive the dampedDragAnimation. The first emission is skipped because the
+    // animation was already initialized to selectedIndex in its constructor —
+    // animating from value→value would still trigger press()/release() which
+    // we don't want on initial composition. drop(1) handles this cleanly.
+    //
+    // IMPORTANT: the snapshotFlow block must RECOMPUTE selectedIndex from
+    // `items` + `isSelected` (not just read a captured val) so that snapshot
+    // reads inside `isSelected` are tracked. `selectedIndex` itself is a plain
+    // Int val captured at composition time — reading it inside snapshotFlow
+    // would emit once and never re-emit.
+    val isSelectedTracker = rememberUpdatedState(isSelected)
+    val itemsTracker = rememberUpdatedState(items)
+    LaunchedEffect(dampedDragAnimation) {
+        val anim = dampedDragAnimation ?: return@LaunchedEffect
+        snapshotFlow {
+            val itemsList = itemsTracker.value
+            val sel = isSelectedTracker.value
+            itemsList.indexOfFirst { sel(it) }
+        }.drop(1).collect { idx ->
+            // `items.size` is captured at composition time. It's stable for the
+            // lifetime of `dampedDragAnimation` (which is `remember(tabsCount, ...)`
+            // keyed on `items.size`), so this check is safe.
+            if (idx in 0..(items.size - 1)) {
+                anim.animateToValue(idx.toFloat())
+            }
+        }
+    }
+
     val selectedCenter = if (selectedIndex >= 0) iconCenters[selectedIndex] else null
     val selectedItemBounds = if (selectedIndex >= 0) itemBounds[selectedIndex] else null
     LaunchedEffect(selectedIndex, selectedCenter, selectedItemBounds, containerPos, disableAnimations, indicatorWidth, indicatorHeight, canLiquidGlass) {
         if (canLiquidGlass) {
-            // Liquid Glass: pill wraps the full item (icon + label). Size and
-            // position are derived from the item's measured bounds, with a small
-            // inset so the pill has breathing room inside the item.
+            // Liquid Glass: pill wraps the full item (icon + label). The pill's
+            // WIDTH and HEIGHT are derived from the selected item's measured bounds
+            // (with a small inset for breathing room). The pill's Y position is
+            // also derived from the item bounds (all items share the same Y since
+            // they're in a Row).
+            //
+            // The pill's X position is NOT driven by this LaunchedEffect for the
+            // Liquid Glass variant — it's driven by `dampedDragAnimation.value`
+            // (a continuous Float in [0, tabsCount-1]) times `tabWidthPx`, plus
+            // the rubber-band `panelOffset`. This is what enables the SukiSU-style
+            // drag-to-slide behavior. See the pill Box's `graphicsLayer` block.
+            //
+            // The dampedDragAnimation is initialized to `selectedIndex` and is
+            // kept in sync via the `LaunchedEffect(dampedDragAnimation)` above.
             val bounds = selectedItemBounds ?: return@LaunchedEffect
             val pad = 4.dp
             val itemWidthDp = with(density) { bounds.width.toDp() }
             val itemHeightDp = with(density) { bounds.height.toDp() }
             liquidGlassPillWidth = (itemWidthDp - pad * 2).coerceAtLeast(indicatorWidth)
             liquidGlassPillHeight = (itemHeightDp - pad * 2).coerceAtLeast(indicatorHeight)
-            val widthPx = with(density) { liquidGlassPillWidth.toPx() }
             val heightPx = with(density) { liquidGlassPillHeight.toPx() }
-            val targetX = (bounds.left - containerPos.x) + (bounds.width - widthPx) / 2f
             indicatorY = (bounds.top - containerPos.y) + (bounds.height - heightPx) / 2f
-            val firstPlacement = !indicatorPlaced
-            if (disableAnimations || firstPlacement) {
-                indicatorX.snapTo(targetX)
-                indicatorPlaced = true
-            } else {
-                withContext(FullMotionDurationScale) {
-                    indicatorX.animateTo(
-                        targetValue = targetX,
-                        animationSpec = spring(dampingRatio = 0.72f, stiffness = Spring.StiffnessMediumLow),
-                    )
-                }
-            }
+            indicatorPlaced = true
         } else {
             // Default / frosted / floating: pill wraps only the icon (label
             // stays outside). This is the original behavior.
@@ -439,6 +572,17 @@ fun FloatingNavigationToolbar(
                     .onGloballyPositioned {
                         barPositionInRoot = it.positionInRoot()
                         barSize = it.size
+                    }
+                    // SukiSU-style rubber-band: the entire bar shifts horizontally
+                    // by at most ±4dp during drag (clamped + EaseOut-shaped via
+                    // [panelOffset]). This is the "the whole bar follows the finger
+                    // a tiny bit, then springs back" feel that makes the liquid
+                    // glass read as a physical object. Non-Liquid-Glass variants
+                    // keep panelOffset = 0 (no rubber-band).
+                    .graphicsLayer {
+                        if (canLiquidGlass) {
+                            translationX = panelOffset
+                        }
                     }
                     .then(
                         // Liquid Glass nav bar: apply the kyant liquidGlass modifier to the
@@ -579,6 +723,17 @@ fun FloatingNavigationToolbar(
                     // pill floating on the glass bar. For all other variants, the
                     // pill wraps only the icon (label stays outside it) and uses a
                     // solid `indicatorColor` fill.
+                    //
+                    // SukiSU-Ultra drag-to-slide behavior (Liquid Glass variant only):
+                    //   - Tap a tab → dampedDragAnimation.animateToValue() springs
+                    //     the pill to the new position with transient press feedback
+                    //     (scale 1 → 1.39 → 1, inner shadow fade-in/out, lens deepen).
+                    //   - Hold + drag the bar → the pill follows the finger with a
+                    //     rubber-band edge (panelOffset clamps to ±4dp), velocity-
+                    //     stretch (horizontal squash when flung), and a press state
+                    //     (scale 1.39 + inner shadow + deeper lens) that persists
+                    //     for the duration of the drag.
+                    //   - Release → snap to nearest integer index, fade press out.
                     if (selectedIndex >= 0 && indicatorPlaced) {
                         val pillWidth = if (canLiquidGlass) liquidGlassPillWidth else indicatorWidth
                         val pillHeight = if (canLiquidGlass) liquidGlassPillHeight else indicatorHeight
@@ -601,26 +756,78 @@ fun FloatingNavigationToolbar(
                                 modifier =
                                     Modifier
                                         .align(Alignment.TopStart)
-                                        .offset { IntOffset(indicatorX.value.roundToInt(), indicatorY.roundToInt()) }
+                                        .offset {
+                                            // For the Liquid Glass variant, the X is driven by
+                                            // dampedDragAnimation.value (a continuous Float in
+                                            // [0, tabsCount-1]) × tabWidthPx, plus the rubber-band
+                                            // panelOffset. The pill is centered within the slide
+                                            // slot via (tabWidthPx - pillWidthPx) / 2.
+                                            //
+                                            // For non-LG variants, keep the existing indicatorX
+                                            // Animatable path (snappy spring slide on tap).
+                                            val x = if (canLiquidGlass && dampedDragAnimation != null && tabWidthPx > 0f) {
+                                                val pillWidthPx = pillWidth.toPx()
+                                                itemsRowLeftInContainer +
+                                                    dampedDragAnimation.value * tabWidthPx +
+                                                    (tabWidthPx - pillWidthPx) / 2f +
+                                                    panelOffset
+                                            } else {
+                                                indicatorX.value
+                                            }
+                                            IntOffset(x.roundToInt(), indicatorY.roundToInt())
+                                        }
                                         .width(pillWidth)
                                         .height(pillHeight)
                                         .then(
                                             if (canLiquidGlass && liquidGlassBackdrop != null) {
-                                                // Liquid-glass pill: sample the app-content
-                                                // backdrop with vibrancy/blur/lens (same stack
-                                                // as the bar), then composite a translucent
-                                                // primary tint ON TOP so the pill is visually
-                                                // distinct from the bar beneath it. The tint
-                                                // is drawn via `drawWithContent` AFTER the
-                                                // liquidGlass effect (modifier order:
-                                                // liquidGlass → drawWithContent → content),
-                                                // so it sits above the backdrop sample + veil.
+                                                // Liquid-glass pill with SukiSU-style press feedback.
+                                                // Modifier order (outermost → innermost):
+                                                //   graphicsLayer (scale + velocity-stretch)
+                                                //   → liquidGlass (backdrop sample + veil)
+                                                //   → innerShadow (press-state inner darkening)
+                                                //   → drawWithContent (primary tint on top)
+                                                //
+                                                // The graphicsLayer is OUTSIDE liquidGlass so the
+                                                // scale + velocity-stretch apply to the rendered
+                                                // glass output. The backdrop sample is still taken
+                                                // from the LAYOUT position (after .offset), which
+                                                // is the slide position — so the glass always shows
+                                                // what's behind the pill at its current slide
+                                                // position. This matches SukiSU's behavior.
                                                 Modifier
+                                                    .graphicsLayer {
+                                                        if (dampedDragAnimation != null) {
+                                                            // SukiSU pressedScale = 78f / 56f ≈ 1.393.
+                                                            // Velocity-stretch: the pill squishes
+                                                            // horizontally when flung (a physical
+                                                            // "rubber" feel). The asymmetry (0.75 ×
+                                                            // horizontal, 0.25 × vertical) preserves
+                                                            // area roughly.
+                                                            val pressScale = lerp(1f, 78f / 56f, dampedDragAnimation.pressProgress)
+                                                            val velocityStretch = (dampedDragAnimation.velocity / 10f).fastCoerceIn(-0.2f, 0.2f)
+                                                            scaleX = pressScale / (1f - velocityStretch * 0.75f)
+                                                            scaleY = pressScale * (1f - velocityStretch * 0.25f)
+                                                        }
+                                                    }
                                                     .liquidGlass(
                                                         backdrop = liquidGlassBackdrop,
                                                         shape = pillShape,
                                                         interactive = false,
                                                     )
+                                                    .innerShadow(shape = pillShape) {
+                                                        // Inner shadow only appears during press —
+                                                        // radius + alpha both scale with pressProgress.
+                                                        // This is the "glass lifted off the bar" feel.
+                                                        if (dampedDragAnimation != null && dampedDragAnimation.pressProgress > 0f) {
+                                                            InnerShadow(
+                                                                radius = 8.dp * dampedDragAnimation.pressProgress,
+                                                                color = Color.Black.copy(alpha = 0.15f),
+                                                                alpha = dampedDragAnimation.pressProgress,
+                                                            )
+                                                        } else {
+                                                            null
+                                                        }
+                                                    }
                                                     .drawWithContent {
                                                         drawContent()
                                                         drawRect(color = pillTintColor)
@@ -641,7 +848,33 @@ fun FloatingNavigationToolbar(
                                 .widthIn(max = NavigationItemsMaxWidth)
                                 .fillMaxWidth()
                                 .fillMaxHeight()
-                                .padding(vertical = NavigationItemVerticalPadding),
+                                .padding(vertical = NavigationItemVerticalPadding)
+                                .onGloballyPositioned { coordinates ->
+                                    // Track the items Row's geometry so the sliding pill can:
+                                    //   1. Compute its X position from dampedDragAnimation.value
+                                    //      × tabWidthPx + itemsRowLeftInContainer (the Row's
+                                    //      left edge in the container Box).
+                                    //   2. Apply the rubber-band panelOffset (clamped to ±4dp).
+                                    //   3. Pass totalWidthPx to the drag canDrag predicate so it
+                                    //      can reject touches outside the items Row.
+                                    val rowPosInRoot = coordinates.positionInRoot()
+                                    itemsRowLeftInContainer = rowPosInRoot.x - containerPos.x
+                                    totalWidthPx = coordinates.size.width.toFloat()
+                                    tabWidthPx = if (tabsCount > 0) (totalWidthPx / tabsCount).coerceAtLeast(0f) else 0f
+                                }
+                                // Attach the SukiSU-style drag detector. Uses
+                                // PointerEventPass.Initial so it observes touches BEFORE
+                                // the tab items' own clickable handlers — a tap fires both
+                                // (clickable ignores touches that moved, so a drag only fires
+                                // here). The modifier is only attached for the Liquid Glass
+                                // variant; other variants have no drag interaction.
+                                .then(
+                                    if (canLiquidGlass && dampedDragAnimation != null) {
+                                        dampedDragAnimation.modifier
+                                    } else {
+                                        Modifier
+                                    },
+                                ),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         items.forEachIndexed { index, screen ->
