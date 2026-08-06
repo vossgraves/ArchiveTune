@@ -227,10 +227,20 @@ private fun NewMiniPlayer(
     )
     val effectiveBackgroundStyle =
         when {
+            // LIQUID_GLASS downgrades: master toggle off OR pre-S → THEME.
+            // Otherwise it stays LIQUID_GLASS. The previous chain was missing the
+            // positive branch — when both checks passed, control fell through to
+            // `shouldUseArtworkBackground && backgroundPalette != null` (false for
+            // LIQUID_GLASS because it is not GRADIENT/GLOW) and then to `else -> THEME`,
+            // so the Liquid Glass mini player NEVER activated even with the master
+            // toggle on. The user's "Liquid glass Mini player doesn't work" was this
+            // fall-through bug.
             miniPlayerBackgroundStyle == MiniPlayerBackgroundStyle.LIQUID_GLASS && !liquidGlassMaster ->
                 MiniPlayerBackgroundStyle.THEME
             miniPlayerBackgroundStyle == MiniPlayerBackgroundStyle.LIQUID_GLASS &&
                 Build.VERSION.SDK_INT < Build.VERSION_CODES.S -> MiniPlayerBackgroundStyle.THEME
+            miniPlayerBackgroundStyle == MiniPlayerBackgroundStyle.LIQUID_GLASS ->
+                MiniPlayerBackgroundStyle.LIQUID_GLASS
             miniPlayerBackgroundStyle == MiniPlayerBackgroundStyle.FROSTED -> MiniPlayerBackgroundStyle.FROSTED
             shouldUseArtworkBackground && backgroundPalette != null -> miniPlayerBackgroundStyle
             else -> MiniPlayerBackgroundStyle.THEME

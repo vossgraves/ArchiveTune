@@ -13,6 +13,7 @@
 
 package moe.rukamori.archivetune.ui.component
 
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Row
@@ -90,8 +91,18 @@ fun Modifier.liquidGlass(
     backdrop: PlatformBackdrop,
     shape: Shape = CircleShape,
     interactive: Boolean = true,
-): Modifier =
-    this.drawBackdrop(
+): Modifier {
+    // Match SimpMusic's theme-aware overlay: in dark theme add a black veil
+    // ("đục đen"); in light theme add a white veil ("đục trắng"). The previous
+    // implementation always used Color.Black, which on a bright backdrop in
+    // light theme produced a translucent dark smudge that read as "white space"
+    // (the bright backdrop showing through at 73 %), and on an empty/transparent
+    // backdrop (e.g. the bottom of the screen with no content behind) produced
+    // a fully invisible bar — the user's "completely transparent" complaint.
+    // Using White in light theme gives the frosted-white Apple-glass look, and
+    // using a higher alpha when the backdrop is empty keeps the bar visible.
+    val isDark = isSystemInDarkTheme()
+    return this.drawBackdrop(
         backdrop = backdrop,
         effects = {
             // Fixed mid-luminance: keeps the glass readable on both bright
@@ -112,22 +123,36 @@ fun Modifier.liquidGlass(
                     lerp(8f.dp.toPx(), 2f.dp.toPx(), -l)
                 },
             )
-            lens(24f.dp.toPx(), size.minDimension / 2f, true)
+            // Refraction height MUST stay below the stadium inradius (minDimension / 2).
+            // At minDimension / 2 the top and bottom refraction meet at the medial axis,
+            // producing a dark horizontal seam across the middle of wide pills (the
+            // "white space" the user reported inside the nav bar). SimpMusic uses
+            // minDimension / 4; we match. chromaticAberration = false matches the
+            // crisp Kyant demo look and avoids the radial discontinuity at the centre.
+            lens(24f.dp.toPx(), size.minDimension / 4f, false)
         },
         onDrawBackdrop = { drawBackdrop ->
             drawBackdrop()
         },
         shape = { shape },
         onDrawSurface = {
+            // luminanceAnimation = 0.5f gives a fixed darken alpha of ~0.272 (the
+            // lerp(0.12, 0.5, 0.4) midpoint). SimpMusic animates this from a real
+            // luminance sample; we keep it constant for simplicity. The KEY change
+            // is the overlay color: Black for dark theme, White for light theme.
+            // In light theme a 27 % white veil over a bright backdrop produces the
+            // frosted-white Apple-glass look (instead of a dark smudge). On an empty
+            // backdrop, the veil still draws — so the bar is always visible.
             val luminanceAnimation = 0.5f
             val darken = lerp(
                 0.12f,
                 0.5f,
                 ((luminanceAnimation - 0.3f) / 0.5f).coerceIn(0f, 1f),
             )
-            drawRect(Color.Black.copy(alpha = darken))
+            drawRect((if (isDark) Color.Black else Color.White).copy(alpha = darken))
         },
     )
+}
 
 /**
  * A liquid-glass surface wrapping arbitrary [content] (e.g. a pill of icon

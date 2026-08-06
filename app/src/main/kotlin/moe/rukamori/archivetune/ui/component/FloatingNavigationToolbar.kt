@@ -373,8 +373,17 @@ fun FloatingNavigationToolbar(
                     ),
             shape = navigationShape,
             color = navigationContainerColor,
-            tonalElevation = NavigationBarDefaults.Elevation,
-            shadowElevation = if (isFloating) 8.dp else NavigationBarDefaults.Elevation,
+            // For Liquid Glass, the kyant drawBackdrop modifier already clips its
+            // GraphicsLayer to navigationShape (clip = true + shape = shape in the
+            // DrawBackdropNode's layoutLayerBlock). Material3 Surface's shadow is
+            // normally drawn OUTSIDE the shape, but with the drawBackdrop modifier
+            // wrapping the Surface's content, the shadow is clipped INSIDE the shape,
+            // producing a visible white-ish ambient shadow tint inside the pill — the
+            // "white space inside navigation bar" the user reported. Setting both
+            // elevations to 0 for Liquid Glass eliminates the clipped shadow; the
+            // liquidGlass effect itself provides depth via the lens refraction.
+            tonalElevation = if (canLiquidGlass) 0.dp else NavigationBarDefaults.Elevation,
+            shadowElevation = if (canLiquidGlass) 0.dp else if (isFloating) 8.dp else NavigationBarDefaults.Elevation,
         ) {
             if (canBlurBackdrop && frostedBackdrop != null) {
                 if (isPreS) {
