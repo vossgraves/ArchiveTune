@@ -110,9 +110,13 @@ import moe.rukamori.archivetune.ui.component.EditPlaylistDialog
 import moe.rukamori.archivetune.ui.component.EmptyPlaceholder
 import moe.rukamori.archivetune.ui.component.ExpressivePullToRefreshBox
 import moe.rukamori.archivetune.ui.component.IconButton
+import moe.rukamori.archivetune.ui.component.LiquidGlassActionPill
+import moe.rukamori.archivetune.ui.component.LiquidGlassIconButton
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.MediaDetailAction
 import moe.rukamori.archivetune.ui.component.MediaDetailHero
+import moe.rukamori.archivetune.ui.component.layerBackdrop
+import moe.rukamori.archivetune.ui.component.rememberBackdrop
 import moe.rukamori.archivetune.ui.component.MediaDetailIconAction
 import moe.rukamori.archivetune.ui.component.SongListItem
 import moe.rukamori.archivetune.ui.component.SortHeader
@@ -565,7 +569,10 @@ fun LocalPlaylistScreen(
                                 ).joinToString(MediaDetailMetadataSeparator)
                             val isBookmarked = playlist.playlist.bookmarkedAt != null
 
-                            MediaDetailHero(
+                            // SimpMusic-style liquid glass backdrop source.
+                            val artworkBackdrop = rememberBackdrop(Color.Black)
+                            Box(modifier = Modifier.layerBackdrop(artworkBackdrop)) {
+                                MediaDetailHero(
                                 title = playlist.playlist.name,
                                 thumbnailUrl =
                                     playlist.playlist.thumbnailUrl
@@ -671,6 +678,87 @@ fun LocalPlaylistScreen(
                                 },
                                 modifier = Modifier.animateItem(),
                             )
+                                // SimpMusic-style floating liquid glass buttons.
+                                LiquidGlassIconButton(
+                                    backdrop = artworkBackdrop,
+                                    painter = painterResource(R.drawable.arrow_back),
+                                    contentDescription = null,
+                                    modifier =
+                                        Modifier
+                                            .align(Alignment.TopStart)
+                                            .padding(start = 12.dp, top = systemBarsTopPadding + 12.dp)
+                                            .size(48.dp),
+                                    onClick = { navController.navigateUp() },
+                                )
+                                LiquidGlassActionPill(
+                                    backdrop = artworkBackdrop,
+                                    modifier =
+                                        Modifier
+                                            .align(Alignment.TopEnd)
+                                            .padding(end = 12.dp, top = systemBarsTopPadding + 12.dp),
+                                ) {
+                                    // Search
+                                    Box(
+                                        modifier = Modifier.size(48.dp),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        androidx.compose.material3.IconButton(onClick = { isSearching = true }) {
+                                            Icon(
+                                                painter = painterResource(R.drawable.search),
+                                                contentDescription = null,
+                                                tint = Color.White,
+                                            )
+                                        }
+                                    }
+                                    // More
+                                    playlist?.let { currentPlaylist ->
+                                        Box(
+                                            modifier = Modifier.size(48.dp),
+                                            contentAlignment = Alignment.Center,
+                                        ) {
+                                            androidx.compose.material3.IconButton(onClick = {
+                                                menuState.show {
+                                                    PlaylistMenu(
+                                                        playlist = currentPlaylist,
+                                                        coroutineScope = coroutineScope,
+                                                        onDismiss = menuState::dismiss,
+                                                        onChangeCover =
+                                                            if (
+                                                                currentPlaylist.playlist.isEditable == true &&
+                                                                coverState !is PlaylistCoverState.Loading
+                                                            ) {
+                                                                {
+                                                                    menuState.dismiss()
+                                                                    pickCoverLauncher.launch(arrayOf("image/*"))
+                                                                }
+                                                            } else {
+                                                                null
+                                                            },
+                                                        onRemoveCover =
+                                                            if (
+                                                                currentPlaylist.playlist.hasCustomCover &&
+                                                                coverState !is PlaylistCoverState.Loading
+                                                            ) {
+                                                                {
+                                                                    menuState.dismiss()
+                                                                    viewModel.removeCover()
+                                                                }
+                                                            } else {
+                                                                null
+                                                            },
+                                                    )
+                                                }
+                                            }) {
+                                                Icon(
+                                                    painter = painterResource(R.drawable.more_horiz),
+                                                    contentDescription = null,
+                                                    tint = Color.White,
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
 
@@ -1025,30 +1113,35 @@ fun LocalPlaylistScreen(
                 }
             },
             navigationIcon = {
-                IconButton(
-                    onClick = {
-                        if (isSearching) {
-                            isSearching = false
-                            query = TextFieldValue()
-                        } else if (selection) {
-                            selection = false
-                        } else {
-                            navController.navigateUp()
-                        }
-                    },
-                    onLongClick = {
-                        if (!isSearching) {
-                            navController.backToMain()
-                        }
-                    },
-                ) {
-                    Icon(
-                        painter =
-                            painterResource(
-                                if (selection || isSearching) R.drawable.close else R.drawable.arrow_back,
-                            ),
-                        contentDescription = null,
-                    )
+                // Hide the back arrow when the SimpMusic-style floating liquid
+                // glass back button is visible (artwork shown, not searching,
+                // not in selection mode, not scrolled).
+                if (isSearching || selection || showTopBarTitle) {
+                    IconButton(
+                        onClick = {
+                            if (isSearching) {
+                                isSearching = false
+                                query = TextFieldValue()
+                            } else if (selection) {
+                                selection = false
+                            } else {
+                                navController.navigateUp()
+                            }
+                        },
+                        onLongClick = {
+                            if (!isSearching) {
+                                navController.backToMain()
+                            }
+                        },
+                    ) {
+                        Icon(
+                            painter =
+                                painterResource(
+                                    if (selection || isSearching) R.drawable.close else R.drawable.arrow_back,
+                                ),
+                            contentDescription = null,
+                        )
+                    }
                 }
             },
             actions = {
@@ -1097,56 +1190,61 @@ fun LocalPlaylistScreen(
                         )
                     }
                 } else if (!isSearching) {
-                    IconButton(
-                        onClick = { isSearching = true },
-                        onLongClick = {},
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.search),
-                            contentDescription = null,
-                        )
-                    }
-                    playlist?.let { currentPlaylist ->
+                    // Hide search + more when the SimpMusic-style floating
+                    // liquid glass pill is visible (artwork shown, not
+                    // scrolled).
+                    if (showTopBarTitle) {
                         IconButton(
-                            onClick = {
-                                menuState.show {
-                                    PlaylistMenu(
-                                        playlist = currentPlaylist,
-                                        coroutineScope = coroutineScope,
-                                        onDismiss = menuState::dismiss,
-                                        onChangeCover =
-                                            if (
-                                                currentPlaylist.playlist.isEditable == true &&
-                                                coverState !is PlaylistCoverState.Loading
-                                            ) {
-                                                {
-                                                    menuState.dismiss()
-                                                    pickCoverLauncher.launch(arrayOf("image/*"))
-                                                }
-                                            } else {
-                                                null
-                                            },
-                                        onRemoveCover =
-                                            if (
-                                                currentPlaylist.playlist.hasCustomCover &&
-                                                coverState !is PlaylistCoverState.Loading
-                                            ) {
-                                                {
-                                                    menuState.dismiss()
-                                                    viewModel.removeCover()
-                                                }
-                                            } else {
-                                                null
-                                            },
-                                    )
-                                }
-                            },
+                            onClick = { isSearching = true },
                             onLongClick = {},
                         ) {
                             Icon(
-                                painter = painterResource(R.drawable.more_horiz),
-                                contentDescription = stringResource(R.string.more_options),
+                                painter = painterResource(R.drawable.search),
+                                contentDescription = null,
                             )
+                        }
+                        playlist?.let { currentPlaylist ->
+                            IconButton(
+                                onClick = {
+                                    menuState.show {
+                                        PlaylistMenu(
+                                            playlist = currentPlaylist,
+                                            coroutineScope = coroutineScope,
+                                            onDismiss = menuState::dismiss,
+                                            onChangeCover =
+                                                if (
+                                                    currentPlaylist.playlist.isEditable == true &&
+                                                    coverState !is PlaylistCoverState.Loading
+                                                ) {
+                                                    {
+                                                        menuState.dismiss()
+                                                        pickCoverLauncher.launch(arrayOf("image/*"))
+                                                    }
+                                                } else {
+                                                    null
+                                                },
+                                            onRemoveCover =
+                                                if (
+                                                    currentPlaylist.playlist.hasCustomCover &&
+                                                    coverState !is PlaylistCoverState.Loading
+                                                ) {
+                                                    {
+                                                        menuState.dismiss()
+                                                        viewModel.removeCover()
+                                                    }
+                                                } else {
+                                                    null
+                                                },
+                                        )
+                                    }
+                                },
+                                onLongClick = {},
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.more_horiz),
+                                    contentDescription = stringResource(R.string.more_options),
+                                )
+                            }
                         }
                     }
                 }

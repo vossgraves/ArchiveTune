@@ -107,11 +107,15 @@ import moe.rukamori.archivetune.playback.queues.YouTubeQueue
 import moe.rukamori.archivetune.ui.component.DraggableScrollbar
 import moe.rukamori.archivetune.ui.component.ExpressivePullToRefreshBox
 import moe.rukamori.archivetune.ui.component.IconButton
+import moe.rukamori.archivetune.ui.component.LiquidGlassActionPill
+import moe.rukamori.archivetune.ui.component.LiquidGlassIconButton
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.MediaDetailAction
 import moe.rukamori.archivetune.ui.component.MediaDetailHero
 import moe.rukamori.archivetune.ui.component.MediaDetailIconAction
 import moe.rukamori.archivetune.ui.component.YouTubeListItem
+import moe.rukamori.archivetune.ui.component.layerBackdrop
+import moe.rukamori.archivetune.ui.component.rememberBackdrop
 import moe.rukamori.archivetune.ui.component.shimmer.ButtonPlaceholder
 import moe.rukamori.archivetune.ui.component.shimmer.ListItemPlaceHolder
 import moe.rukamori.archivetune.ui.component.shimmer.ShimmerHost
@@ -399,7 +403,13 @@ fun OnlinePlaylistScreen(
                             val isBookmarked = dbPlaylist?.playlist?.bookmarkedAt != null
                             val fallbackPlaySong = songs.firstOrNull()
 
-                            MediaDetailHero(
+                            // SimpMusic-style liquid glass backdrop source: wraps
+                            // the MediaDetailHero so the floating circular back
+                            // button (top-start) and the more-actions pill
+                            // (top-end) can sample the artwork behind them.
+                            val artworkBackdrop = rememberBackdrop(Color.Black)
+                            Box(modifier = Modifier.layerBackdrop(artworkBackdrop)) {
+                                MediaDetailHero(
                                 title = playlist.title,
                                 thumbnailUrl = playlist.thumbnail,
                                 fallbackIcon = R.drawable.queue_music,
@@ -515,6 +525,67 @@ fun OnlinePlaylistScreen(
                                 },
                                 modifier = Modifier.animateItem(),
                             )
+                                // SimpMusic-style floating liquid glass buttons.
+                                LiquidGlassIconButton(
+                                    backdrop = artworkBackdrop,
+                                    painter = painterResource(R.drawable.arrow_back),
+                                    contentDescription = null,
+                                    modifier =
+                                        Modifier
+                                            .align(Alignment.TopStart)
+                                            .padding(start = 12.dp, top = systemBarsTopPadding + 12.dp)
+                                            .size(48.dp),
+                                    onClick = { navController.navigateUp() },
+                                )
+                                LiquidGlassActionPill(
+                                    backdrop = artworkBackdrop,
+                                    modifier =
+                                        Modifier
+                                            .align(Alignment.TopEnd)
+                                            .padding(end = 12.dp, top = systemBarsTopPadding + 12.dp),
+                                ) {
+                                    // Search
+                                    Box(
+                                        modifier = Modifier.size(48.dp),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        androidx.compose.material3.IconButton(onClick = { isSearching = true }) {
+                                            Icon(
+                                                painter = painterResource(R.drawable.search),
+                                                contentDescription = null,
+                                                tint = Color.White,
+                                            )
+                                        }
+                                    }
+                                    // More
+                                    playlist?.let { currentPlaylist ->
+                                        Box(
+                                            modifier = Modifier.size(48.dp),
+                                            contentAlignment = Alignment.Center,
+                                        ) {
+                                            androidx.compose.material3.IconButton(onClick = {
+                                                menuState.show {
+                                                    YouTubePlaylistMenu(
+                                                        playlist = currentPlaylist,
+                                                        songs = songs,
+                                                        coroutineScope = coroutineScope,
+                                                        onDismiss = menuState::dismiss,
+                                                        selectAction = { selection = true },
+                                                        canSelect = true,
+                                                        snackbarHostState = snackbarHostState,
+                                                    )
+                                                }
+                                            }) {
+                                                Icon(
+                                                    painter = painterResource(R.drawable.more_horiz),
+                                                    contentDescription = null,
+                                                    tint = Color.White,
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
 
@@ -750,20 +821,26 @@ fun OnlinePlaylistScreen(
                 }
             },
             navigationIcon = {
-                IconButton(
-                    onClick = {
-                        if (isSearching) {
-                            isSearching = false
-                            query = TextFieldValue()
-                        } else if (selection) {
-                            selection = false
-                        } else {
-                            navController.navigateUp()
-                        }
-                    },
-                    onLongClick = {
-                        if (!isSearching && !selection) {
-                            navController.backToMain()
+                // Hide the back arrow when the SimpMusic-style floating liquid
+                // glass back button is visible (artwork shown, not searching,
+                // not in selection mode, not scrolled). In selection / searching
+                // / scrolled state, the floating button has scrolled out of
+                // view so we need the TopAppBar's own back/close icon.
+                if (isSearching || selection || showTopBarTitle) {
+                    IconButton(
+                        onClick = {
+                            if (isSearching) {
+                                isSearching = false
+                                query = TextFieldValue()
+                            } else if (selection) {
+                                selection = false
+                            } else {
+                                navController.navigateUp()
+                            }
+                        },
+                        onLongClick = {
+                            if (!isSearching && !selection) {
+                                navController.backToMain()
                         }
                     },
                 ) {
@@ -774,6 +851,7 @@ fun OnlinePlaylistScreen(
                             ),
                         contentDescription = null,
                     )
+                }
                 }
             },
             actions = {
@@ -827,33 +905,40 @@ fun OnlinePlaylistScreen(
                         )
                     }
                 } else if (!isSearching) {
-                    IconButton(onClick = { isSearching = true }, onLongClick = {}) {
-                        Icon(
-                            painter = painterResource(R.drawable.search),
-                            contentDescription = null,
-                        )
-                    }
-                    playlist?.let { currentPlaylist ->
-                        IconButton(
-                            onClick = {
-                                menuState.show {
-                                    YouTubePlaylistMenu(
-                                        playlist = currentPlaylist,
-                                        songs = songs,
-                                        coroutineScope = coroutineScope,
-                                        onDismiss = menuState::dismiss,
-                                        selectAction = { selection = true },
-                                        canSelect = true,
-                                        snackbarHostState = snackbarHostState,
-                                    )
-                                }
-                            },
-                            onLongClick = {},
-                        ) {
+                    // Hide search + more when the SimpMusic-style floating
+                    // liquid glass pill is visible (artwork shown, not
+                    // scrolled). Once scrolled, the floating pill has
+                    // scrolled out of view, so the TopAppBar's own actions
+                    // take over.
+                    if (showTopBarTitle) {
+                        IconButton(onClick = { isSearching = true }, onLongClick = {}) {
                             Icon(
-                                painter = painterResource(R.drawable.more_horiz),
-                                contentDescription = stringResource(R.string.more_options),
+                                painter = painterResource(R.drawable.search),
+                                contentDescription = null,
                             )
+                        }
+                        playlist?.let { currentPlaylist ->
+                            IconButton(
+                                onClick = {
+                                    menuState.show {
+                                        YouTubePlaylistMenu(
+                                            playlist = currentPlaylist,
+                                            songs = songs,
+                                            coroutineScope = coroutineScope,
+                                            onDismiss = menuState::dismiss,
+                                            selectAction = { selection = true },
+                                            canSelect = true,
+                                            snackbarHostState = snackbarHostState,
+                                        )
+                                    }
+                                },
+                                onLongClick = {},
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.more_horiz),
+                                    contentDescription = stringResource(R.string.more_options),
+                                )
+                            }
                         }
                     }
                 }
