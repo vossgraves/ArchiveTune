@@ -124,6 +124,8 @@ import moe.rukamori.archivetune.playback.queues.YouTubeQueue
 import moe.rukamori.archivetune.ui.component.AlbumGridItem
 import moe.rukamori.archivetune.ui.component.HideOnScrollFAB
 import moe.rukamori.archivetune.ui.component.IconButton
+import moe.rukamori.archivetune.ui.component.LiquidGlassActionPill
+import moe.rukamori.archivetune.ui.component.LiquidGlassIconButton
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.MediaDetailIconAction
 import moe.rukamori.archivetune.ui.component.MediaDetailPrimaryActions
@@ -131,6 +133,8 @@ import moe.rukamori.archivetune.ui.component.NavigationTitle
 import moe.rukamori.archivetune.ui.component.SongListItem
 import moe.rukamori.archivetune.ui.component.YouTubeGridItem
 import moe.rukamori.archivetune.ui.component.YouTubeListItem
+import moe.rukamori.archivetune.ui.component.layerBackdrop
+import moe.rukamori.archivetune.ui.component.rememberBackdrop
 import moe.rukamori.archivetune.ui.component.shimmer.ButtonPlaceholder
 import moe.rukamori.archivetune.ui.component.shimmer.ListItemPlaceHolder
 import moe.rukamori.archivetune.ui.component.shimmer.ShimmerHost
@@ -390,12 +394,19 @@ fun ArtistScreen(
                         }
                     val isSubscribed = libraryArtist?.artist?.bookmarkedAt != null
 
+                    // SimpMusic-style liquid glass backdrop source: the
+                    // existing artist hero Box becomes the LayerBackdrop
+                    // source so the floating circular back button (top-start)
+                    // and the more-actions pill (top-end) can sample the
+                    // artwork behind them.
+                    val artworkBackdrop = rememberBackdrop(Color.Black)
                     Box(
                         modifier =
                             Modifier
                                 .fillMaxWidth()
                                 .heightIn(min = ArtistHeroMinHeight)
-                                .background(surfaceColor),
+                                .background(surfaceColor)
+                                .layerBackdrop(artworkBackdrop),
                     ) {
                         if (thumbnail != null) {
                             AsyncImage(
@@ -585,6 +596,39 @@ fun ArtistScreen(
                                     },
                                 modifier = Modifier.padding(top = 12.dp),
                             )
+                        }
+                        // SimpMusic-style floating liquid glass buttons.
+                        LiquidGlassIconButton(
+                            backdrop = artworkBackdrop,
+                            painter = painterResource(R.drawable.arrow_back),
+                            contentDescription = null,
+                            modifier =
+                                Modifier
+                                    .align(Alignment.TopStart)
+                                    .padding(start = 12.dp, top = systemBarsTopPadding + 12.dp)
+                                    .size(48.dp),
+                            onClick = { navController.navigateUp() },
+                        )
+                        LiquidGlassActionPill(
+                            backdrop = artworkBackdrop,
+                            modifier =
+                                Modifier
+                                    .align(Alignment.TopEnd)
+                                    .padding(end = 12.dp, top = systemBarsTopPadding + 12.dp),
+                        ) {
+                            // More
+                            Box(
+                                modifier = Modifier.size(48.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                androidx.compose.material3.IconButton(onClick = showArtistOverflowMenu) {
+                                    Icon(
+                                        painter = painterResource(R.drawable.more_horiz),
+                                        contentDescription = null,
+                                        tint = Color.White,
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -1031,25 +1075,33 @@ fun ArtistScreen(
             )
         },
         navigationIcon = {
-            IconButton(
-                onClick = navController::navigateUp,
-                onLongClick = navController::backToMain,
-            ) {
-                Icon(
-                    painterResource(R.drawable.arrow_back),
-                    contentDescription = null,
-                )
+            // Hide the back arrow when the SimpMusic-style floating liquid
+            // glass back button is visible (artwork shown, not scrolled).
+            if (!transparentAppBar) {
+                IconButton(
+                    onClick = navController::navigateUp,
+                    onLongClick = navController::backToMain,
+                ) {
+                    Icon(
+                        painterResource(R.drawable.arrow_back),
+                        contentDescription = null,
+                    )
+                }
             }
         },
         actions = {
-            IconButton(
-                onClick = showArtistOverflowMenu,
-                onLongClick = {},
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.more_horiz),
-                    contentDescription = stringResource(R.string.more_options),
-                )
+            // Hide the more action when the SimpMusic-style floating liquid
+            // glass pill is visible (artwork shown, not scrolled).
+            if (!transparentAppBar) {
+                IconButton(
+                    onClick = showArtistOverflowMenu,
+                    onLongClick = {},
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.more_horiz),
+                        contentDescription = stringResource(R.string.more_options),
+                    )
+                }
             }
         },
         colors =
