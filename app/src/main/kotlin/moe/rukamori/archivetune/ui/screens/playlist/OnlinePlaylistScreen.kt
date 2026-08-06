@@ -524,7 +524,7 @@ fun OnlinePlaylistScreen(
                                     }
                                 },
                                 modifier = Modifier.animateItem(),
-                                backdrop = artworkBackdrop,
+                                useBlurredPlayButton = true,
                             )
                                 // SimpMusic-style floating liquid glass buttons.
                                 LiquidGlassIconButton(

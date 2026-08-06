@@ -441,7 +441,7 @@ fun SpotifyPlaylistScreen(
                                     }
                                 }
                             },
-                            backdrop = artworkBackdrop,
+                            useBlurredPlayButton = true,
                         )
                             // SimpMusic-style floating liquid glass buttons.
                             LiquidGlassIconButton(

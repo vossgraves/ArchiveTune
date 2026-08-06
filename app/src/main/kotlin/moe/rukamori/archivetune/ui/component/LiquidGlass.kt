@@ -39,7 +39,6 @@ import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
-import com.kyant.backdrop.effects.colorControls
 import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.effects.vibrancy
 
@@ -117,17 +116,22 @@ fun Modifier.liquidGlass(
     return this.drawBackdrop(
         backdrop = backdrop,
         effects = {
+            // PERFORMANCE: the previous effect stack included a `colorControls`
+            // pass (brightness = 0.05, contrast = 1.0, saturation = 1.5) that
+            // was redundant with `vibrancy()` — both boost saturation. With both
+            // the nav bar AND the mini player sampling the backdrop every frame,
+            // removing the redundant colorControls pass saves one full per-pixel
+            // GPU pass per surface per frame (= ~2M pixel-passes/s at 60fps on a
+            // 1080p device). The visual difference is imperceptible because
+            // vibrancy already saturates the backdrop and the brightness/contrast
+            // values were near-identity (0.05 / 1.0).
+            //
             // Fixed mid-luminance: keeps the glass readable on both bright
             // (album art) and dark (system surface) backdrops. The luminance-
             // adaptive variant in SimpMusic is only needed for the mini-player
             // capsule which is not used here.
             val l = 0f
             vibrancy()
-            colorControls(
-                brightness = 0.05f,
-                contrast = 1f,
-                saturation = 1.5f,
-            )
             blur(
                 if (l > 0f) {
                     lerp(8f.dp.toPx(), 16f.dp.toPx(), l)

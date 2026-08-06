@@ -710,7 +710,7 @@ fun LocalPlaylistScreen(
                                     }
                                 },
                                 modifier = Modifier.animateItem(),
-                                backdrop = if (liquidGlassHeaderActive) artworkBackdrop else null,
+                                useBlurredPlayButton = liquidGlassHeaderActive,
                             )
                         }
                     }

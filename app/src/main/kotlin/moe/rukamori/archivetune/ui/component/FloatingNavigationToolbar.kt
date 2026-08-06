@@ -61,6 +61,7 @@ import androidx.compose.ui.MotionDurationScale
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.BlurEffect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
@@ -258,6 +259,14 @@ fun FloatingNavigationToolbar(
     // selected icon stands out against the colored bar.
     val indicatorColor =
         when {
+            // Liquid Glass: the pill sits on top of the blurred app-content
+            // backdrop, so secondaryContainer (the default) would blend in and
+            // be hard to see. Use a primary-tinted blob at a slightly higher
+            // alpha so the selected item stands out — matching the floating
+            // variant's visibility. The pill now also wraps the label (see
+            // [liquidGlassPillWidth/Height]), so the entire selected item
+            // (icon + label) is clearly highlighted.
+            canLiquidGlass -> MaterialTheme.colorScheme.primary.copy(alpha = 0.32f)
             tintFrostedBlur && !isFloating -> MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.22f)
             isFloating -> MaterialTheme.colorScheme.primary.copy(alpha = 0.30f)
             pureBlack -> Color.White.copy(alpha = 0.16f)
@@ -309,31 +318,70 @@ fun FloatingNavigationToolbar(
     // can slide to the exact icon position regardless of layout/insets. Only the icon is tracked so
     // the bubble hugs the icon and leaves the text label outside of it.
     val iconCenters = remember { mutableStateMapOf<Int, Offset>() }
+    // For the Liquid Glass variant, the pill wraps BOTH the icon and the label (the
+    // user reported the selected icon was hard to see against the glass backdrop
+    // because only the icon was highlighted, not the label). We track each item's
+    // full bounds (icon + spacing + label) so the Liquid Glass pill can size to
+    // cover both. The default variant keeps the icon-only pill (unchanged).
+    val itemBounds = remember { mutableStateMapOf<Int, Rect>() }
     var containerPos by remember { mutableStateOf(Offset.Zero) }
 
     val indicatorX = remember { Animatable(0f) }
     var indicatorY by remember { mutableStateOf(0f) }
     var indicatorPlaced by remember { mutableStateOf(false) }
+    // Liquid Glass pill size, computed from the selected item's full bounds
+    // (icon + label). Zero until the first item is measured.
+    var liquidGlassPillWidth by remember { mutableStateOf(0.dp) }
+    var liquidGlassPillHeight by remember { mutableStateOf(0.dp) }
 
     val selectedCenter = if (selectedIndex >= 0) iconCenters[selectedIndex] else null
-    LaunchedEffect(selectedIndex, selectedCenter, containerPos, disableAnimations, indicatorWidth, indicatorHeight) {
-        val center = selectedCenter ?: return@LaunchedEffect
-        val widthPx = with(density) { indicatorWidth.toPx() }
-        val heightPx = with(density) { indicatorHeight.toPx() }
-        val targetX = (center.x - containerPos.x) - widthPx / 2f
-        // All icons share a row, so Y is constant; compute it directly (no animation needed).
-        indicatorY = (center.y - containerPos.y) - heightPx / 2f
-        val firstPlacement = !indicatorPlaced
-        if (disableAnimations || firstPlacement) {
-            indicatorX.snapTo(targetX)
-            indicatorPlaced = true
+    val selectedItemBounds = if (selectedIndex >= 0) itemBounds[selectedIndex] else null
+    LaunchedEffect(selectedIndex, selectedCenter, selectedItemBounds, containerPos, disableAnimations, indicatorWidth, indicatorHeight, canLiquidGlass) {
+        if (canLiquidGlass) {
+            // Liquid Glass: pill wraps the full item (icon + label). Size and
+            // position are derived from the item's measured bounds, with a small
+            // inset so the pill has breathing room inside the item.
+            val bounds = selectedItemBounds ?: return@LaunchedEffect
+            val pad = 4.dp
+            val itemWidthDp = with(density) { bounds.width.toDp() }
+            val itemHeightDp = with(density) { bounds.height.toDp() }
+            liquidGlassPillWidth = (itemWidthDp - 2 * pad).coerceAtLeast(indicatorWidth)
+            liquidGlassPillHeight = (itemHeightDp - 2 * pad).coerceAtLeast(indicatorHeight)
+            val widthPx = with(density) { liquidGlassPillWidth.toPx() }
+            val heightPx = with(density) { liquidGlassPillHeight.toPx() }
+            val targetX = (bounds.left - containerPos.x) + (bounds.width - widthPx) / 2f
+            indicatorY = (bounds.top - containerPos.y) + (bounds.height - heightPx) / 2f
+            val firstPlacement = !indicatorPlaced
+            if (disableAnimations || firstPlacement) {
+                indicatorX.snapTo(targetX)
+                indicatorPlaced = true
+            } else {
+                withContext(FullMotionDurationScale) {
+                    indicatorX.animateTo(
+                        targetValue = targetX,
+                        animationSpec = spring(dampingRatio = 0.72f, stiffness = Spring.StiffnessMediumLow),
+                    )
+                }
+            }
         } else {
-            // Run at a fixed motion scale so the slide stays lively even at 0.5x system scale.
-            withContext(FullMotionDurationScale) {
-                indicatorX.animateTo(
-                    targetValue = targetX,
-                    animationSpec = spring(dampingRatio = 0.72f, stiffness = Spring.StiffnessMediumLow),
-                )
+            // Default / frosted / floating: pill wraps only the icon (label
+            // stays outside). This is the original behavior.
+            val center = selectedCenter ?: return@LaunchedEffect
+            val widthPx = with(density) { indicatorWidth.toPx() }
+            val heightPx = with(density) { indicatorHeight.toPx() }
+            val targetX = (center.x - containerPos.x) - widthPx / 2f
+            indicatorY = (center.y - containerPos.y) - heightPx / 2f
+            val firstPlacement = !indicatorPlaced
+            if (disableAnimations || firstPlacement) {
+                indicatorX.snapTo(targetX)
+                indicatorPlaced = true
+            } else {
+                withContext(FullMotionDurationScale) {
+                    indicatorX.animateTo(
+                        targetValue = targetX,
+                        animationSpec = spring(dampingRatio = 0.72f, stiffness = Spring.StiffnessMediumLow),
+                    )
+                }
             }
         }
     }
@@ -475,18 +523,27 @@ fun FloatingNavigationToolbar(
                             .onGloballyPositioned { containerPos = it.positionInRoot() },
                     contentAlignment = Alignment.Center,
                 ) {
-                    // Custom sliding pill indicator, drawn behind the icons (label stays outside it).
+                    // Custom sliding pill indicator, drawn behind the icons.
+                    // For the Liquid Glass variant, the pill wraps BOTH the icon
+                    // and the label (see [itemBounds] tracking + the LaunchedEffect
+                    // above) so the selected item's full label is highlighted —
+                    // not just the icon. For all other variants, the pill wraps
+                    // only the icon (label stays outside it).
                     if (selectedIndex >= 0 && indicatorPlaced) {
-                        Box(
-                            modifier =
-                                Modifier
-                                    .align(Alignment.TopStart)
-                                    .offset { IntOffset(indicatorX.value.roundToInt(), indicatorY.roundToInt()) }
-                                    .width(indicatorWidth)
-                                    .height(indicatorHeight)
-                                    .clip(RoundedCornerShape(percent = 50))
-                                    .background(indicatorColor),
-                        )
+                        val pillWidth = if (canLiquidGlass) liquidGlassPillWidth else indicatorWidth
+                        val pillHeight = if (canLiquidGlass) liquidGlassPillHeight else indicatorHeight
+                        if (pillWidth > 0.dp && pillHeight > 0.dp) {
+                            Box(
+                                modifier =
+                                    Modifier
+                                        .align(Alignment.TopStart)
+                                        .offset { IntOffset(indicatorX.value.roundToInt(), indicatorY.roundToInt()) }
+                                        .width(pillWidth)
+                                        .height(pillHeight)
+                                        .clip(RoundedCornerShape(percent = 50))
+                                        .background(indicatorColor),
+                            )
+                        }
                     }
 
                     Row(
@@ -550,7 +607,23 @@ fun FloatingNavigationToolbar(
                                 selected = selected,
                                 onClick = onClick,
                                 colors = itemColors,
-                                modifier = Modifier.weight(1f),
+                                modifier =
+                                    Modifier
+                                        .weight(1f)
+                                        .onGloballyPositioned { coordinates ->
+                                            // Track the full item bounds (icon + spacing +
+                                            // label) so the Liquid Glass pill can size to
+                                            // cover both. The default variant ignores this
+                                            // and uses the icon-only [iconCenters] map.
+                                            val pos = coordinates.positionInRoot()
+                                            itemBounds[index] =
+                                                Rect(
+                                                    pos.x,
+                                                    pos.y,
+                                                    pos.x + coordinates.size.width,
+                                                    pos.y + coordinates.size.height,
+                                                )
+                                        },
                                 icon = {
                                     // Measure the icon's own bounds so the pill hugs only the icon.
                                     Box(
