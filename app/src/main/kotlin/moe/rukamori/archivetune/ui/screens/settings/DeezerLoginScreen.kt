@@ -51,6 +51,7 @@ import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.dataStore
 import moe.rukamori.archivetune.utils.resetAuthWebViewSession
 import java.util.concurrent.atomic.AtomicBoolean
+import moe.rukamori.archivetune.ui.component.FrostedTopAppBar
 
 const val DEEZER_LOGIN_ROUTE = "settings/deezer/login"
 
@@ -159,19 +160,10 @@ fun DeezerLoginScreen(navController: NavController) {
         },
     )
 
-    TopAppBar(
-        title = { Text(stringResource(R.string.deezer_login)) },
-        navigationIcon = {
-            IconButton(
-                onClick = navController::navigateUp,
-                onLongClick = navController::backToMain,
-            ) {
-                Icon(
-                    painterResource(R.drawable.arrow_back),
-                    contentDescription = null,
-                )
-            }
-        },
+    FrostedTopAppBar(
+        titleRes = R.string.deezer_login,
+        onBack = navController::navigateUp,
+        onBackLongClick = navController::backToMain,
     )
 
     BackHandler(enabled = webView?.canGoBack() == true) {

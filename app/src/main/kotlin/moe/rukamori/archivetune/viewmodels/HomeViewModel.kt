@@ -106,6 +106,7 @@ private data class HomeLocalContent(
     val forgottenFavorites: List<Song>,
     val keepListening: List<LocalItem>,
     val recentlyPlayed: List<Song>,
+    val heroPicks: List<Song>,
 )
 
 private data class HomeRemoteContent(
@@ -128,6 +129,7 @@ private data class HomeContent(
                 local.forgottenFavorites.isNotEmpty() ||
                 local.keepListening.isNotEmpty() ||
                 local.recentlyPlayed.isNotEmpty() ||
+                local.heroPicks.isNotEmpty() ||
                 remote.similarRecommendations.isNotEmpty() ||
                 remote.accountPlaylists.isNotEmpty() ||
                 remote.homePage?.sections?.any { it.items.isNotEmpty() } == true
@@ -161,6 +163,7 @@ private data class HomeStateInputs(
                 forgottenFavorites = ImmutableList.copyOf(content.local.forgottenFavorites),
                 keepListening = ImmutableList.copyOf(content.local.keepListening),
                 recentlyPlayed = ImmutableList.copyOf(content.local.recentlyPlayed),
+                heroPicks = ImmutableList.copyOf(content.local.heroPicks),
                 similarRecommendations = ImmutableList.copyOf(content.remote.similarRecommendations),
                 accountPlaylists = ImmutableList.copyOf(content.remote.accountPlaylists),
                 homePage = content.remote.homePage,
@@ -207,6 +210,11 @@ class HomeViewModel
         private val forgottenFavorites = MutableStateFlow<List<Song>?>(null)
         private val keepListening = MutableStateFlow<List<LocalItem>?>(null)
         private val recentlyPlayed = MutableStateFlow<List<Song>?>(null)
+        // Three random songs from `quickPicks`, re-shuffled on every refresh.
+        // Drives the "Jump back in" hero so the home page surfaces fresh
+        // listening-preference-based picks each time the user opens the app
+        // or pulls to refresh, instead of always showing the last-played 3.
+        private val heroPicks = MutableStateFlow<List<Song>>(emptyList())
         private val similarRecommendations = MutableStateFlow<List<SimilarRecommendation>?>(null)
         private val accountPlaylists = MutableStateFlow<List<PlaylistItem>?>(null)
         private val homePage = MutableStateFlow<HomePage?>(null)
@@ -238,13 +246,15 @@ class HomeViewModel
                 forgottenFavorites,
                 keepListening,
                 recentlyPlayed,
-            ) { quickPicks, speedDialItems, forgottenFavorites, keepListening, recentlyPlayed ->
+                heroPicks,
+            ) { quickPicks, speedDialItems, forgottenFavorites, keepListening, recentlyPlayed, heroPicks ->
                 HomeLocalContent(
                     quickPicks = quickPicks.orEmpty(),
                     speedDialItems = speedDialItems,
                     forgottenFavorites = forgottenFavorites.orEmpty(),
                     keepListening = keepListening.orEmpty(),
                     recentlyPlayed = recentlyPlayed.orEmpty(),
+                    heroPicks = heroPicks,
                 )
             }
 
@@ -402,6 +412,7 @@ class HomeViewModel
                         emit(quickPicksWithFallback(emptyList()))
                     }.collect { picks ->
                         quickPicks.value = picks
+                        refreshHeroPicks(picks)
                         updateAllLocalItems()
                     }
             }
@@ -423,7 +434,28 @@ class HomeViewModel
                     }
                 }
             quickPicks.value = picks
+            refreshHeroPicks(picks.orEmpty())
             updateAllLocalItems()
+        }
+
+        /**
+         * Re-shuffles the hero picks from the current quickPicks pool. Called on every
+         * quickPicks update and on every manual refresh so the "Jump back in" hero at
+         * the top of the home page surfaces fresh listening-preference-based songs
+         * each visit, instead of always showing the last-played three.
+         *
+         * If quickPicks is empty, falls back to recentlyPlayed so the hero still shows
+         * something on a fresh install where the user has listening history but no
+         * quickPicks computation yet.
+         */
+        private fun refreshHeroPicks(pool: List<Song>) {
+            val source = if (pool.isNotEmpty()) pool else recentlyPlayed.value.orEmpty()
+            heroPicks.value =
+                if (source.isEmpty()) {
+                    emptyList()
+                } else {
+                    source.shuffled().take(3)
+                }
         }
 
         private suspend fun loadSpeedDialItems() {
@@ -487,11 +519,13 @@ class HomeViewModel
                     }
 
                     launch {
-                        // Recently played — chronological recents, used by both
-                        // the "Jump back in" hero (top 3) and the "Recently
-                        // Played" square-card row. Filter out blocked artists
-                        // and cap at 30 so both sections have enough to draw
-                        // from without over-fetching.
+                        // Recently played — chronological recents, used by the
+                        // "Recently Played" square-card row. Filter out blocked
+                        // artists and cap at 30 so the row has enough to draw
+                        // from without over-fetching. (The "Jump back in" hero
+                        // at the top of the home page now uses `heroPicks` —
+                        // random songs from listening preference — instead of
+                        // the top 3 of this list.)
                         recentlyPlayed.value =
                             database
                                 .recentSongs(limit = 30)
@@ -499,6 +533,23 @@ class HomeViewModel
                                 .filter { song -> song.artists.none { it.blockedAt != null } }
                                 .distinctBy { it.id }
                                 .take(30)
+                    }
+
+                    launch {
+                        // Initial hero picks — re-shuffled from the current
+                        // quickPicks pool (or recentlyPlayed fallback). On
+                        // subsequent manual refreshes, refresh() re-shuffles
+                        // again so the hero rotates fresh picks each visit.
+                        val pool = quickPicks.value.orEmpty()
+                        val source = if (pool.isNotEmpty()) {
+                            pool
+                        } else {
+                            // Wait briefly for recentlyPlayed to populate so
+                            // we don't fall back to empty on a cold start.
+                            kotlinx.coroutines.delay(100L)
+                            recentlyPlayed.value.orEmpty()
+                        }
+                        refreshHeroPicks(source)
                     }
 
                     launch {
@@ -840,6 +891,25 @@ class HomeViewModel
                     supervisorScope {
                         launch { load() }
                         launch { refreshQuickPicks() }
+                        // Re-shuffle hero picks on every manual pull-to-refresh so the
+                        // "Jump back in" hero at the top of the home page surfaces fresh
+                        // listening-preference-based songs each visit. Uses the current
+                        // quickPicks pool (or recentlyPlayed fallback) so it works even
+                        // before refreshQuickPicks() finishes.
+                        launch {
+                            val pool = quickPicks.value.orEmpty()
+                            val source = if (pool.isNotEmpty()) {
+                                pool
+                            } else {
+                                recentlyPlayed.value.orEmpty()
+                            }
+                            // Tiny delay so quickPicks refresh can race ahead and
+                            // populate the pool first if it's faster than this launch.
+                            kotlinx.coroutines.delay(50L)
+                            val finalPool = quickPicks.value.orEmpty()
+                            val finalSource = if (finalPool.isNotEmpty()) finalPool else source
+                            refreshHeroPicks(finalSource)
+                        }
                     }
                 } catch (e: CancellationException) {
                     throw e

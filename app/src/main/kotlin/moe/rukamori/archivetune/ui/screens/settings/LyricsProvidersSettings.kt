@@ -66,6 +66,7 @@ import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.ContentSettingsViewModel
 import moe.rukamori.archivetune.viewmodels.PaxsenixStatsState
+import moe.rukamori.archivetune.ui.component.FrostedTopAppBar
 
 /**
  * Lyrics providers sub-page (Task 2): houses every lyrics-provider toggle plus the
@@ -148,20 +149,11 @@ fun LyricsProvidersSettings(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.providers)) },
-                navigationIcon = {
-                    IconButton(
-                        onClick = navController::navigateUp,
-                        onLongClick = navController::backToMain,
-                    ) {
-                        Icon(
-                            painterResource(R.drawable.arrow_back),
-                            contentDescription = null,
-                        )
-                    }
-                },
-            )
+            FrostedTopAppBar(
+        titleRes = R.string.providers,
+        onBack = navController::navigateUp,
+        onBackLongClick = navController::backToMain,
+    )
         },
     ) { innerPadding ->
         val scrollState = rememberScrollState()

@@ -82,6 +82,7 @@ import moe.rukamori.archivetune.ui.component.TagsManagementDialog
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.rememberPreference
 import kotlin.math.roundToInt
+import moe.rukamori.archivetune.ui.component.FrostedTopAppBar
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -246,20 +247,11 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.player_and_audio)) },
-                navigationIcon = {
-                    IconButton(
-                        onClick = navController::navigateUp,
-                        onLongClick = navController::backToMain,
-                    ) {
-                        Icon(
-                            painterResource(R.drawable.arrow_back),
-                            contentDescription = null,
-                        )
-                    }
-                },
-            )
+            FrostedTopAppBar(
+        titleRes = R.string.player_and_audio,
+        onBack = navController::navigateUp,
+        onBackLongClick = navController::backToMain,
+    )
         },
     ) { innerPadding ->
         val topPadding = innerPadding.calculateTopPadding()

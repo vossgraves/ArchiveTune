@@ -330,17 +330,19 @@ private fun HomeContent(
                     // recommendations, and the rest of the remote home sections
                     // such as "Fresh finds" / "Old favourites") are dropped.
 
-                    // "Jump back in" hero — large card + 2 stacked side cards,
-                    // uses the top 3 recently-played songs. Mirrors the Apple
-                    // Music / Muzo home hero. Skipped entirely if the user has
-                    // no recents yet (e.g. fresh install).
-                    if (uiState.recentlyPlayed.isNotEmpty()) {
+                    // "Jump back in" hero — large card + 2 stacked side cards.
+                    // Uses `heroPicks` (3 random songs from listening-preference
+                    // based quickPicks) instead of the last-played 3, so the hero
+                    // rotates fresh picks each visit. Mirrors the Apple Music /
+                    // Muzo home hero. Skipped entirely if the user has no
+                    // listening history yet (e.g. fresh install).
+                    if (uiState.heroPicks.isNotEmpty()) {
                         item(
                             key = "home_jump_back_in",
                             contentType = "jump_back_in",
                         ) {
                             JumpBackInHeroSection(
-                                recentlyPlayed = uiState.recentlyPlayed,
+                                recentlyPlayed = uiState.heroPicks,
                                 mediaMetadata = mediaMetadata,
                                 isPlaying = isPlaying,
                                 navController = navController,

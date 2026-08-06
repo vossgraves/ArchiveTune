@@ -45,6 +45,7 @@ import moe.rukamori.archivetune.constants.TelegramLosslessOnlyKey
 import moe.rukamori.archivetune.telegram.TelegramAuthState
 import moe.rukamori.archivetune.telegram.TelegramClient
 import moe.rukamori.archivetune.ui.component.DefaultDialog
+import moe.rukamori.archivetune.ui.component.FrostedTopAppBar
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
@@ -112,16 +113,10 @@ fun TelegramSettings(navController: NavController) {
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.telegram_integration)) },
-                navigationIcon = {
-                    IconButton(
-                        onClick = navController::navigateUp,
-                        onLongClick = navController::backToMain,
-                    ) {
-                        Icon(painterResource(R.drawable.arrow_back), contentDescription = null)
-                    }
-                },
+            FrostedTopAppBar(
+                titleRes = R.string.telegram_integration,
+                onBack = navController::navigateUp,
+                onBackLongClick = navController::backToMain,
             )
         },
     ) { innerPadding ->

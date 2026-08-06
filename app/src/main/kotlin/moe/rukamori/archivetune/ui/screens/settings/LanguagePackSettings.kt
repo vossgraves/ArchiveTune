@@ -34,6 +34,7 @@ import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.LyricsRomanizeJapaneseKey
 import moe.rukamori.archivetune.lyrics.JapaneseLanguagePackManager
 import moe.rukamori.archivetune.lyrics.JapaneseLanguagePackState
+import moe.rukamori.archivetune.ui.component.FrostedTopAppBar
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
@@ -124,15 +125,9 @@ fun LanguagePackSettings(navController: NavController) {
         }
     }
 
-    TopAppBar(
-        title = { Text(stringResource(R.string.language_packs)) },
-        navigationIcon = {
-            IconButton(
-                onClick = navController::navigateUp,
-                onLongClick = navController::backToMain,
-            ) {
-                Icon(painterResource(R.drawable.arrow_back), contentDescription = null)
-            }
-        },
+    FrostedTopAppBar(
+        titleRes = R.string.language_packs,
+        onBack = navController::navigateUp,
+        onBackLongClick = navController::backToMain,
     )
 }

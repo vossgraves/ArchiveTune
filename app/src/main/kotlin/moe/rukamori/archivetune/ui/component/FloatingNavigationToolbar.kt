@@ -236,9 +236,12 @@ fun FloatingNavigationToolbar(
 
     // Color of the custom sliding pill that sits behind the selected item's icon. The floating
     // pill uses a translucent accent blob with accent-tinted icon/label (reference-bar look); the
-    // docked bar keeps the stock secondary-container treatment.
+    // docked bar keeps the stock secondary-container treatment. For the tint-frosted variant,
+    // the bar surface IS the primary color, so the indicator uses onPrimary (inverted) so the
+    // selected icon stands out against the colored bar.
     val indicatorColor =
         when {
+            tintFrostedBlur && !isFloating -> MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.22f)
             isFloating -> MaterialTheme.colorScheme.primary.copy(alpha = 0.30f)
             pureBlack -> Color.White.copy(alpha = 0.16f)
             else -> MaterialTheme.colorScheme.secondaryContainer
@@ -249,7 +252,7 @@ fun FloatingNavigationToolbar(
     // The built-in per-item indicator just fades in place; hide it so our single pill can slide
     // between items instead. On pure-black we also pin the icon/label colors for contrast.
     // For the tint-frosted variant, the bar surface is the primary color, so icons/labels use
-    // onPrimary for contrast (selected = full opacity, unselected = 60% opacity).
+    // onPrimary for contrast (selected = full opacity, unselected = 0.85 opacity for legibility).
     val itemColors =
         when {
             isFloating ->
@@ -275,8 +278,10 @@ fun FloatingNavigationToolbar(
                     selectedIndicatorColor = Color.Transparent,
                     selectedIconColor = MaterialTheme.colorScheme.onPrimary,
                     selectedTextColor = MaterialTheme.colorScheme.onPrimary,
-                    unselectedIconColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.6f),
-                    unselectedTextColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.6f),
+                    // 0.85 alpha keeps unselected icons legible against the colored bar
+                    // (the previous 0.6 was too washed out, especially on lighter primaries).
+                    unselectedIconColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f),
+                    unselectedTextColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f),
                 )
             else -> ShortNavigationBarItemDefaults.colors(selectedIndicatorColor = Color.Transparent)
         }

@@ -81,6 +81,7 @@ import java.net.Proxy
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 import kotlin.system.exitProcess
+import moe.rukamori.archivetune.ui.component.FrostedTopAppBar
 
 @Composable
 fun InternetWarningBox(modifier: Modifier = Modifier) {
@@ -186,20 +187,11 @@ fun InternetSettings(navController: NavController, scrollTo: String? = null) {
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.internet)) },
-                navigationIcon = {
-                    IconButton(
-                        onClick = navController::navigateUp,
-                        onLongClick = navController::backToMain,
-                    ) {
-                        Icon(
-                            painterResource(R.drawable.arrow_back),
-                            contentDescription = null,
-                        )
-                    }
-                },
-            )
+            FrostedTopAppBar(
+        titleRes = R.string.internet,
+        onBack = navController::navigateUp,
+        onBackLongClick = navController::backToMain,
+    )
         },
     ) { innerPadding ->
         val topPadding = innerPadding.calculateTopPadding()

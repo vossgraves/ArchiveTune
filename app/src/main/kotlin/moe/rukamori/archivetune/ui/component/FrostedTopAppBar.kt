@@ -5,25 +5,27 @@
  * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
  */
 
-@file:OptIn(ExperimentalMaterial3Api::class)
+@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 
 package moe.rukamori.archivetune.ui.component
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import moe.rukamori.archivetune.R
 
@@ -36,19 +38,31 @@ import moe.rukamori.archivetune.R
  * on Android 12+, and degrade to a semi-transparent `surfaceContainer` on pre-S or when no
  * backdrop is available.
  *
- * Usage: drop-in replacement for a standard `TopAppBar` that has a title string, a back
- * arrow, and optional actions. For screens that need a more custom title (e.g. with an
- * avatar or animated content), use [FrostedHeaderPill] directly.
- *
- * @param titleRes String resource for the title.
- * @param onBack Click handler for the back arrow.
- * @param onBackLongClick Optional long-click handler for the back arrow (typically
- *   `navController::backToMain`).
- * @param actions Optional composable for action buttons. Rendered inside a frosted pill.
+ * Usage: drop-in replacement for a standard `TopAppBar` that has a title, a back arrow,
+ * and optional actions. For screens that need a more custom title (e.g. with an avatar or
+ * animated content), use [FrostedHeaderPill] directly.
  */
+
+/** Primary variant: takes a string resource for the title. */
 @Composable
 fun FrostedTopAppBar(
     titleRes: Int,
+    onBack: () -> Unit,
+    onBackLongClick: () -> Unit = {},
+    actions: (@Composable () -> Unit)? = null,
+) {
+    FrostedTopAppBar(
+        title = { Text(stringResource(titleRes)) },
+        onBack = onBack,
+        onBackLongClick = onBackLongClick,
+        actions = actions,
+    )
+}
+
+/** Flexible variant: takes a composable title (for custom title content). */
+@Composable
+fun FrostedTopAppBar(
+    title: @Composable () -> Unit,
     onBack: () -> Unit,
     onBackLongClick: () -> Unit = {},
     actions: (@Composable () -> Unit)? = null,
@@ -63,9 +77,58 @@ fun FrostedTopAppBar(
         ),
         title = {
             FrostedHeaderPill {
+                title()
+            }
+        },
+        navigationIcon = {
+            FrostedHeaderPill {
+                IconButton(
+                    onClick = onBack,
+                    onLongClick = onBackLongClick,
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.arrow_back),
+                        contentDescription = null,
+                    )
+                }
+            }
+        },
+        actions = if (actions != null) {
+            {
+                FrostedHeaderPill(
+                    modifier = Modifier.padding(end = 8.dp),
+                ) {
+                    actions()
+                }
+            }
+        } else {
+            {}
+        },
+    )
+}
+
+/**
+ * Large variant: wraps a [LargeFlexibleTopAppBar] with frosted pills around the title, nav icon,
+ * and actions. Use for screens that have a hero header which collapses on scroll.
+ */
+@Composable
+fun LargeFrostedTopAppBar(
+    titleRes: Int,
+    onBack: () -> Unit,
+    onBackLongClick: () -> Unit = {},
+    actions: (@Composable () -> Unit)? = null,
+    scrollBehavior: TopAppBarScrollBehavior? = null,
+) {
+    LargeFlexibleTopAppBar(
+        colors = TopAppBarDefaults.largeTopAppBarColors(
+            containerColor = Color.Transparent,
+            scrolledContainerColor = Color.Transparent,
+        ),
+        title = {
+            FrostedHeaderPill {
                 Text(
                     text = stringResource(titleRes),
-                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
                     maxLines = 1,
                 )
             }
@@ -94,5 +157,53 @@ fun FrostedTopAppBar(
         } else {
             {}
         },
+        scrollBehavior = scrollBehavior,
+    )
+}
+
+/** Large variant with composable title (for custom title content). */
+@Composable
+fun LargeFrostedTopAppBar(
+    title: @Composable () -> Unit,
+    onBack: () -> Unit,
+    onBackLongClick: () -> Unit = {},
+    actions: (@Composable () -> Unit)? = null,
+    scrollBehavior: TopAppBarScrollBehavior? = null,
+) {
+    LargeFlexibleTopAppBar(
+        colors = TopAppBarDefaults.largeTopAppBarColors(
+            containerColor = Color.Transparent,
+            scrolledContainerColor = Color.Transparent,
+        ),
+        title = {
+            FrostedHeaderPill {
+                title()
+            }
+        },
+        navigationIcon = {
+            FrostedHeaderPill {
+                IconButton(
+                    onClick = onBack,
+                    onLongClick = onBackLongClick,
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.arrow_back),
+                        contentDescription = null,
+                    )
+                }
+            }
+        },
+        actions = if (actions != null) {
+            {
+                FrostedHeaderPill(
+                    modifier = Modifier.padding(end = 8.dp),
+                ) {
+                    actions()
+                }
+            }
+        } else {
+            {}
+        },
+        scrollBehavior = scrollBehavior,
     )
 }

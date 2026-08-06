@@ -117,6 +117,7 @@ import moe.rukamori.archivetune.viewmodels.PaxsenixStatsState
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
 import kotlin.math.roundToInt
+import moe.rukamori.archivetune.ui.component.FrostedTopAppBar
 
 @Composable
 fun LyricsSettings(
@@ -528,19 +529,10 @@ fun LyricsSettings(
 
     }
 
-    TopAppBar(
-        title = { Text(stringResource(R.string.lyrics)) },
-        navigationIcon = {
-            IconButton(
-                onClick = navController::navigateUp,
-                onLongClick = navController::backToMain,
-            ) {
-                Icon(
-                    painterResource(R.drawable.arrow_back),
-                    contentDescription = null,
-                )
-            }
-        },
+    FrostedTopAppBar(
+        titleRes = R.string.lyrics,
+        onBack = navController::navigateUp,
+        onBackLongClick = navController::backToMain,
     )
 }
 

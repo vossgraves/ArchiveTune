@@ -75,6 +75,7 @@ import moe.rukamori.archivetune.telegram.TelegramClient
 import moe.rukamori.archivetune.telegram.TelegramCodeType
 import moe.rukamori.archivetune.telegram.composeE164
 import moe.rukamori.archivetune.telegram.defaultCallingCode
+import moe.rukamori.archivetune.ui.component.FrostedTopAppBar
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.utils.backToMain
 
@@ -151,16 +152,10 @@ fun TelegramLoginScreen(navController: NavController) {
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.telegram_login_title)) },
-                navigationIcon = {
-                    IconButton(
-                        onClick = navController::navigateUp,
-                        onLongClick = navController::backToMain,
-                    ) {
-                        Icon(painterResource(R.drawable.arrow_back), contentDescription = null)
-                    }
-                },
+            FrostedTopAppBar(
+                titleRes = R.string.telegram_login_title,
+                onBack = navController::navigateUp,
+                onBackLongClick = navController::backToMain,
             )
         },
     ) { innerPadding ->

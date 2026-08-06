@@ -41,6 +41,7 @@ import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.rememberPreference
+import moe.rukamori.archivetune.ui.component.FrostedTopAppBar
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -53,20 +54,11 @@ fun DeezerSettings(navController: NavController) {
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.deezer_integration)) },
-                navigationIcon = {
-                    IconButton(
-                        onClick = navController::navigateUp,
-                        onLongClick = navController::backToMain,
-                    ) {
-                        Icon(
-                            painterResource(R.drawable.arrow_back),
-                            contentDescription = null,
-                        )
-                    }
-                },
-            )
+            FrostedTopAppBar(
+        titleRes = R.string.deezer_integration,
+        onBack = navController::navigateUp,
+        onBackLongClick = navController::backToMain,
+    )
         },
     ) { innerPadding ->
         val topPadding = innerPadding.calculateTopPadding()

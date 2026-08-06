@@ -49,6 +49,7 @@ import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.StorageSettingsViewModel
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import moe.rukamori.archivetune.ui.component.FrostedTopAppBar
 
 @Composable
 fun DownloadsSettings(
@@ -100,20 +101,11 @@ fun DownloadsSettings(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.downloads)) },
-                navigationIcon = {
-                    IconButton(
-                        onClick = navController::navigateUp,
-                        onLongClick = navController::backToMain,
-                    ) {
-                        Icon(
-                            painterResource(R.drawable.arrow_back),
-                            contentDescription = null,
-                        )
-                    }
-                },
-            )
+            FrostedTopAppBar(
+        titleRes = R.string.downloads,
+        onBack = navController::navigateUp,
+        onBackLongClick = navController::backToMain,
+    )
         },
     ) { innerPadding ->
         val topPadding = innerPadding.calculateTopPadding()

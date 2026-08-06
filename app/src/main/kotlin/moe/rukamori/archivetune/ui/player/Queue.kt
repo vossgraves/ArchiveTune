@@ -808,16 +808,15 @@ fun Queue(
                 return@LaunchedEffect
             }
 
-            // Only display the current song and upcoming songs in the queue list.
-            // Previously-played songs are excluded so the currently playing track is
-            // always at the top of the queue list — matching the "Continue Playing"
-            // header and the behaviour of mainstream music apps (Spotify, Apple Music).
-            // The full `queueWindows` (including played songs) is still used for
-            // queue stats, clear-queue, and drag-source resolution.
+            // Display the full queue list including previously-played songs.
+            // The currently playing song is marked with `isPlaying` so the user can
+            // see what's currently playing in context with the rest of the queue
+            // (past + upcoming). This matches the behaviour of mainstream music
+            // apps like Spotify and Apple Music which show the full history.
+            // The list auto-scrolls to the currently playing song on open.
             Snapshot.withMutableSnapshot {
                 mutableQueueWindows.clear()
-                val startIndex = currentWindowIndex.coerceAtLeast(0)
-                mutableQueueWindows.addAll(queueWindows.drop(startIndex))
+                mutableQueueWindows.addAll(queueWindows)
             }
         }
 
