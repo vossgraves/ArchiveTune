@@ -60,6 +60,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.MotionDurationScale
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.BlurEffect
@@ -136,6 +137,11 @@ private const val FrostedNavBarBlurRadiusPx = 60f
 // brightness can only ever modulate the bar by this fraction — it reads the same over any screen,
 // and if the backdrop layer has nothing under the bar the result is simply a solid bar.
 private const val FrostedNavBarOverlayAlpha = 0.30f
+
+// The tint-frosted variant uses a DARK TRANSLUCENT base (Color.Black at 55% alpha) instead of
+// an opaque surface, so a higher overlay alpha lets more of the blurred app content show through
+// the dark tint — the "tinted glass" look (dark, translucent, with visible frosted blur).
+private const val TintFrostedNavBarOverlayAlpha = 0.45f
 
 // The sliding pill wraps just the icon (like the stock indicator), so the label sits below it,
 // outside the bubble. These are the standard Material3 active-indicator dimensions.
@@ -237,9 +243,26 @@ fun FloatingNavigationToolbar(
             // the see-through effect and adding transparency here would double-count).
             val baseColor =
                 if (tintFrostedBlur) {
-                    // Tint variant: use the accent color as the bar base so the frosted
-                    // overlay reads as a colored glass rather than a neutral one.
-                    MaterialTheme.colorScheme.primary
+                    // "Tinted glass": a DARK base with LOW opacity, NOT a solid
+                    // primary color overlay. The previous implementation used
+                    // `primary` as the base, which made the bar an opaque bright
+                    // color with a thin frosted veil — impossible to read icons
+                    // against. The user explicitly asked for "dark and low
+                    // opacity like tinted glass, not just a color overlay".
+                    //
+                    // Color.Black at 55% alpha gives a dark tinted-glass base:
+                    //   - Dark enough that white icons/labels are clearly visible
+                    //     on top (contrast ratio > 4.5:1).
+                    //   - Translucent enough that the frosted blur overlay
+                    //     (composited on top at 40% alpha — see below) shows the
+                    //     app content through the bar — the "tinted glass" look.
+                    //   - NOT a bright primary color that would wash out the icons.
+                    //
+                    // A subtle primary tint is still applied via the frosted
+                    // overlay itself (which samples the app content), so the bar
+                    // reads as colored glass when there's colored content behind
+                    // it, and as neutral dark glass when there isn't.
+                    Color.Black.copy(alpha = 0.55f)
                 } else {
                     MaterialTheme.colorScheme.surfaceContainer
                 }
@@ -265,9 +288,16 @@ fun FloatingNavigationToolbar(
             // alpha so the selected item stands out — matching the floating
             // variant's visibility. The pill now also wraps the label (see
             // [liquidGlassPillWidth/Height]), so the entire selected item
-            // (icon + label) is clearly highlighted.
+            // (icon + label) is clearly highlighted. NOTE: for the Liquid
+            // Glass variant, the pill is actually rendered as a liquid-glass
+            // surface (see the pill Box below), so this color is only used as
+            // a fallback if the liquidGlass modifier is somehow unavailable.
             canLiquidGlass -> MaterialTheme.colorScheme.primary.copy(alpha = 0.32f)
-            tintFrostedBlur && !isFloating -> MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.22f)
+            // Tint-frosted: the bar is now a DARK tinted glass (Color.Black at
+            // 55% alpha), so the pill uses a translucent white blob — the
+            // selected icon stands out against the dark bar without being a
+            // harsh solid white circle.
+            tintFrostedBlur && !isFloating -> Color.White.copy(alpha = 0.18f)
             isFloating -> MaterialTheme.colorScheme.primary.copy(alpha = 0.30f)
             pureBlack -> Color.White.copy(alpha = 0.16f)
             else -> MaterialTheme.colorScheme.secondaryContainer
@@ -302,12 +332,17 @@ fun FloatingNavigationToolbar(
             tintFrostedBlur ->
                 ShortNavigationBarItemDefaults.colors(
                     selectedIndicatorColor = Color.Transparent,
-                    selectedIconColor = MaterialTheme.colorScheme.onPrimary,
-                    selectedTextColor = MaterialTheme.colorScheme.onPrimary,
-                    // 0.85 alpha keeps unselected icons legible against the colored bar
-                    // (the previous 0.6 was too washed out, especially on lighter primaries).
-                    unselectedIconColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f),
-                    unselectedTextColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f),
+                    // The tint-frosted bar is now a DARK tinted glass (Color.Black
+                    // at 55% alpha), so icons/labels use White for contrast —
+                    // matching the pure-black variant's contrast model. The
+                    // previous onPrimary was unreadable because it assumed the
+                    // bar was a bright primary color.
+                    selectedIconColor = Color.White,
+                    selectedTextColor = Color.White,
+                    // 0.7 alpha keeps unselected icons legible but de-emphasized
+                    // against the dark tinted glass.
+                    unselectedIconColor = Color.White.copy(alpha = 0.7f),
+                    unselectedTextColor = Color.White.copy(alpha = 0.7f),
                 )
             else -> ShortNavigationBarItemDefaults.colors(selectedIndicatorColor = Color.Transparent)
         }
@@ -464,12 +499,14 @@ fun FloatingNavigationToolbar(
                         blurRadiusPx = FrostedNavBarBlurRadiusPx,
                     )
                     if (blurredBitmap != null) {
+                        // Match the S+ path's conditional overlay alpha (see the comment below).
+                        val preSOverlayAlpha = if (tintFrostedBlur) TintFrostedNavBarOverlayAlpha else FrostedNavBarOverlayAlpha
                         Box(
                             modifier =
                                 Modifier
                                     .fillMaxSize()
                                     .graphicsLayer {
-                                        alpha = FrostedNavBarOverlayAlpha
+                                        alpha = preSOverlayAlpha
                                         clip = true
                                     }.drawBehind {
                                         drawImage(blurredBitmap)
@@ -482,6 +519,13 @@ fun FloatingNavigationToolbar(
                     // alpha. Page brightness can only modulate the bar by that fraction, so the bar
                     // looks the same over every screen — and if the captured layer has nothing under
                     // the bar, the result is simply the solid bar (never see-through).
+                    //
+                    // The tint-frosted variant uses a HIGHER overlay alpha (0.45 vs 0.30) because
+                    // its base is a dark translucent glass (Color.Black at 55% alpha) rather than
+                    // an opaque surface. The higher alpha lets more of the blurred app content show
+                    // through the dark tint, producing the "tinted glass" look the user asked for:
+                    // dark, translucent, with visible frosted blur — not just a flat color overlay.
+                    val frostedOverlayAlpha = if (tintFrostedBlur) TintFrostedNavBarOverlayAlpha else FrostedNavBarOverlayAlpha
                     Box(
                         modifier =
                             Modifier
@@ -493,7 +537,7 @@ fun FloatingNavigationToolbar(
                                             radiusY = FrostedNavBarBlurRadiusPx,
                                             edgeTreatment = TileMode.Clamp,
                                         )
-                                    alpha = FrostedNavBarOverlayAlpha
+                                    alpha = frostedOverlayAlpha
                                     clip = true
                                 }.drawBehind {
                                     val offset = frostedBackdrop.contentOffsetInRoot - barPositionInRoot
@@ -510,7 +554,8 @@ fun FloatingNavigationToolbar(
                 contentColor =
                     when {
                         pureBlack -> Color.White
-                        tintFrostedBlur -> MaterialTheme.colorScheme.onPrimary
+                        // Tint-frosted bar is now dark glass, so content is white.
+                        tintFrostedBlur -> Color.White
                         else -> MaterialTheme.colorScheme.onSurface
                     },
                 windowInsets = WindowInsets(0, 0, 0, 0),
@@ -527,12 +572,18 @@ fun FloatingNavigationToolbar(
                     // For the Liquid Glass variant, the pill wraps BOTH the icon
                     // and the label (see [itemBounds] tracking + the LaunchedEffect
                     // above) so the selected item's full label is highlighted —
-                    // not just the icon. For all other variants, the pill wraps
-                    // only the icon (label stays outside it).
+                    // not just the icon. The pill itself is a liquid-glass surface
+                    // (vibrancy/blur/lens sampling the same app-content backdrop
+                    // as the bar) with a primary tint composited on top, matching
+                    // the SukiSU-Ultra FloatingBottomBar look: a distinct glass
+                    // pill floating on the glass bar. For all other variants, the
+                    // pill wraps only the icon (label stays outside it) and uses a
+                    // solid `indicatorColor` fill.
                     if (selectedIndex >= 0 && indicatorPlaced) {
                         val pillWidth = if (canLiquidGlass) liquidGlassPillWidth else indicatorWidth
                         val pillHeight = if (canLiquidGlass) liquidGlassPillHeight else indicatorHeight
                         if (pillWidth > 0.dp && pillHeight > 0.dp) {
+                            val pillShape = RoundedCornerShape(percent = 50)
                             Box(
                                 modifier =
                                     Modifier
@@ -540,8 +591,35 @@ fun FloatingNavigationToolbar(
                                         .offset { IntOffset(indicatorX.value.roundToInt(), indicatorY.roundToInt()) }
                                         .width(pillWidth)
                                         .height(pillHeight)
-                                        .clip(RoundedCornerShape(percent = 50))
-                                        .background(indicatorColor),
+                                        .then(
+                                            if (canLiquidGlass && liquidGlassBackdrop != null) {
+                                                // Liquid-glass pill: sample the app-content
+                                                // backdrop with vibrancy/blur/lens (same stack
+                                                // as the bar), then composite a translucent
+                                                // primary tint ON TOP so the pill is visually
+                                                // distinct from the bar beneath it. The tint
+                                                // is drawn via `drawWithContent` AFTER the
+                                                // liquidGlass effect (modifier order:
+                                                // liquidGlass → drawWithContent → content),
+                                                // so it sits above the backdrop sample + veil.
+                                                Modifier
+                                                    .liquidGlass(
+                                                        backdrop = liquidGlassBackdrop,
+                                                        shape = pillShape,
+                                                        interactive = false,
+                                                    )
+                                                    .drawWithContent {
+                                                        drawContent()
+                                                        drawRect(
+                                                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.22f),
+                                                        )
+                                                    }
+                                            } else {
+                                                Modifier
+                                                    .clip(pillShape)
+                                                    .background(indicatorColor)
+                                            },
+                                        ),
                             )
                         }
                     }
