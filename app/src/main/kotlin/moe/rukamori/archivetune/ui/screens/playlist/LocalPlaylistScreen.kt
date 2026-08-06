@@ -1020,7 +1020,11 @@ fun LocalPlaylistScreen(
         //  - Not in selection mode
         //  - Not searching
         //  - Playlist is loaded
-        if (liquidGlassHeaderActive && !selection && !isSearching && playlist != null) {
+        // Capture playlist in a local val so the compiler can smart-cast it
+        // to non-null inside the block (playlist is a delegate, so the
+        // compiler can't smart-cast the property directly).
+        val currentPlaylist = playlist
+        if (liquidGlassHeaderActive && !selection && !isSearching && currentPlaylist != null) {
             LiquidGlassIconButton(
                 backdrop = artworkBackdrop,
                 painter = painterResource(R.drawable.arrow_back),
@@ -1053,7 +1057,6 @@ fun LocalPlaylistScreen(
                     }
                 }
                 // More
-                val currentPlaylist = playlist
                 Box(
                     modifier = Modifier.size(48.dp),
                     contentAlignment = Alignment.Center,
