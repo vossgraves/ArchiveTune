@@ -345,8 +345,8 @@ fun FloatingNavigationToolbar(
             val pad = 4.dp
             val itemWidthDp = with(density) { bounds.width.toDp() }
             val itemHeightDp = with(density) { bounds.height.toDp() }
-            liquidGlassPillWidth = (itemWidthDp - 2 * pad).coerceAtLeast(indicatorWidth)
-            liquidGlassPillHeight = (itemHeightDp - 2 * pad).coerceAtLeast(indicatorHeight)
+            liquidGlassPillWidth = (itemWidthDp - pad * 2).coerceAtLeast(indicatorWidth)
+            liquidGlassPillHeight = (itemHeightDp - pad * 2).coerceAtLeast(indicatorHeight)
             val widthPx = with(density) { liquidGlassPillWidth.toPx() }
             val heightPx = with(density) { liquidGlassPillHeight.toPx() }
             val targetX = (bounds.left - containerPos.x) + (bounds.width - widthPx) / 2f

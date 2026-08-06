@@ -43,12 +43,12 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.Layout
@@ -486,9 +486,9 @@ public fun MediaDetailPrimaryActions(
                         //   1. Solid `contentColor` fallback (always visible —
                         //      shows while the artwork loads or if it fails).
                         //   2. Blurred AsyncImage of the artwork (covers the
-                        //      fallback once loaded; TileMode.Clamp keeps the
-                        //      edges opaque so the fallback only shows during
-                        //      loading).
+                        //      fallback once loaded; BlurredEdgeTreatment.Clamp
+                        //      keeps the edges opaque so the fallback only shows
+                        //      during loading).
                         //   3. Row with icon + "Play" text (contrastingColor
                         //      for contrast against the bright artwork).
                         Box(
@@ -511,8 +511,8 @@ public fun MediaDetailPrimaryActions(
                                         .background(contentColor),
                             )
                             // Blurred artwork backdrop, clipped to the pill shape
-                            // by the parent Box's clip(). TileMode.Clamp keeps the
-                            // edges opaque so the artwork fully fills the pill.
+                            // by the parent Box's clip(). BlurredEdgeTreatment.Clamp
+                            // keeps the edges opaque so the artwork fully fills the pill.
                             AsyncImage(
                                 model =
                                     thumbnailUrl.resize(
@@ -528,7 +528,7 @@ public fun MediaDetailPrimaryActions(
                                         .matchParentSize()
                                         .blur(
                                             radius = 16.dp,
-                                            edgeTreatment = TileMode.Clamp,
+                                            edgeTreatment = BlurredEdgeTreatment.Clamp,
                                         ),
                             )
                             // Icon + "Play" text on top.
