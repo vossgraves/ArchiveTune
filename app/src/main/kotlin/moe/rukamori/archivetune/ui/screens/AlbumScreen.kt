@@ -300,9 +300,19 @@ fun AlbumScreen(
                     // the artwork behind them. Glass buttons MUST be siblings
                     // of the backdrop source (not children) to avoid the
                     // RuntimeShader render-feedback loop.
+                    //
+                    // Layout: outer Box (no layerBackdrop) wraps the inner
+                    // backdrop-source Box AND the floating glass buttons as
+                    // siblings. The inner Box carries layerBackdrop and contains
+                    // ONLY the MediaDetailHero. The glass buttons are children
+                    // of the outer Box so they sample the backdrop without
+                    // being recorded into it (which would cause feedback crash).
                     val artworkBackdrop = rememberBackdrop(Color.Black)
-                    Box(modifier = Modifier.layerBackdrop(artworkBackdrop)) {
-                        MediaDetailHero(
+                    Box {
+                        Box(
+                            modifier = Modifier.layerBackdrop(artworkBackdrop),
+                        ) {
+                            MediaDetailHero(
                         title = albumWithSongs.album.title,
                         thumbnailUrl = albumWithSongs.album.thumbnailUrl,
                         fallbackIcon = R.drawable.album,
@@ -424,12 +434,16 @@ fun AlbumScreen(
                             }
                         },
                     )
+                        }
                         // SimpMusic-style floating liquid glass buttons.
                         // Back button (top-start): circular liquid-glass capsule.
                         // Heart + more pill (top-end): rounded-rect liquid-glass
                         // pill hosting the bookmark toggle and the album menu.
                         // Both float OVER the artwork and scroll out of view
                         // with the hero (they live inside the header item).
+                        // These are siblings of the inner backdrop-source Box
+                        // (children of the outer Box) — NOT inside the backdrop
+                        // source, which would cause a RuntimeShader feedback crash.
                         LiquidGlassIconButton(
                             backdrop = artworkBackdrop,
                             painter = painterResource(R.drawable.arrow_back),

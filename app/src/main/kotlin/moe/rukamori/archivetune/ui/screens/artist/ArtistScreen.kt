@@ -399,15 +399,28 @@ fun ArtistScreen(
                     // source so the floating circular back button (top-start)
                     // and the more-actions pill (top-end) can sample the
                     // artwork behind them.
+                    //
+                    // Layout: the outer hero Box (with explicit size) wraps an
+                    // inner backdrop-source Box AND the floating glass buttons
+                    // as siblings. The inner Box carries layerBackdrop and
+                    // contains ONLY the artwork + gradient + title column. The
+                    // glass buttons are children of the outer Box so they sample
+                    // the backdrop without being recorded into it (which would
+                    // cause a RuntimeShader feedback crash).
                     val artworkBackdrop = rememberBackdrop(Color.Black)
                     Box(
                         modifier =
                             Modifier
                                 .fillMaxWidth()
                                 .heightIn(min = ArtistHeroMinHeight)
-                                .background(surfaceColor)
-                                .layerBackdrop(artworkBackdrop),
+                                .background(surfaceColor),
                     ) {
+                        Box(
+                            modifier =
+                                Modifier
+                                    .matchParentSize()
+                                    .layerBackdrop(artworkBackdrop),
+                        ) {
                         if (thumbnail != null) {
                             AsyncImage(
                                 model =
@@ -597,7 +610,12 @@ fun ArtistScreen(
                                 modifier = Modifier.padding(top = 12.dp),
                             )
                         }
+                        }
                         // SimpMusic-style floating liquid glass buttons.
+                        // These are siblings of the inner backdrop-source Box
+                        // (children of the outer hero Box) — NOT inside the
+                        // backdrop source, which would cause a RuntimeShader
+                        // feedback crash.
                         LiquidGlassIconButton(
                             backdrop = artworkBackdrop,
                             painter = painterResource(R.drawable.arrow_back),

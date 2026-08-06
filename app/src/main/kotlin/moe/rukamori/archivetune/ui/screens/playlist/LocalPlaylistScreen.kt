@@ -571,9 +571,20 @@ fun LocalPlaylistScreen(
                             val isBookmarked = playlist.playlist.bookmarkedAt != null
 
                             // SimpMusic-style liquid glass backdrop source.
+                            //
+                            // Layout: outer Box (no layerBackdrop) wraps the inner
+                            // backdrop-source Box AND the floating glass buttons
+                            // as siblings. The inner Box carries layerBackdrop and
+                            // contains ONLY the MediaDetailHero. The glass buttons
+                            // are children of the outer Box so they sample the
+                            // backdrop without being recorded into it (which would
+                            // cause a RuntimeShader feedback crash).
                             val artworkBackdrop = rememberBackdrop(Color.Black)
-                            Box(modifier = Modifier.layerBackdrop(artworkBackdrop)) {
-                                MediaDetailHero(
+                            Box {
+                                Box(
+                                    modifier = Modifier.layerBackdrop(artworkBackdrop),
+                                ) {
+                                    MediaDetailHero(
                                 title = playlist.playlist.name,
                                 thumbnailUrl =
                                     playlist.playlist.thumbnailUrl
@@ -679,7 +690,12 @@ fun LocalPlaylistScreen(
                                 },
                                 modifier = Modifier.animateItem(),
                             )
+                                }
                                 // SimpMusic-style floating liquid glass buttons.
+                                // These are siblings of the inner backdrop-source
+                                // Box (children of the outer Box) — NOT inside the
+                                // backdrop source, which would cause a RuntimeShader
+                                // feedback crash.
                                 LiquidGlassIconButton(
                                     backdrop = artworkBackdrop,
                                     painter = painterResource(R.drawable.arrow_back),
