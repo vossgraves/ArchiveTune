@@ -92,11 +92,6 @@ dependencyResolutionManagement {
                 // every sub-module artifact fails to download.
                 includeGroup("com.github.MetrolistGroup")
                 includeGroup("com.github.MetrolistGroup.MetrolistExtractor")
-                // kyant-backdrop — liquid glass / backdrop blur effect library
-                // (io.github.kyant0:backdrop) used by the SimpMusic-style
-                // floating header pills on album / artist / playlist screens.
-                // Published to JitPack under the io.github.kyant0 group.
-                includeGroup("io.github.kyant0")
             }
         }
     }
