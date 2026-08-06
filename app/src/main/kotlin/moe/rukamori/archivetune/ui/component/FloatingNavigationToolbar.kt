@@ -542,7 +542,19 @@ fun FloatingNavigationToolbar(
             // The dampedDragAnimation is initialized to `selectedIndex` and is
             // kept in sync via the `LaunchedEffect(dampedDragAnimation)` above.
             val bounds = selectedItemBounds ?: return@LaunchedEffect
-            val pad = 4.dp
+            // SukiSU-Ultra: the inner pill wraps the FULL item bounds (icon +
+            // label) with NO inset — the user explicitly asked for "complete
+            // height like the referenced picture". The previous `pad = 4.dp`
+            // inset the pill 4dp on every side, shrinking it back to roughly
+            // the icon-only size and leaving the label poking out below the
+            // pill. With `pad = 0.dp` the pill exactly matches the
+            // ShortNavigationBarItem's measured bounds, so the entire selected
+            // item (icon + spacing + label) is enclosed — matching SukiSU's
+            // "pill encloses both icon and label" look. The floating effect
+            // (padding from the BAR's top/bottom edges) is already provided by
+            // the Row's `padding(vertical = NavigationItemVerticalPadding)`,
+            // which is reflected in the item bounds themselves.
+            val pad = 0.dp
             val itemWidthDp = with(density) { bounds.width.toDp() }
             val itemHeightDp = with(density) { bounds.height.toDp() }
             liquidGlassPillWidth = (itemWidthDp - pad * 2).coerceAtLeast(indicatorWidth)
