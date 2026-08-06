@@ -584,6 +584,19 @@ fun FloatingNavigationToolbar(
                         val pillHeight = if (canLiquidGlass) liquidGlassPillHeight else indicatorHeight
                         if (pillWidth > 0.dp && pillHeight > 0.dp) {
                             val pillShape = RoundedCornerShape(percent = 50)
+                            // Extract the primary tint color BEFORE the modifier
+                            // chain — `drawWithContent`'s lambda is NOT a
+                            // @Composable scope, so `MaterialTheme.colorScheme.primary`
+                            // (which IS @Composable) cannot be accessed inside it.
+                            // Reading it here (in the @Composable body) and
+                            // capturing it in a val makes the color available to
+                            // the non-composable draw lambda.
+                            val pillTintColor =
+                                if (canLiquidGlass) {
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.22f)
+                                } else {
+                                    Color.Transparent
+                                }
                             Box(
                                 modifier =
                                     Modifier
@@ -610,9 +623,7 @@ fun FloatingNavigationToolbar(
                                                     )
                                                     .drawWithContent {
                                                         drawContent()
-                                                        drawRect(
-                                                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.22f),
-                                                        )
+                                                        drawRect(color = pillTintColor)
                                                     }
                                             } else {
                                                 Modifier
