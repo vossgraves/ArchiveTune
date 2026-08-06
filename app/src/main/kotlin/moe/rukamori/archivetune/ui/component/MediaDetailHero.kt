@@ -43,7 +43,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
@@ -511,8 +510,10 @@ public fun MediaDetailPrimaryActions(
                                         .background(contentColor),
                             )
                             // Blurred artwork backdrop, clipped to the pill shape
-                            // by the parent Box's clip(). BlurredEdgeTreatment.Clamp
-                            // keeps the edges opaque so the artwork fully fills the pill.
+                            // by the parent Box's clip(). Modifier.blur() defaults
+                            // to BlurredEdgeTreatment.Rounded, which keeps the
+                            // artwork opaque inside the rounded bounds so it fully
+                            // fills the pill.
                             AsyncImage(
                                 model =
                                     thumbnailUrl.resize(
@@ -526,10 +527,7 @@ public fun MediaDetailPrimaryActions(
                                 modifier =
                                     Modifier
                                         .matchParentSize()
-                                        .blur(
-                                            radius = 16.dp,
-                                            edgeTreatment = BlurredEdgeTreatment.Clamp,
-                                        ),
+                                        .blur(radius = 16.dp),
                             )
                             // Icon + "Play" text on top.
                             Row(verticalAlignment = Alignment.CenterVertically) {
