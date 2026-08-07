@@ -39,7 +39,7 @@ class CipherSettingsRepository
                 .first()[MoriCipherManualRefreshHistoryKey]
                 .toManualRefreshHistory()
 
-        suspend fun refresh(): Result<CipherRefreshResult> = MoriCipherRuntime.refresh(force = true)
+        suspend fun refresh(): Result<CipherRefreshResult> = MoriCipherRuntime.refresh(force = true, videoId = null)
 
         suspend fun recordSuccessfulManualRefresh(
             timestampMillis: Long,

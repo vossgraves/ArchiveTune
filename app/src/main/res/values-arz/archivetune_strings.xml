@@ -404,8 +404,6 @@
     <string name="player_stream_client_desc">يتحكم في مصدر التشغيل المستخدم لجلب البث</string>
     <string name="player_stream_client_web_remix">ويب ريمكس</string>
     <string name="player_stream_client_web_remix_desc">دعم تنسيقات ممتدة على حساب السرعة. فك تشفير توقيع JavaScript بيسبب تأخير في بدء التشغيل من 5 لـ 10 ثوانٍ.</string>
-    <string name="player_stream_client_archivetune_extractor">مستخرج ArchiveTune</string>
-    <string name="player_stream_client_archivetune_extractor_desc">بيستخدم مستخرج ArchiveTune الخلفي لبث التشغيل. يُفضل استخدامه لجودة الصوت التلقائية العالية.</string>
     <string name="settings_section_player_content">المشغل والمحتوى</string>
     <string name="settings_appearance_subtitle">السمات، التخطيط، والأنماط البصرية</string>
     <string name="settings_playback_title">التشغيل</string>

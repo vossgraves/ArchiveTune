@@ -64,11 +64,8 @@ import moe.rukamori.archivetune.constants.TidalEnabledKey
 import androidx.compose.runtime.LaunchedEffect
 import moe.rukamori.archivetune.constants.AudioQuality
 import moe.rukamori.archivetune.constants.AudioQualityKey
-import moe.rukamori.archivetune.constants.InnerTubeCookieKey
 import moe.rukamori.archivetune.constants.PlayerStreamClient
 import moe.rukamori.archivetune.constants.PlayerStreamClientKey
-import moe.rukamori.archivetune.constants.PoTokenGvsKey
-import moe.rukamori.archivetune.constants.PoTokenPlayerKey
 import moe.rukamori.archivetune.innertube.utils.hasYouTubeLoginCookie
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.EnumListPreference
@@ -123,36 +120,12 @@ fun PlaybackSourceSections(navController: NavController) {
         rememberEnumPreference(AudioQualityKey, defaultValue = AudioQuality.AUTO)
     val (playerStreamClient, onPlayerStreamClientChange) =
         rememberEnumPreference(PlayerStreamClientKey, defaultValue = PlayerStreamClient.WEB_REMIX)
-    val (innerTubeCookie, _) = rememberPreference(InnerTubeCookieKey, defaultValue = "")
-    val (poTokenGvs, _) = rememberPreference(PoTokenGvsKey, defaultValue = "")
-    val (poTokenPlayer, _) = rememberPreference(PoTokenPlayerKey, defaultValue = "")
-    val isArchiveTuneExtractorEnabled =
-        remember(innerTubeCookie, poTokenGvs, poTokenPlayer) {
-            hasYouTubeLoginCookie(innerTubeCookie) &&
-                poTokenGvs.isNotBlank() &&
-                poTokenPlayer.isNotBlank()
-        }
     val playerStreamClients =
-        remember { listOf(PlayerStreamClient.WEB_REMIX, PlayerStreamClient.ARCHIVETUNE_EXTRACTOR) }
+        remember { PlayerStreamClient.entries }
     val selectedPlayerStreamClient =
         if (playerStreamClient in playerStreamClients) playerStreamClient
         else PlayerStreamClient.WEB_REMIX
-    val ytAudioQualityEnabled = selectedPlayerStreamClient != PlayerStreamClient.ARCHIVETUNE_EXTRACTOR
-    val isPlayerStreamClientEnabled =
-        remember(isArchiveTuneExtractorEnabled) {
-            { client: PlayerStreamClient ->
-                client != PlayerStreamClient.ARCHIVETUNE_EXTRACTOR || isArchiveTuneExtractorEnabled
-            }
-        }
 
-    LaunchedEffect(playerStreamClient, isArchiveTuneExtractorEnabled) {
-        if (
-            playerStreamClient !in playerStreamClients ||
-            (playerStreamClient == PlayerStreamClient.ARCHIVETUNE_EXTRACTOR && !isArchiveTuneExtractorEnabled)
-        ) {
-            onPlayerStreamClientChange(PlayerStreamClient.WEB_REMIX)
-        }
-    }
     val (qobuzQuality, onQobuzQualityChange) =
         rememberEnumPreference(QobuzAudioQualityKey, QobuzAudioQuality.FLAC)
     // The Tidal artwork-fetching toggle lives in Player Settings → Artwork (same key).
@@ -206,7 +179,6 @@ fun PlaybackSourceSections(navController: NavController) {
                 icon = { Icon(painterResource(R.drawable.graphic_eq), null) },
                 selectedValue = ytAudioQuality,
                 onValueSelected = onYtAudioQualityChange,
-                isEnabled = ytAudioQualityEnabled,
                 valueText = {
                     when (it) {
                         AudioQuality.HIGHEST -> stringResource(R.string.audio_quality_max)
@@ -226,13 +198,10 @@ fun PlaybackSourceSections(navController: NavController) {
                 selectedValue = selectedPlayerStreamClient,
                 values = playerStreamClients,
                 onValueSelected = onPlayerStreamClientChange,
-                isValueEnabled = isPlayerStreamClientEnabled,
                 valueText = {
                     when (it) {
                         PlayerStreamClient.WEB_REMIX ->
                             stringResource(R.string.player_stream_client_web_remix)
-                        PlayerStreamClient.ARCHIVETUNE_EXTRACTOR ->
-                            stringResource(R.string.player_stream_client_archivetune_extractor)
                         else -> stringResource(R.string.player_stream_client_web_remix)
                     }
                 },
@@ -240,11 +209,6 @@ fun PlaybackSourceSections(navController: NavController) {
                     when (it) {
                         PlayerStreamClient.WEB_REMIX ->
                             stringResource(R.string.player_stream_client_web_remix_desc)
-                        PlayerStreamClient.ARCHIVETUNE_EXTRACTOR ->
-                            if (isArchiveTuneExtractorEnabled)
-                                stringResource(R.string.player_stream_client_archivetune_extractor_desc)
-                            else
-                                stringResource(R.string.player_stream_client_archivetune_extractor_login_required)
                         else -> stringResource(R.string.player_stream_client_web_remix_desc)
                     }
                 },

@@ -581,8 +581,6 @@
     <string name="theme_creator_title">Créateur de thèmes</string>
     <string name="block_artist">Bloquer l\'artiste</string>
     <string name="unblock_artist">Débloquer l\'artiste</string>
-    <string name="player_stream_client_archivetune_extractor">Extracteur ArchiveTune</string>
-    <string name="player_stream_client_archivetune_extractor_desc">Utilise l\'extracteur ArchiveTune pour les flux de lecture. Privilégie l\'audio haute qualité automatique.</string>
     <string name="music_recognition_settings">Paramètres de reconnaissance musicale</string>
     <string name="music_recognition_background_title">Reconnaissance en arrière-plan</string>
     <string name="music_recognition_background_description">Lorsqu\'elle est activée, la vignette « Paramètres rapides » détecte la lecture audio sur cet appareil sans ouvrir ArchiveTune.</string>
@@ -609,7 +607,6 @@
     <string name="music_recognition_notification_signature_failed_text">L\'enregistrement audio ne contenait pas suffisamment de musique pour permettre une identification.</string>
     <string name="music_recognition_notification_recognition_failed_text">Le service de reconnaissance n\'a pas pu identifier cet enregistrement audio. Veuillez réessayer dans quelques instants.</string>
     <string name="show_lyrics_player_controls">Afficher les commandes du lecteur</string>
-    <string name="player_stream_client_archivetune_extractor_login_required">Pour pouvoir utiliser cette fonctionnalité, vous devez vous connecter à l\'aide de votre compte Google et de PoToken dans les paramètres.</string>
     <string name="stats_top_songs">Meilleurs Titres</string>
     <string name="stats_show_all_songs">Afficher les %1$d titres</string>
     <string name="stats_show_top_songs">Afficher les 5 meilleurs</string>
