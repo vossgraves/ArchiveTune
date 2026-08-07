@@ -9,9 +9,11 @@
 
 package moe.rukamori.archivetune.ui.component
 
+import android.os.Build
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -42,6 +44,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -460,43 +463,135 @@ public fun MediaDetailPrimaryActions(
 
                 onPlay?.let { play ->
                     val playButtonHeight = ButtonDefaults.MediumContainerHeight
-                    // The liquid-glass play button (which sampled the hero artwork via a
-                    // dedicated LayerBackdrop and rendered it as a blurred multicolored
-                    // background behind the play icon) has been REMOVED. The user reported
-                    // the sampled artwork background looked like a "misplaced image" /
-                    // "glitched preview" that clashed with the dark theme — the blurred
-                    // album-art colors behind the play icon read as a broken render rather
-                    // than intentional glassmorphism. The `useBlurredPlayButton` parameter
-                    // is kept for source compatibility with the 6 call sites that pass it,
-                    // but is now a no-op: the play button always renders as a clean solid
-                    // `contentColor` pill (same as the non-liquid-glass path). The
-                    // `thumbnailUrl` is still used for the main hero artwork above; only
-                    // the play-button backdrop sampling is removed.
-                    Button(
-                        onClick = play,
-                        shape = RoundedCornerShape(percent = 50),
-                        colors =
-                            ButtonDefaults.buttonColors(
-                                containerColor = contentColor,
-                                contentColor = contrastingColor,
-                            ),
-                        contentPadding = ButtonDefaults.contentPaddingFor(playButtonHeight, hasStartIcon = true),
-                        modifier =
-                            Modifier
-                                .layoutId(MediaDetailActionLayoutId.Play)
-                                .heightIn(min = playButtonHeight),
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.play),
-                            contentDescription = null,
-                            modifier = Modifier.size(ButtonDefaults.iconSizeFor(playButtonHeight)),
-                        )
-                        Spacer(modifier = Modifier.width(ButtonDefaults.iconSpacingFor(playButtonHeight)))
-                        Text(
-                            text = stringResource(R.string.play),
-                            style = ButtonDefaults.textStyleFor(playButtonHeight),
-                            fontWeight = FontWeight.Bold,
-                        )
+                    // Frosted-glass play button (Liquid Glass variant).
+                    //
+                    // CRASH HISTORY: the previous implementation (commit 2155235b6)
+                    // used `Modifier.liquidGlass(backdrop = LocalLiquidGlassBackdrop.current)`
+                    // to sample the shared app-content backdrop. But the play button
+                    // lives INSIDE the NavHost Box that carries
+                    // `Modifier.layerBackdrop(liquidGlassBackdrop)` (see MainActivity.kt
+                    // — the layerBackdrop is applied to the NavHost content). Per the
+                    // kyant library's own warning (LiquidGlass.kt:85-86): "The element
+                    // MUST be a sibling of the backdrop source; nesting it inside the
+                    // source creates a render-feedback loop that crashes the
+                    // RuntimeShader." The user reported "Page with play buttons crash
+                    // again" — this is that crash.
+                    //
+                    // The play button is structurally INSIDE the scrolling content
+                    // (LazyColumn item) on TWO levels: (1) the per-screen
+                    // `artworkBackdrop` applied to the LazyColumn itself, and (2) the
+                    // shared `liquidGlassBackdrop` applied to the NavHost Box. Sampling
+                    // EITHER from inside the source crashes the RuntimeShader. There is
+                    // no way to give the play button a TRUE liquid glass effect without
+                    // moving it OUT of the scrolling content (a massive layout
+                    // restructure that would change the UX — the play button would no
+                    // longer scroll with the hero header).
+                    //
+                    // FIX: replace the kyant backdrop-sampling approach with a
+                    // self-contained "fake glass" pill that LOOKS like frosted glass
+                    // but doesn't sample any backdrop. The pill is rendered as:
+                    //   1. Solid `contentColor` base (always visible — the fallback).
+                    //   2. Translucent dark tint overlay (mimics the "dark veil" that
+                    //      liquid glass adds — a 12% black overlay that gives the
+                    //      button a "smoked glass" appearance).
+                    //   3. Subtle white-to-transparent vertical gradient at the top
+                    //      (mimics the "glass reflection" highlight that liquid glass
+                    //      adds at the top edge of a pill — light catching the top of
+                    //      the glass).
+                    //   4. Icon + "Play" text on top (contrastingColor for contrast).
+                    //
+                    // This approach:
+                    //   - Doesn't crash (no backdrop sampling — no render-feedback loop).
+                    //   - Doesn't show recognizable album art (no thumbnail sampling —
+                    //     the user's previous complaint about "misplaced image" is
+                    //     addressed — the appearance is a NEUTRAL frosted glass, not
+                    //     a multicolored thumbnail preview).
+                    //   - Has the visual aesthetic of frosted glass (dark veil + top
+                    //     highlight), matching the Liquid Glass nav bar / mini player.
+                    //   - Falls back to a plain solid `contentColor` pill when the
+                    //     Liquid Glass master toggle is OFF or on pre-Android-12.
+                    val liquidGlassActive =
+                        LocalLiquidGlassBackdrop.current != null &&
+                            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+                    val playShape = RoundedCornerShape(percent = 50)
+                    val playPadding =
+                        ButtonDefaults.contentPaddingFor(playButtonHeight, hasStartIcon = true)
+                    val playIconSize = ButtonDefaults.iconSizeFor(playButtonHeight)
+                    val playIconSpacing = ButtonDefaults.iconSpacingFor(playButtonHeight)
+                    val playTextStyle = ButtonDefaults.textStyleFor(playButtonHeight)
+                    if (liquidGlassActive) {
+                        Box(
+                            modifier =
+                                Modifier
+                                    .layoutId(MediaDetailActionLayoutId.Play)
+                                    .heightIn(min = playButtonHeight)
+                                    .clip(playShape)
+                                    .clickable(onClick = play),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            // 1. Solid base color (always visible — the fallback).
+                            Box(Modifier.matchParentSize().background(contentColor))
+                            // 2. Translucent dark tint overlay (the "smoked glass" veil).
+                            Box(Modifier.matchParentSize().background(Color.Black.copy(alpha = 0.12f)))
+                            // 3. Subtle top-highlight gradient (mimics light catching the top of the glass).
+                            Box(
+                                Modifier.matchParentSize().background(
+                                    Brush.verticalGradient(
+                                        colors = listOf(
+                                            Color.White.copy(alpha = 0.18f),
+                                            Color.White.copy(alpha = 0.0f),
+                                        ),
+                                    ),
+                                ),
+                            )
+                            // 4. Icon + "Play" text on top.
+                            Row(
+                                modifier = Modifier.padding(playPadding),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.play),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(playIconSize),
+                                    tint = contrastingColor,
+                                )
+                                Spacer(modifier = Modifier.width(playIconSpacing))
+                                Text(
+                                    text = stringResource(R.string.play),
+                                    style = playTextStyle,
+                                    fontWeight = FontWeight.Bold,
+                                    color = contrastingColor,
+                                )
+                            }
+                        }
+                    } else {
+                        // Fallback: solid contentColor pill (pre-liquid-glass path).
+                        Button(
+                            onClick = play,
+                            shape = playShape,
+                            colors =
+                                ButtonDefaults.buttonColors(
+                                    containerColor = contentColor,
+                                    contentColor = contrastingColor,
+                                ),
+                            contentPadding = playPadding,
+                            modifier =
+                                Modifier
+                                    .layoutId(MediaDetailActionLayoutId.Play)
+                                    .heightIn(min = playButtonHeight),
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.play),
+                                contentDescription = null,
+                                modifier = Modifier.size(playIconSize),
+                            )
+                            Spacer(modifier = Modifier.width(playIconSpacing))
+                            Text(
+                                text = stringResource(R.string.play),
+                                style = playTextStyle,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
                     }
                 }
 

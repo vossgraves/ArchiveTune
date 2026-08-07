@@ -306,6 +306,7 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                                 style = navigationBarStyle,
                             )
                         },
+                        enabled = !liquidGlassNavBarEnabled,
                     )
                 }
 
@@ -330,6 +331,7 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                                 style = navigationBarStyle,
                             )
                         },
+                        enabled = !liquidGlassNavBarEnabled,
                     )
                 }
 
@@ -354,6 +356,7 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                                 style = navigationBarStyle,
                             )
                         },
+                        enabled = !liquidGlassNavBarEnabled,
                     )
                 }
 
@@ -378,6 +381,7 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                                 style = navigationBarStyle,
                             )
                         },
+                        enabled = !liquidGlassNavBarEnabled,
                     )
                 }
 
@@ -402,6 +406,7 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                                 style = navigationBarStyle,
                             )
                         },
+                        enabled = !liquidGlassNavBarEnabled,
                     )
                 }
 
@@ -426,12 +431,16 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                                 style = navigationBarStyle,
                             )
                         },
+                        enabled = !liquidGlassNavBarEnabled,
                     )
                 }
 
                 // Reset all six dimension values to their defaults in one tap. The button is
                 // disabled (greyed out) when every value is already at its default, so the
                 // user can see at a glance whether they have any unsaved customizations.
+                // Also disabled when Liquid Glass nav bar is active (the Liquid Glass bar
+                // uses SukiSU's exact dimensions and ignores the user's preferences, so
+                // resetting them has no visible effect).
                 item {
                     val allDefaults =
                         navigationBarWidth == NAVIGATION_BAR_WIDTH_DEFAULT &&
@@ -450,7 +459,7 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                             onNavigationBarLabelSpacingChange(NAVIGATION_BAR_LABEL_SPACING_DEFAULT)
                             onNavigationBarCornerRadiusChange(NAVIGATION_BAR_CORNER_RADIUS_DEFAULT)
                         },
-                        enabled = !allDefaults,
+                        enabled = !allDefaults && !liquidGlassNavBarEnabled,
                         shapes = ButtonDefaults.shapes(),
                         modifier = Modifier
                             .fillMaxWidth()
@@ -492,6 +501,13 @@ private fun SliderPreferenceRow(
     valueLabel: (Float) -> String,
     default: Float? = null,
     preview: (@Composable (Float) -> Unit)? = null,
+    // SukiSU-Ultra: when the Liquid Glass nav bar is active, the customization
+    // sliders are DISABLED (greyed out) because the Liquid Glass bar uses
+    // SukiSU's exact dimensions and ignores the user's preferences. The user
+    // explicitly asked for this: "Customisation of navigation bar in Liquid
+    // Glass should be unavailable because it should use the exact same
+    // dimensions from suki su for everything".
+    enabled: Boolean = true,
 ) {
     var showDialog by rememberSaveable { mutableStateOf(false) }
 
@@ -591,6 +607,7 @@ private fun SliderPreferenceRow(
         description = valueLabel(value),
         icon = { Icon(painterResource(iconRes), null) },
         onClick = { showDialog = true },
+        isEnabled = enabled,
     )
 }
 

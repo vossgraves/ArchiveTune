@@ -68,6 +68,13 @@ private suspend fun awaitFrame() {
  *     handlers. This is what lets the drag detector coexist with the tab
  *     items' own `clickable` (a tap fires both, a drag only fires here).
  *   - Never consumes the event, so children still get it.
+ *
+ * NOTE: the canDrag gating (restricting drag STARTS to the bar's bounds while
+ * allowing the drag to continue beyond the bounds once started) is handled
+ * inside [LiquidGlassDragAnimation.modifier] via a `dragActive` flag, NOT
+ * here. This keeps `inspectDragGestures` a simple observe-only detector
+ * that always runs the full gesture lifecycle (down → drag → up), which
+ * avoids deadlocking `awaitEachGesture`'s `do-while` loop.
  */
 suspend fun PointerInputScope.inspectDragGestures(
     onDragStart: (down: PointerInputChange) -> Unit = {},
@@ -216,27 +223,62 @@ class LiquidGlassDragAnimation(
     val velocity: Float get() = velocityAnimation.value
 
     val modifier: Modifier = Modifier.pointerInput(Unit) {
+        // SukiSU-Ultra drag-from-anywhere: only START the drag (press(),
+        // onDragStarted, pill slide) if the initial touch is inside the
+        // bar's content area (decided by [canDrag]). Once the drag has
+        // started, the pill follows the finger anywhere on the screen —
+        // including the top of the screen — as long as the finger stays
+        // down. This is achieved by:
+        //   1. Gating press()/onDragStarted/release() on the `dragActive`
+        //      flag, which is set in onDragStart iff canDrag(down.position)
+        //      is true. Touches outside the bar don't trigger press(), so
+        //      the pill doesn't scale up and the bar doesn't rubber-band.
+        //   2. Removing the previous `isInside && wasInside` check in the
+        //      onDrag callback. Once `dragActive` is true, every move event
+        //      feeds into onDrag — regardless of whether the finger is
+        //      still inside the bar. Compose's `awaitEachGesture` +
+        //      `drag(pointerId)` pattern captures the pointer for the
+        //      duration of the gesture, so pointer events continue to be
+        //      delivered to this detector even when the finger leaves the
+        //      bar's bounds.
+        //
+        // The `dragActive` flag approach (vs. early-returning from
+        // `inspectDragGestures`) is necessary because `awaitEachGesture`'s
+        // `do-while` loop expects `block()` to run the full gesture
+        // lifecycle (down → drag → up) before returning. Early-returning
+        // would leave the loop waiting for the next `awaitFirstDown`,
+        // deadlocking the gesture detector until the next touch.
+        var dragActive = false
         inspectDragGestures(
             onDragStart = { down ->
-                onDragStarted(down.position)
-                press()
+                if (canDrag(down.position)) {
+                    dragActive = true
+                    onDragStarted(down.position)
+                    press()
+                } else {
+                    dragActive = false
+                }
             },
             onDragEnd = {
-                onDragStopped()
-                release()
+                if (dragActive) {
+                    onDragStopped()
+                    release()
+                }
+                dragActive = false
             },
             onDragCancel = {
-                onDragStopped()
-                release()
+                if (dragActive) {
+                    onDragStopped()
+                    release()
+                }
+                dragActive = false
             },
-        ) { change, dragAmount ->
-            val position = change.position
-            val previousPosition = change.previousPosition
-
-            val isInside = canDrag(position)
-            val wasInside = canDrag(previousPosition)
-
-            if (isInside && wasInside) {
+        ) { _, dragAmount ->
+            // No more isInside/wasInside check — once the drag has started
+            // (dragActive == true), the pill follows the finger regardless
+            // of position. The user can drag from anywhere on the screen
+            // (including the top) as long as their finger stays down.
+            if (dragActive) {
                 onDrag(size, dragAmount)
             }
         }

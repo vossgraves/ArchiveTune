@@ -1491,7 +1491,10 @@ class MainActivity : ComponentActivity() {
                     val shouldHideStatusBars =
                         isYearInMusicScreen ||
                             bottomSheetPageState.isVisible ||
-                            menuState.isVisible ||
+                            (
+                                menuState.isVisible &&
+                                    playerBottomSheetState.isExpandedOrExpanding
+                            ) ||
                             (
                                 playerBottomSheetState.isExpandedOrExpanding &&
                                     (playerDesignStyle == PlayerDesignStyle.V7 || playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC)
