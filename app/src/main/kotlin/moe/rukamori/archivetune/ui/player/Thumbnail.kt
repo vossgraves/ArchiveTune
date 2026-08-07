@@ -590,18 +590,6 @@ fun Thumbnail(
                                         )
                                     }
 
-                                    // When the current media is a music video, render the video
-                                    // inline in place of the album artwork — the audio continues
-                                    // to play through the main MusicService ExoPlayer, so all
-                                    // transport controls (play/pause, seek, next/prev) work as
-                                    // normal. Only the current item gets a video surface; prev/next
-                                    // pages in the swipe pager still show artwork.
-                                    //
-                                    // The artwork is always rendered as the base layer so that
-                                    // while the video is loading (or if stream resolution fails)
-                                    // the user sees the album cover instead of a black square.
-                                    // The video surface is rendered on top and alpha-fades in
-                                    // once the first frame is ready, covering the artwork.
                                     val isCurrentMusicVideo =
                                         LocalVideoArtworkState.current != null &&
                                             item.metadata?.isMusicVideo == true &&

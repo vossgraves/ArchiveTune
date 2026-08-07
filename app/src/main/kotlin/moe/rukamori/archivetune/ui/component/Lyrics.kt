@@ -1115,13 +1115,6 @@ fun Lyrics(
                                             }
                                         }
 
-                                    // Word-timing detection: previously this was just `item.words?.isNotEmpty() == true`,
-                                    // which fired even when providers gave every word the same start/end time as the
-                                    // line (a fake "word-synced" pattern). We now consult hasTrueWordSync() which
-                                    // rejects those synthetic patterns and only enables word-by-word animation when
-                                    // the lyrics actually have meaningful per-word timing. When the check fails,
-                                    // hasWordTimings is false and the line falls through to the line-by-line branch
-                                    // below — same as a TTML line with no <span> children at all.
                                     val hasWordTimings = remember(item.words) {
                                         !item.words.isNullOrEmpty() && hasTrueWordSync(item)
                                     }

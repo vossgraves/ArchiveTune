@@ -261,11 +261,6 @@ internal class DeviceMusicVolumeController(
         val targetVolume =
             (minVolume + (safeFraction * volumeRange).roundToInt())
                 .coerceIn(minVolume, maxVolume)
-        // If the user dragged the slider above 0 but the rounded target is still at minVolume
-        // (happens for very small fractions on devices with many volume steps — e.g. 3% of a
-        // 15-step range rounds to 0), bump it up by one step so the volume actually changes.
-        // Without this, dragging from 0% would show the percentage increasing in the UI while
-        // the actual device volume stayed silent at 0.
         val adjustedTarget =
             if (safeFraction > 0f && targetVolume <= minVolume) {
                 (minVolume + 1).coerceAtMost(maxVolume)
@@ -858,23 +853,6 @@ fun BottomSheetPlayer(
 
     val systemBarsBottom = WindowInsets.systemBars.asPaddingValues().calculateBottomPadding()
 
-    // Queue sheet anchors. The previous code set collapsedBound == dismissedBound,
-    // which collapsed the sheet onto the dismissed anchor. At that anchor
-    // `isDismissed == true`, so per BottomSheet.kt the collapsedContent was NOT
-    // rendered (and neither was expandedContent since `isCollapsed == true`).
-    // Net effect: dragging the queue down made it vanish instantly — the user
-    // saw an empty strip with no controls and no way to drag it back up.
-    //
-    // The fix separates the two anchors:
-    //   - dismissedBound = 0.dp → sheet is fully off-screen (below the viewport)
-    //   - collapsedBound = peek + systemBarsBottom → sheet shows the peek/mini
-    //     controls just above the system bar
-    //
-    // Now dragging down snaps to collapsedBound (peek visible, controls tappable),
-    // and a hard downward fling past collapsedBound goes to dismissedBound only
-    // if `onDismiss != null` — which it isn't for Queue — so the sheet stays at
-    // the peek instead of vanishing. The user can tap the queue button to
-    // re-expand at any time.
     val dismissedBound = 0.dp
     val collapsedBound = dynamicQueuePeekHeight + systemBarsBottom
 
@@ -883,60 +861,9 @@ fun BottomSheetPlayer(
             dismissedBound = dismissedBound,
             expandedBound = state.expandedBound,
             collapsedBound = collapsedBound,
-            // Start at COLLAPSED so the per-style peek bar (QueueCollapsedContentVX,
-            // which lives in Queue.kt's BottomSheet.collapsedContent) is rendered as
-            // soon as the player expands. With the previous default (DISMISSED_ANCHOR)
-            // the collapsedContent was suppressed (BottomSheet only renders it when
-            // !isDismissed), so the peek — and every per-style lyrics / queue / sleep
-            // timer / repeat / shuffle / menu / audio-output button inside it — was
-            // invisible on first launch and after restoring a saved DISMISSED anchor,
-            // even though the player content already reserved `collapsedBound` of
-            // empty space for it. The Apple Music style was unaffected because its
-            // bottom row is baked into AppleMusicControlsColumn (player content), not
-            // into the queue sheet's peek.
             initialAnchor = COLLAPSED_ANCHOR,
         )
 
-    // Per-style peek-bar visibility safety net.
-    //
-    // The per-style bottom controls (lyrics / queue / AirPlay / sleep-timer /
-    // repeat / shuffle / menu / audio-output device pill) all live inside the
-    // queue sheet's `collapsedContent` (QueueCollapsedContentV1..V9 in
-    // QueueComponents.kt). That content is only rendered on-screen when the
-    // queue sheet is at its COLLAPSED anchor — at EXPANDED the full queue list
-    // covers it, and at DISMISSED the outer Box is offset entirely off-screen
-    // (offset.y == expandedBound). In both cases the user sees the empty gap
-    // below the playback controls that they keep reporting, even though each
-    // style's peek bar is fully defined with its own buttons and styling.
-    //
-    // The queue sheet's `previousAnchor` is `rememberSaveable`, so it survives
-    // process death and player collapse/expand cycles. That means three
-    // non-COLLAPSED states can survive into the next player-open:
-    //
-    //   1. DISMISSED_ANCHOR — leftover from a pre-fix saved state (the old
-    //      default `initialAnchor = 0`). The queue sheet starts off-screen.
-    //   2. EXPANDED_ANCHOR — the user opened the queue list, then collapsed
-    //      the player without first collapsing the queue. The queue sheet
-    //      starts at EXPANDED, so the peek bar is suppressed and the queue
-    //      list covers the bottom of the player.
-    //   3. Mid-animation values — rare, but possible if the player is re-opened
-    //      while a previous queue animation is still settling.
-    //
-    // The previous safety net only handled case 1 (keyed on
-    // `queueSheetState.isDismissed`). Cases 2 and 3 still produced the empty
-    // gap. This net keys solely on `state.isExpandedOrExpanding` so it fires
-    // exactly once per player-open transition and snaps the queue sheet to
-    // COLLAPSED regardless of which non-COLLAPSED state it was in. The snap
-    // happens while the player content's alpha is still 0 (the player's
-    // content BoxWithConstraints uses `alpha = ((progress - 0.25f) * 4)` which
-    // is 0 for the first 25% of the expand animation), so the user never sees
-    // a flash of the queue list or a jarring jump — the peek bar is just
-    // visible by the time the player content fades in.
-    //
-    // The user can still expand the queue list at any time by tapping the
-    // queue button (which calls `openQueue` → `queueSheetState.expandSoft()`);
-    // this net only fires on the player-open transition, not on every
-    // recomposition, so it doesn't fight the user's explicit expand action.
     LaunchedEffect(state.isExpandedOrExpanding) {
         if (state.isExpandedOrExpanding && !queueSheetState.isCollapsed) {
             queueSheetState.collapseSoft()
@@ -991,22 +918,6 @@ fun BottomSheetPlayer(
         }
     }
 
-    // ── Hoisted video state ──
-    //
-    // The VideoArtworkState (ExoPlayer + stream URL + playback state) is
-    // created HERE — above the BottomSheet and above the `when (orientation)`
-    // block — so it survives:
-    //   - Orientation changes (the `when` block can switch freely without
-    //     releasing the ExoPlayer).
-    //   - Sheet collapse/expand (the ExoPlayer is not tied to the sheet's
-    //     content lifecycle; `keepContentAlive = true` keeps the content
-    //     alive too, but even without it the state would survive).
-    //   - Fullscreen toggle (the FullscreenVideoOverlay is a sibling of the
-    //     BottomSheet, sharing this same state — no Dialog, no separate
-    //     window, no re-loading).
-    //
-    // When there's no music video playing, this returns null and no ExoPlayer
-    // is created.
     val videoFullscreenHolder = LocalVideoFullscreenState.current
     val videoMediaId =
         mediaMetadata
@@ -1036,16 +947,6 @@ fun BottomSheetPlayer(
             onRequestResumeMain = { playerConnection.player.play() },
         )
 
-    // Wrap BottomSheet + FullscreenVideoOverlay in a Box so the overlay
-    // can be rendered as a sibling of the BottomSheet, filling the entire
-    // screen on top of it. This avoids using a Compose Dialog (which has
-    // orientation/window issues that caused the "horizontal for a split
-    // second then back" flicker).
-    //
-    // The video state is provided via CompositionLocals so that composables
-    // deep in the tree (V8PlayerContent, AppleMusicPlayer, etc.) can access
-    // the shared ExoPlayer without needing it passed as an explicit parameter
-    // through every layer.
     CompositionLocalProvider(
         LocalVideoArtworkState provides videoState,
         LocalVideoPreferredHeight provides videoPreferredHeight,
@@ -1197,12 +1098,6 @@ fun BottomSheetPlayer(
         onDismiss = {
             playerConnection.service.stopAndClearPlayback(clearPersistentState = true)
         },
-        // Keep the player content (including InlineVideoPlayer) alive even
-        // when the sheet is collapsed to the mini player. Without this,
-        // collapsing the player unmounts the InlineVideoPlayer, releasing
-        // the ExoPlayer — and expanding it again requires re-resolving the
-        // stream URL and re-buffering, causing "video pauses, audio keeps
-        // playing" on reopen.
         keepContentAlive = true,
         collapsedContent = {
             MiniPlayer(
@@ -1229,11 +1124,6 @@ fun BottomSheetPlayer(
                     playerConnection.player.seekTo(it)
                 }
                 position = it
-                // Request a pause-load-resume resync on the video player so
-                // it jumps to the new position. This is the ONLY path that
-                // triggers a pause-load-resume — the automatic drift-based
-                // resync was removed because it caused "video keeps pausing
-                // repeatedly".
                 videoState?.requestResync(it, isPlaying)
             }
             isUserSeeking = false
@@ -1311,11 +1201,6 @@ fun BottomSheetPlayer(
             mutableIntStateOf(0)
         }
 
-        // Prefetch the canvas artwork for the next-up song in the background
-        // so when the user skips, the canvas starts animating within ~100ms
-        // instead of waiting for the ArchiveTuneCanvas API lookup (~200-800ms).
-        // Skipped if the next-up canvas is already cached (cheap in-memory
-        // check) or if low-data mode is on (respect the user's data-saver).
         LaunchedEffect(nextUpMetadata?.id, shouldUseV7Canvas, shouldUseArtworkCanvas, lowDataModeActive) {
             val next = nextUpMetadata ?: return@LaunchedEffect
             val nextMediaId = next.id.trim().takeIf { it.isNotBlank() } ?: return@LaunchedEffect
@@ -1480,15 +1365,6 @@ fun BottomSheetPlayer(
             )
         }
 
-        // The `when (orientation)` block can switch freely between PORTRAIT
-        // and LANDSCAPE — the VideoArtworkState (ExoPlayer) is hoisted above
-        // this block (in BottomSheetPlayer), so it survives the switch. The
-        // InlineVideoPlayer in either branch just attaches/detaches its
-        // surface; the ExoPlayer keeps running.
-        //
-        // The FullscreenVideoOverlay is rendered as a sibling of the
-        // BottomSheet (not inside this `when` block), so it's always available
-        // regardless of which orientation branch is active.
         when (LocalConfiguration.current.orientation) {
             Configuration.ORIENTATION_LANDSCAPE -> {
                 if (playerDesignStyle == PlayerDesignStyle.V5) {
@@ -1582,12 +1458,6 @@ fun BottomSheetPlayer(
                                 lowDataMode = lowDataModeActive,
                                 isMusicVideo = mediaMetadata?.isMusicVideo ?: false,
                             )
-                        // When the current media is a music video, render the video
-                        // inline on top of a solid black backdrop — the user
-                        // wants pure black behind/around the 16:9 video surface,
-                        // not the blurred artwork. Audio continues through the
-                        // main MusicService ExoPlayer, so all transport controls
-                        // work as normal.
                         val v7VideoMetadata = mediaMetadata
                         val v7VideoShowing =
                             videoState != null &&
@@ -1619,12 +1489,6 @@ fun BottomSheetPlayer(
                             )
                         }
 
-                        // `v7VideoMetadata != null` is required for the compiler
-                        // to smart-cast `v7VideoMetadata.id` to non-null — `v7VideoShowing`
-                        // already implies this but the compiler can't track the
-                        // implication through a local Boolean variable. We use the
-                        // local `v7VideoMetadata` capture (not the delegated
-                        // `mediaMetadata`) so Kotlin can smart-cast it.
                         if (v7VideoShowing && v7VideoMetadata != null) {
                             InlineVideoPlayer(
                                 state = videoState,
@@ -1693,13 +1557,6 @@ fun BottomSheetPlayer(
                                 lowDataMode = lowDataModeActive,
                                 isMusicVideo = mediaMetadata?.isMusicVideo ?: false,
                             )
-                        // When the current media is a music video, render a
-                        // solid black backdrop instead of the blurred thumbnail —
-                        // the video surface itself provides all the visual
-                        // interest, and the blurred thumbnail behind it makes
-                        // the 16:9 video look like it's floating in a colored
-                        // haze. Pure black mirrors how YouTube Music shows
-                        // music videos.
                         val v8VideoMetadata = mediaMetadata
                         val v8VideoShowing =
                             videoState != null &&
@@ -1965,12 +1822,6 @@ fun BottomSheetPlayer(
                                 lowDataMode = lowDataModeActive,
                                 isMusicVideo = mediaMetadata?.isMusicVideo ?: false,
                             )
-                        // When the current media is a music video, render the video
-                        // inline on top of a solid black backdrop — the user
-                        // wants pure black behind/around the 16:9 video surface,
-                        // not the blurred artwork. Audio continues through the
-                        // main MusicService ExoPlayer, so all transport controls
-                        // work as normal.
                         val v7VideoMetadata = mediaMetadata
                         val v7VideoShowing =
                             videoState != null &&
@@ -2000,12 +1851,6 @@ fun BottomSheetPlayer(
                             )
                         }
 
-                        // `v7VideoMetadata != null` is required for the compiler
-                        // to smart-cast `v7VideoMetadata.id` to non-null — `v7VideoShowing`
-                        // already implies this but the compiler can't track the
-                        // implication through a local Boolean variable. We use the
-                        // local `v7VideoMetadata` capture (not the delegated
-                        // `mediaMetadata`) so Kotlin can smart-cast it.
                         if (v7VideoShowing && v7VideoMetadata != null) {
                             InlineVideoPlayer(
                                 state = videoState,
@@ -2072,13 +1917,6 @@ fun BottomSheetPlayer(
                                 lowDataMode = lowDataModeActive,
                                 isMusicVideo = mediaMetadata?.isMusicVideo ?: false,
                             )
-                        // When the current media is a music video, render a
-                        // solid black backdrop instead of the blurred thumbnail —
-                        // the video surface itself provides all the visual
-                        // interest, and the blurred thumbnail behind it makes
-                        // the 16:9 video look like it's floating in a colored
-                        // haze. Pure black mirrors how YouTube Music shows
-                        // music videos.
                         val v8VideoMetadata = mediaMetadata
                         val v8VideoShowing =
                             videoState != null &&
@@ -2321,28 +2159,6 @@ fun BottomSheetPlayer(
         }
     }
 
-        // ── Fullscreen video overlay (sibling of BottomSheet) ──
-        //
-        // Rendered on top of the BottomSheet when the user enters fullscreen.
-        // This is a regular composable (NOT a Dialog) — it shares the same
-        // window as the BottomSheet, so the Activity's `requestedOrientation`
-        // applies cleanly to it. This avoids the Compose Dialog's window/
-        // orientation issues that caused the "horizontal for a split second
-        // then back" flicker.
-        //
-        // The overlay uses the SAME VideoArtworkState as the inline player —
-        // no re-loading, no re-buffering. The video continues playing
-        // seamlessly as the surface moves from the inline slot to this overlay.
-        //
-        // When the overlay is visible, the InlineVideoPlayer (inside the
-        // BottomSheet) skips rendering its own surface (`if (!isFullscreen)`),
-        // ensuring only ONE surface is attached to the ExoPlayer at a time.
-        //
-        // PIP: when the activity is in Picture-in-Picture mode we force the
-        // fullscreen overlay on (so the video fills the PiP window) and the
-        // overlay itself hides all controls — the user sees only the video
-        // in the floating window. When PiP ends, the overlay reverts to its
-        // prior state.
         val isInPipMode = moe.rukamori.archivetune.ui.player.LocalIsInPipMode.current
         LaunchedEffect(isInPipMode, videoState) {
             if (isInPipMode && videoState != null) {
@@ -2397,20 +2213,6 @@ private fun MikoLyricsTransition(
     onQueueClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // Apple-Music-style sheet motion: the lyrics sheet slides straight up from the bottom edge on an
-    // interruptible spring, staying fully opaque the whole way (no cross-fade), while a dim scrim
-    // fades in behind it. All derived transforms are read inside graphicsLayer/draw lambdas so the
-    // animation runs entirely in the draw phase — zero recomposition per frame.
-    //
-    // Direction-aware spring: the OPEN glide is the soft critically-damped spring (dampingRatio=1f
-    // / stiffness=160f, ~500 ms settle) that the user explicitly asked to keep. The CLOSE glide is
-    // ~40% slower (stiffness=80f, ~700 ms settle) per the user's follow-up request to slow down
-    // the lyrics UI closing transition. Critically-damped (no overshoot) on both sides so the
-    // close doesn't feel bouncy.
-    //
-    // We use an `Animatable` driven by `LaunchedEffect(visible)` (rather than `animateFloatAsState`)
-    // because `animateFloatAsState` is direction-symmetric — the same spec applies whether the
-    // target is going 0→1 or 1→0 — and we need separate specs per direction.
     val animationsDisabled = LocalAnimationsDisabled.current
     val progress = remember { Animatable(initialValue = 0f) }
     LaunchedEffect(visible, animationsDisabled) {
@@ -2440,28 +2242,6 @@ private fun MikoLyricsTransition(
     }
     val progressState = progress.asState()
     val showContent by remember {
-        // Keep the heavy LyricsScreen tree composed for the ENTIRE close transition —
-        // the lyrics content must still be visible on the very last frame the sheet
-        // is on screen (progress → 0, translationY → height).
-        //
-        // The outer Box's graphicsLayer slides the whole sheet on/off screen via
-        // translationY = size.height * (1 - progress). Earlier thresholds (0.5, then
-        // 0.02) unmounted the lyrics tree before the slide-down finished, leaving an
-        // empty surface sliding off-screen — visible as the animation "ending
-        // abruptly" for the final frames.
-        //
-        // `progressState.value > 0f` keeps the tree composed for the whole spring
-        // glide. The close spring is critically damped (dampingRatio = 1f) so it
-        // approaches 0 monotonically with no overshoot; when the deviation drops
-        // below the visibilityThreshold (0.001f) Animatable snaps to exactly 0.0f,
-        // at which point `progress > 0f` flips false and the tree unmounts — by then
-        // translationY is exactly `height`, i.e. the sheet is 100% off-screen, so
-        // unmounting is invisible.
-        //
-        // Open path is unchanged: `visible` flips to true immediately on open,
-        // short-circuiting the `||` and composing the tree right away (no first-
-        // frame jank regression because the slide-up is already moving by the time
-        // the first frame of the lyrics tree is ready).
         derivedStateOf { visible || progressState.value > 0f }
     }
 
@@ -3230,12 +3010,6 @@ private fun LittlePlayerContent(
 
                 Spacer(Modifier.width((18f * scale).dp))
 
-                // Queue button — wrapped in a 48dp Box (Material minimum touch target) so the
-                // tap is reliably registerable even on dense layouts. The previous version put
-                // .clickable directly on the 26dp Icon, which (combined with indication=null)
-                // made taps very easy to miss — one of the root causes of the "queue button
-                // doesn't work at all" report. The Icon itself stays at iconSize for visual
-                // consistency; only the touch target grows.
                 Box(
                     contentAlignment = Alignment.Center,
                     modifier =

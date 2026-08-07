@@ -138,11 +138,6 @@ fun AppleMusicPlayerContent(
     onVolumeChange: (Float) -> Unit,
     canvasPrimaryUrl: String?,
     canvasFallbackUrl: String?,
-    // Current stream format used to render the Lossless / AAC / OPUS quality
-    // chip between the seek-bar timestamps (mirrors the Immersive V8 player's
-    // V8QualityChip). Null when no format has been resolved yet (stream still
-    // loading, or local media without a format row) — in that case the chip
-    // is simply not rendered.
     currentFormat: FormatEntity?,
     contentBottomPadding: Dp,
     onQueueClick: () -> Unit,
@@ -205,18 +200,6 @@ fun AppleMusicPlayerContent(
     BoxWithConstraints(modifier = modifier) {
         val sharpArtworkHeight = if (landscape) maxHeight else maxHeight * 0.55f
 
-        // 0. Opaque black floor. On Android < 12 the pre-blur coroutine can take a beat to
-        //    resolve (and historically crashed on hardware bitmaps — see
-        //    rememberPreBlurredBitmap — now inlined as produceState per PR #924).
-        //    During that window the blurred-bitmap branch is
-        //    skipped and the sharp-artwork AsyncImage is still loading, leaving the
-        //    BoxWithConstraints with no opaque layer at all — so the screen behind the
-        //    player bottom sheet (e.g. the Appearance settings page text: "Lyrics
-        //    background style", "Mini player background style") bleeds through the
-        //    translucent vertical-gradient scrim and shows up as ghosted text behind the
-        //    playback controls. Painting Color.Black here guarantees the sheet is always
-        //    opaque, even before any bitmap has decoded, so the only thing the user ever
-        //    sees behind the controls is the artwork (sharp or blurred) on black.
         Box(
             modifier =
                 Modifier
@@ -224,24 +207,6 @@ fun AppleMusicPlayerContent(
                     .background(Color.Black),
         )
 
-        // 1. Blurred artwork fills the whole player as the base layer.
-        //
-        //    On Android 12+ (API 31+) we use Compose's Modifier.blur — it's backed by the
-        //    platform RenderEffect and runs on the GPU, so it's both fast and high quality.
-        //
-        //    On older Android (API < 31) Modifier.blur is a silent no-op: the artwork would
-        //    render sharp, killing the Apple-Music-blurred-sheet aesthetic. As a fallback we
-        //    pre-blur the artwork bitmap on a background thread via ImageBlurUtils.blur
-        //    (PR #924 approach, inlined) and render that bitmap directly. While the blur is
-        //    in-flight (first frame after artwork change) we render a slightly darker version
-        //    of the sharp artwork + a heavier scrim so the transition isn't jarring.
-        //
-        //    When the current media is a music video, the user wants a solid black
-        //    background instead of the blurred thumbnail — the video surface itself
-        //    provides all the visual interest, and the blurred thumbnail behind it
-        //    makes the 16:9 video look like it's floating in a colored haze.
-        //    The black floor painted above is already showing through, so we just
-        //    skip the blurred artwork + scrim layers entirely.
         val videoShowing =
             LocalVideoArtworkState.current != null &&
                 mediaMetadata.isMusicVideo &&
@@ -312,12 +277,6 @@ fun AppleMusicPlayerContent(
                             },
                 )
             }
-            // Deep contrast scrim over the blur: the Apple Music sheet reads as a dark, artwork-tinted
-            // panel rather than a bright blur, so the whole surface is pulled well down in brightness
-            // and pushed darker still toward the bottom where the controls sit.
-            //
-            // On pre-S while the pre-blur is still loading, we push the scrim even darker to mask
-            // the un-blurred source artwork (otherwise the layout would "pop" from sharp to blurred).
             val preBlurLoading = isPreS && preBlurredBitmap == null
             Box(
                 modifier =
@@ -382,11 +341,6 @@ fun AppleMusicPlayerContent(
                 )
             }
         } else {
-            // 2. Sharp artwork occupies the top, fading into the blurred continuation below it.
-            //    When the video is showing, skip the fade — the video surface handles its
-            //    own bottom edge and the fade would just make the lower 38% of the video
-            //    transparent, revealing the black floor behind it (looks weird with
-            //    videos that have text/burned-in subs near the bottom edge).
             AppleMusicSharpArtwork(
                 artworkRequest = artworkRequest,
                 artworkUrl = artworkUrl,
@@ -476,16 +430,6 @@ private fun AppleMusicSharpArtwork(
                 },
             ),
     ) {
-        // When the current media is a music video, render the video inline
-        // in place of the album artwork. Audio continues through the main
-        // MusicService ExoPlayer, so all transport controls work as normal.
-        //
-        // When the video is showing, we render a solid black background
-        // instead of the album artwork. The video surface uses FIT resize
-        // mode, so any letterbox area would otherwise show the artwork
-        // through the gaps — the user explicitly reported this as a bug.
-        // The video surface is rendered on top and alpha-fades in once
-        // the first frame is ready.
         val videoArtworkState = LocalVideoArtworkState.current
         val showVideo =
             videoArtworkState != null &&
@@ -560,14 +504,6 @@ private fun AppleMusicControlsColumn(
 ) {
     var swipeUpAccumulated by remember { mutableFloatStateOf(0f) }
     val swipeUpThreshold = 120f
-    // Activation threshold for the swipe-up gesture, in pixels. The previous implementation
-    // used detectVerticalDragGestures, which fires (and calls change.consume()) the moment
-    // the finger drifts past viewConfiguration.touchSlop (~8dp ≈ 24px on a 3x-density phone).
-    // That consume() call cancels every child clickable's tap gesture — so users whose taps
-    // drifted even slightly would see "queue button doesn't work at all". By requiring a
-    // much larger initial movement (72px ≈ 24dp on a 3x-density phone) before we treat it
-    // as a swipe and start consuming, small finger drifts on taps no longer activate the
-    // swipe detector and the child tap completes normally. Clear upward swipes still work.
     val swipeActivationThreshold = 72f
     val resetSwipeUp = remember {
         {
@@ -580,12 +516,6 @@ private fun AppleMusicControlsColumn(
         modifier = modifier
             .padding(horizontal = AppleMusicContentPadding)
             .pointerInput(Unit) {
-                // Custom vertical-drag detector that only consumes events once the user has
-                // clearly started swiping upward (movement > swipeActivationThreshold).
-                // Before that point, we don't consume — so child clickables (queue, lyrics,
-                // output, play/pause, skip, like, more, title, artist) receive the full
-                // tap sequence and fire normally. This fixes the "queue button doesn't work
-                // at all" report for users whose taps drift a few pixels vertically.
                 awaitEachGesture {
                     awaitFirstDown(requireUnconsumed = false)
                     var accumulated = 0f

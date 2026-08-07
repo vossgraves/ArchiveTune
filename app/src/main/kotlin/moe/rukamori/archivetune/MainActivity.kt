@@ -519,34 +519,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // ── Picture-in-Picture ────────────────────────────────────────────────
-    //
-    // When the user leaves the app while a music video is playing (and the
-    // "Enable PiP mode" setting is ON), the activity enters PiP mode so the
-    // video keeps playing in a small floating window.
-    //
-    // Conditions for entering PiP (checked in onUserLeaveHint):
-    //   1. Build.VERSION.SDK_INT >= O (PiP requires API 26+).
-    //   2. The device supports PiP (packageManager.hasSystemFeature).
-    //   3. EnablePipModeKey is true (user opted in via Playback settings).
-    //   4. EnableVideoPlaybackKey is true (video playback itself is on —
-    //      otherwise there is no video surface to float).
-    //   5. The current media is a music video (isMusicVideo == true) and
-    //      is NOT a local file (we can't PiP a local audio file because
-    //      there is no video stream for it).
-    //   6. Playback is currently playing (not paused) — entering PiP for
-    //      a paused video would show a frozen frame, which is confusing.
-    //
-    // The aspect ratio is computed from the current video's preferred
-    // height (or a sensible 16:9 default). Android requires the aspect
-    // ratio be in the range [1.0, 2.39]; we clamp to that range.
-    //
-    // onPictureInPictureModeChanged is overridden to surface the PiP
-    // state to the rest of the app (the player UI hides non-essential
-    // controls when in PiP). The state is exposed via
-    // `isInPictureInPictureModeState` (a mutableStateOf) so composables
-    // can react to it.
-
     /** Tracks whether the activity is currently in PiP mode, exposed as
      *  Compose state so the player UI can adapt (hide controls, etc.). */
     var isInPictureInPictureModeState by mutableStateOf(false)
@@ -638,11 +610,6 @@ class MainActivity : ComponentActivity() {
         window.decorView.layoutDirection = View.LAYOUT_DIRECTION_LTR
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
-        // Pre-warm DNS + TLS connections to the most common download/stream
-        // hosts so the first song download of the session doesn't pay the
-        // ~300-800ms DNS+TCP+TLS handshake cost. Fires off a single HEAD
-        // request per host on a background IO coroutine; failures are
-        // silently swallowed (it's just an optimization).
         lifecycleScope.launch(Dispatchers.IO) {
             runCatching { downloadUtil.prewarmDownloadConnections() }
         }
@@ -703,14 +670,6 @@ class MainActivity : ComponentActivity() {
 
             val updateChannel by rememberEnumPreference(UpdateChannelKey, defaultValue = defaultUpdateChannel)
 
-            // Canary builds (GitHub Actions / dev branch) are locked to the canary
-            // update channel — even if the user opens Update settings and switches
-            // to "Stable", a canary build must never pop up a stable-release update
-            // (the stable APK would sideload-downgrade the canary, and the user
-            // signed up for canary builds by installing a GitHub Actions artifact).
-            // Stable builds respect the user's selection. This single value drives
-            // both the version-check LaunchedEffect and the popup-show
-            // LaunchedEffect so they stay in sync.
             val effectiveUpdateChannel = if (isCanaryBuild) UpdateChannel.CANARY else updateChannel
 
             LaunchedEffect(Unit) {
@@ -760,11 +719,6 @@ class MainActivity : ComponentActivity() {
                         .MenuState()
                 }
             val releaseNotesState = remember { mutableStateOf<String?>(null) }
-            // `neverShowUpdatePopupMarker` stores "<versionName>|<versionCode>" of the version
-            // the user suppressed the popup for. It's "not suppressed" when it matches the
-            // currently running version, and treated as "stale, re-enable" otherwise — which
-            // happens automatically after an upgrade because the stored marker no longer
-            // matches BuildConfig.
             val currentVersionMarker = remember {
                 "${BuildConfig.VERSION_NAME}|${BuildConfig.VERSION_CODE}"
             }
@@ -838,14 +792,6 @@ class MainActivity : ComponentActivity() {
 
                 Spacer(Modifier.height(8.dp))
 
-                // Secondary actions row:
-                //   • "Remind me later" — just dismiss the sheet; the popup will reappear next
-                //     app launch as long as the version remains older than the latest.
-                //   • "Never show again" — persistently suppress the popup for the current
-                //     app version. Auto-clears after an upgrade (the stored version marker
-                //     stops matching BuildConfig), so the popup fires once for the next new
-                //     release too. Users can still check for updates manually via Settings →
-                //     Updates at any time.
                 androidx.compose.foundation.layout.Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
@@ -930,11 +876,6 @@ class MainActivity : ComponentActivity() {
                 NavigationBarTintFrostedBlurKey,
                 defaultValue = false,
             )
-            // Liquid Glass master toggle and nav-bar sub-toggle. The master toggle
-            // gates all Liquid Glass surfaces (header pills on detail screens, the
-            // Liquid Glass mini player background, and the Liquid Glass nav bar style).
-            // The kyant RuntimeShader stack requires Android 12+, so we read the keys
-            // but the actual LayerBackdrop is only created on S+.
             val liquidGlassEnabled by rememberPreference(
                 LiquidGlassEnabledKey,
                 defaultValue = false,
@@ -1261,17 +1202,6 @@ class MainActivity : ComponentActivity() {
                         MiniPlayerBackgroundStyleKey,
                         defaultValue = MiniPlayerBackgroundStyle.THEME,
                     )
-                    // Capture the app content into a GraphicsLayer every frame so the frosted
-                    // nav bar / mini player can draw it blurred. On Android 12+ the blur uses
-                    // RenderEffect (every frame, hardware-accelerated); on pre-S the consumers
-                    // fall back to a periodically captured + CPU-blurred bitmap
-                    // (see [rememberPreSFrostedBitmap]). Both paths need the same GraphicsLayer,
-                    // so we create it on every API level — `rememberGraphicsLayer` and
-                    // `layer.record { ... }` work without RenderEffect.
-                    // Always capture the app content into a GraphicsLayer every frame so both
-                    // the frosted nav bar / mini player AND the frosted header pills can draw
-                    // it blurred. The recording cost is negligible (GPU layer copy) and the
-                    // layer is only read by consumers that opt into frosted blur.
                     val navBarFrostedBackdrop =
                         if (!useRail) {
                             val frostedLayer = rememberGraphicsLayer()
@@ -1280,15 +1210,6 @@ class MainActivity : ComponentActivity() {
                             null
                         }
 
-                    // Liquid Glass backdrop: a separate kyant LayerBackdrop that captures the
-                    // app content for the Liquid Glass mini player and the Liquid Glass nav bar.
-                    // Only allocated when the master Liquid Glass toggle is on AND we're on
-                    // Android 12+ (the kyant RuntimeShader stack requires API 31+). Kept separate
-                    // from [navBarFrostedBackdrop] so the two systems don't interfere — the
-                    // frosted path records into its own GraphicsLayer via drawWithContent, the
-                    // Liquid Glass path records via kyant's Modifier.layerBackdrop (which also
-                    // tracks the source LayoutCoordinates so the liquidGlass drawBackdrop can
-                    // compute the correct offset between source and consumer).
                     val liquidGlassActive =
                         liquidGlassEnabled &&
                             Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
@@ -1360,11 +1281,6 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    // Auto-enter AOD after N seconds of inactivity (player sheet collapsed while
-                    // music is playing). The user picks N via the AOD auto-timer slider in
-                    // AodCustomizedScreen; 0 disables. Cancellation is automatic when the user
-                    // expands the player sheet again or when playback stops — both invalidate
-                    // the LaunchedEffect keys.
                     val aodAutoTimerSeconds by rememberPreference(AodAutoTimerSecondsKey, defaultValue = 0)
                     val aodAutoOnScreenDim by rememberPreference(AodAutoOnScreenDimKey, defaultValue = false)
                     val isPlayingNow by (playerConnection?.isPlaying ?: MutableStateFlow(false))
@@ -1388,25 +1304,6 @@ class MainActivity : ComponentActivity() {
                         requestAodMode()
                     }
 
-                    // Convenience: when "Enter AOD when screen dims" is ON, hold the screen on
-                    // past the system's screen-off timeout, then trigger AOD 2 seconds *before*
-                    // the system would have turned the screen off. This actually delivers on the
-                    // user-visible copy ("right before the screen turns off") and is what makes
-                    // the feature useful while driving — the driver sees AOD appear while the
-                    // screen is still lit, instead of seeing nothing until they manually wake
-                    // the device.
-                    //
-                    // Why this replaces the previous ACTION_SCREEN_OFF receiver:
-                    //   1. Android does NOT broadcast a "screen dimming" event. ACTION_SCREEN_OFF
-                    //      fires *after* the screen is already off — at that point the activity
-                    //      is in onStop() and any UI we flip on isn't drawn until the user wakes
-                    //      the device, which contradicts the in-app description.
-                    //   2. By holding FLAG_KEEP_SCREEN_ON we keep the window drawable, and by
-                    //      firing 2 s before the system timeout we ensure AOD appears while the
-                    //      user can still see it.
-                    //   3. The timer cancels automatically when the player sheet expands, when
-                    //      playback pauses, when AOD turns on, or when the toggle is turned off —
-                    //      all of which invalidate the LaunchedEffect keys.
                     LaunchedEffect(
                         aodAutoOnScreenDim,
                         isPlayingNow,
@@ -1431,12 +1328,6 @@ class MainActivity : ComponentActivity() {
                                     30_000L,
                                 ).coerceIn(5_000L, 600_000L)
 
-                        // Fire 2 s before the system would have turned the screen off. This
-                        // window is what gives AOD time to fade in while the screen is still
-                        // lit. We also hold FLAG_KEEP_SCREEN_ON so the OS doesn't race us to
-                        // screen-off — AOD itself adds FLAG_KEEP_SCREEN_ON once it's enabled
-                        // (see the LaunchedEffect(aodModeEnabled) above), so the handoff is
-                        // seamless.
                         val triggerDelayMs = (systemTimeoutMs - 2_000L).coerceAtLeast(2_000L)
                         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                         try {
@@ -1503,13 +1394,6 @@ class MainActivity : ComponentActivity() {
 
                     LaunchedEffect(shouldHideStatusBars, menuState.isVisible, aodModeEnabled) {
                         if (aodModeEnabled) return@LaunchedEffect
-                        // Re-assert the desired system-bar visibility. Material3's
-                        // ModalBottomSheet internally shows the system bars when it
-                        // expands; without re-asserting, opening the overflow menu
-                        // from the immersive lyrics view makes the status bar pop in
-                        // even though `shouldHideStatusBars` is still true. The
-                        // short delay gives the sheet's own inset logic time to run
-                        // before we re-hide, so our hide call wins.
                         setStatusBarsHidden(shouldHideStatusBars)
                         if (menuState.isVisible && shouldHideStatusBars) {
                             delay(150)
@@ -2041,19 +1925,6 @@ class MainActivity : ComponentActivity() {
                                             }
                                         val isLibraryRoute = navBackStackEntry?.destination?.route == Screens.Library.route
 
-                                        // Rigid slide (Step 3): the header translates as a block via
-                                        // Modifier.offset while the M3 TopAppBar itself gets
-                                        // scrollBehavior = null (below), so it never collapses or
-                                        // double-renders. The floating behavior only listens to
-                                        // scroll (non-consuming) and updates heightOffset.
-                                        //
-                                        // heightOffsetLimit must be set from the measured header
-                                        // height. The header Box is a single shared shell composable
-                                        // whose size is identical for Home/Search, so onSizeChanged
-                                        // fires only once (size doesn't change on tab switch).
-                                        // Therefore: measure once here, then apply the limit to the
-                                        // CURRENT route's state via LaunchedEffect so every route gets
-                                        // its limit on entry (not just the first-measured one).
                                         var headerHeightPx by remember { mutableStateOf(0) }
                                         LaunchedEffect(currentScrollBehavior, headerHeightPx) {
                                             if (headerHeightPx > 0 && !isLibraryRoute) {
@@ -2084,13 +1955,6 @@ class MainActivity : ComponentActivity() {
                                                         )
                                                     },
                                         ) {
-                                            // Gradient shadow background. It lives inside the
-                                            // translating Box (which moves by the full heightOffset,
-                                            // so the TopAppBar fully hides), but a counter-offset
-                                            // clamps the gradient's net translation to [-appBarHeight, 0]
-                                            // so it parks with its top band over the status bar instead
-                                            // of sliding fully off â€” a legibility scrim once the header
-                                            // is hidden.
                                             if (shouldShowBlurBackground) {
                                                 val appBarHeightPx = with(LocalDensity.current) { AppBarHeight.toPx() }
                                                 Box(
@@ -2098,11 +1962,6 @@ class MainActivity : ComponentActivity() {
                                                         Modifier
                                                             .offset {
                                                                 if (isLibraryRoute) {
-                                                                    // Library owns its scroll; the shell gradient
-                                                                    // stays static (mirrors the header Box above and
-                                                                    // matches upstream, which ships a static Library
-                                                                    // gradient). Keeping it rendered avoids the
-                                                                    // Libraryâ†’Home predictive-back scrim pop.
                                                                     IntOffset(x = 0, y = 0)
                                                                 } else {
                                                                     val raw = currentScrollBehavior.state.heightOffset
@@ -2151,11 +2010,6 @@ class MainActivity : ComponentActivity() {
                                                                     .size(35.dp)
                                                                     .padding(end = 3.dp),
                                                         )
-                                                        // Auto-resize the wordmark so the full "ArchiveTune"
-                                                        // always fits: on narrow layouts (where the fixed
-                                                        // titleLarge size used to ellipsize to "Archive…")
-                                                        // it shrinks down to as low as 14sp instead of
-                                                        // truncating, so the complete name shows at every dpi.
                                                         AutoResizeText(
                                                             text = stringResource(R.string.app_name),
                                                             style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
@@ -2283,12 +2137,6 @@ class MainActivity : ComponentActivity() {
                                                     if (navBackStackEntry?.destination?.route == Screens.Library.route ||
                                                         shouldUseFloatingTopBar
                                                     ) {
-                                                        // Library is fixed, and floating routes
-                                                        // (Home/Search) now slide rigidly via the
-                                                        // outer Box.offset â€” passing a behavior here
-                                                        // would make M3 collapse/co-render and
-                                                        // double-move the header. Only non-floating
-                                                        // sub-screens use M3's collapse behavior.
                                                         null
                                                     } else {
                                                         topAppBarScrollBehavior
@@ -2735,30 +2583,12 @@ class MainActivity : ComponentActivity() {
                                                     Modifier
                                                 },
                                             ).then(
-                                                // Liquid Glass: capture the app content into a
-                                                // kyant LayerBackdrop so the Liquid Glass mini player
-                                                // and the Liquid Glass nav bar can sample it with
-                                                // Modifier.liquidGlass. This is a SEPARATE recording
-                                                // from the frosted path above — the kyant
-                                                // LayerBackdrop also tracks the source LayoutCoordinates
-                                                // (via Modifier.layerBackdrop's onGloballyPositioned)
-                                                // so the liquidGlass drawBackdrop can compute the
-                                                // correct offset between source and consumer.
                                                 if (liquidGlassBackdrop != null) {
                                                     Modifier.layerBackdrop(liquidGlassBackdrop)
                                                 } else {
                                                     Modifier
                                                 },
                                             ).nestedScroll(
-                                                // Step 2b: the NavHost-level connection now serves
-                                                // ONLY shell-driven sub-screens (Album/Artist/
-                                                // Playlist/...). Home and Search attach their own
-                                                // per-route connection inside their screen, so a
-                                                // departing screen's fling can no longer reach the
-                                                // incoming route's header state (fling carry-over is
-                                                // severed structurally). Library is self-contained
-                                                // and OnlineSearchResult is gated by canScroll=false,
-                                                // so routing them through this shared arm is harmless.
                                                 topAppBarScrollBehavior.nestedScrollConnection,
                                             ),
                                 ) {

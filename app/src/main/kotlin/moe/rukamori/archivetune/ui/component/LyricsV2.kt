@@ -1147,18 +1147,6 @@ private fun LyricsLineV2(
     val mainWords = words.filter { !it.isBackground }
     val bgWords = words.filter { it.isBackground }
 
-    // ── Position-read scoping (the key performance win) ──
-    // Only the active line and its immediate neighbours (distanceFromActive <= 1) need the
-    // live position so word fills can animate. Lines farther away have statically-known word
-    // progress (all-complete for past lines, all-pending for future lines), so we DON'T invoke
-    // the provider at all — we pass a stable sentinel down to AnimatedWordV2. Because the
-    // sentinel doesn't change between ticks, AnimatedWordV2 in far lines is skipped by
-    // Compose's positional equality check — no recomposition, no relayout, no redraw.
-    //
-    // distanceFromActive is computed by the parent from currentLineIndex (which changes only
-    // when the active line changes, ~once per few seconds), NOT from the 16 ms position tick.
-    // So this branch is stable across position ticks → LyricsLineV2 itself is skipped by
-    // Compose for far lines when only the position changes.
     val isNearActive = isActive || distanceFromActive <= 1
     val effectivePositionMs =
         if (isNearActive) {
@@ -1323,11 +1311,6 @@ private fun AnimatedWordV2(
     val fontWeight = if (isLineActive || isLinePast) FontWeight.ExtraBold else FontWeight.SemiBold
     val glowPadding = 10.dp
 
-    // ── Cached text style ──
-    // MaterialTheme.typography.headlineMedium.copy(...) was being rebuilt on every recomposition
-    // (every 16 ms tick for active words). The only field that changes per-frame for the overlay
-    // layer is `shadow` (glow), so we cache the base style here and only rebuild the overlay
-    // style when the glow is actually visible. The base (dim) layer style is fully cached.
     val baseHeadlineStyle = MaterialTheme.typography.headlineMedium
     val baseTextStyle =
         remember(baseHeadlineStyle, actualFontSize, fontWeight, lyricsFontFamily) {

@@ -71,6 +71,7 @@ import moe.rukamori.archivetune.ui.theme.PlayerColorExtractor
 import moe.rukamori.archivetune.ui.theme.PlayerPaletteCache
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
+import moe.rukamori.archivetune.utils.isLowEndDevice
 import kotlin.math.roundToInt
 
 @Composable
@@ -216,25 +217,12 @@ private fun NewMiniPlayer(
         remember(gradientColors) {
             MiniPlayerBackgroundPalette.from(gradientColors)
         }
-    // Master Liquid Glass toggle: when off, the LIQUID_GLASS style is downgraded
-    // to THEME so the mini player never tries to sample the (unavailable) kyant
-    // LayerBackdrop. The check is here (not in the enum selection) so the user's
-    // preference is preserved — turning the master toggle back on restores the
-    // LIQUID_GLASS style without re-selecting it in the picker.
     val liquidGlassMaster by rememberPreference(
         moe.rukamori.archivetune.constants.LiquidGlassEnabledKey,
         defaultValue = false,
     )
     val effectiveBackgroundStyle =
         when {
-            // LIQUID_GLASS downgrades: master toggle off OR pre-S → THEME.
-            // Otherwise it stays LIQUID_GLASS. The previous chain was missing the
-            // positive branch — when both checks passed, control fell through to
-            // `shouldUseArtworkBackground && backgroundPalette != null` (false for
-            // LIQUID_GLASS because it is not GRADIENT/GLOW) and then to `else -> THEME`,
-            // so the Liquid Glass mini player NEVER activated even with the master
-            // toggle on. The user's "Liquid glass Mini player doesn't work" was this
-            // fall-through bug.
             miniPlayerBackgroundStyle == MiniPlayerBackgroundStyle.LIQUID_GLASS && !liquidGlassMaster ->
                 MiniPlayerBackgroundStyle.THEME
             miniPlayerBackgroundStyle == MiniPlayerBackgroundStyle.LIQUID_GLASS &&
@@ -384,24 +372,6 @@ private fun MiniPlayerBackground(
         }
 
         MiniPlayerBackgroundStyle.LIQUID_GLASS -> {
-            // Liquid Glass mini player: samples the app content (captured by
-            // Modifier.layerBackdrop in MainActivity) with the kyant vibrancy/blur/lens
-            // effect stack. The LocalLiquidGlassBackdrop is null when the master
-            // toggle is off or on pre-S devices; the effectiveStyle downgrade above
-            // guarantees we only reach this branch when the backdrop is available,
-            // but we still null-check for safety (falls back to a solid surface).
-            //
-            // BASE COLOR UNDER THE GLASS: the `baseColor` parameter passes an OPAQUE
-            // surfaceContainerHigh fill that is drawn UNDER the backdrop sample (via
-            // the kyant `onDrawBehind` callback). When the backdrop has content (e.g.
-            // the playlist list behind the mini player — the user confirmed this
-            // works in playlists), the backdrop sample covers the base color —
-            // producing the liquid glass refraction. When the backdrop is EMPTY (e.g.
-            // bottom of a short page with no content behind the mini player), the
-            // backdrop sample is transparent and the opaque base color shows through
-            // — so the mini player is always visible instead of "completely
-            // transparent". This mirrors how the FROSTED variant (and the frosted
-            // nav bar) handles the empty backdrop case.
             val liquidGlassBackdrop = LocalLiquidGlassBackdrop.current
             val baseColor = MaterialTheme.colorScheme.surfaceContainerHigh
             if (liquidGlassBackdrop != null) {
@@ -422,13 +392,6 @@ private fun MiniPlayerBackground(
         }
 
         MiniPlayerBackgroundStyle.FROSTED -> {
-            // Same frosted-glass recipe as the navigation bar: an always-opaque surface with the
-            // captured app content blurred and composited on top at a bounded alpha. On Android
-            // 12+ this uses RenderEffect (every frame, hardware-accelerated). Below API 31
-            // RenderEffect is unavailable, so we fall back to a periodically captured + CPU-blurred
-            // bitmap (see [rememberPreSFrostedBitmap]) — same approach as the moving-blur lyrics
-            // background. When no backdrop capture is available (rail layouts), the plain theme
-            // surface is shown.
             val backdrop = LocalNavigationBarBackdrop.current
             val baseColor = MaterialTheme.colorScheme.surfaceContainerHigh
             if (backdrop == null) {
@@ -445,6 +408,7 @@ private fun MiniPlayerBackground(
                     barPositionInRoot = positionInRoot,
                     barSize = miniPlayerSize,
                     blurRadiusPx = FrostedMiniPlayerBlurRadiusPx,
+                    updateIntervalMs = if (LocalContext.current.isLowEndDevice()) 160L else 80L,
                 )
                 Box(
                     modifier =
