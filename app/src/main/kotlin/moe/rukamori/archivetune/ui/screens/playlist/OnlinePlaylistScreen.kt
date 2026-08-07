@@ -63,6 +63,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.toMutableStateList
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -93,7 +94,6 @@ import moe.rukamori.archivetune.LocalDownloadUtil
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
-import moe.rukamori.archivetune.constants.AppBarHeight
 import moe.rukamori.archivetune.constants.HideExplicitKey
 import moe.rukamori.archivetune.db.entities.PlaylistEntity
 import moe.rukamori.archivetune.db.entities.PlaylistSongMap
@@ -219,9 +219,23 @@ fun OnlinePlaylistScreen(
         }
 
     val focusRequester = remember { FocusRequester() }
+
+    // Save scroll position when entering search, restore when leaving.
+    // The header item collapses to height 0 when isSearching becomes true, which
+    // shifts all items below it. By saving firstVisibleItemIndex + scrollOffset
+    // BEFORE the collapse and restoring them AFTER the expand, the visible
+    // position is preserved across open/close search.
+    var savedScrollIndex by remember { mutableStateOf(0) }
+    var savedScrollOffset by remember { mutableStateOf(0) }
     LaunchedEffect(isSearching) {
         if (isSearching) {
+            savedScrollIndex = lazyListState.firstVisibleItemIndex
+            savedScrollOffset = lazyListState.firstVisibleItemScrollOffset
             focusRequester.requestFocus()
+        } else {
+            // Wait one frame for the header to re-expand before restoring.
+            withFrameNanos {}
+            lazyListState.scrollToItem(savedScrollIndex, savedScrollOffset)
         }
     }
 
@@ -294,10 +308,7 @@ fun OnlinePlaylistScreen(
             state = lazyListState,
             modifier =
                 Modifier
-                    .fillMaxSize()
-                    .padding(
-                        top = if (isSearching) systemBarsTopPadding + AppBarHeight else 0.dp,
-                    ),
+                    .fillMaxSize(),
             contentPadding =
                 PaddingValues(
                     bottom =

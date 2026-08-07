@@ -118,6 +118,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -1029,7 +1030,6 @@ class MainActivity : ComponentActivity() {
                     val focusManager = LocalFocusManager.current
                     val density = LocalDensity.current
                     val windowsInsets = WindowInsets.systemBars
-                    val topInset = with(density) { windowsInsets.getTop(density).toDp() }
                     val bottomInset = with(density) { windowsInsets.getBottom(density).toDp() }
                     val bottomInsetDp = WindowInsets.systemBars.asPaddingValues().calculateBottomPadding()
 
@@ -1404,6 +1404,39 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
+                    // Cache the status bar top inset observed while the status bar is VISIBLE.
+                    // When shouldHideStatusBars becomes true, WindowInsets.statusBars reports 0
+                    // (the controller hides the bar), but the shared TopAppBar (further below)
+                    // uses WindowInsets.safeDrawing which still reports displayCutout top —
+                    // causing the TopAppBar and the content to drift apart by ~displayCutout
+                    // top, and the profile picture / "ArchiveTune" header collide with the
+                    // content beneath (album cards slide under the header).
+                    //
+                    // By remembering the last non-zero top inset and substituting it for
+                    // systemBars when the status bar is hidden, both the TopAppBar and the
+                    // content use a consistent inset source and stay aligned.
+                    var cachedStatusBarTop by remember { mutableStateOf(0.dp) }
+                    LaunchedEffect(Unit) {
+                        snapshotFlow { WindowInsets.statusBars.getTop(density) }
+                            .collect { px ->
+                                if (px > 0) {
+                                    cachedStatusBarTop = with(density) { px.toDp() }
+                                }
+                            }
+                    }
+                    val effectiveStatusBarTop =
+                        if (shouldHideStatusBars && cachedStatusBarTop > 0.dp) {
+                            cachedStatusBarTop
+                        } else {
+                            with(density) { WindowInsets.statusBars.getTop(density).toDp() }
+                        }
+                    val effectiveWindowsInsets =
+                        WindowInsets(
+                            top = effectiveStatusBarTop,
+                            bottom = with(density) { WindowInsets.systemBars.getBottom(density).toDp() },
+                        )
+                    val effectiveTopInset = effectiveStatusBarTop
+
                     LaunchedEffect(isYearInMusicScreen, playerConnection) {
                         val connection = playerConnection ?: return@LaunchedEffect
                         val player = connection.player
@@ -1446,6 +1479,7 @@ class MainActivity : ComponentActivity() {
                             shouldShowNavigationBar,
                             playerBottomSheetState.isDismissed,
                             navigationBarStyle,
+                            effectiveStatusBarTop,
                         ) {
                             var bottom = bottomInset
                             if (shouldShowNavigationBar && !useRail) {
@@ -1454,7 +1488,7 @@ class MainActivity : ComponentActivity() {
                             if (!playerBottomSheetState.isDismissed) {
                                 bottom += MiniPlayerHeight + MiniPlayerBottomSpacing
                             }
-                            windowsInsets
+                            effectiveWindowsInsets
                                 .only(
                                     (
                                         if (useRail) {
@@ -1993,7 +2027,7 @@ class MainActivity : ComponentActivity() {
 
                                             TopAppBar(
                                                 windowInsets =
-                                                    WindowInsets.safeDrawing.only(
+                                                    effectiveWindowsInsets.only(
                                                         (
                                                             if (useRail) {
                                                                 WindowInsetsSides.Right
@@ -2656,7 +2690,7 @@ class MainActivity : ComponentActivity() {
                                 Modifier
                                     .align(Alignment.TopCenter)
                                     .padding(
-                                        top = if (shouldShowTopBar) topInset + AppBarHeight + 8.dp else topInset + 8.dp,
+                                        top = if (shouldShowTopBar) effectiveTopInset + AppBarHeight + 8.dp else effectiveTopInset + 8.dp,
                                         start = 16.dp,
                                         end = 16.dp,
                                     ).zIndex(10f),

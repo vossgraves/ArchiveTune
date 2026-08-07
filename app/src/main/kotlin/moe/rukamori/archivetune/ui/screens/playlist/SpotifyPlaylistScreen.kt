@@ -52,6 +52,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -75,7 +76,6 @@ import moe.rukamori.archivetune.LocalDownloadUtil
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
-import moe.rukamori.archivetune.constants.AppBarHeight
 import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.spotify.SpotifyMapper
@@ -131,6 +131,26 @@ fun SpotifyPlaylistScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val downloadActionFailedMessage = stringResource(R.string.download_action_failed)
     val latestDownloads by rememberUpdatedState(downloads)
+
+    // Save scroll position when entering search, restore when leaving.
+    // The header item collapses to height 0 when isSearching becomes true, which
+    // shifts all items below it. By saving firstVisibleItemIndex + scrollOffset
+    // BEFORE the collapse and restoring them AFTER the expand, the visible
+    // position is preserved across open/close search.
+    var savedScrollIndex by remember { mutableStateOf(0) }
+    var savedScrollOffset by remember { mutableStateOf(0) }
+    LaunchedEffect(isSearching) {
+        if (isSearching) {
+            // Save BEFORE the header collapses (next frame).
+            savedScrollIndex = lazyListState.firstVisibleItemIndex
+            savedScrollOffset = lazyListState.firstVisibleItemScrollOffset
+        } else {
+            // Restore AFTER the header has expanded back. A single frame delay
+            // lets the LazyColumn re-measure with the header at full height.
+            withFrameNanos {}
+            lazyListState.scrollToItem(savedScrollIndex, savedScrollOffset)
+        }
+    }
 
     val downloadState =
         remember(state.downloadItems, downloads) {
@@ -340,10 +360,7 @@ fun SpotifyPlaylistScreen(
                 ),
             modifier =
                 Modifier
-                    .fillMaxSize()
-                    .padding(
-                        top = if (isSearching) systemBarsTopPadding + AppBarHeight else 0.dp,
-                    ),
+                    .fillMaxSize(),
         ) {
             playlist?.let { currentPlaylist ->
                 item(key = "header") {
