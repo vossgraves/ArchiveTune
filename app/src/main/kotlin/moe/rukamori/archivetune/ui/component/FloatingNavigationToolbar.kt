@@ -18,7 +18,10 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -86,6 +89,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -119,6 +123,10 @@ import moe.rukamori.archivetune.constants.NavigationBarWidthKey
 import moe.rukamori.archivetune.ui.screens.Screens
 import moe.rukamori.archivetune.utils.rememberPreference
 import com.kyant.backdrop.backdrops.LayerBackdrop
+import com.kyant.backdrop.drawBackdrop
+import com.kyant.backdrop.effects.blur
+import com.kyant.backdrop.effects.lens
+import com.kyant.backdrop.effects.vibrancy
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.math.sign
@@ -1129,27 +1137,14 @@ fun FloatingNavigationToolbar(
             val dragAnim = dampedDragAnimation
             if (pillWidth > 0.dp && pillHeight > 0.dp && dragAnim != null && tabWidthPx > 0f) {
                 val pillShape = RoundedCornerShape(percent = 50)
-                // Extract colors in the @Composable body (drawWithContent's
-                // lambda is NOT @Composable, so MaterialTheme.colorScheme.primary
-                // can't be read inside it).
-                //
-                // TRANSPARENCY FIX: the previous implementation stacked THREE
-                // overlays on top of the liquidGlass backdrop sample —
-                //   1. liquidGlass's built-in darken veil (Black ~27% in dark theme)
-                //   2. an extra Black 32% rect (pillDarkBase)
-                //   3. a primary 28% tint rect (pillTintColor)
-                // combined ~64% opaque, which made the pill read as a SOLID
-                // block — the user reported "I can't see anything behind the
-                // highlight". SukiSU's reference pill is also translucent
-                // (you can see the app content through it). To match that,
-                // we REMOVE the extra dark base (pillDarkBase) entirely and
-                // REDUCE the primary tint from 0.28 to 0.15. The liquidGlass
-                // modifier's built-in darken veil (step 1) remains, providing
-                // enough contrast for the bright primary icon/label to read
-                // clearly on top. Net overlay: ~27% darken + 15% primary ≈
-                // 38% opaque — the backdrop now shows through at ~62% alpha,
-                // producing the see-through glassy look the user expects.
-                val pillTintColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                // SukiSU-Ultra FloatingBottomBar: capture theme-dependent values
+                // in the @Composable body. onDrawSurface's lambda is NOT
+                // @Composable, so isDark and primaryColor must be captured here.
+                // isDark → the darken veil color (Black in dark theme, White in
+                // light theme). primaryColor → the active icon/label tint, drawn
+                // as the pill's content on top of the glass.
+                val isDark = isSystemInDarkTheme()
+                val primaryColor = MaterialTheme.colorScheme.primary
                 Box(
                     modifier =
                         Modifier
@@ -1218,10 +1213,50 @@ fun FloatingNavigationToolbar(
                                 scaleX = pressScale / (1f - velocityStretch * 0.75f)
                                 scaleY = pressScale * (1f - velocityStretch * 0.25f)
                             }
-                            .liquidGlass(
+                            // SukiSU-Ultra FloatingBottomBar pill: direct drawBackdrop
+                            // with a LIGHTER darken veil than the liquidGlass modifier.
+                            // SukiSU's onDrawSurface: 10% darken at rest (fading to 0%
+                            // when pressed) + 3% black when pressed. The liquidGlass
+                            // modifier uses a fixed 27% darken veil which is too dark —
+                            // the user reported "icons and text behind highlight is
+                            // invisible". The lighter veil makes the glass more
+                            // translucent, matching SukiSU's reference pill.
+                            //
+                            // The active icon/label are rendered as the pill's CONTENT
+                            // (see the Box's content lambda below) — drawn ON TOP of
+                            // the glass backdrop sample + darken veil, so they're
+                            // always visible. This mirrors SukiSU's behavior where the
+                            // pill shows the active tab's accent-colored icon/label
+                            // through the glass (SukiSU uses a combined backdrop with
+                            // a hidden accent-colored Row; the kyant backdrop library
+                            // doesn't expose a combine API, so we render directly as
+                            // content for the same visual result).
+                            .drawBackdrop(
                                 backdrop = liquidGlassBackdrop,
-                                shape = pillShape,
-                                interactive = false,
+                                effects = {
+                                    vibrancy()
+                                    blur(4f.dp.toPx())
+                                    lens(
+                                        refractionHeight = 24f.dp.toPx(),
+                                        refractionAmount = size.minDimension / 4f,
+                                        chromaticAberration = false,
+                                    )
+                                },
+                                onDrawBackdrop = { drawBackdrop -> drawBackdrop() },
+                                shape = { pillShape },
+                                onDrawSurface = {
+                                    // SukiSU FloatingBottomBar onDrawSurface:
+                                    //   drawRect(Black/White 10%, alpha = 1 - progress)
+                                    //   drawRect(Black 3% × progress)
+                                    // At rest (progress=0): 10% darken veil.
+                                    // When pressed (progress=1): 0% darken + 3% black.
+                                    val progress = dragAnim.pressProgress
+                                    drawRect(
+                                        color = (if (isDark) Color.Black else Color.White).copy(alpha = 0.1f),
+                                        alpha = 1f - progress,
+                                    )
+                                    drawRect(Color.Black.copy(alpha = 0.03f * progress))
+                                },
                             )
                             .innerShadow(shape = pillShape) {
                                 // Inner shadow only appears during press — radius + alpha
@@ -1236,22 +1271,57 @@ fun FloatingNavigationToolbar(
                                 } else {
                                     null
                                 }
-                            }
-                            .drawWithContent {
-                                drawContent()
-                                // Subtle primary tint on top of the liquidGlass
-                                // backdrop sample. The previous implementation also
-                                // drew a Black 32% dark base here (pillDarkBase),
-                                // which stacked with liquidGlass's built-in darken
-                                // veil and made the pill ~64% opaque — the user
-                                // reported "I can't see anything behind the highlight".
-                                // The dark base is REMOVED; only the light primary
-                                // tint (15% alpha) remains, so the backdrop shows
-                                // through clearly while the pill still reads as
-                                // colored glass matching the selected item's primary.
-                                drawRect(color = pillTintColor)
                             },
-                )
+                    contentAlignment = Alignment.Center,
+                ) {
+                    // SukiSU-Ultra: render the active icon + label AS THE PILL'S
+                    // CONTENT so they're drawn ON TOP of the glass backdrop sample
+                    // + darken veil — always visible. This fixes the "icons and
+                    // text behind highlight is invisible" issue.
+                    //
+                    // SukiSU achieves this via a combined backdrop: a hidden
+                    // accent-colored Row is captured by a separate LayerBackdrop
+                    // and composited with the app-content backdrop, so the pill
+                    // samples both. The kyant backdrop library doesn't expose a
+                    // combine API, so we render the active icon/label directly as
+                    // the pill's content — visually equivalent (the icon/label
+                    // appear on top of the glass, in the accent color).
+                    //
+                    // displayIndex follows the drag animation's continuous value
+                    // (rounded), so during a slide the pill shows the icon/label
+                    // of the tab it's currently closest to — matching SukiSU's
+                    // behavior where the pill's content blends as it slides.
+                    val displayIndex = dragAnim.value.roundToInt().coerceIn(0, items.lastIndex)
+                    val displayScreen = items[displayIndex]
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically),
+                    ) {
+                        Icon(
+                            painter = painterResource(displayScreen.iconIdActive),
+                            contentDescription = null,
+                            tint = primaryColor,
+                            modifier =
+                                Modifier.graphicsLayer {
+                                    // SukiSU LocalFloatingBottomBarTabScale: the
+                                    // icon scales up to 1.2× during press, matching
+                                    // SukiSU's tab scale animation.
+                                    val scale = lerp(1f, 1.2f, dragAnim.pressProgress)
+                                    scaleX = scale
+                                    scaleY = scale
+                                },
+                        )
+                        if (!hideNavigationLabels) {
+                            Text(
+                                text = stringResource(displayScreen.titleId),
+                                color = primaryColor,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                }
             }
         }
         } // end wrapper Box (CenterStart — vertically centers the pill)
