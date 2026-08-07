@@ -23,6 +23,7 @@ val DarkModeKey = stringPreferencesKey("darkMode")
 val PureBlackKey = booleanPreferencesKey("pureBlack")
 val DisableAnimationsKey = booleanPreferencesKey("disableAnimations")
 val ForceHighRefreshRateKey = booleanPreferencesKey("forceHighRefreshRate")
+val HideStatusBarKey = booleanPreferencesKey("hideStatusBar")
 
 // UI scale (DPI-like) multiplier applied via a LocalDensity override in MainActivity.
 // 1.0f = system default. Range clamped to [0.85f, 1.30f] in AppearanceSettings.

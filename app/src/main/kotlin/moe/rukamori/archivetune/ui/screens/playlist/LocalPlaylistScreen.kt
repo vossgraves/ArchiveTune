@@ -62,6 +62,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -92,7 +93,6 @@ import moe.rukamori.archivetune.LocalDownloadUtil
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
-import moe.rukamori.archivetune.constants.AppBarHeight
 import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
 import moe.rukamori.archivetune.constants.PlaylistEditLockKey
 import moe.rukamori.archivetune.constants.PlaylistSongSortType
@@ -227,6 +227,16 @@ fun LocalPlaylistScreen(
         }
 
     val focusRequester = remember { FocusRequester() }
+
+    // Save scroll position when entering search, restore when leaving.
+    // The header item collapses to height 0 when isSearching becomes true, which
+    // shifts all items below it. By saving firstVisibleItemIndex + scrollOffset
+    // BEFORE the collapse and restoring them AFTER the expand, the visible
+    // position is preserved across open/close search.
+    // (The LaunchedEffect that uses these is declared further below, AFTER
+    // lazyListState is created — Kotlin requires vals to be declared before use.)
+    var savedScrollIndex by remember { mutableStateOf(0) }
+    var savedScrollOffset by remember { mutableStateOf(0) }
     LaunchedEffect(isSearching) {
         if (isSearching) {
             focusRequester.requestFocus()
@@ -467,6 +477,22 @@ fun LocalPlaylistScreen(
             }
         }
 
+    // Save scroll position when entering search, restore when leaving.
+    // The header item collapses to height 0 when isSearching becomes true, which
+    // shifts all items below it. By saving firstVisibleItemIndex + scrollOffset
+    // BEFORE the collapse and restoring them AFTER the expand, the visible
+    // position is preserved across open/close search.
+    LaunchedEffect(isSearching) {
+        if (isSearching) {
+            savedScrollIndex = lazyListState.firstVisibleItemIndex
+            savedScrollOffset = lazyListState.firstVisibleItemScrollOffset
+        } else {
+            // Wait one frame for the header to re-expand before restoring.
+            withFrameNanos {}
+            lazyListState.scrollToItem(savedScrollIndex, savedScrollOffset)
+        }
+    }
+
     LaunchedEffect(reorderableState.isAnyItemDragging) {
         if (!reorderableState.isAnyItemDragging) {
             dragInfo?.let { (from, to) ->
@@ -546,9 +572,6 @@ fun LocalPlaylistScreen(
                         } else {
                             Modifier
                         },
-                    )
-                    .padding(
-                        top = if (isSearching) systemBarsTopPadding + AppBarHeight else 0.dp,
                     ),
             contentPadding =
                 PaddingValues(
@@ -568,8 +591,8 @@ fun LocalPlaylistScreen(
                         )
                     }
                 } else {
-                    if (!isSearching) {
-                        item(key = "header") {
+                    item(key = "header") {
+                        if (!isSearching) {
                             val songCount =
                                 if (
                                     playlist.songCount == 0 &&
@@ -722,9 +745,9 @@ fun LocalPlaylistScreen(
                         }
                     }
 
-                    if (!isSearching) {
-                        // Sort Header
-                        item(key = "sort_header") {
+                    // Sort Header
+                    item(key = "sort_header") {
+                        if (!isSearching) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.padding(start = 16.dp),
