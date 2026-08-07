@@ -16,6 +16,7 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.EaseOut
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -44,7 +45,7 @@ import androidx.compose.material3.ShortNavigationBarItem
 import androidx.compose.material3.ShortNavigationBarItemDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.ripple.LocalRippleConfiguration
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.compositionLocalOf
@@ -792,22 +793,24 @@ fun FloatingNavigationToolbar(
             // this: "Instead of removing that gray touch indicator make it
             // completely transparent".
             //
-            // LocalRippleConfiguration is the Material3 API (in the
-            // `androidx.compose.material3.ripple` package, part of the main
-            // `material3` artifact — no separate dependency needed as of
-            // material3 1.4.0+). Providing `null` disables the ripple entirely
-            // (no ripple drawable is rendered). This is visually equivalent to a
-            // fully transparent ripple, which is what the user wants.
+            // Approach: provide a ripple() with color = Color.Transparent via
+            // LocalIndication. The `ripple()` function (in androidx.compose.material3,
+            // a top-level function — NOT a sub-package) returns an
+            // IndicationNodeFactory which extends Indication. When ShortNavigationBarItem's
+            // internal Modifier.clickable reads LocalIndication, it gets our transparent
+            // ripple — the ripple IS drawn, but with alpha = 0, so it's invisible.
             //
-            // Previous attempts:
-            //   - `LocalIndication provides null` — failed because LocalIndication
-            //     is non-null in this Compose version.
-            //   - `foundation.ripple.LocalRippleConfiguration` — wrong package;
-            //     the API lives in `material3.ripple`, not `foundation.ripple`.
-            //   - Adding a `material3-ripple` artifact — unnecessary; the API is
-            //     in the main `material3` artifact.
+            // Previous attempts that failed:
+            //   - `LocalIndication provides null` — LocalIndication is non-null.
+            //   - `androidx.compose.material3.ripple.LocalRippleConfiguration` —
+            //     `ripple` is a FUNCTION in androidx.compose.material3, not a
+            //     sub-package. The `LocalRippleConfiguration` API is not accessible
+            //     in material3 1.5.0-alpha23 via this path.
+            //   - `androidx.compose.foundation.ripple.LocalRippleConfiguration` —
+            //     wrong package; the foundation ripple package was removed.
+            val transparentRipple = remember { ripple(color = Color.Transparent) }
             androidx.compose.runtime.CompositionLocalProvider(
-                LocalRippleConfiguration provides null,
+                LocalIndication provides transparentRipple,
             ) {
                 ShortNavigationBar(
                     modifier = Modifier.fillMaxSize(),
@@ -1063,7 +1066,7 @@ fun FloatingNavigationToolbar(
                     }
                 }
             }
-            } // end CompositionLocalProvider(LocalRippleConfiguration provides null)
+            } // end CompositionLocalProvider(LocalIndication provides transparentRipple)
 
             // ─── SukiSU-Ultra Liquid Glass pill overlay ───
             // NOTE: This pill is now rendered OUTSIDE the Surface (as a sibling of
