@@ -33,6 +33,7 @@ import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
@@ -44,7 +45,6 @@ import androidx.compose.material3.ShortNavigationBarItem
 import androidx.compose.material3.ShortNavigationBarItemDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.ripple.LocalRippleConfiguration
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -781,17 +781,17 @@ fun FloatingNavigationToolbar(
                     )
                 }
             }
-            // Suppress the Material3 ripple indication on the nav bar items.
+            // Suppress the tap ripple/indication on the nav bar items.
             // The user reported "a visual small touch inside the highlight"
-            // when clicking a nav bar icon — that's the Material3 ripple
-            // drawn on top of our custom sliding pill indicator. Providing
-            // `null` for `LocalRippleConfiguration` makes Material3's
-            // `rippleOrFallbackImplementation` return a null indication,
-            // so the tap visual is gone and only our pill animation shows.
+            // when clicking a nav bar icon — that's the Material3 indication
+            // (ripple or default) drawn on top of our custom sliding pill
+            // indicator. Providing `null` for `LocalIndication` makes
+            // Material3's `clickable` use a null indication, so the tap visual
+            // is gone and only our pill animation shows.
             // This applies to ALL nav bar variants (Liquid Glass, frosted,
             // default) for consistency — the sliding pill is the only tap
             // feedback the user should see.
-            CompositionLocalProvider(LocalRippleConfiguration provides null) {
+            CompositionLocalProvider(LocalIndication provides null) {
                 ShortNavigationBar(
                     modifier = Modifier.fillMaxSize(),
                     containerColor = Color.Transparent,
@@ -1045,7 +1045,7 @@ fun FloatingNavigationToolbar(
                     }
                 }
                 } // end ShortNavigationBar content lambda
-            } // end CompositionLocalProvider(LocalRippleConfiguration provides null)
+            } // end CompositionLocalProvider(LocalIndication provides null)
 
             // ─── SukiSU-Ultra Liquid Glass pill overlay (rendered OUTSIDE the Surface) ───
             // The Liquid Glass pill is rendered as a SIBLING of the Surface (not

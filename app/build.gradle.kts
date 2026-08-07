@@ -452,7 +452,6 @@ dependencies {
     implementation(libs.lifecycle.runtime.compose)
 
     implementation(libs.material3)
-    implementation(libs.material3.ripple)
     implementation(libs.palette)
     implementation(libs.androidsvg)
     implementation(libs.aboutlibraries.core)
