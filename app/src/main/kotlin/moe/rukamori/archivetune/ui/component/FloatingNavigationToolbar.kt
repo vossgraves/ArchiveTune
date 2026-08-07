@@ -656,14 +656,37 @@ fun FloatingNavigationToolbar(
                 .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal)),
         contentAlignment = Alignment.Center,
     ) {
+        // ─── SukiSU-Ultra layout structure ───
+        // SukiSU's FloatingBottomBar uses a single outer Box with
+        // `contentAlignment = Alignment.CenterStart` containing the bar Row
+        // and the pill Box as SIBLINGS. The pill inherits CenterStart
+        // alignment → it is vertically centered in the bar with NO explicit
+        // Y computation. This is the key to correct vertical positioning:
+        // the layout system handles it, avoiding fragile offset math.
+        //
+        // We replicate this with a wrapper Box that matches the Surface's
+        // bounds (same width/height constraints). The Surface fills the
+        // wrapper; the pill is a sibling of the Surface inside the wrapper,
+        // using CenterStart alignment so it's vertically centered.
+        //
+        // At rest (pressScale=1): pill is 56dp, centered in the 64dp wrapper
+        // → 4dp breathing room top & bottom (INSIDE the bar, no overflow).
+        // When held (pressScale=1.393): graphicsLayer scales from center
+        // → pill extends ~7dp above and below the bar (OVERFLOWS).
         var barPositionInRoot by remember { mutableStateOf(Offset.Zero) }
         var barSize by remember { mutableStateOf(IntSize.Zero) }
-        Surface(
+        Box(
             modifier =
                 Modifier
                     .widthIn(max = if (isFloating) FloatingNavigationBarMaxWidth else NavigationBarMaxWidth)
                     .fillMaxWidth(if (isFloating) navBarWidthFraction.coerceIn(0.5f, 1f) else 1f)
-                    .height(resolvedBarHeight)
+                    .height(resolvedBarHeight),
+            contentAlignment = Alignment.CenterStart,
+        ) {
+        Surface(
+            modifier =
+                Modifier
+                    .fillMaxSize()
                     .onGloballyPositioned {
                         barPositionInRoot = it.positionInRoot()
                         barSize = it.size
@@ -1089,22 +1112,17 @@ fun FloatingNavigationToolbar(
         // making it extend ~7dp above and ~7dp below the 64dp bar — visible
         // OUTSIDE the bar's boundary, exactly like SukiSU.
         //
-        // Positioning: the pill is a child of the outer Box, aligned to
-        // TopStart of the Box's CONTENT area (after window inset padding).
-        // We compute the pill's desired position in ROOT coords (from
-        // containerPos + itemsRowLeftInContainer + slide math), then
-        // subtract barPositionInRoot (the Surface's top-left in root) to
-        // get the offset relative to the outer Box. For the non-floating
-        // variant (the common case for Liquid Glass), the Surface fills
-        // the content area, so barPositionInRoot == content area top-left,
-        // and the offset is correct. For the floating variant, there's a
-        // small horizontal centering offset that's not accounted for —
-        // but Liquid Glass + floating is an uncommon combination.
+        // POSITIONING (copied from SukiSU's FloatingBottomBar):
+        // SukiSU does NOT compute Y explicitly. The pill is a sibling of the
+        // bar Row inside a Box with `contentAlignment = CenterStart`. The
+        // pill inherits CenterStart → vertically centered in the bar, with
+        // NO Y offset. The pill's height (56dp) is less than the bar's height
+        // (64dp), so CenterStart gives 4dp breathing room top & bottom.
         //
-        // The pill's liquidGlass modifier samples the backdrop at the pill's
-        // LAYOUT position (after .offset), which is the slide position in the
-        // window — so the glass always shows what's behind the pill at its
-        // current slide position, even when the pill is outside the bar.
+        // We replicate this: the pill is inside the wrapper Box (which has
+        // CenterStart alignment), so it's automatically centered vertically.
+        // Only X needs to be computed (slide to active tab + rubber-band +
+        // icon offset correction).
         if (canLiquidGlass && selectedIndex >= 0 && indicatorPlaced && liquidGlassBackdrop != null) {
             val pillWidth = liquidGlassPillWidth
             val pillHeight = liquidGlassPillHeight
@@ -1135,37 +1153,13 @@ fun FloatingNavigationToolbar(
                 Box(
                     modifier =
                         Modifier
-                            .align(Alignment.TopStart)
+                            // SukiSU approach: the pill inherits CenterStart from the
+                            // wrapper Box, so it's vertically centered with NO Y offset.
+                            // We only compute X (slide to active tab + rubber-band +
+                            // icon offset correction). This is exactly how SukiSU's
+                            // FloatingBottomBar positions its pill — no Y math at all.
                             .offset {
-                                // Compute the pill's position in root coords, then
-                                // translate to the outer Box's coordinate system.
-                                // For non-floating, barPositionInRoot == outer Box
-                                // content area top-left, so this is correct.
-                                //
-                                // Y POSITIONING FIX: the previous implementation used
-                                // `containerPos.y + indicatorY` where indicatorY depended
-                                // on `itemsRowTopInContainer` (the items Row's top relative
-                                // to the inner Box). In Material3 1.5.0-alpha23,
-                                // ShortNavigationBar has INTERNAL padding/insets that offset
-                                // the inner Box from the Surface's top — so
-                                // `itemsRowTopInContainer` was NOT 0, causing the pill to
-                                // be positioned too high (above the bar's top edge) even at
-                                // rest (scale=1). The user reported "the highlight should
-                                // only elevate out of the bounds when I hold it" — meaning
-                                // the pill was ALWAYS overflowing, not just when held.
-                                //
-                                // FIX: compute Y directly from the Surface's measured
-                                // `barSize`, centering the pill vertically in the bar.
-                                // This is independent of ShortNavigationBar's internal
-                                // padding and gives a reliable result:
-                                //   - At rest (pressScale=1): pill is 56dp tall, centered
-                                //     in the 64dp bar → 4dp breathing room top & bottom
-                                //     (INSIDE the bar's bounds, no overflow).
-                                //   - When held (pressScale=1.393): pill grows from center
-                                //     → extends ~7dp above and below the bar (OVERFLOWS).
-                                // This matches SukiSU's behavior exactly.
                                 val pillWidthPx = pillWidth.toPx()
-                                val pillHeightPx = pillHeight.toPx()
                                 val hPaddingPx = itemHorizontalPadding.toPx()
                                 // X: align with the items Row's content area, then slide.
                                 // iconOffsetX corrects for ShortNavigationBarItem not
@@ -1186,11 +1180,10 @@ fun FloatingNavigationToolbar(
                                         (tabWidthPx - pillWidthPx) / 2f +
                                         panelOffset +
                                         iconOffsetX
-                                // Y: center the pill vertically in the Surface's bounds.
-                                val yInRoot = barPositionInRoot.y + (barSize.height - pillHeightPx) / 2f
-                                val xRelativeToBox = xInRoot - barPositionInRoot.x
-                                val yRelativeToBox = yInRoot - barPositionInRoot.y
-                                IntOffset(xRelativeToBox.roundToInt(), yRelativeToBox.roundToInt())
+                                // Y = 0: the wrapper Box's CenterStart alignment
+                                // centers the pill vertically. No Y computation needed.
+                                val xRelativeToWrapper = xInRoot - barPositionInRoot.x
+                                IntOffset(xRelativeToWrapper.roundToInt(), 0)
                             }
                             .width(pillWidth)
                             .height(pillHeight)
@@ -1261,6 +1254,7 @@ fun FloatingNavigationToolbar(
                 )
             }
         }
+        } // end wrapper Box (CenterStart — vertically centers the pill)
     }
 }
 
