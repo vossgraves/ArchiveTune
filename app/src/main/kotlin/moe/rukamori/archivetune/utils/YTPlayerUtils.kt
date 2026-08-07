@@ -429,14 +429,6 @@ object YTPlayerUtils {
                 WEB_REMIX
             }
 
-            PlayerStreamClient.ARCHIVETUNE_EXTRACTOR -> {
-                if (authState.hasPlaybackLoginContext) ANDROID_MUSIC else WEB_REMIX
-            }
-
-            PlayerStreamClient.HI_RES_LOSSLESS -> {
-                WEB_REMIX
-            }
-
             PlayerStreamClient.IOS -> {
                 IOS
             }
@@ -719,7 +711,6 @@ object YTPlayerUtils {
     private val downloadPreferredStreamClientAttempts: List<PlayerStreamClient> =
         listOf(
             PlayerStreamClient.WEB_REMIX,
-            PlayerStreamClient.HI_RES_LOSSLESS,
             PlayerStreamClient.IOS,
             PlayerStreamClient.TVHTML5,
             PlayerStreamClient.ANDROID_MUSIC,

@@ -34,6 +34,8 @@ import moe.rukamori.archivetune.constants.HISTORY_DURATION_LEGACY_FLOAT_KEY
 import moe.rukamori.archivetune.constants.HISTORY_DURATION_MAX
 import moe.rukamori.archivetune.constants.HISTORY_DURATION_MIN
 import moe.rukamori.archivetune.constants.HistoryDuration
+import moe.rukamori.archivetune.constants.PlayerStreamClient
+import moe.rukamori.archivetune.constants.PlayerStreamClientKey
 import moe.rukamori.archivetune.constants.UpdateChannel
 import moe.rukamori.archivetune.constants.UpdateChannelKey
 import moe.rukamori.archivetune.extensions.toEnum
@@ -72,6 +74,22 @@ val Context.dataStore: DataStore<Preferences> by preferencesDataStore(
                 override suspend fun migrate(currentData: Preferences): Preferences =
                     currentData.toMutablePreferences().apply {
                         this[UpdateChannelKey] = UpdateChannel.CANARY.name
+                    }
+
+                override suspend fun cleanUp() {}
+            },
+            // ARCHIVETUNE_EXTRACTOR resolved to ANDROID_MUSIC (with login) or WEB_REMIX
+            // (without). The option has been removed along with the gatekeeper machinery
+            // that conditioned it; rewrite stale values to WEB_REMIX so existing users
+            // don't land on an unknown enum value.
+            object : DataMigration<Preferences> {
+                override suspend fun shouldMigrate(currentData: Preferences): Boolean =
+                    currentData[PlayerStreamClientKey] in
+                        setOf("ARCHIVETUNE_EXTRACTOR", "HI_RES_LOSSLESS")
+
+                override suspend fun migrate(currentData: Preferences): Preferences =
+                    currentData.toMutablePreferences().apply {
+                        this[PlayerStreamClientKey] = PlayerStreamClient.WEB_REMIX.name
                     }
 
                 override suspend fun cleanUp() {}
