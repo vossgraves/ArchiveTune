@@ -29,7 +29,7 @@ import java.util.concurrent.TimeUnit
  * tier. The provider is purely a network client.
  *
  * The service is fronted by a Cloudflare interstitial on its HTML routes; the REST endpoints under
- * `/api/*` are expected to be reachable from a non-browser User-Agent. When Cloudflare still
+ * the `api` path are expected to be reachable from a non-browser User-Agent. When Cloudflare still
  * challenges the request (HTTP 403 with the "Just a moment…" body) the provider logs and returns
  * null so the playback layer falls through to the next source in the chain — never throwing.
  *
