@@ -14,30 +14,17 @@ import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
-import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
-import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.innertube.utils.hasYouTubeLoginCookie
-import moe.rukamori.archivetune.ui.component.FrostedTopAppBar
-import moe.rukamori.archivetune.ui.component.IconButton
-import moe.rukamori.archivetune.ui.utils.backToMain
+import moe.rukamori.archivetune.ui.component.AuthWebViewScreen
 import moe.rukamori.archivetune.utils.resetAuthWebViewSession
 import moe.rukamori.archivetune.viewmodels.LoginScreenState
 import moe.rukamori.archivetune.viewmodels.LoginViewModel
@@ -65,7 +52,6 @@ private val YOUTUBE_COOKIE_URLS =
     )
 
 @SuppressLint("SetJavaScriptEnabled")
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LoginScreen(
     navController: NavController,
@@ -76,7 +62,6 @@ fun LoginScreen(
 
     val screenState by viewModel.screenState.collectAsStateWithLifecycle()
     val loginSuccessMessage = stringResource(R.string.login_success)
-    var webView: WebView? = null
 
     LaunchedEffect(screenState, loginSuccessMessage) {
         if (screenState is LoginScreenState.Success) {
@@ -85,11 +70,16 @@ fun LoginScreen(
         }
     }
 
-    AndroidView(
-        modifier =
-            Modifier
-                .windowInsetsPadding(LocalPlayerAwareWindowInsets.current)
-                .fillMaxSize(),
+    AuthWebViewScreen(
+        navController = navController,
+        title = stringResource(R.string.login),
+        subtitle = stringResource(R.string.auth_webview_youtube_subtitle),
+        onRelease = { releasedWebView ->
+            (releasedWebView.webViewClient as? YouTubeLoginWebViewClient)?.release(releasedWebView)
+            releasedWebView.removeJavascriptInterface("Android")
+            releasedWebView.stopLoading()
+            releasedWebView.destroy()
+        },
         factory = { context ->
             WebView(context).apply {
                 val cookieManager = CookieManager.getInstance()
@@ -130,32 +120,12 @@ fun LoginScreen(
                     },
                     "Android",
                 )
-                webView = this
                 resetAuthWebViewSession(context, this, clearCookies = true) {
                     loadUrl(startUrl?.takeIf { it.isNotBlank() } ?: DEFAULT_LOGIN_URL)
                 }
             }
         },
-        onRelease = { releasedWebView ->
-            (releasedWebView.webViewClient as? YouTubeLoginWebViewClient)?.release(releasedWebView)
-            releasedWebView.removeJavascriptInterface("Android")
-            releasedWebView.stopLoading()
-            releasedWebView.destroy()
-            if (webView === releasedWebView) {
-                webView = null
-            }
-        },
     )
-
-    FrostedTopAppBar(
-        titleRes = R.string.login,
-        onBack = navController::navigateUp,
-        onBackLongClick = navController::backToMain,
-    )
-
-    BackHandler(enabled = webView?.canGoBack() == true) {
-        webView?.goBack()
-    }
 }
 
 private class YouTubeLoginWebViewClient(

@@ -198,18 +198,35 @@ fun PlaybackSourceSections(navController: NavController) {
                 selectedValue = selectedPlayerStreamClient,
                 values = playerStreamClients,
                 onValueSelected = onPlayerStreamClientChange,
+                // Exhaustive on purpose: no `else` branch, so adding a client to
+                // PlayerStreamClient fails the build here instead of silently rendering
+                // every row with the Web Remix label.
                 valueText = {
                     when (it) {
+                        PlayerStreamClient.ANDROID_VR ->
+                            stringResource(R.string.player_stream_client_android_vr)
                         PlayerStreamClient.WEB_REMIX ->
                             stringResource(R.string.player_stream_client_web_remix)
-                        else -> stringResource(R.string.player_stream_client_web_remix)
+                        PlayerStreamClient.IOS ->
+                            stringResource(R.string.player_stream_client_ios)
+                        PlayerStreamClient.TVHTML5 ->
+                            stringResource(R.string.player_stream_client_tvhtml5)
+                        PlayerStreamClient.ANDROID_MUSIC ->
+                            stringResource(R.string.player_stream_client_android_music)
                     }
                 },
                 valueDescription = {
                     when (it) {
+                        PlayerStreamClient.ANDROID_VR ->
+                            stringResource(R.string.player_stream_client_android_vr_desc)
                         PlayerStreamClient.WEB_REMIX ->
                             stringResource(R.string.player_stream_client_web_remix_desc)
-                        else -> stringResource(R.string.player_stream_client_web_remix_desc)
+                        PlayerStreamClient.IOS ->
+                            stringResource(R.string.player_stream_client_ios_desc)
+                        PlayerStreamClient.TVHTML5 ->
+                            stringResource(R.string.player_stream_client_tvhtml5_desc)
+                        PlayerStreamClient.ANDROID_MUSIC ->
+                            stringResource(R.string.player_stream_client_android_music_desc)
                     }
                 },
             )
