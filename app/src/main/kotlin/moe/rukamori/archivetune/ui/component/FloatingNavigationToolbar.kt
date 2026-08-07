@@ -402,8 +402,24 @@ fun FloatingNavigationToolbar(
             canLiquidGlass ->
                 ShortNavigationBarItemDefaults.colors(
                     selectedIndicatorColor = Color.Transparent,
-                    selectedIconColor = MaterialTheme.colorScheme.primary,
-                    selectedTextColor = MaterialTheme.colorScheme.primary,
+                    // CRITICAL: the underlying ShortNavigationBarItem must NOT
+                    // visually differentiate the selected item when the Liquid
+                    // Glass pill is active. The pill overlay (rendered as a
+                    // sibling of the Surface) draws the active icon + label on
+                    // TOP of the glass in the primary color — if the underlying
+                    // item ALSO renders the active icon + label in primary, the
+                    // translucent glass (only ~10% darken veil) lets both layers
+                    // show through, creating a duplicate "Home / Home" stack the
+                    // user sees when scrolling (the two layers don't perfectly
+                    // overlap during layout passes).
+                    //
+                    // SukiSU's underlying bar renders ALL items uniformly (the
+                    // selected state is only conveyed by the pill, never by the
+                    // underlying item). We replicate that: selected and
+                    // unselected use the same muted white. The pill provides the
+                    // primary-color + SemiBold emphasis for the active tab.
+                    selectedIconColor = Color.White.copy(alpha = 0.78f),
+                    selectedTextColor = Color.White.copy(alpha = 0.78f),
                     unselectedIconColor = Color.White.copy(alpha = 0.78f),
                     unselectedTextColor = Color.White.copy(alpha = 0.78f),
                 )
@@ -1049,7 +1065,26 @@ fun FloatingNavigationToolbar(
                                             Icon(
                                                 painter =
                                                     painterResource(
-                                                        if (isSelected) screen.iconIdActive else screen.iconIdInactive,
+                                                        // When the Liquid Glass pill is active,
+                                                        // the underlying item must ALWAYS render
+                                                        // the INACTIVE icon variant. The pill
+                                                        // overlay draws the active icon (in
+                                                        // primary color) on top of the glass —
+                                                        // if the underlying selected item ALSO
+                                                        // rendered the active icon, the
+                                                        // translucent glass (only ~10% darken
+                                                        // veil) would let both icon layers show
+                                                        // through, creating a duplicate icon
+                                                        // stack the user sees when scrolling.
+                                                        // Forcing the inactive variant here means
+                                                        // only the pill provides the active icon.
+                                                        if (canLiquidGlass) {
+                                                            screen.iconIdInactive
+                                                        } else if (isSelected) {
+                                                            screen.iconIdActive
+                                                        } else {
+                                                            screen.iconIdInactive
+                                                        },
                                                     ),
                                                 contentDescription = null,
                                                 modifier =
@@ -1083,8 +1118,20 @@ fun FloatingNavigationToolbar(
                                             // variant applies this always (the bright primary color
                                             // + SemiBold weight together create the strong selected
                                             // emphasis); other variants keep the default weight.
+                                            //
+                                            // CRITICAL (duplicate-label fix): when the Liquid
+                                            // Glass pill is active, the underlying item must NOT
+                                            // apply SemiBold weight to the selected label. The
+                                            // pill overlay renders its own label (in primary
+                                            // color + SemiBold) on top of the glass — if the
+                                            // underlying selected item ALSO used SemiBold, the
+                                            // translucent glass (only ~10% darken veil) would
+                                            // let both label layers show through, creating a
+                                            // duplicate "Home / Home" stack the user sees when
+                                            // scrolling. Forcing Normal weight here means only
+                                            // the pill provides the SemiBold emphasis.
                                             fontWeight =
-                                                if (selected && canLiquidGlass) {
+                                                if (selected && !canLiquidGlass) {
                                                     FontWeight.SemiBold
                                                 } else {
                                                     FontWeight.Normal
