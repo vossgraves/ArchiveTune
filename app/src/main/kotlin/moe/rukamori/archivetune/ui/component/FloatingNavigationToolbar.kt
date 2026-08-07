@@ -1142,22 +1142,34 @@ fun FloatingNavigationToolbar(
                                 // For non-floating, barPositionInRoot == outer Box
                                 // content area top-left, so this is correct.
                                 //
-                                // POSITION FIX: the previous implementation centered
-                                // the pill on the TAB SLOT (using dragAnim.value *
-                                // tabWidthPx). But ShortNavigationBarItem's internal
-                                // layout does NOT center the icon within the tab slot —
-                                // the icon is offset from the slot's center. This made
-                                // the pill appear shifted relative to the icon (the
-                                // user reported "the positioning of the highlight pill
-                                // is wrong"). To fix this, we compute the difference
-                                // between the selected icon's ACTUAL center and the
-                                // tab slot's center, then add that offset to the
-                                // pill's X. Since all items use the same layout, the
-                                // offset is constant across tabs — so adding it once
-                                // (based on the selected tab) correctly aligns the
-                                // pill with the icon at every drag position.
+                                // Y POSITIONING FIX: the previous implementation used
+                                // `containerPos.y + indicatorY` where indicatorY depended
+                                // on `itemsRowTopInContainer` (the items Row's top relative
+                                // to the inner Box). In Material3 1.5.0-alpha23,
+                                // ShortNavigationBar has INTERNAL padding/insets that offset
+                                // the inner Box from the Surface's top — so
+                                // `itemsRowTopInContainer` was NOT 0, causing the pill to
+                                // be positioned too high (above the bar's top edge) even at
+                                // rest (scale=1). The user reported "the highlight should
+                                // only elevate out of the bounds when I hold it" — meaning
+                                // the pill was ALWAYS overflowing, not just when held.
+                                //
+                                // FIX: compute Y directly from the Surface's measured
+                                // `barSize`, centering the pill vertically in the bar.
+                                // This is independent of ShortNavigationBar's internal
+                                // padding and gives a reliable result:
+                                //   - At rest (pressScale=1): pill is 56dp tall, centered
+                                //     in the 64dp bar → 4dp breathing room top & bottom
+                                //     (INSIDE the bar's bounds, no overflow).
+                                //   - When held (pressScale=1.393): pill grows from center
+                                //     → extends ~7dp above and below the bar (OVERFLOWS).
+                                // This matches SukiSU's behavior exactly.
                                 val pillWidthPx = pillWidth.toPx()
+                                val pillHeightPx = pillHeight.toPx()
                                 val hPaddingPx = itemHorizontalPadding.toPx()
+                                // X: align with the items Row's content area, then slide.
+                                // iconOffsetX corrects for ShortNavigationBarItem not
+                                // centering the icon within the tab slot.
                                 val tabSlotCenterForSelected =
                                     containerPos.x +
                                         itemsRowLeftInContainer +
@@ -1174,7 +1186,8 @@ fun FloatingNavigationToolbar(
                                         (tabWidthPx - pillWidthPx) / 2f +
                                         panelOffset +
                                         iconOffsetX
-                                val yInRoot = containerPos.y + indicatorY
+                                // Y: center the pill vertically in the Surface's bounds.
+                                val yInRoot = barPositionInRoot.y + (barSize.height - pillHeightPx) / 2f
                                 val xRelativeToBox = xInRoot - barPositionInRoot.x
                                 val yRelativeToBox = yInRoot - barPositionInRoot.y
                                 IntOffset(xRelativeToBox.roundToInt(), yRelativeToBox.roundToInt())
