@@ -378,8 +378,8 @@ fun OnlinePlaylistScreen(
                         }
                     }
                 } else if (playlist != null) {
-                    if (!isSearching) {
-                        item(key = "header") {
+                    item(key = "header") {
+                        if (!isSearching) {
                             val author =
                                 playlist.author?.let { artist ->
                                     remember(artist) {

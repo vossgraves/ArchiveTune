@@ -568,8 +568,8 @@ fun LocalPlaylistScreen(
                         )
                     }
                 } else {
-                    if (!isSearching) {
-                        item(key = "header") {
+                    item(key = "header") {
+                        if (!isSearching) {
                             val songCount =
                                 if (
                                     playlist.songCount == 0 &&
@@ -722,9 +722,9 @@ fun LocalPlaylistScreen(
                         }
                     }
 
-                    if (!isSearching) {
-                        // Sort Header
-                        item(key = "sort_header") {
+                    // Sort Header
+                    item(key = "sort_header") {
+                        if (!isSearching) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.padding(start = 16.dp),

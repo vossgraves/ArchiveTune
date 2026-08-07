@@ -345,9 +345,9 @@ fun SpotifyPlaylistScreen(
                         top = if (isSearching) systemBarsTopPadding + AppBarHeight else 0.dp,
                     ),
         ) {
-            if (!isSearching) {
-                playlist?.let { currentPlaylist ->
-                    item(key = "header") {
+            playlist?.let { currentPlaylist ->
+                item(key = "header") {
+                    if (!isSearching) {
                         val trackCount = currentPlaylist.tracks?.total ?: tracks.size
                         val metadata =
                             listOfNotNull(

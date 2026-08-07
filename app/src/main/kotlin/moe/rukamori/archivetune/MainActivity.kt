@@ -236,6 +236,7 @@ import moe.rukamori.archivetune.constants.NavigationBarTintFrostedBlurKey
 import moe.rukamori.archivetune.constants.NavigationBarStyle
 import moe.rukamori.archivetune.constants.NavigationBarStyleKey
 import moe.rukamori.archivetune.constants.PureBlackKey
+import moe.rukamori.archivetune.constants.HideStatusBarKey
 import moe.rukamori.archivetune.constants.RemindAfterKey
 import moe.rukamori.archivetune.constants.SYSTEM_DEFAULT
 import moe.rukamori.archivetune.constants.SearchSource
@@ -864,6 +865,7 @@ class MainActivity : ComponentActivity() {
                 }
             val pureBlackEnabled by rememberPreference(PureBlackKey, defaultValue = false)
             val pureBlack = pureBlackEnabled && useDarkTheme
+            val hideStatusBar by rememberPreference(HideStatusBarKey, defaultValue = false)
             val navigationBarStyle by rememberEnumPreference(
                 NavigationBarStyleKey,
                 defaultValue = NavigationBarStyle.DEFAULT,
@@ -1380,7 +1382,8 @@ class MainActivity : ComponentActivity() {
                     var isPlayerLyricsFullScreen by remember { mutableStateOf(false) }
 
                     val shouldHideStatusBars =
-                        isYearInMusicScreen ||
+                        hideStatusBar ||
+                            isYearInMusicScreen ||
                             bottomSheetPageState.isVisible ||
                             (
                                 menuState.isVisible &&

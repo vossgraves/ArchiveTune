@@ -82,6 +82,7 @@ import moe.rukamori.archivetune.constants.DisableBlurKey
 import moe.rukamori.archivetune.constants.DynamicThemeKey
 import moe.rukamori.archivetune.constants.FontPreferenceKey
 import moe.rukamori.archivetune.constants.ForceHighRefreshRateKey
+import moe.rukamori.archivetune.constants.HideStatusBarKey
 import moe.rukamori.archivetune.constants.GridItemSize
 import moe.rukamori.archivetune.constants.GridItemsSizeKey
 import moe.rukamori.archivetune.constants.HidePlayerThumbnailKey
@@ -198,6 +199,11 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
     val (forceHighRefreshRate, onForceHighRefreshRateChange) =
         rememberPreference(
             ForceHighRefreshRateKey,
+            defaultValue = false,
+        )
+    val (hideStatusBar, onHideStatusBarChange) =
+        rememberPreference(
+            HideStatusBarKey,
             defaultValue = false,
         )
     val (uiScale, onUiScaleChange) =
@@ -553,6 +559,18 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                         checked = disableAnimations,
                         onCheckedChange = onDisableAnimationsChange,
                     )
+                }
+
+                item {
+                    Column(modifier = positions.modifierFor("hide_status_bar")) {
+                        SwitchPreference(
+                            title = { Text(stringResource(R.string.hide_status_bar)) },
+                            description = stringResource(R.string.hide_status_bar_desc),
+                            icon = { Icon(painterResource(R.drawable.visibility_off), null) },
+                            checked = hideStatusBar,
+                            onCheckedChange = onHideStatusBarChange,
+                        )
+                    }
                 }
 
                 item {
