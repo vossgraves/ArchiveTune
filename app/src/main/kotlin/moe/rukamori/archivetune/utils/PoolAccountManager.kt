@@ -188,7 +188,20 @@ object PoolAccountManager {
                     }
                     client.newCall(builder.get().build()).execute().use { response ->
                         if (!response.isSuccessful) {
-                            Timber.tag(TAG).w("Pool /api/sources returned HTTP %d", response.code)
+                            // HTTP 401 specifically means the pool's read-key enforcement
+                            // rejected this build (SOURCE_PROVIDER_KEY is missing or wrong in
+                            // BuildConfig). Surface that explicitly so the failure mode is
+                            // obvious in logs instead of looking like an empty pool.
+                            if (response.code == 401) {
+                                Timber.tag(TAG).w(
+                                    "Pool /api/sources rejected the request as unauthorized (HTTP 401). " +
+                                        "The build's SOURCE_PROVIDER_KEY is missing or invalid; " +
+                                        "the pool returned 0 accounts. Check that the CI workflow " +
+                                        "injects SOURCE_PROVIDER_KEY/POOL_CLIENT_KEY secrets.",
+                                )
+                            } else {
+                                Timber.tag(TAG).w("Pool /api/sources returned HTTP %d", response.code)
+                            }
                             return@withLock hasAccounts()
                         }
                         val root = JSONObject(response.body?.string().orEmpty())

@@ -300,7 +300,21 @@ object TidalAudioProvider {
                 }
                 val request = builder.get().build()
                 healthClient.newCall(request).execute().use { response ->
-                    if (!response.isSuccessful) return@use
+                    if (!response.isSuccessful) {
+                        // Make 401 visible: the pool rejects unauthenticated reads with HTTP 401
+                        // and an empty body, which otherwise looks identical to a healthy pool
+                        // with no instances contributed.
+                        if (response.code == 401) {
+                            Timber
+                                .tag("TidalHealth")
+                                .w(
+                                    "Pool discovery %s rejected as unauthorized (HTTP 401); " +
+                                        "SOURCE_PROVIDER_KEY is missing or invalid for this build.",
+                                    source,
+                                )
+                        }
+                        return@use
+                    }
                     val body = response.body?.string().orEmpty()
                     parseDiscoveredInstances(body).forEach { url ->
                         normalizeInstanceUrl(url)?.let(discovered::add)

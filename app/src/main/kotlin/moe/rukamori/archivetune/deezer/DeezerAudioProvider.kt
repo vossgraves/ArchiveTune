@@ -120,6 +120,9 @@ object DeezerAudioProvider {
         }
     }
 
+    /** True when at least one credential (manual or pooled) is available. Cheap: no network. */
+    fun hasAccounts(): Boolean = manualAccount != null || PoolAccountManager.deezerAccounts().isNotEmpty()
+
     /**
      * Every usable credential, manual first so a user's own (likely paid) account is tried before
      * shared pool entries.

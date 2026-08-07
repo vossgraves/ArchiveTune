@@ -566,8 +566,6 @@
     <string name="storage_cache_clear_warning">Lasse ArchiveTune offen während Cachedateien entfernt werden.</string>
     <string name="history_duration_desc">Minimale Wiedergabezeit, um einen Song als gehört zu zählen</string>
     <string name="crossfade_gapless_title">Lückenlose Alben überspringen</string>
-    <string name="player_stream_client_archivetune_extractor">ArchiveTune-Extrahierer</string>
-    <string name="player_stream_client_archivetune_extractor_login_required">Du musst dich mit deinem Google-Konto und PoToken in den Einstellungen anmelden, um diese Funktion zu nutzen</string>
     <string name="mori_cipher_rate_limited">Manuelles Aktualisierungslimit erreicht</string>
     <string name="mori_cipher_status_refreshing">Aktualisiere</string>
     <string name="restore_corrupted">Die Backupdatei scheint korrumpiert zu sein und konnte nicht gelesen werden.</string>

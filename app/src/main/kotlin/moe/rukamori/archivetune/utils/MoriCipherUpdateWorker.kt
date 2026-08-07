@@ -27,7 +27,7 @@ class MoriCipherUpdateWorker(
     parameters: WorkerParameters,
 ) : CoroutineWorker(context, parameters) {
     override suspend fun doWork(): Result {
-        val update = MoriCipherRuntime.refresh(force = false)
+        val update = MoriCipherRuntime.refresh(force = false, videoId = null)
         if (update.isSuccess) return Result.success()
         Timber.w(update.exceptionOrNull(), "Mori cipher periodic refresh failed")
         return if (MoriCipherRuntime.snapshot.value.status == CipherRuntimeStatus.DEGRADED) {

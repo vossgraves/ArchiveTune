@@ -143,8 +143,11 @@ jobs:
           EXTRACTOR_BEARER: ${{ secrets.EXTRACTOR_BEARER }}
           NIGHTLY_BUILD_HASH: ${{ steps.build_hash.outputs.value }}
           START_IO_APP_ID: ${{ secrets.START_IO_APP_ID }}
-          # Public ArchivePool base URL. This is non-sensitive and belongs in Actions variables.
-          SOURCE_PROVIDER_URL: ${{ vars.SOURCE_PROVIDER_URL }}
+          # Public ArchivePool base URL. This is non-sensitive and belongs in Actions variables,
+          # but we also fall back to the secret of the same name for forks that stored it as a
+          # secret before Actions variables existed. The gradle default
+          # (https://archivepool.vercel.app) applies when neither is set.
+          SOURCE_PROVIDER_URL: ${{ vars.SOURCE_PROVIDER_URL || secrets.SOURCE_PROVIDER_URL }}
           # Per-app read key created by ArchivePool's admin page.
           SOURCE_PROVIDER_KEY: ${{ secrets.SOURCE_PROVIDER_KEY }}
           # Must exactly match ArchivePool's Railway POOL_CLIENT_KEY.
