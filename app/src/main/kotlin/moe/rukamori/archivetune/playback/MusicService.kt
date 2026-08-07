@@ -8560,19 +8560,17 @@ class MusicService :
      * only credential source and the whole source is a no-op until the pool has accounts.
      */
     private fun resolveDeezerStream(query: SourceQuery): DirectStream? {
-        val accounts = PoolAccountManager.deezerAccounts()
-        if (accounts.isEmpty()) {
-            Timber.tag("MusicService").d("Deezer skip: no pool accounts available")
+        // DeezerAudioProvider.accounts() merges the manually signed-in account (setManualArl) with
+        // PoolAccountManager.deezerAccounts(). Calling PoolAccountManager directly here bypassed the
+        // manual account entirely: a user who signed in through the Deezer login screen would see an
+        // empty list even though their ARL was registered, and every track would silently produce null.
+        // The guard now uses DeezerAudioProvider.hasAccounts() so both sources are considered.
+        if (!DeezerAudioProvider.hasAccounts()) {
+            Timber.tag("MusicService").d("Deezer skip: no manual or pooled accounts available")
             return null
         }
         val quality = parseDeezerAudioQuality()
-        Timber.tag("MusicService").d(
-            "Deezer resolve start | quality=%s accounts=%d",
-            quality.name,
-            accounts.size,
-        )
-        // No setAccounts equivalent to Qobuz's setTokens: Deezer credentials come only from the pool,
-        // so the provider reads PoolAccountManager itself. The count above is logged for diagnostics.
+        Timber.tag("MusicService").d("Deezer resolve start | quality=%s", quality.name)
         return runCatching {
             runBlocking(Dispatchers.IO) {
                 DeezerAudioProvider
