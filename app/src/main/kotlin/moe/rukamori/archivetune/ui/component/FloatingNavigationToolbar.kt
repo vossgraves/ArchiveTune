@@ -402,18 +402,28 @@ fun FloatingNavigationToolbar(
             canLiquidGlass ->
                 ShortNavigationBarItemDefaults.colors(
                     selectedIndicatorColor = Color.Transparent,
-                    // The underlying bar's selected item uses primary color so it
-                    // shows THROUGH the translucent Liquid Glass pill (the pill is
-                    // pure glass — no icon/text rendered inside it). The pill floats
-                    // ON TOP of the underlying bar, and the user sees the primary-
-                    // colored selected icon/label through the frosted glass.
-                    // Unselected items use FULL opacity white (1.0) — bright enough
-                    // to be clearly legible on the dark glass bar (the previous 0.78
-                    // alpha was too dim, the user reported poor visibility). The
-                    // selected primary color provides the visual differentiation;
-                    // unselected items don't need to be de-emphasized via alpha.
-                    selectedIconColor = MaterialTheme.colorScheme.primary,
-                    selectedTextColor = MaterialTheme.colorScheme.primary,
+                    // CRITICAL (no-duplicate fix): the underlying bar's SELECTED
+                    // item uses Color.Transparent for both icon and text. The
+                    // pill overlay (rendered as a sibling of the Surface) draws
+                    // the active icon + label in primary color ON TOP of the glass
+                    // — this is SukiSU's behavior. If the underlying selected item
+                    // ALSO rendered the active icon + label in primary color, the
+                    // translucent glass (~10% darken veil) would let BOTH layers
+                    // bleed through, creating the duplicate "Home / Home" stack
+                    // the user saw when scrolling.
+                    //
+                    // Making the selected item transparent means:
+                    //   - It still takes up layout space (so the pill positions
+                    //     correctly over the selected tab slot).
+                    //   - It's invisible (no bleed-through through the glass).
+                    //   - The pill's own Icon + Text content is the SOLE visible
+                    //     rendering of the active tab.
+                    //
+                    // Unselected items use FULL opacity white (1.0) — bright and
+                    // legible on the dark glass bar. The user previously reported
+                    // poor visibility with 0.78 alpha; full white fixes that.
+                    selectedIconColor = Color.Transparent,
+                    selectedTextColor = Color.Transparent,
                     unselectedIconColor = Color.White,
                     unselectedTextColor = Color.White,
                 )
@@ -1177,20 +1187,22 @@ fun FloatingNavigationToolbar(
                 val pillShape = RoundedCornerShape(percent = 50)
                 // SukiSU-Ultra FloatingBottomBar: capture theme-dependent values
                 // in the @Composable body. onDrawSurface's lambda is NOT
-                // @Composable, so isDark must be captured here. isDark → the
-                // darken veil color (Black in dark theme, White in light theme).
+                // @Composable, so isDark and primaryColor must be captured here.
+                // isDark → the darken veil color (Black in dark theme, White in
+                // light theme). primaryColor → the active icon/label tint, drawn
+                // as the pill's content on top of the glass.
                 //
-                // NOTE: the pill is PURE GLASS — it has NO content of its own
-                // (no Icon, no Text). The underlying ShortNavigationBarItem
-                // renders the selected tab's icon + label in primary color, and
-                // the user sees them THROUGH the translucent glass pill. This is
-                // the SukiSU reference behavior the user explicitly asked for:
-                // "icons and text shouldn't be on the dragged highlight but I
-                // should be able to see through it". The previous implementation
-                // rendered a second Icon + Text Column inside the pill — that
-                // created a DUPLICATE layer on top of the underlying bar's
-                // icon/label, which the user saw as stacked text/icons.
+                // NO-DUPLICATE STRATEGY (SukiSU behavior):
+                // The pill renders the active icon + label as its CONTENT (in
+                // primary color, on top of the glass). The underlying bar's
+                // SELECTED item is Color.Transparent (see itemColors above), so
+                // it takes up layout space but is invisible — it CANNOT bleed
+                // through the translucent glass and create a duplicate layer.
+                // The pill's content is the SOLE visible rendering of the active
+                // tab. This matches SukiSU's behavior (pill shows active icon/
+                // label in accent color) without the duplicate-text/icons bug.
                 val isDark = isSystemInDarkTheme()
+                val primaryColor = MaterialTheme.colorScheme.primary
                 Box(
                     modifier =
                         Modifier
@@ -1267,11 +1279,12 @@ fun FloatingNavigationToolbar(
                             // invisible". The lighter veil makes the glass more
                             // translucent, matching SukiSU's reference pill.
                             //
-                            // The pill has NO content of its own — the underlying
-                            // ShortNavigationBarItem renders the selected tab's icon +
-                            // label in primary color, and the user sees them THROUGH
-                            // the translucent glass (backdrop sample + this lighten
-                            // veil). This is the SukiSU reference behavior.
+                            // The active icon/label are rendered as the pill's CONTENT
+                            // (see the Box's content lambda below) — drawn ON TOP of
+                            // the glass backdrop sample + darken veil, so they're
+                            // always visible. The underlying bar's selected item is
+                            // Color.Transparent (invisible), so there's NO duplicate
+                            // layer bleeding through the glass.
                             .drawBackdrop(
                                 backdrop = liquidGlassBackdrop,
                                 effects = {
@@ -1313,18 +1326,52 @@ fun FloatingNavigationToolbar(
                                     null
                                 }
                             },
-                    // PURE GLASS PILL — no content. The pill floats on top of
-                    // the underlying ShortNavigationBarItem, which renders the
-                    // selected tab's icon + label in primary color. The user sees
-                    // those primary-colored elements THROUGH the translucent glass
-                    // (backdrop sample + ~10% darken veil). No content is rendered
-                    // inside the pill itself — this is critical to avoid the
-                    // duplicate-text/icons bug the user reported (previously a
-                    // Column with Icon + Text was rendered here as the pill's
-                    // content, creating a second layer that stacked on top of the
-                    // underlying bar's icon/label).
+                    contentAlignment = Alignment.Center,
+                ) {
+                    // SukiSU-Ultra: render the active icon + label AS THE PILL'S
+                    // CONTENT so they're drawn ON TOP of the glass backdrop sample
+                    // + darken veil — always visible. The underlying bar's selected
+                    // item is Color.Transparent (invisible), so this is the SOLE
+                    // visible rendering of the active tab — NO duplicate layer.
                     //
-                    // The Box's content lambda is intentionally empty.
+                    // displayIndex follows the drag animation's continuous value
+                    // (rounded), so during a slide the pill shows the icon/label
+                    // of the tab it's currently closest to — matching SukiSU's
+                    // behavior where the pill's content blends as it slides.
+                    //
+                    // Icon-to-label spacing: tight 2.dp (Arrangement.spacedBy) to
+                    // match SukiSU's compact gap. The user asked to keep the text
+                    // close to the icon.
+                    val displayIndex = dragAnim.value.roundToInt().coerceIn(0, items.lastIndex)
+                    val displayScreen = items[displayIndex]
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically),
+                    ) {
+                        Icon(
+                            painter = painterResource(displayScreen.iconIdActive),
+                            contentDescription = null,
+                            tint = primaryColor,
+                            modifier =
+                                Modifier.graphicsLayer {
+                                    // SukiSU LocalFloatingBottomBarTabScale: the
+                                    // icon scales up to 1.2× during press, matching
+                                    // SukiSU's tab scale animation.
+                                    val scale = lerp(1f, 1.2f, dragAnim.pressProgress)
+                                    scaleX = scale
+                                    scaleY = scale
+                                },
+                        )
+                        if (!hideNavigationLabels) {
+                            Text(
+                                text = stringResource(displayScreen.titleId),
+                                color = primaryColor,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
                 )
             }
         }
