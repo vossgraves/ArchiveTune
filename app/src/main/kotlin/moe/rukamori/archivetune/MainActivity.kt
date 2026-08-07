@@ -119,7 +119,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -1416,14 +1415,16 @@ class MainActivity : ComponentActivity() {
                     // By remembering the last non-zero top inset and substituting it for
                     // systemBars when the status bar is hidden, both the TopAppBar and the
                     // content use a consistent inset source and stay aligned.
+                    //
+                    // WindowInsets.statusBars is a @Composable property, so we read it in
+                    // the composable scope (not inside snapshotFlow) and update the cached
+                    // value via a simple LaunchedEffect keyed on the observed px value.
+                    val currentStatusBarTopPx = WindowInsets.statusBars.getTop(density)
                     var cachedStatusBarTop by remember { mutableStateOf(0.dp) }
-                    LaunchedEffect(Unit) {
-                        snapshotFlow { WindowInsets.statusBars.getTop(density) }
-                            .collect { px ->
-                                if (px > 0) {
-                                    cachedStatusBarTop = with(density) { px.toDp() }
-                                }
-                            }
+                    LaunchedEffect(currentStatusBarTopPx) {
+                        if (currentStatusBarTopPx > 0) {
+                            cachedStatusBarTop = with(density) { currentStatusBarTopPx.toDp() }
+                        }
                     }
                     val effectiveStatusBarTop =
                         if (shouldHideStatusBars && cachedStatusBarTop > 0.dp) {
