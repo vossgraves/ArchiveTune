@@ -1114,8 +1114,24 @@ fun FloatingNavigationToolbar(
                 // Extract colors in the @Composable body (drawWithContent's
                 // lambda is NOT @Composable, so MaterialTheme.colorScheme.primary
                 // can't be read inside it).
-                val pillTintColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.28f)
-                val pillDarkBase = Color.Black.copy(alpha = 0.32f)
+                //
+                // TRANSPARENCY FIX: the previous implementation stacked THREE
+                // overlays on top of the liquidGlass backdrop sample —
+                //   1. liquidGlass's built-in darken veil (Black ~27% in dark theme)
+                //   2. an extra Black 32% rect (pillDarkBase)
+                //   3. a primary 28% tint rect (pillTintColor)
+                // combined ~64% opaque, which made the pill read as a SOLID
+                // block — the user reported "I can't see anything behind the
+                // highlight". SukiSU's reference pill is also translucent
+                // (you can see the app content through it). To match that,
+                // we REMOVE the extra dark base (pillDarkBase) entirely and
+                // REDUCE the primary tint from 0.28 to 0.15. The liquidGlass
+                // modifier's built-in darken veil (step 1) remains, providing
+                // enough contrast for the bright primary icon/label to read
+                // clearly on top. Net overlay: ~27% darken + 15% primary ≈
+                // 38% opaque — the backdrop now shows through at ~62% alpha,
+                // producing the see-through glassy look the user expects.
+                val pillTintColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
                 Box(
                     modifier =
                         Modifier
@@ -1125,15 +1141,39 @@ fun FloatingNavigationToolbar(
                                 // translate to the outer Box's coordinate system.
                                 // For non-floating, barPositionInRoot == outer Box
                                 // content area top-left, so this is correct.
+                                //
+                                // POSITION FIX: the previous implementation centered
+                                // the pill on the TAB SLOT (using dragAnim.value *
+                                // tabWidthPx). But ShortNavigationBarItem's internal
+                                // layout does NOT center the icon within the tab slot —
+                                // the icon is offset from the slot's center. This made
+                                // the pill appear shifted relative to the icon (the
+                                // user reported "the positioning of the highlight pill
+                                // is wrong"). To fix this, we compute the difference
+                                // between the selected icon's ACTUAL center and the
+                                // tab slot's center, then add that offset to the
+                                // pill's X. Since all items use the same layout, the
+                                // offset is constant across tabs — so adding it once
+                                // (based on the selected tab) correctly aligns the
+                                // pill with the icon at every drag position.
                                 val pillWidthPx = pillWidth.toPx()
                                 val hPaddingPx = itemHorizontalPadding.toPx()
+                                val tabSlotCenterForSelected =
+                                    containerPos.x +
+                                        itemsRowLeftInContainer +
+                                        hPaddingPx +
+                                        selectedIndex * tabWidthPx +
+                                        tabWidthPx / 2f
+                                val iconOffsetX =
+                                    selectedCenter?.let { it.x - tabSlotCenterForSelected } ?: 0f
                                 val xInRoot =
                                     containerPos.x +
                                         itemsRowLeftInContainer +
                                         hPaddingPx +
                                         dragAnim.value * tabWidthPx +
                                         (tabWidthPx - pillWidthPx) / 2f +
-                                        panelOffset
+                                        panelOffset +
+                                        iconOffsetX
                                 val yInRoot = containerPos.y + indicatorY
                                 val xRelativeToBox = xInRoot - barPositionInRoot.x
                                 val yRelativeToBox = yInRoot - barPositionInRoot.y
@@ -1193,11 +1233,16 @@ fun FloatingNavigationToolbar(
                             }
                             .drawWithContent {
                                 drawContent()
-                                // SukiSU-Ultra pill: dark base (for contrast with the
-                                // bright primary icon/label) + primary tint on top (so
-                                // the pill reads as colored glass matching the selected
-                                // item's primary).
-                                drawRect(color = pillDarkBase)
+                                // Subtle primary tint on top of the liquidGlass
+                                // backdrop sample. The previous implementation also
+                                // drew a Black 32% dark base here (pillDarkBase),
+                                // which stacked with liquidGlass's built-in darken
+                                // veil and made the pill ~64% opaque — the user
+                                // reported "I can't see anything behind the highlight".
+                                // The dark base is REMOVED; only the light primary
+                                // tint (15% alpha) remains, so the backdrop shows
+                                // through clearly while the pill still reads as
+                                // colored glass matching the selected item's primary.
                                 drawRect(color = pillTintColor)
                             },
                 )
