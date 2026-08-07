@@ -1372,7 +1372,7 @@ fun FloatingNavigationToolbar(
                             )
                         }
                     }
-                )
+                }
             }
         }
         } // end wrapper Box (CenterStart — vertically centers the pill)
