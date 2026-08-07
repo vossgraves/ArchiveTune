@@ -407,13 +407,15 @@ fun FloatingNavigationToolbar(
                     // pure glass — no icon/text rendered inside it). The pill floats
                     // ON TOP of the underlying bar, and the user sees the primary-
                     // colored selected icon/label through the frosted glass.
-                    // Unselected items use a muted white (0.78 alpha) for legibility
-                    // on the dark glass bar, but de-emphasized vs the vibrant
-                    // selected primary. This matches SukiSU's underlying bar.
+                    // Unselected items use FULL opacity white (1.0) — bright enough
+                    // to be clearly legible on the dark glass bar (the previous 0.78
+                    // alpha was too dim, the user reported poor visibility). The
+                    // selected primary color provides the visual differentiation;
+                    // unselected items don't need to be de-emphasized via alpha.
                     selectedIconColor = MaterialTheme.colorScheme.primary,
                     selectedTextColor = MaterialTheme.colorScheme.primary,
-                    unselectedIconColor = Color.White.copy(alpha = 0.78f),
-                    unselectedTextColor = Color.White.copy(alpha = 0.78f),
+                    unselectedIconColor = Color.White,
+                    unselectedTextColor = Color.White,
                 )
             isFloating ->
                 ShortNavigationBarItemDefaults.colors(
@@ -1080,32 +1082,52 @@ fun FloatingNavigationToolbar(
                                     null
                                 } else {
                                     {
-                                        // User-configurable spacing between icon and label.
-                                        // For the Liquid Glass variant, the user asked to make
-                                        // the text "a bit closer" to the icon — so we use a
-                                        // tighter 2.dp spacing (vs the 4.dp default) which
-                                        // matches SukiSU's compact label-to-icon spacing.
-                                        val effectiveLabelSpacing =
-                                            if (canLiquidGlass) 2f else navBarLabelSpacing
-                                        Spacer(Modifier.height(effectiveLabelSpacing.dp))
-                                        Text(
-                                            text = stringResource(screen.titleId),
-                                            maxLines = 1,
-                                            // SukiSU-Ultra: the selected label is SemiBold so it
-                                            // reads as "heavier" than unselected labels — matching
-                                            // the reference bar's "Medium/Semi-Bold selected,
-                                            // Regular unselected" type treatment. The Liquid Glass
-                                            // variant applies this always (the bright primary color
-                                            // + SemiBold weight together create the strong selected
-                                            // emphasis that shows THROUGH the translucent glass
-                                            // pill); other variants keep the default weight.
-                                            fontWeight =
-                                                if (selected && canLiquidGlass) {
-                                                    FontWeight.SemiBold
-                                                } else {
-                                                    FontWeight.Normal
-                                                },
-                                        )
+                                        // Icon-to-label spacing.
+                                        //
+                                        // Material3's ShortNavigationBarItem adds its own
+                                        // internal vertical spacing (~4-8dp) between the icon
+                                        // slot and the label slot. For the Liquid Glass
+                                        // variant, the user asked to make the text "a bit
+                                        // closer" to the icon — so we apply a NEGATIVE Y offset
+                                        // to the Text to counteract that internal spacing and
+                                        // pull the label closer to the icon (SukiSU reference
+                                        // has a very tight icon-to-label gap).
+                                        //
+                                        // For other variants, we use the user-configurable
+                                        // `navBarLabelSpacing` via a Spacer (unchanged).
+                                        if (canLiquidGlass) {
+                                            Text(
+                                                text = stringResource(screen.titleId),
+                                                maxLines = 1,
+                                                // Negative Y offset pulls the label up toward
+                                                // the icon, counteracting Material3's internal
+                                                // spacing. -4.dp brings it to roughly SukiSU's
+                                                // compact gap (the label sits ~0-2dp below the
+                                                // icon's bottom edge).
+                                                modifier = Modifier.offset(y = (-4).dp),
+                                                // SukiSU-Ultra: the selected label is SemiBold
+                                                // so it reads as "heavier" than unselected
+                                                // labels — matching the reference bar's
+                                                // "Medium/Semi-Bold selected, Regular
+                                                // unselected" type treatment. The Liquid Glass
+                                                // variant applies this always (the bright
+                                                // primary color + SemiBold weight together
+                                                // create the strong selected emphasis that
+                                                // shows THROUGH the translucent glass pill).
+                                                fontWeight =
+                                                    if (selected) {
+                                                        FontWeight.SemiBold
+                                                    } else {
+                                                        FontWeight.Normal
+                                                    },
+                                            )
+                                        } else {
+                                            Spacer(Modifier.height(navBarLabelSpacing.dp))
+                                            Text(
+                                                text = stringResource(screen.titleId),
+                                                maxLines = 1,
+                                            )
+                                        }
                                     }
                                 },
                             )
