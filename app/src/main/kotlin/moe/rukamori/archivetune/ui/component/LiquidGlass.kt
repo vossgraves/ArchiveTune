@@ -103,33 +103,10 @@ fun Modifier.liquidGlass(
     interactive: Boolean = true,
     baseColor: Color = Color.Unspecified,
 ): Modifier {
-    // Match SimpMusic's theme-aware overlay: in dark theme add a black veil
-    // ("đục đen"); in light theme add a white veil ("đục trắng"). The previous
-    // implementation always used Color.Black, which on a bright backdrop in
-    // light theme produced a translucent dark smudge that read as "white space"
-    // (the bright backdrop showing through at 73 %), and on an empty/transparent
-    // backdrop (e.g. the bottom of the screen with no content behind) produced
-    // a fully invisible bar — the user's "completely transparent" complaint.
-    // Using White in light theme gives the frosted-white Apple-glass look, and
-    // using a higher alpha when the backdrop is empty keeps the bar visible.
     val isDark = isSystemInDarkTheme()
     return this.drawBackdrop(
         backdrop = backdrop,
         effects = {
-            // PERFORMANCE: the previous effect stack included a `colorControls`
-            // pass (brightness = 0.05, contrast = 1.0, saturation = 1.5) that
-            // was redundant with `vibrancy()` — both boost saturation. With both
-            // the nav bar AND the mini player sampling the backdrop every frame,
-            // removing the redundant colorControls pass saves one full per-pixel
-            // GPU pass per surface per frame (= ~2M pixel-passes/s at 60fps on a
-            // 1080p device). The visual difference is imperceptible because
-            // vibrancy already saturates the backdrop and the brightness/contrast
-            // values were near-identity (0.05 / 1.0).
-            //
-            // Fixed mid-luminance: keeps the glass readable on both bright
-            // (album art) and dark (system surface) backdrops. The luminance-
-            // adaptive variant in SimpMusic is only needed for the mini-player
-            // capsule which is not used here.
             val l = 0f
             vibrancy()
             blur(
@@ -139,25 +116,12 @@ fun Modifier.liquidGlass(
                     lerp(8f.dp.toPx(), 2f.dp.toPx(), -l)
                 },
             )
-            // Refraction height MUST stay below the stadium inradius (minDimension / 2).
-            // At minDimension / 2 the top and bottom refraction meet at the medial axis,
-            // producing a dark horizontal seam across the middle of wide pills (the
-            // "white space" the user reported inside the nav bar). SimpMusic uses
-            // minDimension / 4; we match. chromaticAberration = false matches the
-            // crisp Kyant demo look and avoids the radial discontinuity at the centre.
             lens(24f.dp.toPx(), size.minDimension / 4f, false)
         },
         onDrawBackdrop = { drawBackdrop ->
             drawBackdrop()
         },
         shape = { shape },
-        // Draw the opaque base color UNDER the backdrop sample. The kyant
-        // DrawBackdropNode.draw() order is: onDrawBehind → drawBackdropLayer
-        // (backdrop sample) → onDrawSurface (darken overlay) → drawContent
-        // (the composable's content). So onDrawBehind is the ONLY place to
-        // put a fallback color that the backdrop sample can composite on top
-        // of — drawContent (where the Surface's `color` is drawn) is ABOVE
-        // the backdrop sample and would cover it.
         onDrawBehind =
             if (baseColor != Color.Unspecified) {
                 { drawRect(baseColor) }
@@ -165,13 +129,6 @@ fun Modifier.liquidGlass(
                 null
             },
         onDrawSurface = {
-            // luminanceAnimation = 0.5f gives a fixed darken alpha of ~0.272 (the
-            // lerp(0.12, 0.5, 0.4) midpoint). SimpMusic animates this from a real
-            // luminance sample; we keep it constant for simplicity. The KEY change
-            // is the overlay color: Black for dark theme, White for light theme.
-            // In light theme a 27 % white veil over a bright backdrop produces the
-            // frosted-white Apple-glass look (instead of a dark smudge). On an empty
-            // backdrop, the veil still draws — so the bar is always visible.
             val luminanceAnimation = 0.5f
             val darken = lerp(
                 0.12f,

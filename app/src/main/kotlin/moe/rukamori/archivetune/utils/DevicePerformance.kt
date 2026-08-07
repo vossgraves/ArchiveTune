@@ -14,3 +14,13 @@ fun Context.isLowRamDevice(): Boolean {
     val activityManager = applicationContext.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
     return activityManager?.isLowRamDevice == true
 }
+
+fun Context.memoryClassMb(): Int {
+    val activityManager = applicationContext.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+    return activityManager?.memoryClass ?: 96
+}
+
+fun Context.isLowEndDevice(): Boolean {
+    if (isLowRamDevice()) return true
+    return memoryClassMb() <= 128
+}
