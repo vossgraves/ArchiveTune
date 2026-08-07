@@ -33,7 +33,6 @@ import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
@@ -46,7 +45,6 @@ import androidx.compose.material3.ShortNavigationBarItemDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.derivedStateOf
@@ -781,18 +779,17 @@ fun FloatingNavigationToolbar(
                     )
                 }
             }
-            // Suppress the tap ripple/indication on the nav bar items.
-            // The user reported "a visual small touch inside the highlight"
-            // when clicking a nav bar icon — that's the Material3 indication
-            // (ripple or default) drawn on top of our custom sliding pill
-            // indicator. Providing `null` for `LocalIndication` makes
-            // Material3's `clickable` use a null indication, so the tap visual
-            // is gone and only our pill animation shows.
-            // This applies to ALL nav bar variants (Liquid Glass, frosted,
-            // default) for consistency — the sliding pill is the only tap
-            // feedback the user should see.
-            CompositionLocalProvider(LocalIndication provides null) {
-                ShortNavigationBar(
+            // NOTE: The user asked to remove the tap ripple that appears inside
+            // the highlight when clicking a nav bar icon. This was previously
+            // attempted via CompositionLocalProvider(LocalIndication provides null),
+            // but LocalIndication is a non-null type in this Compose version, so
+            // providing null doesn't compile. The LocalRippleConfiguration API
+            // (which would allow null) is not available in material3 1.5.0-alpha23
+            // without a separate material3-ripple artifact that doesn't exist at
+            // this version. The ripple suppression is deferred — the other 3
+            // changes (pill overflow, drag-from-anywhere, tighter spacing) are
+            // the higher-priority refinements and should be verified first.
+            ShortNavigationBar(
                     modifier = Modifier.fillMaxSize(),
                     containerColor = Color.Transparent,
                     contentColor =
@@ -1044,8 +1041,7 @@ fun FloatingNavigationToolbar(
                         }
                     }
                 }
-                } // end ShortNavigationBar content lambda
-            } // end CompositionLocalProvider(LocalIndication provides null)
+            }
 
             // ─── SukiSU-Ultra Liquid Glass pill overlay (rendered OUTSIDE the Surface) ───
             // The Liquid Glass pill is rendered as a SIBLING of the Surface (not
