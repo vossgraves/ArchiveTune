@@ -523,7 +523,14 @@ fun OnlinePlaylistScreen(
                                         }
                                     }
                                 },
-                                modifier = Modifier.animateItem(),
+                                // REMOVED Modifier.animateItem(): the header is a
+                                // static first item that never needs placement
+                                // animation. animateItem() was causing the header
+                                // to briefly shift position ("goes up for a split
+                                // second and comes back") when a LiquidGlass header
+                                // icon was clicked — the state change triggered a
+                                // LazyColumn layout pass, and animateItem()
+                                // animated the resulting placement delta.
                                 useBlurredPlayButton = true,
                             )
                                 // SimpMusic-style floating liquid glass buttons.
