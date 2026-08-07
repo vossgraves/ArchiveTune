@@ -2595,16 +2595,6 @@ private fun V8Artwork(
                 .clip(RoundedCornerShape(8.dp))
                 .background(if (showVideo) Color.Black else Color.White.copy(alpha = 0.08f)),
     ) {
-        // When the current media is a music video, render the video inline
-        // in place of the album artwork. Audio continues through the main
-        // MusicService ExoPlayer, so all transport controls work as normal.
-        //
-        // The artwork is rendered as the base layer ONLY when the video is
-        // NOT showing. When the video is showing we use a solid black
-        // background instead — the video surface uses FIT resize mode, so
-        // any letterbox area would otherwise show the artwork through the
-        // gaps (the user explicitly reported this as "artwork behind the
-        // video").
         if (!showVideo) {
             AsyncImage(
                 model = artworkRequest,
@@ -3540,16 +3530,6 @@ private fun V9Artwork(
                 .clip(RoundedCornerShape(30.dp))
                 .background(if (showVideo) Color.Black else placeholderColor),
     ) {
-        // When the current media is a music video, render the video inline
-        // in place of the album artwork. Audio continues through the main
-        // MusicService ExoPlayer, so all transport controls work as normal.
-        //
-        // The artwork is rendered as the base layer ONLY when the video is
-        // NOT showing. When the video is showing we use a solid black
-        // background instead — the video surface uses FIT resize mode, so
-        // any letterbox area would otherwise show the artwork through the
-        // gaps (the user explicitly reported this as "artwork behind the
-        // video").
         if (!showVideo) {
             AsyncImage(
                 model = artworkRequest,

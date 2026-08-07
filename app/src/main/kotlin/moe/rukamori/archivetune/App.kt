@@ -19,9 +19,11 @@ import coil3.PlatformContext
 import coil3.SingletonImageLoader
 import coil3.disk.DiskCache
 import coil3.disk.directory
+import coil3.memory.MemoryCache
 import coil3.request.CachePolicy
 import coil3.request.allowHardware
 import coil3.request.crossfade
+import moe.rukamori.archivetune.utils.isLowRamDevice
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.DelicateCoroutinesApi
@@ -156,19 +158,6 @@ class App :
             ),
         )
         MoriCipherUpdateScheduler.schedule(this)
-        // PRDownloader is the file downloader used by PRDownloaderDataSource
-        // (the upstream HTTP fetcher inside Media3's download CacheDataSource
-        // chain). Initialized once at app start with tuned timeouts so
-        // downloads benefit from PRDownloader's pause/resume + retry support
-        // without paying init cost on the first download. Replaces Ketch —
-        // see PRDownloaderDataSource.kt for the rationale.
-        //
-        // Tuned for parallel-throughput: PRDownloader internally caps each
-        // download at 1 concurrent connection (it's a sequential fetcher),
-        // but it can run many downloads in parallel — the OkHttp dispatcher
-        // inside PRDownloader honors `setUserAgent` for proper HTTP/2
-        // connection reuse, and the read/connect timeouts are generous
-        // enough for large FLAC files on slow links.
         runCatching {
             val config = com.downloader.PRDownloaderConfig.newBuilder()
                 .setReadTimeout(60_000)
@@ -181,15 +170,6 @@ class App :
         ArchiveTuneCanvas.initialize(BuildConfig.CANVAS_BEARER_TOKEN)
         PaxsenixLyrics.setUserAgent("ArchiveTune", BuildConfig.VERSION_NAME)
 
-        // Eagerly start TDLib so playback of a Telegram-backed playlist works right after an
-        // app update. TDLib's session DB persists across upgrades (it lives in
-        // filesDir/telegram), so the user IS still logged in from TDLib's perspective — but
-        // `TelegramClient.client` is null and `_authState` is `Idle` until something calls
-        // `ensureStarted(context)`. Previously that only happened when the user navigated
-        // to TelegramSettings or TelegramLoginScreen, so any Telegram playlist playback
-        // attempt immediately after an update would throw "Telegram is not logged in".
-        // `ensureStarted` is idempotent (short-circuits when `client != null`), so this is
-        // safe even if the user opens the Telegram settings screen later.
         runCatching { moe.rukamori.archivetune.telegram.TelegramClient.ensureStarted(this) }
 
         val locale = Locale.getDefault()
@@ -227,11 +207,6 @@ class App :
                 prefs[ContentLanguageKey]?.takeIf { it != SYSTEM_DEFAULT }?.let { lang ->
                     YouTube.locale = YouTube.locale.copy(hl = lang)
                 }
-                // Region spoofer from Internet Settings — applied AFTER ContentCountryKey so
-                // the Internet/region setting wins when both are set. SYSTEM_DEFAULT falls back
-                // to whatever the device locale or ContentCountryKey resolved to above.
-                // Also set the regionSpooferActive flag so region-sensitive endpoints
-                // (home, search, charts, etc.) go anonymous and YouTube honors `gl`.
                 prefs[YouTubeMusicRegionKey]?.let { regionValue ->
                     val spooferActive = regionValue != SYSTEM_DEFAULT
                     YouTube.regionSpooferActive = spooferActive
@@ -462,6 +437,7 @@ class App :
     override fun newImageLoader(context: PlatformContext): ImageLoader {
         val smartTrimmer = dataStore[SmartTrimmerKey] ?: false
         val imageCacheConfig = resolveImageDiskCacheConfig(dataStore[MaxImageCacheSizeKey])
+        val lowRam = isLowRamDevice()
 
         val diskCache =
             DiskCache
@@ -477,10 +453,16 @@ class App :
         return ImageLoader
             .Builder(this)
             .components {
-                // Resolve `tgthumb://<fileId>` artwork models through TDLib (Telegram source).
                 add(moe.rukamori.archivetune.telegram.TelegramThumbnailFetcher.Factory())
-            }.crossfade(true)
+            }
+            .crossfade(!lowRam)
             .allowHardware(Build.VERSION.SDK_INT >= Build.VERSION_CODES.P)
+            .memoryCache {
+                MemoryCache
+                    .Builder()
+                    .maxSizePercent(this@App, if (lowRam) 0.15 else 0.25)
+                    .build()
+            }.memoryCachePolicy(CachePolicy.ENABLED)
             .diskCache(diskCache)
             .diskCachePolicy(imageCacheConfig.policy)
             .build()

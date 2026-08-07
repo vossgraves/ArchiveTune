@@ -88,24 +88,9 @@ public fun MediaDetailHero(
     metadata: String? = null,
     description: String? = null,
     additionalPrimaryActions: (@Composable RowScope.(Color) -> Unit)? = null,
-    // Optional looping animated canvas (Apple Music-style animated cover
-    // art) layered on top of the static thumbnail. When both
-    // `canvasPrimaryUrl` and `canvasFallbackUrl` are null/blank the canvas
-    // layer is skipped entirely and the hero renders as before. Pass the
-    // same URLs the song player uses (artwork.animated / artwork.videoUrl)
-    // to make the album thumbnail loop the same animated visual art on the
-    // album screen.
     canvasPrimaryUrl: String? = null,
     canvasFallbackUrl: String? = null,
     canvasIsPlaying: Boolean = false,
-    // DEPRECATED / NO-OP: previously, when true, the big "Play" pill button
-    // rendered a self-contained blurred copy of the hero artwork behind the
-    // icon + "Play" text (a frosted-glass play button). The sampled artwork
-    // background was removed because it read as a "misplaced image" /
-    // "glitched preview" that clashed with the dark theme. The parameter is
-    // kept for source compatibility with the 6 call sites that pass it, but
-    // the play button now ALWAYS renders as a clean solid `contentColor`
-    // pill regardless of this flag's value.
     useBlurredPlayButton: Boolean = false,
 ) {
     val surfaceColor = MaterialTheme.colorScheme.surface
@@ -155,14 +140,6 @@ public fun MediaDetailHero(
             }
         }
 
-        // Looping animated canvas overlay — same component used by the song
-        // player's Apple Music artwork. Stacks on top of the static
-        // thumbnail so when the animated video isn't ready yet (or fails
-        // to load) the user still sees the static cover. The canvas
-        // fades in via its own `animateFloatAsState(tween(300))` once the
-        // first frame is rendered. Only mounted when at least one of the
-        // canvas URLs is non-blank — keeps the cost zero for albums that
-        // don't have an animated cover.
         if (!canvasPrimaryUrl.isNullOrBlank() || !canvasFallbackUrl.isNullOrBlank()) {
             moe.rukamori.archivetune.ui.player.CanvasArtworkPlayer(
                 primaryUrl = canvasPrimaryUrl,
@@ -173,32 +150,6 @@ public fun MediaDetailHero(
             )
         }
 
-        // ─── Flat gradient backdrop ──────────────────────────────────────
-        // The previous iteration of the hero attempted to render a second
-        // blurred copy of the thumbnail clipped to the bottom ~62% of the
-        // hero, with a frosted-glass tint on top. In practice this rarely
-        // read as "frosted glass" — on dense 2×2 playlist thumbnails the
-        // blur was barely perceptible behind the action-button row, and
-        // on bright thumbnails the frosted tint either washed the artwork
-        // out (35% alpha) or hid the blur entirely (55% alpha).
-        //
-        // We've reverted to the original flat vertical gradient that was
-        // used before the blur was introduced. This gives a clean,
-        // predictable transition from sharp artwork at the top → solid
-        // surfaceColor at the bottom, which is what every playlist /
-        // album / artist screen in the app was originally designed
-        // against. The action-button Column sits on the solid-surface
-        // portion at the bottom, so button contrast is consistent
-        // regardless of the thumbnail's average color.
-        //
-        // Layer order (bottom → top):
-        //   1. Original thumbnail (full hero, sharp)
-        //   2. Vertical gradient:
-        //      - 0.00 → 0.18: black @ 42% → transparent (status-bar legibility)
-        //      - 0.18 → 0.42: transparent (sharp artwork visible)
-        //      - 0.42 → 0.72: transparent → surfaceColor @ 78% (fade into solid)
-        //      - 0.72 → 1.00: surfaceColor @ 78% → surfaceColor (solid backdrop
-        //        for the action-button row)
         Box(
             modifier =
                 Modifier
@@ -374,11 +325,6 @@ public fun MediaDetailPrimaryActions(
     // also used as the backdrop source for the liquid-glass play button — that
     // sampling has been removed; see useBlurredPlayButton below.)
     thumbnailUrl: String? = null,
-    // DEPRECATED / NO-OP: the liquid-glass play button (which sampled
-    // `thumbnailUrl` as a blurred background behind the play icon) has been
-    // removed. The play button now ALWAYS renders as a clean solid
-    // `contentColor` pill. Kept for source compatibility with the public
-    // MediaDetailHero signature.
     useBlurredPlayButton: Boolean = false,
 ) {
     val secondaryButtonColors =
@@ -398,15 +344,6 @@ public fun MediaDetailPrimaryActions(
             actionScrollMaxValue != Int.MAX_VALUE &&
             actionScrollState.value == 0
         ) {
-            // When the row only barely overflows the viewport (common on the
-            // artist page where there are exactly 4 actions: Shuffle / Play /
-            // Add / Radio), centering the scroll cuts off equal pixels on each
-            // side — and because the balanced layout reserves more space on the
-            // side with more actions, the rightmost action (Radio) ends up
-            // flush against the right edge and gets visually clipped by the
-            // fadingEdge. Bias toward the right edge in that case so Radio
-            // keeps its full breathing room. For wide rows (playlists with
-            // many actions), keep the centered scroll so both sides preview.
             val overflowDp = with(density) { actionScrollMaxValue.toDp() }
             val target =
                 if (overflowDp < 80.dp) {
@@ -432,11 +369,6 @@ public fun MediaDetailPrimaryActions(
                     .fillMaxWidth()
                     .fadingEdge(horizontal = MediaDetailActionEdgeFade)
                     .horizontalScroll(actionScrollState)
-                    // End padding ensures the rightmost action (e.g. Radio on the
-                    // artist page) always has visible breathing room even when the
-                    // balanced layout reserves more space on the opposite side.
-                    // Start padding mirrors it for symmetry so the auto-center
-                    // scroll position doesn't bias toward one edge.
                     .padding(horizontal = MediaDetailActionHorizontalPadding),
         ) {
             MediaDetailBalancedActionLayout(
@@ -463,53 +395,6 @@ public fun MediaDetailPrimaryActions(
 
                 onPlay?.let { play ->
                     val playButtonHeight = ButtonDefaults.MediumContainerHeight
-                    // Frosted-glass play button (Liquid Glass variant).
-                    //
-                    // CRASH HISTORY: the previous implementation (commit 2155235b6)
-                    // used `Modifier.liquidGlass(backdrop = LocalLiquidGlassBackdrop.current)`
-                    // to sample the shared app-content backdrop. But the play button
-                    // lives INSIDE the NavHost Box that carries
-                    // `Modifier.layerBackdrop(liquidGlassBackdrop)` (see MainActivity.kt
-                    // — the layerBackdrop is applied to the NavHost content). Per the
-                    // kyant library's own warning (LiquidGlass.kt:85-86): "The element
-                    // MUST be a sibling of the backdrop source; nesting it inside the
-                    // source creates a render-feedback loop that crashes the
-                    // RuntimeShader." The user reported "Page with play buttons crash
-                    // again" — this is that crash.
-                    //
-                    // The play button is structurally INSIDE the scrolling content
-                    // (LazyColumn item) on TWO levels: (1) the per-screen
-                    // `artworkBackdrop` applied to the LazyColumn itself, and (2) the
-                    // shared `liquidGlassBackdrop` applied to the NavHost Box. Sampling
-                    // EITHER from inside the source crashes the RuntimeShader. There is
-                    // no way to give the play button a TRUE liquid glass effect without
-                    // moving it OUT of the scrolling content (a massive layout
-                    // restructure that would change the UX — the play button would no
-                    // longer scroll with the hero header).
-                    //
-                    // FIX: replace the kyant backdrop-sampling approach with a
-                    // self-contained "fake glass" pill that LOOKS like frosted glass
-                    // but doesn't sample any backdrop. The pill is rendered as:
-                    //   1. Solid `contentColor` base (always visible — the fallback).
-                    //   2. Translucent dark tint overlay (mimics the "dark veil" that
-                    //      liquid glass adds — a 12% black overlay that gives the
-                    //      button a "smoked glass" appearance).
-                    //   3. Subtle white-to-transparent vertical gradient at the top
-                    //      (mimics the "glass reflection" highlight that liquid glass
-                    //      adds at the top edge of a pill — light catching the top of
-                    //      the glass).
-                    //   4. Icon + "Play" text on top (contrastingColor for contrast).
-                    //
-                    // This approach:
-                    //   - Doesn't crash (no backdrop sampling — no render-feedback loop).
-                    //   - Doesn't show recognizable album art (no thumbnail sampling —
-                    //     the user's previous complaint about "misplaced image" is
-                    //     addressed — the appearance is a NEUTRAL frosted glass, not
-                    //     a multicolored thumbnail preview).
-                    //   - Has the visual aesthetic of frosted glass (dark veil + top
-                    //     highlight), matching the Liquid Glass nav bar / mini player.
-                    //   - Falls back to a plain solid `contentColor` pill when the
-                    //     Liquid Glass master toggle is OFF or on pre-Android-12.
                     val liquidGlassActive =
                         LocalLiquidGlassBackdrop.current != null &&
                             Build.VERSION.SDK_INT >= Build.VERSION_CODES.S

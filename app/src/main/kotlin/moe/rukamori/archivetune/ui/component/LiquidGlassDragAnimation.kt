@@ -223,31 +223,6 @@ class LiquidGlassDragAnimation(
     val velocity: Float get() = velocityAnimation.value
 
     val modifier: Modifier = Modifier.pointerInput(Unit) {
-        // SukiSU-Ultra drag-from-anywhere: only START the drag (press(),
-        // onDragStarted, pill slide) if the initial touch is inside the
-        // bar's content area (decided by [canDrag]). Once the drag has
-        // started, the pill follows the finger anywhere on the screen —
-        // including the top of the screen — as long as the finger stays
-        // down. This is achieved by:
-        //   1. Gating press()/onDragStarted/release() on the `dragActive`
-        //      flag, which is set in onDragStart iff canDrag(down.position)
-        //      is true. Touches outside the bar don't trigger press(), so
-        //      the pill doesn't scale up and the bar doesn't rubber-band.
-        //   2. Removing the previous `isInside && wasInside` check in the
-        //      onDrag callback. Once `dragActive` is true, every move event
-        //      feeds into onDrag — regardless of whether the finger is
-        //      still inside the bar. Compose's `awaitEachGesture` +
-        //      `drag(pointerId)` pattern captures the pointer for the
-        //      duration of the gesture, so pointer events continue to be
-        //      delivered to this detector even when the finger leaves the
-        //      bar's bounds.
-        //
-        // The `dragActive` flag approach (vs. early-returning from
-        // `inspectDragGestures`) is necessary because `awaitEachGesture`'s
-        // `do-while` loop expects `block()` to run the full gesture
-        // lifecycle (down → drag → up) before returning. Early-returning
-        // would leave the loop waiting for the next `awaitFirstDown`,
-        // deadlocking the gesture detector until the next touch.
         var dragActive = false
         inspectDragGestures(
             onDragStart = { down ->
