@@ -1078,6 +1078,7 @@ enum class AudioSourceType {
     TIDAL,
     QOBUZ,
     DEEZER,
+    DABMUSIC,
     YOUTUBE,
 }
 
@@ -1116,6 +1117,20 @@ val DeezerAccountNameKey = stringPreferencesKey("deezerAccountName")
 // Whether the manual account reported a lossless-capable plan. Only orders resolution attempts;
 // the provider still verifies the real tier per track.
 val DeezerAccountPremiumKey = booleanPreferencesKey("deezerAccountPremium")
+
+// ---------------------------------------------------------------------------
+// DabMusic source
+// ---------------------------------------------------------------------------
+// DabMusic (https://dabmusic.xyz) is a community-operated lossless stream catalog: the app
+// searches its public REST API for a track and receives a direct playable FLAC/MP3 URL back.
+// Defaults OFF because, unlike YouTube, it requires the upstream service to be reachable and
+// returns no audio when the catalog is missing the requested track.
+val DabMusicEnabledKey = booleanPreferencesKey("dabMusicEnabled")
+
+// Optional override for the DabMusic base URL. Blank = built-in default (https://dabmusic.xyz).
+// Exposed so users behind mirrors or self-hosted gateways can repoint the source without a
+// rebuild; the AudioProvider trims trailing slashes before composing endpoints.
+val DabMusicBaseUrlKey = stringPreferencesKey("dabMusicBaseUrl")
 
 val WebClientPoTokenEnabledKey = booleanPreferencesKey("webClientPoTokenEnabled")
 val PoTokenGvsKey = stringPreferencesKey("poTokenGvs")

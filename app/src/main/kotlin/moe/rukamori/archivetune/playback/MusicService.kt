@@ -208,6 +208,9 @@ import moe.rukamori.archivetune.constants.toFormatName
 import moe.rukamori.archivetune.deezer.DeezerAudioProvider
 import moe.rukamori.archivetune.deezer.DeezerCrypto
 import moe.rukamori.archivetune.deezer.DeezerDecryptingDataSource
+import moe.rukamori.archivetune.constants.DabMusicBaseUrlKey
+import moe.rukamori.archivetune.constants.DabMusicEnabledKey
+import moe.rukamori.archivetune.dabmusic.DabMusicAudioProvider
 import moe.rukamori.archivetune.morideobfuscator.SOURCE_SWITCH_VOLUME_REASSERT_MS
 import moe.rukamori.archivetune.qobuz.QobuzAudioProvider
 import moe.rukamori.archivetune.qobuz.QobuzToken
@@ -7646,6 +7649,7 @@ class MusicService :
                 AudioSourceType.TIDAL to dataStore.get(TidalEnabledKey, true),
                 AudioSourceType.QOBUZ to dataStore.get(QobuzEnabledKey, false),
                 AudioSourceType.DEEZER to dataStore.get(DeezerEnabledKey, false),
+                AudioSourceType.DABMUSIC to dataStore.get(DabMusicEnabledKey, false),
                 AudioSourceType.YOUTUBE to true,
             )
         // The single stored order is authoritative (top = preferred). Only sources listed BEFORE
@@ -7982,6 +7986,7 @@ class MusicService :
                     AudioSourceType.TIDAL -> resolveTidalStream(query)
                     AudioSourceType.QOBUZ -> resolveQobuzStream(query)
                     AudioSourceType.DEEZER -> resolveDeezerStream(query)
+                    AudioSourceType.DABMUSIC -> resolveDabMusicStream(query)
                     AudioSourceType.YOUTUBE -> null
                 }
             if (stream == null) {
@@ -8461,6 +8466,55 @@ class MusicService :
     }
 
     /**
+     * Resolves a DabMusic stream. DabMusic is a public lossless catalog/proxy at
+     * https://dabmusic.xyz — there are no per-user accounts, so unlike Deezer there is no
+     * PoolAccountManager tier to consult. The base URL is read from [DabMusicBaseUrlKey] and
+     * pushed into [DabMusicAudioProvider] on every resolve so users who point at a mirror or
+     * self-hosted gateway don't need a restart to pick up the change.
+     *
+     * Returns null when the catalog has no acceptable match, when the gateway is unreachable,
+     * or when Cloudflare challenges the request — never throws, so the next source in the chain
+     * takes over.
+     */
+    private fun resolveDabMusicStream(query: SourceQuery): DirectStream? {
+        DabMusicAudioProvider.setBaseUrl(dataStore.get(DabMusicBaseUrlKey, "").ifBlank { null })
+        Timber.tag("MusicService").d("DabMusic resolve start for \"%s\"", query.title)
+        return runCatching {
+            runBlocking(Dispatchers.IO) {
+                DabMusicAudioProvider
+                    .resolve(
+                        query =
+                            DabMusicAudioProvider.Query(
+                                mediaId = query.mediaId,
+                                title = query.title,
+                                artists = query.artists,
+                                album = query.album,
+                                durationMs = query.durationMs,
+                            ),
+                        format = "FLAC",
+                    )?.let { resolved ->
+                        DirectStream(
+                            uri = resolved.uri,
+                            mimeType = resolved.mimeType,
+                            codecs = resolved.codecs,
+                            contentLength = resolved.contentLength,
+                            label = resolved.label,
+                            source = AudioSourceType.DABMUSIC,
+                            matchedTitle = resolved.matchedTitle,
+                            matchedArtist = resolved.matchedArtist,
+                            matchedAlbum = resolved.matchedAlbum,
+                            matchedDurationMs = resolved.matchedDurationMs,
+                            sampleRate = resolved.sampleRate,
+                            bitDepth = resolved.bitDepth,
+                        )
+                    }
+            }
+        }.onFailure { error ->
+            Timber.tag("MusicService").w(error, "DABMUSIC stream resolution failed for %s", query.mediaId)
+        }.getOrNull()
+    }
+
+    /**
      * Applies a resolved [DirectStream] to the [dataSpec]: namespaces the cache key per-source so
      * bytes never collide with the YouTube stream (or another source) for the same media id, and
      * marks the track so YouTube-derived audio normalization is skipped for it.
@@ -8610,9 +8664,13 @@ class MusicService :
     private fun tidalSourceApplies(mediaId: String): Boolean {
         if (mediaId.isLocalMediaId()) return false
         // Defaults MUST match PlaybackSourceSections + sourceResolutionChain(). Any enabled
-        // external lossless source (Tidal or Qobuz) must bypass the ephemeral YouTube player cache
-        // so toggling a source on takes effect immediately instead of replaying cached YT bytes.
-        return dataStore.get(TidalEnabledKey, true) || dataStore.get(QobuzEnabledKey, false)
+        // external lossless source (Tidal, Qobuz, Deezer or DabMusic) must bypass the ephemeral
+        // YouTube player cache so toggling a source on takes effect immediately instead of
+        // replaying cached YT bytes.
+        return dataStore.get(TidalEnabledKey, true) ||
+            dataStore.get(QobuzEnabledKey, false) ||
+            dataStore.get(DeezerEnabledKey, false) ||
+            dataStore.get(DabMusicEnabledKey, false)
     }
 
     private fun resolvePlaybackDataSpec(
