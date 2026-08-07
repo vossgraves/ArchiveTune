@@ -19,8 +19,6 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import moe.rukamori.archivetune.morideobfuscator.CipherRuntimeStatus
 import moe.rukamori.archivetune.morideobfuscator.MoriCipherRuntime
-import moe.rukamori.archivetune.morideobfuscator.refresh
-import moe.rukamori.archivetune.morideobfuscator.snapshot
 import timber.log.Timber
 import java.util.concurrent.TimeUnit
 

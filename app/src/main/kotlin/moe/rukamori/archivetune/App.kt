@@ -163,10 +163,6 @@ class App :
 
     private fun initializeDeferredAsync() {
         applicationScope.launch(Dispatchers.IO) {
-                .refresh(force = false)
-                .onFailure { Timber.w(it, "Mori cipher background initialization failed") }
-        }
-        applicationScope.launch(Dispatchers.IO) {
             try {
                 val prefs = dataStore.data.first()
 
