@@ -19,9 +19,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -89,7 +87,6 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -402,28 +399,36 @@ fun FloatingNavigationToolbar(
             canLiquidGlass ->
                 ShortNavigationBarItemDefaults.colors(
                     selectedIndicatorColor = Color.Transparent,
-                    // CRITICAL (no-duplicate fix): the underlying bar's SELECTED
-                    // item uses Color.Transparent for both icon and text. The
-                    // pill overlay (rendered as a sibling of the Surface) draws
-                    // the active icon + label in primary color ON TOP of the glass
-                    // — this is SukiSU's behavior. If the underlying selected item
-                    // ALSO rendered the active icon + label in primary color, the
-                    // translucent glass (~10% darken veil) would let BOTH layers
-                    // bleed through, creating the duplicate "Home / Home" stack
-                    // the user saw when scrolling.
+                    // SukiSU-Ultra behavior (definitive, matches reference video):
+                    // The pill is PURE GLASS with NO content of its own. The
+                    // selected tab's icon + label are rendered on the UNDERLYING
+                    // bar in primary color + SemiBold — the user sees them THROUGH
+                    // the translucent glass pill. The pill is just a "window" with
+                    // glass material properties that slides over the static icon
+                    // layer.
                     //
-                    // Making the selected item transparent means:
-                    //   - It still takes up layout space (so the pill positions
-                    //     correctly over the selected tab slot).
-                    //   - It's invisible (no bleed-through through the glass).
-                    //   - The pill's own Icon + Text content is the SOLE visible
-                    //     rendering of the active tab.
+                    // This eliminates BOTH bugs the user reported:
+                    //   1. "Home icon disappears when dragging pill away" —
+                    //      Previously the selected item was Color.Transparent
+                    //      (cbdb66828), so when the pill slid away from the
+                    //      selected tab, nothing was visible at that position.
+                    //      Now the selected item is primary color (NOT transparent),
+                    //      so it stays visible at its original position even when
+                    //      the pill slides away.
+                    //   2. "Search ghost visible when dragging over search area" —
+                    //      Previously the pill rendered its OWN Search icon on top
+                    //      of the glass (cbdb66828), so the underlying unselected
+                    //      white Search icon bled through the translucent glass
+                    //      creating a ghost/duplicate. Now the pill has NO content
+                    //      — only the underlying Search icon is visible (single
+                    //      layer, no duplicate).
                     //
                     // Unselected items use FULL opacity white (1.0) — bright and
-                    // legible on the dark glass bar. The user previously reported
-                    // poor visibility with 0.78 alpha; full white fixes that.
-                    selectedIconColor = Color.Transparent,
-                    selectedTextColor = Color.Transparent,
+                    // legible on the dark glass bar. The selected item's primary
+                    // color provides the visual differentiation (visible through
+                    // the glass pill).
+                    selectedIconColor = MaterialTheme.colorScheme.primary,
+                    selectedTextColor = MaterialTheme.colorScheme.primary,
                     unselectedIconColor = Color.White,
                     unselectedTextColor = Color.White,
                 )
@@ -1187,22 +1192,27 @@ fun FloatingNavigationToolbar(
                 val pillShape = RoundedCornerShape(percent = 50)
                 // SukiSU-Ultra FloatingBottomBar: capture theme-dependent values
                 // in the @Composable body. onDrawSurface's lambda is NOT
-                // @Composable, so isDark and primaryColor must be captured here.
-                // isDark → the darken veil color (Black in dark theme, White in
-                // light theme). primaryColor → the active icon/label tint, drawn
-                // as the pill's content on top of the glass.
+                // @Composable, so isDark must be captured here. isDark → the
+                // darken veil color (Black in dark theme, White in light theme).
                 //
-                // NO-DUPLICATE STRATEGY (SukiSU behavior):
-                // The pill renders the active icon + label as its CONTENT (in
-                // primary color, on top of the glass). The underlying bar's
-                // SELECTED item is Color.Transparent (see itemColors above), so
-                // it takes up layout space but is invisible — it CANNOT bleed
-                // through the translucent glass and create a duplicate layer.
-                // The pill's content is the SOLE visible rendering of the active
-                // tab. This matches SukiSU's behavior (pill shows active icon/
-                // label in accent color) without the duplicate-text/icons bug.
+                // PURE GLASS PILL (definitive SukiSU behavior, matches reference):
+                // The pill has NO content of its own — it's purely a translucent
+                // glass overlay (backdrop sample + ~10% darken veil + inner
+                // shadow on press). The underlying bar renders ALL tab icons +
+                // labels statically (selected in primary color, unselected in
+                // white). The user sees the selected tab's primary icon/label
+                // THROUGH the frosted glass — the pill is just a "window" with
+                // glass material properties that slides over the static icon
+                // layer.
+                //
+                // This is the ONLY configuration that eliminates BOTH bugs:
+                //   1. "Home icon disappears when dragging pill away" — the
+                //      selected item is primary (NOT transparent), so it stays
+                //      visible at its original position when the pill slides away.
+                //   2. "Search ghost when dragging over search" — the pill has
+                //      NO content, so there's no second layer to ghost over the
+                //      underlying unselected white Search icon.
                 val isDark = isSystemInDarkTheme()
-                val primaryColor = MaterialTheme.colorScheme.primary
                 Box(
                     modifier =
                         Modifier
@@ -1279,12 +1289,12 @@ fun FloatingNavigationToolbar(
                             // invisible". The lighter veil makes the glass more
                             // translucent, matching SukiSU's reference pill.
                             //
-                            // The active icon/label are rendered as the pill's CONTENT
-                            // (see the Box's content lambda below) — drawn ON TOP of
-                            // the glass backdrop sample + darken veil, so they're
-                            // always visible. The underlying bar's selected item is
-                            // Color.Transparent (invisible), so there's NO duplicate
-                            // layer bleeding through the glass.
+                            // The pill has NO content — the underlying bar's
+                            // selected item (primary color + SemiBold) shows THROUGH
+                            // the translucent glass. The ~10% darken veil is light
+                            // enough that the primary color remains vivid and
+                            // readable through the frosted glass, matching SukiSU's
+                            // reference pill.
                             .drawBackdrop(
                                 backdrop = liquidGlassBackdrop,
                                 effects = {
@@ -1326,53 +1336,14 @@ fun FloatingNavigationToolbar(
                                     null
                                 }
                             },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    // SukiSU-Ultra: render the active icon + label AS THE PILL'S
-                    // CONTENT so they're drawn ON TOP of the glass backdrop sample
-                    // + darken veil — always visible. The underlying bar's selected
-                    // item is Color.Transparent (invisible), so this is the SOLE
-                    // visible rendering of the active tab — NO duplicate layer.
-                    //
-                    // displayIndex follows the drag animation's continuous value
-                    // (rounded), so during a slide the pill shows the icon/label
-                    // of the tab it's currently closest to — matching SukiSU's
-                    // behavior where the pill's content blends as it slides.
-                    //
-                    // Icon-to-label spacing: tight 2.dp (Arrangement.spacedBy) to
-                    // match SukiSU's compact gap. The user asked to keep the text
-                    // close to the icon.
-                    val displayIndex = dragAnim.value.roundToInt().coerceIn(0, items.lastIndex)
-                    val displayScreen = items[displayIndex]
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically),
-                    ) {
-                        Icon(
-                            painter = painterResource(displayScreen.iconIdActive),
-                            contentDescription = null,
-                            tint = primaryColor,
-                            modifier =
-                                Modifier.graphicsLayer {
-                                    // SukiSU LocalFloatingBottomBarTabScale: the
-                                    // icon scales up to 1.2× during press, matching
-                                    // SukiSU's tab scale animation.
-                                    val scale = lerp(1f, 1.2f, dragAnim.pressProgress)
-                                    scaleX = scale
-                                    scaleY = scale
-                                },
-                        )
-                        if (!hideNavigationLabels) {
-                            Text(
-                                text = stringResource(displayScreen.titleId),
-                                color = primaryColor,
-                                fontWeight = FontWeight.SemiBold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-                    }
-                }
+                )
+                // ↑ PURE GLASS PILL — no content lambda.
+                // The pill is just a glass overlay (backdrop sample + darken veil
+                // + inner shadow). The underlying bar's selected item (primary
+                // color, SemiBold, iconIdActive) shows THROUGH the translucent
+                // glass — this is SukiSU's behavior. NO content is rendered here
+                // so there's no duplicate layer to ghost over the underlying
+                // unselected items when the pill slides over them.
             }
         }
         } // end wrapper Box (CenterStart — vertically centers the pill)
