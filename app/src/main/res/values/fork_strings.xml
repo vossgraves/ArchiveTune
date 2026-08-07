@@ -15,4 +15,12 @@
     <string name="deezer_sign_out">Sign out of Deezer</string>
     <string name="deezer_sign_out_description">Removes the stored session cookie from this device</string>
     <string name="deezer_signed_out">Signed out of Deezer</string>
+
+    <!-- DabMusic source (ui/screens/settings/PlaybackSourceSections.kt).
+         DabMusic is a community-operated lossless catalog at https://dabmusic.xyz. -->
+    <string name="source_dabmusic">DabMusic</string>
+    <string name="dabmusic_specific">DabMusic</string>
+    <string name="dabmusic_enable">Enable DabMusic streams</string>
+    <string name="dabmusic_enable_description">Stream lossless audio from dabmusic.xyz when a matching track is found</string>
+    <string name="dabmusic_base_url">DabMusic base URL</string>
 </resources>
