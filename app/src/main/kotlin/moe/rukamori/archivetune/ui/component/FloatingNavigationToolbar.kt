@@ -463,25 +463,13 @@ fun FloatingNavigationToolbar(
 
     val selectedIndex = items.indexOfFirst { isSelected(it) }
 
-    // displayIndex: the tab index the pill is currently over (follows the drag
-    // animation's continuous value, rounded to the nearest integer). At rest,
-    // this equals selectedIndex. During drag, it tracks which tab the pill is
-    // closest to. Used to make the underlying item at the pill's position
-    // Color.Transparent (so the pill's own content is the sole visible rendering
-    // — no double image/ghost when the pill slides over unselected tabs).
-    //
-    // derivedStateOf ensures recomposition only fires when displayIndex actually
-    // changes (crosses a tab boundary), not on every frame of the drag animation.
-    val displayIndex by remember(dampedDragAnimation) {
-        derivedStateOf {
-            dampedDragAnimation?.value?.roundToInt()?.coerceIn(0, items.lastIndex) ?: selectedIndex
-        }
-    }
-
     // Transparent colors for the item currently under the pill. The pill renders
     // its own content (icon + label in primary color) on top of the glass, so the
     // underlying item at the pill's position must be invisible to avoid a
     // duplicate layer bleeding through the translucent glass.
+    //
+    // NOTE: displayIndex is defined further down (after dampedDragAnimation is
+    // created) because it reads dampedDragAnimation.value.
     val liquidGlassTransparentColors =
         ShortNavigationBarItemDefaults.colors(
             selectedIndicatorColor = Color.Transparent,
@@ -605,6 +593,23 @@ fun FloatingNavigationToolbar(
                 null
             }
         }
+
+    // displayIndex: the tab index the pill is currently over (follows the drag
+    // animation's continuous value, rounded to the nearest integer). At rest,
+    // this equals selectedIndex. During drag, it tracks which tab the pill is
+    // closest to. Used to make the underlying item at the pill's position
+    // Color.Transparent (so the pill's own content is the sole visible rendering
+    // — no double image/ghost when the pill slides over unselected tabs).
+    //
+    // derivedStateOf ensures recomposition only fires when displayIndex actually
+    // changes (crosses a tab boundary), not on every frame of the drag animation.
+    // Must be defined AFTER dampedDragAnimation (above) since it reads
+    // dampedDragAnimation.value.
+    val displayIndex by remember(dampedDragAnimation) {
+        derivedStateOf {
+            dampedDragAnimation?.value?.roundToInt()?.coerceIn(0, items.lastIndex) ?: selectedIndex
+        }
+    }
 
     // External selectedIndex changes (tab tap, back button, deep-link, etc.)
     // drive the dampedDragAnimation. The first emission is skipped because the
