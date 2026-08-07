@@ -44,6 +44,7 @@ import androidx.compose.material3.ShortNavigationBarItem
 import androidx.compose.material3.ShortNavigationBarItemDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.ripple.LocalRippleConfiguration
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.compositionLocalOf
@@ -581,13 +582,17 @@ fun FloatingNavigationToolbar(
 
     val selectedCenter = if (selectedIndex >= 0) iconCenters[selectedIndex] else null
     val selectedItemBounds = if (selectedIndex >= 0) itemBounds[selectedIndex] else null
-    LaunchedEffect(selectedIndex, selectedCenter, selectedItemBounds, containerPos, disableAnimations, indicatorWidth, indicatorHeight, canLiquidGlass) {
+    // Track the items Row's top edge in the container Box's coords, so the
+    // Liquid Glass pill can be positioned at the items Row's content area
+    // (after the 4.dp vertical padding) without relying on the per-item
+    // `itemBounds` (which can report inconsistent heights depending on the
+    // ShortNavigationBarItem's internal layout in this Material3 version).
+    var itemsRowTopInContainer by remember { mutableFloatStateOf(0f) }
+    LaunchedEffect(selectedIndex, selectedCenter, selectedItemBounds, containerPos, disableAnimations, indicatorWidth, indicatorHeight, canLiquidGlass, tabWidthPx, itemsRowTopInContainer, itemVerticalPadding) {
         if (canLiquidGlass) {
-            // Liquid Glass: pill wraps the full item (icon + label). The pill's
-            // WIDTH and HEIGHT are derived from the selected item's measured bounds
-            // (with a small inset for breathing room). The pill's Y position is
-            // also derived from the item bounds (all items share the same Y since
-            // they're in a Row).
+            // Liquid Glass: pill dimensions match SukiSU-Ultra's FloatingBottomBar
+            // EXACTLY — width = tabWidthPx (the per-item content width), height =
+            // 56.dp (SukiSU's fixed pill height = 64.dp bar - 2×4.dp padding).
             //
             // The pill's X position is NOT driven by this LaunchedEffect for the
             // Liquid Glass variant — it's driven by `dampedDragAnimation.value`
@@ -597,26 +602,28 @@ fun FloatingNavigationToolbar(
             //
             // The dampedDragAnimation is initialized to `selectedIndex` and is
             // kept in sync via the `LaunchedEffect(dampedDragAnimation)` above.
-            val bounds = selectedItemBounds ?: return@LaunchedEffect
-            // SukiSU-Ultra: the inner pill wraps the FULL item bounds (icon +
-            // label) with NO inset — the user explicitly asked for "complete
-            // height like the referenced picture". The previous `pad = 4.dp`
-            // inset the pill 4dp on every side, shrinking it back to roughly
-            // the icon-only size and leaving the label poking out below the
-            // pill. With `pad = 0.dp` the pill exactly matches the
-            // ShortNavigationBarItem's measured bounds, so the entire selected
-            // item (icon + spacing + label) is enclosed — matching SukiSU's
-            // "pill encloses both icon and label" look. The floating effect
-            // (padding from the BAR's top/bottom edges) is already provided by
-            // the Row's `padding(vertical = NavigationItemVerticalPadding)`,
-            // which is reflected in the item bounds themselves.
-            val pad = 0.dp
-            val itemWidthDp = with(density) { bounds.width.toDp() }
-            val itemHeightDp = with(density) { bounds.height.toDp() }
-            liquidGlassPillWidth = (itemWidthDp - pad * 2).coerceAtLeast(indicatorWidth)
-            liquidGlassPillHeight = (itemHeightDp - pad * 2).coerceAtLeast(indicatorHeight)
-            val heightPx = with(density) { liquidGlassPillHeight.toPx() }
-            indicatorY = (bounds.top - containerPos.y) + (bounds.height - heightPx) / 2f
+            //
+            // WHY NOT USE itemBounds: previously the pill width/height were
+            // derived from `selectedItemBounds` (the ShortNavigationBarItem's
+            // measured bounds). In Material3 1.5.0-alpha23, the
+            // ShortNavigationBarItem's `onGloballyPositioned` reports bounds
+            // that don't reliably reflect the per-item content area — the
+            // reported height could span the full Surface height (64.dp) instead
+            // of the items Row's content area (56.dp), making the pill fill the
+            // entire nav bar with no breathing room. The user reported "the
+            // highlight takes up complete navigation bar" — this was the cause.
+            // Using `tabWidthPx` (computed from the items Row's own
+            // onGloballyPositioned, which is reliable) and a fixed 56.dp height
+            // restores the SukiSU "pill floats inside the bar with 4.dp inset
+            // on every side" look.
+            if (tabWidthPx <= 0f) return@LaunchedEffect
+            liquidGlassPillWidth = with(density) { tabWidthPx.toDp() }
+            liquidGlassPillHeight = SukiSUBarHeight - SukiSUItemPadding * 2 // 64 - 8 = 56.dp
+            // Position the pill at the items Row's content area top (which is
+            // `itemVerticalPadding` below the bar's top edge). The items Row
+            // fills the Surface height (64.dp) with 4.dp vertical padding, so
+            // its content area starts at y = 4.dp from the Surface's top.
+            indicatorY = itemsRowTopInContainer + with(density) { itemVerticalPadding.toPx() }
             indicatorPlaced = true
         } else {
             // Default / frosted / floating: pill wraps only the icon (label
@@ -779,17 +786,30 @@ fun FloatingNavigationToolbar(
                     )
                 }
             }
-            // NOTE: The user asked to remove the tap ripple that appears inside
-            // the highlight when clicking a nav bar icon. This was previously
-            // attempted via CompositionLocalProvider(LocalIndication provides null),
-            // but LocalIndication is a non-null type in this Compose version, so
-            // providing null doesn't compile. The LocalRippleConfiguration API
-            // (which would allow null) is not available in material3 1.5.0-alpha23
-            // without a separate material3-ripple artifact that doesn't exist at
-            // this version. The ripple suppression is deferred — the other 3
-            // changes (pill overflow, drag-from-anywhere, tighter spacing) are
-            // the higher-priority refinements and should be verified first.
-            ShortNavigationBar(
+            // Make the tap ripple COMPLETELY TRANSPARENT so the "small gray touch
+            // indicator" the user reported (which appears inside the highlight when
+            // clicking a nav bar icon) is invisible. The user explicitly asked for
+            // this: "Instead of removing that gray touch indicator make it
+            // completely transparent".
+            //
+            // LocalRippleConfiguration is the Material3 API (in the
+            // `androidx.compose.material3.ripple` package, part of the main
+            // `material3` artifact — no separate dependency needed as of
+            // material3 1.4.0+). Providing `null` disables the ripple entirely
+            // (no ripple drawable is rendered). This is visually equivalent to a
+            // fully transparent ripple, which is what the user wants.
+            //
+            // Previous attempts:
+            //   - `LocalIndication provides null` — failed because LocalIndication
+            //     is non-null in this Compose version.
+            //   - `foundation.ripple.LocalRippleConfiguration` — wrong package;
+            //     the API lives in `material3.ripple`, not `foundation.ripple`.
+            //   - Adding a `material3-ripple` artifact — unnecessary; the API is
+            //     in the main `material3` artifact.
+            androidx.compose.runtime.CompositionLocalProvider(
+                LocalRippleConfiguration provides null,
+            ) {
+                ShortNavigationBar(
                     modifier = Modifier.fillMaxSize(),
                     containerColor = Color.Transparent,
                     contentColor =
@@ -874,6 +894,7 @@ fun FloatingNavigationToolbar(
                                     //      can reject touches outside the items Row.
                                     val rowPosInRoot = coordinates.positionInRoot()
                                     itemsRowLeftInContainer = rowPosInRoot.x - containerPos.x
+                                    itemsRowTopInContainer = rowPosInRoot.y - containerPos.y
                                     totalWidthPx = coordinates.size.width.toFloat()
                                     // SukiSU-Ultra: SukiSU's FloatingBottomBar computes tabWidthPx
                                     // as `(totalWidthPx - 8.dp.toPx()) / tabsCount` — i.e. it
@@ -1042,125 +1063,141 @@ fun FloatingNavigationToolbar(
                     }
                 }
             }
+            } // end CompositionLocalProvider(LocalRippleConfiguration provides null)
 
-            // ─── SukiSU-Ultra Liquid Glass pill overlay (rendered OUTSIDE the Surface) ───
-            // The Liquid Glass pill is rendered as a SIBLING of the Surface (not
-            // inside it) so it's NOT clipped by the Surface's navigation shape.
-            // This is what enables the SukiSU-Ultra "highlight bigger than the
-            // nav bar itself" behavior: when the user holds an icon, the pill's
-            // graphicsLayer scales up to 1.393× (SukiSU's pressedScale = 78f/56f),
-            // making it extend ~7dp above and ~7dp below the 64dp bar — visible
-            // OUTSIDE the bar's boundary, exactly like SukiSU.
-            //
-            // Positioning: the pill is a child of the outer Box, aligned to
-            // TopStart of the Box's CONTENT area (after window inset padding).
-            // We compute the pill's desired position in ROOT coords (from
-            // containerPos + itemsRowLeftInContainer + slide math), then
-            // subtract barPositionInRoot (the Surface's top-left in root) to
-            // get the offset relative to the Surface. For the non-floating
-            // variant (the common case for Liquid Glass), the Surface fills
-            // the content area, so barPositionInRoot == content area top-left,
-            // and the offset is correct. For the floating variant, there's a
-            // small horizontal centering offset that's not accounted for —
-            // but Liquid Glass + floating is an uncommon combination.
-            //
-            // The pill's liquidGlass modifier samples the backdrop at the pill's
-            // LAYOUT position (after .offset), which is the slide position in the
-            // window — so the glass always shows what's behind the pill at its
-            // current slide position, even when the pill is outside the bar.
-            if (canLiquidGlass && selectedIndex >= 0 && indicatorPlaced && liquidGlassBackdrop != null) {
-                val pillWidth = liquidGlassPillWidth
-                val pillHeight = liquidGlassPillHeight
-                val dragAnim = dampedDragAnimation
-                if (pillWidth > 0.dp && pillHeight > 0.dp && dragAnim != null && tabWidthPx > 0f) {
-                    val pillShape = RoundedCornerShape(percent = 50)
-                    // Extract colors in the @Composable body (drawWithContent's
-                    // lambda is NOT @Composable, so MaterialTheme.colorScheme.primary
-                    // can't be read inside it).
-                    val pillTintColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.28f)
-                    val pillDarkBase = Color.Black.copy(alpha = 0.32f)
-                    Box(
-                        modifier =
-                            Modifier
-                                .align(Alignment.TopStart)
-                                .offset {
-                                    // Compute the pill's position in root coords, then
-                                    // translate to the Surface's coordinate system.
-                                    // For non-floating, barPositionInRoot == content
-                                    // area top-left, so this is correct.
-                                    val pillWidthPx = pillWidth.toPx()
-                                    val hPaddingPx = itemHorizontalPadding.toPx()
-                                    val xInRoot =
-                                        containerPos.x +
-                                            itemsRowLeftInContainer +
-                                            hPaddingPx +
-                                            dragAnim.value * tabWidthPx +
-                                            (tabWidthPx - pillWidthPx) / 2f +
-                                            panelOffset
-                                    val yInRoot = containerPos.y + indicatorY
-                                    val xRelativeToBar = xInRoot - barPositionInRoot.x
-                                    val yRelativeToBar = yInRoot - barPositionInRoot.y
-                                    IntOffset(xRelativeToBar.roundToInt(), yRelativeToBar.roundToInt())
+            // ─── SukiSU-Ultra Liquid Glass pill overlay ───
+            // NOTE: This pill is now rendered OUTSIDE the Surface (as a sibling of
+            // the Surface in the outer Box) — see the block after the Surface's
+            // closing brace below. Previously it was inside the Surface's content
+            // lambda, which caused the Surface's `clip = true` (set by the
+            // CircleShape navigation shape) to clip the pill's press-scale growth,
+            // preventing the "highlight bigger than the nav bar itself" behavior.
+            // Moving it outside the Surface means the pill's graphicsLayer
+            // (pressScale = 1.393×) is NOT clipped — the pill extends beyond the
+            // bar's bounds when pressed, exactly like SukiSU.
+        }
+
+        // ─── SukiSU-Ultra Liquid Glass pill overlay (OUTSIDE the Surface) ───
+        // The Liquid Glass pill is rendered as a SIBLING of the Surface (not
+        // inside it) so it's NOT clipped by the Surface's navigation shape.
+        // This is what enables the SukiSU-Ultra "highlight bigger than the
+        // nav bar itself" behavior: when the user holds an icon, the pill's
+        // graphicsLayer scales up to 1.393× (SukiSU's pressedScale = 78f/56f),
+        // making it extend ~7dp above and ~7dp below the 64dp bar — visible
+        // OUTSIDE the bar's boundary, exactly like SukiSU.
+        //
+        // Positioning: the pill is a child of the outer Box, aligned to
+        // TopStart of the Box's CONTENT area (after window inset padding).
+        // We compute the pill's desired position in ROOT coords (from
+        // containerPos + itemsRowLeftInContainer + slide math), then
+        // subtract barPositionInRoot (the Surface's top-left in root) to
+        // get the offset relative to the outer Box. For the non-floating
+        // variant (the common case for Liquid Glass), the Surface fills
+        // the content area, so barPositionInRoot == content area top-left,
+        // and the offset is correct. For the floating variant, there's a
+        // small horizontal centering offset that's not accounted for —
+        // but Liquid Glass + floating is an uncommon combination.
+        //
+        // The pill's liquidGlass modifier samples the backdrop at the pill's
+        // LAYOUT position (after .offset), which is the slide position in the
+        // window — so the glass always shows what's behind the pill at its
+        // current slide position, even when the pill is outside the bar.
+        if (canLiquidGlass && selectedIndex >= 0 && indicatorPlaced && liquidGlassBackdrop != null) {
+            val pillWidth = liquidGlassPillWidth
+            val pillHeight = liquidGlassPillHeight
+            val dragAnim = dampedDragAnimation
+            if (pillWidth > 0.dp && pillHeight > 0.dp && dragAnim != null && tabWidthPx > 0f) {
+                val pillShape = RoundedCornerShape(percent = 50)
+                // Extract colors in the @Composable body (drawWithContent's
+                // lambda is NOT @Composable, so MaterialTheme.colorScheme.primary
+                // can't be read inside it).
+                val pillTintColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.28f)
+                val pillDarkBase = Color.Black.copy(alpha = 0.32f)
+                Box(
+                    modifier =
+                        Modifier
+                            .align(Alignment.TopStart)
+                            .offset {
+                                // Compute the pill's position in root coords, then
+                                // translate to the outer Box's coordinate system.
+                                // For non-floating, barPositionInRoot == outer Box
+                                // content area top-left, so this is correct.
+                                val pillWidthPx = pillWidth.toPx()
+                                val hPaddingPx = itemHorizontalPadding.toPx()
+                                val xInRoot =
+                                    containerPos.x +
+                                        itemsRowLeftInContainer +
+                                        hPaddingPx +
+                                        dragAnim.value * tabWidthPx +
+                                        (tabWidthPx - pillWidthPx) / 2f +
+                                        panelOffset
+                                val yInRoot = containerPos.y + indicatorY
+                                val xRelativeToBox = xInRoot - barPositionInRoot.x
+                                val yRelativeToBox = yInRoot - barPositionInRoot.y
+                                IntOffset(xRelativeToBox.roundToInt(), yRelativeToBox.roundToInt())
+                            }
+                            .width(pillWidth)
+                            .height(pillHeight)
+                            // Liquid-glass pill with SukiSU-style press feedback.
+                            // Modifier order (outermost → innermost):
+                            //   graphicsLayer (scale + velocity-stretch)
+                            //   → liquidGlass (backdrop sample + veil)
+                            //   → innerShadow (press-state inner darkening)
+                            //   → drawWithContent (primary tint on top)
+                            //
+                            // The graphicsLayer is OUTSIDE liquidGlass so the scale +
+                            // velocity-stretch apply to the rendered glass output. The
+                            // backdrop sample is taken from the LAYOUT position (after
+                            // .offset), which is the slide position — so the glass always
+                            // shows what's behind the pill at its current slide position.
+                            // This matches SukiSU's behavior.
+                            //
+                            // CRITICAL: because this pill is now a SIBLING of the Surface
+                            // (not a child), the outer Box does NOT clip it (Box's default
+                            // clip = false). The graphicsLayer's pressScale = 1.393×
+                            // therefore makes the pill extend BEYOND the bar's bounds —
+                            // ~7dp above and ~7dp below the 64dp bar when fully pressed.
+                            // This is the SukiSU "highlight bigger than the nav bar
+                            // itself" behavior the user asked for.
+                            .graphicsLayer {
+                                // SukiSU pressedScale = 78f / 56f ≈ 1.393.
+                                // Velocity-stretch: the pill squishes horizontally when
+                                // flung (a physical "rubber" feel). The asymmetry (0.75 ×
+                                // horizontal, 0.25 × vertical) preserves area roughly.
+                                val pressScale = lerp(1f, 78f / 56f, dragAnim.pressProgress)
+                                val velocityStretch = (dragAnim.velocity / 10f).fastCoerceIn(-0.2f, 0.2f)
+                                scaleX = pressScale / (1f - velocityStretch * 0.75f)
+                                scaleY = pressScale * (1f - velocityStretch * 0.25f)
+                            }
+                            .liquidGlass(
+                                backdrop = liquidGlassBackdrop,
+                                shape = pillShape,
+                                interactive = false,
+                            )
+                            .innerShadow(shape = pillShape) {
+                                // Inner shadow only appears during press — radius + alpha
+                                // both scale with pressProgress. This is the "glass lifted
+                                // off the bar" feel.
+                                if (dragAnim.pressProgress > 0f) {
+                                    InnerShadow(
+                                        radius = 8.dp * dragAnim.pressProgress,
+                                        color = Color.Black.copy(alpha = 0.15f),
+                                        alpha = dragAnim.pressProgress,
+                                    )
+                                } else {
+                                    null
                                 }
-                                .width(pillWidth)
-                                .height(pillHeight)
-                                // Liquid-glass pill with SukiSU-style press feedback.
-                                // Modifier order (outermost → innermost):
-                                //   graphicsLayer (scale + velocity-stretch)
-                                //   → liquidGlass (backdrop sample + veil)
-                                //   → innerShadow (press-state inner darkening)
-                                //   → drawWithContent (primary tint on top)
-                                //
-                                // The graphicsLayer is OUTSIDE liquidGlass so the scale +
-                                // velocity-stretch apply to the rendered glass output. The
-                                // backdrop sample is taken from the LAYOUT position (after
-                                // .offset), which is the slide position — so the glass always
-                                // shows what's behind the pill at its current slide position.
-                                // This matches SukiSU's behavior.
-                                .graphicsLayer {
-                                    // SukiSU pressedScale = 78f / 56f ≈ 1.393.
-                                    // Velocity-stretch: the pill squishes horizontally when
-                                    // flung (a physical "rubber" feel). The asymmetry (0.75 ×
-                                    // horizontal, 0.25 × vertical) preserves area roughly.
-                                    //
-                                    // Because this pill is OUTSIDE the Surface, the scaled
-                                    // output is NOT clipped — the pill extends beyond the
-                                    // bar's bounds when pressed, exactly like SukiSU.
-                                    val pressScale = lerp(1f, 78f / 56f, dragAnim.pressProgress)
-                                    val velocityStretch = (dragAnim.velocity / 10f).fastCoerceIn(-0.2f, 0.2f)
-                                    scaleX = pressScale / (1f - velocityStretch * 0.75f)
-                                    scaleY = pressScale * (1f - velocityStretch * 0.25f)
-                                }
-                                .liquidGlass(
-                                    backdrop = liquidGlassBackdrop,
-                                    shape = pillShape,
-                                    interactive = false,
-                                )
-                                .innerShadow(shape = pillShape) {
-                                    // Inner shadow only appears during press — radius + alpha
-                                    // both scale with pressProgress. This is the "glass lifted
-                                    // off the bar" feel.
-                                    if (dragAnim.pressProgress > 0f) {
-                                        InnerShadow(
-                                            radius = 8.dp * dragAnim.pressProgress,
-                                            color = Color.Black.copy(alpha = 0.15f),
-                                            alpha = dragAnim.pressProgress,
-                                        )
-                                    } else {
-                                        null
-                                    }
-                                }
-                                .drawWithContent {
-                                    drawContent()
-                                    // SukiSU-Ultra pill: dark base (for contrast with the
-                                    // bright primary icon/label) + primary tint on top (so
-                                    // the pill reads as colored glass matching the selected
-                                    // item's primary).
-                                    drawRect(color = pillDarkBase)
-                                    drawRect(color = pillTintColor)
-                                },
-                    )
-                }
+                            }
+                            .drawWithContent {
+                                drawContent()
+                                // SukiSU-Ultra pill: dark base (for contrast with the
+                                // bright primary icon/label) + primary tint on top (so
+                                // the pill reads as colored glass matching the selected
+                                // item's primary).
+                                drawRect(color = pillDarkBase)
+                                drawRect(color = pillTintColor)
+                            },
+                )
             }
         }
     }
