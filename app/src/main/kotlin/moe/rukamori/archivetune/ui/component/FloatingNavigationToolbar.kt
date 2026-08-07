@@ -19,7 +19,9 @@ import androidx.compose.animation.core.spring
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -87,6 +89,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -399,36 +402,26 @@ fun FloatingNavigationToolbar(
             canLiquidGlass ->
                 ShortNavigationBarItemDefaults.colors(
                     selectedIndicatorColor = Color.Transparent,
-                    // SukiSU-Ultra behavior (definitive, matches reference video):
-                    // The pill is PURE GLASS with NO content of its own. The
-                    // selected tab's icon + label are rendered on the UNDERLYING
-                    // bar in primary color + SemiBold — the user sees them THROUGH
-                    // the translucent glass pill. The pill is just a "window" with
-                    // glass material properties that slides over the static icon
-                    // layer.
+                    // SukiSU-Ultra: underlying bar is UNIFORM — all items (selected
+                    // and unselected) render in white. The pill overlay renders the
+                    // active icon/label in primary color ON TOP of the glass (as the
+                    // pill's content). The item at the pill's current position
+                    // (displayIndex) is made Color.Transparent dynamically (see
+                    // liquidGlassTransparentColors below) so it doesn't bleed
+                    // through the glass and create a duplicate/ghost.
                     //
-                    // This eliminates BOTH bugs the user reported:
-                    //   1. "Home icon disappears when dragging pill away" —
-                    //      Previously the selected item was Color.Transparent
-                    //      (cbdb66828), so when the pill slid away from the
-                    //      selected tab, nothing was visible at that position.
-                    //      Now the selected item is primary color (NOT transparent),
-                    //      so it stays visible at its original position even when
-                    //      the pill slides away.
-                    //   2. "Search ghost visible when dragging over search area" —
-                    //      Previously the pill rendered its OWN Search icon on top
-                    //      of the glass (cbdb66828), so the underlying unselected
-                    //      white Search icon bled through the translucent glass
-                    //      creating a ghost/duplicate. Now the pill has NO content
-                    //      — only the underlying Search icon is visible (single
-                    //      layer, no duplicate).
-                    //
-                    // Unselected items use FULL opacity white (1.0) — bright and
-                    // legible on the dark glass bar. The selected item's primary
-                    // color provides the visual differentiation (visible through
-                    // the glass pill).
-                    selectedIconColor = MaterialTheme.colorScheme.primary,
-                    selectedTextColor = MaterialTheme.colorScheme.primary,
+                    // This is the ONLY approach that fixes ALL three bugs:
+                    //   1. "Icon invisible when bright content behind nav bar" —
+                    //      the icon is rendered ON TOP of the glass (pill content),
+                    //      not behind it. Always visible regardless of backdrop.
+                    //   2. "Home icon disappears when dragging pill away" — the
+                    //      underlying selected item is white (NOT transparent), so
+                    //      it stays visible when the pill slides away.
+                    //   3. "Search ghost when dragging over search" — the item at
+                    //      displayIndex is Color.Transparent, so there's no white
+                    //      icon behind the pill's primary icon to create a ghost.
+                    selectedIconColor = Color.White,
+                    selectedTextColor = Color.White,
                     unselectedIconColor = Color.White,
                     unselectedTextColor = Color.White,
                 )
@@ -469,6 +462,34 @@ fun FloatingNavigationToolbar(
         }
 
     val selectedIndex = items.indexOfFirst { isSelected(it) }
+
+    // displayIndex: the tab index the pill is currently over (follows the drag
+    // animation's continuous value, rounded to the nearest integer). At rest,
+    // this equals selectedIndex. During drag, it tracks which tab the pill is
+    // closest to. Used to make the underlying item at the pill's position
+    // Color.Transparent (so the pill's own content is the sole visible rendering
+    // — no double image/ghost when the pill slides over unselected tabs).
+    //
+    // derivedStateOf ensures recomposition only fires when displayIndex actually
+    // changes (crosses a tab boundary), not on every frame of the drag animation.
+    val displayIndex by remember(dampedDragAnimation) {
+        derivedStateOf {
+            dampedDragAnimation?.value?.roundToInt()?.coerceIn(0, items.lastIndex) ?: selectedIndex
+        }
+    }
+
+    // Transparent colors for the item currently under the pill. The pill renders
+    // its own content (icon + label in primary color) on top of the glass, so the
+    // underlying item at the pill's position must be invisible to avoid a
+    // duplicate layer bleeding through the translucent glass.
+    val liquidGlassTransparentColors =
+        ShortNavigationBarItemDefaults.colors(
+            selectedIndicatorColor = Color.Transparent,
+            selectedIconColor = Color.Transparent,
+            selectedTextColor = Color.Transparent,
+            unselectedIconColor = Color.Transparent,
+            unselectedTextColor = Color.Transparent,
+        )
 
     // Measured center of each item's icon (root-space) and the row container's top-left, so the pill
     // can slide to the exact icon position regardless of layout/insets. Only the icon is tracked so
@@ -1034,7 +1055,7 @@ fun FloatingNavigationToolbar(
                             ShortNavigationBarItem(
                                 selected = selected,
                                 onClick = onClick,
-                                colors = itemColors,
+                                colors = if (canLiquidGlass && index == displayIndex) liquidGlassTransparentColors else itemColors,
                                 modifier =
                                     Modifier
                                         .weight(1f)
@@ -1074,14 +1095,11 @@ fun FloatingNavigationToolbar(
                                             Icon(
                                                 painter =
                                                     painterResource(
-                                                        // The underlying bar renders the ACTIVE
-                                                        // icon variant for the selected tab so
-                                                        // it shows THROUGH the translucent Liquid
-                                                        // Glass pill (the pill is pure glass with
-                                                        // no content of its own — the user sees
-                                                        // the underlying bar's primary-colored
-                                                        // active icon through the frosted glass).
-                                                        if (isSelected) screen.iconIdActive else screen.iconIdInactive,
+                                                        // For Liquid Glass: the underlying bar always
+                                                        // uses the INACTIVE icon variant. The pill
+                                                        // overlay renders the ACTIVE variant in
+                                                        // primary color on top of the glass.
+                                                        if (canLiquidGlass) screen.iconIdInactive else if (isSelected) screen.iconIdActive else screen.iconIdInactive,
                                                     ),
                                                 contentDescription = null,
                                                 modifier =
@@ -1120,21 +1138,10 @@ fun FloatingNavigationToolbar(
                                                 // compact gap (the label sits ~0-2dp below the
                                                 // icon's bottom edge).
                                                 modifier = Modifier.offset(y = (-4).dp),
-                                                // SukiSU-Ultra: the selected label is SemiBold
-                                                // so it reads as "heavier" than unselected
-                                                // labels — matching the reference bar's
-                                                // "Medium/Semi-Bold selected, Regular
-                                                // unselected" type treatment. The Liquid Glass
-                                                // variant applies this always (the bright
-                                                // primary color + SemiBold weight together
-                                                // create the strong selected emphasis that
-                                                // shows THROUGH the translucent glass pill).
-                                                fontWeight =
-                                                    if (selected) {
-                                                        FontWeight.SemiBold
-                                                    } else {
-                                                        FontWeight.Normal
-                                                    },
+                                                // Liquid Glass: underlying label is always Normal.
+                                                // The pill overlay renders the active label in
+                                                // SemiBold (primary color) on top of the glass.
+                                                fontWeight = FontWeight.Normal,
                                             )
                                         } else {
                                             Spacer(Modifier.height(navBarLabelSpacing.dp))
@@ -1195,24 +1202,27 @@ fun FloatingNavigationToolbar(
                 // @Composable, so isDark must be captured here. isDark → the
                 // darken veil color (Black in dark theme, White in light theme).
                 //
-                // PURE GLASS PILL (definitive SukiSU behavior, matches reference):
-                // The pill has NO content of its own — it's purely a translucent
-                // glass overlay (backdrop sample + ~10% darken veil + inner
-                // shadow on press). The underlying bar renders ALL tab icons +
-                // labels statically (selected in primary color, unselected in
-                // white). The user sees the selected tab's primary icon/label
-                // THROUGH the frosted glass — the pill is just a "window" with
-                // glass material properties that slides over the static icon
-                // layer.
+                // PILL WITH CONTENT (SukiSU behavior — fixes ALL three bugs):
+                // The pill renders the active icon + label in primary color AS ITS
+                // CONTENT, drawn ON TOP of the glass backdrop sample + darken veil.
+                // This makes them ALWAYS visible regardless of what's behind the
+                // nav bar (bright album art, dark background, etc.).
                 //
-                // This is the ONLY configuration that eliminates BOTH bugs:
-                //   1. "Home icon disappears when dragging pill away" — the
-                //      selected item is primary (NOT transparent), so it stays
-                //      visible at its original position when the pill slides away.
-                //   2. "Search ghost when dragging over search" — the pill has
-                //      NO content, so there's no second layer to ghost over the
-                //      underlying unselected white Search icon.
+                // To avoid the duplicate/ghost bug, the underlying item at the
+                // pill's current position (displayIndex) is Color.Transparent
+                // (see liquidGlassTransparentColors). So there's only ONE visible
+                // layer of the active icon/label — the pill's content. The other
+                // underlying items (not at displayIndex) are white (visible).
+                //
+                // This fixes:
+                //   1. "Icon invisible when bright content behind nav bar" — icon
+                //      is ON TOP of the glass (pill content), not behind it.
+                //   2. "Home icon disappears when dragging pill away" — underlying
+                //      items are white (not transparent), so they stay visible.
+                //   3. "Search ghost when dragging over search" — item at
+                //      displayIndex is transparent, no white ghost behind pill.
                 val isDark = isSystemInDarkTheme()
+                val primaryColor = MaterialTheme.colorScheme.primary
                 Box(
                     modifier =
                         Modifier
@@ -1289,12 +1299,13 @@ fun FloatingNavigationToolbar(
                             // invisible". The lighter veil makes the glass more
                             // translucent, matching SukiSU's reference pill.
                             //
-                            // The pill has NO content — the underlying bar's
-                            // selected item (primary color + SemiBold) shows THROUGH
-                            // the translucent glass. The ~10% darken veil is light
-                            // enough that the primary color remains vivid and
-                            // readable through the frosted glass, matching SukiSU's
-                            // reference pill.
+                            // The pill renders the active icon + label as its
+                            // CONTENT (see the Box's content lambda below) — drawn
+                            // ON TOP of the glass backdrop sample + darken veil,
+                            // so they're always visible regardless of what's behind
+                            // the nav bar. The underlying item at displayIndex is
+                            // Color.Transparent, so there's NO duplicate layer
+                            // bleeding through the glass.
                             .drawBackdrop(
                                 backdrop = liquidGlassBackdrop,
                                 effects = {
@@ -1336,14 +1347,53 @@ fun FloatingNavigationToolbar(
                                     null
                                 }
                             },
-                )
-                // ↑ PURE GLASS PILL — no content lambda.
-                // The pill is just a glass overlay (backdrop sample + darken veil
-                // + inner shadow). The underlying bar's selected item (primary
-                // color, SemiBold, iconIdActive) shows THROUGH the translucent
-                // glass — this is SukiSU's behavior. NO content is rendered here
-                // so there's no duplicate layer to ghost over the underlying
-                // unselected items when the pill slides over them.
+                    contentAlignment = Alignment.Center,
+                ) {
+                    // SukiSU-Ultra: render the active icon + label AS THE PILL'S
+                    // CONTENT — drawn ON TOP of the glass backdrop sample + darken
+                    // veil. This makes them ALWAYS visible regardless of what's
+                    // behind the nav bar (bright album art, dark background, etc.).
+                    //
+                    // The underlying item at displayIndex is Color.Transparent
+                    // (see liquidGlassTransparentColors), so there's NO duplicate
+                    // layer — the pill's content is the SOLE visible rendering of
+                    // the active tab.
+                    //
+                    // displayIndex follows the drag animation's continuous value
+                    // (rounded), so the pill shows the icon/label of the tab it's
+                    // currently closest to — matching SukiSU's behavior.
+                    //
+                    // Icon-to-label spacing: tight 2.dp (Arrangement.spacedBy) to
+                    // match SukiSU's compact gap.
+                    val displayScreen = items[displayIndex]
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically),
+                    ) {
+                        Icon(
+                            painter = painterResource(displayScreen.iconIdActive),
+                            contentDescription = null,
+                            tint = primaryColor,
+                            modifier =
+                                Modifier.graphicsLayer {
+                                    // SukiSU LocalFloatingBottomBarTabScale: the
+                                    // icon scales up to 1.2× during press.
+                                    val scale = lerp(1f, 1.2f, dragAnim.pressProgress)
+                                    scaleX = scale
+                                    scaleY = scale
+                                },
+                        )
+                        if (!hideNavigationLabels) {
+                            Text(
+                                text = stringResource(displayScreen.titleId),
+                                color = primaryColor,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                }
             }
         }
         } // end wrapper Box (CenterStart — vertically centers the pill)
