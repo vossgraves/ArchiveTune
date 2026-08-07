@@ -137,20 +137,10 @@ fun SpotifyPlaylistScreen(
     // shifts all items below it. By saving firstVisibleItemIndex + scrollOffset
     // BEFORE the collapse and restoring them AFTER the expand, the visible
     // position is preserved across open/close search.
+    // (The LaunchedEffect that uses these is declared further below, AFTER
+    // isSearching is created — Kotlin requires vals to be declared before use.)
     var savedScrollIndex by remember { mutableStateOf(0) }
     var savedScrollOffset by remember { mutableStateOf(0) }
-    LaunchedEffect(isSearching) {
-        if (isSearching) {
-            // Save BEFORE the header collapses (next frame).
-            savedScrollIndex = lazyListState.firstVisibleItemIndex
-            savedScrollOffset = lazyListState.firstVisibleItemScrollOffset
-        } else {
-            // Restore AFTER the header has expanded back. A single frame delay
-            // lets the LazyColumn re-measure with the header at full height.
-            withFrameNanos {}
-            lazyListState.scrollToItem(savedScrollIndex, savedScrollOffset)
-        }
-    }
 
     val downloadState =
         remember(state.downloadItems, downloads) {
@@ -283,7 +273,17 @@ fun SpotifyPlaylistScreen(
         }
 
     LaunchedEffect(isSearching) {
-        if (isSearching) focusRequester.requestFocus()
+        if (isSearching) {
+            // Save scroll position BEFORE the header collapses, then focus the search field.
+            savedScrollIndex = lazyListState.firstVisibleItemIndex
+            savedScrollOffset = lazyListState.firstVisibleItemScrollOffset
+            focusRequester.requestFocus()
+        } else {
+            // Restore scroll position AFTER the header has expanded back. A single
+            // frame delay lets the LazyColumn re-measure with the header at full height.
+            withFrameNanos {}
+            lazyListState.scrollToItem(savedScrollIndex, savedScrollOffset)
+        }
     }
 
     LaunchedEffect(viewModel) {

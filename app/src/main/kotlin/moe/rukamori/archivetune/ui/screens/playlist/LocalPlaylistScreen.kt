@@ -233,17 +233,13 @@ fun LocalPlaylistScreen(
     // shifts all items below it. By saving firstVisibleItemIndex + scrollOffset
     // BEFORE the collapse and restoring them AFTER the expand, the visible
     // position is preserved across open/close search.
+    // (The LaunchedEffect that uses these is declared further below, AFTER
+    // lazyListState is created — Kotlin requires vals to be declared before use.)
     var savedScrollIndex by remember { mutableStateOf(0) }
     var savedScrollOffset by remember { mutableStateOf(0) }
     LaunchedEffect(isSearching) {
         if (isSearching) {
-            savedScrollIndex = lazyListState.firstVisibleItemIndex
-            savedScrollOffset = lazyListState.firstVisibleItemScrollOffset
             focusRequester.requestFocus()
-        } else {
-            // Wait one frame for the header to re-expand before restoring.
-            withFrameNanos {}
-            lazyListState.scrollToItem(savedScrollIndex, savedScrollOffset)
         }
     }
 
@@ -480,6 +476,22 @@ fun LocalPlaylistScreen(
                 mutableSongs.move(from.index - headerItems, to.index - headerItems)
             }
         }
+
+    // Save scroll position when entering search, restore when leaving.
+    // The header item collapses to height 0 when isSearching becomes true, which
+    // shifts all items below it. By saving firstVisibleItemIndex + scrollOffset
+    // BEFORE the collapse and restoring them AFTER the expand, the visible
+    // position is preserved across open/close search.
+    LaunchedEffect(isSearching) {
+        if (isSearching) {
+            savedScrollIndex = lazyListState.firstVisibleItemIndex
+            savedScrollOffset = lazyListState.firstVisibleItemScrollOffset
+        } else {
+            // Wait one frame for the header to re-expand before restoring.
+            withFrameNanos {}
+            lazyListState.scrollToItem(savedScrollIndex, savedScrollOffset)
+        }
+    }
 
     LaunchedEffect(reorderableState.isAnyItemDragging) {
         if (!reorderableState.isAnyItemDragging) {

@@ -821,6 +821,11 @@ fun FloatingNavigationToolbar(
                 val pillShape = RoundedCornerShape(percent = 50)
                 val isDark = isSystemInDarkTheme()
                 val primaryColor = MaterialTheme.colorScheme.primary
+                // Fallback surface drawn UNDER the backdrop sample. Hoisted to the
+                // composable scope because MaterialTheme.colorScheme is only
+                // accessible from a @Composable context (onDrawBehind is a plain
+                // DrawScope lambda).
+                val pillFallbackColor = MaterialTheme.colorScheme.surfaceContainerHigh
                 Box(
                     modifier =
                         Modifier
@@ -887,7 +892,7 @@ fun FloatingNavigationToolbar(
                                 // (baseColor = surfaceContainerHigh) and the Frosted nav
                                 // bar variant (opaque surface + 30% alpha overlay).
                                 onDrawBehind = {
-                                    drawRect(MaterialTheme.colorScheme.surfaceContainerHigh)
+                                    drawRect(pillFallbackColor)
                                 },
                                 onDrawSurface = {
                                     val progress = dragAnim.pressProgress
