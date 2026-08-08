@@ -130,6 +130,32 @@ object TelegramBotClient {
         )
     }
 
+    /**
+     * Fetches the bot's advertised command list (the commands the bot registered via @BotFather,
+     * scoped to this specific chat). Returns an empty list if the bot hasn't registered any
+     * commands or if the request fails.
+     *
+     * Some music bots require slash commands (e.g. `/search <query>`, `/download <link>`) to
+     * search and download songs — pasting a bare URL doesn't work. The chat UI uses this list to
+     * populate a "/"-button command picker so the user can discover and insert those commands
+     * without having to memorize them.
+     *
+     * TDLib API: `GetCommands(BotCommandScope scope, String languageCode)` → `BotCommands`
+     * (which wraps `Array<BotCommand>` where each `BotCommand` has `command: String` and
+     * `description: String`). `BotCommandScopeChat(chatId)` scopes the query to the current bot
+     * chat; an empty languageCode returns commands for all languages.
+     */
+    suspend fun fetchBotCommands(chatId: Long): List<TelegramBotCommand> = runCatching {
+        val result = TelegramClient.send(
+            TdApi.GetCommands(TdApi.BotCommandScopeChat(chatId), ""),
+        )
+        result?.commands?.map { cmd ->
+            TelegramBotCommand(command = cmd.command, description = cmd.description)
+        } ?: emptyList()
+    }.onFailure { e ->
+        Timber.tag(TAG).w(e, "fetchBotCommands: failed for chatId=%s", chatId)
+    }.getOrDefault(emptyList())
+
     // ------------------------------------------------------------------
     // Reply collection
     // ------------------------------------------------------------------
@@ -427,4 +453,17 @@ data class TelegramBotPrompt(
 sealed interface BotReply {
     data class Track(val track: TelegramTrack) : BotReply
     data class Prompt(val prompt: TelegramBotPrompt) : BotReply
+}
+
+/**
+ * A slash-command advertised by a bot (registered via @BotFather). The chat UI shows these in a
+ * "/"-button command picker so the user can discover and insert them without memorizing.
+ * `command` does NOT include the leading `/` — the UI adds it when inserting.
+ */
+data class TelegramBotCommand(
+    val command: String,
+    val description: String,
+) {
+    /** The full command string with leading slash, e.g. `/search`. */
+    val withSlash: String get() = "/$command"
 }

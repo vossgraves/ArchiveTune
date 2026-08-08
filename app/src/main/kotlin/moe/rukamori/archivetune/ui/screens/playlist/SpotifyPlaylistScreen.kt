@@ -340,6 +340,16 @@ fun SpotifyPlaylistScreen(
         }
     }
 
+    // Liquid Glass backdrop: created unconditionally (cheap — just a GraphicsLayer
+    // handle). The actual content recording happens when
+    // `Modifier.layerBackdrop(artworkBackdrop)` is applied to the LazyColumn below.
+    // This matches the LocalPlaylistScreen pattern: the backdrop captures the entire
+    // scrolling content, and the floating Liquid Glass header buttons are siblings of
+    // the LazyColumn (not nested inside its first item) so they sample the backdrop
+    // without being recorded into it — and, critically, their click handlers are not
+    // competing with any LazyColumn-item pointer-input stack.
+    val artworkBackdrop = rememberBackdrop(Color.Black)
+
     ExpressivePullToRefreshBox(
         isRefreshing = state.isLoading,
         onRefresh = viewModel::reload,
@@ -360,7 +370,8 @@ fun SpotifyPlaylistScreen(
                 ),
             modifier =
                 Modifier
-                    .fillMaxSize(),
+                    .fillMaxSize()
+                    .layerBackdrop(artworkBackdrop),
         ) {
             playlist?.let { currentPlaylist ->
                 item(key = "header") {
@@ -374,18 +385,21 @@ fun SpotifyPlaylistScreen(
                                     ?.let(::makeTimeString),
                             ).joinToString(MediaDetailMetadataSeparator)
 
-                        // SimpMusic-style liquid glass backdrop source.
-                        val artworkBackdrop = rememberBackdrop(Color.Black)
-                        // CRITICAL: the LiquidGlass buttons MUST be siblings of (not
-                        // children of) the Box carrying Modifier.layerBackdrop.
-                        // Nesting them inside the backdrop source creates a render-
-                        // feedback loop that overflows the RenderThread stack —
-                        // see LiquidGlass.kt. The parent Box below positions the
-                        // buttons over the artwork via Modifier.align() while
-                        // keeping them outside the backdrop-recording scope.
-                        Box {
-                            Box(modifier = Modifier.layerBackdrop(artworkBackdrop)) {
-                                MediaDetailHero(
+                        // SimpMusic-style liquid glass backdrop source: the
+                        // LazyColumn itself carries Modifier.layerBackdrop
+                        // (see the LazyColumn definition above), so the entire
+                        // scrolling content is recorded into the backdrop. The
+                        // floating Liquid Glass back button (top-start) and
+                        // search pill (top-end) are siblings of the LazyColumn
+                        // (declared after the LazyColumn below), so they sample
+                        // the backdrop without being recorded into it. This
+                        // matches the LocalPlaylistScreen pattern and ensures
+                        // the buttons are clickable (no LazyColumn-item
+                        // pointer-input interference).
+                        //
+                        // The hero item itself just renders the MediaDetailHero;
+                        // no inner Box / layerBackdrop wrapper is needed here.
+                        MediaDetailHero(
                             title = currentPlaylist.name,
                             thumbnailUrl = thumbnailUrl,
                             fallbackIcon = R.drawable.queue_music,
@@ -468,43 +482,6 @@ fun SpotifyPlaylistScreen(
                             },
                             useBlurredPlayButton = true,
                         )
-                            }
-                            // SimpMusic-style floating liquid glass buttons.
-                            // SIBLINGS of the layerBackdrop Box (children of the
-                            // parent Box), NOT children of the layerBackdrop Box.
-                            LiquidGlassIconButton(
-                                backdrop = artworkBackdrop,
-                                painter = painterResource(R.drawable.arrow_back),
-                                contentDescription = null,
-                                modifier =
-                                    Modifier
-                                        .align(Alignment.TopStart)
-                                        .padding(start = 12.dp, top = systemBarsTopPadding + 12.dp)
-                                        .size(48.dp),
-                                onClick = { navController.navigateUp() },
-                            )
-                            LiquidGlassActionPill(
-                                backdrop = artworkBackdrop,
-                                modifier =
-                                    Modifier
-                                        .align(Alignment.TopEnd)
-                                        .padding(end = 12.dp, top = systemBarsTopPadding + 12.dp),
-                            ) {
-                                // Search
-                                Box(
-                                    modifier = Modifier.size(48.dp),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    androidx.compose.material3.IconButton(onClick = { isSearching = true }) {
-                                        Icon(
-                                            painter = painterResource(R.drawable.search),
-                                            contentDescription = null,
-                                            tint = Color.White,
-                                        )
-                                    }
-                                }
-                            }
-                        }
                     }
                 }
             }
@@ -598,6 +575,56 @@ fun SpotifyPlaylistScreen(
             scrollState = lazyListState,
             headerItems = if (!isSearching && playlist != null) 1 else 0,
         )
+
+        // Persistent Liquid Glass header buttons. Siblings of the LazyColumn
+        // (children of the ExpressivePullToRefreshBox), positioned at top-start
+        // and top-end. They sample the artworkBackdrop (which captures the
+        // entire scrolling content via Modifier.layerBackdrop on the LazyColumn)
+        // to render the frosted-glass effect. PERSISTENT — stay at the top no
+        // matter how far the user scrolls.
+        //
+        // This matches the LocalPlaylistScreen pattern exactly: the buttons are
+        // NOT nested inside the LazyColumn's first item (which caused click
+        // interception issues on some devices), but are direct siblings of the
+        // LazyColumn inside the ExpressivePullToRefreshBox.
+        //
+        // Shown only when:
+        //  - Not searching
+        //  - Playlist is loaded
+        if (!isSearching && playlist != null) {
+            LiquidGlassIconButton(
+                backdrop = artworkBackdrop,
+                painter = painterResource(R.drawable.arrow_back),
+                contentDescription = null,
+                modifier =
+                    Modifier
+                        .align(Alignment.TopStart)
+                        .padding(start = 12.dp, top = systemBarsTopPadding + 12.dp)
+                        .size(48.dp),
+                onClick = { navController.navigateUp() },
+            )
+            LiquidGlassActionPill(
+                backdrop = artworkBackdrop,
+                modifier =
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(end = 12.dp, top = systemBarsTopPadding + 12.dp),
+            ) {
+                // Search
+                Box(
+                    modifier = Modifier.size(48.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    androidx.compose.material3.IconButton(onClick = { isSearching = true }) {
+                        Icon(
+                            painter = painterResource(R.drawable.search),
+                            contentDescription = null,
+                            tint = Color.White,
+                        )
+                    }
+                }
+            }
+        }
 
         TopAppBar(
             colors = topAppBarColors,

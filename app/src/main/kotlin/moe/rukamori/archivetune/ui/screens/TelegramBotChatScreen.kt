@@ -48,6 +48,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import coil3.compose.AsyncImage
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -58,6 +60,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -91,6 +94,7 @@ import moe.rukamori.archivetune.telegram.BotReply
 import moe.rukamori.archivetune.telegram.TelegramBot
 import moe.rukamori.archivetune.telegram.TelegramBotClient
 import moe.rukamori.archivetune.telegram.TelegramBotCodec
+import moe.rukamori.archivetune.telegram.TelegramBotCommand
 import moe.rukamori.archivetune.telegram.TelegramBotPrompt
 import moe.rukamori.archivetune.telegram.TelegramBotPromptButton
 import moe.rukamori.archivetune.telegram.TelegramTrack
@@ -142,6 +146,26 @@ fun TelegramBotChatScreen(
     // Add-to-playlist dialog state. The "pending track" is the track the user wants to add; when
     // set, the dialog is shown.
     var addToPlaylistTrack by remember { mutableStateOf<TelegramTrack?>(null) }
+
+    // Bot command picker state. Some music bots require slash commands (e.g. `/search <query>`,
+    // `/download <link>`) to search and download songs — pasting a bare URL doesn't work. We
+    // fetch the bot's advertised commands via TdApi.GetCommands and show them in a "/"-button
+    // dropdown so the user can discover and insert them. Common fallback commands are always
+    // shown (even if the bot hasn't registered any) because many bots accept standard commands
+    // without advertising them.
+    var botCommands by remember { mutableStateOf<List<TelegramBotCommand>>(emptyList()) }
+    var showCommandMenu by remember { mutableStateOf(false) }
+    var commandsFetchedForChatId by remember { mutableStateOf(0L) }
+
+    // Fetch the bot's advertised commands once the chat id is known. The fetch is best-effort —
+    // if it fails (e.g. bot hasn't registered any commands), the common fallbacks still appear.
+    LaunchedEffect(bot?.chatId) {
+        val chatId = bot?.chatId ?: 0L
+        if (chatId != 0L && chatId != commandsFetchedForChatId) {
+            commandsFetchedForChatId = chatId
+            botCommands = TelegramBotClient.fetchBotCommands(chatId)
+        }
+    }
 
     if (bot == null) {
         // Bot not found — the user must have removed it from another device. Bounce back.
@@ -430,6 +454,82 @@ fun TelegramBotChatScreen(
                     placeholder = { Text(stringResource(R.string.telegram_bot_chat_hint)) },
                     singleLine = true,
                     enabled = !sending,
+                    leadingIcon = {
+                        Box {
+                            IconButton(
+                                onClick = { showCommandMenu = true },
+                                enabled = !sending,
+                            ) {
+                                Text(
+                                    text = "/",
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = showCommandMenu,
+                                onDismissRequest = { showCommandMenu = false },
+                            ) {
+                                // Bot's advertised commands (from @BotFather registration) — shown
+                                // first so the user sees the bot's own command set at a glance.
+                                if (botCommands.isNotEmpty()) {
+                                    botCommands.forEach { cmd ->
+                                        DropdownMenuItem(
+                                            text = {
+                                                Column {
+                                                    Text(
+                                                        text = cmd.withSlash,
+                                                        style = MaterialTheme.typography.bodyMedium,
+                                                        fontWeight = FontWeight.Bold,
+                                                    )
+                                                    if (cmd.description.isNotBlank()) {
+                                                        Text(
+                                                            text = cmd.description,
+                                                            style = MaterialTheme.typography.bodySmall,
+                                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                        )
+                                                    }
+                                                }
+                                            },
+                                            onClick = {
+                                                songLink = "${cmd.withSlash} "
+                                                showCommandMenu = false
+                                            },
+                                        )
+                                    }
+                                    // Separator between advertised and fallback commands.
+                                    androidx.compose.material3.HorizontalDivider()
+                                }
+                                // Common fallback commands that most music bots accept even
+                                // without @BotFather registration. These cover the typical
+                                // search/download/help flows the user needs.
+                                CommonBotCommands.forEach { cmd ->
+                                    DropdownMenuItem(
+                                        text = {
+                                            Column {
+                                                Text(
+                                                    text = cmd.withSlash,
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    fontWeight = FontWeight.Bold,
+                                                )
+                                                if (cmd.description.isNotBlank()) {
+                                                    Text(
+                                                        text = cmd.description,
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    )
+                                                }
+                                            }
+                                        },
+                                        onClick = {
+                                            songLink = "${cmd.withSlash} "
+                                            showCommandMenu = false
+                                        },
+                                    )
+                                }
+                            }
+                        }
+                    },
                     trailingIcon = {
                         IconButton(onClick = ::send, enabled = !sending && songLink.isNotBlank()) {
                             if (sending && pendingChoiceText == null) {
@@ -667,3 +767,24 @@ private fun BotResultRow(
         }
     }
 }
+
+/**
+ * Common slash-commands that most Telegram music bots accept even without @BotFather registration.
+ * Shown in the "/" command picker as fallbacks after the bot's own advertised commands. The
+ * descriptions are generic hints — the bot may interpret them slightly differently.
+ *
+ * `command` does NOT include the leading `/` — [TelegramBotCommand.withSlash] adds it.
+ */
+private val CommonBotCommands = listOf(
+    TelegramBotCommand("start", "Initialize / restart the bot"),
+    TelegramBotCommand("help", "Show the bot's help / usage guide"),
+    TelegramBotCommand("search", "Search for a song by name or artist"),
+    TelegramBotCommand("download", "Download a song from a link or search query"),
+    TelegramBotCommand("song", "Search for a song by name"),
+    TelegramBotCommand("music", "Search for music by query"),
+    TelegramBotCommand("lyrics", "Fetch lyrics for a song"),
+    TelegramBotCommand("flac", "Request FLAC (lossless) quality"),
+    TelegramBotCommand("alac", "Request ALAC (Apple Lossless) quality"),
+    TelegramBotCommand("mp3", "Request MP3 (lossy) quality"),
+    TelegramBotCommand("cancel", "Cancel the current operation"),
+)

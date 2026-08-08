@@ -50,6 +50,7 @@ fun Song.toMediaItem() =
         .setMediaId(song.id)
         .setUri(song.id)
         .setCacheKeyIfRemote(song.id)
+        .setMimeType(format?.mimeType?.takeIf { it.isNotBlank() })
         .setTag(toMediaMetadata())
         .setMediaMetadata(
             androidx.media3.common.MediaMetadata

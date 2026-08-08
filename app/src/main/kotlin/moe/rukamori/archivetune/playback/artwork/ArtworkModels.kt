@@ -7,6 +7,8 @@
 
 package moe.rukamori.archivetune.playback.artwork
 
+import moe.rukamori.archivetune.constants.PreferredArtworkProvider
+
 /**
  * Authoritative source of a piece of artwork. Ordering in this enum is NOT the priority;
  * priority is defined by [ArtworkResolver]'s resolution policy.
@@ -80,6 +82,19 @@ data class ArtworkSettings(
     val tidalArtworkEnabled: Boolean,
     /** Tidal source is enabled and minimally configured (instances or account). */
     val tidalAvailable: Boolean,
+    /**
+     * User-configured priority order for artwork providers. The resolver iterates this list
+     * in order and returns the first provider that has artwork for the current song. If a
+     * provider has no artwork, it falls back to the next one. Defaults to
+     * [moe.rukamori.archivetune.constants.DefaultArtworkProviderOrder] when not explicitly set.
+     *
+     * Note: [PreferredArtworkProvider.SPOTIFY_CANVAS] and [PreferredArtworkProvider.ARCHIVETUNE_CANVAS]
+     * are video-based canvas providers handled separately by the Player UI (not by this
+     * resolver). They appear in the priority list for user discoverability and to control
+     * the canvas-source priority in [moe.rukamori.archivetune.ui.player.CanvasArtworkResolver],
+     * but this still-image resolver skips them.
+     */
+    val providerOrder: List<PreferredArtworkProvider> = emptyList(),
 )
 
 /** Result of a Tidal artwork lookup. */

@@ -2500,7 +2500,12 @@ private fun V7PlayerBackdrop(
     // When canvas is available, prefer its static image as the sharp-stage placeholder.
     // This prevents the jarring YTM thumbnail → canvas video flash on expand.
     val sharpArtworkUrl = if (hasCanvas) (canvasStatic ?: coverArtworkUrl) else (coverArtworkUrl ?: canvasStatic)
-    val backdropArtworkUrl = coverArtworkUrl ?: canvasStatic
+    // When canvas is active, prefer the canvas static image as the backdrop blur source too —
+    // matching the sharp stage. This keeps the backdrop consistent with the canvas artwork
+    // (Apple Music player style) instead of falling back to the album art, which looked
+    // inconsistent when the sharp stage showed the canvas video but the blur showed the
+    // album cover.
+    val backdropArtworkUrl = if (hasCanvas) (canvasStatic ?: coverArtworkUrl) else (coverArtworkUrl ?: canvasStatic)
     // For palette extraction, use canvas static when canvas is active so the scrim
     // gradient is derived from the canvas colors rather than the YTM thumbnail.
     val paletteSourceUrl = if (hasCanvas && canvasStatic != null) canvasStatic else backdropArtworkUrl

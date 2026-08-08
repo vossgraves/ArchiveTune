@@ -219,6 +219,9 @@ import moe.rukamori.archivetune.tidal.TidalAccountManager
 import moe.rukamori.archivetune.tidal.TidalArtworkProvider
 import moe.rukamori.archivetune.tidal.TidalAudioProvider
 import moe.rukamori.archivetune.constants.TidalArtworkFallbackEnabledKey
+import moe.rukamori.archivetune.constants.ArtworkProviderOrderKey
+import moe.rukamori.archivetune.constants.DefaultArtworkProviderOrder
+import moe.rukamori.archivetune.constants.deserializeArtworkProviderOrder
 import moe.rukamori.archivetune.utils.PoolAccountManager
 import moe.rukamori.archivetune.tidal.TidalInstanceHealthManager
 import moe.rukamori.archivetune.constants.PlayerVolumeKey
@@ -600,6 +603,7 @@ class MusicService :
             ArtworkSettings(
                 tidalArtworkEnabled = false,
                 tidalAvailable = false,
+                providerOrder = DefaultArtworkProviderOrder,
             ),
         )
     private lateinit var artworkResolver: ArtworkResolver
@@ -1206,9 +1210,12 @@ class MusicService :
                     !preferences[TidalInstancesKey].isNullOrBlank() ||
                         TidalAudioProvider.defaultInstanceUrls.isNotEmpty()
                 val hasAccount = !preferences[TidalAccessTokenKey].isNullOrBlank()
+                val providerOrder =
+                    deserializeArtworkProviderOrder(preferences[ArtworkProviderOrderKey])
                 ArtworkSettings(
                     tidalArtworkEnabled = artworkEnabled,
                     tidalAvailable = tidalEnabled && (hasInstances || hasAccount),
+                    providerOrder = providerOrder,
                 )
             }
             .distinctUntilChanged()
@@ -9203,7 +9210,17 @@ class MusicService :
     private fun createMediaSourceFactory() =
         DefaultMediaSourceFactory(
             createDataSourceFactory(),
-            DefaultExtractorsFactory(),
+            DefaultExtractorsFactory()
+                // Enable constant-bitrate seeking for CBR streams (most MP3/AAC files) so
+                // the user can seek to any position without needing a seek table. Without
+                // this, ExoPlayer can only seek to keyframes, making seeking in .m4a/.mp3
+                // files imprecise or impossible.
+                .setConstantBitrateSeekingEnabled(true)
+                // Always sniff a larger chunk of the stream before committing to an extractor.
+                // This helps with .m4a files that have a large `free`/`mdat` box before the
+                // `moov` atom — the default sniff window may not reach the `moov` and ExoPlayer
+                // would misidentify the container.
+                .setSniffInitialFragments(true),
         )
 
     private class SchemeRoutingDataSource(

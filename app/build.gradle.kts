@@ -477,6 +477,12 @@ dependencies {
 
     implementation(libs.media3)
     implementation("androidx.media3:media3-exoplayer-hls:${libs.versions.media3.get()}")
+    // Software decoder extensions — provide fallback decoders for codecs that some devices
+    // don't support in hardware (e.g. FLAC on older devices, ALAC on MediaTek). The
+    // RenderersFactory in MusicService sets EXTENSION_RENDERER_MODE_ON so these are tried
+    // after the platform hardware decoders fail, ensuring .m4a/.flac/.ogg files always play
+    // without needing to "fall back" to a different container format.
+    implementation("androidx.media3:media3-exoplayer-flac:${libs.versions.media3.get()}")
     implementation(libs.media3.session)
     implementation(libs.media3.okhttp)
     implementation("androidx.media3:media3-ui:${libs.versions.media3.get()}")

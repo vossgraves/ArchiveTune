@@ -523,6 +523,7 @@ val NewsLastReadTimestampKey = longPreferencesKey("news_last_read_timestamp")
 val SpeedDialSongIdsKey = stringPreferencesKey("speedDialSongIds")
 val PreferredLyricsProviderKey = stringPreferencesKey("lyricsProvider")
 val LyricsProviderOrderKey = stringPreferencesKey("lyricsProviderOrder")
+val ArtworkProviderOrderKey = stringPreferencesKey("artworkProviderOrder")
 val QueueEditLockKey = booleanPreferencesKey("queueEditLock")
 
 enum class LibraryViewType {
@@ -740,6 +741,53 @@ fun deserializeLyricsProviderOrder(orderStr: String?): List<PreferredLyricsProvi
 
     val missing = DefaultLyricsProviderOrder.filterNot { it in normalized }
     return normalized + missing
+}
+
+/**
+ * Artwork providers that can be prioritised by the user. The order in this enum is NOT the
+ * priority — the user-configured order (stored in [ArtworkProviderOrderKey]) determines which
+ * provider is tried first when resolving artwork for a song. If the top-priority provider has
+ * no artwork for the current song, the resolver falls back to the next provider in the list.
+ *
+ * - [LOCAL_EMBEDDED]: artwork extracted from a local file. Always wins for local media
+ *   regardless of priority order (a local file's embedded cover is the authoritative source).
+ * - [ORIGINAL_METADATA]: artwork URL that arrived with the original media metadata
+ *   (YouTube/innertube/DB `thumbnailUrl`). This is the default artwork for streaming songs.
+ * - [TIDAL]: artwork fetched from Tidal as a fallback when no original artwork exists.
+ * - [SPOTIFY_CANVAS]: Spotify Canvas video artwork (looping video, fetched via the
+ *   `mlc.kouzu.in` canvas API).
+ * - [ARCHIVETUNE_CANVAS]: ArchiveTune Canvas artwork (BetterLyrics / koiverse-mirror,
+ *   includes Apple Music motion artwork internally).
+ */
+enum class PreferredArtworkProvider {
+    LOCAL_EMBEDDED,
+    ORIGINAL_METADATA,
+    TIDAL,
+    SPOTIFY_CANVAS,
+    ARCHIVETUNE_CANVAS,
+}
+
+val DefaultArtworkProviderOrder =
+    listOf(
+        PreferredArtworkProvider.LOCAL_EMBEDDED,
+        PreferredArtworkProvider.ORIGINAL_METADATA,
+        PreferredArtworkProvider.TIDAL,
+        PreferredArtworkProvider.SPOTIFY_CANVAS,
+        PreferredArtworkProvider.ARCHIVETUNE_CANVAS,
+    )
+
+fun deserializeArtworkProviderOrder(orderStr: String?): List<PreferredArtworkProvider> {
+    if (orderStr.isNullOrBlank()) return DefaultArtworkProviderOrder
+
+    val parsed =
+        orderStr
+            .split(",")
+            .mapNotNull { name ->
+                PreferredArtworkProvider.entries.find { it.name == name.trim() }
+            }.distinct()
+
+    val missing = DefaultArtworkProviderOrder.filterNot { it in parsed }
+    return parsed + missing
 }
 
 enum class PlayerButtonsStyle {

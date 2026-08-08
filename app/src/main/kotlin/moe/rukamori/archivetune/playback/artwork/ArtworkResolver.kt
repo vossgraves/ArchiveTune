@@ -16,6 +16,8 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.StateFlow
+import moe.rukamori.archivetune.constants.DefaultArtworkProviderOrder
+import moe.rukamori.archivetune.constants.PreferredArtworkProvider
 import timber.log.Timber
 
 /**
@@ -96,6 +98,9 @@ class ArtworkResolver(
 
     suspend fun resolve(request: ArtworkRequest): ResolvedArtwork {
         val localUrl = request.originalArtworkUrl
+        // LOCAL_EMBEDDED always wins for local files regardless of priority order — a local
+        // file's embedded cover is the authoritative source and no remote provider can
+        // produce a more correct image for it.
         if (request.isLocal || localUrl.isLocalArtworkUri()) {
             return ResolvedArtwork(
                 mediaId = request.mediaId,
@@ -105,16 +110,58 @@ class ArtworkResolver(
             ).also { logResolution(request, it, "local") }
         }
 
-        if (!localUrl.isNullOrBlank()) {
-            return ResolvedArtwork(
+        // User-configured provider priority. Iterate in order and return the first provider
+        // that has artwork. Canvas providers (SPOTIFY_CANVAS, ARCHIVETUNE_CANVAS) are
+        // video-based and handled by the Player UI separately — skip them here.
+        // When the order is empty (e.g. tests or before DataStore loads), use the default
+        // order so the resolver still produces correct results.
+        val order = settings.value.providerOrder
+        val effectiveOrder =
+            if (order.isEmpty()) DefaultArtworkProviderOrder else order
+        for (provider in effectiveOrder) {
+            when (provider) {
+                PreferredArtworkProvider.LOCAL_EMBEDDED -> {
+                    // Already handled above for local files; skip for non-local.
+                    continue
+                }
+                PreferredArtworkProvider.ORIGINAL_METADATA -> {
+                    if (!localUrl.isNullOrBlank()) {
+                        return ResolvedArtwork(
+                            mediaId = request.mediaId,
+                            url = localUrl,
+                            provider = ArtworkProvider.ORIGINAL_METADATA,
+                            artworkIdentity = normalizeArtworkIdentity(localUrl),
+                        ).also { logResolution(request, it, "original") }
+                    }
+                }
+                PreferredArtworkProvider.TIDAL -> {
+                    val tidalResult = resolveTidalFallback(request)
+                    if (tidalResult.url != null) {
+                        return tidalResult
+                    }
+                    // Tidal had no match — continue to the next provider in priority order.
+                }
+                PreferredArtworkProvider.SPOTIFY_CANVAS,
+                PreferredArtworkProvider.ARCHIVETUNE_CANVAS,
+                -> {
+                    // Canvas providers are video-based and handled by the Player UI; skip.
+                    continue
+                }
+            }
+        }
+
+        // If no provider in the user-ordered list produced artwork, fall back to the
+        // original metadata (even if null) so the UI gets a definitive answer.
+        return if (!localUrl.isNullOrBlank()) {
+            ResolvedArtwork(
                 mediaId = request.mediaId,
                 url = localUrl,
                 provider = ArtworkProvider.ORIGINAL_METADATA,
                 artworkIdentity = normalizeArtworkIdentity(localUrl),
-            ).also { logResolution(request, it, "original") }
+            ).also { logResolution(request, it, "original-fallback") }
+        } else {
+            noArtwork(request, "no provider had artwork")
         }
-
-        return resolveTidalFallback(request)
     }
 
     private suspend fun resolveTidalFallback(request: ArtworkRequest): ResolvedArtwork {
