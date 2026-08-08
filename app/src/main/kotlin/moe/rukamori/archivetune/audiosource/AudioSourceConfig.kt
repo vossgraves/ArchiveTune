@@ -100,6 +100,13 @@ object TitleMatch {
      * Returns the title-match ratio in 0.0..1.0 between [wanted] and [candidate] after
      * normalization, using Jaro-Winkler similarity. Two blank titles are treated as a non-match
      * (0.0) so missing metadata never passes the gate.
+     *
+     * When [wanted] contains a separator-delimited alternative title (e.g. a romanization or
+     * translation paired with the original — "忘れてください - Forget it", "Song / Remix"),
+     * each segment is tried independently and the best-scoring segment wins. This prevents a
+     * candidate that legitimately matches only one of the two halves (e.g. just "Forget it"
+     * on Qobuz) from being rejected because the full wanted string is much longer than the
+     * candidate.
      */
     fun ratio(
         wanted: String?,
@@ -109,7 +116,45 @@ object TitleMatch {
         val b = normalize(candidate)
         if (a.isEmpty() || b.isEmpty()) return 0.0
         if (a == b) return 1.0
-        return jaroWinkler(a, b)
+        val direct = jaroWinkler(a, b)
+        // Split the RAW wanted / candidate titles on separator characters BEFORE
+        // normalization (normalize() collapses - / | : into spaces, so splitting after
+        // normalization would lose the boundary between "忘れてください" and "forget it").
+        // The best score across:
+        //   - direct (full wanted vs full candidate)
+        //   - each wanted segment vs full candidate
+        //   - full wanted vs each candidate segment
+        //   - each wanted segment vs each candidate segment
+        // wins. This makes the match symmetric: "Forget it" matches
+        // "忘れてください - Forget it" just as well as the reverse.
+        val wantedSegments = splitRawTitleSegments(wanted)
+        val candidateSegments = splitRawTitleSegments(candidate)
+        val wantedNormalized = wantedSegments.map(::normalize).filter { it.length >= 3 }
+        val candidateNormalized = candidateSegments.map(::normalize).filter { it.length >= 3 }
+
+        val bestWantedSegment = wantedNormalized.maxOfOrNull { jaroWinkler(it, b) } ?: 0.0
+        val bestCandidateSegment = candidateNormalized.maxOfOrNull { jaroWinkler(a, it) } ?: 0.0
+        val bestCrossSegment =
+            wantedNormalized.maxOfOrNull { ws ->
+                candidateNormalized.maxOfOrNull { jaroWinkler(ws, it) } ?: 0.0
+            } ?: 0.0
+        return maxOf(direct, bestWantedSegment, bestCandidateSegment, bestCrossSegment)
+    }
+
+    /**
+     * Splits a raw (pre-normalization) title into its alternative-name segments. Handles the
+     * common separators used when a track's title contains both an original and a romanized /
+     * translated form: hyphen-with-spaces, slash, pipe, colon, and the CJK full-width
+     * variants of those characters. Returns an empty list when no separator is present.
+     */
+    private fun splitRawTitleSegments(raw: String?): List<String> {
+        if (raw.isNullOrBlank()) return emptyList()
+        val split =
+            raw
+                .split(Regex("""\s*[-/|:]\s*|\s*[－／｜：]\s*"""))
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+        return if (split.size <= 1) emptyList() else split
     }
 
     fun evaluate(
@@ -198,7 +243,18 @@ object TitleMatch {
     private fun containsTokenRun(haystack: String, needle: String): Boolean {
         val target = normalize(needle)
         val candidate = normalize(haystack)
-        return target.length >= 3 && (candidate == target || candidate.contains(target))
+        if (target.length < 3) return false
+        if (candidate == target) return true
+        if (candidate.contains(target)) return true
+        // Symmetric multilingual check: if the needle contains a separator-delimited
+        // segment (e.g. "忘れてください - Forget it" → ["忘れてください", "forget it"]),
+        // a candidate equal to or containing any of those segments counts as a token
+        // run match. This lets a Qobuz candidate titled just "Forget it" pass the
+        // title gate when the wanted title is "忘れてください - Forget it".
+        return splitRawTitleSegments(needle).any { segment ->
+            val n = normalize(segment)
+            n.length >= 3 && (candidate == n || candidate.contains(n))
+        }
     }
 
     private val versionMarkers =

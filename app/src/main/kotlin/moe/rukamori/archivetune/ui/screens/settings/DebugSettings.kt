@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -165,6 +166,11 @@ fun DebugSettings(navController: NavController) {
             )
         },
     ) { innerPadding: PaddingValues ->
+        val playerAwareBottomPadding =
+            LocalPlayerAwareWindowInsets.current
+                .only(WindowInsetsSides.Bottom)
+                .asPaddingValues()
+                .calculateBottomPadding()
         Column(
             modifier =
                 Modifier
@@ -267,7 +273,7 @@ fun DebugSettings(navController: NavController) {
                 }
             }
 
-            Spacer(modifier = Modifier.height(SettingsDimensions.ScreenBottomPadding))
+            Spacer(modifier = Modifier.height(playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding))
         }
     }
 }

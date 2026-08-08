@@ -62,7 +62,6 @@ import moe.rukamori.archivetune.constants.TelegramLosslessOnlyKey
 import moe.rukamori.archivetune.telegram.TelegramChannel
 import moe.rukamori.archivetune.telegram.TelegramChannelSync
 import moe.rukamori.archivetune.telegram.TelegramClient
-import moe.rukamori.archivetune.ui.component.FrostedTopAppBar
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.TelegramChatAvatar
 import moe.rukamori.archivetune.ui.utils.backToMain
@@ -127,10 +126,19 @@ fun TelegramBrowseScreen(navController: NavController) {
 
     Scaffold(
         topBar = {
-            FrostedTopAppBar(
-                titleRes = R.string.telegram_browse_channels,
-                onBack = navController::navigateUp,
-                onBackLongClick = navController::backToMain,
+            TopAppBar(
+                title = { Text(stringResource(R.string.telegram_browse_channels)) },
+                navigationIcon = {
+                    IconButton(
+                        onClick = navController::navigateUp,
+                        onLongClick = navController::backToMain,
+                    ) {
+                        Icon(
+                            painterResource(R.drawable.arrow_back),
+                            contentDescription = null,
+                        )
+                    }
+                },
             )
         },
     ) { innerPadding ->

@@ -40,6 +40,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -68,7 +69,6 @@ import moe.rukamori.archivetune.telegram.TelegramBotClient
 import moe.rukamori.archivetune.telegram.TelegramBotCodec
 import moe.rukamori.archivetune.telegram.TelegramClient
 import moe.rukamori.archivetune.telegram.parseBotUsername
-import moe.rukamori.archivetune.ui.component.FrostedTopAppBar
 import moe.rukamori.archivetune.ui.component.IconButton as ATIconButton
 import moe.rukamori.archivetune.ui.component.SwitchPreference
 import moe.rukamori.archivetune.ui.component.TelegramChatAvatar
@@ -177,10 +177,19 @@ fun TelegramBotsScreen(navController: NavController) {
 
     Scaffold(
         topBar = {
-            FrostedTopAppBar(
-                titleRes = R.string.telegram_bots_title,
-                onBack = navController::navigateUp,
-                onBackLongClick = navController::backToMain,
+            TopAppBar(
+                title = { Text(stringResource(R.string.telegram_bots_title)) },
+                navigationIcon = {
+                    ATIconButton(
+                        onClick = navController::navigateUp,
+                        onLongClick = navController::backToMain,
+                    ) {
+                        Icon(
+                            painterResource(R.drawable.arrow_back),
+                            contentDescription = null,
+                        )
+                    }
+                },
             )
         },
     ) { innerPadding ->
