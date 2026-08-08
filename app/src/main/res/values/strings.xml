@@ -498,6 +498,8 @@
     <string name="custom_value">Custom value</string>
     <string name="archivetune_canvas">ArchiveTune Canvas</string>
     <string name="archivetune_canvas_desc">Animate album artwork while playing (Powered by BetterLyrics)</string>
+    <string name="spotify_canvas">Spotify Canvas</string>
+    <string name="spotify_canvas_desc">Fetch and play the official Spotify Canvas looping video for the current song. Uses the song\'s YouTube Music video ID to look up the canvas via a third-party API (mlc.kouzu.in).</string>
     <string name="player_background_style_v8_v9_desc">Unavailable with V8 and V9 player styles</string>
     <string name="show_button1_description">Toggle visibility of button 1 in Discord Rich Presence</string>
     <string name="show_button2_description">Toggle visibility of button 2 in Discord Rich Presence</string>

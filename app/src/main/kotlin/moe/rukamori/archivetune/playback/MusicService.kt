@@ -1077,9 +1077,20 @@ class MusicService :
         }
 
         val state = player.playbackState
+        // When the user merely paused a song (STATE_READY with playWhenReady=false) and
+        // backgrounded the app, they typically come back within a few minutes. The previous
+        // 60s idle-stop deadline was too aggressive for lossless streams — it released the
+        // ExoPlayer (and the underlying MediaCodec) while the renderer still had queued
+        // buffers, producing the
+        //   IllegalStateException: queueInputBuffer() is valid only at Executing states;
+        //   currently at Released state
+        // crash on Telegram ALAC files. Give paused-but-ready playback a 10-minute grace
+        // period before tearing the service down.
         val delayMs =
             when (state) {
                 Player.STATE_ENDED, Player.STATE_IDLE -> 30_000L
+                Player.STATE_READY -> if (player.playWhenReady) 60_000L else 10 * 60_000L
+                Player.STATE_BUFFERING -> 60_000L
                 else -> 60_000L
             }
 
@@ -7470,10 +7481,73 @@ class MusicService :
             }
         }
 
+        // MediaCodec decoder-state recovery.
+        //
+        // When streaming lossless ALAC (.m4a) from Telegram on devices with a flaky hardware
+        // ALAC decoder (notably MediaTek's c2.mtk.alac.decoder), the OS may release the codec
+        // out from under ExoPlayer while the app is backgrounded + paused for a few minutes
+        // (low-memory reclamation). The renderer's next queueInputBuffer() call then throws
+        //   IllegalStateException: queueInputBuffer() is valid only at Executing states;
+        //   currently at Released state
+        // which surfaces as a MediaCodecDecoderException. The codec itself is fine — the player
+        // just needs to be re-prepared so a fresh codec instance is instantiated. Re-prepare
+        // resumes from the current position; no queue reshuffle needed.
+        if (isMediaCodecStateError(error)) {
+            val resumePosition = player.currentPosition.coerceAtLeast(0L)
+            val mediaItemIndex = player.currentMediaItemIndex
+            Timber.tag("MusicService").w(
+                "MediaCodec state error for %s (format=%s); re-preparing player to recover codec",
+                currentMediaId,
+                error.errorCodeName,
+            )
+            if (playbackStreamRecoveryTracker.registerRetryAttempt(currentMediaId)) {
+                scope.launch(Dispatchers.Main) {
+                    try {
+                        player.seekTo(mediaItemIndex, resumePosition)
+                        player.prepare()
+                        // Honor the user's prior play/pause intent — if they had paused, keep
+                        // it paused after recovery so we don't surprise-start playback.
+                        if (!player.playWhenReady) {
+                            player.pause()
+                        }
+                    } catch (recoveryThrowable: Throwable) {
+                        Timber.tag("MusicService").e(
+                            recoveryThrowable,
+                            "Recovery re-prepare failed for %s; falling back to stop-on-error",
+                            currentMediaId,
+                        )
+                        stopOnError()
+                    }
+                }
+                return
+            }
+        }
+
         if (dataStore.get(AutoSkipNextOnErrorKey, false)) {
             skipOnError()
         } else {
             stopOnError()
+        }
+    }
+
+    /**
+     * Detects MediaCodec decoder-state errors that are recoverable by re-preparing the player.
+     *
+     * Two signatures are recognised:
+     *  1. ExoPlayer's [androidx.media3.exoplayer.MediaCodecRenderer.DecoderInitializationException]
+     *     / [androidx.media3.exoplayer.video.MediaCodecVideoRenderer] etc. wrapping a
+     *     `MediaCodecDecoderException` whose cause is `IllegalStateException` with the
+     *     "queueInputBuffer() is valid only at Executing states" message.
+     *  2. Direct `IllegalStateException` with that message anywhere in the cause chain.
+     */
+    private fun isMediaCodecStateError(error: PlaybackException): Boolean {
+        val causeChain = generateSequence<Throwable?>(error) { it.cause }
+        return causeChain.any { throwable ->
+            val message = throwable.message.orEmpty()
+            (message.contains("queueInputBuffer", ignoreCase = true) &&
+                message.contains("Executing states", ignoreCase = true)) ||
+                message.contains("currently at Released state", ignoreCase = true) ||
+                message.contains("codec is in state", ignoreCase = true)
         }
     }
 

@@ -166,6 +166,7 @@ import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.canvas.models.CanvasArtwork
 import moe.rukamori.archivetune.constants.ArchiveTuneCanvasKey
+import moe.rukamori.archivetune.constants.SpotifyCanvasKey
 import moe.rukamori.archivetune.constants.BackdropBlurAmountKey
 import moe.rukamori.archivetune.constants.BackdropEnabledKey
 import moe.rukamori.archivetune.constants.BlurRadiusKey
@@ -490,6 +491,7 @@ fun BottomSheetPlayer(
     val aodModeEnabled by playerConnection.aodModeEnabled.collectAsStateWithLifecycle()
     val (thumbnailCornerRadius) = rememberPreference(ThumbnailCornerRadiusKey, defaultValue = 8f)
     val archiveTuneCanvasEnabled by rememberPreference(ArchiveTuneCanvasKey, false)
+    val spotifyCanvasEnabled by rememberPreference(SpotifyCanvasKey, false)
     val lowDataModeActive = rememberLowDataModeActive()
     val (maxCanvasCacheSize, _) =
         rememberPreference(
@@ -1172,11 +1174,11 @@ fun BottomSheetPlayer(
                 if (country.length == 2) country.lowercase(Locale.ROOT) else "us"
             }
         val shouldUseV7Canvas =
-            archiveTuneCanvasEnabled &&
+            (archiveTuneCanvasEnabled || spotifyCanvasEnabled) &&
                 playerDesignStyle == PlayerDesignStyle.V7 &&
                 !aodModeEnabled
         val shouldUseArtworkCanvas =
-            archiveTuneCanvasEnabled &&
+            (archiveTuneCanvasEnabled || spotifyCanvasEnabled) &&
                 (
                     playerDesignStyle == PlayerDesignStyle.V8 ||
                         playerDesignStyle == PlayerDesignStyle.V9 ||
@@ -1219,6 +1221,7 @@ fun BottomSheetPlayer(
                         requireVertical = shouldUseV7Canvas,
                         allowNetwork = true,
                         albumTitle = next.album?.title,
+                        trySpotifyCanvas = spotifyCanvasEnabled,
                     )
                 }
             }
@@ -1267,6 +1270,7 @@ fun BottomSheetPlayer(
                         requireVertical = true,
                         allowNetwork = shouldFetchV7Canvas,
                         albumTitle = metadata.album?.title,
+                        trySpotifyCanvas = spotifyCanvasEnabled,
                     )
                 if (requestRevision == canvasArtworkRevision) {
                     v7CanvasArtwork = resolvedArtwork
@@ -1305,6 +1309,7 @@ fun BottomSheetPlayer(
                         requireVertical = false,
                         allowNetwork = shouldFetchArtworkCanvas,
                         albumTitle = metadata.album?.title,
+                        trySpotifyCanvas = spotifyCanvasEnabled,
                     )
                 if (requestRevision == canvasArtworkRevision) {
                     artworkCanvas = resolvedArtwork

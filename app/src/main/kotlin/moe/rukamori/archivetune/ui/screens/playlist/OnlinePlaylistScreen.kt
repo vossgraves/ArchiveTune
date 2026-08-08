@@ -318,7 +318,7 @@ fun OnlinePlaylistScreen(
                             .calculateBottomPadding(),
                 ),
         ) {
-            playlist.let { playlist ->
+            playlist.let { playlistSnapshot ->
                 if (isLoading) {
                     item(key = "shimmer") {
                         ShimmerHost {
@@ -388,7 +388,13 @@ fun OnlinePlaylistScreen(
                             repeat(6) { ListItemPlaceHolder() }
                         }
                     }
-                } else if (playlist != null) {
+                } else if (playlistSnapshot != null) {
+                    // Capture into a local non-null val so the smart-cast survives any
+                    // recomposition timing inside the LazyColumn item lambda — Compose may
+                    // invoke the item{} lambda on a later pass and the outer StateFlow value
+                    // could in theory have flipped back to null, which previously risked an
+                    // NPE on `playlist.title` / `playlist.thumbnail` access.
+                    val playlist = playlistSnapshot
                     item(key = "header") {
                         if (!isSearching) {
                             val author =

@@ -21,8 +21,8 @@ class LoadSearchDiscoveryUseCase
     constructor(
         private val repository: SearchDiscoveryRepository,
     ) {
-        suspend operator fun invoke(): Result<SearchDiscoveryUiModel> =
-            repository.loadDiscovery().map { data ->
+        suspend operator fun invoke(forceRefresh: Boolean = false): Result<SearchDiscoveryUiModel> =
+            repository.loadDiscovery(forceRefresh).map { data ->
                 val chartItems = data.chartSections.flatMap { section -> section.items }
 
                 SearchDiscoveryUiModel(

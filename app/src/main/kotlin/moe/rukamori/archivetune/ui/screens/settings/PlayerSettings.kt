@@ -62,6 +62,7 @@ import moe.rukamori.archivetune.constants.PermanentShuffleKey
 import moe.rukamori.archivetune.constants.PersistentQueueKey
 import moe.rukamori.archivetune.constants.SeekExtraSeconds
 import moe.rukamori.archivetune.constants.SkipSilenceKey
+import moe.rukamori.archivetune.constants.SpotifyCanvasKey
 import moe.rukamori.archivetune.constants.StopMusicOnTaskClearKey
 import moe.rukamori.archivetune.constants.SwipeToSongKey
 import moe.rukamori.archivetune.constants.SwipeSensitivityKey
@@ -184,6 +185,15 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
     val (archiveTuneCanvasEnabled, onArchiveTuneCanvasEnabledChange) =
         rememberPreference(
             ArchiveTuneCanvasKey,
+            defaultValue = false,
+        )
+    // Spotify Canvas: fetch the official Spotify Canvas looping video for the current song
+    // using its YouTube Music video ID via https://mlc.kouzu.in/api/canvas?id=<videoId>.
+    // Defaults to false so existing users don't see surprise network traffic / video playback
+    // until they explicitly opt in.
+    val (spotifyCanvasEnabled, onSpotifyCanvasEnabledChange) =
+        rememberPreference(
+            SpotifyCanvasKey,
             defaultValue = false,
         )
     val (tidalEnabled, _) =
@@ -498,6 +508,18 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                         checked = archiveTuneCanvasEnabled,
                         onCheckedChange = onArchiveTuneCanvasEnabledChange,
                     )
+                }
+
+                item {
+                    Column(modifier = positions.modifierFor("spotify_canvas")) {
+                        SwitchPreference(
+                            title = { Text(stringResource(R.string.spotify_canvas)) },
+                            description = stringResource(R.string.spotify_canvas_desc),
+                            icon = { Icon(painterResource(R.drawable.slow_motion_video), null) },
+                            checked = spotifyCanvasEnabled,
+                            onCheckedChange = onSpotifyCanvasEnabledChange,
+                        )
+                    }
                 }
 
                 item {
