@@ -376,8 +376,16 @@ fun SpotifyPlaylistScreen(
 
                         // SimpMusic-style liquid glass backdrop source.
                         val artworkBackdrop = rememberBackdrop(Color.Black)
-                        Box(modifier = Modifier.layerBackdrop(artworkBackdrop)) {
-                            MediaDetailHero(
+                        // CRITICAL: the LiquidGlass buttons MUST be siblings of (not
+                        // children of) the Box carrying Modifier.layerBackdrop.
+                        // Nesting them inside the backdrop source creates a render-
+                        // feedback loop that overflows the RenderThread stack —
+                        // see LiquidGlass.kt. The parent Box below positions the
+                        // buttons over the artwork via Modifier.align() while
+                        // keeping them outside the backdrop-recording scope.
+                        Box {
+                            Box(modifier = Modifier.layerBackdrop(artworkBackdrop)) {
+                                MediaDetailHero(
                             title = currentPlaylist.name,
                             thumbnailUrl = thumbnailUrl,
                             fallbackIcon = R.drawable.queue_music,
@@ -460,7 +468,10 @@ fun SpotifyPlaylistScreen(
                             },
                             useBlurredPlayButton = true,
                         )
+                            }
                             // SimpMusic-style floating liquid glass buttons.
+                            // SIBLINGS of the layerBackdrop Box (children of the
+                            // parent Box), NOT children of the layerBackdrop Box.
                             LiquidGlassIconButton(
                                 backdrop = artworkBackdrop,
                                 painter = painterResource(R.drawable.arrow_back),

@@ -425,8 +425,24 @@ fun OnlinePlaylistScreen(
                             // button (top-start) and the more-actions pill
                             // (top-end) can sample the artwork behind them.
                             val artworkBackdrop = rememberBackdrop(Color.Black)
-                            Box(modifier = Modifier.layerBackdrop(artworkBackdrop)) {
-                                MediaDetailHero(
+                            // CRITICAL: the LiquidGlass buttons MUST be siblings of (not
+                            // children of) the Box carrying Modifier.layerBackdrop.
+                            // Nesting them inside the backdrop source creates a render-
+                            // feedback loop that overflows the RenderThread stack —
+                            // see LiquidGlass.kt:
+                            //   "The element MUST be a sibling of the backdrop source
+                            //    (the box carrying layerBackdrop); nesting it inside
+                            //    the source creates a render-feedback loop that crashes
+                            //    the RuntimeShader."
+                            // On MIUI (Xiaomi/POCO) the stack overflow is triggered
+                            // eagerly by MiBackgroundBlurBlend::preUpdateInfo, causing
+                            // a SIGSEGV on the RenderThread when opening community
+                            // playlists. The parent Box below positions the buttons
+                            // over the artwork via Modifier.align() while keeping them
+                            // outside the backdrop-recording scope.
+                            Box {
+                                Box(modifier = Modifier.layerBackdrop(artworkBackdrop)) {
+                                    MediaDetailHero(
                                 title = playlist.title,
                                 thumbnailUrl = playlist.thumbnail,
                                 fallbackIcon = R.drawable.queue_music,
@@ -550,7 +566,12 @@ fun OnlinePlaylistScreen(
                                 // animated the resulting placement delta.
                                 useBlurredPlayButton = true,
                             )
+                                }
                                 // SimpMusic-style floating liquid glass buttons.
+                                // These are SIBLINGS of the layerBackdrop Box above
+                                // (children of the parent Box), NOT children of the
+                                // layerBackdrop Box itself. This prevents the render-
+                                // feedback loop that causes the RenderThread SIGSEGV.
                                 LiquidGlassIconButton(
                                     backdrop = artworkBackdrop,
                                     painter = painterResource(R.drawable.arrow_back),
