@@ -78,6 +78,7 @@ import moe.rukamori.archivetune.telegram.composeE164
 import moe.rukamori.archivetune.telegram.defaultCallingCode
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.utils.backToMain
+import androidx.compose.foundation.layout.asPaddingValues
 
 const val TELEGRAM_LOGIN_ROUTE = "settings/telegram/login"
 
@@ -166,16 +167,22 @@ fun TelegramLoginScreen(navController: NavController) {
             )
         },
     ) { innerPadding ->
+        val playerAwareBottomPadding =
+            LocalPlayerAwareWindowInsets.current
+                .only(WindowInsetsSides.Bottom)
+                .asPaddingValues()
+                .calculateBottomPadding()
         Column(
             modifier =
                 Modifier
                     .padding(top = innerPadding.calculateTopPadding())
                     .windowInsetsPadding(
                         LocalPlayerAwareWindowInsets.current.only(
-                            WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
+                            WindowInsetsSides.Horizontal,
                         ),
                     ).verticalScroll(rememberScrollState())
-                    .padding(horizontal = 24.dp),
+                    .padding(horizontal = 24.dp)
+                    .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Spacer(Modifier.height(16.dp))

@@ -39,6 +39,7 @@ import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.rememberPreference
+import androidx.compose.foundation.layout.asPaddingValues
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -67,6 +68,11 @@ fun LyricsAnimationSettings(navController: NavController) {
             )
         },
     ) { innerPadding ->
+        val playerAwareBottomPadding =
+            LocalPlayerAwareWindowInsets.current
+                .only(WindowInsetsSides.Bottom)
+                .asPaddingValues()
+                .calculateBottomPadding()
         val topPadding = innerPadding.calculateTopPadding()
 
         Column(
@@ -76,9 +82,9 @@ fun LyricsAnimationSettings(navController: NavController) {
                     .verticalScroll(rememberScrollState())
                     .windowInsetsPadding(
                         LocalPlayerAwareWindowInsets.current.only(
-                            WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
+                            WindowInsetsSides.Horizontal,
                         ),
-                    ).padding(bottom = SettingsDimensions.ScreenBottomPadding),
+                    ).padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
         ) {
             PreferenceGroup(title = "Animation Tuning") {
                 item {

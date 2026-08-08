@@ -89,6 +89,7 @@ import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
 import kotlin.math.roundToInt
+import androidx.compose.foundation.layout.asPaddingValues
 
 @Composable
 fun NavigationBarSettings(navController: NavController, scrollTo: String? = null) {
@@ -158,6 +159,11 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
             )
         },
     ) { innerPadding ->
+        val playerAwareBottomPadding =
+            LocalPlayerAwareWindowInsets.current
+                .only(WindowInsetsSides.Bottom)
+                .asPaddingValues()
+                .calculateBottomPadding()
         val topPadding = innerPadding.calculateTopPadding()
         val scrollState = rememberScrollState()
         val positions = rememberPreferencePositions()
@@ -169,10 +175,10 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                 .padding(top = topPadding)
                 .windowInsetsPadding(
                     LocalPlayerAwareWindowInsets.current.only(
-                        WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
+                        WindowInsetsSides.Horizontal,
                     ),
                 ).verticalScroll(scrollState)
-                .padding(bottom = SettingsDimensions.ScreenBottomPadding),
+                .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
         ) {
             PreferenceGroup(title = stringResource(R.string.general)) {
                 item {

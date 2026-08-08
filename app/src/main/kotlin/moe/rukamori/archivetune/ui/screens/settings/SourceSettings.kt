@@ -52,6 +52,7 @@ import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.PoolAccountManager
+import androidx.compose.foundation.layout.asPaddingValues
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -75,6 +76,11 @@ fun SourceSettings(navController: NavController, scrollTo: String? = null) {
             )
         },
     ) { innerPadding ->
+        val playerAwareBottomPadding =
+            LocalPlayerAwareWindowInsets.current
+                .only(WindowInsetsSides.Bottom)
+                .asPaddingValues()
+                .calculateBottomPadding()
         val topPadding = innerPadding.calculateTopPadding()
         val scrollState = rememberScrollState()
         val positions = rememberPreferencePositions()
@@ -86,11 +92,11 @@ fun SourceSettings(navController: NavController, scrollTo: String? = null) {
                 .padding(top = topPadding)
                 .windowInsetsPadding(
                     LocalPlayerAwareWindowInsets.current.only(
-                        WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
+                        WindowInsetsSides.Horizontal,
                     ),
                 )
                 .verticalScroll(scrollState)
-                .padding(bottom = SettingsDimensions.ScreenBottomPadding),
+                .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
         ) {
             // Manual "refresh from pool" — pulls the latest shared accounts and instances on demand
             // (the app also does this automatically on startup). Only shown when a source pool is

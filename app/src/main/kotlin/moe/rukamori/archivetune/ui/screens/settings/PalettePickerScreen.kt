@@ -119,6 +119,7 @@ import moe.rukamori.archivetune.ui.theme.ThemeSeedPaletteCodec
 import moe.rukamori.archivetune.ui.theme.palette.TonalPalettes
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.rememberPreference
+import androidx.compose.foundation.layout.asPaddingValues
 
 private enum class SeedRole {
     PRIMARY,
@@ -1044,13 +1045,19 @@ fun PalettePickerScreen(navController: NavController) {
             }
         },
     ) { paddingValues ->
+        val playerAwareBottomPadding =
+            LocalPlayerAwareWindowInsets.current
+                .only(WindowInsetsSides.Bottom)
+                .asPaddingValues()
+                .calculateBottomPadding()
         Column(
             modifier =
                 Modifier
                     .fillMaxSize()
                     .padding(paddingValues)
-                    .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom))
-                    .verticalScroll(rememberScrollState()),
+                    .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal))
+                    .verticalScroll(rememberScrollState())
+                    .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Spacer(modifier = Modifier.height(16.dp))
@@ -1255,13 +1262,19 @@ fun ThemeCreatorScreen(navController: NavController) {
             }
         },
     ) { paddingValues ->
+        val playerAwareBottomPadding =
+            LocalPlayerAwareWindowInsets.current
+                .only(WindowInsetsSides.Bottom)
+                .asPaddingValues()
+                .calculateBottomPadding()
         Column(
             modifier =
                 Modifier
                     .fillMaxWidth()
                     .padding(paddingValues)
-                    .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom))
-                    .verticalScroll(rememberScrollState()),
+                    .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal))
+                    .verticalScroll(rememberScrollState())
+                    .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
         ) {
             SimpleThemePreview(
                 palette = currentPalette,

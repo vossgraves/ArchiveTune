@@ -90,6 +90,7 @@ import moe.rukamori.archivetune.viewmodels.LogcatUiEntry
 import moe.rukamori.archivetune.viewmodels.LogcatUiModel
 import moe.rukamori.archivetune.viewmodels.LogcatViewModel
 import moe.rukamori.archivetune.ui.component.IconButton as ArchiveTuneIconButton
+import androidx.compose.foundation.layout.asPaddingValues
 
 @Composable
 fun LogcatScreen(
@@ -260,7 +261,7 @@ private fun LogcatScreenContent(
                     .padding(innerPadding)
                     .windowInsetsPadding(
                         LocalPlayerAwareWindowInsets.current.only(
-                            WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
+                            WindowInsetsSides.Horizontal,
                         ),
                     ),
             contentAlignment = Alignment.TopCenter,
@@ -442,6 +443,11 @@ private fun LogcatLogContent(
     onCopy: (String) -> Unit,
     onToggleExpanded: (String) -> Unit,
 ) {
+    val playerAwareBottomPadding =
+        LocalPlayerAwareWindowInsets.current
+            .only(WindowInsetsSides.Bottom)
+            .asPaddingValues()
+            .calculateBottomPadding()
     Column(
         modifier =
             Modifier
@@ -509,7 +515,10 @@ private fun LogcatLogContent(
                         .fillMaxWidth()
                         .weight(1f)
                         .nestedScroll(logUserScrollConnection),
-                contentPadding = PaddingValues(vertical = 8.dp),
+                contentPadding = PaddingValues(
+                    vertical = 8.dp,
+                    bottom = playerAwareBottomPadding + 8.dp,
+                ),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 itemsIndexed(

@@ -50,6 +50,7 @@ import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.StorageSettingsViewModel
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.compose.foundation.layout.asPaddingValues
 
 @Composable
 fun DownloadsSettings(
@@ -118,6 +119,11 @@ fun DownloadsSettings(
             )
         },
     ) { innerPadding ->
+        val playerAwareBottomPadding =
+            LocalPlayerAwareWindowInsets.current
+                .only(WindowInsetsSides.Bottom)
+                .asPaddingValues()
+                .calculateBottomPadding()
         val topPadding = innerPadding.calculateTopPadding()
         val scrollState = rememberScrollState()
         val positions = rememberPreferencePositions()
@@ -127,9 +133,9 @@ fun DownloadsSettings(
         Column(
             Modifier
                 .padding(top = topPadding)
-                .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom))
+                .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal))
                 .verticalScroll(scrollState)
-                .padding(bottom = SettingsDimensions.ScreenBottomPadding),
+                .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
         ) {
             PreferenceGroup(
                 modifier = positions.modifierFor("downloaded_songs"),

@@ -88,6 +88,7 @@ import moe.rukamori.archivetune.ui.component.TextFieldDialog
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
+import androidx.compose.foundation.layout.asPaddingValues
 
 /**
  * Process-lived cache of the last on-demand health-check results so that the checked status (and
@@ -554,6 +555,11 @@ fun QobuzSettings(navController: NavController, scrollTo: String? = null) {
             )
         },
     ) { innerPadding ->
+        val playerAwareBottomPadding =
+            LocalPlayerAwareWindowInsets.current
+                .only(WindowInsetsSides.Bottom)
+                .asPaddingValues()
+                .calculateBottomPadding()
         val topPadding = innerPadding.calculateTopPadding()
         val scrollState = rememberScrollState()
         val positions = rememberPreferencePositions()
@@ -565,11 +571,11 @@ fun QobuzSettings(navController: NavController, scrollTo: String? = null) {
                 .padding(top = topPadding)
                 .windowInsetsPadding(
                     LocalPlayerAwareWindowInsets.current.only(
-                        WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
+                        WindowInsetsSides.Horizontal,
                     ),
                 )
                 .verticalScroll(scrollState)
-                .padding(bottom = SettingsDimensions.ScreenBottomPadding),
+                .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
         ) {
             PreferenceGroup(
                 modifier = positions.modifierFor("qobuz_account"),

@@ -172,7 +172,7 @@ fun DebugSettings(navController: NavController) {
                     .padding(innerPadding)
                     .windowInsetsPadding(
                         LocalPlayerAwareWindowInsets.current.only(
-                            WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
+                            WindowInsetsSides.Horizontal,
                         ),
                     ).verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(8.dp),

@@ -1949,7 +1949,7 @@ class MainActivity : ComponentActivity() {
                                             Box(
                                                 modifier =
                                                     Modifier
-                                                        .fillMaxSize()
+                                                        .matchParentSize()
                                                         .graphicsLayer {
                                                             renderEffect =
                                                                 BlurEffect(
@@ -2020,7 +2020,7 @@ class MainActivity : ComponentActivity() {
                                             Box(
                                                 modifier =
                                                     Modifier
-                                                        .fillMaxSize()
+                                                        .matchParentSize()
                                                         .drawBackdrop(
                                                             backdrop = liquidGlassBackdrop,
                                                             effects = {

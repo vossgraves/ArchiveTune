@@ -49,6 +49,7 @@ import moe.rukamori.archivetune.ui.component.TextFieldDialog
 import moe.rukamori.archivetune.ui.menu.CrossServiceImportPlaylistDialog
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.rememberPreference
+import androidx.compose.foundation.layout.asPaddingValues
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -87,6 +88,11 @@ fun IntegrationScreen(
             )
         },
     ) { innerPadding ->
+        val playerAwareBottomPadding =
+            LocalPlayerAwareWindowInsets.current
+                .only(WindowInsetsSides.Bottom)
+                .asPaddingValues()
+                .calculateBottomPadding()
         val topPadding = innerPadding.calculateTopPadding()
         val scrollState = rememberScrollState()
         val positions = rememberPreferencePositions()
@@ -96,9 +102,9 @@ fun IntegrationScreen(
         Column(
             Modifier
                 .padding(top = topPadding)
-                .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom))
+                .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal))
                 .verticalScroll(scrollState)
-                .padding(bottom = SettingsDimensions.ScreenBottomPadding),
+                .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
         ) {
             // AI integration lives at the top of the Integration page (Task 8). It used to
             // be a top-level pill on the main settings page; moving it here co-locates it

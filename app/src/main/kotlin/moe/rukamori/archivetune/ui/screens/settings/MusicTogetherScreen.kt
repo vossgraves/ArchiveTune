@@ -114,6 +114,7 @@ import moe.rukamori.archivetune.viewmodels.MusicTogetherStatusUiModel
 import moe.rukamori.archivetune.viewmodels.MusicTogetherUiModel
 import moe.rukamori.archivetune.viewmodels.MusicTogetherViewModel
 import moe.rukamori.archivetune.ui.component.IconButton as AtIconButton
+import androidx.compose.foundation.layout.asPaddingValues
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -201,6 +202,11 @@ fun MusicTogetherScreen(
                 .fillMaxSize()
                 .nestedScroll(scrollBehavior.nestedScrollConnection),
     ) { innerPadding ->
+        val playerAwareBottomPadding =
+            LocalPlayerAwareWindowInsets.current
+                .only(WindowInsetsSides.Bottom)
+                .asPaddingValues()
+                .calculateBottomPadding()
         Box(
             modifier =
                 Modifier
@@ -208,7 +214,7 @@ fun MusicTogetherScreen(
                     .padding(innerPadding)
                     .windowInsetsPadding(
                         LocalPlayerAwareWindowInsets.current.only(
-                            WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
+                            WindowInsetsSides.Horizontal,
                         ),
                     ),
         ) {
@@ -243,6 +249,11 @@ private fun MusicTogetherContent(
     useSupportingPane: Boolean,
     viewModel: MusicTogetherViewModel,
 ) {
+    val playerAwareBottomPadding =
+        LocalPlayerAwareWindowInsets.current
+            .only(WindowInsetsSides.Bottom)
+            .asPaddingValues()
+            .calculateBottomPadding()
     if (useSupportingPane) {
         Row(
             modifier =
@@ -257,7 +268,7 @@ private fun MusicTogetherContent(
                         .weight(1.25f)
                         .fillMaxHeight()
                         .widthIn(max = 720.dp),
-                contentPadding = PaddingValues(bottom = MusicTogetherSpacing.lg),
+                contentPadding = PaddingValues(bottom = playerAwareBottomPadding + MusicTogetherSpacing.lg),
                 verticalArrangement = Arrangement.spacedBy(MusicTogetherSpacing.sm),
             ) {
                 item(contentType = "status") {
@@ -323,7 +334,7 @@ private fun MusicTogetherContent(
                     start = MusicTogetherSpacing.sm,
                     top = MusicTogetherSpacing.xs,
                     end = MusicTogetherSpacing.sm,
-                    bottom = SettingsDimensions.ScreenBottomPadding,
+                    bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding,
                 ),
             verticalArrangement = Arrangement.spacedBy(MusicTogetherSpacing.sm),
         ) {

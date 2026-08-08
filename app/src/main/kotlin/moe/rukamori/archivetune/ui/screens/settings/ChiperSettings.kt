@@ -83,6 +83,7 @@ import moe.rukamori.archivetune.viewmodels.ChiperSettingsUiState
 import moe.rukamori.archivetune.viewmodels.ChiperSettingsViewModel
 import java.text.DateFormat
 import java.util.Date
+import androidx.compose.foundation.layout.asPaddingValues
 
 private val CipherContentMaxWidth = 840.dp
 private val CipherMessageMaxWidth = 480.dp
@@ -161,6 +162,11 @@ private fun ChiperSettingsContent(
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { innerPadding ->
+        val playerAwareBottomPadding =
+            LocalPlayerAwareWindowInsets.current
+                .only(WindowInsetsSides.Bottom)
+                .asPaddingValues()
+                .calculateBottomPadding()
         when (state) {
             is ChiperSettingsUiState.Loading -> {
                 CipherLoadingState(
@@ -171,7 +177,7 @@ private fun ChiperSettingsContent(
                             .consumeWindowInsets(innerPadding)
                             .windowInsetsPadding(
                                 LocalPlayerAwareWindowInsets.current.only(
-                                    WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
+                                    WindowInsetsSides.Horizontal,
                                 ),
                             ),
                 )
@@ -188,7 +194,7 @@ private fun ChiperSettingsContent(
                             .consumeWindowInsets(innerPadding)
                             .windowInsetsPadding(
                                 LocalPlayerAwareWindowInsets.current.only(
-                                    WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
+                                    WindowInsetsSides.Horizontal,
                                 ),
                             ),
                 )
@@ -205,7 +211,7 @@ private fun ChiperSettingsContent(
                             .consumeWindowInsets(innerPadding)
                             .windowInsetsPadding(
                                 LocalPlayerAwareWindowInsets.current.only(
-                                    WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
+                                    WindowInsetsSides.Horizontal,
                                 ),
                             ),
                 )
@@ -218,14 +224,14 @@ private fun ChiperSettingsContent(
                     contentPadding =
                         PaddingValues(
                             top = innerPadding.calculateTopPadding(),
-                            bottom = SettingsDimensions.ScreenBottomPadding,
+                            bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding,
                         ),
                     modifier =
                         Modifier
                             .consumeWindowInsets(innerPadding)
                             .windowInsetsPadding(
                                 LocalPlayerAwareWindowInsets.current.only(
-                                    WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
+                                    WindowInsetsSides.Horizontal,
                                 ),
                             ),
                 )

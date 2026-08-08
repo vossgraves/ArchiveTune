@@ -103,7 +103,7 @@ fun ChangelogScreen(
                     .padding(top = paddingValues.calculateTopPadding())
                     .windowInsetsPadding(
                         LocalPlayerAwareWindowInsets.current.only(
-                            WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
+                            WindowInsetsSides.Horizontal,
                         ),
                     ),
         ) {

@@ -100,6 +100,7 @@ import moe.rukamori.archivetune.utils.rememberPreference
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
 import kotlin.math.roundToInt
+import androidx.compose.foundation.layout.asPaddingValues
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -304,6 +305,11 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
             )
         },
     ) { innerPadding ->
+        val playerAwareBottomPadding =
+            LocalPlayerAwareWindowInsets.current
+                .only(WindowInsetsSides.Bottom)
+                .asPaddingValues()
+                .calculateBottomPadding()
         val topPadding = innerPadding.calculateTopPadding()
         val scrollState = rememberScrollState()
         val positions = rememberPreferencePositions()
@@ -313,9 +319,9 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
         Column(
             Modifier
                 .padding(top = topPadding)
-                .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom))
+                .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal))
                 .verticalScroll(scrollState)
-                .padding(bottom = SettingsDimensions.ScreenBottomPadding),
+                .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
         ) {
             // "Sources" group: music source + lyrics settings now live on the Playback page
             // (moved from the main settings list per Tasks 4 & 5). Each row navigates to its
@@ -694,7 +700,7 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                                 Text(
                                     text = stringResource(R.string.swipe_sensitivity),
                                     style = MaterialTheme.typography.headlineSmall,
-                                    modifier = Modifier.padding(bottom = 16.dp),
+                                    modifier = Modifier.padding(bottom = playerAwareBottomPadding + 16.dp),
                                 )
 
                                 Text(
@@ -703,7 +709,7 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                                         (tempSensitivity * 100).roundToInt(),
                                     ),
                                     style = MaterialTheme.typography.bodyLarge,
-                                    modifier = Modifier.padding(bottom = 16.dp),
+                                    modifier = Modifier.padding(bottom = playerAwareBottomPadding + 16.dp),
                                 )
 
                                 Slider(

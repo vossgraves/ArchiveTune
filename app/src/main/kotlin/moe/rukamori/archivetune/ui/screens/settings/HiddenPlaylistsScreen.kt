@@ -54,6 +54,7 @@ import moe.rukamori.archivetune.constants.PlaylistSortType
 import moe.rukamori.archivetune.db.entities.Playlist
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.utils.backToMain
+import androidx.compose.foundation.layout.asPaddingValues
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -86,6 +87,11 @@ fun HiddenPlaylistsScreen(navController: NavController) {
             )
         },
     ) { innerPadding ->
+        val playerAwareBottomPadding =
+            LocalPlayerAwareWindowInsets.current
+                .only(WindowInsetsSides.Bottom)
+                .asPaddingValues()
+                .calculateBottomPadding()
         if (hiddenPlaylists.isEmpty()) {
             Column(
                 modifier =
@@ -116,7 +122,7 @@ fun HiddenPlaylistsScreen(navController: NavController) {
                         .fillMaxSize()
                         .windowInsetsPadding(
                             LocalPlayerAwareWindowInsets.current.only(
-                                WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
+                                WindowInsetsSides.Horizontal,
                             ),
                         ),
                 contentPadding =
@@ -124,7 +130,7 @@ fun HiddenPlaylistsScreen(navController: NavController) {
                         start = 16.dp,
                         top = innerPadding.calculateTopPadding() + 8.dp,
                         end = 16.dp,
-                        bottom = SettingsDimensions.ScreenBottomPadding,
+                        bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding,
                     ),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {

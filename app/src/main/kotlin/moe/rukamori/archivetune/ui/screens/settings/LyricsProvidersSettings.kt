@@ -67,6 +67,7 @@ import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.ContentSettingsViewModel
 import moe.rukamori.archivetune.viewmodels.PaxsenixStatsState
+import androidx.compose.foundation.layout.asPaddingValues
 
 /**
  * Lyrics providers sub-page (Task 2): houses every lyrics-provider toggle plus the
@@ -166,17 +167,22 @@ fun LyricsProvidersSettings(
             )
         },
     ) { innerPadding ->
+        val playerAwareBottomPadding =
+            LocalPlayerAwareWindowInsets.current
+                .only(WindowInsetsSides.Bottom)
+                .asPaddingValues()
+                .calculateBottomPadding()
         val scrollState = rememberScrollState()
         Column(
             Modifier
                 .padding(top = innerPadding.calculateTopPadding())
                 .windowInsetsPadding(
                     LocalPlayerAwareWindowInsets.current.only(
-                        WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
+                        WindowInsetsSides.Horizontal,
                     ),
                 )
                 .verticalScroll(scrollState)
-                .padding(bottom = SettingsDimensions.ScreenBottomPadding),
+                .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
         ) {
             PreferenceGroup(title = stringResource(R.string.providers)) {
                 // "Prioritize Word Synced Lyrics" sits at the TOP of the providers

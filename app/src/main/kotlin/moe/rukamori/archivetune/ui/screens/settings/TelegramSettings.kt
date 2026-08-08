@@ -54,6 +54,7 @@ import moe.rukamori.archivetune.ui.screens.TELEGRAM_BOTS_ROUTE
 import moe.rukamori.archivetune.ui.screens.TELEGRAM_BROWSE_ROUTE
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.rememberPreference
+import androidx.compose.foundation.layout.asPaddingValues
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -128,14 +129,20 @@ fun TelegramSettings(navController: NavController) {
             )
         },
     ) { innerPadding ->
+        val playerAwareBottomPadding =
+            LocalPlayerAwareWindowInsets.current
+                .only(WindowInsetsSides.Bottom)
+                .asPaddingValues()
+                .calculateBottomPadding()
         Column(
             Modifier
                 .padding(top = innerPadding.calculateTopPadding())
                 .windowInsetsPadding(
                     LocalPlayerAwareWindowInsets.current.only(
-                        WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
+                        WindowInsetsSides.Horizontal,
                     ),
-                ).verticalScroll(rememberScrollState()),
+                ).verticalScroll(rememberScrollState())
+                .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
         ) {
             PreferenceGroup(title = stringResource(R.string.telegram_account)) {
                 if (isReady) {

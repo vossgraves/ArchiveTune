@@ -73,6 +73,7 @@ import moe.rukamori.archivetune.viewmodels.LastFmSettingsViewModel
 import moe.rukamori.archivetune.viewmodels.LastFmTimingEditorUiModel
 import moe.rukamori.archivetune.viewmodels.LastFmTimingSetting
 import kotlin.math.roundToInt
+import androidx.compose.foundation.layout.asPaddingValues
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -162,15 +163,20 @@ private fun LastFmSettingsContent(
 ) {
     val scrollState = rememberScrollState()
     val positions = rememberPreferencePositions()
+    val playerAwareBottomPadding =
+        LocalPlayerAwareWindowInsets.current
+            .only(WindowInsetsSides.Bottom)
+            .asPaddingValues()
+            .calculateBottomPadding()
 
     LaunchedEffect(scrollTo) { positions.scrollToKey(scrollTo, scrollState) }
 
     Column(
         Modifier
             .padding(top = topPadding)
-            .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom))
+            .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal))
             .verticalScroll(scrollState)
-            .padding(bottom = SettingsDimensions.ScreenBottomPadding),
+            .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
     ) {
         when (state) {
             LastFmSettingsScreenState.Loading -> {

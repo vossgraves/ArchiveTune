@@ -305,7 +305,7 @@ fun LastFmDashboardScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .windowInsetsPadding(
-                    playerAwareInsets.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom),
+                    playerAwareInsets.only(WindowInsetsSides.Horizontal),
                 ),
             contentPadding =
                 PaddingValues(
