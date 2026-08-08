@@ -1371,10 +1371,10 @@ fun BottomSheetPlayer(
                         if (queueBlurEnabled) {
                             Modifier.graphicsLayer {
                                 renderEffect =
-                                    android.graphics.RenderEffect.createBlurEffect(
-                                        32f,
-                                        32f,
-                                        android.graphics.Shader.TileMode.CLAMP,
+                                    androidx.compose.ui.graphics.BlurEffect(
+                                        radiusX = 32f,
+                                        radiusY = 32f,
+                                        edgeTreatment = androidx.compose.ui.graphics.TileMode.Clamp,
                                     )
                             }
                         } else {
