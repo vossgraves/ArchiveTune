@@ -485,26 +485,27 @@ private fun AppleMusicSharpArtwork(
             )
         } else if (immersiveExtendedCard) {
             // "Immersive extended" — render the still cover as a square using the
-            // same sizing formula as the Material Extended (V9) player, centered
-            // inside the artwork stage. This matches the V9 artwork dimensions
-            // (square, horizontal padding 16/20dp, height-capped by screen size)
-            // instead of stretching the cover to fill the rectangular stage.
+            // SAME sizing formula and thresholds as the Material Extended (V9)
+            // player (see V9PortraitContent in PlayerComponents.kt), centered
+            // inside the artwork stage. V9 computes its cap against the FULL
+            // player height, but inside AppleMusicSharpArtwork maxHeight is only
+            // the stage height (55% of the player height in portrait, full
+            // height in landscape) — so we re-derive the full height first and
+            // run ALL the compact-height thresholds against that full height.
+            // Without this, a typical 800dp-tall player would see its 440dp
+            // stage trip the "veryCompact" branch and shrink the artwork from
+            // 0.40 * H to 0.32 * H, making it noticeably smaller than V9.
             BoxWithConstraints(modifier = Modifier.matchParentSize()) {
                 val horizontalPadding = if (maxWidth < 380.dp) 16.dp else 20.dp
-                val compactHeight = maxHeight < 760.dp
-                val veryCompactHeight = maxHeight < 700.dp
+                val effectiveFullHeight = if (landscape) maxHeight else maxHeight / 0.55f
+                val compactHeight = effectiveFullHeight < 760.dp
+                val veryCompactHeight = effectiveFullHeight < 700.dp
                 val artworkMinSize =
                     when {
                         veryCompactHeight -> 200.dp
                         compactHeight -> 216.dp
                         else -> 236.dp
                     }
-                // V9's height cap is computed against the player's full height.
-                // Inside AppleMusicSharpArtwork, maxHeight is the stage height
-                // (55% of the player height in portrait, full height in landscape),
-                // so we re-derive the equivalent full-height cap by dividing by
-                // 0.55 for portrait stages.
-                val effectiveFullHeight = if (landscape) maxHeight else maxHeight / 0.55f
                 val artworkHeightLimit =
                     effectiveFullHeight *
                         when {
