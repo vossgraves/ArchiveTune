@@ -29,7 +29,6 @@ import android.media.AudioDeviceCallback
 import android.media.AudioDeviceInfo
 import android.media.AudioFocusRequest
 import android.media.AudioManager
-import android.media.MediaCodec
 import android.media.MediaCodecList
 import android.media.audiofx.AudioEffect
 import android.media.audiofx.BassBoost
@@ -83,8 +82,6 @@ import androidx.media3.exoplayer.analytics.PlaybackStats
 import androidx.media3.exoplayer.analytics.PlaybackStatsListener
 import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.exoplayer.audio.SilenceSkippingAudioProcessor
-import androidx.media3.exoplayer.mediacodec.MediaCodecDecoderException
-import androidx.media3.exoplayer.mediacodec.MediaCodecRenderer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.ShuffleOrder.DefaultShuffleOrder
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
@@ -7611,63 +7608,8 @@ class MusicService :
         }
     }
 
-    /**
-     * Detects MediaCodec decoder-state errors that are recoverable by re-preparing the player.
-     *
-     * These surface as `PlaybackException` with errorCode == ERROR_CODE_DECODING_FAILED (4003)
-     * or ERROR_CODE_DECODER_INIT_FAILED, wrapping a chain that includes any of:
-     *  - `androidx.media3.exoplayer.mediacodec.MediaCodecDecoderException`
-     *    ("Decoder failed: c2.mtk.alac.decoder" etc.) — runtime codec fault.
-     *  - `androidx.media3.exoplayer.MediaCodecRenderer.DecoderInitializationException`
-     *    — codec failed to initialize.
-     *  - `android.media.MediaCodec.CodecException` — the underlying platform codec exception,
-     *    notably "Error 0x80000000" (undefined codec error) on MediaTek's ALAC decoder under
-     *    memory pressure.
-     *  - `IllegalStateException` with the "queueInputBuffer() is valid only at Executing
-     *    states; currently at Released state" message — renderer races against an
-     *    already-released codec.
-     *
-     * We match by CLASS TYPE first (most reliable), then by message substring as a fallback
-     * so we still catch OEM-specific exception subclasses that don't inherit from the
-     * expected media3 classes.
-     */
-    private fun isMediaCodecStateError(error: PlaybackException): Boolean {
-        // Fast path: decoding-failed error code with no deeper classification still applies.
-        val isDecodingErrorCode =
-            error.errorCode == PlaybackException.ERROR_CODE_DECODING_FAILED ||
-                error.errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED ||
-                error.errorCode == PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED
-
-        val causeChain = generateSequence<Throwable>(error) { it.cause }
-        // Match by class type.
-        val hasCodecExceptionClass = causeChain.any { throwable ->
-            throwable is MediaCodec.CodecException ||
-                throwable is MediaCodecDecoderException ||
-                throwable is MediaCodecRenderer.DecoderInitializationException
-        }
-        // Match by message — covers OEM subclasses and stripped cause messages.
-        val hasCodecStateMessage = causeChain.any { throwable ->
-            val message = throwable.message.orEmpty()
-            (message.contains("queueInputBuffer", ignoreCase = true) &&
-                message.contains("Executing states", ignoreCase = true)) ||
-                message.contains("currently at Released state", ignoreCase = true) ||
-                message.contains("codec is in state", ignoreCase = true) ||
-                // "Decoder failed: <codec-name>" — the MediaCodecDecoderException signature
-                // for runtime codec faults. Codec names like c2.mtk.alac.decoder match here.
-                (message.contains("Decoder failed", ignoreCase = true) &&
-                    message.contains("decoder", ignoreCase = true)) ||
-                // Generic undefined MediaCodec error (high bit set). Seen on MediaTek's
-                // c2.mtk.alac.decoder when the OS reclaims the codec under memory pressure.
-                message.contains("0x80000000", ignoreCase = true) ||
-                // ALAC-specific decoder-name references in any cause message.
-                message.contains("alac.decoder", ignoreCase = true) ||
-                message.contains("c2.mtk.alac", ignoreCase = true)
-        }
-
-        return (isDecodingErrorCode && (hasCodecExceptionClass || hasCodecStateMessage)) ||
-            hasCodecExceptionClass ||
-            hasCodecStateMessage
-    }
+    private fun isMediaCodecStateError(error: PlaybackException): Boolean =
+        isRecoverableMediaCodecStateError(error)
 
     /** Debug-only helper: short human-readable description of the cause chain for logging. */
     private fun describeCauseChain(error: Throwable): String {
