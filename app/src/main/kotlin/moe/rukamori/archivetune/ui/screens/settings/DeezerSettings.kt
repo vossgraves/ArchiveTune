@@ -13,6 +13,7 @@ package moe.rukamori.archivetune.ui.screens.settings
 
 import android.widget.Toast
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
@@ -52,6 +53,7 @@ fun DeezerSettings(navController: NavController) {
     val (_, onPremiumChange) = rememberPreference(DeezerAccountPremiumKey, false)
 
     Scaffold(
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.deezer_integration)) },

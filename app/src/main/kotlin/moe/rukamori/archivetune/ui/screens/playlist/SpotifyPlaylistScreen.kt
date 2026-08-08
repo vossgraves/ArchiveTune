@@ -362,6 +362,11 @@ fun SpotifyPlaylistScreen(
             state = lazyListState,
             contentPadding =
                 PaddingValues(
+                    // When searching, the header item collapses to zero height and the
+                    // TopAppBar (which renders the search field) is overlaid on top of
+                    // the LazyColumn. Reserve top space so the first songs aren't hidden
+                    // behind the TopAppBar + status bar.
+                    top = if (isSearching) systemBarsTopPadding + 64.dp else 0.dp,
                     bottom =
                         LocalPlayerAwareWindowInsets.current
                             .union(WindowInsets.ime)

@@ -226,10 +226,12 @@ fun FloatingNavigationToolbar(
     // bar surface with the accent (primary) color so the frost reads as a colored glass.
     val anyFrosted = frostedBlur || tintFrostedBlur
     val canBlurBackdrop = anyFrosted && frostedBackdrop != null && !isPreS
-    // Liquid Glass nav bar: requires the master toggle on, the kyant LayerBackdrop
-    // available (Android 12+), and not in pure-black mode (the liquid glass effect
-    // needs a translucent surface to show the backdrop through).
-    val canLiquidGlass = liquidGlass && liquidGlassBackdrop != null && !isPreS && !pureBlack
+    // Liquid Glass nav bar: requires the master toggle on and the LayerBackdrop
+    // available (Android 12+). Pure-black mode is no longer a hard blocker — the
+    // liquid glass surface tints itself with `surfaceContainerHigh`, so it stays
+    // visible even when the rest of the UI is pitch black. The user explicitly
+    // opts in via the Liquid Glass toggle, so honour that choice in pure dark too.
+    val canLiquidGlass = liquidGlass && liquidGlassBackdrop != null && !isPreS
     val resolvedBarHeight =
         if (canLiquidGlass) SukiSUBarHeight else NavigationBarHeight * navBarHeightMultiplier
     // SukiSU-Ultra: when the Liquid Glass nav bar is active, the items Row uses
@@ -258,22 +260,30 @@ fun FloatingNavigationToolbar(
             } ?: MaterialTheme.shapes.extraLarge
         }
     val navigationContainerColor =
-        if (pureBlack) {
-            Color.Black
-        } else if (canLiquidGlass) {
+        if (canLiquidGlass) {
+            // Liquid glass surface — transparent so the LiquidGlassShader tint shows through.
             Color.Transparent
+        } else if (canBlurBackdrop) {
+            // Frosted / tinted-frosted: surface sits under the blurred backdrop overlay.
+            // In pure-black mode we still want SOME surface so the blur has something to
+            // blend against — use a near-black tint rather than absolute black so the
+            // frosted effect remains perceptible.
+            if (pureBlack) {
+                if (tintFrostedBlur) Color.Black.copy(alpha = 0.55f) else Color.Black.copy(alpha = 0.45f)
+            } else if (tintFrostedBlur) {
+                Color.Black.copy(alpha = 0.55f)
+            } else {
+                MaterialTheme.colorScheme.surfaceContainer
+            }
+        } else if (pureBlack) {
+            Color.Black
         } else {
             // Apply user-configured opacity (always) and transparency (only when no frosted
             // variant is active — when frosted blur is on, the frost overlay already provides
             // the see-through effect and adding transparency here would double-count).
-            val baseColor =
-                if (tintFrostedBlur) {
-                    Color.Black.copy(alpha = 0.55f)
-                } else {
-                    MaterialTheme.colorScheme.surfaceContainer
-                }
+            val baseColor = MaterialTheme.colorScheme.surfaceContainer
             val effectiveAlpha =
-                navBarOpacity * (if (anyFrosted) 1f else (1f - navBarTransparency))
+                navBarOpacity * (1f - navBarTransparency)
             baseColor.copy(alpha = effectiveAlpha.coerceIn(0.05f, 1f))
         }
     val motionScheme = MaterialTheme.motionScheme

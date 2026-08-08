@@ -164,6 +164,7 @@ fun MusicTogetherScreen(
     }
 
     Scaffold(
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             LargeFlexibleTopAppBar(
                 title = { Text(stringResource(R.string.music_together)) },

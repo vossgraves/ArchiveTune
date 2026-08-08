@@ -89,8 +89,16 @@ internal object MusixmatchTtml {
             builder.append("\" end=\"")
             builder.append(formatTime(safeEnd))
             builder.append("\">")
+            // Musixmatch word `c` may already include a trailing space (e.g. "I ", "love ").
+            // We preserve it verbatim because the downstream TTMLParser trims each span's
+            // text and only re-inserts a space when it sees a whitespace TEXT_NODE between
+            // adjacent spans. Emitting that separator here keeps words from rendering
+            // glued together ("Ilove" → "I love").
             builder.append(escapeXml(word.text))
             builder.append("</span>")
+            if (i < filtered.lastIndex) {
+                builder.append(' ')
+            }
         }
         builder.append("</p>\n")
     }
