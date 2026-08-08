@@ -426,6 +426,9 @@ object TelegramClient {
             is TdApi.UpdateNewChat -> chatCache[update.chat.id] = update.chat
             is TdApi.UpdateChatTitle -> chatCache[update.chatId]?.title = update.title
             is TdApi.UpdateChatPhoto -> chatCache[update.chatId]?.photo = update.photo
+            // Route incoming private-chat messages (e.g. bot replies) to TelegramBotClient so the
+            // bot chat screen can collect audio responses.
+            is TdApi.UpdateNewMessage -> TelegramBotClient.onNewMessage(update.message)
         }
     }
 

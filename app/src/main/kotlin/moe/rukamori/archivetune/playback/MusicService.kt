@@ -9177,6 +9177,18 @@ class MusicService :
 
     private fun createRenderersFactory() =
         object : DefaultRenderersFactory(this) {
+            init {
+                // Enable decoder fallback so that when a primary (typically hardware) decoder fails
+                // — e.g. MediaTek's c2.mtk.alac.decoder on .m4a/ALAC files (error 0x80000000) —
+                // ExoPlayer can fall back to any alternative decoder advertised by the platform,
+                // including any extension software decoder that may be registered.
+                // Also opt in to extension renderers as a fallback tier (EXTENSION_RENDERER_MODE_ON):
+                // extension decoders come AFTER the platform MediaCodec ones, so default hardware
+                // acceleration is preserved but a software fallback becomes reachable.
+                setEnableDecoderFallback(true)
+                setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+            }
+
             override fun buildAudioSink(
                 context: Context,
                 enableFloatOutput: Boolean,

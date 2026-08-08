@@ -1068,6 +1068,20 @@ val TelegramAccountPhoneKey = stringPreferencesKey("telegramAccountPhone")
 val TelegramLosslessOnlyKey = booleanPreferencesKey("telegramLosslessOnly")
 
 // ---------------------------------------------------------------------------
+// Telegram bots
+// ---------------------------------------------------------------------------
+// Persisted list of bots the user has added (so they can be re-opened without
+// re-pasting their @username each time). Stored as a JSON array; the encoder
+// lives in moe.rukamori.archivetune.telegram.TelegramBots.
+val TelegramBotsKey = stringPreferencesKey("telegramBots")
+
+// When ON, songs added to a Telegram-backed playlist (LPtg…/channel-id) from a
+// bot result are auto-forwarded to that channel so the user's own channel stays
+// in sync with what they've collected via bots. Default ON per the feature brief.
+val TelegramBotForwardToChannelKey = booleanPreferencesKey("telegramBotForwardToChannel")
+
+
+// ---------------------------------------------------------------------------
 // Multi-source audio framework
 // ---------------------------------------------------------------------------
 // A configurable set of lossless/stream sources. The user can reorder them (priority for playback

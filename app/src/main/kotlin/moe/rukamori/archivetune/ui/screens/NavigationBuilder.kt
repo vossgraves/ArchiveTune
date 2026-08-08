@@ -544,6 +544,18 @@ fun NavGraphBuilder.navigationBuilder(
     composable(TELEGRAM_BROWSE_ROUTE) {
         TelegramBrowseScreen(navController)
     }
+    composable(TELEGRAM_BOTS_ROUTE) {
+        TelegramBotsScreen(navController)
+    }
+    composable(
+        route = "$TELEGRAM_BOT_CHAT_ROUTE_BASE/{botId}",
+        arguments = listOf(navArgument("botId") { type = NavType.StringType }),
+    ) { entry ->
+        TelegramBotChatScreen(
+            botId = entry.arguments?.getString("botId").orEmpty(),
+            navController = navController,
+        )
+    }
     composable("settings/ai_integration") {
         AiIntegrationSettings(navController)
     }

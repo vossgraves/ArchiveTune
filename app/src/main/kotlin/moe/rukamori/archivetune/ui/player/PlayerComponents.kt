@@ -1049,6 +1049,10 @@ fun PlayerPlaybackControls(
                                 .clip(RoundedCornerShape(10.dp))
                                 .clickable {
                                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    // Auto-disable repeat when turning shuffle on (mutually exclusive UX).
+                                    if (!shuffleModeEnabled) {
+                                        playerConnection.player.repeatMode = Player.REPEAT_MODE_OFF
+                                    }
                                     playerConnection.player.shuffleModeEnabled = !shuffleModeEnabled
                                 },
                         contentAlignment = Alignment.Center,
@@ -1223,6 +1227,10 @@ fun PlayerPlaybackControls(
                                         android.view.HapticFeedbackConstants.CONTEXT_CLICK,
                                         android.view.HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING,
                                     )
+                                }
+                                // Auto-disable repeat when turning shuffle on (mutually exclusive UX).
+                                if (!shuffleModeEnabled) {
+                                    playerConnection.player.repeatMode = Player.REPEAT_MODE_OFF
                                 }
                                 playerConnection.player.shuffleModeEnabled = !shuffleModeEnabled
                             },
@@ -1685,6 +1693,10 @@ fun PlayerPlaybackControls(
                                     android.view.HapticFeedbackConstants.CONTEXT_CLICK,
                                     android.view.HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING,
                                 )
+                            }
+                            // Auto-disable repeat when turning shuffle on (mutually exclusive UX).
+                            if (!shuffleModeEnabled) {
+                                playerConnection.player.repeatMode = Player.REPEAT_MODE_OFF
                             }
                             playerConnection.player.shuffleModeEnabled = !shuffleModeEnabled
                         },

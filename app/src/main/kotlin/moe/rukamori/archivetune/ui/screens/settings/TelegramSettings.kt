@@ -49,6 +49,7 @@ import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.SwitchPreference
+import moe.rukamori.archivetune.ui.screens.TELEGRAM_BOTS_ROUTE
 import moe.rukamori.archivetune.ui.screens.TELEGRAM_BROWSE_ROUTE
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.rememberPreference
@@ -194,6 +195,26 @@ fun TelegramSettings(navController: NavController) {
                         icon = { Icon(painterResource(R.drawable.graphic_eq), contentDescription = null) },
                         checked = losslessOnly,
                         onCheckedChange = onLosslessOnlyChange,
+                    )
+                }
+            }
+
+            // Telegram bots — pill/section below the channels group. Lets the user paste a bot's
+            // @username once, then re-open it from this list to send song links and get back
+            // streamable / downloadable audio.
+            PreferenceGroup(title = stringResource(R.string.telegram_bots_title)) {
+                item {
+                    PreferenceEntry(
+                        title = { Text(stringResource(R.string.telegram_bots_title)) },
+                        description =
+                            if (isReady) {
+                                stringResource(R.string.telegram_bots_summary)
+                            } else {
+                                stringResource(R.string.telegram_login_required)
+                            },
+                        icon = { Icon(painterResource(R.drawable.provider_telegram), contentDescription = null) },
+                        isEnabled = isReady,
+                        onClick = { navController.navigate(TELEGRAM_BOTS_ROUTE) },
                     )
                 }
             }

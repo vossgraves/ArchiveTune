@@ -1539,6 +1539,33 @@
     <string name="telegram_unavailable">Telegram support is unavailable in this build</string>
     <string name="telegram_error">Telegram error: %1$s</string>
     <string name="telegram_error_generic">Couldn\'t open this Telegram channel</string>
+
+    <!-- Telegram bots (paste-a-bot + paste-a-song-link flow) -->
+    <string name="telegram_bots_title">Telegram bots</string>
+    <string name="telegram_bots_summary">Paste a bot once, then send it song links to fetch lossless files.</string>
+    <string name="telegram_bots_empty">No bots added yet — tap + and paste a bot link like @SongBot or t.me/SongBot.</string>
+    <string name="telegram_bots_add">Add bot</string>
+    <string name="telegram_bots_add_hint">@username or t.me/…</string>
+    <string name="telegram_bots_add_invalid">That doesn\'t look like a Telegram bot. Paste a @username or a t.me/&lt;bot&gt; link.</string>
+    <string name="telegram_bots_resolve_failed">Couldn\'t find that bot. Make sure the username is correct and the bot hasn\'t been blocked.</string>
+    <string name="telegram_bots_already_added">You\'ve already added @%1$s.</string>
+    <string name="telegram_bots_remove">Remove bot</string>
+    <string name="telegram_bots_remove_confirm">Remove @%1$s from your bots?</string>
+    <string name="telegram_bot_chat_title">@%1$s</string>
+    <string name="telegram_bot_chat_hint">Paste a song link (Spotify, YouTube, SoundCloud…)</string>
+    <string name="telegram_bot_send">Send to bot</string>
+    <string name="telegram_bot_waiting">Bot is fetching your song…</string>
+    <string name="telegram_bot_no_reply">The bot didn\'t reply with an audio file within 60 seconds. Try another link or another bot.</string>
+    <string name="telegram_bot_results">%1$d track(s) returned</string>
+    <string name="telegram_bot_stream">Stream</string>
+    <string name="telegram_bot_download">Download</string>
+    <string name="telegram_bot_add_to_playlist">Add to playlist</string>
+    <string name="telegram_bot_play_all">Play all</string>
+    <string name="telegram_bot_forward_to_channel">Auto-forward to my channel</string>
+    <string name="telegram_bot_forward_to_channel_summary">When you add a bot-fetched song to a Telegram-channel playlist, also forward the original message to that channel.</string>
+    <string name="telegram_bot_forwarded">Forwarded to your channel</string>
+    <string name="telegram_bot_forward_failed">Couldn\'t forward to your channel: %1$s</string>
+    <string name="telegram_bot_added_to_playlist">Added to \"%1$s\"</string>
     <!-- Download quality / export format pickers (AudioQualityDialogs.kt) -->
     <string name="download_quality_title">Download quality</string>
     <string name="download_quality_max">Max</string>
