@@ -18,6 +18,7 @@ package moe.rukamori.archivetune.telegram
 
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.Base64
 import java.util.UUID
 
 /** A user-saved Telegram bot entry. */
@@ -32,9 +33,21 @@ data class TelegramBot(
     val title: String,
     /** Epoch millis when the user added the bot. */
     val addedAtMs: Long,
+    /** Inline JPEG minithumbnail of the bot's profile photo (tiny, ~40px). May be null. */
+    val photoMinithumbnail: ByteArray? = null,
+    /** TDLib file id of the bot's full-size profile photo (0 when the bot has no photo). */
+    val photoFileId: Int = 0,
 ) {
     val displayHandle: String
         get() = "@$username"
+
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is TelegramBot) return false
+        return id == other.id
+    }
+
+    override fun hashCode(): Int = id.hashCode()
 }
 
 /** Encodes/decodes the bot list to/from the JSON shape persisted under [moe.rukamori.archivetune.constants.TelegramBotsKey]. */
@@ -44,6 +57,8 @@ object TelegramBotCodec {
     private const val KEY_CHAT_ID = "chatId"
     private const val KEY_TITLE = "title"
     private const val KEY_ADDED_AT = "addedAtMs"
+    private const val KEY_PHOTO_MINI = "photoMini"
+    private const val KEY_PHOTO_FILE_ID = "photoFileId"
 
     fun encode(bots: List<TelegramBot>): String {
         val arr = JSONArray()
@@ -55,6 +70,12 @@ object TelegramBotCodec {
                     put(KEY_CHAT_ID, bot.chatId)
                     put(KEY_TITLE, bot.title)
                     put(KEY_ADDED_AT, bot.addedAtMs)
+                    bot.photoMinithumbnail?.let {
+                        put(KEY_PHOTO_MINI, Base64.getEncoder().encodeToString(it))
+                    }
+                    if (bot.photoFileId != 0) {
+                        put(KEY_PHOTO_FILE_ID, bot.photoFileId)
+                    }
                 },
             )
         }
@@ -67,12 +88,18 @@ object TelegramBotCodec {
             val arr = JSONArray(raw)
             (0 until arr.length()).mapNotNull { i ->
                 val obj = arr.optJSONObject(i) ?: return@mapNotNull null
+                val photoMini =
+                    obj.optString(KEY_PHOTO_MINI).takeIf { it.isNotBlank() }?.let {
+                        runCatching { Base64.getDecoder().decode(it) }.getOrNull()
+                    }
                 TelegramBot(
                     id = obj.optString(KEY_ID).ifBlank { UUID.randomUUID().toString() },
                     username = obj.optString(KEY_USERNAME).trim(),
                     chatId = obj.optLong(KEY_CHAT_ID, 0L),
                     title = obj.optString(KEY_TITLE).ifBlank { "" },
                     addedAtMs = obj.optLong(KEY_ADDED_AT, 0L),
+                    photoMinithumbnail = photoMini,
+                    photoFileId = obj.optInt(KEY_PHOTO_FILE_ID, 0),
                 )
             }.filter { it.username.isNotBlank() }
         }.getOrDefault(emptyList())

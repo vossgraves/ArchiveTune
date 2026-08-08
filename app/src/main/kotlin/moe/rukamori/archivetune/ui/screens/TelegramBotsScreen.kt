@@ -15,9 +15,7 @@
 package moe.rukamori.archivetune.ui.screens
 
 import android.widget.Toast
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -27,12 +25,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -54,7 +50,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -75,6 +70,7 @@ import moe.rukamori.archivetune.telegram.parseBotUsername
 import moe.rukamori.archivetune.ui.component.FrostedTopAppBar
 import moe.rukamori.archivetune.ui.component.IconButton as ATIconButton
 import moe.rukamori.archivetune.ui.component.SwitchPreference
+import moe.rukamori.archivetune.ui.component.TelegramChatAvatar
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.rememberPreference
 import org.drinkless.tdlib.TdApi
@@ -148,6 +144,8 @@ fun TelegramBotsScreen(navController: NavController) {
                 chatId = chat.id,
                 title = title,
                 addedAtMs = System.currentTimeMillis(),
+                photoMinithumbnail = chat.photo?.minithumbnail?.data,
+                photoFileId = chat.photo?.small?.id ?: 0,
             )
             persistBots(botsState + bot)
             newBotInput = ""
@@ -280,20 +278,10 @@ private fun BotRow(
                 .clickable(onClick = onClick)
                 .padding(horizontal = 16.dp, vertical = 10.dp),
     ) {
-        Box(
-            modifier =
-                Modifier
-                    .size(48.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.surfaceVariant),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                painter = painterResource(R.drawable.solar_chat_round_linear),
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+        TelegramChatAvatar(
+            photoMinithumbnail = bot.photoMinithumbnail,
+            photoFileId = bot.photoFileId,
+        )
 
         Spacer(Modifier.width(12.dp))
 

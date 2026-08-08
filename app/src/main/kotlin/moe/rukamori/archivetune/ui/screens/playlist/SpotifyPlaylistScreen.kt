@@ -626,6 +626,15 @@ fun SpotifyPlaylistScreen(
             }
         }
 
+        // Top App Bar — hidden when the Liquid Glass header buttons are visible
+        // (matches LocalPlaylistScreen pattern). The Liquid Glass back button and
+        // search pill handle navigation when the hero is visible. The TopAppBar is
+        // only rendered during search mode (search TextField) and loading state
+        // (back navigation while playlist loads). Rendering the TopAppBar on top of
+        // the Liquid Glass buttons (even when transparent and with empty actions)
+        // causes it to intercept pointer events in the top area, making the Liquid
+        // Glass buttons unclickable.
+        if (isSearching || playlist == null) {
         TopAppBar(
             colors = topAppBarColors,
             title = {
@@ -706,6 +715,7 @@ fun SpotifyPlaylistScreen(
             },
             scrollBehavior = scrollBehavior,
         )
+        } // end if (isSearching || playlist == null)
 
         SnackbarHost(
             hostState = snackbarHostState,

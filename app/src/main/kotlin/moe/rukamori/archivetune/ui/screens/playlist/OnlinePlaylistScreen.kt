@@ -827,22 +827,30 @@ fun OnlinePlaylistScreen(
             }
         }
 
-        // Top App Bar
-        val topAppBarColors =
-            if (transparentAppBar) {
-                TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.Transparent,
-                    scrolledContainerColor = Color.Transparent,
-                    navigationIconContentColor = Color.White,
-                    titleContentColor = Color.White,
-                    actionIconContentColor = Color.White,
-                )
-            } else {
-                TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    scrolledContainerColor = Color.Transparent,
-                )
-            }
+        // Top App Bar — hidden when the Liquid Glass header buttons are visible
+        // (matches LocalPlaylistScreen pattern). The Liquid Glass back button and
+        // search+more pill handle navigation/actions when the hero is visible.
+        // The TopAppBar is only rendered during selection mode and search mode,
+        // where it provides the selection count / search TextField. Rendering the
+        // TopAppBar on top of the Liquid Glass buttons (even when transparent and
+        // with empty actions) causes it to intercept pointer events in the top
+        // area, making the Liquid Glass buttons unclickable.
+        if (selection || isSearching) {
+            val topAppBarColors =
+                if (transparentAppBar) {
+                    TopAppBarDefaults.topAppBarColors(
+                        containerColor = Color.Transparent,
+                        scrolledContainerColor = Color.Transparent,
+                        navigationIconContentColor = Color.White,
+                        titleContentColor = Color.White,
+                        actionIconContentColor = Color.White,
+                    )
+                } else {
+                    TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        scrolledContainerColor = Color.Transparent,
+                    )
+                }
 
         TopAppBar(
             colors = topAppBarColors,
@@ -1004,6 +1012,7 @@ fun OnlinePlaylistScreen(
                 }
             },
         )
+        } // end if (selection || isSearching)
 
         SnackbarHost(
             hostState = snackbarHostState,
