@@ -92,10 +92,11 @@ fun rememberCastPlayerMenuAction(): NewAction? {
     }
 
     val text = stringResource(R.string.cast)
+    val castIconRes = if (castState.isConnected) R.drawable.cast_connected else R.drawable.cast
     return NewAction(
         icon = {
             Icon(
-                painter = painterResource(androidx.media3.cast.R.drawable.media_route_button_disconnected),
+                painter = painterResource(castIconRes),
                 contentDescription = null,
                 modifier = Modifier.size(28.dp),
             )
@@ -175,7 +176,7 @@ private fun CastRoutePickerHeader(onDismissRequest: () -> Unit) {
             contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
         ) {
             Icon(
-                painter = painterResource(androidx.media3.cast.R.drawable.media_route_button_disconnected),
+                painter = painterResource(R.drawable.cast),
                 contentDescription = null,
                 modifier =
                     Modifier
@@ -230,7 +231,7 @@ private fun CastRoutePickerStatus(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
-                painter = painterResource(androidx.media3.cast.R.drawable.media_route_button_disconnected),
+                painter = painterResource(if (castState.isConnected) R.drawable.cast_connected else R.drawable.cast),
                 contentDescription = null,
                 tint =
                     if (castState.isConnected) {
@@ -335,7 +336,7 @@ private fun CastRoutePickerError(messageResId: Int) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
-                painter = painterResource(androidx.media3.cast.R.drawable.media_route_button_disconnected),
+                painter = painterResource(R.drawable.cast),
                 contentDescription = null,
                 modifier = Modifier.size(28.dp),
             )
@@ -399,7 +400,7 @@ private fun CastRoutePickerEmpty() {
             verticalArrangement = Arrangement.Center,
         ) {
             Icon(
-                painter = painterResource(androidx.media3.cast.R.drawable.media_route_button_disconnected),
+                painter = painterResource(R.drawable.cast),
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(38.dp),
@@ -457,7 +458,7 @@ private fun CastRouteRow(
                     },
             ) {
                 Icon(
-                    painter = painterResource(androidx.media3.cast.R.drawable.media_route_button_disconnected),
+                    painter = painterResource(R.drawable.cast),
                     contentDescription = null,
                     modifier =
                         Modifier

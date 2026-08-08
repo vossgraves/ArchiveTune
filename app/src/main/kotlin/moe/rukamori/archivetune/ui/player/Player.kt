@@ -1352,6 +1352,36 @@ fun BottomSheetPlayer(
             )
         }
 
+        // Real-time blur of the player content while the queue sheet is expanded.
+        // On Android 12+ we apply a RenderEffect to a wrapper Box that surrounds
+        // all the player UI branches below — the queue sheet (rendered AFTER this
+        // Box closes) is NOT blurred, so its text stays sharp. Combined with the
+        // queue's translucent (alpha 0.45) background, this produces the
+        // "frosted glass" effect from vivi-music without needing the Haze library.
+        val queueBlurEnabled =
+            queueSheetState.isExpandedOrExpanding &&
+                !isLyricsScreenVisible &&
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .then(
+                        if (queueBlurEnabled) {
+                            Modifier.graphicsLayer {
+                                renderEffect =
+                                    android.graphics.RenderEffect.createBlurEffect(
+                                        32f,
+                                        32f,
+                                        android.graphics.Shader.TileMode.CLAMP,
+                                    )
+                            }
+                        } else {
+                            Modifier
+                        },
+                    ),
+        ) {
         if (!state.isCollapsed &&
             !aodModeEnabled &&
             playerDesignStyle != PlayerDesignStyle.V5 &&
@@ -1490,7 +1520,7 @@ fun BottomSheetPlayer(
                                 canvasStaticUrl = v7CanvasArtwork?.static,
                                 canvasPrimaryUrl = v7CanvasArtwork?.animatedVertical,
                                 canvasFallbackUrl = v7CanvasArtwork?.videoUrlVertical,
-                                isPlaying = isPlaying,
+                                isPlaying = isPlaying && !isLyricsScreenVisible,
                                 disableBlur = disableBlur,
                                 backdropBlurAmount = backdropBlurAmount,
                                 label = "v7BackdropLandscape",
@@ -1668,7 +1698,7 @@ fun BottomSheetPlayer(
                         AppleMusicPlayerContent(
                             mediaMetadata = metadata,
                             playbackState = playbackState,
-                            isPlaying = isPlaying,
+                            isPlaying = isPlaying && !isLyricsScreenVisible,
                             isLoading = isLoading,
                             canSkipPrevious = canSkipPrevious,
                             canSkipNext = canSkipNext,
@@ -1852,7 +1882,7 @@ fun BottomSheetPlayer(
                                 canvasStaticUrl = v7CanvasArtwork?.static,
                                 canvasPrimaryUrl = v7CanvasArtwork?.animatedVertical,
                                 canvasFallbackUrl = v7CanvasArtwork?.videoUrlVertical,
-                                isPlaying = isPlaying,
+                                isPlaying = isPlaying && !isLyricsScreenVisible,
                                 disableBlur = disableBlur,
                                 backdropBlurAmount = backdropBlurAmount,
                                 label = "v7BackdropPortrait",
@@ -2026,7 +2056,7 @@ fun BottomSheetPlayer(
                         AppleMusicPlayerContent(
                             mediaMetadata = metadata,
                             playbackState = playbackState,
-                            isPlaying = isPlaying,
+                            isPlaying = isPlaying && !isLyricsScreenVisible,
                             isLoading = isLoading,
                             canSkipPrevious = canSkipPrevious,
                             canSkipNext = canSkipNext,
@@ -2087,6 +2117,7 @@ fun BottomSheetPlayer(
                 }
             }
         }
+        } // close player-content blur Box
 
         val queueOnBackgroundColor = if (useBlackBackground) Color.White else MaterialTheme.colorScheme.onSurface
         val queueSurfaceColor = if (useBlackBackground) Color.Black else MaterialTheme.colorScheme.surface
@@ -2107,9 +2138,12 @@ fun BottomSheetPlayer(
 
         // Queue sheet — wrapped in AnimatedVisibility with slide+fade so it slides in from below
         // (mirrors vivi-music's Player.kt transition). Hidden while the lyrics screen is on top.
-        // The Queue's background is rendered semi-translucent (alpha 0.92) so the player's blurred
-        // backdrop artwork shows through — producing the "blur behind the queue" frosted-glass
-        // effect that vivi-music achieves via a Haze layer over the player's backdrop.
+        //
+        // The Queue's background is rendered highly translucent (alpha 0.45) so the player's
+        // backdrop artwork — which is blurred by a real-time RenderEffect applied while the
+        // queue is expanded (see the player content wrapper below) — shows through clearly,
+        // producing the "blur behind the queue" frosted-glass effect that vivi-music achieves
+        // via a Haze layer over the player's backdrop.
         AnimatedVisibility(
             visible = !isLyricsScreenVisible,
             enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
@@ -2123,9 +2157,9 @@ fun BottomSheetPlayer(
                 navController = navController,
                 backgroundColor =
                     if (useBlackBackground) {
-                        Color.Black.copy(alpha = 0.92f)
+                        Color.Black.copy(alpha = 0.45f)
                     } else {
-                        MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.92f)
+                        MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.45f)
                     },
                 onBackgroundColor = queueOnBackgroundColor,
                 TextBackgroundColor = TextBackgroundColor,

@@ -129,24 +129,11 @@ fun CurrentSongHeader(
                 .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
                 .bottomSheetDraggable(sheetState)
                 .padding(horizontal = 16.dp)
-                .padding(top = 20.dp, bottom = 8.dp),
+                .padding(top = 12.dp, bottom = 8.dp),
     ) {
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 16.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            Box(
-                modifier =
-                    Modifier
-                        .width(48.dp)
-                        .height(5.dp)
-                        .clip(RoundedCornerShape(2.5.dp))
-                        .background(onBackgroundColor.copy(alpha = 0.4f)),
-            )
-        }
+        // The drag-handle "dash" bar that previously sat at the top of the queue sheet
+        // has been removed per design feedback — the sheet remains draggable via the
+        // header area itself (bottomSheetDraggable above).
 
         Row(
             modifier = Modifier.fillMaxWidth(),

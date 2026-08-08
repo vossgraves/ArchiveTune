@@ -9,6 +9,8 @@
 
 package moe.rukamori.archivetune.ui.screens.settings
 
+import android.content.Intent
+import android.net.Uri
 import android.widget.Toast
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Spring
@@ -346,6 +348,31 @@ fun AiIntegrationSettings(
                 )
             }
 
+            // Inline hint that tells the user where to obtain an API key for the
+            // currently-selected provider. Tapping the row opens the provider's
+            // developer console / sign-up page in the system browser. Hidden for
+            // CUSTOM (user supplies their own endpoint/key) and NONE.
+            item(visible = provider != AiProvider.NONE && provider != AiProvider.CUSTOM) {
+                val keyPortalUrl = provider.apiKeyPortalUrl()
+                val keyPortalLabel = provider.apiKeyPortalLabel()
+                PreferenceEntry(
+                    title = { Text("Get API key") },
+                    description = keyPortalLabel,
+                    icon = { Icon(painterResource(R.drawable.link), null) },
+                    onClick = {
+                        if (!keyPortalUrl.isNullOrBlank()) {
+                            runCatching {
+                                context.startActivity(
+                                    Intent(Intent.ACTION_VIEW, Uri.parse(keyPortalUrl)).apply {
+                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    },
+                                )
+                            }
+                        }
+                    },
+                )
+            }
+
             item {
                 PreferenceEntry(
                     title = { Text(stringResource(R.string.ai_api_key)) },
@@ -669,6 +696,36 @@ private fun AiProvider.label(): String =
         AiProvider.OPENROUTER -> "OpenRouter"
         AiProvider.MISTRAL -> "Mistral AI"
         AiProvider.NONE -> stringResource(R.string.ai_provider_none)
+    }
+
+/**
+ * Returns the developer-portal URL where the user can sign up for / fetch an API
+ * key for this provider. Null for providers that don't have a public self-serve
+ * portal (CUSTOM relies on the user's own endpoint, NONE is the off state).
+ */
+private fun AiProvider.apiKeyPortalUrl(): String? =
+    when (this) {
+        AiProvider.CHATGPT -> "https://platform.openai.com/api-keys"
+        AiProvider.GEMINI -> "https://aistudio.google.com/app/apikey"
+        AiProvider.DEEPL -> "https://www.deepl.com/pro-api"
+        AiProvider.OPENROUTER -> "https://openrouter.ai/keys"
+        AiProvider.MISTRAL -> "https://console.mistral.ai/api-keys"
+        AiProvider.CUSTOM, AiProvider.NONE -> null
+    }
+
+/**
+ * One-line description shown under the "Get API key" row. Tells the user which
+ * portal the row opens and (where relevant) which plan is needed for API access.
+ */
+@Composable
+private fun AiProvider.apiKeyPortalLabel(): String =
+    when (this) {
+        AiProvider.CHATGPT -> "platform.openai.com/api-keys — create a key with the \"ChatGPT\" or \"Project\" scope"
+        AiProvider.GEMINI -> "aistudio.google.com/app/apikey — free tier available with a Google account"
+        AiProvider.DEEPL -> "deepl.com/pro-api — DeepL Pro plan required for API access"
+        AiProvider.OPENROUTER -> "openrouter.ai/keys — free + paid models, billable by usage"
+        AiProvider.MISTRAL -> "console.mistral.ai/api-keys — create a key under \"API Keys\""
+        AiProvider.CUSTOM, AiProvider.NONE -> ""
     }
 
 @Composable

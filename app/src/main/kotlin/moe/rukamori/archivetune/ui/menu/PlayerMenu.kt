@@ -556,14 +556,10 @@ fun PlayerMenu(
         }
     }
 
-    if (isQueueTrigger != true) {
-        Spacer(modifier = Modifier.height(12.dp))
-
-        PlayerVolumeCard(
-            volume = deviceMusicVolumeController.volumeFraction,
-            onVolumeChange = onPlayerVolumeChange,
-        )
-    }
+    // The inline volume slider that previously appeared at the top of the song
+    // overflow menu has been removed per design feedback — volume is already
+    // exposed via the system media-output panel and the device hardware keys,
+    // so surfacing it again here was redundant and cluttered the menu.
 
     Spacer(modifier = Modifier.height(16.dp))
 

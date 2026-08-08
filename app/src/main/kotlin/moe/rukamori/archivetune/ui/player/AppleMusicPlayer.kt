@@ -59,6 +59,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -464,6 +465,13 @@ private fun AppleMusicSharpArtwork(
                 isMusicVideo &&
                 !videoId.isNullOrBlank() &&
                 playerConnection != null
+        // "Immersive extended" card style: when there is no Spotify Canvas (or any
+        // animated artwork) AND no music video, render the still cover as a large
+        // rounded card with padding + shadow — matching the reference layout from
+        // vivi-music's Apple Music player. When a canvas or video IS available, we
+        // keep the full-bleed display so the animated artwork can fill the stage.
+        val hasCanvas = !canvasPrimaryUrl.isNullOrBlank() || !canvasFallbackUrl.isNullOrBlank()
+        val immersiveExtendedCard = !showVideo && !hasCanvas
         if (showVideo) {
             Box(
                 modifier =
@@ -471,6 +479,28 @@ private fun AppleMusicSharpArtwork(
                         .matchParentSize()
                         .background(Color.Black),
             )
+        } else if (immersiveExtendedCard) {
+            // Card-style: rounded corners, horizontal padding, soft shadow.
+            // The card fills the stage height but insets horizontally so the
+            // cover reads as a floating squircle rather than edge-to-edge.
+            Box(
+                modifier =
+                    Modifier
+                        .matchParentSize()
+                        .padding(horizontal = 24.dp, vertical = 12.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                AsyncImage(
+                    model = artworkRequest ?: artworkUrl,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .shadow(8.dp, RoundedCornerShape(24.dp))
+                            .clip(RoundedCornerShape(24.dp)),
+                )
+            }
         } else {
             AsyncImage(
                 model = artworkRequest ?: artworkUrl,
@@ -727,7 +757,7 @@ private fun AppleMusicControlsColumn(
                 onClick = onLyricsClick,
             )
             AppleMusicBottomButton(
-                iconRes = R.drawable.player_airplay,
+                iconRes = R.drawable.cast,
                 contentDescription = null,
                 onClick = onOutputClick,
             )
