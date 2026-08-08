@@ -318,6 +318,7 @@ object AudioSourceConfig {
             AudioSourceType.TIDAL,
             AudioSourceType.QOBUZ,
             AudioSourceType.DEEZER,
+            AudioSourceType.JIOSAAVN,
             AudioSourceType.YOUTUBE,
         )
 

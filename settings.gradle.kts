@@ -119,6 +119,7 @@ include(":shazamkit")
 include(":spotifycore")
 include(":moriextractor")
 include(":morideobfuscator")
+include(":jiosaavn")
 
 // Use a local copy of MetrolistExtractor by uncommenting the lines below.
 // We assume, that ArchiveTune and MetrolistExtractor have the same parent directory.

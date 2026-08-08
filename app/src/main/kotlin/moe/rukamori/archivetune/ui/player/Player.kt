@@ -29,6 +29,9 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -2102,23 +2105,36 @@ fun BottomSheetPlayer(
                 }
             }
 
-        Queue(
-            state = queueSheetState,
-            playerBottomSheetState = state,
-            navController = navController,
-            backgroundColor =
-                if (useBlackBackground) {
-                    Color.Black
-                } else {
-                    MaterialTheme.colorScheme.surfaceContainer
-                },
-            onBackgroundColor = queueOnBackgroundColor,
-            TextBackgroundColor = TextBackgroundColor,
-            textButtonColor = textButtonColor,
-            iconButtonColor = iconButtonColor,
-            onShowLyrics = { isLyricsScreenVisible = true },
-            pureBlack = pureBlack,
-        )
+        // Queue sheet — wrapped in AnimatedVisibility with slide+fade so it slides in from below
+        // (mirrors vivi-music's Player.kt transition). Hidden while the lyrics screen is on top.
+        // The Queue's background is rendered semi-translucent (alpha 0.92) so the player's blurred
+        // backdrop artwork shows through — producing the "blur behind the queue" frosted-glass
+        // effect that vivi-music achieves via a Haze layer over the player's backdrop.
+        AnimatedVisibility(
+            visible = !isLyricsScreenVisible,
+            enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+            exit =
+                shrinkVertically(shrinkTowards = Alignment.Top) +
+                    slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+        ) {
+            Queue(
+                state = queueSheetState,
+                playerBottomSheetState = state,
+                navController = navController,
+                backgroundColor =
+                    if (useBlackBackground) {
+                        Color.Black.copy(alpha = 0.92f)
+                    } else {
+                        MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.92f)
+                    },
+                onBackgroundColor = queueOnBackgroundColor,
+                TextBackgroundColor = TextBackgroundColor,
+                textButtonColor = textButtonColor,
+                iconButtonColor = iconButtonColor,
+                onShowLyrics = { isLyricsScreenVisible = true },
+                pureBlack = pureBlack,
+            )
+        }
 
         mediaMetadata?.let { metadata ->
             MikoLyricsTransition(
