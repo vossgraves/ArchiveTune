@@ -225,16 +225,22 @@ fun TelegramBotsScreen(navController: NavController) {
                 )
             }
 
+            // Bot list / empty state. Each branch takes the full remaining vertical space via
+            // Modifier.weight(1f) so the "Auto-forward to my channel" pill below sits at a STABLE
+            // position regardless of whether the list is empty or contains bots — this is what the
+            // user asked for ("when I find a bot the auto forward pill shifts down automatically.
+            // it shouldn't"). Without weight(1f) on the empty branch, the empty-state Box would
+            // collapse to its content height and the pill would jump down when a bot is added.
             if (!isReady) {
                 Box(
-                    Modifier.fillMaxWidth().padding(24.dp),
+                    Modifier.fillMaxWidth().weight(1f).padding(24.dp),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(stringResource(R.string.telegram_login_required))
                 }
             } else if (botsState.isEmpty()) {
                 Box(
-                    Modifier.fillMaxWidth().padding(24.dp),
+                    Modifier.fillMaxWidth().weight(1f).padding(24.dp),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(stringResource(R.string.telegram_bots_empty))

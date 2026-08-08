@@ -394,89 +394,43 @@ public fun MediaDetailPrimaryActions(
                 }
 
                 onPlay?.let { play ->
+                    // Play button — always uses a solid color pill. The liquid-glass layered
+                    // Box variant (smoked-glass veil + top-highlight gradient) was REMOVED at
+                    // the user's request: "Remove the liquid glass effect from all play buttons
+                    // in playlists or anywhere else". The same solid-color path now runs whether
+                    // or not a LiquidGlassBackdrop is active upstream.
                     val playButtonHeight = ButtonDefaults.MediumContainerHeight
-                    val liquidGlassActive =
-                        LocalLiquidGlassBackdrop.current != null &&
-                            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
                     val playShape = RoundedCornerShape(percent = 50)
                     val playPadding =
                         ButtonDefaults.contentPaddingFor(playButtonHeight, hasStartIcon = true)
                     val playIconSize = ButtonDefaults.iconSizeFor(playButtonHeight)
                     val playIconSpacing = ButtonDefaults.iconSpacingFor(playButtonHeight)
                     val playTextStyle = ButtonDefaults.textStyleFor(playButtonHeight)
-                    if (liquidGlassActive) {
-                        Box(
-                            modifier =
-                                Modifier
-                                    .layoutId(MediaDetailActionLayoutId.Play)
-                                    .heightIn(min = playButtonHeight)
-                                    .clip(playShape)
-                                    .clickable(onClick = play),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            // 1. Solid base color (always visible — the fallback).
-                            Box(Modifier.matchParentSize().background(contentColor))
-                            // 2. Translucent dark tint overlay (the "smoked glass" veil).
-                            Box(Modifier.matchParentSize().background(Color.Black.copy(alpha = 0.12f)))
-                            // 3. Subtle top-highlight gradient (mimics light catching the top of the glass).
-                            Box(
-                                Modifier.matchParentSize().background(
-                                    Brush.verticalGradient(
-                                        colors = listOf(
-                                            Color.White.copy(alpha = 0.18f),
-                                            Color.White.copy(alpha = 0.0f),
-                                        ),
-                                    ),
-                                ),
-                            )
-                            // 4. Icon + "Play" text on top.
-                            Row(
-                                modifier = Modifier.padding(playPadding),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Icon(
-                                    painter = painterResource(R.drawable.play),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(playIconSize),
-                                    tint = contrastingColor,
-                                )
-                                Spacer(modifier = Modifier.width(playIconSpacing))
-                                Text(
-                                    text = stringResource(R.string.play),
-                                    style = playTextStyle,
-                                    fontWeight = FontWeight.Bold,
-                                    color = contrastingColor,
-                                )
-                            }
-                        }
-                    } else {
-                        // Fallback: solid contentColor pill (pre-liquid-glass path).
-                        Button(
-                            onClick = play,
-                            shape = playShape,
-                            colors =
-                                ButtonDefaults.buttonColors(
-                                    containerColor = contentColor,
-                                    contentColor = contrastingColor,
-                                ),
-                            contentPadding = playPadding,
-                            modifier =
-                                Modifier
-                                    .layoutId(MediaDetailActionLayoutId.Play)
-                                    .heightIn(min = playButtonHeight),
-                        ) {
-                            Icon(
-                                painter = painterResource(R.drawable.play),
-                                contentDescription = null,
-                                modifier = Modifier.size(playIconSize),
-                            )
-                            Spacer(modifier = Modifier.width(playIconSpacing))
-                            Text(
-                                text = stringResource(R.string.play),
-                                style = playTextStyle,
-                                fontWeight = FontWeight.Bold,
-                            )
-                        }
+                    Button(
+                        onClick = play,
+                        shape = playShape,
+                        colors =
+                            ButtonDefaults.buttonColors(
+                                containerColor = contentColor,
+                                contentColor = contrastingColor,
+                            ),
+                        contentPadding = playPadding,
+                        modifier =
+                            Modifier
+                                .layoutId(MediaDetailActionLayoutId.Play)
+                                .heightIn(min = playButtonHeight),
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.play),
+                            contentDescription = null,
+                            modifier = Modifier.size(playIconSize),
+                        )
+                        Spacer(modifier = Modifier.width(playIconSpacing))
+                        Text(
+                            text = stringResource(R.string.play),
+                            style = playTextStyle,
+                            fontWeight = FontWeight.Bold,
+                        )
                     }
                 }
 

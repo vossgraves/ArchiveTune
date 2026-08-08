@@ -16,6 +16,12 @@
  *
  * "Streaming a lot of files": the collector returns every audio reply that arrives within the
  * timeout window, and the "Play all" button loads them all into the player queue at once.
+ *
+ * Quality picker: many music bots reply with an inline keyboard ("Choose quality: ALAC / AAC /
+ * Cancel") instead of the audio file directly. The screen surfaces those buttons as a row of
+ * chips. When the user taps one, the screen calls [TelegramBotClient.clickInlineButton] (which
+ * fires a [TdApi.GetCallbackQueryAnswer]) and then re-enters the collector with
+ * `afterMessageId = prompt.messageId` so the bot's resulting audio reply is captured.
  */
 
 package moe.rukamori.archivetune.ui.screens
@@ -25,6 +31,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -45,6 +52,7 @@ import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.PlaylistAdd
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -80,9 +88,12 @@ import moe.rukamori.archivetune.constants.TelegramBotsKey
 import moe.rukamori.archivetune.extensions.toMediaItem
 import moe.rukamori.archivetune.playback.ExoDownloadService
 import moe.rukamori.archivetune.playback.queues.ListQueue
+import moe.rukamori.archivetune.telegram.BotReply
 import moe.rukamori.archivetune.telegram.TelegramBot
 import moe.rukamori.archivetune.telegram.TelegramBotClient
 import moe.rukamori.archivetune.telegram.TelegramBotCodec
+import moe.rukamori.archivetune.telegram.TelegramBotPrompt
+import moe.rukamori.archivetune.telegram.TelegramBotPromptButton
 import moe.rukamori.archivetune.telegram.TelegramTrack
 import moe.rukamori.archivetune.telegram.toFormatEntity
 import moe.rukamori.archivetune.telegram.toMediaMetadata
@@ -93,8 +104,9 @@ import moe.rukamori.archivetune.utils.rememberPreference
 import androidx.core.net.toUri
 import kotlinx.coroutines.flow.first
 import moe.rukamori.archivetune.LocalDatabase
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun TelegramBotChatScreen(
     botId: String,
@@ -116,6 +128,16 @@ fun TelegramBotChatScreen(
     var sending by remember { mutableStateOf(false) }
     var noReply by remember { mutableStateOf(false) }
     val results = remember { mutableStateListOf<TelegramTrack>() }
+    // Latest inline-keyboard prompt from the bot (e.g. "Choose quality: ALAC / AAC / Cancel").
+    // Replaced when the bot sends a newer prompt. Hidden once a track arrives from the chosen
+    // option so the result list takes the focus.
+    var pendingPrompt by remember { mutableStateOf<TelegramBotPrompt?>(null) }
+    // Track the highest message id we've ever seen in this chat so the next collector cycle
+    // (e.g. after the user picks a quality) doesn't re-process old messages.
+    var highestSeenMessageId by remember { mutableStateOf(0L) }
+    // Which prompt button the user just tapped (for showing a spinner on that chip while the
+    // bot processes the choice).
+    var pendingChoiceText by remember { mutableStateOf<String?>(null) }
 
     // Add-to-playlist dialog state. The "pending track" is the track the user wants to add; when
     // set, the dialog is shown.
@@ -150,12 +172,59 @@ fun TelegramBotChatScreen(
         return updated
     }
 
+    /**
+     * Collects every reply (tracks + inline prompts) that arrives on [chatId] within the timeout
+     * window, then returns the result so the caller can drive UI state from a coroutine scope.
+     * [afterMessageId] is the message id of either the user's just-sent link (initial send) or
+     * the prompt the user just answered (post-choice collection).
+     *
+     * Side-effect: bumps [highestSeenMessageId] so the next collector cycle starts after the
+     * highest id we've ever observed in this chat.
+     */
+    suspend fun collectAndApply(
+        chatId: Long,
+        afterMessageId: Long,
+        sourceTitle: String,
+    ) {
+        val replies = TelegramBotClient.collectBotReplies(
+            chatId = chatId,
+            afterMessageId = afterMessageId,
+        )
+        // Track the highest message id we've seen so the next collector cycle starts after it.
+        replies.maxOfOrNull { reply ->
+            when (reply) {
+                is BotReply.Track -> reply.track.messageId
+                is BotReply.Prompt -> reply.prompt.messageId
+            }
+        }?.let { if (it > highestSeenMessageId) highestSeenMessageId = it }
+
+        val newTracks = replies.filterIsInstance<BotReply.Track>().map { it.track }
+        val latestPrompt = replies.filterIsInstance<BotReply.Prompt>().lastOrNull()?.prompt
+
+        if (newTracks.isNotEmpty()) {
+            // We got audio — clear any pending prompt (the user's choice has been fulfilled) and
+            // surface the tracks in the results list.
+            noReply = false
+            pendingPrompt = null
+            persistTracks(newTracks, sourceTitle)
+        } else if (latestPrompt != null) {
+            // No audio yet, but the bot sent a new prompt — show it.
+            pendingPrompt = latestPrompt
+        } else {
+            // Nothing arrived (or only text messages we ignore). If we don't already have a prompt
+            // displayed, mark the request as having no reply so the UI shows the empty state.
+            if (pendingPrompt == null) noReply = true
+        }
+    }
+
     fun send() {
         val link = songLink.trim()
         if (link.isBlank() || sending) return
         sending = true
         noReply = false
         results.clear()
+        pendingPrompt = null
+        pendingChoiceText = null
         coroutineScope.launch {
             val activeBot = ensureBotChatId()
             if (activeBot.chatId == 0L) {
@@ -174,27 +243,73 @@ fun TelegramBotChatScreen(
                 ).show()
                 return@launch
             }
-            val tracks = TelegramBotClient.collectAudioReplies(
+            highestSeenMessageId = sent.id
+            collectAndApply(
                 chatId = activeBot.chatId,
                 afterMessageId = sent.id,
-                expectedCount = 0,
+                sourceTitle = activeBot.title,
             )
             sending = false
-            if (tracks.isEmpty()) {
-                noReply = true
-                return@launch
-            }
-            // Persist each track as a song + format row so playback / download / playlist add work
-            // through the existing code paths.
-            database.withTransaction {
-                tracks.forEach { track ->
-                    insert(track.toMediaMetadata(activeBot.title))
-                    upsert(track.toFormatEntity())
+        }
+    }
+
+    /**
+     * User tapped a button on the bot's inline keyboard — fire the callback and collect the
+     * resulting audio reply.
+     */
+    fun choosePromptOption(button: TelegramBotPromptButton) {
+        val prompt = pendingPrompt ?: return
+        // URL buttons (e.g. "HQ Artwork") open an external link — don't fire a callback.
+        if (button.callbackData == null) {
+            button.url?.let { url ->
+                runCatching {
+                    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))
+                    intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                    context.startActivity(intent)
                 }
             }
-            results.clear()
-            results.addAll(tracks)
+            return
         }
+        if (sending) return
+        sending = true
+        pendingChoiceText = button.text
+        coroutineScope.launch {
+            // Cancel buttons: just clear the prompt and bail out — the bot's cancel handler may
+            // or may not send a follow-up message, but we don't want to keep the spinner spinning.
+            if (prompt.isCancelButton(button)) {
+                pendingPrompt = null
+                pendingChoiceText = null
+                sending = false
+                return@launch
+            }
+            TelegramBotClient.clickInlineButton(
+                chatId = prompt.chatId,
+                messageId = prompt.messageId,
+                callbackData = button.callbackData,
+            )
+            // Collect everything that arrives AFTER the prompt. The bot will typically send the
+            // audio file (or a download progress message followed by the audio file).
+            collectAndApply(
+                chatId = prompt.chatId,
+                afterMessageId = prompt.messageId,
+                sourceTitle = bot.title,
+            )
+            pendingChoiceText = null
+            sending = false
+        }
+    }
+
+    suspend fun persistTracks(tracks: List<TelegramTrack>, sourceTitle: String) {
+        // Persist each track as a song + format row so playback / download / playlist add work
+        // through the existing code paths.
+        database.withTransaction {
+            tracks.forEach { track ->
+                insert(track.toMediaMetadata(sourceTitle))
+                upsert(track.toFormatEntity())
+            }
+        }
+        results.clear()
+        results.addAll(tracks)
     }
 
     fun playTrack(track: TelegramTrack) {
@@ -312,7 +427,7 @@ fun TelegramBotChatScreen(
                     enabled = !sending,
                     trailingIcon = {
                         IconButton(onClick = ::send, enabled = !sending && songLink.isNotBlank()) {
-                            if (sending) {
+                            if (sending && pendingChoiceText == null) {
                                 CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
                             } else {
                                 Icon(Icons.Outlined.PlayArrow, contentDescription = null)
@@ -323,7 +438,7 @@ fun TelegramBotChatScreen(
                 )
             }
 
-            if (sending) {
+            if (sending && pendingPrompt == null && results.isEmpty()) {
                 Box(
                     Modifier.fillMaxWidth().padding(24.dp),
                     contentAlignment = Alignment.Center,
@@ -334,6 +449,18 @@ fun TelegramBotChatScreen(
                         Text(stringResource(R.string.telegram_bot_waiting))
                     }
                 }
+            }
+
+            // Quality picker / inline keyboard prompt. Shown above the results list so the user
+            // picks the format before the audio arrives. Hidden when results.isEmpty() is false
+            // (the choice has been fulfilled) or when sending just started with no prompt yet.
+            pendingPrompt?.let { prompt ->
+                PromptCard(
+                    prompt = prompt,
+                    pendingChoiceText = pendingChoiceText,
+                    onChoose = ::choosePromptOption,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                )
             }
 
             if (noReply) {
@@ -376,6 +503,67 @@ fun TelegramBotChatScreen(
                             onAddToPlaylist = { addToPlaylist(track) },
                         )
                     }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Renders an inline-keyboard prompt from the bot as a card with a text body (if any) and the
+ * buttons laid out in [FlowRow] chips. Tracks the user's pending choice so the tapped chip
+ * shows a spinner while the bot processes the callback.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun PromptCard(
+    prompt: TelegramBotPrompt,
+    pendingChoiceText: String?,
+    onChoose: (TelegramBotPromptButton) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier =
+            modifier
+                .clip(RoundedCornerShape(16.dp))
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                .padding(16.dp),
+    ) {
+        if (prompt.text.isNotBlank()) {
+            Text(
+                text = prompt.text,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(bottom = 12.dp),
+            )
+        }
+        // Render each row of the original inline keyboard as its own FlowRow so multi-row
+        // keyboards (e.g. "[ALAC][AAC] / [LRC] / [Cancel]") keep their grouping.
+        prompt.rows.forEach { row ->
+            FlowRow(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                row.forEach { button ->
+                    val isPending = pendingChoiceText == button.text
+                    FilterChip(
+                        selected = false,
+                        onClick = { onChoose(button) },
+                        label = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                if (isPending) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(14.dp),
+                                        strokeWidth = 2.dp,
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                }
+                                Text(button.text)
+                            }
+                        },
+                        enabled = pendingChoiceText == null,
+                    )
                 }
             }
         }

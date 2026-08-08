@@ -1566,6 +1566,7 @@
     <string name="telegram_bot_forwarded">Forwarded to your channel</string>
     <string name="telegram_bot_forward_failed">Couldn\'t forward to your channel: %1$s</string>
     <string name="telegram_bot_added_to_playlist">Added to \"%1$s\"</string>
+    <string name="telegram_bot_choose_option">Bot needs your choice — pick an option below:</string>
     <!-- Download quality / export format pickers (AudioQualityDialogs.kt) -->
     <string name="download_quality_title">Download quality</string>
     <string name="download_quality_max">Max</string>
