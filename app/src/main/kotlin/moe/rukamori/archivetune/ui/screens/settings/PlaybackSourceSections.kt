@@ -54,6 +54,9 @@ import moe.rukamori.archivetune.constants.AudioSourceType
 import moe.rukamori.archivetune.constants.DeezerAudioQuality
 import moe.rukamori.archivetune.constants.DeezerAudioQualityKey
 import moe.rukamori.archivetune.constants.DeezerEnabledKey
+import moe.rukamori.archivetune.constants.JioSaavnEnabledKey
+import moe.rukamori.archivetune.constants.SaavnAudioQuality
+import moe.rukamori.archivetune.constants.SaavnAudioQualityKey
 import moe.rukamori.archivetune.constants.QobuzAudioQuality
 import moe.rukamori.archivetune.constants.QobuzAudioQualityKey
 import moe.rukamori.archivetune.constants.QobuzEnabledKey
@@ -85,6 +88,7 @@ private fun AudioSourceType.displayName(context: android.content.Context): Strin
         AudioSourceType.TIDAL -> context.getString(R.string.source_tidal)
         AudioSourceType.QOBUZ -> context.getString(R.string.source_qobuz)
         AudioSourceType.DEEZER -> context.getString(R.string.source_deezer)
+        AudioSourceType.JIOSAAVN -> context.getString(R.string.source_jiosaavn)
         AudioSourceType.YOUTUBE -> context.getString(R.string.source_youtube)
     }
 
@@ -93,6 +97,7 @@ private fun AudioSourceType.iconRes(): Int =
         AudioSourceType.TIDAL -> R.drawable.provider_tidal
         AudioSourceType.QOBUZ -> R.drawable.provider_qobuz
         AudioSourceType.DEEZER -> R.drawable.provider_deezer
+        AudioSourceType.JIOSAAVN -> R.drawable.play
         AudioSourceType.YOUTUBE -> R.drawable.play
     }
 
@@ -111,6 +116,9 @@ fun PlaybackSourceSections(navController: NavController) {
     val (deezerEnabled, onDeezerEnabledChange) = rememberPreference(DeezerEnabledKey, false)
     val (deezerQuality, onDeezerQualityChange) =
         rememberEnumPreference(DeezerAudioQualityKey, DeezerAudioQuality.FLAC)
+    val (jioSaavnEnabled, onJioSaavnEnabledChange) = rememberPreference(JioSaavnEnabledKey, false)
+    val (saavnQuality, onSaavnQualityChange) =
+        rememberEnumPreference(SaavnAudioQualityKey, SaavnAudioQuality.QUALITY_320)
 
     val (tidalAccountFirst, onTidalAccountFirstChange) = rememberPreference(TidalAccountFirstKey, true)
     val (audioQuality, onAudioQualityChange) =
@@ -143,6 +151,7 @@ fun PlaybackSourceSections(navController: NavController) {
             AudioSourceType.TIDAL -> tidalEnabled
             AudioSourceType.QOBUZ -> qobuzEnabled
             AudioSourceType.DEEZER -> deezerEnabled
+            AudioSourceType.JIOSAAVN -> jioSaavnEnabled
             AudioSourceType.YOUTUBE -> true
         }
 
@@ -368,6 +377,38 @@ fun PlaybackSourceSections(navController: NavController) {
             )
         }
 
+    }
+
+    PreferenceGroup(title = stringResource(R.string.jiosaavn_specific)) {
+        item {
+            SwitchPreference(
+                title = { Text(stringResource(R.string.jiosaavn_enable)) },
+                description = stringResource(R.string.jiosaavn_enable_description),
+                icon = { Icon(painterResource(R.drawable.play), null) },
+                checked = jioSaavnEnabled,
+                onCheckedChange = onJioSaavnEnabledChange,
+            )
+        }
+
+        item {
+            EnumListPreference(
+                title = { Text(stringResource(R.string.jiosaavn_audio_quality)) },
+                icon = { Icon(painterResource(R.drawable.play), null) },
+                selectedValue = saavnQuality,
+                onValueSelected = onSaavnQualityChange,
+                isEnabled = jioSaavnEnabled,
+                valueText = { quality -> quality.toLabel() },
+            )
+        }
+
+        item {
+            PreferenceEntry(
+                title = { Text(stringResource(R.string.jiosaavn_open_settings)) },
+                description = stringResource(R.string.jiosaavn_open_settings_description),
+                icon = { Icon(painterResource(R.drawable.play), null) },
+                onClick = { navController.navigate("settings/jiosaavn") },
+            )
+        }
     }
 }
 

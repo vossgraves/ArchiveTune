@@ -15,4 +15,51 @@
     <string name="deezer_sign_out">Sign out of Deezer</string>
     <string name="deezer_sign_out_description">Removes the stored session cookie from this device</string>
     <string name="deezer_signed_out">Signed out of Deezer</string>
+
+    <!-- JioSaavn source (ui/screens/settings/PlaybackSourceSections.kt + JioSettings.kt).
+         Ported from vivi-music (https://github.com/vivizzz007/vivi-music) under GPL-3.0. -->
+    <string name="source_jiosaavn">JioSaavn</string>
+    <string name="jiosaavn_specific">JioSaavn</string>
+    <string name="jiosaavn_integration">JioSaavn integration</string>
+    <string name="jiosaavn_enable">Enable JioSaavn source</string>
+    <string name="jiosaavn_enable_description">Route playback through JioSaavn\'s public API when a matching track is found (96/160/320 kbps AAC)</string>
+    <string name="jiosaavn_audio_quality">Audio quality</string>
+    <string name="jiosaavn_open_settings">Open JioSaavn settings</string>
+    <string name="jiosaavn_open_settings_description">Configure the JioSaavn streaming source</string>
+    <string name="jiosaavn_settings">JioSaavn settings</string>
+    <string name="jiosaavn_beta_info">JioSaavn streams are unauthenticated MP4/AAC. Stream URLs are decrypted locally via DES-ECB. Falls back to YouTube on any failure.</string>
+    <string name="jiosaavn_credit_title">Credit</string>
+    <string name="jiosaavn_credit">JioSaavn (via vivimusic)</string>
+    <string name="jiosaavn_credit_description">Streaming powered by Vivi Music. Ported under GPL-3.0 from github.com/vivizzz007/vivi-music.</string>
+
+    <!-- AI translation providers (DeepL / OpenRouter / Mistral) — ported from vivi-music under GPL-3.0. -->
+    <string name="ai_translation_settings">Translation engine</string>
+    <string name="deepl_api_key">DeepL API key</string>
+    <string name="deepl_api_key_set">DeepL key configured</string>
+    <string name="deepl_api_key_not_set">Not set — tap to enter your DeepL API key (free keys end with :fx)</string>
+    <string name="deepl_formality">DeepL formality</string>
+    <string name="deepl_formality_default">Default</string>
+    <string name="deepl_formality_more">More formal</string>
+    <string name="deepl_formality_less">Less formal</string>
+    <string name="openrouter_api_key">OpenRouter API key</string>
+    <string name="openrouter_api_key_set">OpenRouter key configured</string>
+    <string name="openrouter_api_key_not_set">Not set — tap to enter your OpenRouter API key</string>
+    <string name="openrouter_base_url">Base URL (optional)</string>
+    <string name="openrouter_model">Model</string>
+    <string name="mistral_api_key">Mistral API key</string>
+    <string name="mistral_api_key_set">Mistral key configured</string>
+    <string name="mistral_api_key_not_set">Not set — tap to enter your Mistral API key</string>
+    <string name="mistral_model">Model</string>
+    <string name="translate_language">Target language</string>
+    <string name="translate_language_hint">Language code (e.g. en, zh-CN, ja)</string>
+    <string name="translate_mode">Mode</string>
+    <string name="translate_mode_translate">Translate</string>
+    <string name="translate_mode_romanize">Romanize (transliterate to Latin)</string>
+
+    <!-- Update info dialog (ported from vivi-music under GPL-3.0). -->
+    <string name="update_info_badge">Update info</string>
+    <string name="update_info_title">Downloaded updates</string>
+    <string name="clear_downloaded_updates_auto_info">Downloaded update APKs are cleared automatically after a successful install. You can also delete them manually from storage settings.</string>
+    <string name="manual_delete_hint_title">Manual delete</string>
+    <string name="manual_delete_hint_desc">If an update download was interrupted, the partial file lives in cache/app_update and is safe to delete.</string>
 </resources>
