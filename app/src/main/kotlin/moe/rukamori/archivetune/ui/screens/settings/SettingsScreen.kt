@@ -18,6 +18,8 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.calculateBottomPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -455,6 +457,17 @@ fun SettingsScreen(
             )
         },
     ) { innerPadding ->
+        // Compute the player-aware bottom inset (nav bar + mini player + safe inset) so we can
+        // fold it into the LazyColumn's contentPadding. We do NOT apply it via windowInsetsPadding
+        // because that would reserve space ABOVE the nav bar — content would never scroll behind
+        // the floating nav bar. By putting it into contentPadding instead, the column extends to
+        // the very bottom of the screen (content visibly scrolls behind the nav bar) and the last
+        // items get a "minimum height" clearance so they aren't permanently hidden behind the bar.
+        val playerAwareBottomPadding =
+            LocalPlayerAwareWindowInsets.current
+                .only(WindowInsetsSides.Bottom)
+                .asPaddingValues()
+                .calculateBottomPadding()
         LazyColumn(
             state = listState,
             modifier =
@@ -462,13 +475,13 @@ fun SettingsScreen(
                     .fillMaxSize()
                     .windowInsetsPadding(
                         LocalPlayerAwareWindowInsets.current.only(
-                            WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
+                            WindowInsetsSides.Horizontal,
                         ),
                     ),
             contentPadding =
                 PaddingValues(
                     top = innerPadding.calculateTopPadding(),
-                    bottom = SettingsDimensions.ScreenBottomPadding,
+                    bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding,
                 ),
         ) {
             if (hasUpdate && !isUpdateDismissed && searchQuery.isBlank()) {

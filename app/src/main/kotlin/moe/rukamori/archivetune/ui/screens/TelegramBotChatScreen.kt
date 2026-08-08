@@ -46,10 +46,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Download
-import androidx.compose.material.icons.outlined.PlayArrow
-import androidx.compose.material.icons.outlined.PlaylistAdd
+import coil3.compose.AsyncImage
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -70,7 +67,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -95,6 +94,7 @@ import moe.rukamori.archivetune.telegram.TelegramBotCodec
 import moe.rukamori.archivetune.telegram.TelegramBotPrompt
 import moe.rukamori.archivetune.telegram.TelegramBotPromptButton
 import moe.rukamori.archivetune.telegram.TelegramTrack
+import moe.rukamori.archivetune.telegram.telegramArtworkModel
 import moe.rukamori.archivetune.telegram.toFormatEntity
 import moe.rukamori.archivetune.telegram.toMediaMetadata
 import moe.rukamori.archivetune.ui.component.FrostedTopAppBar
@@ -435,7 +435,7 @@ fun TelegramBotChatScreen(
                             if (sending && pendingChoiceText == null) {
                                 CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
                             } else {
-                                Icon(Icons.Outlined.PlayArrow, contentDescription = null)
+                                Icon(painterResource(R.drawable.solar_send_square_linear), contentDescription = null)
                             }
                         }
                     },
@@ -493,7 +493,7 @@ fun TelegramBotChatScreen(
                     )
                     if (results.size > 1) {
                         TextButton(onClick = ::playAll) {
-                            Icon(Icons.Outlined.PlayArrow, contentDescription = null)
+                            Icon(painterResource(R.drawable.solar_play_linear), contentDescription = null)
                             Spacer(Modifier.width(4.dp))
                             Text(stringResource(R.string.telegram_bot_play_all))
                         }
@@ -582,6 +582,18 @@ private fun BotResultRow(
     onDownload: () -> Unit,
     onAddToPlaylist: () -> Unit,
 ) {
+    // Resolve the thumbnail URL the same way toMediaMetadata() does — this lets the bot-result
+    // row show artwork the moment a track arrives, instead of a static play-arrow placeholder.
+    // The tgart:// URI is handled by TelegramThumbnailFetcher (catalogue cover → embedded cover
+    // → minithumbnail fallback chain).
+    val thumbModel = remember(track) {
+        val metadata = track.lookupMetadata
+        telegramArtworkModel(track.thumbnailFileId, metadata.title, metadata.artist)
+            ?: moe.rukamori.archivetune.telegram.TelegramClient.cacheArtwork(
+                uniqueKey = track.fileUniqueId.ifEmpty { "${track.chatId}-${track.messageId}" },
+                data = track.albumCoverMinithumbnail,
+            )
+    }
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier =
@@ -597,11 +609,23 @@ private fun BotResultRow(
                     .background(MaterialTheme.colorScheme.surfaceVariant),
             contentAlignment = Alignment.Center,
         ) {
+            // Solar music-note placeholder shows behind the AsyncImage while the artwork loads
+            // (or if it fails to load — e.g. bot track has no embedded cover and no catalogue
+            // match). When the artwork loads it covers the placeholder completely.
             Icon(
-                Icons.Outlined.PlayArrow,
+                painter = painterResource(R.drawable.solar_music_note_2_linear),
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(22.dp),
             )
+            if (thumbModel != null) {
+                AsyncImage(
+                    model = thumbModel,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
         }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
@@ -624,13 +648,22 @@ private fun BotResultRow(
             }
         }
         IconButton(onClick = onStream) {
-            Icon(Icons.Outlined.PlayArrow, contentDescription = stringResource(R.string.telegram_bot_stream))
+            Icon(
+                painter = painterResource(R.drawable.solar_play_linear),
+                contentDescription = stringResource(R.string.telegram_bot_stream),
+            )
         }
         IconButton(onClick = onDownload) {
-            Icon(Icons.Outlined.Download, contentDescription = stringResource(R.string.telegram_bot_download))
+            Icon(
+                painter = painterResource(R.drawable.solar_download_linear),
+                contentDescription = stringResource(R.string.telegram_bot_download),
+            )
         }
         IconButton(onClick = onAddToPlaylist) {
-            Icon(Icons.Outlined.PlaylistAdd, contentDescription = stringResource(R.string.telegram_bot_add_to_playlist))
+            Icon(
+                painter = painterResource(R.drawable.solar_playlist_linear),
+                contentDescription = stringResource(R.string.telegram_bot_add_to_playlist),
+            )
         }
     }
 }

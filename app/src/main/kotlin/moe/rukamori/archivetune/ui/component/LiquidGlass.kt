@@ -143,13 +143,23 @@ fun Modifier.liquidGlass(
 /**
  * A liquid-glass surface wrapping arbitrary [content] (e.g. a pill of icon
  * buttons). Thin convenience over [liquidGlass]; pure common code.
+ *
+ * `interactive` defaults to `false` here because callers wrap their own
+ * clickable children (e.g. `Material3IconButton`). When `interactive = true`,
+ * the kyant `drawBackdrop` modifier installs a press-observing `pointerInput`
+ * on the container that competes with the inner click handler — on some
+ * devices/Compose versions the press detector consumes the UP event before
+ * the inner `IconButton.onClick` fires, making the icon "unclickable".
+ * Disabling interactivity keeps the visual blur/vibrancy/lens effect while
+ * letting clicks pass through to the wrapped children. Callers that want the
+ * press-based lens animation on the container itself can opt back in.
  */
 @Composable
 fun LiquidGlassContainer(
     backdrop: PlatformBackdrop,
     modifier: Modifier = Modifier,
     shape: Shape = CircleShape,
-    interactive: Boolean = true,
+    interactive: Boolean = false,
     contentAlignment: Alignment = Alignment.Center,
     content: @Composable BoxScope.() -> Unit,
 ) {
@@ -179,6 +189,7 @@ fun LiquidGlassContainer(
 fun LiquidGlassActionPill(
     backdrop: PlatformBackdrop,
     modifier: Modifier = Modifier,
+    interactive: Boolean = false,
     content: @Composable RowScope.() -> Unit,
 ) {
     Row(
@@ -188,6 +199,7 @@ fun LiquidGlassActionPill(
                 .liquidGlass(
                     backdrop = backdrop,
                     shape = RoundedCornerShape(24.dp),
+                    interactive = interactive,
                 ),
         verticalAlignment = Alignment.CenterVertically,
         content = content,
@@ -210,7 +222,7 @@ fun LiquidGlassIconButton(
     shape: Shape = CircleShape,
     tint: Color = Color.White,
     contentDescription: String? = null,
-    interactive: Boolean = true,
+    interactive: Boolean = false,
     onClick: () -> Unit,
 ) {
     LiquidGlassContainer(
@@ -243,7 +255,7 @@ fun LiquidGlassIconButton(
     shape: Shape = CircleShape,
     tint: Color = Color.White,
     contentDescription: String? = null,
-    interactive: Boolean = true,
+    interactive: Boolean = false,
     onClick: () -> Unit,
 ) {
     LiquidGlassContainer(

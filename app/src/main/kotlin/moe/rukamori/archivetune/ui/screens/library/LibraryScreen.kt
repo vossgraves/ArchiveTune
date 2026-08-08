@@ -22,14 +22,17 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -161,7 +164,20 @@ fun LibraryScreen(navController: NavController) {
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .padding(LocalPlayerAwareWindowInsets.current.asPaddingValues()),
+                    // Apply ONLY Top + Horizontal insets to the root Column so the LazyColumn
+                    // inside extends to the very bottom of the screen and content visibly scrolls
+                    // BEHIND the floating navigation bar / mini player. The bottom inset (nav bar
+                    // height + mini player height + safe inset) is applied to each sub-screen's
+                    // LazyColumn contentPadding instead, so the LAST items can be scrolled above
+                    // the bar (minimum-height clearance) instead of being permanently hidden
+                    // behind it. Per user spec: "scrollable behind navigation bar too (full
+                    // screen width) and when I reach the bottom apply a minimum height so that
+                    // it doesn't get overlapped by mini player and navigation bar".
+                    .windowInsetsPadding(
+                        LocalPlayerAwareWindowInsets.current.only(
+                            WindowInsetsSides.Horizontal + WindowInsetsSides.Top,
+                        ),
+                    ),
         ) {
             val tabListState = rememberLazyListState()
             val coroutineScope = rememberCoroutineScope()

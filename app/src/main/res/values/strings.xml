@@ -1009,6 +1009,7 @@
     <string name="enable_scrobbling">Enable Scrobbling</string>
     <string name="lastfm_now_playing">Now playing</string>
     <string name="refresh_telegram_playlist">Refresh from Telegram</string>
+    <string name="telegram_playlist_add_songs">Add songs</string>
     <string name="scrobbling_configuration">Scrobbling Configuration</string>
     <string name="scrobble_min_track_duration">Minimum Track Duration</string>
     <string name="scrobble_delay_percent">Scrobble Delay Percent</string>

@@ -128,6 +128,7 @@ import moe.rukamori.archivetune.ui.menu.SelectionSongMenu
 import moe.rukamori.archivetune.ui.menu.SongMenu
 import moe.rukamori.archivetune.ui.menu.removeSongFromRemotePlaylist
 import moe.rukamori.archivetune.ui.screens.playlist.PlaylistSuggestionsSection
+import moe.rukamori.archivetune.ui.screens.TELEGRAM_BOTS_ROUTE
 import moe.rukamori.archivetune.ui.utils.HeaderDownloadItem
 import moe.rukamori.archivetune.ui.utils.HeaderDownloadProgressIndicator
 import moe.rukamori.archivetune.ui.utils.HeaderDownloadState
@@ -1017,8 +1018,15 @@ fun LocalPlaylistScreen(
                 }
             }
 
-            // Playlist Suggestions Section
-            if (!selection && !isSearching) {
+            // Playlist Suggestions Section ("You might like") — hidden for Telegram-channel
+            // playlists (LPtg<chatId>) because the suggestions are YouTube-Music queries built
+            // from the playlist name + songs, which is meaningless for a Telegram channel whose
+            // songs are bot-fetched files (titles/performers often don't match YT Music). The
+            // section would either show irrelevant results or fail to load, polluting the
+            // playlist screen. Telegram playlists are managed via "Refresh from Telegram" /
+            // "Add songs" (in the overflow menu) instead.
+            val isTelegramPlaylist = playlist?.playlist?.id?.startsWith("LPtg") == true
+            if (!selection && !isSearching && !isTelegramPlaylist) {
                 item {
                     PlaylistSuggestionsSection(
                         modifier = Modifier.padding(vertical = 16.dp),
@@ -1122,6 +1130,9 @@ fun LocalPlaylistScreen(
                                     } else {
                                         null
                                     },
+                                onAddSongs = {
+                                    navController.navigate(TELEGRAM_BOTS_ROUTE)
+                                },
                             )
                         }
                     }) {
@@ -1325,6 +1336,9 @@ fun LocalPlaylistScreen(
                                                 } else {
                                                     null
                                                 },
+                                            onAddSongs = {
+                                                navController.navigate(TELEGRAM_BOTS_ROUTE)
+                                            },
                                         )
                                     }
                                 },

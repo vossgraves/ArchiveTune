@@ -33,9 +33,6 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.SmartToy
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -260,7 +257,7 @@ fun TelegramBotsScreen(navController: NavController) {
             SwitchPreference(
                 title = { Text(stringResource(R.string.telegram_bot_forward_to_channel)) },
                 description = stringResource(R.string.telegram_bot_forward_to_channel_summary),
-                icon = { Icon(Icons.Outlined.SmartToy, contentDescription = null) },
+                icon = { Icon(painterResource(R.drawable.solar_chat_round_linear), contentDescription = null) },
                 checked = forwardToChannel,
                 onCheckedChange = onForwardToChannelChange,
                 modifier = Modifier.padding(top = 8.dp),
@@ -292,7 +289,7 @@ private fun BotRow(
             contentAlignment = Alignment.Center,
         ) {
             Icon(
-                Icons.Outlined.SmartToy,
+                painter = painterResource(R.drawable.solar_chat_round_linear),
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -318,7 +315,7 @@ private fun BotRow(
         }
 
         ATIconButton(onClick = onRemove, onLongClick = {}) {
-            Icon(Icons.Outlined.Delete, contentDescription = null)
+            Icon(painterResource(R.drawable.solar_trash_bin_minimalistic_linear), contentDescription = null)
         }
     }
 }

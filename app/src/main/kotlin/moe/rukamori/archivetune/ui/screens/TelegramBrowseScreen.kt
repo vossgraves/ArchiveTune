@@ -165,7 +165,7 @@ fun TelegramBrowseScreen(navController: NavController) {
                     keyboardActions = KeyboardActions(onSearch = { search() }),
                     trailingIcon = {
                         IconButton(onClick = ::search, onLongClick = {}) {
-                            Icon(painterResource(R.drawable.search), contentDescription = null)
+                            Icon(painterResource(R.drawable.solar_magnifer_linear), contentDescription = null)
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),
@@ -232,7 +232,7 @@ private fun TelegramChannelRow(
                 )
             } else {
                 Icon(
-                    painterResource(R.drawable.provider_telegram),
+                    painterResource(R.drawable.solar_chat_round_linear),
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
