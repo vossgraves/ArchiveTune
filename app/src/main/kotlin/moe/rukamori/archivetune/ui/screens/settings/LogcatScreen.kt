@@ -516,7 +516,7 @@ private fun LogcatLogContent(
                         .weight(1f)
                         .nestedScroll(logUserScrollConnection),
                 contentPadding = PaddingValues(
-                    vertical = 8.dp,
+                    top = 8.dp,
                     bottom = playerAwareBottomPadding + 8.dp,
                 ),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
