@@ -332,6 +332,7 @@ fun AppleMusicPlayerContent(
                     fadeBottom = false,
                     videoId = mediaMetadata.id.takeIf { !it.isLocalMediaId() },
                     isMusicVideo = mediaMetadata.isMusicVideo,
+                    landscape = true,
                     modifier =
                         Modifier
                             .weight(1f)
@@ -379,6 +380,7 @@ fun AppleMusicPlayerContent(
                 fadeBottom = !videoShowing,
                 videoId = mediaMetadata.id.takeIf { !it.isLocalMediaId() },
                 isMusicVideo = mediaMetadata.isMusicVideo,
+                landscape = false,
                 modifier =
                     Modifier
                         .fillMaxWidth()
@@ -433,6 +435,7 @@ private fun AppleMusicSharpArtwork(
     fadeBottom: Boolean,
     videoId: String? = null,
     isMusicVideo: Boolean = false,
+    landscape: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val playerConnection = LocalPlayerConnection.current
@@ -465,11 +468,12 @@ private fun AppleMusicSharpArtwork(
                 isMusicVideo &&
                 !videoId.isNullOrBlank() &&
                 playerConnection != null
-        // "Immersive extended" card style: when there is no Spotify Canvas (or any
-        // animated artwork) AND no music video, render the still cover as a large
-        // rounded card with padding + shadow — matching the reference layout from
-        // vivi-music's Apple Music player. When a canvas or video IS available, we
-        // keep the full-bleed display so the animated artwork can fill the stage.
+        // "Immersive extended" — when there is no Spotify Canvas (or any animated
+        // artwork) AND no music video, render the still cover as a square using
+        // the SAME sizing formula as the Material Extended (V9) player, instead of
+        // stretching the cover to fill the rectangular stage. When a canvas or
+        // video IS available, we keep the full-bleed display so the animated
+        // artwork can fill the stage.
         val hasCanvas = !canvasPrimaryUrl.isNullOrBlank() || !canvasFallbackUrl.isNullOrBlank()
         val immersiveExtendedCard = !showVideo && !hasCanvas
         if (showVideo) {
@@ -480,26 +484,53 @@ private fun AppleMusicSharpArtwork(
                         .background(Color.Black),
             )
         } else if (immersiveExtendedCard) {
-            // Card-style: rounded corners, horizontal padding, soft shadow.
-            // The card fills the stage height but insets horizontally so the
-            // cover reads as a floating squircle rather than edge-to-edge.
-            Box(
-                modifier =
-                    Modifier
-                        .matchParentSize()
-                        .padding(horizontal = 24.dp, vertical = 12.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                AsyncImage(
-                    model = artworkRequest ?: artworkUrl,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier =
-                        Modifier
-                            .fillMaxSize()
-                            .shadow(8.dp, RoundedCornerShape(24.dp))
-                            .clip(RoundedCornerShape(24.dp)),
-                )
+            // "Immersive extended" — render the still cover as a square using the
+            // same sizing formula as the Material Extended (V9) player, centered
+            // inside the artwork stage. This matches the V9 artwork dimensions
+            // (square, horizontal padding 16/20dp, height-capped by screen size)
+            // instead of stretching the cover to fill the rectangular stage.
+            BoxWithConstraints(modifier = Modifier.matchParentSize()) {
+                val horizontalPadding = if (maxWidth < 380.dp) 16.dp else 20.dp
+                val compactHeight = maxHeight < 760.dp
+                val veryCompactHeight = maxHeight < 700.dp
+                val artworkMinSize =
+                    when {
+                        veryCompactHeight -> 200.dp
+                        compactHeight -> 216.dp
+                        else -> 236.dp
+                    }
+                // V9's height cap is computed against the player's full height.
+                // Inside AppleMusicSharpArtwork, maxHeight is the stage height
+                // (55% of the player height in portrait, full height in landscape),
+                // so we re-derive the equivalent full-height cap by dividing by
+                // 0.55 for portrait stages.
+                val effectiveFullHeight = if (landscape) maxHeight else maxHeight / 0.55f
+                val artworkHeightLimit =
+                    effectiveFullHeight *
+                        when {
+                            veryCompactHeight -> 0.32f
+                            compactHeight -> 0.35f
+                            else -> 0.40f
+                        }
+                val artworkSize =
+                    (maxWidth - horizontalPadding * 2)
+                        .coerceAtMost(artworkHeightLimit)
+                        .coerceAtLeast(artworkMinSize)
+                Box(
+                    modifier = Modifier.matchParentSize(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    AsyncImage(
+                        model = artworkRequest ?: artworkUrl,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier =
+                            Modifier
+                                .size(artworkSize)
+                                .shadow(8.dp, RoundedCornerShape(20.dp))
+                                .clip(RoundedCornerShape(20.dp)),
+                    )
+                }
             }
         } else {
             AsyncImage(

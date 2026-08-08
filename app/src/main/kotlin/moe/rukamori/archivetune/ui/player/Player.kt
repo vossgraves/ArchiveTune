@@ -2139,11 +2139,12 @@ fun BottomSheetPlayer(
         // Queue sheet — wrapped in AnimatedVisibility with slide+fade so it slides in from below
         // (mirrors vivi-music's Player.kt transition). Hidden while the lyrics screen is on top.
         //
-        // The Queue's background is rendered highly translucent (alpha 0.45) so the player's
-        // backdrop artwork — which is blurred by a real-time RenderEffect applied while the
-        // queue is expanded (see the player content wrapper below) — shows through clearly,
-        // producing the "blur behind the queue" frosted-glass effect that vivi-music achieves
-        // via a Haze layer over the player's backdrop.
+        // The Queue's background is rendered translucent so the player's backdrop artwork —
+        // which is blurred by a real-time BlurEffect applied while the queue is expanded
+        // (see the player content wrapper below) — shows through, producing the "blur behind
+        // the queue" frosted-glass effect that vivi-music achieves via a Haze layer over the
+        // player's backdrop. Alpha is kept at 0.78 — high enough that the queue reads as a
+        // solid surface, with just enough bleed-through to keep the frosted-glass aesthetic.
         AnimatedVisibility(
             visible = !isLyricsScreenVisible,
             enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
@@ -2157,9 +2158,9 @@ fun BottomSheetPlayer(
                 navController = navController,
                 backgroundColor =
                     if (useBlackBackground) {
-                        Color.Black.copy(alpha = 0.45f)
+                        Color.Black.copy(alpha = 0.78f)
                     } else {
-                        MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.45f)
+                        MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.78f)
                     },
                 onBackgroundColor = queueOnBackgroundColor,
                 TextBackgroundColor = TextBackgroundColor,
