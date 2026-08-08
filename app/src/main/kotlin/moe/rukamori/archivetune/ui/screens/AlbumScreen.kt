@@ -21,6 +21,9 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -83,6 +86,7 @@ import com.valentinilk.shimmer.shimmer
 import moe.rukamori.archivetune.LocalDatabase
 import moe.rukamori.archivetune.LocalDownloadUtil
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
+import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.AppBarHeight
@@ -156,8 +160,9 @@ fun AlbumScreen(
     val liquidGlassHeaderActive =
         liquidGlassEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
 
-    // System bars padding
-    val systemBarsTopPadding = WindowInsets.systemBars.asPaddingValues().calculateTopPadding()
+    // Stable top inset: does not collapse to 0 when the status bar is transiently hidden,
+    // so the album hero's top padding stays anchored below the TopAppBar.
+    val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
     val surfaceColor = MaterialTheme.colorScheme.surface
 
@@ -821,6 +826,9 @@ fun AlbumScreen(
 
         TopAppBar(
             modifier = Modifier.align(Alignment.TopCenter),
+            windowInsets =
+                WindowInsets(top = systemBarsTopPadding)
+                    .union(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal)),
             colors = topAppBarColors,
             scrollBehavior = scrollBehavior,
             title = {

@@ -29,6 +29,8 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -37,6 +39,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -97,6 +100,7 @@ import com.valentinilk.shimmer.shimmer
 import kotlinx.coroutines.flow.collect
 import moe.rukamori.archivetune.LocalDatabase
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
+import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.AppBarHeight
@@ -234,7 +238,11 @@ fun ArtistScreen(
         }
     }
 
-    val systemBarsTopPadding = WindowInsets.systemBars.asPaddingValues().calculateTopPadding()
+    // Stable top inset: does not collapse to 0 when the status bar is transiently hidden
+    // (overflow menu, expanded player, etc.). The artist hero's top padding anchors below the
+    // TopAppBar using this value, so songs in inline sections no longer overlap the header when
+    // "hide status bar" is triggered.
+    val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
     val surfaceColor = MaterialTheme.colorScheme.surface
     val heroContentColor =
         if (surfaceColor.luminance() > 0.5f) {
@@ -1106,6 +1114,9 @@ fun ArtistScreen(
     if (!liquidGlassHeaderActive) {
     // Top App Bar
     TopAppBar(
+        windowInsets =
+            WindowInsets(top = systemBarsTopPadding)
+                .union(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal)),
         title = {
             val animatedAlpha by animateFloatAsState(
                 targetValue = if (!transparentAppBar) 1f else 0f,

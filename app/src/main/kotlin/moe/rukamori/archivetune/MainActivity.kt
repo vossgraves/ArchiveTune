@@ -1502,14 +1502,17 @@ class MainActivity : ComponentActivity() {
                             }
                             effectiveWindowsInsets
                                 .only(
-                                    (
-                                        if (useRail) {
-                                            WindowInsetsSides.Right
-                                        } else {
-                                            WindowInsetsSides.Horizontal
-                                        }
-                                    ) + WindowInsetsSides.Top,
-                                ).add(WindowInsets(top = AppBarHeight, bottom = bottom))
+                                    if (useRail) {
+                                        WindowInsetsSides.Right
+                                    } else {
+                                        WindowInsetsSides.Horizontal
+                                    },
+                                ).add(
+                                    WindowInsets(
+                                        top = effectiveStatusBarTop + AppBarHeight,
+                                        bottom = bottom,
+                                    ),
+                                )
                         }
 
                     val homeScrollBehavior =
@@ -1853,6 +1856,7 @@ class MainActivity : ComponentActivity() {
                         LocalContentColor provides if (pureBlack) Color.White else contentColorFor(MaterialTheme.colorScheme.surface),
                         LocalPlayerConnection provides playerConnection,
                         LocalPlayerAwareWindowInsets provides playerAwareWindowInsets,
+                        LocalStableSystemBarsTopPadding provides effectiveStatusBarTop,
                         LocalDownloadUtil provides downloadUtil,
                         LocalShimmerTheme provides ShimmerTheme,
                         LocalSyncUtils provides syncUtils,
@@ -3258,6 +3262,15 @@ val LocalPlayerConnection =
     staticCompositionLocalOf<PlayerConnection?> { error("No PlayerConnection provided") }
 val LocalPlayerAwareWindowInsets =
     compositionLocalOf<WindowInsets> { error("No WindowInsets provided") }
+/**
+ * Status-bar top inset that does NOT collapse to 0 when the status bar is transiently hidden
+ * (overflow menu, V7/APPLE_MUSIC expanded player, bottom-sheet page, etc.). Screens should use
+ * this instead of `WindowInsets.systemBars.asPaddingValues().calculateTopPadding()` whenever the
+ * value is meant to anchor content below a pinned TopAppBar / search bar so that the content
+ * stays put when the system bars flicker. The first frame before the cache is populated falls
+ * back to 0.dp, which is fine because the system bars are visible at that point.
+ */
+val LocalStableSystemBarsTopPadding = compositionLocalOf<Dp> { 0.dp }
 val LocalDownloadUtil = staticCompositionLocalOf<DownloadUtil> { error("No DownloadUtil provided") }
 val LocalSyncUtils = staticCompositionLocalOf<SyncUtils> { error("No SyncUtils provided") }
 

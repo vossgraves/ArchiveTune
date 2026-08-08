@@ -58,6 +58,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -402,6 +403,14 @@ fun LyricsV2(
                 isTtmlFormat -> 16L
                 else -> 50L
             }
+        // For the high-frequency TTML path, drive the poll from the choreographer frame clock
+        // instead of a fixed `delay(16)`. When the device is under GPU pressure (most commonly
+        // because a Spotify Canvas video is compositing on a TextureView alongside the lyrics),
+        // the frame clock naturally drops to 30/24 fps; `delay(16)` would keep firing at 60 Hz
+        // and pile up recompositions on top of the slow frames, which is what makes the karaoke
+        // fill animation lag visibly behind the audio. `withFrameNanos` ties the poll cadence to
+        // the actual frame rate so the two stay in lock-step.
+        val useFrameClock = !v2AnimationsDisabled && isTtmlFormat
         while (isActive) {
             val sliderPos = sliderPositionProvider()
             val pos = sliderPos ?: player.currentPosition
@@ -410,7 +419,11 @@ fun LyricsV2(
             currentPositionMs = (playbackPositionMs + leadMs + LYRIC_VISUAL_TUNING_OFFSET_MS).coerceAtLeast(0L)
 
             currentLineIndex = findCurrentLineIndex(entriesWithWords, currentPositionMs, 0L)
-            delay(pollIntervalMs)
+            if (useFrameClock) {
+                withFrameNanos { }
+            } else {
+                delay(pollIntervalMs)
+            }
         }
     }
 

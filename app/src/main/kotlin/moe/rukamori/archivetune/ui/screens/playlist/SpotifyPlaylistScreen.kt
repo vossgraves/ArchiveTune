@@ -15,7 +15,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -74,6 +76,7 @@ import com.google.common.collect.ImmutableList
 import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.LocalDownloadUtil
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
+import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.extensions.togglePlayPause
@@ -127,7 +130,7 @@ fun SpotifyPlaylistScreen(
     val playlist = state.playlist
     val tracks = state.tracks
     val lazyListState = rememberLazyListState()
-    val systemBarsTopPadding = WindowInsets.systemBars.asPaddingValues().calculateTopPadding()
+    val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
     val snackbarHostState = remember { SnackbarHostState() }
     val downloadActionFailedMessage = stringResource(R.string.download_action_failed)
     val latestDownloads by rememberUpdatedState(downloads)
@@ -642,6 +645,9 @@ fun SpotifyPlaylistScreen(
         if (isSearching || playlist == null) {
         TopAppBar(
             colors = topAppBarColors,
+            windowInsets =
+                WindowInsets(top = systemBarsTopPadding)
+                    .union(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal)),
             title = {
                 if (isSearching) {
                     TextField(
