@@ -173,6 +173,24 @@ fun TelegramBotChatScreen(
     }
 
     /**
+     * Persists each track as a song + format row (so playback / download / playlist-add work
+     * through the existing code paths) and surfaces them in the on-screen results list.
+     *
+     * Defined BEFORE collectAndApply because Kotlin local functions can only reference functions
+     * declared earlier in the same scope — collectAndApply calls this from inside its body.
+     */
+    suspend fun persistTracks(tracks: List<TelegramTrack>, sourceTitle: String) {
+        database.withTransaction {
+            tracks.forEach { track ->
+                insert(track.toMediaMetadata(sourceTitle))
+                upsert(track.toFormatEntity())
+            }
+        }
+        results.clear()
+        results.addAll(tracks)
+    }
+
+    /**
      * Collects every reply (tracks + inline prompts) that arrives on [chatId] within the timeout
      * window, then returns the result so the caller can drive UI state from a coroutine scope.
      * [afterMessageId] is the message id of either the user's just-sent link (initial send) or
@@ -297,19 +315,6 @@ fun TelegramBotChatScreen(
             pendingChoiceText = null
             sending = false
         }
-    }
-
-    suspend fun persistTracks(tracks: List<TelegramTrack>, sourceTitle: String) {
-        // Persist each track as a song + format row so playback / download / playlist add work
-        // through the existing code paths.
-        database.withTransaction {
-            tracks.forEach { track ->
-                insert(track.toMediaMetadata(sourceTitle))
-                upsert(track.toFormatEntity())
-            }
-        }
-        results.clear()
-        results.addAll(tracks)
     }
 
     fun playTrack(track: TelegramTrack) {
