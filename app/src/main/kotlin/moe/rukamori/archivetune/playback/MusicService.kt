@@ -208,7 +208,6 @@ import moe.rukamori.archivetune.constants.toFormatName
 import moe.rukamori.archivetune.deezer.DeezerAudioProvider
 import moe.rukamori.archivetune.deezer.DeezerCrypto
 import moe.rukamori.archivetune.deezer.DeezerDecryptingDataSource
-import moe.rukamori.archivetune.morideobfuscator.SOURCE_SWITCH_VOLUME_REASSERT_MS
 import moe.rukamori.archivetune.qobuz.QobuzAudioProvider
 import moe.rukamori.archivetune.qobuz.QobuzToken
 import moe.rukamori.archivetune.audiosource.AudioSourceConfig
@@ -9962,6 +9961,13 @@ class MusicService :
         const val AUDIO_ROUTE_RECOVERY_MIN_INTERVAL_MS = 1_500L
         const val AUDIO_ROUTE_RECOVERY_RESUME_DELAY_MS = 150L
         const val DEVICE_MUTE_PLAYBACK_NOTICE_INTERVAL_MS = 1_200L
+        // Delay before re-asserting the captured baseline volume after a source switch's
+        // player.prepare() call. Long enough that the prepare pipeline has settled (and any
+        // async state transitions complete within one frame after that) without being so long
+        // that the user perceives a muted gap. Originally added in commit 9a224662b alongside
+        // a broken import from the morideobfuscator submodule (where the constant never
+        // existed) — moved back here so the reference resolves.
+        const val SOURCE_SWITCH_VOLUME_REASSERT_MS = 250L
         const val MIN_AUDIO_FOCUS_VOLUME_FACTOR = 0.2f
         const val MIN_AUDIO_NORMALIZATION_FACTOR = 0.25f
         const val MAX_AUDIO_NORMALIZATION_FACTOR = 1.414f
