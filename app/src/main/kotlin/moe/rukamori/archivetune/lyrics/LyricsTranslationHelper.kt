@@ -37,6 +37,7 @@ import moe.rukamori.archivetune.constants.OpenRouterModelKey
 import moe.rukamori.archivetune.constants.TranslateModeKey
 import moe.rukamori.archivetune.constants.TranslateSourceLanguageKey
 import moe.rukamori.archivetune.utils.dataStore
+import moe.rukamori.archivetune.utils.get
 
 object LyricsTranslationHelper {
     /**
