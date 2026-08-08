@@ -9215,12 +9215,7 @@ class MusicService :
                 // the user can seek to any position without needing a seek table. Without
                 // this, ExoPlayer can only seek to keyframes, making seeking in .m4a/.mp3
                 // files imprecise or impossible.
-                .setConstantBitrateSeekingEnabled(true)
-                // Always sniff a larger chunk of the stream before committing to an extractor.
-                // This helps with .m4a files that have a large `free`/`mdat` box before the
-                // `moov` atom — the default sniff window may not reach the `moov` and ExoPlayer
-                // would misidentify the container.
-                .setSniffInitialFragments(true),
+                .setConstantBitrateSeekingEnabled(true),
         )
 
     private class SchemeRoutingDataSource(
