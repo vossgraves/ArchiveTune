@@ -95,6 +95,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.constants.ThumbnailCornerRadiusKey
 import moe.rukamori.archivetune.db.entities.FormatEntity
 import moe.rukamori.archivetune.db.entities.codecLabel
 import moe.rukamori.archivetune.db.entities.isLossless
@@ -112,6 +113,7 @@ import moe.rukamori.archivetune.utils.ImageBlurUtils
 import moe.rukamori.archivetune.utils.isLocalMediaId
 import moe.rukamori.archivetune.utils.makeTimeString
 import moe.rukamori.archivetune.utils.rememberLowDataModeActive
+import moe.rukamori.archivetune.utils.rememberPreference
 
 private val AppleMusicContentPadding = 28.dp
 private val AppleMusicChipSize = 34.dp
@@ -500,6 +502,17 @@ private fun AppleMusicSharpArtwork(
                 val effectiveFullHeight = if (landscape) maxHeight else maxHeight / 0.55f
                 val compactHeight = effectiveFullHeight < 760.dp
                 val veryCompactHeight = effectiveFullHeight < 700.dp
+                // Honor the global thumbnail corner-radius preference (the same
+                // one the "Adjust corner radius" dialog in Appearance settings
+                // controls). The slider's max is 45dp, but for a ~320dp artwork
+                // that would be over-round, so we cap at 32dp — matching V9's
+                // RoundedCornerShape(30.dp) default while still letting the
+                // user drop it to 0 for sharp corners.
+                val (thumbnailCornerRadius, _) = rememberPreference(
+                    ThumbnailCornerRadiusKey,
+                    defaultValue = 16f,
+                )
+                val artworkCornerRadiusDp = thumbnailCornerRadius.coerceAtMost(32f).dp
                 val artworkMinSize =
                     when {
                         veryCompactHeight -> 200.dp
@@ -528,8 +541,8 @@ private fun AppleMusicSharpArtwork(
                         modifier =
                             Modifier
                                 .size(artworkSize)
-                                .shadow(8.dp, RoundedCornerShape(20.dp))
-                                .clip(RoundedCornerShape(20.dp)),
+                                .shadow(8.dp, RoundedCornerShape(artworkCornerRadiusDp))
+                                .clip(RoundedCornerShape(artworkCornerRadiusDp)),
                     )
                 }
             }

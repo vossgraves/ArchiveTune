@@ -24,6 +24,7 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -32,6 +33,11 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.HazeStyle
+import dev.chrisbanes.haze.HazeTint
+import dev.chrisbanes.haze.hazeSource
+import dev.chrisbanes.haze.hazeEffect
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -62,6 +68,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -166,6 +173,7 @@ import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalAnimationsDisabled
 import moe.rukamori.archivetune.LocalDownloadUtil
 import moe.rukamori.archivetune.LocalPlayerConnection
+import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.canvas.models.CanvasArtwork
 import moe.rukamori.archivetune.constants.ArchiveTuneCanvasKey
@@ -869,6 +877,16 @@ fun BottomSheetPlayer(
             initialAnchor = COLLAPSED_ANCHOR,
         )
 
+    // Haze state for the frosted-glass blur behind the queue sheet. Ported
+    // verbatim from vivi-music's Player.kt: the player's backdrop artwork is
+    // tagged as the haze source, and a Haze-effect overlay (blurRadius = 80.dp,
+    // tint = Black 0.30, noiseFactor = 0.15) fades in over the player content
+    // while the queue is expanded. The queue's own background is transparent
+    // (Color.Unspecified) so the Haze shows through. This replaces the previous
+    // Compose BlurEffect(radius=32f) approach which was less blurred than
+    // vivi-music and only worked on Android 12+.
+    val playerHazeState = remember { HazeState() }
+
     LaunchedEffect(state.isExpandedOrExpanding) {
         if (state.isExpandedOrExpanding && !queueSheetState.isCollapsed) {
             queueSheetState.collapseSoft()
@@ -1352,35 +1370,32 @@ fun BottomSheetPlayer(
             )
         }
 
-        // Real-time blur of the player content while the queue sheet is expanded.
-        // On Android 12+ we apply a RenderEffect to a wrapper Box that surrounds
-        // all the player UI branches below — the queue sheet (rendered AFTER this
-        // Box closes) is NOT blurred, so its text stays sharp. Combined with the
-        // queue's translucent (alpha 0.45) background, this produces the
-        // "frosted glass" effect from vivi-music without needing the Haze library.
+        // Haze-driven frosted-glass blur behind the queue sheet. Ported
+        // verbatim from vivi-music (beta) Player.kt — the player's backdrop
+        // artwork + controls are tagged as the haze source, and a Haze-effect
+        // overlay (blurRadius = 80.dp, tint = HazeTint(Black 0.30), noiseFactor
+        // = 0.15) fades in over them while the queue is expanded. The queue
+        // itself (rendered AFTER this Box closes) has a transparent background,
+        // so the Haze shows through. This replaces the previous Compose
+        // BlurEffect(radius=32f) approach which was less blurred than
+        // vivi-music and only worked on Android 12+ (Haze handles the API
+        // level gate internally and falls back to a software blur on older
+        // devices).
         val queueBlurEnabled =
             queueSheetState.isExpandedOrExpanding &&
-                !isLyricsScreenVisible &&
-                Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+                !isLyricsScreenVisible
+
+        val queueHazeAlpha by animateFloatAsState(
+            targetValue = if (queueBlurEnabled) 1f else 0f,
+            animationSpec = tween(durationMillis = 300),
+            label = "queueHazeAlpha",
+        )
 
         Box(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .then(
-                        if (queueBlurEnabled) {
-                            Modifier.graphicsLayer {
-                                renderEffect =
-                                    androidx.compose.ui.graphics.BlurEffect(
-                                        radiusX = 32f,
-                                        radiusY = 32f,
-                                        edgeTreatment = androidx.compose.ui.graphics.TileMode.Clamp,
-                                    )
-                            }
-                        } else {
-                            Modifier
-                        },
-                    ),
+                    .hazeSource(state = playerHazeState),
         ) {
         if (!state.isCollapsed &&
             !aodModeEnabled &&
@@ -1448,9 +1463,8 @@ fun BottomSheetPlayer(
                                         onSkipPrevious = playerConnection::seekToPrevious,
                                         onSkipNext = playerConnection::seekToNext,
                                     ).windowInsetsPadding(
-                                        WindowInsets.systemBars.only(
-                                            WindowInsetsSides.Horizontal + WindowInsetsSides.Top + WindowInsetsSides.Bottom,
-                                        ),
+                                        WindowInsets(top = LocalStableSystemBarsTopPadding.current)
+                                            .union(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)),
                                     ),
                         ) {
                             enrichedMetadata?.let { metadata ->
@@ -1649,9 +1663,8 @@ fun BottomSheetPlayer(
                                         .fillMaxSize()
                                         .padding(bottom = queueSheetState.collapsedBound)
                                         .windowInsetsPadding(
-                                            WindowInsets.systemBars.only(
-                                                WindowInsetsSides.Top + WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
-                                            ),
+                                            WindowInsets(top = LocalStableSystemBarsTopPadding.current)
+                                                .union(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)),
                                         ).nestedScroll(state.preUpPostDownNestedScrollConnection),
                             )
                         }
@@ -1687,9 +1700,8 @@ fun BottomSheetPlayer(
                                     .fillMaxSize()
                                     .padding(bottom = queueSheetState.collapsedBound)
                                     .windowInsetsPadding(
-                                        WindowInsets.systemBars.only(
-                                            WindowInsetsSides.Top + WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
-                                        ),
+                                        WindowInsets(top = LocalStableSystemBarsTopPadding.current)
+                                            .union(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)),
                                     ).nestedScroll(state.preUpPostDownNestedScrollConnection),
                         )
                     }
@@ -1751,7 +1763,7 @@ fun BottomSheetPlayer(
                             modifier =
                                 Modifier
                                     .weight(1f)
-                                    .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Top)),
+                                    .windowInsetsPadding(WindowInsets(top = LocalStableSystemBarsTopPadding.current)),
                         ) {
                             Spacer(Modifier.weight(1f))
 
@@ -1810,9 +1822,8 @@ fun BottomSheetPlayer(
                                         onSkipPrevious = playerConnection::seekToPrevious,
                                         onSkipNext = playerConnection::seekToNext,
                                     ).windowInsetsPadding(
-                                        WindowInsets.systemBars.only(
-                                            WindowInsetsSides.Horizontal + WindowInsetsSides.Top + WindowInsetsSides.Bottom,
-                                        ),
+                                        WindowInsets(top = LocalStableSystemBarsTopPadding.current)
+                                            .union(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)),
                                     ),
                         ) {
                             enrichedMetadata?.let { metadata ->
@@ -2008,9 +2019,8 @@ fun BottomSheetPlayer(
                                         .fillMaxSize()
                                         .padding(bottom = queueSheetState.collapsedBound)
                                         .windowInsetsPadding(
-                                            WindowInsets.systemBars.only(
-                                                WindowInsetsSides.Top + WindowInsetsSides.Horizontal,
-                                            ),
+                                            WindowInsets(top = LocalStableSystemBarsTopPadding.current)
+                                                .union(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal)),
                                         ).nestedScroll(state.preUpPostDownNestedScrollConnection),
                             )
                         }
@@ -2045,9 +2055,8 @@ fun BottomSheetPlayer(
                                     .fillMaxSize()
                                     .padding(bottom = queueSheetState.collapsedBound)
                                     .windowInsetsPadding(
-                                        WindowInsets.systemBars.only(
-                                            WindowInsetsSides.Top + WindowInsetsSides.Horizontal,
-                                        ),
+                                        WindowInsets(top = LocalStableSystemBarsTopPadding.current)
+                                            .union(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal)),
                                     ).nestedScroll(state.preUpPostDownNestedScrollConnection),
                         )
                     }
@@ -2117,7 +2126,32 @@ fun BottomSheetPlayer(
                 }
             }
         }
-        } // close player-content blur Box
+        } // close player-content haze-source Box
+
+        // Haze-effect overlay — renders the blurred player content (the
+        // hazeSource Box above) as a frosted-glass layer that fades in while
+        // the queue is expanded. Exact vivi-music parameters: blurRadius =
+        // 80.dp, tint = HazeTint(Black 0.30), noiseFactor = 0.15. The queue
+        // sheet (rendered next, with a transparent background) sits on top of
+        // this overlay so the frosted-glass effect shows through behind the
+        // queue list.
+        if (queueHazeAlpha > 0f) {
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .graphicsLayer { alpha = queueHazeAlpha }
+                        .hazeEffect(
+                            state = playerHazeState,
+                            style =
+                                HazeStyle(
+                                    blurRadius = 80.dp,
+                                    tint = HazeTint(Color.Black.copy(alpha = 0.30f)),
+                                    noiseFactor = 0.15f,
+                                ),
+                        ),
+            )
+        }
 
         val queueOnBackgroundColor = if (useBlackBackground) Color.White else MaterialTheme.colorScheme.onSurface
         val queueSurfaceColor = if (useBlackBackground) Color.Black else MaterialTheme.colorScheme.surface
@@ -2137,14 +2171,13 @@ fun BottomSheetPlayer(
             }
 
         // Queue sheet — wrapped in AnimatedVisibility with slide+fade so it slides in from below
-        // (mirrors vivi-music's Player.kt transition). Hidden while the lyrics screen is on top.
+        // (mirrors vivi-music's Player.kt transition verbatim). Hidden while the lyrics screen
+        // is on top.
         //
-        // The Queue's background is rendered translucent so the player's backdrop artwork —
-        // which is blurred by a real-time BlurEffect applied while the queue is expanded
-        // (see the player content wrapper below) — shows through, producing the "blur behind
-        // the queue" frosted-glass effect that vivi-music achieves via a Haze layer over the
-        // player's backdrop. Alpha is kept at 0.78 — high enough that the queue reads as a
-        // solid surface, with just enough bleed-through to keep the frosted-glass aesthetic.
+        // The Queue's background is transparent (Color.Unspecified) so the Haze-effect overlay
+        // rendered above shows through unimpeded — matching vivi-music's queue which paints
+        // Color.Unspecified behind its list and relies entirely on the player's Haze layer for
+        // the frosted-glass effect.
         AnimatedVisibility(
             visible = !isLyricsScreenVisible,
             enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
@@ -2156,12 +2189,7 @@ fun BottomSheetPlayer(
                 state = queueSheetState,
                 playerBottomSheetState = state,
                 navController = navController,
-                backgroundColor =
-                    if (useBlackBackground) {
-                        Color.Black.copy(alpha = 0.78f)
-                    } else {
-                        MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.78f)
-                    },
+                backgroundColor = Color.Unspecified,
                 onBackgroundColor = queueOnBackgroundColor,
                 TextBackgroundColor = TextBackgroundColor,
                 textButtonColor = textButtonColor,

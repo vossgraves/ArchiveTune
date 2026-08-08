@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
@@ -72,6 +73,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.media3.common.Player
+import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.EnableHapticFeedbackKey
 import moe.rukamori.archivetune.db.entities.FormatEntity
@@ -126,7 +128,18 @@ fun CurrentSongHeader(
             modifier
                 .fillMaxWidth()
                 .background(backgroundColor)
-                .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
+                // Use the cached status-bar top inset (LocalStableSystemBarsTopPadding) instead
+                // of the raw WindowInsets.systemBars — when the status bar is hidden (which
+                // happens for V7/APPLE_MUSIC player styles, the global HideStatusBar setting,
+                // and full-screen lyrics), WindowInsets.systemBars reports 0 for the top inset,
+                // causing the header — and the songs list below it — to slide under the
+                // notch / camera cutout. LocalStableSystemBarsTopPadding preserves the last
+                // non-zero value, so the layout stays below the notch regardless of bar
+                // visibility. Matches the pattern used by AlbumScreen / ArtistSongsScreen.
+                .windowInsetsPadding(
+                    WindowInsets(top = LocalStableSystemBarsTopPadding.current)
+                        .union(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal)),
+                )
                 .bottomSheetDraggable(sheetState)
                 .padding(horizontal = 16.dp)
                 .padding(top = 12.dp, bottom = 8.dp),

@@ -401,12 +401,19 @@ fun PlaybackSourceSections(navController: NavController) {
             )
         }
 
+        // Credit row — required by vivi-music's GPL-3.0 porting guidelines.
+        // Previously this lived on a separate JioSettings sub-page that was
+        // reached via an "Open JioSaavn settings" row below the quality picker.
+        // Per design feedback, that navigation row was removed and the credit
+        // was hoisted up to sit directly beneath the audio-quality selection
+        // (its standalone JioSettings.kt page is left in place but no longer
+        // linked from the Sources screen).
         item {
             PreferenceEntry(
-                title = { Text(stringResource(R.string.jiosaavn_open_settings)) },
-                description = stringResource(R.string.jiosaavn_open_settings_description),
-                icon = { Icon(painterResource(R.drawable.play), null) },
-                onClick = { navController.navigate("settings/jiosaavn") },
+                title = { Text(stringResource(R.string.jiosaavn_credit)) },
+                description = stringResource(R.string.jiosaavn_credit_description),
+                icon = { Icon(painterResource(R.drawable.info), null) },
+                onClick = {},
             )
         }
     }
