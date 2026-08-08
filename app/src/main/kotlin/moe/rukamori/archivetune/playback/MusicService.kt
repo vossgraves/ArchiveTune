@@ -29,6 +29,7 @@ import android.media.AudioDeviceCallback
 import android.media.AudioDeviceInfo
 import android.media.AudioFocusRequest
 import android.media.AudioManager
+import android.media.MediaCodec
 import android.media.MediaCodecList
 import android.media.audiofx.AudioEffect
 import android.media.audiofx.BassBoost
@@ -77,11 +78,13 @@ import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.MediaCodecRenderer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.analytics.PlaybackStats
 import androidx.media3.exoplayer.analytics.PlaybackStatsListener
 import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.exoplayer.audio.SilenceSkippingAudioProcessor
+import androidx.media3.exoplayer.mediacodec.MediaCodecDecoderException
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.ShuffleOrder.DefaultShuffleOrder
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
@@ -504,6 +507,29 @@ class MusicService :
     @Volatile
     private var lastLoginRecoveryPrompt: Pair<String, Long>? = null
     private val playbackStreamRecoveryTracker = PlaybackStreamRecoveryTracker()
+
+    // Codec-state recovery counter, SEPARATE from PlaybackStreamRecoveryTracker.
+    //
+    // Background: when an ALAC (.m4a) stream is backgrounded + paused for a few minutes,
+    // Android may reclaim the hardware codec out from under ExoPlayer (low-memory kill).
+    // ExoPlayer then surfaces a MediaCodecDecoderException wrapping either:
+    //   - IllegalStateException("queueInputBuffer() is valid only at Executing states;
+    //     currently at Released state")  — when the renderer tries to queue into a
+    //     codec that's already been released, OR
+    //   - CodecException("Error 0x80000000")  — the generic undefined MediaCodec error,
+    //     which the same reclamation can produce on MediaTek's c2.mtk.alac.decoder.
+    //
+    // Re-prepare() recovers by instantiating a fresh codec, BUT the failure can recur:
+    //   (a) at the very start of a song (codec init races / transient resource pressure), and
+    //   (b) again on the next background+pause cycle.
+    // PlaybackStreamRecoveryTracker allows only ONE retry per media item, which is too
+    // tight for a recurring codec-state fault. We keep a small per-media budget here
+    // (default 4 attempts) so transient codec reclamation doesn't kill the whole queue.
+    @Volatile
+    private var codecRecoveryMediaId: String? = null
+    @Volatile
+    private var codecRecoveryAttemptCount: Int = 0
+    private val codecRecoveryMaxAttempts = 4
     private var nextHistorySessionToken = 0L
     private var currentHistorySessionToken = 0L
     private var currentHistoryMediaId: String? = null
@@ -7007,12 +7033,28 @@ class MusicService :
         }
         if (events.contains(Player.EVENT_MEDIA_ITEM_TRANSITION)) {
             playbackStreamRecoveryTracker.onMediaItemChanged(currentMediaId)
+            // Reset codec-recovery budget for the new media item.
+            if (currentMediaId != codecRecoveryMediaId) {
+                codecRecoveryMediaId = currentMediaId
+                codecRecoveryAttemptCount = 0
+            }
         }
         if (
             (events.contains(Player.EVENT_PLAYBACK_STATE_CHANGED) && player.playbackState == Player.STATE_READY) ||
             (events.contains(Player.EVENT_IS_PLAYING_CHANGED) && player.isPlaying)
         ) {
             playbackStreamRecoveryTracker.onPlaybackRecovered(currentMediaId)
+            // Codec successfully reached READY / isPlaying after a recovery re-prepare —
+            // the current codec instance is healthy, so reset the per-media counter so the
+            // NEXT background+pause cycle gets a fresh budget.
+            if (codecRecoveryAttemptCount > 0) {
+                Timber.tag("MusicService").i(
+                    "Codec recovery succeeded for %s after %d attempt(s); resetting codec-recovery budget",
+                    currentMediaId,
+                    codecRecoveryAttemptCount,
+                )
+                codecRecoveryAttemptCount = 0
+            }
             currentMediaId
                 ?.let(playbackUrlCache::get)
                 ?.url
@@ -7486,39 +7528,79 @@ class MusicService :
         // ALAC decoder (notably MediaTek's c2.mtk.alac.decoder), the OS may release the codec
         // out from under ExoPlayer while the app is backgrounded + paused for a few minutes
         // (low-memory reclamation). The renderer's next queueInputBuffer() call then throws
-        //   IllegalStateException: queueInputBuffer() is valid only at Executing states;
-        //   currently at Released state
-        // which surfaces as a MediaCodecDecoderException. The codec itself is fine — the player
-        // just needs to be re-prepared so a fresh codec instance is instantiated. Re-prepare
-        // resumes from the current position; no queue reshuffle needed.
+        // one of:
+        //   IllegalStateException("queueInputBuffer() is valid only at Executing states;
+        //   currently at Released state")    — renderer races against an already-released codec
+        //   CodecException("Error 0x80000000") — generic undefined MediaCodec error from the
+        //   same root cause on MediaTek's c2.mtk.alac.decoder
+        // Both surface as a MediaCodecDecoderException, with errorCode == ERROR_CODE_DECODING_FAILED
+        // (4003). The codec itself is recoverable — the player just needs to be re-prepared so a
+        // fresh codec instance is instantiated. Re-prepare resumes from the current position; no
+        // queue reshuffle needed.
+        //
+        // IMPORTANT: the failure can recur — once at song start (codec init race / transient
+        // resource pressure) and again on the next background+pause cycle. The single-shot
+        // playbackStreamRecoveryTracker is too tight for this; we keep a SEPARATE per-media
+        // budget (codecRecoveryMaxAttempts = 4) so transient codec reclamation doesn't kill
+        // the queue. The counter resets when playback reaches READY/playing (see onEvents),
+        // so each successful recovery earns a fresh budget for the next cycle.
         if (isMediaCodecStateError(error)) {
             val resumePosition = player.currentPosition.coerceAtLeast(0L)
             val mediaItemIndex = player.currentMediaItemIndex
+
+            // Reset budget if we've moved to a different media item since the last attempt.
+            if (currentMediaId != codecRecoveryMediaId) {
+                codecRecoveryMediaId = currentMediaId
+                codecRecoveryAttemptCount = 0
+            }
+            val attemptNumber = codecRecoveryAttemptCount + 1
+            val withinBudget = attemptNumber <= codecRecoveryMaxAttempts
+
             Timber.tag("MusicService").w(
-                "MediaCodec state error for %s (format=%s); re-preparing player to recover codec",
+                "MediaCodec state error for %s (errorCode=%s, causeChain=%s); recovery attempt %d/%d",
                 currentMediaId,
                 error.errorCodeName,
+                describeCauseChain(error),
+                attemptNumber,
+                codecRecoveryMaxAttempts,
             )
-            if (playbackStreamRecoveryTracker.registerRetryAttempt(currentMediaId)) {
+
+            if (withinBudget) {
+                codecRecoveryAttemptCount = attemptNumber
                 scope.launch(Dispatchers.Main) {
                     try {
+                        // Give the OS a moment to finish releasing the dead codec instance
+                        // before we ask ExoPlayer to instantiate a fresh one. Without this,
+                        // the new codec can race the old one's teardown and fail with the
+                        // same 0x80000000 / Released-state signature on the very first
+                        // queueInputBuffer() call.
+                        if (attemptNumber > 1) {
+                            kotlinx.coroutines.delay(400L)
+                        }
                         player.seekTo(mediaItemIndex, resumePosition)
                         player.prepare()
-                        // Honor the user's prior play/pause intent — if they had paused, keep
-                        // it paused after recovery so we don't surprise-start playback.
+                        // Honor the user's prior play/pause intent — if they had paused,
+                        // keep it paused after recovery so we don't surprise-start playback.
                         if (!player.playWhenReady) {
                             player.pause()
                         }
                     } catch (recoveryThrowable: Throwable) {
                         Timber.tag("MusicService").e(
                             recoveryThrowable,
-                            "Recovery re-prepare failed for %s; falling back to stop-on-error",
+                            "Recovery re-prepare failed for %s (attempt %d); falling back to stop-on-error",
                             currentMediaId,
+                            attemptNumber,
                         )
                         stopOnError()
                     }
                 }
                 return
+            } else {
+                Timber.tag("MusicService").w(
+                    "Codec-recovery budget exhausted for %s after %d attempts; giving up",
+                    currentMediaId,
+                    attemptNumber - 1,
+                )
             }
         }
 
@@ -7532,22 +7614,71 @@ class MusicService :
     /**
      * Detects MediaCodec decoder-state errors that are recoverable by re-preparing the player.
      *
-     * Two signatures are recognised:
-     *  1. ExoPlayer's [androidx.media3.exoplayer.MediaCodecRenderer.DecoderInitializationException]
-     *     / [androidx.media3.exoplayer.video.MediaCodecVideoRenderer] etc. wrapping a
-     *     `MediaCodecDecoderException` whose cause is `IllegalStateException` with the
-     *     "queueInputBuffer() is valid only at Executing states" message.
-     *  2. Direct `IllegalStateException` with that message anywhere in the cause chain.
+     * These surface as `PlaybackException` with errorCode == ERROR_CODE_DECODING_FAILED (4003)
+     * or ERROR_CODE_DECODER_INIT_FAILED, wrapping a chain that includes any of:
+     *  - `androidx.media3.exoplayer.mediacodec.MediaCodecDecoderException`
+     *    ("Decoder failed: c2.mtk.alac.decoder" etc.) — runtime codec fault.
+     *  - `androidx.media3.exoplayer.MediaCodecRenderer.DecoderInitializationException`
+     *    — codec failed to initialize.
+     *  - `android.media.MediaCodec.CodecException` — the underlying platform codec exception,
+     *    notably "Error 0x80000000" (undefined codec error) on MediaTek's ALAC decoder under
+     *    memory pressure.
+     *  - `IllegalStateException` with the "queueInputBuffer() is valid only at Executing
+     *    states; currently at Released state" message — renderer races against an
+     *    already-released codec.
+     *
+     * We match by CLASS TYPE first (most reliable), then by message substring as a fallback
+     * so we still catch OEM-specific exception subclasses that don't inherit from the
+     * expected media3 classes.
      */
     private fun isMediaCodecStateError(error: PlaybackException): Boolean {
+        // Fast path: decoding-failed error code with no deeper classification still applies.
+        val isDecodingErrorCode =
+            error.errorCode == PlaybackException.ERROR_CODE_DECODING_FAILED ||
+                error.errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED ||
+                error.errorCode == PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED
+
         val causeChain = generateSequence<Throwable>(error) { it.cause }
-        return causeChain.any { throwable ->
+        // Match by class type.
+        val hasCodecExceptionClass = causeChain.any { throwable ->
+            throwable is MediaCodec.CodecException ||
+                throwable is MediaCodecDecoderException ||
+                throwable is MediaCodecRenderer.DecoderInitializationException
+        }
+        // Match by message — covers OEM subclasses and stripped cause messages.
+        val hasCodecStateMessage = causeChain.any { throwable ->
             val message = throwable.message.orEmpty()
             (message.contains("queueInputBuffer", ignoreCase = true) &&
                 message.contains("Executing states", ignoreCase = true)) ||
                 message.contains("currently at Released state", ignoreCase = true) ||
-                message.contains("codec is in state", ignoreCase = true)
+                message.contains("codec is in state", ignoreCase = true) ||
+                // "Decoder failed: <codec-name>" — the MediaCodecDecoderException signature
+                // for runtime codec faults. Codec names like c2.mtk.alac.decoder match here.
+                (message.contains("Decoder failed", ignoreCase = true) &&
+                    message.contains("decoder", ignoreCase = true)) ||
+                // Generic undefined MediaCodec error (high bit set). Seen on MediaTek's
+                // c2.mtk.alac.decoder when the OS reclaims the codec under memory pressure.
+                message.contains("0x80000000", ignoreCase = true) ||
+                // ALAC-specific decoder-name references in any cause message.
+                message.contains("alac.decoder", ignoreCase = true) ||
+                message.contains("c2.mtk.alac", ignoreCase = true)
         }
+
+        return (isDecodingErrorCode && (hasCodecExceptionClass || hasCodecStateMessage)) ||
+            hasCodecExceptionClass ||
+            hasCodecStateMessage
+    }
+
+    /** Debug-only helper: short human-readable description of the cause chain for logging. */
+    private fun describeCauseChain(error: Throwable): String {
+        val causeChain = generateSequence<Throwable>(error) { it.cause }
+        return causeChain
+            .take(5)
+            .joinToString(" -> ") { t ->
+                val cls = t.javaClass.simpleName
+                val msg = t.message?.take(80)?.replace("\n", " ")?.trim().orEmpty()
+                if (msg.isEmpty()) cls else "$cls($msg)"
+            }
     }
 
     private suspend fun trimPlayerCacheToBytes(limitBytes: Long) {
