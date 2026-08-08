@@ -64,7 +64,6 @@ class SearchDiscoveryRepository
         )
 
         private val cache = ConcurrentHashMap<String, CachedSnapshot>(1)
-        private val cacheMutex = Mutex()
 
         suspend fun loadDiscovery(forceRefresh: Boolean = false): Result<SearchDiscoveryData> =
             withContext(Dispatchers.IO) {

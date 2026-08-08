@@ -7541,7 +7541,7 @@ class MusicService :
      *  2. Direct `IllegalStateException` with that message anywhere in the cause chain.
      */
     private fun isMediaCodecStateError(error: PlaybackException): Boolean {
-        val causeChain = generateSequence<Throwable?>(error) { it.cause }
+        val causeChain = generateSequence<Throwable>(error) { it.cause }
         return causeChain.any { throwable ->
             val message = throwable.message.orEmpty()
             (message.contains("queueInputBuffer", ignoreCase = true) &&
