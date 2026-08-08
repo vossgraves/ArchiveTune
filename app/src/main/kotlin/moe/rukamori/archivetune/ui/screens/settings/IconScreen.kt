@@ -101,6 +101,7 @@ import moe.rukamori.archivetune.viewmodels.IconScreenState
 import moe.rukamori.archivetune.viewmodels.IconScreenUiModel
 import moe.rukamori.archivetune.viewmodels.IconViewModel
 import androidx.compose.material3.IconButton as MaterialIconButton
+import androidx.compose.foundation.layout.asPaddingValues
 
 @Composable
 fun IconScreen(
@@ -228,6 +229,11 @@ private fun IconScreenContent(
             )
         },
     ) { innerPadding ->
+        val playerAwareBottomPadding =
+            LocalPlayerAwareWindowInsets.current
+                .only(WindowInsetsSides.Bottom)
+                .asPaddingValues()
+                .calculateBottomPadding()
         when (state) {
             IconScreenState.Loading -> {
                 IconScreenLoading(
@@ -270,7 +276,7 @@ private fun IconScreenContent(
                             start = SettingsDimensions.ScreenHorizontalPadding,
                             top = innerPadding.calculateTopPadding() + 8.dp,
                             end = SettingsDimensions.ScreenHorizontalPadding,
-                            bottom = SettingsDimensions.ScreenBottomPadding,
+                            bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding,
                         ),
                     onSelectIcon = onSelectIcon,
                     onOpenAuthorProfile = onOpenAuthorProfile,
@@ -922,7 +928,7 @@ private fun IconScreenMessage(
 private fun Modifier.playerAwareInsets(): Modifier =
     windowInsetsPadding(
         LocalPlayerAwareWindowInsets.current.only(
-            WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
+            WindowInsetsSides.Horizontal,
         ),
     )
 

@@ -21,7 +21,9 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -92,6 +94,7 @@ import com.valentinilk.shimmer.shimmer
 import moe.rukamori.archivetune.LocalDatabase
 import moe.rukamori.archivetune.LocalDownloadUtil
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
+import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.HideExplicitKey
@@ -193,8 +196,9 @@ fun OnlinePlaylistScreen(
     var selection by remember { mutableStateOf(false) }
     val hideExplicit by rememberPreference(key = HideExplicitKey, defaultValue = false)
 
-    // System bars padding
-    val systemBarsTopPadding = WindowInsets.systemBars.asPaddingValues().calculateTopPadding()
+    // Stable top inset: does not collapse to 0 when the status bar is transiently hidden,
+    // so the search bar offset and the playlist header always stay anchored below the TopAppBar.
+    val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
     val lazyListState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
@@ -296,6 +300,16 @@ fun OnlinePlaylistScreen(
         }
     }
 
+    // Liquid Glass backdrop: created unconditionally (cheap — just a GraphicsLayer
+    // handle). The actual content recording happens when
+    // `Modifier.layerBackdrop(artworkBackdrop)` is applied to the LazyColumn below.
+    // This matches the LocalPlaylistScreen pattern: the backdrop captures the entire
+    // scrolling content, and the floating Liquid Glass header buttons are siblings of
+    // the LazyColumn (not nested inside its first item) so they sample the backdrop
+    // without being recorded into it — and, critically, their click handlers are not
+    // competing with any LazyColumn-item pointer-input stack.
+    val artworkBackdrop = rememberBackdrop(Color.Black)
+
     ExpressivePullToRefreshBox(
         isRefreshing = isRefreshing,
         onRefresh = viewModel::refresh,
@@ -308,9 +322,15 @@ fun OnlinePlaylistScreen(
             state = lazyListState,
             modifier =
                 Modifier
-                    .fillMaxSize(),
+                    .fillMaxSize()
+                    .layerBackdrop(artworkBackdrop),
             contentPadding =
                 PaddingValues(
+                    // When searching, the header item collapses to zero height and the
+                    // TopAppBar (which renders the search field) is overlaid on top of
+                    // the LazyColumn. Reserve top space so the first songs aren't hidden
+                    // behind the TopAppBar + status bar.
+                    top = if (isSearching) systemBarsTopPadding + 64.dp else 0.dp,
                     bottom =
                         LocalPlayerAwareWindowInsets.current
                             .union(WindowInsets.ime)
@@ -318,7 +338,7 @@ fun OnlinePlaylistScreen(
                             .calculateBottomPadding(),
                 ),
         ) {
-            playlist.let { playlist ->
+            playlist.let { playlistSnapshot ->
                 if (isLoading) {
                     item(key = "shimmer") {
                         ShimmerHost {
@@ -388,7 +408,13 @@ fun OnlinePlaylistScreen(
                             repeat(6) { ListItemPlaceHolder() }
                         }
                     }
-                } else if (playlist != null) {
+                } else if (playlistSnapshot != null) {
+                    // Capture into a local non-null val so the smart-cast survives any
+                    // recomposition timing inside the LazyColumn item lambda — Compose may
+                    // invoke the item{} lambda on a later pass and the outer StateFlow value
+                    // could in theory have flipped back to null, which previously risked an
+                    // NPE on `playlist.title` / `playlist.thumbnail` access.
+                    val playlist = playlistSnapshot
                     item(key = "header") {
                         if (!isSearching) {
                             val author =
@@ -414,13 +440,21 @@ fun OnlinePlaylistScreen(
                             val isBookmarked = dbPlaylist?.playlist?.bookmarkedAt != null
                             val fallbackPlaySong = songs.firstOrNull()
 
-                            // SimpMusic-style liquid glass backdrop source: wraps
-                            // the MediaDetailHero so the floating circular back
-                            // button (top-start) and the more-actions pill
-                            // (top-end) can sample the artwork behind them.
-                            val artworkBackdrop = rememberBackdrop(Color.Black)
-                            Box(modifier = Modifier.layerBackdrop(artworkBackdrop)) {
-                                MediaDetailHero(
+                            // SimpMusic-style liquid glass backdrop source: the
+                            // LazyColumn itself carries Modifier.layerBackdrop
+                            // (see the LazyColumn definition above), so the entire
+                            // scrolling content is recorded into the backdrop. The
+                            // floating Liquid Glass back button (top-start) and
+                            // search+more pill (top-end) are siblings of the
+                            // LazyColumn (declared after the LazyColumn below), so
+                            // they sample the backdrop without being recorded into
+                            // it. This matches the LocalPlaylistScreen pattern and
+                            // ensures the buttons are clickable (no LazyColumn-item
+                            // pointer-input interference).
+                            //
+                            // The hero item itself just renders the MediaDetailHero;
+                            // no inner Box / layerBackdrop wrapper is needed here.
+                            MediaDetailHero(
                                 title = playlist.title,
                                 thumbnailUrl = playlist.thumbnail,
                                 fallbackIcon = R.drawable.queue_music,
@@ -544,67 +578,6 @@ fun OnlinePlaylistScreen(
                                 // animated the resulting placement delta.
                                 useBlurredPlayButton = true,
                             )
-                                // SimpMusic-style floating liquid glass buttons.
-                                LiquidGlassIconButton(
-                                    backdrop = artworkBackdrop,
-                                    painter = painterResource(R.drawable.arrow_back),
-                                    contentDescription = null,
-                                    modifier =
-                                        Modifier
-                                            .align(Alignment.TopStart)
-                                            .padding(start = 12.dp, top = systemBarsTopPadding + 12.dp)
-                                            .size(48.dp),
-                                    onClick = { navController.navigateUp() },
-                                )
-                                LiquidGlassActionPill(
-                                    backdrop = artworkBackdrop,
-                                    modifier =
-                                        Modifier
-                                            .align(Alignment.TopEnd)
-                                            .padding(end = 12.dp, top = systemBarsTopPadding + 12.dp),
-                                ) {
-                                    // Search
-                                    Box(
-                                        modifier = Modifier.size(48.dp),
-                                        contentAlignment = Alignment.Center,
-                                    ) {
-                                        androidx.compose.material3.IconButton(onClick = { isSearching = true }) {
-                                            Icon(
-                                                painter = painterResource(R.drawable.search),
-                                                contentDescription = null,
-                                                tint = Color.White,
-                                            )
-                                        }
-                                    }
-                                    // More
-                                    playlist?.let { currentPlaylist ->
-                                        Box(
-                                            modifier = Modifier.size(48.dp),
-                                            contentAlignment = Alignment.Center,
-                                        ) {
-                                            androidx.compose.material3.IconButton(onClick = {
-                                                menuState.show {
-                                                    YouTubePlaylistMenu(
-                                                        playlist = currentPlaylist,
-                                                        songs = songs,
-                                                        coroutineScope = coroutineScope,
-                                                        onDismiss = menuState::dismiss,
-                                                        selectAction = { selection = true },
-                                                        canSelect = true,
-                                                        snackbarHostState = snackbarHostState,
-                                                    )
-                                                }
-                                            }) {
-                                                Icon(
-                                                    painter = painterResource(R.drawable.more_horiz),
-                                                    contentDescription = null,
-                                                    tint = Color.White,
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
                         }
                     }
 
@@ -786,25 +759,113 @@ fun OnlinePlaylistScreen(
             headerItems = headerItems,
         )
 
-        // Top App Bar
-        val topAppBarColors =
-            if (transparentAppBar) {
-                TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.Transparent,
-                    scrolledContainerColor = Color.Transparent,
-                    navigationIconContentColor = Color.White,
-                    titleContentColor = Color.White,
-                    actionIconContentColor = Color.White,
-                )
-            } else {
-                TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    scrolledContainerColor = Color.Transparent,
-                )
+        // Persistent Liquid Glass header buttons. Siblings of the LazyColumn
+        // (children of the ExpressivePullToRefreshBox), positioned at top-start
+        // and top-end. They sample the artworkBackdrop (which captures the
+        // entire scrolling content via Modifier.layerBackdrop on the LazyColumn)
+        // to render the frosted-glass effect. PERSISTENT — stay at the top no
+        // matter how far the user scrolls.
+        //
+        // This matches the LocalPlaylistScreen pattern exactly: the buttons are
+        // NOT nested inside the LazyColumn's first item (which caused click
+        // interception issues on some devices), but are direct siblings of the
+        // LazyColumn inside the ExpressivePullToRefreshBox.
+        //
+        // Shown only when:
+        //  - Not in selection mode
+        //  - Not searching
+        //  - Playlist is loaded
+        val currentPlaylistForGlass = playlist
+        if (!selection && !isSearching && currentPlaylistForGlass != null) {
+            LiquidGlassIconButton(
+                backdrop = artworkBackdrop,
+                painter = painterResource(R.drawable.arrow_back),
+                contentDescription = null,
+                modifier =
+                    Modifier
+                        .align(Alignment.TopStart)
+                        .padding(start = 12.dp, top = systemBarsTopPadding + 12.dp)
+                        .size(48.dp),
+                onClick = { navController.navigateUp() },
+            )
+            LiquidGlassActionPill(
+                backdrop = artworkBackdrop,
+                modifier =
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(end = 12.dp, top = systemBarsTopPadding + 12.dp),
+            ) {
+                // Search
+                Box(
+                    modifier = Modifier.size(48.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    androidx.compose.material3.IconButton(onClick = { isSearching = true }) {
+                        Icon(
+                            painter = painterResource(R.drawable.search),
+                            contentDescription = null,
+                            tint = Color.White,
+                        )
+                    }
+                }
+                // More
+                Box(
+                    modifier = Modifier.size(48.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    androidx.compose.material3.IconButton(onClick = {
+                        menuState.show {
+                            YouTubePlaylistMenu(
+                                playlist = currentPlaylistForGlass,
+                                songs = songs,
+                                coroutineScope = coroutineScope,
+                                onDismiss = menuState::dismiss,
+                                selectAction = { selection = true },
+                                canSelect = true,
+                                snackbarHostState = snackbarHostState,
+                            )
+                        }
+                    }) {
+                        Icon(
+                            painter = painterResource(R.drawable.more_horiz),
+                            contentDescription = null,
+                            tint = Color.White,
+                        )
+                    }
+                }
             }
+        }
+
+        // Top App Bar — hidden when the Liquid Glass header buttons are visible
+        // (matches LocalPlaylistScreen pattern). The Liquid Glass back button and
+        // search+more pill handle navigation/actions when the hero is visible.
+        // The TopAppBar is only rendered during selection mode and search mode,
+        // where it provides the selection count / search TextField. Rendering the
+        // TopAppBar on top of the Liquid Glass buttons (even when transparent and
+        // with empty actions) causes it to intercept pointer events in the top
+        // area, making the Liquid Glass buttons unclickable.
+        if (selection || isSearching) {
+            val topAppBarColors =
+                if (transparentAppBar) {
+                    TopAppBarDefaults.topAppBarColors(
+                        containerColor = Color.Transparent,
+                        scrolledContainerColor = Color.Transparent,
+                        navigationIconContentColor = Color.White,
+                        titleContentColor = Color.White,
+                        actionIconContentColor = Color.White,
+                    )
+                } else {
+                    TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        scrolledContainerColor = Color.Transparent,
+                    )
+                }
 
         TopAppBar(
             colors = topAppBarColors,
+            windowInsets =
+                WindowInsets(top = systemBarsTopPadding)
+                    .union(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal)),
             title = {
                 if (selection) {
                     val count = wrappedSongs.count { it.isSelected }
@@ -963,6 +1024,7 @@ fun OnlinePlaylistScreen(
                 }
             },
         )
+        } // end if (selection || isSearching)
 
         SnackbarHost(
             hostState = snackbarHostState,

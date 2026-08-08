@@ -23,7 +23,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -142,6 +144,7 @@ fun DebugSettings(navController: NavController) {
     val playerConnection = LocalPlayerConnection.current
 
     Scaffold(
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
                 title = {
@@ -163,6 +166,11 @@ fun DebugSettings(navController: NavController) {
             )
         },
     ) { innerPadding: PaddingValues ->
+        val playerAwareBottomPadding =
+            LocalPlayerAwareWindowInsets.current
+                .only(WindowInsetsSides.Bottom)
+                .asPaddingValues()
+                .calculateBottomPadding()
         Column(
             modifier =
                 Modifier
@@ -170,7 +178,7 @@ fun DebugSettings(navController: NavController) {
                     .padding(innerPadding)
                     .windowInsetsPadding(
                         LocalPlayerAwareWindowInsets.current.only(
-                            WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
+                            WindowInsetsSides.Horizontal,
                         ),
                     ).verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -265,7 +273,7 @@ fun DebugSettings(navController: NavController) {
                 }
             }
 
-            Spacer(modifier = Modifier.height(SettingsDimensions.ScreenBottomPadding))
+            Spacer(modifier = Modifier.height(playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding))
         }
     }
 }

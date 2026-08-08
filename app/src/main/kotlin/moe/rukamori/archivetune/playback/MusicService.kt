@@ -208,10 +208,6 @@ import moe.rukamori.archivetune.constants.toFormatName
 import moe.rukamori.archivetune.deezer.DeezerAudioProvider
 import moe.rukamori.archivetune.deezer.DeezerCrypto
 import moe.rukamori.archivetune.deezer.DeezerDecryptingDataSource
-import moe.rukamori.archivetune.constants.DabMusicBaseUrlKey
-import moe.rukamori.archivetune.constants.DabMusicEnabledKey
-import moe.rukamori.archivetune.dabmusic.DabMusicAudioProvider
-import moe.rukamori.archivetune.morideobfuscator.SOURCE_SWITCH_VOLUME_REASSERT_MS
 import moe.rukamori.archivetune.qobuz.QobuzAudioProvider
 import moe.rukamori.archivetune.qobuz.QobuzToken
 import moe.rukamori.archivetune.audiosource.AudioSourceConfig
@@ -223,6 +219,9 @@ import moe.rukamori.archivetune.tidal.TidalAccountManager
 import moe.rukamori.archivetune.tidal.TidalArtworkProvider
 import moe.rukamori.archivetune.tidal.TidalAudioProvider
 import moe.rukamori.archivetune.constants.TidalArtworkFallbackEnabledKey
+import moe.rukamori.archivetune.constants.ArtworkProviderOrderKey
+import moe.rukamori.archivetune.constants.DefaultArtworkProviderOrder
+import moe.rukamori.archivetune.constants.deserializeArtworkProviderOrder
 import moe.rukamori.archivetune.utils.PoolAccountManager
 import moe.rukamori.archivetune.tidal.TidalInstanceHealthManager
 import moe.rukamori.archivetune.constants.PlayerVolumeKey
@@ -508,6 +507,29 @@ class MusicService :
     @Volatile
     private var lastLoginRecoveryPrompt: Pair<String, Long>? = null
     private val playbackStreamRecoveryTracker = PlaybackStreamRecoveryTracker()
+
+    // Codec-state recovery counter, SEPARATE from PlaybackStreamRecoveryTracker.
+    //
+    // Background: when an ALAC (.m4a) stream is backgrounded + paused for a few minutes,
+    // Android may reclaim the hardware codec out from under ExoPlayer (low-memory kill).
+    // ExoPlayer then surfaces a MediaCodecDecoderException wrapping either:
+    //   - IllegalStateException("queueInputBuffer() is valid only at Executing states;
+    //     currently at Released state")  — when the renderer tries to queue into a
+    //     codec that's already been released, OR
+    //   - CodecException("Error 0x80000000")  — the generic undefined MediaCodec error,
+    //     which the same reclamation can produce on MediaTek's c2.mtk.alac.decoder.
+    //
+    // Re-prepare() recovers by instantiating a fresh codec, BUT the failure can recur:
+    //   (a) at the very start of a song (codec init races / transient resource pressure), and
+    //   (b) again on the next background+pause cycle.
+    // PlaybackStreamRecoveryTracker allows only ONE retry per media item, which is too
+    // tight for a recurring codec-state fault. We keep a small per-media budget here
+    // (default 4 attempts) so transient codec reclamation doesn't kill the whole queue.
+    @Volatile
+    private var codecRecoveryMediaId: String? = null
+    @Volatile
+    private var codecRecoveryAttemptCount: Int = 0
+    private val codecRecoveryMaxAttempts = 4
     private var nextHistorySessionToken = 0L
     private var currentHistorySessionToken = 0L
     private var currentHistoryMediaId: String? = null
@@ -581,6 +603,7 @@ class MusicService :
             ArtworkSettings(
                 tidalArtworkEnabled = false,
                 tidalAvailable = false,
+                providerOrder = DefaultArtworkProviderOrder,
             ),
         )
     private lateinit var artworkResolver: ArtworkResolver
@@ -1080,9 +1103,20 @@ class MusicService :
         }
 
         val state = player.playbackState
+        // When the user merely paused a song (STATE_READY with playWhenReady=false) and
+        // backgrounded the app, they typically come back within a few minutes. The previous
+        // 60s idle-stop deadline was too aggressive for lossless streams — it released the
+        // ExoPlayer (and the underlying MediaCodec) while the renderer still had queued
+        // buffers, producing the
+        //   IllegalStateException: queueInputBuffer() is valid only at Executing states;
+        //   currently at Released state
+        // crash on Telegram ALAC files. Give paused-but-ready playback a 10-minute grace
+        // period before tearing the service down.
         val delayMs =
             when (state) {
                 Player.STATE_ENDED, Player.STATE_IDLE -> 30_000L
+                Player.STATE_READY -> if (player.playWhenReady) 60_000L else 10 * 60_000L
+                Player.STATE_BUFFERING -> 60_000L
                 else -> 60_000L
             }
 
@@ -1176,9 +1210,12 @@ class MusicService :
                     !preferences[TidalInstancesKey].isNullOrBlank() ||
                         TidalAudioProvider.defaultInstanceUrls.isNotEmpty()
                 val hasAccount = !preferences[TidalAccessTokenKey].isNullOrBlank()
+                val providerOrder =
+                    deserializeArtworkProviderOrder(preferences[ArtworkProviderOrderKey])
                 ArtworkSettings(
                     tidalArtworkEnabled = artworkEnabled,
                     tidalAvailable = tidalEnabled && (hasInstances || hasAccount),
+                    providerOrder = providerOrder,
                 )
             }
             .distinctUntilChanged()
@@ -7000,12 +7037,28 @@ class MusicService :
         }
         if (events.contains(Player.EVENT_MEDIA_ITEM_TRANSITION)) {
             playbackStreamRecoveryTracker.onMediaItemChanged(currentMediaId)
+            // Reset codec-recovery budget for the new media item.
+            if (currentMediaId != codecRecoveryMediaId) {
+                codecRecoveryMediaId = currentMediaId
+                codecRecoveryAttemptCount = 0
+            }
         }
         if (
             (events.contains(Player.EVENT_PLAYBACK_STATE_CHANGED) && player.playbackState == Player.STATE_READY) ||
             (events.contains(Player.EVENT_IS_PLAYING_CHANGED) && player.isPlaying)
         ) {
             playbackStreamRecoveryTracker.onPlaybackRecovered(currentMediaId)
+            // Codec successfully reached READY / isPlaying after a recovery re-prepare —
+            // the current codec instance is healthy, so reset the per-media counter so the
+            // NEXT background+pause cycle gets a fresh budget.
+            if (codecRecoveryAttemptCount > 0) {
+                Timber.tag("MusicService").i(
+                    "Codec recovery succeeded for %s after %d attempt(s); resetting codec-recovery budget",
+                    currentMediaId,
+                    codecRecoveryAttemptCount,
+                )
+                codecRecoveryAttemptCount = 0
+            }
             currentMediaId
                 ?.let(playbackUrlCache::get)
                 ?.url
@@ -7473,11 +7526,108 @@ class MusicService :
             }
         }
 
+        // MediaCodec decoder-state recovery.
+        //
+        // When streaming lossless ALAC (.m4a) from Telegram on devices with a flaky hardware
+        // ALAC decoder (notably MediaTek's c2.mtk.alac.decoder), the OS may release the codec
+        // out from under ExoPlayer while the app is backgrounded + paused for a few minutes
+        // (low-memory reclamation). The renderer's next queueInputBuffer() call then throws
+        // one of:
+        //   IllegalStateException("queueInputBuffer() is valid only at Executing states;
+        //   currently at Released state")    — renderer races against an already-released codec
+        //   CodecException("Error 0x80000000") — generic undefined MediaCodec error from the
+        //   same root cause on MediaTek's c2.mtk.alac.decoder
+        // Both surface as a MediaCodecDecoderException, with errorCode == ERROR_CODE_DECODING_FAILED
+        // (4003). The codec itself is recoverable — the player just needs to be re-prepared so a
+        // fresh codec instance is instantiated. Re-prepare resumes from the current position; no
+        // queue reshuffle needed.
+        //
+        // IMPORTANT: the failure can recur — once at song start (codec init race / transient
+        // resource pressure) and again on the next background+pause cycle. The single-shot
+        // playbackStreamRecoveryTracker is too tight for this; we keep a SEPARATE per-media
+        // budget (codecRecoveryMaxAttempts = 4) so transient codec reclamation doesn't kill
+        // the queue. The counter resets when playback reaches READY/playing (see onEvents),
+        // so each successful recovery earns a fresh budget for the next cycle.
+        if (isMediaCodecStateError(error)) {
+            val resumePosition = player.currentPosition.coerceAtLeast(0L)
+            val mediaItemIndex = player.currentMediaItemIndex
+
+            // Reset budget if we've moved to a different media item since the last attempt.
+            if (currentMediaId != codecRecoveryMediaId) {
+                codecRecoveryMediaId = currentMediaId
+                codecRecoveryAttemptCount = 0
+            }
+            val attemptNumber = codecRecoveryAttemptCount + 1
+            val withinBudget = attemptNumber <= codecRecoveryMaxAttempts
+
+            Timber.tag("MusicService").w(
+                "MediaCodec state error for %s (errorCode=%s, causeChain=%s); recovery attempt %d/%d",
+                currentMediaId,
+                error.errorCodeName,
+                describeCauseChain(error),
+                attemptNumber,
+                codecRecoveryMaxAttempts,
+            )
+
+            if (withinBudget) {
+                codecRecoveryAttemptCount = attemptNumber
+                scope.launch(Dispatchers.Main) {
+                    try {
+                        // Give the OS a moment to finish releasing the dead codec instance
+                        // before we ask ExoPlayer to instantiate a fresh one. Without this,
+                        // the new codec can race the old one's teardown and fail with the
+                        // same 0x80000000 / Released-state signature on the very first
+                        // queueInputBuffer() call.
+                        if (attemptNumber > 1) {
+                            kotlinx.coroutines.delay(400L)
+                        }
+                        player.seekTo(mediaItemIndex, resumePosition)
+                        player.prepare()
+                        // Honor the user's prior play/pause intent — if they had paused,
+                        // keep it paused after recovery so we don't surprise-start playback.
+                        if (!player.playWhenReady) {
+                            player.pause()
+                        }
+                    } catch (recoveryThrowable: Throwable) {
+                        Timber.tag("MusicService").e(
+                            recoveryThrowable,
+                            "Recovery re-prepare failed for %s (attempt %d); falling back to stop-on-error",
+                            currentMediaId,
+                            attemptNumber,
+                        )
+                        stopOnError()
+                    }
+                }
+                return
+            } else {
+                Timber.tag("MusicService").w(
+                    "Codec-recovery budget exhausted for %s after %d attempts; giving up",
+                    currentMediaId,
+                    attemptNumber - 1,
+                )
+            }
+        }
+
         if (dataStore.get(AutoSkipNextOnErrorKey, false)) {
             skipOnError()
         } else {
             stopOnError()
         }
+    }
+
+    private fun isMediaCodecStateError(error: PlaybackException): Boolean =
+        isRecoverableMediaCodecStateError(error)
+
+    /** Debug-only helper: short human-readable description of the cause chain for logging. */
+    private fun describeCauseChain(error: Throwable): String {
+        val causeChain = generateSequence<Throwable>(error) { it.cause }
+        return causeChain
+            .take(5)
+            .joinToString(" -> ") { t ->
+                val cls = t.javaClass.simpleName
+                val msg = t.message?.take(80)?.replace("\n", " ")?.trim().orEmpty()
+                if (msg.isEmpty()) cls else "$cls($msg)"
+            }
     }
 
     private suspend fun trimPlayerCacheToBytes(limitBytes: Long) {
@@ -7649,7 +7799,6 @@ class MusicService :
                 AudioSourceType.TIDAL to dataStore.get(TidalEnabledKey, true),
                 AudioSourceType.QOBUZ to dataStore.get(QobuzEnabledKey, false),
                 AudioSourceType.DEEZER to dataStore.get(DeezerEnabledKey, false),
-                AudioSourceType.DABMUSIC to dataStore.get(DabMusicEnabledKey, false),
                 AudioSourceType.YOUTUBE to true,
             )
         // The single stored order is authoritative (top = preferred). Only sources listed BEFORE
@@ -7986,7 +8135,6 @@ class MusicService :
                     AudioSourceType.TIDAL -> resolveTidalStream(query)
                     AudioSourceType.QOBUZ -> resolveQobuzStream(query)
                     AudioSourceType.DEEZER -> resolveDeezerStream(query)
-                    AudioSourceType.DABMUSIC -> resolveDabMusicStream(query)
                     AudioSourceType.YOUTUBE -> null
                 }
             if (stream == null) {
@@ -8466,55 +8614,6 @@ class MusicService :
     }
 
     /**
-     * Resolves a DabMusic stream. DabMusic is a public lossless catalog/proxy at
-     * https://dabmusic.xyz — there are no per-user accounts, so unlike Deezer there is no
-     * PoolAccountManager tier to consult. The base URL is read from [DabMusicBaseUrlKey] and
-     * pushed into [DabMusicAudioProvider] on every resolve so users who point at a mirror or
-     * self-hosted gateway don't need a restart to pick up the change.
-     *
-     * Returns null when the catalog has no acceptable match, when the gateway is unreachable,
-     * or when Cloudflare challenges the request — never throws, so the next source in the chain
-     * takes over.
-     */
-    private fun resolveDabMusicStream(query: SourceQuery): DirectStream? {
-        DabMusicAudioProvider.setBaseUrl(dataStore.get(DabMusicBaseUrlKey, "").ifBlank { null })
-        Timber.tag("MusicService").d("DabMusic resolve start for \"%s\"", query.title)
-        return runCatching {
-            runBlocking(Dispatchers.IO) {
-                DabMusicAudioProvider
-                    .resolve(
-                        query =
-                            DabMusicAudioProvider.Query(
-                                mediaId = query.mediaId,
-                                title = query.title,
-                                artists = query.artists,
-                                album = query.album,
-                                durationMs = query.durationMs,
-                            ),
-                        format = "FLAC",
-                    )?.let { resolved ->
-                        DirectStream(
-                            uri = resolved.uri,
-                            mimeType = resolved.mimeType,
-                            codecs = resolved.codecs,
-                            contentLength = resolved.contentLength,
-                            label = resolved.label,
-                            source = AudioSourceType.DABMUSIC,
-                            matchedTitle = resolved.matchedTitle,
-                            matchedArtist = resolved.matchedArtist,
-                            matchedAlbum = resolved.matchedAlbum,
-                            matchedDurationMs = resolved.matchedDurationMs,
-                            sampleRate = resolved.sampleRate,
-                            bitDepth = resolved.bitDepth,
-                        )
-                    }
-            }
-        }.onFailure { error ->
-            Timber.tag("MusicService").w(error, "DABMUSIC stream resolution failed for %s", query.mediaId)
-        }.getOrNull()
-    }
-
-    /**
      * Applies a resolved [DirectStream] to the [dataSpec]: namespaces the cache key per-source so
      * bytes never collide with the YouTube stream (or another source) for the same media id, and
      * marks the track so YouTube-derived audio normalization is skipped for it.
@@ -8664,13 +8763,9 @@ class MusicService :
     private fun tidalSourceApplies(mediaId: String): Boolean {
         if (mediaId.isLocalMediaId()) return false
         // Defaults MUST match PlaybackSourceSections + sourceResolutionChain(). Any enabled
-        // external lossless source (Tidal, Qobuz, Deezer or DabMusic) must bypass the ephemeral
-        // YouTube player cache so toggling a source on takes effect immediately instead of
-        // replaying cached YT bytes.
-        return dataStore.get(TidalEnabledKey, true) ||
-            dataStore.get(QobuzEnabledKey, false) ||
-            dataStore.get(DeezerEnabledKey, false) ||
-            dataStore.get(DabMusicEnabledKey, false)
+        // external lossless source (Tidal or Qobuz) must bypass the ephemeral YouTube player cache
+        // so toggling a source on takes effect immediately instead of replaying cached YT bytes.
+        return dataStore.get(TidalEnabledKey, true) || dataStore.get(QobuzEnabledKey, false)
     }
 
     private fun resolvePlaybackDataSpec(
@@ -9115,7 +9210,12 @@ class MusicService :
     private fun createMediaSourceFactory() =
         DefaultMediaSourceFactory(
             createDataSourceFactory(),
-            DefaultExtractorsFactory(),
+            DefaultExtractorsFactory()
+                // Enable constant-bitrate seeking for CBR streams (most MP3/AAC files) so
+                // the user can seek to any position without needing a seek table. Without
+                // this, ExoPlayer can only seek to keyframes, making seeking in .m4a/.mp3
+                // files imprecise or impossible.
+                .setConstantBitrateSeekingEnabled(true),
         )
 
     private class SchemeRoutingDataSource(
@@ -9235,6 +9335,18 @@ class MusicService :
 
     private fun createRenderersFactory() =
         object : DefaultRenderersFactory(this) {
+            init {
+                // Enable decoder fallback so that when a primary (typically hardware) decoder fails
+                // — e.g. MediaTek's c2.mtk.alac.decoder on .m4a/ALAC files (error 0x80000000) —
+                // ExoPlayer can fall back to any alternative decoder advertised by the platform,
+                // including any extension software decoder that may be registered.
+                // Also opt in to extension renderers as a fallback tier (EXTENSION_RENDERER_MODE_ON):
+                // extension decoders come AFTER the platform MediaCodec ones, so default hardware
+                // acceleration is preserved but a software fallback becomes reachable.
+                setEnableDecoderFallback(true)
+                setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+            }
+
             override fun buildAudioSink(
                 context: Context,
                 enableFloatOutput: Boolean,
@@ -9934,6 +10046,13 @@ class MusicService :
         const val AUDIO_ROUTE_RECOVERY_MIN_INTERVAL_MS = 1_500L
         const val AUDIO_ROUTE_RECOVERY_RESUME_DELAY_MS = 150L
         const val DEVICE_MUTE_PLAYBACK_NOTICE_INTERVAL_MS = 1_200L
+        // Delay before re-asserting the captured baseline volume after a source switch's
+        // player.prepare() call. Long enough that the prepare pipeline has settled (and any
+        // async state transitions complete within one frame after that) without being so long
+        // that the user perceives a muted gap. Originally added in commit 9a224662b alongside
+        // a broken import from the morideobfuscator submodule (where the constant never
+        // existed) — moved back here so the reference resolves.
+        const val SOURCE_SWITCH_VOLUME_REASSERT_MS = 250L
         const val MIN_AUDIO_FOCUS_VOLUME_FACTOR = 0.2f
         const val MIN_AUDIO_NORMALIZATION_FACTOR = 0.25f
         const val MAX_AUDIO_NORMALIZATION_FACTOR = 1.414f

@@ -12,7 +12,6 @@
 package moe.rukamori.archivetune.ui.screens
 
 import android.widget.Toast
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,12 +22,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.CircularProgressIndicator
@@ -49,7 +46,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -58,7 +54,6 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
-import coil3.compose.AsyncImage
 import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.LocalDatabase
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
@@ -67,8 +62,8 @@ import moe.rukamori.archivetune.constants.TelegramLosslessOnlyKey
 import moe.rukamori.archivetune.telegram.TelegramChannel
 import moe.rukamori.archivetune.telegram.TelegramChannelSync
 import moe.rukamori.archivetune.telegram.TelegramClient
-import moe.rukamori.archivetune.ui.component.FrostedTopAppBar
 import moe.rukamori.archivetune.ui.component.IconButton
+import moe.rukamori.archivetune.ui.component.TelegramChatAvatar
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.rememberPreference
 import java.util.Locale
@@ -131,10 +126,19 @@ fun TelegramBrowseScreen(navController: NavController) {
 
     Scaffold(
         topBar = {
-            FrostedTopAppBar(
-                titleRes = R.string.telegram_browse_channels,
-                onBack = navController::navigateUp,
-                onBackLongClick = navController::backToMain,
+            TopAppBar(
+                title = { Text(stringResource(R.string.telegram_browse_channels)) },
+                navigationIcon = {
+                    IconButton(
+                        onClick = navController::navigateUp,
+                        onLongClick = navController::backToMain,
+                    ) {
+                        Icon(
+                            painterResource(R.drawable.arrow_back),
+                            contentDescription = null,
+                        )
+                    }
+                },
             )
         },
     ) { innerPadding ->
@@ -165,7 +169,7 @@ fun TelegramBrowseScreen(navController: NavController) {
                     keyboardActions = KeyboardActions(onSearch = { search() }),
                     trailingIcon = {
                         IconButton(onClick = ::search, onLongClick = {}) {
-                            Icon(painterResource(R.drawable.search), contentDescription = null)
+                            Icon(painterResource(R.drawable.solar_magnifer_linear), contentDescription = null)
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),
@@ -215,29 +219,10 @@ private fun TelegramChannelRow(
                 .clickable(enabled = enabled, onClick = onClick)
                 .padding(horizontal = 16.dp, vertical = 10.dp),
     ) {
-        Box(
-            modifier =
-                Modifier
-                    .size(48.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.surfaceVariant),
-            contentAlignment = Alignment.Center,
-        ) {
-            val thumb = channel.photoMinithumbnail
-            if (thumb != null) {
-                AsyncImage(
-                    model = thumb,
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            } else {
-                Icon(
-                    painterResource(R.drawable.provider_telegram),
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
+        TelegramChatAvatar(
+            photoMinithumbnail = channel.photoMinithumbnail,
+            photoFileId = channel.photoFileId,
+        )
 
         Spacer(Modifier.width(12.dp))
 

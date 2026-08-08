@@ -25,6 +25,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
 import moe.rukamori.archivetune.musixmatch.models.MacroSubtitlesResponse
 import moe.rukamori.archivetune.musixmatch.models.MatcherTrack
+import moe.rukamori.archivetune.musixmatch.models.decodeMacroSubtitlesResponse
 import moe.rukamori.archivetune.musixmatch.models.RichSyncLine
 import moe.rukamori.archivetune.musixmatch.models.RichSyncResponse
 import moe.rukamori.archivetune.musixmatch.models.SubtitleLine
@@ -301,9 +302,12 @@ object Musixmatch {
         val body = response.bodyAsText()
         val parsed =
             try {
-                jsonFormat.decodeFromString<MacroSubtitlesResponse>(body)
+                decodeMacroSubtitlesResponse(jsonFormat, body)
             } catch (e: Exception) {
                 logger?.invoke("Musixmatch macro.subtitles parse failed: ${e.message}")
+                return null
+            } ?: run {
+                logger?.invoke("Musixmatch macro.subtitles returned non-JSON or empty body")
                 return null
             }
         val header = parsed.message.header

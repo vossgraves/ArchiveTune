@@ -38,7 +38,6 @@ import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.canvas.ArchiveTuneCanvas
 import moe.rukamori.archivetune.constants.*
 import moe.rukamori.archivetune.deezer.DeezerAudioProvider
-import moe.rukamori.archivetune.dabmusic.DabMusicAudioProvider
 import moe.rukamori.archivetune.extensions.*
 import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.innertube.models.YouTubeLocale
@@ -323,16 +322,6 @@ class App :
                 .collect { (arl, premium) ->
                     DeezerAudioProvider.setManualArl(arl, premium)
                 }
-        }
-
-        // Mirrors the DabMusic base URL override into the provider so a settings change takes
-        // effect immediately. Blank = built-in default (https://dabmusic.xyz). The resolver also
-        // pushes the current value on every call as a belt-and-braces fallback.
-        applicationScope.launch(Dispatchers.IO) {
-            dataStore.data
-                .map { it[DabMusicBaseUrlKey] ?: "" }
-                .distinctUntilChanged()
-                .collect { url -> DabMusicAudioProvider.setBaseUrl(url) }
         }
 
         applicationScope.launch(Dispatchers.IO) {

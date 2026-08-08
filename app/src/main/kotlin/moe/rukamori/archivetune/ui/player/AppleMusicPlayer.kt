@@ -212,10 +212,19 @@ fun AppleMusicPlayerContent(
                 mediaMetadata.isMusicVideo &&
                 !mediaMetadata.id.isLocalMediaId()
         val isPreS = Build.VERSION.SDK_INT < Build.VERSION_CODES.S
+        val canvasActive =
+            !canvasPrimaryUrl.isNullOrBlank() || !canvasFallbackUrl.isNullOrBlank()
+        // When a Spotify Canvas (or any canvas artwork) is playing, render the canvas video
+        // itself as the blurred backdrop — "Apple Music player style". On Android 12+,
+        // Modifier.blur works on the TextureView surface that CanvasArtworkPlayer uses, so
+        // the backdrop mirrors the canvas video in real time. Pre-Android-12 falls back to
+        // the album-art blur (RenderEffect is unavailable, so blurring a video surface
+        // efficiently isn't possible).
+        val useCanvasBackdrop = canvasActive && !videoShowing && !isPreS
         val context = LocalContext.current
         val imageLoader = context.imageLoader
         val preBlurredBitmap by produceState<Bitmap?>(null, artworkUrl) {
-            if (!isPreS || artworkUrl.isNullOrBlank() || videoShowing) {
+            if (!isPreS || artworkUrl.isNullOrBlank() || videoShowing || canvasActive) {
                 value = null
                 return@produceState
             }
@@ -242,7 +251,26 @@ fun AppleMusicPlayerContent(
         }
 
         if (!videoShowing) {
-            if (isPreS && preBlurredBitmap != null) {
+            if (useCanvasBackdrop) {
+                // Canvas-driven backdrop: a second CanvasArtworkPlayer instance rendered
+                // behind the controls with a heavy blur. This makes the backdrop follow
+                // the canvas video in real time — matching Apple Music's player where the
+                // ambient blur behind the controls mirrors whatever is on screen.
+                CanvasArtworkPlayer(
+                    primaryUrl = canvasPrimaryUrl,
+                    fallbackUrl = canvasFallbackUrl,
+                    isPlaying = isPlaying,
+                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
+                    modifier =
+                        Modifier
+                            .matchParentSize()
+                            .blur(72.dp)
+                            .graphicsLayer {
+                                scaleX = 1.2f
+                                scaleY = 1.2f
+                            },
+                )
+            } else if (isPreS && preBlurredBitmap != null) {
                 Image(
                     bitmap = preBlurredBitmap!!.asImageBitmap(),
                     contentDescription = null,
@@ -277,16 +305,16 @@ fun AppleMusicPlayerContent(
                             },
                 )
             }
-            val preBlurLoading = isPreS && preBlurredBitmap == null
+            val preBlurLoading = isPreS && preBlurredBitmap == null && !canvasActive
             Box(
                 modifier =
                     Modifier
                         .matchParentSize()
                         .background(
                             Brush.verticalGradient(
-                                0f to Color.Black.copy(alpha = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) 0.42f else if (preBlurLoading) 0.62f else 0.52f),
-                                0.5f to Color.Black.copy(alpha = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) 0.60f else if (preBlurLoading) 0.74f else 0.68f),
-                                1f to Color.Black.copy(alpha = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) 0.82f else if (preBlurLoading) 0.90f else 0.86f),
+                                0f to Color.Black.copy(alpha = if (useCanvasBackdrop || Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) 0.42f else if (preBlurLoading) 0.62f else 0.52f),
+                                0.5f to Color.Black.copy(alpha = if (useCanvasBackdrop || Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) 0.60f else if (preBlurLoading) 0.74f else 0.68f),
+                                1f to Color.Black.copy(alpha = if (useCanvasBackdrop || Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) 0.82f else if (preBlurLoading) 0.90f else 0.86f),
                             ),
                         ),
             )

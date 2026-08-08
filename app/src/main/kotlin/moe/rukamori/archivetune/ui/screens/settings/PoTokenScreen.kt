@@ -90,6 +90,7 @@ import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.PoTokenEvent
 import moe.rukamori.archivetune.viewmodels.PoTokenState
 import moe.rukamori.archivetune.viewmodels.PoTokenViewModel
+import androidx.compose.foundation.layout.asPaddingValues
 
 const val PO_TOKEN_ROUTE = "settings/po_token"
 
@@ -287,19 +288,24 @@ fun PoTokenScreen(
             )
         },
     ) { innerPadding ->
+        val playerAwareBottomPadding =
+            LocalPlayerAwareWindowInsets.current
+                .only(WindowInsetsSides.Bottom)
+                .asPaddingValues()
+                .calculateBottomPadding()
         LazyColumn(
             modifier =
                 Modifier
                     .fillMaxSize()
                     .windowInsetsPadding(
                         LocalPlayerAwareWindowInsets.current.only(
-                            WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
+                            WindowInsetsSides.Horizontal,
                         ),
                     ),
             contentPadding =
                 PaddingValues(
                     top = innerPadding.calculateTopPadding(),
-                    bottom = SettingsDimensions.ScreenBottomPadding,
+                    bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding,
                 ),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {

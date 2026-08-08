@@ -125,6 +125,7 @@ import moe.rukamori.archivetune.viewmodels.AccountChannelUiModel
 import moe.rukamori.archivetune.viewmodels.AccountChannelsState
 import moe.rukamori.archivetune.viewmodels.HomeViewModel
 import java.util.UUID
+import androidx.compose.foundation.layout.asPaddingValues
 
 private val AccountContentMaxWidth = 840.dp
 private val AvatarSize = 72.dp
@@ -301,13 +302,18 @@ fun AccountSettings(
             )
         },
     ) { innerPadding ->
+        val playerAwareBottomPadding =
+            LocalPlayerAwareWindowInsets.current
+                .only(WindowInsetsSides.Bottom)
+                .asPaddingValues()
+                .calculateBottomPadding()
         Box(
             modifier =
                 Modifier
                     .fillMaxSize()
                     .windowInsetsPadding(
                         LocalPlayerAwareWindowInsets.current.only(
-                            WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
+                            WindowInsetsSides.Horizontal,
                         ),
                     ),
         ) {
@@ -323,7 +329,7 @@ fun AccountSettings(
                         start = 16.dp,
                         top = innerPadding.calculateTopPadding() + 8.dp,
                         end = 16.dp,
-                        bottom = SettingsDimensions.ScreenBottomPadding,
+                        bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding,
                     ),
                 verticalArrangement = Arrangement.spacedBy(20.dp),
             ) {

@@ -11,6 +11,7 @@
 package moe.rukamori.archivetune.ui.screens.settings
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
@@ -49,9 +50,11 @@ import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.SwitchPreference
+import moe.rukamori.archivetune.ui.screens.TELEGRAM_BOTS_ROUTE
 import moe.rukamori.archivetune.ui.screens.TELEGRAM_BROWSE_ROUTE
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.rememberPreference
+import androidx.compose.foundation.layout.asPaddingValues
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -111,6 +114,7 @@ fun TelegramSettings(navController: NavController) {
     }
 
     Scaffold(
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.telegram_integration)) },
@@ -125,14 +129,20 @@ fun TelegramSettings(navController: NavController) {
             )
         },
     ) { innerPadding ->
+        val playerAwareBottomPadding =
+            LocalPlayerAwareWindowInsets.current
+                .only(WindowInsetsSides.Bottom)
+                .asPaddingValues()
+                .calculateBottomPadding()
         Column(
             Modifier
                 .padding(top = innerPadding.calculateTopPadding())
                 .windowInsetsPadding(
                     LocalPlayerAwareWindowInsets.current.only(
-                        WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
+                        WindowInsetsSides.Horizontal,
                     ),
-                ).verticalScroll(rememberScrollState()),
+                ).verticalScroll(rememberScrollState())
+                .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
         ) {
             PreferenceGroup(title = stringResource(R.string.telegram_account)) {
                 if (isReady) {
@@ -194,6 +204,26 @@ fun TelegramSettings(navController: NavController) {
                         icon = { Icon(painterResource(R.drawable.graphic_eq), contentDescription = null) },
                         checked = losslessOnly,
                         onCheckedChange = onLosslessOnlyChange,
+                    )
+                }
+            }
+
+            // Telegram bots — pill/section below the channels group. Lets the user paste a bot's
+            // @username once, then re-open it from this list to send song links and get back
+            // streamable / downloadable audio.
+            PreferenceGroup(title = stringResource(R.string.telegram_bots_title)) {
+                item {
+                    PreferenceEntry(
+                        title = { Text(stringResource(R.string.telegram_bots_title)) },
+                        description =
+                            if (isReady) {
+                                stringResource(R.string.telegram_bots_summary)
+                            } else {
+                                stringResource(R.string.telegram_login_required)
+                            },
+                        icon = { Icon(painterResource(R.drawable.provider_telegram), contentDescription = null) },
+                        isEnabled = isReady,
+                        onClick = { navController.navigate(TELEGRAM_BOTS_ROUTE) },
                     )
                 }
             }

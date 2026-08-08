@@ -10,6 +10,7 @@ package moe.rukamori.archivetune.ui.player
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.canvas.ArchiveTuneCanvas
+import moe.rukamori.archivetune.canvas.SpotifyCanvasProvider
 import moe.rukamori.archivetune.canvas.models.CanvasArtwork
 import moe.rukamori.archivetune.canvas.models.looselyMatchesSongIdentity
 import moe.rukamori.archivetune.canvas.models.matchesSongIdentity
@@ -25,6 +26,7 @@ internal suspend fun resolveCanvasArtworkForPlayback(
     requireVertical: Boolean,
     allowNetwork: Boolean,
     albumTitle: String? = null,
+    trySpotifyCanvas: Boolean = false,
 ): CanvasArtwork? {
     // Telegram/local files have tag-derived (often noisy) metadata — use fuzzy identity matching
     // so a real canvas isn't discarded over a "(2019)" suffix or a channel-name artist.
@@ -57,6 +59,24 @@ internal suspend fun resolveCanvasArtworkForPlayback(
     }
 
     return withContext(Dispatchers.IO) {
+        // Spotify Canvas: when enabled and the current media is a YouTube Music video
+        // (i.e. mediaId is the video ID), look up the official Spotify Canvas via the
+        // mlc.kouzu.in resolver. This is a direct video-ID → canvas-URL lookup and
+        // doesn't depend on tag metadata, so it's both faster and more reliable than
+        // the song-title-based ArchiveTune Canvas lookup. Try it first when enabled.
+        if (trySpotifyCanvas && strictIdentity) {
+            val spotifyCanvas =
+                runCatching {
+                    SpotifyCanvasProvider.getByVideoId(mediaId)
+                }.onFailure { throwable ->
+                    Timber.tag(CanvasArtworkLogTag).w(throwable, "Spotify Canvas lookup failed for %s", mediaId)
+                }.getOrNull()
+            if (spotifyCanvas != null && spotifyCanvas.hasRequiredCanvasVariant(requireVertical)) {
+                Timber.tag(CanvasArtworkLogTag).d("Spotify Canvas resolved for %s", mediaId)
+                return@withContext CanvasArtworkPlaybackCache.put(mediaId, spotifyCanvas)
+            }
+        }
+
         val fetched =
             fetchCanvasArtworkForPlayback(
                 songTitleRaw = songTitleRaw,

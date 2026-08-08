@@ -9,6 +9,7 @@
 
 package moe.rukamori.archivetune.ui.screens.settings
 
+import androidx.compose.foundation.layout.WindowInsets
 import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.BackHandler
@@ -70,6 +71,8 @@ import moe.rukamori.archivetune.utils.makeTimeString
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
 import timber.log.Timber
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.WindowInsetsSides
 
 enum class ActivitySource { ARTIST, ALBUM, SONG, APP }
 
@@ -440,6 +443,11 @@ fun DiscordSettings(navController: NavController, scrollTo: String? = null) {
             )
         },
     ) { innerPadding ->
+        val playerAwareBottomPadding =
+            LocalPlayerAwareWindowInsets.current
+                .only(WindowInsetsSides.Bottom)
+                .asPaddingValues()
+                .calculateBottomPadding()
         val scrollState = rememberScrollState()
         val positions = rememberPreferencePositions()
 
@@ -451,7 +459,7 @@ fun DiscordSettings(navController: NavController, scrollTo: String? = null) {
                     .fillMaxSize()
                     .windowInsetsPadding(
                         LocalPlayerAwareWindowInsets.current.only(
-                            WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
+                            WindowInsetsSides.Horizontal,
                         ),
                     )
                     .verticalScroll(scrollState)

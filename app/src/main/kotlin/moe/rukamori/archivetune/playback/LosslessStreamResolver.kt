@@ -274,7 +274,6 @@ object LosslessStreamResolver {
     fun cacheKeyPrefix(source: AudioSourceType): String = when (source) {
         AudioSourceType.TIDAL -> "tidal:"
         AudioSourceType.QOBUZ -> "qobuz:"
-        AudioSourceType.DABMUSIC -> "dabmusic:"
         else -> "${source.name.lowercase()}:"
     }
 

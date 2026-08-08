@@ -18,6 +18,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -50,8 +51,6 @@ import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.audiosource.AudioSourceConfig
 import moe.rukamori.archivetune.constants.AudioSourceOrderKey
 import moe.rukamori.archivetune.constants.AudioSourceType
-import moe.rukamori.archivetune.constants.DabMusicBaseUrlKey
-import moe.rukamori.archivetune.constants.DabMusicEnabledKey
 import moe.rukamori.archivetune.constants.DeezerAudioQuality
 import moe.rukamori.archivetune.constants.DeezerAudioQualityKey
 import moe.rukamori.archivetune.constants.DeezerEnabledKey
@@ -73,7 +72,6 @@ import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.EnumListPreference
 import moe.rukamori.archivetune.ui.component.InfoLabel
 import moe.rukamori.archivetune.ui.component.ListPreference
-import moe.rukamori.archivetune.ui.component.EditTextPreference
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.SwitchPreference
@@ -87,7 +85,6 @@ private fun AudioSourceType.displayName(context: android.content.Context): Strin
         AudioSourceType.TIDAL -> context.getString(R.string.source_tidal)
         AudioSourceType.QOBUZ -> context.getString(R.string.source_qobuz)
         AudioSourceType.DEEZER -> context.getString(R.string.source_deezer)
-        AudioSourceType.DABMUSIC -> context.getString(R.string.source_dabmusic)
         AudioSourceType.YOUTUBE -> context.getString(R.string.source_youtube)
     }
 
@@ -96,7 +93,6 @@ private fun AudioSourceType.iconRes(): Int =
         AudioSourceType.TIDAL -> R.drawable.provider_tidal
         AudioSourceType.QOBUZ -> R.drawable.provider_qobuz
         AudioSourceType.DEEZER -> R.drawable.provider_deezer
-        AudioSourceType.DABMUSIC -> R.drawable.provider_dabmusic
         AudioSourceType.YOUTUBE -> R.drawable.play
     }
 
@@ -113,8 +109,6 @@ fun PlaybackSourceSections(navController: NavController) {
     val (tidalEnabled, onTidalEnabledChange) = rememberPreference(TidalEnabledKey, true)
     val (qobuzEnabled, onQobuzEnabledChange) = rememberPreference(QobuzEnabledKey, false)
     val (deezerEnabled, onDeezerEnabledChange) = rememberPreference(DeezerEnabledKey, false)
-    val (dabMusicEnabled, onDabMusicEnabledChange) = rememberPreference(DabMusicEnabledKey, false)
-    val (dabMusicBaseUrl, onDabMusicBaseUrlChange) = rememberPreference(DabMusicBaseUrlKey, "")
     val (deezerQuality, onDeezerQualityChange) =
         rememberEnumPreference(DeezerAudioQualityKey, DeezerAudioQuality.FLAC)
 
@@ -149,7 +143,6 @@ fun PlaybackSourceSections(navController: NavController) {
             AudioSourceType.TIDAL -> tidalEnabled
             AudioSourceType.QOBUZ -> qobuzEnabled
             AudioSourceType.DEEZER -> deezerEnabled
-            AudioSourceType.DABMUSIC -> dabMusicEnabled
             AudioSourceType.YOUTUBE -> true
         }
 
@@ -206,18 +199,35 @@ fun PlaybackSourceSections(navController: NavController) {
                 selectedValue = selectedPlayerStreamClient,
                 values = playerStreamClients,
                 onValueSelected = onPlayerStreamClientChange,
+                // Exhaustive on purpose: no `else` branch, so adding a client to
+                // PlayerStreamClient fails the build here instead of silently rendering
+                // every row with the Web Remix label.
                 valueText = {
                     when (it) {
+                        PlayerStreamClient.ANDROID_VR ->
+                            stringResource(R.string.player_stream_client_android_vr)
                         PlayerStreamClient.WEB_REMIX ->
                             stringResource(R.string.player_stream_client_web_remix)
-                        else -> stringResource(R.string.player_stream_client_web_remix)
+                        PlayerStreamClient.IOS ->
+                            stringResource(R.string.player_stream_client_ios)
+                        PlayerStreamClient.TVHTML5 ->
+                            stringResource(R.string.player_stream_client_tvhtml5)
+                        PlayerStreamClient.ANDROID_MUSIC ->
+                            stringResource(R.string.player_stream_client_android_music)
                     }
                 },
                 valueDescription = {
                     when (it) {
+                        PlayerStreamClient.ANDROID_VR ->
+                            stringResource(R.string.player_stream_client_android_vr_desc)
                         PlayerStreamClient.WEB_REMIX ->
                             stringResource(R.string.player_stream_client_web_remix_desc)
-                        else -> stringResource(R.string.player_stream_client_web_remix_desc)
+                        PlayerStreamClient.IOS ->
+                            stringResource(R.string.player_stream_client_ios_desc)
+                        PlayerStreamClient.TVHTML5 ->
+                            stringResource(R.string.player_stream_client_tvhtml5_desc)
+                        PlayerStreamClient.ANDROID_MUSIC ->
+                            stringResource(R.string.player_stream_client_android_music_desc)
                     }
                 },
             )
@@ -358,29 +368,6 @@ fun PlaybackSourceSections(navController: NavController) {
             )
         }
 
-    }
-
-    PreferenceGroup(title = stringResource(R.string.dabmusic_specific)) {
-        item {
-            SwitchPreference(
-                title = { Text(stringResource(R.string.dabmusic_enable)) },
-                description = stringResource(R.string.dabmusic_enable_description),
-                icon = { Icon(painterResource(R.drawable.provider_dabmusic), null) },
-                checked = dabMusicEnabled,
-                onCheckedChange = onDabMusicEnabledChange,
-            )
-        }
-
-        item {
-            EditTextPreference(
-                title = { Text(stringResource(R.string.dabmusic_base_url)) },
-                value = dabMusicBaseUrl,
-                onValueChange = onDabMusicBaseUrlChange,
-                icon = { Icon(painterResource(R.drawable.integration), null) },
-                isEnabled = dabMusicEnabled,
-                isInputValid = { it.isBlank() || it.startsWith("http://") || it.startsWith("https://") },
-            )
-        }
     }
 }
 

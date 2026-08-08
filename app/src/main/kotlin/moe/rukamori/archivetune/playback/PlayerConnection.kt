@@ -500,6 +500,18 @@ class PlayerConnection(
                 error.value = null
             }
 
+            // Suppress the error dialog for recoverable MediaCodec decoder-state faults.
+            // MusicService.onPlayerError handles these silently by re-preparing the player,
+            // and the song resumes playback automatically after recovery. Surfacing the
+            // dialog mid-recovery is misleading UX — it flashes briefly then auto-dismisses
+            // once recovery succeeds, which the user perceives as a spurious error popup.
+            // We still log via reportException above (in onPlayerErrorChanged) for diagnostics.
+            isRecoverableMediaCodecStateError(playbackError) -> {
+                // Intentionally do NOT update error.value; let recovery run silently.
+                // When recovery succeeds, onPlayerErrorChanged(null) will fire and reset
+                // any previously-exposed error state.
+            }
+
             playbackError !== dismissedPlaybackError -> {
                 dismissedPlaybackError = null
                 error.value = playbackError

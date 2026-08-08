@@ -166,6 +166,7 @@ import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.canvas.models.CanvasArtwork
 import moe.rukamori.archivetune.constants.ArchiveTuneCanvasKey
+import moe.rukamori.archivetune.constants.SpotifyCanvasKey
 import moe.rukamori.archivetune.constants.BackdropBlurAmountKey
 import moe.rukamori.archivetune.constants.BackdropEnabledKey
 import moe.rukamori.archivetune.constants.BlurRadiusKey
@@ -490,6 +491,7 @@ fun BottomSheetPlayer(
     val aodModeEnabled by playerConnection.aodModeEnabled.collectAsStateWithLifecycle()
     val (thumbnailCornerRadius) = rememberPreference(ThumbnailCornerRadiusKey, defaultValue = 8f)
     val archiveTuneCanvasEnabled by rememberPreference(ArchiveTuneCanvasKey, false)
+    val spotifyCanvasEnabled by rememberPreference(SpotifyCanvasKey, false)
     val lowDataModeActive = rememberLowDataModeActive()
     val (maxCanvasCacheSize, _) =
         rememberPreference(
@@ -1172,11 +1174,11 @@ fun BottomSheetPlayer(
                 if (country.length == 2) country.lowercase(Locale.ROOT) else "us"
             }
         val shouldUseV7Canvas =
-            archiveTuneCanvasEnabled &&
+            (archiveTuneCanvasEnabled || spotifyCanvasEnabled) &&
                 playerDesignStyle == PlayerDesignStyle.V7 &&
                 !aodModeEnabled
         val shouldUseArtworkCanvas =
-            archiveTuneCanvasEnabled &&
+            (archiveTuneCanvasEnabled || spotifyCanvasEnabled) &&
                 (
                     playerDesignStyle == PlayerDesignStyle.V8 ||
                         playerDesignStyle == PlayerDesignStyle.V9 ||
@@ -1219,6 +1221,7 @@ fun BottomSheetPlayer(
                         requireVertical = shouldUseV7Canvas,
                         allowNetwork = true,
                         albumTitle = next.album?.title,
+                        trySpotifyCanvas = spotifyCanvasEnabled,
                     )
                 }
             }
@@ -1267,6 +1270,7 @@ fun BottomSheetPlayer(
                         requireVertical = true,
                         allowNetwork = shouldFetchV7Canvas,
                         albumTitle = metadata.album?.title,
+                        trySpotifyCanvas = spotifyCanvasEnabled,
                     )
                 if (requestRevision == canvasArtworkRevision) {
                     v7CanvasArtwork = resolvedArtwork
@@ -1305,6 +1309,7 @@ fun BottomSheetPlayer(
                         requireVertical = false,
                         allowNetwork = shouldFetchArtworkCanvas,
                         albumTitle = metadata.album?.title,
+                        trySpotifyCanvas = spotifyCanvasEnabled,
                     )
                 if (requestRevision == canvasArtworkRevision) {
                     artworkCanvas = resolvedArtwork
@@ -2495,7 +2500,12 @@ private fun V7PlayerBackdrop(
     // When canvas is available, prefer its static image as the sharp-stage placeholder.
     // This prevents the jarring YTM thumbnail → canvas video flash on expand.
     val sharpArtworkUrl = if (hasCanvas) (canvasStatic ?: coverArtworkUrl) else (coverArtworkUrl ?: canvasStatic)
-    val backdropArtworkUrl = coverArtworkUrl ?: canvasStatic
+    // When canvas is active, prefer the canvas static image as the backdrop blur source too —
+    // matching the sharp stage. This keeps the backdrop consistent with the canvas artwork
+    // (Apple Music player style) instead of falling back to the album art, which looked
+    // inconsistent when the sharp stage showed the canvas video but the blur showed the
+    // album cover.
+    val backdropArtworkUrl = if (hasCanvas) (canvasStatic ?: coverArtworkUrl) else (coverArtworkUrl ?: canvasStatic)
     // For palette extraction, use canvas static when canvas is active so the scrim
     // gradient is derived from the canvas colors rather than the YTM thumbnail.
     val paletteSourceUrl = if (hasCanvas && canvasStatic != null) canvasStatic else backdropArtworkUrl

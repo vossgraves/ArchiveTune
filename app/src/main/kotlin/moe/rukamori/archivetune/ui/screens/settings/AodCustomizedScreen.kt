@@ -308,7 +308,7 @@ fun AodCustomizedScreen(navController: NavController) {
                     .padding(paddingValues)
                     .windowInsetsPadding(
                         LocalPlayerAwareWindowInsets.current.only(
-                            WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
+                            WindowInsetsSides.Horizontal,
                         ),
                     ),
             verticalArrangement = Arrangement.spacedBy(16.dp),

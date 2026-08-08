@@ -12,6 +12,7 @@
 
 package moe.rukamori.archivetune.ui.screens.settings
 
+import androidx.compose.foundation.layout.WindowInsets
 import android.annotation.SuppressLint
 import android.graphics.Bitmap
 import android.net.Uri
@@ -19,27 +20,16 @@ import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
-import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.datastore.preferences.core.edit
 import androidx.navigation.NavController
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.TidalAccessTokenKey
 import moe.rukamori.archivetune.constants.TidalAccountNameKey
@@ -52,8 +42,7 @@ import moe.rukamori.archivetune.constants.TidalSubscriptionStatus
 import moe.rukamori.archivetune.constants.TidalTokenExpiryKey
 import moe.rukamori.archivetune.constants.TidalUserIdKey
 import moe.rukamori.archivetune.tidal.TidalAccountManager
-import moe.rukamori.archivetune.ui.component.IconButton
-import moe.rukamori.archivetune.ui.utils.backToMain
+import moe.rukamori.archivetune.ui.component.AuthWebViewScreen
 import moe.rukamori.archivetune.utils.dataStore
 import moe.rukamori.archivetune.utils.resetAuthWebViewSession
 import java.util.concurrent.atomic.AtomicBoolean
@@ -81,7 +70,6 @@ private val BEARER_HOOK_JS =
     """.trimIndent()
 
 @SuppressLint("SetJavaScriptEnabled")
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TidalLoginScreen(navController: NavController) {
     val context = LocalContext.current
@@ -90,7 +78,6 @@ fun TidalLoginScreen(navController: NavController) {
     val pkce = remember { TidalAccountManager.buildPkceChallenge() }
     // Guards against handling the redirect / captured token more than once.
     val handled = remember { AtomicBoolean(false) }
-    var webView: WebView? = null
 
     fun toast(message: String) {
         Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
@@ -177,11 +164,10 @@ fun TidalLoginScreen(navController: NavController) {
         return true
     }
 
-    AndroidView(
-        modifier =
-            Modifier
-                .windowInsetsPadding(LocalPlayerAwareWindowInsets.current)
-                .fillMaxSize(),
+    AuthWebViewScreen(
+        navController = navController,
+        title = stringResource(R.string.tidal_login),
+        subtitle = stringResource(R.string.auth_webview_tidal_subtitle),
         factory = { ctx ->
             WebView(ctx).apply {
                 webViewClient =
@@ -240,30 +226,10 @@ fun TidalLoginScreen(navController: NavController) {
                     },
                     "TidalAuth",
                 )
-                webView = this
                 resetAuthWebViewSession(ctx, this, clearCookies = true) {
                     loadUrl(pkce.authUrl)
                 }
             }
         },
     )
-
-    TopAppBar(
-        title = { Text(stringResource(R.string.tidal_login)) },
-        navigationIcon = {
-            IconButton(
-                onClick = navController::navigateUp,
-                onLongClick = navController::backToMain,
-            ) {
-                Icon(
-                    painterResource(R.drawable.arrow_back),
-                    contentDescription = null,
-                )
-            }
-        },
-    )
-
-    BackHandler(enabled = webView?.canGoBack() == true) {
-        webView?.goBack()
-    }
 }

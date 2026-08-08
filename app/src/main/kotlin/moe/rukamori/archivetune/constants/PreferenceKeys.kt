@@ -47,6 +47,7 @@ val PlayerDesignStyleKey = stringPreferencesKey("playerDesignStyle")
 val ShowPlayerVolumeBarKey = booleanPreferencesKey("showPlayerVolumeBar")
 val HidePlayerThumbnailKey = booleanPreferencesKey("hidePlayerThumbnail")
 val ArchiveTuneCanvasKey = booleanPreferencesKey("archiveTuneCanvas")
+val SpotifyCanvasKey = booleanPreferencesKey("spotifyCanvas")
 val ThumbnailCornerRadiusKey = floatPreferencesKey("thumbnailCornerRadius")
 val CropThumbnailToSquareKey = booleanPreferencesKey("cropThumbnailToSquare")
 
@@ -522,6 +523,7 @@ val NewsLastReadTimestampKey = longPreferencesKey("news_last_read_timestamp")
 val SpeedDialSongIdsKey = stringPreferencesKey("speedDialSongIds")
 val PreferredLyricsProviderKey = stringPreferencesKey("lyricsProvider")
 val LyricsProviderOrderKey = stringPreferencesKey("lyricsProviderOrder")
+val ArtworkProviderOrderKey = stringPreferencesKey("artworkProviderOrder")
 val QueueEditLockKey = booleanPreferencesKey("queueEditLock")
 
 enum class LibraryViewType {
@@ -739,6 +741,53 @@ fun deserializeLyricsProviderOrder(orderStr: String?): List<PreferredLyricsProvi
 
     val missing = DefaultLyricsProviderOrder.filterNot { it in normalized }
     return normalized + missing
+}
+
+/**
+ * Artwork providers that can be prioritised by the user. The order in this enum is NOT the
+ * priority — the user-configured order (stored in [ArtworkProviderOrderKey]) determines which
+ * provider is tried first when resolving artwork for a song. If the top-priority provider has
+ * no artwork for the current song, the resolver falls back to the next provider in the list.
+ *
+ * - [LOCAL_EMBEDDED]: artwork extracted from a local file. Always wins for local media
+ *   regardless of priority order (a local file's embedded cover is the authoritative source).
+ * - [ORIGINAL_METADATA]: artwork URL that arrived with the original media metadata
+ *   (YouTube/innertube/DB `thumbnailUrl`). This is the default artwork for streaming songs.
+ * - [TIDAL]: artwork fetched from Tidal as a fallback when no original artwork exists.
+ * - [SPOTIFY_CANVAS]: Spotify Canvas video artwork (looping video, fetched via the
+ *   `mlc.kouzu.in` canvas API).
+ * - [ARCHIVETUNE_CANVAS]: ArchiveTune Canvas artwork (BetterLyrics / koiverse-mirror,
+ *   includes Apple Music motion artwork internally).
+ */
+enum class PreferredArtworkProvider {
+    LOCAL_EMBEDDED,
+    ORIGINAL_METADATA,
+    TIDAL,
+    SPOTIFY_CANVAS,
+    ARCHIVETUNE_CANVAS,
+}
+
+val DefaultArtworkProviderOrder =
+    listOf(
+        PreferredArtworkProvider.LOCAL_EMBEDDED,
+        PreferredArtworkProvider.ORIGINAL_METADATA,
+        PreferredArtworkProvider.TIDAL,
+        PreferredArtworkProvider.SPOTIFY_CANVAS,
+        PreferredArtworkProvider.ARCHIVETUNE_CANVAS,
+    )
+
+fun deserializeArtworkProviderOrder(orderStr: String?): List<PreferredArtworkProvider> {
+    if (orderStr.isNullOrBlank()) return DefaultArtworkProviderOrder
+
+    val parsed =
+        orderStr
+            .split(",")
+            .mapNotNull { name ->
+                PreferredArtworkProvider.entries.find { it.name == name.trim() }
+            }.distinct()
+
+    val missing = DefaultArtworkProviderOrder.filterNot { it in parsed }
+    return parsed + missing
 }
 
 enum class PlayerButtonsStyle {
@@ -1068,6 +1117,20 @@ val TelegramAccountPhoneKey = stringPreferencesKey("telegramAccountPhone")
 val TelegramLosslessOnlyKey = booleanPreferencesKey("telegramLosslessOnly")
 
 // ---------------------------------------------------------------------------
+// Telegram bots
+// ---------------------------------------------------------------------------
+// Persisted list of bots the user has added (so they can be re-opened without
+// re-pasting their @username each time). Stored as a JSON array; the encoder
+// lives in moe.rukamori.archivetune.telegram.TelegramBots.
+val TelegramBotsKey = stringPreferencesKey("telegramBots")
+
+// When ON, songs added to a Telegram-backed playlist (LPtg…/channel-id) from a
+// bot result are auto-forwarded to that channel so the user's own channel stays
+// in sync with what they've collected via bots. Default ON per the feature brief.
+val TelegramBotForwardToChannelKey = booleanPreferencesKey("telegramBotForwardToChannel")
+
+
+// ---------------------------------------------------------------------------
 // Multi-source audio framework
 // ---------------------------------------------------------------------------
 // A configurable set of lossless/stream sources. The user can reorder them (priority for playback
@@ -1078,7 +1141,6 @@ enum class AudioSourceType {
     TIDAL,
     QOBUZ,
     DEEZER,
-    DABMUSIC,
     YOUTUBE,
 }
 
@@ -1117,20 +1179,6 @@ val DeezerAccountNameKey = stringPreferencesKey("deezerAccountName")
 // Whether the manual account reported a lossless-capable plan. Only orders resolution attempts;
 // the provider still verifies the real tier per track.
 val DeezerAccountPremiumKey = booleanPreferencesKey("deezerAccountPremium")
-
-// ---------------------------------------------------------------------------
-// DabMusic source
-// ---------------------------------------------------------------------------
-// DabMusic (https://dabmusic.xyz) is a community-operated lossless stream catalog: the app
-// searches its public REST API for a track and receives a direct playable FLAC/MP3 URL back.
-// Defaults OFF because, unlike YouTube, it requires the upstream service to be reachable and
-// returns no audio when the catalog is missing the requested track.
-val DabMusicEnabledKey = booleanPreferencesKey("dabMusicEnabled")
-
-// Optional override for the DabMusic base URL. Blank = built-in default (https://dabmusic.xyz).
-// Exposed so users behind mirrors or self-hosted gateways can repoint the source without a
-// rebuild; the AudioProvider trims trailing slashes before composing endpoints.
-val DabMusicBaseUrlKey = stringPreferencesKey("dabMusicBaseUrl")
 
 val WebClientPoTokenEnabledKey = booleanPreferencesKey("webClientPoTokenEnabled")
 val PoTokenGvsKey = stringPreferencesKey("poTokenGvs")

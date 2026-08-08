@@ -13,39 +13,31 @@
 
 package moe.rukamori.archivetune.ui.screens.settings
 
+import androidx.compose.foundation.layout.WindowInsets
 import android.annotation.SuppressLint
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
-import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.datastore.preferences.core.edit
 import androidx.navigation.NavController
 import kotlinx.coroutines.launch
-import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.QobuzTokensKey
 import moe.rukamori.archivetune.qobuz.QobuzToken
-import moe.rukamori.archivetune.ui.component.IconButton
+import moe.rukamori.archivetune.ui.component.AuthWebViewScreen
 import moe.rukamori.archivetune.ui.component.TextFieldDialog
-import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.dataStore
 import moe.rukamori.archivetune.utils.resetAuthWebViewSession
 import java.util.concurrent.atomic.AtomicBoolean
@@ -102,13 +94,11 @@ private val QOBUZ_HOOK_JS =
     """.trimIndent()
 
 @SuppressLint("SetJavaScriptEnabled")
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun QobuzLoginScreen(navController: NavController) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val credentialHandled = remember { AtomicBoolean(false) }
-    var webView: WebView? = null
 
     // Captured headers from the web player.
     var captured by remember { mutableStateOf<Pair<String, String>?>(null) }
@@ -173,11 +163,10 @@ fun QobuzLoginScreen(navController: NavController) {
         }
     }
 
-    AndroidView(
-        modifier =
-            Modifier
-                .windowInsetsPadding(LocalPlayerAwareWindowInsets.current)
-                .fillMaxSize(),
+    AuthWebViewScreen(
+        navController = navController,
+        title = stringResource(R.string.qobuz_login),
+        subtitle = stringResource(R.string.auth_webview_qobuz_subtitle),
         factory = { ctx ->
             WebView(ctx).apply {
                 webViewClient =
@@ -212,7 +201,6 @@ fun QobuzLoginScreen(navController: NavController) {
                     },
                     "QobuzAuth",
                 )
-                webView = this
                 resetAuthWebViewSession(ctx, this, clearCookies = true) {
                     loadUrl(QOBUZ_WEB_PLAYER_URL)
                 }
@@ -229,21 +217,5 @@ fun QobuzLoginScreen(navController: NavController) {
                 showSecretDialog = true
             }
         }
-    }
-
-    TopAppBar(
-        title = { Text(stringResource(R.string.qobuz_login)) },
-        navigationIcon = {
-            IconButton(
-                onClick = navController::navigateUp,
-                onLongClick = navController::backToMain,
-            ) {
-                Icon(painterResource(R.drawable.arrow_back), contentDescription = null)
-            }
-        },
-    )
-
-    BackHandler(enabled = webView?.canGoBack() == true) {
-        webView?.goBack()
     }
 }

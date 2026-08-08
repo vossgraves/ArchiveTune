@@ -9,6 +9,12 @@ package moe.rukamori.archivetune.musixmatch.models
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.decodeFromJsonElement
 
 @Serializable
 data class MacroSubtitlesResponse(
@@ -109,3 +115,44 @@ data class Subtitle(
     @SerialName("subtitle_body")
     val subtitleBody: String? = null,
 )
+
+/**
+ * Musixmatch's macro.subtitles endpoint occasionally returns an empty JSON array `[]`
+ * (instead of an object) for a sub-call's `body` when that sub-call has no data — e.g.
+ * `track.lyrics.get.message.body` becomes `[]` when no plain-lyrics result exists.
+ *
+ * Without sanitization, kotlinx.serialization fails the whole macro parse with
+ * `Expected start of the object '{', but had '[' instead at path:
+ * $.message.body.macro_calls.track.lyrics.get.message.body`, which then drops the
+ * subtitle + richsync results that *were* returned in the same response.
+ *
+ * The fix: parse the raw JSON tree, walk every object's `body` field and coerce
+ * non-object values (arrays, primitives) to null, then structural-decode the
+ * sanitized tree into [MacroSubtitlesResponse]. Object bodies are passed through
+ * untouched, and the rest of the tree is preserved as-is.
+ */
+internal fun decodeMacroSubtitlesResponse(
+    json: Json,
+    body: String,
+): MacroSubtitlesResponse? {
+    val rawElement =
+        runCatching { json.parseToJsonElement(body) }.getOrNull() ?: return null
+    val sanitized = sanitizeBodyArrays(rawElement)
+    return runCatching { json.decodeFromJsonElement<MacroSubtitlesResponse>(sanitized) }.getOrNull()
+}
+
+private fun sanitizeBodyArrays(element: JsonElement): JsonElement =
+    when (element) {
+        is JsonObject -> {
+            val newMap = element.entries.associate { (k, v) ->
+                if (k == "body" && v !is JsonObject && v !is JsonNull) {
+                    k to JsonNull
+                } else {
+                    k to sanitizeBodyArrays(v)
+                }
+            }
+            JsonObject(newMap)
+        }
+        is JsonArray -> JsonArray(element.map(::sanitizeBodyArrays))
+        else -> element
+    }

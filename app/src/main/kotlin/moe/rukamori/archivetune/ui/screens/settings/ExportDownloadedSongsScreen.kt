@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -77,6 +78,7 @@ import moe.rukamori.archivetune.db.entities.detectAudioExtensionFromSpans
 import moe.rukamori.archivetune.db.entities.extensionToMimeType
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.utils.backToMain
+import androidx.compose.foundation.layout.asPaddingValues
 
 /**
  * A single downloadable song surfaced in the export picker. The [songId] is the
@@ -412,6 +414,7 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
     }
 
     Scaffold(
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
                 title = {
@@ -501,7 +504,7 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
                                 .fillMaxWidth()
                                 .windowInsetsPadding(
                                     LocalPlayerAwareWindowInsets.current.only(
-                                        WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
+                                        WindowInsetsSides.Horizontal,
                                     ),
                                 ).padding(16.dp),
                     ) {
@@ -599,6 +602,11 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
             }
         },
     ) { innerPadding ->
+        val playerAwareBottomPadding =
+            LocalPlayerAwareWindowInsets.current
+                .only(WindowInsetsSides.Bottom)
+                .asPaddingValues()
+                .calculateBottomPadding()
         when {
             isLoading -> {
                 Box(
@@ -661,7 +669,7 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
                     contentPadding =
                         PaddingValues(
                             top = innerPadding.calculateTopPadding(),
-                            bottom = 120.dp,
+                            bottom = playerAwareBottomPadding + 120.dp,
                         ),
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {

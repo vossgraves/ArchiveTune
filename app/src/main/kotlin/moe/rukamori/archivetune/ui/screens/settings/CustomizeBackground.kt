@@ -85,6 +85,7 @@ import moe.rukamori.archivetune.constants.PlayerCustomContrastKey
 import moe.rukamori.archivetune.constants.PlayerCustomImageUriKey
 import moe.rukamori.archivetune.utils.rememberPreference
 import kotlin.math.roundToInt
+import androidx.compose.foundation.layout.asPaddingValues
 
 private const val DEFAULT_BLUR = 0f
 private const val DEFAULT_CONTRAST = 1f
@@ -174,6 +175,11 @@ fun CustomizeBackground(navController: NavController) {
             )
         },
     ) { innerPadding ->
+        val playerAwareBottomPadding =
+            LocalPlayerAwareWindowInsets.current
+                .only(WindowInsetsSides.Bottom)
+                .asPaddingValues()
+                .calculateBottomPadding()
         Box(
             modifier =
                 Modifier
@@ -181,14 +187,14 @@ fun CustomizeBackground(navController: NavController) {
                     .padding(innerPadding)
                     .windowInsetsPadding(
                         LocalPlayerAwareWindowInsets.current.only(
-                            WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
+                            WindowInsetsSides.Horizontal,
                         ),
                     ).verticalScroll(rememberScrollState())
                     .padding(
                         start = SettingsDimensions.ScreenHorizontalPadding,
                         top = 12.dp,
                         end = SettingsDimensions.ScreenHorizontalPadding,
-                        bottom = SettingsDimensions.ScreenBottomPadding,
+                        bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding,
                     ),
             contentAlignment = Alignment.TopCenter,
         ) {

@@ -62,6 +62,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.add
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -123,7 +124,11 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.BlurEffect
+import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -133,7 +138,9 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.hapticfeedback.HapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -282,6 +289,9 @@ import moe.rukamori.archivetune.ui.component.NavigationBarBackdrop
 import com.kyant.backdrop.backdrops.LayerBackdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import com.kyant.backdrop.drawBackdrop
+import com.kyant.backdrop.effects.blur
+import com.kyant.backdrop.effects.vibrancy
 import moe.rukamori.archivetune.ui.component.ProfileMenuDialog
 import moe.rukamori.archivetune.ui.component.ProfileMenuItem
 import moe.rukamori.archivetune.ui.component.AutoResizeText
@@ -1198,14 +1208,15 @@ class MainActivity : ComponentActivity() {
                     val navBarHorizontalPadding =
                         if (isFloatingNavBar) FloatingNavigationBarHorizontalPadding else NavigationBarHorizontalPadding
 
-                    // Frosted backdrop (nav bar + mini player): only allocated when some frosted
-                    // surface can actually run (setting on, RenderEffect available, bottom bar in use).
+                    // Frosted backdrop (nav bar + mini player + tablet rail): allocated whenever
+                    // any frosted surface can run (RenderEffect available). The bottom toolbar and
+                    // the tablet-mode NavigationRail both consume it via LocalNavigationBarBackdrop.
                     val miniPlayerBgStyle by rememberEnumPreference(
                         MiniPlayerBackgroundStyleKey,
                         defaultValue = MiniPlayerBackgroundStyle.THEME,
                     )
                     val navBarFrostedBackdrop =
-                        if (!useRail) {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                             val frostedLayer = rememberGraphicsLayer()
                             remember(frostedLayer) { NavigationBarBackdrop(frostedLayer) }
                         } else {
@@ -1214,8 +1225,7 @@ class MainActivity : ComponentActivity() {
 
                     val liquidGlassActive =
                         liquidGlassEnabled &&
-                            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-                            !useRail
+                            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
                     val liquidGlassBackdrop: LayerBackdrop? =
                         if (liquidGlassActive) {
                             rememberLayerBackdrop()
@@ -1492,14 +1502,17 @@ class MainActivity : ComponentActivity() {
                             }
                             effectiveWindowsInsets
                                 .only(
-                                    (
-                                        if (useRail) {
-                                            WindowInsetsSides.Right
-                                        } else {
-                                            WindowInsetsSides.Horizontal
-                                        }
-                                    ) + WindowInsetsSides.Top,
-                                ).add(WindowInsets(top = AppBarHeight, bottom = bottom))
+                                    if (useRail) {
+                                        WindowInsetsSides.Right
+                                    } else {
+                                        WindowInsetsSides.Horizontal
+                                    },
+                                ).add(
+                                    WindowInsets(
+                                        top = effectiveStatusBarTop + AppBarHeight,
+                                        bottom = bottom,
+                                    ),
+                                )
                         }
 
                     val homeScrollBehavior =
@@ -1843,6 +1856,7 @@ class MainActivity : ComponentActivity() {
                         LocalContentColor provides if (pureBlack) Color.White else contentColorFor(MaterialTheme.colorScheme.surface),
                         LocalPlayerConnection provides playerConnection,
                         LocalPlayerAwareWindowInsets provides playerAwareWindowInsets,
+                        LocalStableSystemBarsTopPadding provides effectiveStatusBarTop,
                         LocalDownloadUtil provides downloadUtil,
                         LocalShimmerTheme provides ShimmerTheme,
                         LocalSyncUtils provides syncUtils,
@@ -1894,43 +1908,132 @@ class MainActivity : ComponentActivity() {
                                         },
                                     )
                                 } else {
-                                    NavigationRail(
-                                        containerColor = if (pureBlack) Color.Black else MaterialTheme.colorScheme.surfaceContainer,
-                                        contentColor = if (pureBlack) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
-                                        header = { Spacer(Modifier.height(24.dp)) },
+                                    // Tablet-mode rail. honour the same nav-bar style
+                                    // toggles the bottom toolbar does (frosted /
+                                    // tinted-frosted / liquid glass) so the user's
+                                    // preference is respected in tablet mode too.
+                                    val isPreS = Build.VERSION.SDK_INT < Build.VERSION_CODES.S
+                                    val canRailBlur =
+                                        (navigationBarFrostedBlur || navigationBarTintFrostedBlur) &&
+                                            navBarFrostedBackdrop != null && !isPreS
+                                    val canRailLiquidGlass =
+                                        liquidGlassEnabled && liquidGlassNavBarEnabled &&
+                                            liquidGlassBackdrop != null && !isPreS
+                                    var railPositionInRoot by remember {
+                                        mutableStateOf(Offset.Zero)
+                                    }
+                                    val railContainerColor =
+                                        when {
+                                            canRailLiquidGlass -> Color.Transparent
+                                            canRailBlur && navigationBarTintFrostedBlur -> Color.Black.copy(alpha = 0.55f)
+                                            canRailBlur ->
+                                                if (pureBlack) Color.Black.copy(alpha = 0.45f)
+                                                else MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.85f)
+                                            pureBlack -> Color.Black
+                                            else -> MaterialTheme.colorScheme.surfaceContainer
+                                        }
+                                    val railContentColor =
+                                        when {
+                                            canRailLiquidGlass -> Color.White
+                                            navigationBarTintFrostedBlur && canRailBlur -> Color.White
+                                            pureBlack -> Color.White
+                                            else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                        }
+                                    Box(
+                                        modifier =
+                                            Modifier
+                                                .fillMaxHeight()
+                                                .onGloballyPositioned { coordinates ->
+                                                    railPositionInRoot = coordinates.positionInRoot()
+                                                },
                                     ) {
-                                        navigationItems.fastForEach { screen ->
-                                            val isSelected =
-                                                navBackStackEntry?.destination?.hierarchy?.any { it.route == screen.route } == true
+                                        if (canRailBlur && navBarFrostedBackdrop != null) {
+                                            val overlayAlpha =
+                                                if (navigationBarTintFrostedBlur) 0.45f else 0.30f
+                                            Box(
+                                                modifier =
+                                                    Modifier
+                                                        .matchParentSize()
+                                                        .graphicsLayer {
+                                                            renderEffect =
+                                                                BlurEffect(
+                                                                    radiusX = 60f,
+                                                                    radiusY = 60f,
+                                                                    edgeTreatment = TileMode.Clamp,
+                                                                )
+                                                            alpha = overlayAlpha
+                                                            clip = true
+                                                        }.drawBehind {
+                                                            val offset =
+                                                                navBarFrostedBackdrop.contentOffsetInRoot -
+                                                                    railPositionInRoot
+                                                            translate(offset.x, offset.y) {
+                                                                drawLayer(navBarFrostedBackdrop.layer)
+                                                            }
+                                                        },
+                                            )
+                                        }
+                                        NavigationRail(
+                                            containerColor = railContainerColor,
+                                            contentColor = railContentColor,
+                                            header = { Spacer(Modifier.height(24.dp)) },
+                                        ) {
+                                            navigationItems.fastForEach { screen ->
+                                                val isSelected =
+                                                    navBackStackEntry?.destination?.hierarchy?.any { it.route == screen.route } == true
 
-                                            NavigationRailItem(
-                                                selected = isSelected,
-                                                icon = {
-                                                    Icon(
-                                                        painter =
-                                                            painterResource(
-                                                                id = if (isSelected) screen.iconIdActive else screen.iconIdInactive,
-                                                            ),
-                                                        contentDescription = null,
-                                                    )
-                                                },
-                                                label = {
-                                                    Text(
-                                                        text = stringResource(screen.titleId),
-                                                        maxLines = 1,
-                                                        overflow = TextOverflow.Ellipsis,
-                                                    )
-                                                },
-                                                onClick = {
-                                                    val wasPlayerActive = playerBottomSheetState.isExpanded
+                                                NavigationRailItem(
+                                                    selected = isSelected,
+                                                    icon = {
+                                                        Icon(
+                                                            painter =
+                                                                painterResource(
+                                                                    id = if (isSelected) screen.iconIdActive else screen.iconIdInactive,
+                                                                ),
+                                                            contentDescription = null,
+                                                        )
+                                                    },
+                                                    label = {
+                                                        Text(
+                                                            text = stringResource(screen.titleId),
+                                                            maxLines = 1,
+                                                            overflow = TextOverflow.Ellipsis,
+                                                        )
+                                                    },
+                                                    onClick = {
+                                                        val wasPlayerActive = playerBottomSheetState.isExpanded
 
-                                                    if (wasPlayerActive) {
-                                                        playerBottomSheetState.collapse(if (disableAnimations) snap() else spring())
-                                                    }
+                                                        if (wasPlayerActive) {
+                                                            playerBottomSheetState.collapse(if (disableAnimations) snap() else spring())
+                                                        }
 
-                                                    if (wasPlayerActive && isSelected) return@NavigationRailItem
-                                                    handlePrimaryNavigationClick(screen, isSelected)
-                                                },
+                                                        if (wasPlayerActive && isSelected) return@NavigationRailItem
+                                                        handlePrimaryNavigationClick(screen, isSelected)
+                                                    },
+                                                )
+                                            }
+                                        }
+                                        if (canRailLiquidGlass && liquidGlassBackdrop != null) {
+                                            // Apply the kyant liquid-glass backdrop sampler to the
+                                            // rail area so the user sees the same glassy refraction
+                                            // effect as the bottom toolbar in phone mode. We use
+                                            // `drawBackdrop` with a simple blur effect — the
+                                            // refraction / lens effects from the bottom toolbar
+                                            // require per-item geometry that doesn't translate to
+                                            // the rail's vertical layout.
+                                            Box(
+                                                modifier =
+                                                    Modifier
+                                                        .matchParentSize()
+                                                        .drawBackdrop(
+                                                            backdrop = liquidGlassBackdrop,
+                                                            effects = {
+                                                                vibrancy()
+                                                                blur(4f.dp.toPx())
+                                                            },
+                                                            onDrawBackdrop = { drawBackdrop -> drawBackdrop() },
+                                                            shape = { RectangleShape },
+                                                        ),
                                             )
                                         }
                                     }
@@ -3159,6 +3262,15 @@ val LocalPlayerConnection =
     staticCompositionLocalOf<PlayerConnection?> { error("No PlayerConnection provided") }
 val LocalPlayerAwareWindowInsets =
     compositionLocalOf<WindowInsets> { error("No WindowInsets provided") }
+/**
+ * Status-bar top inset that does NOT collapse to 0 when the status bar is transiently hidden
+ * (overflow menu, V7/APPLE_MUSIC expanded player, bottom-sheet page, etc.). Screens should use
+ * this instead of `WindowInsets.systemBars.asPaddingValues().calculateTopPadding()` whenever the
+ * value is meant to anchor content below a pinned TopAppBar / search bar so that the content
+ * stays put when the system bars flicker. The first frame before the cache is populated falls
+ * back to 0.dp, which is fine because the system bars are visible at that point.
+ */
+val LocalStableSystemBarsTopPadding = compositionLocalOf<Dp> { 0.dp }
 val LocalDownloadUtil = staticCompositionLocalOf<DownloadUtil> { error("No DownloadUtil provided") }
 val LocalSyncUtils = staticCompositionLocalOf<SyncUtils> { error("No SyncUtils provided") }
 

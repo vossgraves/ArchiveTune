@@ -21,7 +21,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.ime
@@ -92,6 +94,7 @@ import moe.rukamori.archivetune.LocalDatabase
 import moe.rukamori.archivetune.LocalDownloadUtil
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalPlayerConnection
+import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
 import moe.rukamori.archivetune.constants.PlaylistEditLockKey
@@ -128,6 +131,7 @@ import moe.rukamori.archivetune.ui.menu.SelectionSongMenu
 import moe.rukamori.archivetune.ui.menu.SongMenu
 import moe.rukamori.archivetune.ui.menu.removeSongFromRemotePlaylist
 import moe.rukamori.archivetune.ui.screens.playlist.PlaylistSuggestionsSection
+import moe.rukamori.archivetune.ui.screens.TELEGRAM_BOTS_ROUTE
 import moe.rukamori.archivetune.ui.utils.HeaderDownloadItem
 import moe.rukamori.archivetune.ui.utils.HeaderDownloadProgressIndicator
 import moe.rukamori.archivetune.ui.utils.HeaderDownloadState
@@ -205,8 +209,9 @@ fun LocalPlaylistScreen(
         }
     }
 
-    // System bars padding
-    val systemBarsTopPadding = WindowInsets.systemBars.asPaddingValues().calculateTopPadding()
+    // Stable top inset: does not collapse to 0 when the status bar is transiently hidden,
+    // so the search bar offset and the playlist header always stay anchored below the TopAppBar.
+    val systemBarsTopPadding = LocalStableSystemBarsTopPadding.current
 
     var isSearching by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable(stateSaver = TextFieldValue.Saver) {
@@ -575,6 +580,11 @@ fun LocalPlaylistScreen(
                     ),
             contentPadding =
                 PaddingValues(
+                    // When searching, the header item collapses to zero height and the
+                    // TopAppBar (which renders the search field) is overlaid on top of
+                    // the LazyColumn. Reserve top space so the first songs aren't hidden
+                    // behind the TopAppBar + status bar.
+                    top = if (isSearching) systemBarsTopPadding + 64.dp else 0.dp,
                     bottom =
                         LocalPlayerAwareWindowInsets.current
                             .union(WindowInsets.ime)
@@ -1017,8 +1027,15 @@ fun LocalPlaylistScreen(
                 }
             }
 
-            // Playlist Suggestions Section
-            if (!selection && !isSearching) {
+            // Playlist Suggestions Section ("You might like") — hidden for Telegram-channel
+            // playlists (LPtg<chatId>) because the suggestions are YouTube-Music queries built
+            // from the playlist name + songs, which is meaningless for a Telegram channel whose
+            // songs are bot-fetched files (titles/performers often don't match YT Music). The
+            // section would either show irrelevant results or fail to load, polluting the
+            // playlist screen. Telegram playlists are managed via "Refresh from Telegram" /
+            // "Add songs" (in the overflow menu) instead.
+            val isTelegramPlaylist = playlist?.playlist?.id?.startsWith("LPtg") == true
+            if (!selection && !isSearching && !isTelegramPlaylist) {
                 item {
                     PlaylistSuggestionsSection(
                         modifier = Modifier.padding(vertical = 16.dp),
@@ -1122,6 +1139,9 @@ fun LocalPlaylistScreen(
                                     } else {
                                         null
                                     },
+                                onAddSongs = {
+                                    navController.navigate(TELEGRAM_BOTS_ROUTE)
+                                },
                             )
                         }
                     }) {
@@ -1159,6 +1179,9 @@ fun LocalPlaylistScreen(
 
         TopAppBar(
             colors = topAppBarColors,
+            windowInsets =
+                WindowInsets(top = systemBarsTopPadding)
+                    .union(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal)),
             title = {
                 if (selection) {
                     val count = selectedPlaylistSongs.size
@@ -1325,6 +1348,9 @@ fun LocalPlaylistScreen(
                                                 } else {
                                                     null
                                                 },
+                                            onAddSongs = {
+                                                navController.navigate(TELEGRAM_BOTS_ROUTE)
+                                            },
                                         )
                                     }
                                 },

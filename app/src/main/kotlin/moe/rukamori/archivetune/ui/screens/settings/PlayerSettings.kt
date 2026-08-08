@@ -7,15 +7,24 @@
 
 package moe.rukamori.archivetune.ui.screens.settings
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -30,12 +39,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -45,6 +56,7 @@ import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.ArchiveTuneCanvasKey
 import moe.rukamori.archivetune.constants.ArtistSeparatorsKey
+import moe.rukamori.archivetune.constants.ArtworkProviderOrderKey
 import moe.rukamori.archivetune.constants.AudioNormalizationKey
 import moe.rukamori.archivetune.constants.AudioOffload
 import moe.rukamori.archivetune.constants.AutoSkipNextOnErrorKey
@@ -55,6 +67,7 @@ import moe.rukamori.archivetune.constants.CrossfadeGaplessKey
 import moe.rukamori.archivetune.constants.DeviceMutePlaybackRecoveryVolumeKey
 import moe.rukamori.archivetune.constants.EnableVideoPlaybackKey
 import moe.rukamori.archivetune.constants.EnablePipModeKey
+import moe.rukamori.archivetune.constants.DefaultArtworkProviderOrder
 import moe.rukamori.archivetune.constants.HISTORY_DURATION_DEFAULT
 import moe.rukamori.archivetune.constants.HistoryDuration
 import moe.rukamori.archivetune.constants.PauseOnDeviceMuteKey
@@ -62,10 +75,13 @@ import moe.rukamori.archivetune.constants.PermanentShuffleKey
 import moe.rukamori.archivetune.constants.PersistentQueueKey
 import moe.rukamori.archivetune.constants.SeekExtraSeconds
 import moe.rukamori.archivetune.constants.SkipSilenceKey
+import moe.rukamori.archivetune.constants.PreferredArtworkProvider
+import moe.rukamori.archivetune.constants.SpotifyCanvasKey
 import moe.rukamori.archivetune.constants.StopMusicOnTaskClearKey
 import moe.rukamori.archivetune.constants.SwipeToSongKey
 import moe.rukamori.archivetune.constants.SwipeSensitivityKey
 import moe.rukamori.archivetune.constants.SwipeThumbnailKey
+import moe.rukamori.archivetune.constants.deserializeArtworkProviderOrder
 import moe.rukamori.archivetune.constants.TidalArtworkFallbackEnabledKey
 import moe.rukamori.archivetune.constants.TidalEnabledKey
 import moe.rukamori.archivetune.constants.WakelockKey
@@ -81,7 +97,10 @@ import moe.rukamori.archivetune.ui.component.SwitchPreference
 import moe.rukamori.archivetune.ui.component.TagsManagementDialog
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.rememberPreference
+import sh.calvin.reorderable.ReorderableItem
+import sh.calvin.reorderable.rememberReorderableLazyListState
 import kotlin.math.roundToInt
+import androidx.compose.foundation.layout.asPaddingValues
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -186,6 +205,15 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
             ArchiveTuneCanvasKey,
             defaultValue = false,
         )
+    // Spotify Canvas: fetch the official Spotify Canvas looping video for the current song
+    // using its YouTube Music video ID via https://mlc.kouzu.in/api/canvas?id=<videoId>.
+    // Defaults to false so existing users don't see surprise network traffic / video playback
+    // until they explicitly opt in.
+    val (spotifyCanvasEnabled, onSpotifyCanvasEnabledChange) =
+        rememberPreference(
+            SpotifyCanvasKey,
+            defaultValue = false,
+        )
     val (tidalEnabled, _) =
         rememberPreference(
             TidalEnabledKey,
@@ -196,6 +224,20 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
             TidalArtworkFallbackEnabledKey,
             defaultValue = false,
         )
+
+    // Artwork provider priority order. The user can rearrange the order in which artwork
+    // providers are tried — whichever is on top gets the most priority. If the top provider
+    // has no artwork for the current song, the resolver falls back to the next one, and so on.
+    val (artworkProviderOrderStr, onArtworkProviderOrderStrChange) =
+        rememberPreference(
+            ArtworkProviderOrderKey,
+            defaultValue = "",
+        )
+    val artworkProviderOrder =
+        remember(artworkProviderOrderStr) {
+            deserializeArtworkProviderOrder(artworkProviderOrderStr)
+        }
+    var showArtworkProviderOrderDialog by remember { mutableStateOf(false) }
 
     val (artistSeparators, onArtistSeparatorsChange) =
         rememberPreference(
@@ -245,6 +287,7 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
     }
 
     Scaffold(
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.player_and_audio)) },
@@ -262,6 +305,11 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
             )
         },
     ) { innerPadding ->
+        val playerAwareBottomPadding =
+            LocalPlayerAwareWindowInsets.current
+                .only(WindowInsetsSides.Bottom)
+                .asPaddingValues()
+                .calculateBottomPadding()
         val topPadding = innerPadding.calculateTopPadding()
         val scrollState = rememberScrollState()
         val positions = rememberPreferencePositions()
@@ -271,9 +319,9 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
         Column(
             Modifier
                 .padding(top = topPadding)
-                .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom))
+                .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal))
                 .verticalScroll(scrollState)
-                .padding(bottom = SettingsDimensions.ScreenBottomPadding),
+                .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
         ) {
             // "Sources" group: music source + lyrics settings now live on the Playback page
             // (moved from the main settings list per Tasks 4 & 5). Each row navigates to its
@@ -501,6 +549,18 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                 }
 
                 item {
+                    Column(modifier = positions.modifierFor("spotify_canvas")) {
+                        SwitchPreference(
+                            title = { Text(stringResource(R.string.spotify_canvas)) },
+                            description = stringResource(R.string.spotify_canvas_desc),
+                            icon = { Icon(painterResource(R.drawable.slow_motion_video), null) },
+                            checked = spotifyCanvasEnabled,
+                            onCheckedChange = onSpotifyCanvasEnabledChange,
+                        )
+                    }
+                }
+
+                item {
                     Column(modifier = positions.modifierFor("tidal_artwork_fallback")) {
                         SwitchPreference(
                             title = { Text(stringResource(R.string.tidal_artwork_fallback)) },
@@ -519,6 +579,28 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                         )
                     }
                 }
+
+                item {
+                    Column(modifier = positions.modifierFor("artwork_priority")) {
+                        PreferenceEntry(
+                            title = { Text(stringResource(R.string.artwork_priority)) },
+                            description = artworkProviderOrder.firstOrNull()?.displayName(),
+                            icon = { Icon(painterResource(R.drawable.filter_alt), null) },
+                            onClick = { showArtworkProviderOrderDialog = true },
+                        )
+                    }
+                }
+            }
+
+            if (showArtworkProviderOrderDialog) {
+                ArtworkProviderOrderDialog(
+                    initialOrder = artworkProviderOrder,
+                    onDismiss = { showArtworkProviderOrderDialog = false },
+                    onConfirm = { newOrder ->
+                        onArtworkProviderOrderStrChange(newOrder.joinToString(",") { it.name })
+                        showArtworkProviderOrderDialog = false
+                    },
+                )
             }
 
             PreferenceGroup(
@@ -618,7 +700,7 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                                 Text(
                                     text = stringResource(R.string.swipe_sensitivity),
                                     style = MaterialTheme.typography.headlineSmall,
-                                    modifier = Modifier.padding(bottom = 16.dp),
+                                    modifier = Modifier.padding(bottom = playerAwareBottomPadding + 16.dp),
                                 )
 
                                 Text(
@@ -627,7 +709,7 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                                         (tempSensitivity * 100).roundToInt(),
                                     ),
                                     style = MaterialTheme.typography.bodyLarge,
-                                    modifier = Modifier.padding(bottom = 16.dp),
+                                    modifier = Modifier.padding(bottom = playerAwareBottomPadding + 16.dp),
                                 )
 
                                 Slider(
@@ -712,6 +794,116 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                             icon = { Icon(painterResource(R.drawable.style), null) },
                             onClick = { showTagsManagementDialog = true },
                         )
+                    }
+                }
+            }
+        }
+    }
+}
+
+internal fun PreferredArtworkProvider.displayName(): String =
+    when (this) {
+        PreferredArtworkProvider.LOCAL_EMBEDDED -> "Local embedded"
+        PreferredArtworkProvider.ORIGINAL_METADATA -> "Original metadata"
+        PreferredArtworkProvider.TIDAL -> "Tidal"
+        PreferredArtworkProvider.SPOTIFY_CANVAS -> "Spotify Canvas"
+        PreferredArtworkProvider.ARCHIVETUNE_CANVAS -> "ArchiveTune Canvas"
+    }
+
+@Composable
+internal fun ArtworkProviderOrderDialog(
+    initialOrder: List<PreferredArtworkProvider>,
+    onDismiss: () -> Unit,
+    onConfirm: (List<PreferredArtworkProvider>) -> Unit,
+) {
+    val providers = remember { mutableStateListOf(*initialOrder.toTypedArray()) }
+    val lazyListState = rememberLazyListState()
+    val reorderableState =
+        rememberReorderableLazyListState(lazyListState) { from, to ->
+            val item = providers.removeAt(from.index)
+            providers.add(to.index, item)
+        }
+
+    DefaultDialog(
+        onDismiss = onDismiss,
+        buttons = {
+            TextButton(
+                onClick = onDismiss,
+                shapes = ButtonDefaults.shapes(),
+            ) {
+                Text(stringResource(android.R.string.cancel))
+            }
+            Spacer(Modifier.weight(1f))
+            TextButton(
+                onClick = { onConfirm(providers.toList()) },
+                shapes = ButtonDefaults.shapes(),
+            ) {
+                Text(stringResource(android.R.string.ok))
+            }
+        },
+    ) {
+        Column(modifier = Modifier.padding(top = 4.dp)) {
+            Text(
+                text = stringResource(R.string.artwork_priority),
+                style = MaterialTheme.typography.headlineSmall,
+                modifier = Modifier.padding(bottom = 12.dp),
+            )
+            LazyColumn(
+                state = lazyListState,
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 440.dp),
+            ) {
+                itemsIndexed(providers, key = { _, item -> item.name }) { index, provider ->
+                    ReorderableItem(reorderableState, key = provider.name) {
+                        val isFirst = index == 0
+                        val containerColor =
+                            if (isFirst) {
+                                MaterialTheme.colorScheme.primaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.surfaceContainerHigh
+                            }
+                        val contentColor =
+                            if (isFirst) {
+                                MaterialTheme.colorScheme.onPrimaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.onSurface
+                            }
+
+                        Row(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = if (index < providers.size - 1) 4.dp else 0.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(containerColor)
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            Text(
+                                text = "${index + 1}",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = contentColor.copy(alpha = 0.7f),
+                                modifier = Modifier.size(20.dp),
+                            )
+                            Text(
+                                text = provider.displayName(),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = contentColor,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Icon(
+                                painter = painterResource(R.drawable.drag_handle),
+                                contentDescription = null,
+                                tint = contentColor.copy(alpha = 0.6f),
+                                modifier =
+                                    Modifier
+                                        .size(20.dp)
+                                        .draggableHandle(),
+                            )
+                        }
                     }
                 }
             }

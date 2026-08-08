@@ -124,6 +124,13 @@ public fun PlaylistMenu(
     songList: List<Song>? = emptyList(),
     onChangeCover: (() -> Unit)? = null,
     onRemoveCover: (() -> Unit)? = null,
+    /**
+     * Optional callback shown only for Telegram-channel playlists (id starts with "LPtg").
+     * Invoked when the user taps "Add songs" in the overflow menu. The caller is expected to
+     * navigate to the Telegram bots page so the user can fetch new songs to add. When null,
+     * the menu item is omitted entirely.
+     */
+    onAddSongs: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val database = LocalDatabase.current
@@ -915,6 +922,33 @@ public fun PlaylistMenu(
                     val isTelegramPlaylist = playlist.playlist.id.startsWith("LPtg")
                     if (isTelegramPlaylist) {
                         val losslessOnly by rememberPreference(TelegramLosslessOnlyKey, defaultValue = false)
+                        // "Add songs" — Telegram-channel playlists get their songs from a
+                        // Telegram bot. Send the user to the bots page so they can pick the
+                        // bot they want to fetch new songs from, then add-to-playlist from
+                        // there. Per the user's spec: "when I click on it, it should take me
+                        // straight to the bots page from where I added those songs."
+                        if (onAddSongs != null) {
+                            ListItem(
+                                headlineContent = { Text(text = stringResource(R.string.telegram_playlist_add_songs)) },
+                                leadingContent = {
+                                    Icon(
+                                        painter = painterResource(R.drawable.solar_add_circle_linear),
+                                        contentDescription = null,
+                                    )
+                                },
+                                modifier =
+                                    Modifier.clickable {
+                                        onDismiss()
+                                        onAddSongs.invoke()
+                                    },
+                                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                            )
+
+                            HorizontalDivider(
+                                modifier = dividerModifier,
+                                color = MaterialTheme.colorScheme.outlineVariant,
+                            )
+                        }
                         ListItem(
                             headlineContent = { Text(text = stringResource(R.string.refresh_telegram_playlist)) },
                             leadingContent = {

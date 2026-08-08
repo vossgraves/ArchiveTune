@@ -547,7 +547,7 @@ fun UpdateScreen(
                     .padding(paddingValues)
                     .windowInsetsPadding(
                         LocalPlayerAwareWindowInsets.current.only(
-                            WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
+                            WindowInsetsSides.Horizontal,
                         ),
                     ),
             contentPadding =

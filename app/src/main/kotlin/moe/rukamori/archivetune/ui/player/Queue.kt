@@ -87,6 +87,7 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.media3.common.Player
 import androidx.media3.common.Timeline
 import androidx.media3.exoplayer.source.ShuffleOrder.DefaultShuffleOrder
 import androidx.navigation.NavController
@@ -582,6 +583,10 @@ fun Queue(
                         shuffleModeEnabled = shuffleModeEnabled,
                         repeatMode = repeatMode,
                         onShuffleClick = {
+                            // Auto-disable repeat when turning shuffle on (mutually exclusive UX).
+                            if (!shuffleModeEnabled) {
+                                playerConnection.player.repeatMode = Player.REPEAT_MODE_OFF
+                            }
                             playerConnection.player.shuffleModeEnabled = !shuffleModeEnabled
                         },
                         onRepeatModeClick = { playerConnection.player.toggleRepeatMode() },
@@ -946,6 +951,10 @@ fun Queue(
                     onRepeatClick = { playerConnection.player.toggleRepeatMode() },
                     onShuffleClick = {
                         coroutineScope.launch(Dispatchers.Main) {
+                            // Auto-disable repeat when turning shuffle on (mutually exclusive UX).
+                            if (!playerConnection.player.shuffleModeEnabled) {
+                                playerConnection.player.repeatMode = Player.REPEAT_MODE_OFF
+                            }
                             playerConnection.player.shuffleModeEnabled = !playerConnection.player.shuffleModeEnabled
                         }
                     },

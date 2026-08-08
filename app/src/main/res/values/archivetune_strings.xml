@@ -385,6 +385,7 @@
     <string name="app_language">App language</string>
     <string name="open_supported_links">Open supported link by default</string>
     <string name="set_first_lyrics_provider">Preferred lyrics provider</string>
+    <string name="artwork_priority">Artwork priority</string>
     <string name="audio_quality_max">Max (beta)</string>
     <!-- Inline music video player controls -->
     <string name="video_fullscreen">Enter fullscreen</string>
@@ -518,8 +519,20 @@
     <string name="crossfade_gapless_description">Do not crossfade consecutive songs from the same album.</string>
     <string name="player_stream_client">Playback client</string>
     <string name="player_stream_client_desc">Controls which playback source is used to fetch streams</string>
+    <string name="player_stream_client_android_vr">Android VR</string>
     <string name="player_stream_client_web_remix">Web Remix</string>
+    <string name="player_stream_client_ios">iOS</string>
+    <string name="player_stream_client_tvhtml5">TV HTML5</string>
+    <string name="player_stream_client_android_music">Android Music</string>
+    <string name="player_stream_client_android_vr_desc">Fast startup with no signature decryption. A good default.</string>
     <string name="player_stream_client_web_remix_desc">Extended format support at the cost of speed. JavaScript signature decryption introduces a ~5–10 second startup delay.</string>
+    <string name="player_stream_client_ios_desc">The iOS app client. Stable, but may limit bitrate on some tracks.</string>
+    <string name="player_stream_client_tvhtml5_desc">The TV client. Try this when other clients are throttled.</string>
+    <string name="player_stream_client_android_music_desc">The YouTube Music app client. Balances speed and compatibility.</string>
+    <string name="auth_webview_youtube_subtitle">Sign in with Google to link your YouTube Music account.</string>
+    <string name="auth_webview_tidal_subtitle">Sign in to Tidal below. ArchiveTune saves the session automatically.</string>
+    <string name="auth_webview_qobuz_subtitle">Sign in to Qobuz below. Your credentials are captured automatically.</string>
+    <string name="auth_webview_deezer_subtitle">Sign in to Deezer below. The session cookie is saved automatically.</string>
     <string name="settings_section_player_content">Player &amp; Content</string>
     <string name="settings_appearance_subtitle">Themes, layout, and visual styles</string>
     <string name="settings_playback_title">Playback</string>

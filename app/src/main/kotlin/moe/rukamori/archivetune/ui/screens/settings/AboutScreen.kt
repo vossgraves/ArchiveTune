@@ -97,6 +97,7 @@ import moe.rukamori.archivetune.viewmodels.AboutUiModel
 import moe.rukamori.archivetune.viewmodels.AboutViewModel
 import moe.rukamori.archivetune.viewmodels.TeamMember
 import moe.rukamori.archivetune.viewmodels.TeamMemberCollection
+import androidx.compose.foundation.layout.asPaddingValues
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -183,9 +184,14 @@ private fun AboutScreenContent(
             )
         },
     ) { innerPadding ->
+        val playerAwareBottomPadding =
+            LocalPlayerAwareWindowInsets.current
+                .only(WindowInsetsSides.Bottom)
+                .asPaddingValues()
+                .calculateBottomPadding()
         val playerAwareInsets =
             LocalPlayerAwareWindowInsets.current.only(
-                WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
+                WindowInsetsSides.Horizontal,
             )
 
         when (state) {
@@ -235,7 +241,7 @@ private fun AboutScreenContent(
                     contentPadding =
                         PaddingValues(
                             top = innerPadding.calculateTopPadding() + AboutSpacing.xs,
-                            bottom = SettingsDimensions.ScreenBottomPadding,
+                            bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding,
                         ),
                     listState = listState,
                 )
