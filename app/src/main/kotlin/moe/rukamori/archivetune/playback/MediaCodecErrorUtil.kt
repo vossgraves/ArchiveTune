@@ -42,7 +42,7 @@ internal fun isRecoverableMediaCodecStateError(error: PlaybackException): Boolea
     val isDecodingErrorCode =
         error.errorCode == PlaybackException.ERROR_CODE_DECODING_FAILED ||
             error.errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED ||
-            error.errorCode == PlaybackException.ERROR_CODE_DECODER_FORMAT_UNSUPPORTED
+            error.errorCode == PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED
 
     val causeChain = generateSequence<Throwable>(error) { it.cause }
     // Match by class type.
