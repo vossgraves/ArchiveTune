@@ -269,14 +269,16 @@ fun ChangelogScreen(
                     }
 
                     releases.isEmpty() && !isLoading -> {
-                        Text(
-                            text = stringResource(R.string.no_releases),
-                            modifier =
-                                Modifier
-                                    .align(Alignment.Center)
-                                    .padding(16.dp),
-                            style = MaterialTheme.typography.bodyLarge,
-                        )
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                text = stringResource(R.string.no_releases),
+                                modifier = Modifier.padding(16.dp),
+                                style = MaterialTheme.typography.bodyLarge,
+                            )
+                        }
                     }
 
                     else -> {
@@ -405,13 +407,12 @@ private val URL_REGEX =
     Regex("(?:^|[\\s])((https?://|www\\.|pic\\.)[\\w-]+(\\.[\\w-]+)+([/?].*)?)")
 
 private fun extractUrls(text: String): List<Pair<IntRange, String>> {
-    val matcher = URL_REGEX.matcher(text)
     val urlList = mutableListOf<Pair<IntRange, String>>()
-    while (matcher.find()) {
-        val url = matcher.group(1)?.trim() ?: continue
-        val range = IntRange(matcher.start(1), matcher.end(1) - 1)
-        val fullUrl = if (url.startsWith("http")) url else "https://$url"
-        urlList.add(range to fullUrl)
+    for (match in URL_REGEX.findAll(text)) {
+        val group = match.groups[1] ?: continue
+        val url = group.value.trim().takeIf { it.isNotEmpty() } ?: continue
+        val range = IntRange(group.range.first, group.range.last)
+        urlList.add(range to (if (url.startsWith("http")) url else "https://$url"))
     }
     return urlList
 }

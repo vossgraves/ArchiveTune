@@ -149,6 +149,7 @@ fun AiIntegrationSettings(
     var showDeeplKeyDialog by rememberSaveable { mutableStateOf(false) }
     var showOpenRouterKeyDialog by rememberSaveable { mutableStateOf(false) }
     var showOpenRouterModelDialog by rememberSaveable { mutableStateOf(false) }
+    var showApiKeyDialog by rememberSaveable { mutableStateOf(false) }
     var showDeeplFormalityDialog by rememberSaveable { mutableStateOf(false) }
     var showTranslateModeDialog by rememberSaveable { mutableStateOf(false) }
     var showTranslateLanguageDialog by rememberSaveable { mutableStateOf(false) }

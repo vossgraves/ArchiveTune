@@ -8667,7 +8667,8 @@ class MusicService :
                             }
                             // Duration delta
                             if (wantedDurationSec != null && song.duration != null) {
-                                val delta = kotlin.math.abs(song.duration - wantedDurationSec)
+                                val candidateDuration = song.duration
+                                val delta = kotlin.math.abs(candidateDuration - wantedDurationSec)
                                 penalty += when {
                                     delta <= 3 -> 0
                                     delta <= 10 -> 2
