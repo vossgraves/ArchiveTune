@@ -31,6 +31,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import org.drinkless.tdlib.TdApi
 import timber.log.Timber
 import java.util.concurrent.ConcurrentHashMap
+import kotlin.coroutines.coroutineContext
 import kotlin.time.Duration.Companion.seconds
 
 object TelegramBotClient {
@@ -94,7 +95,7 @@ object TelegramBotClient {
         // TDLib's ChatTypePrivate doesn't expose is-bot directly; fetch the user to confirm.
         val userId = (chat.type as TdApi.ChatTypePrivate).userId
         val user = runCatching { TelegramClient.send(TdApi.GetUser(userId)) }.getOrNull()
-        if (user != null && !user.isBot) {
+        if (user != null && user.type !is TdApi.UserTypeBot) {
             Timber.tag(TAG).w("resolveBot: @%s is a user, not a bot — refusing", cleaned)
             return null
         }
@@ -108,11 +109,16 @@ object TelegramBotClient {
     suspend fun sendTextMessage(chatId: Long, text: String): TdApi.Message {
         val input = TdApi.InputMessageText(
             TdApi.FormattedText(text, emptyArray()),
-            TdApi.LinkPreviewOptions(true, null, false, false, false),
+            // null = use the user's default link-preview setting; the bot reads the URL from the
+            // message text directly, so preview-on/off is purely a cosmetic concern here.
+            null,
             false,
         )
+        // TDLib 1.8.30+ SendMessage signature: (chatId, MessageTopic topicId, InputMessageReplyTo,
+        // MessageSendOptions, ReplyMarkup, InputMessageContent). Pass null topicId for the default
+        // (non-threaded) topic of a 1:1 bot chat.
         return TelegramClient.send(
-            TdApi.SendMessage(chatId, 0, null, null, null, input),
+            TdApi.SendMessage(chatId, null, null, null, null, input),
         )
     }
 
@@ -186,8 +192,9 @@ object TelegramBotClient {
      * of newly created forwarded messages. Used to push a bot's audio reply into the user's own
      * Telegram channel so the user's library stays in sync.
      *
-     * Implementation note: TdApi.ForwardMessages in TDLib 1.8+ has the signature
-     *   ForwardMessages(chatId, messageThreadId, fromChatId, messageIds, options, sendCopy, removeCaption)
+     * Implementation note: TdApi.ForwardMessages in TDLib 1.8.30+ has the signature
+     *   ForwardMessages(chatId, MessageTopic topicId, fromChatId, messageIds, options, sendCopy, removeCaption)
+     * topicId=null targets the default topic (regular non-threaded chat).
      * sendCopy=false keeps the original sender attribution (matches Telegram's "Forward" UI).
      */
     suspend fun forwardMessages(
@@ -199,7 +206,7 @@ object TelegramBotClient {
         val result = TelegramClient.send(
             TdApi.ForwardMessages(
                 toChatId,
-                0,
+                null,
                 fromChatId,
                 messageIds,
                 null,
