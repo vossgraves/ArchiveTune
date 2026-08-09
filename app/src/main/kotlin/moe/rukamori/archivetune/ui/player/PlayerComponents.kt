@@ -37,6 +37,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -2615,6 +2616,7 @@ private fun V8Artwork(
     Box(
         modifier =
             Modifier
+                .aspectRatio(1f)
                 .size(size)
                 .clip(RoundedCornerShape(8.dp))
                 .background(if (showVideo) Color.Black else Color.White.copy(alpha = 0.08f)),
@@ -3550,6 +3552,7 @@ private fun V9Artwork(
     Box(
         modifier =
             Modifier
+                .aspectRatio(1f)
                 .size(size)
                 .clip(RoundedCornerShape(30.dp))
                 .background(if (showVideo) Color.Black else placeholderColor),
@@ -4228,71 +4231,25 @@ fun PlayerBackground(
                     if (colors.isNotEmpty()) {
                         val infiniteTransition = rememberInfiniteTransition(label = "GlowAnimation")
 
-                        val progress by infiniteTransition.animateFloat(
-                            initialValue = 0f,
-                            targetValue = 1f,
-                            animationSpec =
-                                infiniteRepeatable(
-                                    animation = tween(20000, easing = LinearEasing),
-                                    repeatMode = RepeatMode.Restart,
-                                ),
-                            label = "glowProgress",
-                        )
-
-                        fun rotatedColorAt(index: Int): Color {
-                            val size = colors.size
-                            val idx = index.toFloat() + progress * size
-                            val a = kotlin.math.floor(idx).toInt() % size
-                            val b = (a + 1) % size
-                            val frac = idx - kotlin.math.floor(idx)
-                            return androidx.compose.ui.graphics.lerp(
-                                colors.getOrElse(a) { Color.DarkGray },
-                                colors.getOrElse(b) { Color.DarkGray },
-                                frac,
+                        // Deferred draw-phase read: keep this as a State<Float> (no `by`) and
+                        // only touch .value inside drawWithCache below. Reading it here via
+                        // `by` would re-run this entire composable (including the enclosing
+                        // AnimatedContent) on every animation frame for as long as this
+                        // background style is visible -- the exact anti-pattern already fixed
+                        // for the moving-blur drift in AppleMusicPlayer.kt. Deferring it keeps
+                        // the 20s glow rotation from stealing frame budget from anything else
+                        // on screen (e.g. word-synced lyrics).
+                        val progressState =
+                            infiniteTransition.animateFloat(
+                                initialValue = 0f,
+                                targetValue = 1f,
+                                animationSpec =
+                                    infiniteRepeatable(
+                                        animation = tween(20000, easing = LinearEasing),
+                                        repeatMode = RepeatMode.Restart,
+                                    ),
+                                label = "glowProgress",
                             )
-                        }
-
-                        fun oscillate(
-                            min: Float,
-                            max: Float,
-                            phase: Float,
-                            speed: Float = 1f,
-                        ): Float {
-                            // speed MUST be an integer to ensure seamless looping when progress wraps from 1f to 0f.
-                            val v = kotlin.math.sin(2f * kotlin.math.PI.toFloat() * (progress * speed + phase)).toFloat()
-                            return min + (max - min) * ((v + 1f) * 0.5f)
-                        }
-
-                        val color1 = rotatedColorAt(0)
-                        val color2 = rotatedColorAt(1)
-                        val color3 = rotatedColorAt(2)
-                        val color4 = rotatedColorAt(3)
-                        val color5 = rotatedColorAt(4)
-                        val color6 = rotatedColorAt(5)
-
-                        val o1x = oscillate(0.0f, 1.0f, 0.00f, 1.0f)
-                        val o1y = oscillate(0.0f, 0.5f, 0.07f, 1.0f)
-                        val r1 = oscillate(0.8f, 1.6f, 0.12f, 1.0f)
-
-                        val o2x = oscillate(1.0f, 0.0f, 0.2f, 1.0f)
-                        val o2y = oscillate(0.5f, 1.0f, 0.25f, 1.0f)
-                        val r2 = oscillate(0.7f, 1.5f, 0.18f, 1.0f)
-
-                        val o3x = oscillate(0.2f, 0.8f, 0.33f, 1.0f)
-                        val o3y = oscillate(0.8f, 0.2f, 0.36f, 1.0f)
-                        val r3 = oscillate(0.6f, 1.4f, 0.29f, 1.0f)
-
-                        val o4x = oscillate(0.3f, 0.7f, 0.44f, 1.0f)
-                        val o4y = oscillate(0.2f, 0.8f, 0.41f, 1.0f)
-                        val r4 = oscillate(0.9f, 1.7f, 0.47f, 1.0f)
-
-                        val o5x = oscillate(0.4f, 0.6f, 0.55f, 1.0f)
-                        val o5y = oscillate(0.0f, 1.0f, 0.51f, 1.0f)
-                        val r5 = oscillate(0.7f, 1.5f, 0.58f, 1.0f)
-
-                        val o6x = oscillate(0.0f, 1.0f, 0.66f, 1.0f)
-                        val o6y = oscillate(0.5f, 0.7f, 0.62f, 1.0f)
-                        val r6 = oscillate(0.8f, 1.8f, 0.69f, 1.0f)
 
                         Box(
                             modifier =
@@ -4303,44 +4260,108 @@ fun PlayerBackground(
                                         val height = size.height
                                         val baseColor = Color(0xFF050505)
 
-                                        val brush1 =
-                                            Brush.radialGradient(
-                                                colors = listOf(color1.copy(alpha = 0.85f), color1.copy(alpha = 0.5f), Color.Transparent),
-                                                center = Offset(width * o1x, height * o1y),
-                                                radius = width * r1,
+                                        fun rotatedColorAt(
+                                            index: Int,
+                                            progress: Float,
+                                        ): Color {
+                                            val size = colors.size
+                                            val idx = index.toFloat() + progress * size
+                                            val a = kotlin.math.floor(idx).toInt() % size
+                                            val b = (a + 1) % size
+                                            val frac = idx - kotlin.math.floor(idx)
+                                            return androidx.compose.ui.graphics.lerp(
+                                                colors.getOrElse(a) { Color.DarkGray },
+                                                colors.getOrElse(b) { Color.DarkGray },
+                                                frac,
                                             )
-                                        val brush2 =
-                                            Brush.radialGradient(
-                                                colors = listOf(color2.copy(alpha = 0.8f), color2.copy(alpha = 0.45f), Color.Transparent),
-                                                center = Offset(width * o2x, height * o2y),
-                                                radius = width * r2,
-                                            )
-                                        val brush3 =
-                                            Brush.radialGradient(
-                                                colors = listOf(color3.copy(alpha = 0.75f), color3.copy(alpha = 0.4f), Color.Transparent),
-                                                center = Offset(width * o3x, height * o3y),
-                                                radius = width * r3,
-                                            )
-                                        val brush4 =
-                                            Brush.radialGradient(
-                                                colors = listOf(color4.copy(alpha = 0.7f), color4.copy(alpha = 0.35f), Color.Transparent),
-                                                center = Offset(width * o4x, height * o4y),
-                                                radius = width * r4,
-                                            )
-                                        val brush5 =
-                                            Brush.radialGradient(
-                                                colors = listOf(color5.copy(alpha = 0.65f), color5.copy(alpha = 0.3f), Color.Transparent),
-                                                center = Offset(width * o5x, height * o5y),
-                                                radius = width * r5,
-                                            )
-                                        val brush6 =
-                                            Brush.radialGradient(
-                                                colors = listOf(color6.copy(alpha = 0.6f), color6.copy(alpha = 0.25f), Color.Transparent),
-                                                center = Offset(width * o6x, height * o6y),
-                                                radius = width * r6,
-                                            )
+                                        }
+
+                                        fun oscillate(
+                                            min: Float,
+                                            max: Float,
+                                            phase: Float,
+                                            progress: Float,
+                                            speed: Float = 1f,
+                                        ): Float {
+                                            // speed MUST be an integer to ensure seamless looping when progress wraps from 1f to 0f.
+                                            val v = kotlin.math.sin(2f * kotlin.math.PI.toFloat() * (progress * speed + phase)).toFloat()
+                                            return min + (max - min) * ((v + 1f) * 0.5f)
+                                        }
 
                                         onDrawBehind {
+                                            // Read .value here, in the draw phase, so this whole
+                                            // block re-runs on every animation tick without
+                                            // forcing the composable above to recompose.
+                                            val progress = progressState.value
+
+                                            val color1 = rotatedColorAt(0, progress)
+                                            val color2 = rotatedColorAt(1, progress)
+                                            val color3 = rotatedColorAt(2, progress)
+                                            val color4 = rotatedColorAt(3, progress)
+                                            val color5 = rotatedColorAt(4, progress)
+                                            val color6 = rotatedColorAt(5, progress)
+
+                                            val o1x = oscillate(0.0f, 1.0f, 0.00f, progress, 1.0f)
+                                            val o1y = oscillate(0.0f, 0.5f, 0.07f, progress, 1.0f)
+                                            val r1 = oscillate(0.8f, 1.6f, 0.12f, progress, 1.0f)
+
+                                            val o2x = oscillate(1.0f, 0.0f, 0.2f, progress, 1.0f)
+                                            val o2y = oscillate(0.5f, 1.0f, 0.25f, progress, 1.0f)
+                                            val r2 = oscillate(0.7f, 1.5f, 0.18f, progress, 1.0f)
+
+                                            val o3x = oscillate(0.2f, 0.8f, 0.33f, progress, 1.0f)
+                                            val o3y = oscillate(0.8f, 0.2f, 0.36f, progress, 1.0f)
+                                            val r3 = oscillate(0.6f, 1.4f, 0.29f, progress, 1.0f)
+
+                                            val o4x = oscillate(0.3f, 0.7f, 0.44f, progress, 1.0f)
+                                            val o4y = oscillate(0.2f, 0.8f, 0.41f, progress, 1.0f)
+                                            val r4 = oscillate(0.9f, 1.7f, 0.47f, progress, 1.0f)
+
+                                            val o5x = oscillate(0.4f, 0.6f, 0.55f, progress, 1.0f)
+                                            val o5y = oscillate(0.0f, 1.0f, 0.51f, progress, 1.0f)
+                                            val r5 = oscillate(0.7f, 1.5f, 0.58f, progress, 1.0f)
+
+                                            val o6x = oscillate(0.0f, 1.0f, 0.66f, progress, 1.0f)
+                                            val o6y = oscillate(0.5f, 0.7f, 0.62f, progress, 1.0f)
+                                            val r6 = oscillate(0.8f, 1.8f, 0.69f, progress, 1.0f)
+
+                                            val brush1 =
+                                                Brush.radialGradient(
+                                                    colors = listOf(color1.copy(alpha = 0.85f), color1.copy(alpha = 0.5f), Color.Transparent),
+                                                    center = Offset(width * o1x, height * o1y),
+                                                    radius = width * r1,
+                                                )
+                                            val brush2 =
+                                                Brush.radialGradient(
+                                                    colors = listOf(color2.copy(alpha = 0.8f), color2.copy(alpha = 0.45f), Color.Transparent),
+                                                    center = Offset(width * o2x, height * o2y),
+                                                    radius = width * r2,
+                                                )
+                                            val brush3 =
+                                                Brush.radialGradient(
+                                                    colors = listOf(color3.copy(alpha = 0.75f), color3.copy(alpha = 0.4f), Color.Transparent),
+                                                    center = Offset(width * o3x, height * o3y),
+                                                    radius = width * r3,
+                                                )
+                                            val brush4 =
+                                                Brush.radialGradient(
+                                                    colors = listOf(color4.copy(alpha = 0.7f), color4.copy(alpha = 0.35f), Color.Transparent),
+                                                    center = Offset(width * o4x, height * o4y),
+                                                    radius = width * r4,
+                                                )
+                                            val brush5 =
+                                                Brush.radialGradient(
+                                                    colors = listOf(color5.copy(alpha = 0.65f), color5.copy(alpha = 0.3f), Color.Transparent),
+                                                    center = Offset(width * o5x, height * o5y),
+                                                    radius = width * r5,
+                                                )
+                                            val brush6 =
+                                                Brush.radialGradient(
+                                                    colors = listOf(color6.copy(alpha = 0.6f), color6.copy(alpha = 0.25f), Color.Transparent),
+                                                    center = Offset(width * o6x, height * o6y),
+                                                    radius = width * r6,
+                                                )
+
                                             drawRect(color = baseColor)
                                             drawRect(brush = brush1)
                                             drawRect(brush = brush2)

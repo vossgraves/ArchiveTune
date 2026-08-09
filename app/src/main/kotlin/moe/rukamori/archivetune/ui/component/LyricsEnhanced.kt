@@ -185,7 +185,11 @@ fun LyricsEnhanced(
 
     val (lyricsClick) = rememberPreference(LyricsClickKey, defaultValue = true)
     val (lyricsTextSize) = rememberPreference(LyricsTextSizeKey, defaultValue = 26f)
-    val (lyricsLineBlurPreference) = rememberPreference(LyricsLineBlurKey, defaultValue = true)
+    // Per-line RenderEffect blur (see useBlurEffect below) is the single heaviest
+    // per-frame cost in the karaoke view -- default it OFF so word-synced lyrics
+    // are smooth out of the box; users who want the effect can re-enable it in
+    // Settings > Lyrics.
+    val (lyricsLineBlurPreference) = rememberPreference(LyricsLineBlurKey, defaultValue = false)
     val (romanizeChinese) = rememberPreference(LyricsRomanizeChineseKey, defaultValue = true)
     val (romanizeHindi) = rememberPreference(LyricsRomanizeHindiKey, defaultValue = true)
     val (romanizeJapanese) = rememberPreference(LyricsRomanizeJapaneseKey, defaultValue = true)

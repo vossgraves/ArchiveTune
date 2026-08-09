@@ -61,6 +61,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -240,7 +241,10 @@ fun LyricsV2(
     val (lyricsScroll) = rememberPreference(LyricsScrollKey, defaultValue = true)
     val (lyricsTextSize) = rememberPreference(LyricsTextSizeKey, defaultValue = 26f)
     val (lyricsLineSpacing) = rememberPreference(LyricsLineSpacingKey, defaultValue = 1.3f)
-    val (lyricsLineBlurPreference) = rememberPreference(LyricsLineBlurKey, defaultValue = true)
+    // Modifier.blur() is applied to every visible line continuously while lyrics is
+    // open (see the .blur() call below) -- it is the heaviest per-frame cost in this
+    // view. Default OFF so word-synced lyrics are smooth out of the box.
+    val (lyricsLineBlurPreference) = rememberPreference(LyricsLineBlurKey, defaultValue = false)
     val (bounceFactorPreference) = rememberPreference(LyricsV2BounceFactorKey, defaultValue = 1f)
     val (glowFactorPreference) = rememberPreference(LyricsV2GlowFactorKey, defaultValue = 1f)
     val (fillTransitionWidth) = rememberPreference(LyricsV2FillTransitionWidthKey, defaultValue = 8f)
@@ -402,6 +406,16 @@ fun LyricsV2(
     val currentPositionProvider: () -> Long =
         remember { { currentPositionMsState.longValue } }
 
+    // rememberUpdatedState so the playback loop always sees the latest
+    // sliderPositionProvider lambda. Without this, if the caller's lambda
+    // identity changes between recompositions (e.g. in the Apple Music
+    // player where the lyrics overlay sits inside an AnimatedVisibility
+    // whose parent recomposes on every position tick), the LaunchedEffect
+    // would keep capturing the OLD lambda and never see new positions —
+    // making the V2 lyrics appear frozen ("don't animate at all").
+    // LyricsEnhanced already does this; V2 was missing it.
+    val latestSliderPositionProvider = rememberUpdatedState(sliderPositionProvider)
+
     LaunchedEffect(entriesWithWords, isSynced, leadMs, lyricsSyncOffset) {
         if (!isSynced || entriesWithWords.isEmpty()) return@LaunchedEffect
         // 16 ms recomposes every visible word ~60×/s; with animations disabled a coarser tick is
@@ -421,7 +435,7 @@ fun LyricsV2(
         // the actual frame rate so the two stay in lock-step.
         val useFrameClock = !v2AnimationsDisabled && isTtmlFormat
         while (isActive) {
-            val sliderPos = sliderPositionProvider()
+            val sliderPos = latestSliderPositionProvider.value()
             val pos = sliderPos ?: player.currentPosition
 
             playbackPositionMs = (pos + lyricsSyncOffset.toLong()).coerceAtLeast(0L)

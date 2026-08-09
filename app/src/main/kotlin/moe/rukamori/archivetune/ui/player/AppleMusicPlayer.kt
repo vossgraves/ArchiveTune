@@ -51,9 +51,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -75,6 +75,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
@@ -90,6 +91,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.GraphicsLayerScope
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
@@ -104,6 +106,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.Player.STATE_ENDED
 import androidx.media3.ui.AspectRatioFrameLayout
@@ -118,11 +121,10 @@ import coil3.toBitmap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import moe.rukamori.archivetune.LocalAnimationsDisabled
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.R
-import moe.rukamori.archivetune.constants.AutoHideLyricsPlayerControlsKey
-import moe.rukamori.archivetune.constants.ShowLyricsPlayerControlsKey
 import moe.rukamori.archivetune.constants.ThumbnailCornerRadiusKey
 import moe.rukamori.archivetune.db.entities.FormatEntity
 import moe.rukamori.archivetune.db.entities.codecLabel
@@ -208,6 +210,13 @@ fun AppleMusicPlayerContent(
     // in below. Clicking the mini header artwork restores the COVER state.
     var lyricsOpen by remember { mutableStateOf(false) }
 
+    // Low-RAM / "reduce animations" signal -- also used to gate the karaoke
+    // line-blur RenderEffect (see LyricsEnhanced/LyricsV2). Reused below to drop
+    // the slide component of the auto-hide controls transition, since a slide
+    // forces an extra layout pass on top of whatever the lyrics view is already
+    // spending its frame budget on.
+    val animationsDisabled = LocalAnimationsDisabled.current
+
     // Toggling one closes the other — queue and lyrics are mutually exclusive
     // (only one morph target can be active at a time).
     val toggleQueue = {
@@ -241,25 +250,17 @@ fun AppleMusicPlayerContent(
         lyricsOpen = false
     }
 
-    // === Lyrics auto-hide controls (mirrors LyricsScreen / Vivi Music logic) ===
-    // When the in-place lyrics view is open, the bottom controls (seekbar +
-    // transport + volume + action row) auto-hide after 3 seconds. Touching
-    // anywhere or scrolling the lyrics restores them and restarts the timer.
+    // === Auto-hide player controls (always-on in Apple Music style) ===
+    // The in-place Apple Music lyrics view ALWAYS auto-hides the bottom
+    // controls (seekbar + transport + volume + action row) after 3 seconds.
+    // Touching anywhere on the lyrics restores them and restarts the timer.
+    // This is hardcoded behavior — there is no toggle in the LyricsMenu
+    // overflow because the Apple Music style is designed to auto-hide.
+    // The standalone LyricsScreen still has the toggle (for other player
+    // styles that use it).
     var playerControlsExpanded by remember(mediaMetadata.id) { mutableStateOf(true) }
     var playerControlsVisibilityTick by remember(mediaMetadata.id) { mutableIntStateOf(0) }
     val autoHideDelayMs = 3_000L
-
-    val showPlayerControlsState =
-        rememberPreference(ShowLyricsPlayerControlsKey, true)
-    val onShowPlayerControlsChange =
-        remember(showPlayerControlsState) {
-            { showControls: Boolean ->
-                showPlayerControlsState.value = showControls
-                playerControlsExpanded = showControls
-            }
-        }
-    val (autoHidePlayerControls, _) =
-        rememberPreference(AutoHideLyricsPlayerControlsKey, false)
 
     LaunchedEffect(lyricsOpen) {
         if (lyricsOpen) {
@@ -269,25 +270,54 @@ fun AppleMusicPlayerContent(
             playerControlsExpanded = true
         }
     }
-    LaunchedEffect(lyricsOpen, autoHidePlayerControls, playerControlsVisibilityTick) {
-        if (!lyricsOpen || !autoHidePlayerControls) return@LaunchedEffect
+    LaunchedEffect(lyricsOpen, playerControlsVisibilityTick) {
+        if (!lyricsOpen) return@LaunchedEffect
         playerControlsExpanded = true
         delay(autoHideDelayMs)
         playerControlsExpanded = false
     }
-    val pokePlayerControlsVisibility = {
-        if (lyricsOpen && autoHidePlayerControls) {
-            playerControlsExpanded = true
-            playerControlsVisibilityTick++
+    val pokePlayerControlsVisibility = remember {
+        {
+            if (lyricsOpen) {
+                playerControlsExpanded = true
+                playerControlsVisibilityTick++
+            }
         }
+    }
+
+    // === Deferred position reads for the lyrics overlay ===
+    // `position` updates every 100ms (from Player.kt's polling loop) and
+    // `sliderPosition` changes during scrubbing. If the lyrics overlay's
+    // AnimatedVisibility content lambda reads them directly, it recomposes
+    // every 100ms — recreating the lyricsPosProvider lambda, re-invoking
+    // the Box/Column/LyricsEnhanced calls, and stealing frame budget from
+    // the karaoke syllable sweep. By wrapping them in rememberUpdatedState
+    // and capturing them in a stable remember'd lambda, the overlay content
+    // never recomposes on position changes — only the State objects update,
+    // and the lambda reads them lazily when the lyrics frame loop polls.
+    val sliderPositionState = rememberUpdatedState(sliderPosition)
+    val positionState = rememberUpdatedState(position)
+    val lyricsPosProvider = remember {
+        { sliderPositionState.value ?: positionState.value }
     }
 
     // === Moving blur drift for the backdrop when lyrics is open ===
     // Mirrors the MovingBlurBackground from LyricsScreen: the blurred artwork
     // slowly drifts horizontally and vertically, creating an ambient motion
     // behind the lyrics. Only active when lyricsOpen = true.
+    //
+    // CRITICAL PERF: we keep the State<Float> objects (NOT `by` delegation) so
+    // the animation values are read ONLY inside Modifier.graphicsLayer { }
+    // lambdas (draw-phase deferred reads). Reading them during composition —
+    // e.g. `val backdropDriftX = if (lyricsOpen) blurDriftX else 0f` — would
+    // invalidate the ENTIRE AppleMusicPlayerContent composable every frame
+    // (SharedTransitionLayout, AnimatedContent, ControlsColumn, and the inline
+    // LyricsEnhanced all recompose at ~60fps), stealing the frame budget from
+    // the karaoke syllable sweep. This was the root cause of the Apple-Music-
+    // style-only lyrics jank — LyricsScreen.kt doesn't have it because its
+    // drift lives in a separate MovingBlurBackground composable.
     val blurTransition = rememberInfiniteTransition(label = "am-lyrics-blur-drift")
-    val blurDriftX by blurTransition.animateFloat(
+    val blurDriftXState = blurTransition.animateFloat(
         initialValue = -80f,
         targetValue = 80f,
         animationSpec = infiniteRepeatable(
@@ -296,7 +326,7 @@ fun AppleMusicPlayerContent(
         ),
         label = "am-lyrics-drift-x",
     )
-    val blurDriftY by blurTransition.animateFloat(
+    val blurDriftYState = blurTransition.animateFloat(
         initialValue = -60f,
         targetValue = 60f,
         animationSpec = infiniteRepeatable(
@@ -305,9 +335,9 @@ fun AppleMusicPlayerContent(
         ),
         label = "am-lyrics-drift-y",
     )
-    val backdropDriftX = if (lyricsOpen) blurDriftX else 0f
-    val backdropDriftY = if (lyricsOpen) blurDriftY else 0f
-    val backdropDriftScale = if (lyricsOpen) 1.4f else 1.2f
+    // Pre-compute dp→px once (graphicsLayer.translationX is in pixels). Density
+    // doesn't change per-frame so this is a one-time composition-phase read.
+    val driftDpToPx = with(LocalDensity.current) { 1.dp.toPx() }
 
     val baseArtworkUrl = mediaMetadata.thumbnailUrl?.highRes()
     val thumbnailSwapState =
@@ -338,28 +368,20 @@ fun AppleMusicPlayerContent(
     val onMoreClick = {
         if (lyricsOpen) {
             // When lyrics is open, the overflow menu shows the LyricsMenu
-            // (Edit / Refetch / Translate / Sync offset / Search + the
-            // "Show player controls" and "Auto-hide controls" toggles)
-            // instead of the regular PlayerMenu. Mirrors the full-screen
-            // LyricsScreen behavior.
+            // (Edit / Refetch / Translate / Sync offset / Search) instead of
+            // the regular PlayerMenu. The "Show player controls" and
+            // "Auto-hide player controls" toggles are NOT passed at all —
+            // the in-place Apple Music lyrics view does not support auto-hide
+            // (controls are always visible), so those toggles would be no-ops.
+            // showControlsToggles = false hides them from the UI.
             menuState.show {
                 LyricsMenu(
                     lyricsProvider = { currentLyrics },
                     mediaMetadataProvider = { mediaMetadata },
                     lyricsSyncOffset = lyricsSyncOffset,
                     onLyricsSyncOffsetChange = onLyricsSyncOffsetChange,
-                    showPlayerControlsState = showPlayerControlsState,
-                    onShowPlayerControlsChange = onShowPlayerControlsChange,
-                    onAutoHidePlayerControlsChange = { enabled ->
-                        // LyricsMenu already updates the preference internally;
-                        // this callback just triggers the UI update so the
-                        // controls expand/restart the auto-hide timer.
-                        if (enabled && lyricsOpen) {
-                            playerControlsExpanded = true
-                            playerControlsVisibilityTick++
-                        }
-                    },
                     onDismiss = menuState::dismiss,
+                    showControlsToggles = false,
                 )
             }
         } else {
@@ -445,11 +467,80 @@ fun AppleMusicPlayerContent(
         }
 
         if (!videoShowing) {
-            if (useCanvasBackdrop) {
-                // Canvas-driven backdrop: a second CanvasArtworkPlayer instance rendered
-                // behind the controls with a heavy blur. This makes the backdrop follow
-                // the canvas video in real time — matching Apple Music's player where the
-                // ambient blur behind the controls mirrors whatever is on screen.
+            // Backdrop rendering is state-aware to avoid jank:
+            //
+            // • COVER state — render the live canvas (or static artwork) with
+            //   heavy blur, no drift. The drift values collapse to 0/1.2 when
+            //   lyricsOpen=false, so the offset/scale modifiers are no-ops.
+            //
+            // • QUEUE state — same as COVER: live canvas backdrop (blurred).
+            //   A second non-blurred canvas in the QUEUE state Box makes the
+            //   canvas visibly continue playing behind the queue list's haze
+            //   overlay. (Both canvases run without drift animation, so the
+            //   frame budget is fine.)
+            //
+            // • LYRICS state — DON'T render the live canvas backdrop. A
+            //   TextureView + Modifier.blur + per-frame animated offset is the
+            //   single biggest source of GPU stalls on Android — it makes the
+            //   karaoke syllable sweep, instrumental pulsing dots, and the
+            //   moving blur itself all stutter. Instead, render a STATIC
+            //   AsyncImage (album art) with Modifier.blur + drift. The drift
+            //   on a static image is cheap (just a matrix transform), and the
+            //   visual matches the standalone LyricsScreen.kt MovingBlurBackground
+            //   exactly. The canvas is also removed from the LYRICS state Box
+            //   below, so there's exactly zero video decoders running while
+            //   the user reads lyrics — maximum frame budget for lyrics
+            //   animations.
+            // Helper: deferred-read graphicsLayer for the drift. Reads the
+            // animation State<Float> inside the lambda (draw phase) so the
+            // parent composable is NOT invalidated every frame.
+            val driftGraphicsLayer: GraphicsLayerScope.() -> Unit = {
+                // lyricsOpen is a stable Boolean state — reading it here is a
+                // deferred read that only triggers a layer update on toggle.
+                val active = lyricsOpen
+                val scale = if (active) 1.4f else 1.2f
+                scaleX = scale
+                scaleY = scale
+                if (active) {
+                    // State.value reads are deferred to the draw phase.
+                    translationX = blurDriftXState.value * driftDpToPx
+                    translationY = blurDriftYState.value * driftDpToPx
+                }
+            }
+            if (lyricsOpen) {
+                // LYRICS: static image with blur + drift (matches LyricsScreen.kt's MovingBlurBackground).
+                if (isPreS && preBlurredBitmap != null) {
+                    Image(
+                        bitmap = preBlurredBitmap!!.asImageBitmap(),
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier =
+                            Modifier
+                                .matchParentSize()
+                                .graphicsLayer(driftGraphicsLayer),
+                    )
+                } else {
+                    AsyncImage(
+                        model = artworkRequest ?: artworkUrl,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier =
+                            Modifier
+                                .matchParentSize()
+                                .then(
+                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                        Modifier.blur(64.dp)
+                                    } else {
+                                        Modifier
+                                    },
+                                ).graphicsLayer(driftGraphicsLayer),
+                    )
+                }
+            } else if (useCanvasBackdrop) {
+                // COVER / QUEUE: live canvas backdrop (blurred), no drift.
+                // The driftGraphicsLayer lambda collapses translationX/Y to 0
+                // when lyricsOpen=false, so only the fixed 1.2x scale applies —
+                // effectively a static blur on a moving video surface.
                 CanvasArtworkPlayer(
                     primaryUrl = canvasPrimaryUrl,
                     fallbackUrl = canvasFallbackUrl,
@@ -459,11 +550,7 @@ fun AppleMusicPlayerContent(
                         Modifier
                             .matchParentSize()
                             .blur(72.dp)
-                            .graphicsLayer {
-                                scaleX = backdropDriftScale
-                                scaleY = backdropDriftScale
-                            }
-                            .offset(x = backdropDriftX.dp, y = backdropDriftY.dp),
+                            .graphicsLayer(driftGraphicsLayer),
                 )
             } else if (isPreS && preBlurredBitmap != null) {
                 Image(
@@ -473,11 +560,7 @@ fun AppleMusicPlayerContent(
                     modifier =
                         Modifier
                             .matchParentSize()
-                            .graphicsLayer {
-                                scaleX = backdropDriftScale
-                                scaleY = backdropDriftScale
-                            }
-                            .offset(x = backdropDriftX.dp, y = backdropDriftY.dp),
+                            .graphicsLayer(driftGraphicsLayer),
                 )
             } else {
                 // Either Android 12+ (use Modifier.blur) or pre-S but the pre-blur hasn't
@@ -495,11 +578,7 @@ fun AppleMusicPlayerContent(
                                 } else {
                                     Modifier
                                 },
-                            ).graphicsLayer {
-                                scaleX = backdropDriftScale
-                                scaleY = backdropDriftScale
-                            }
-                            .offset(x = backdropDriftX.dp, y = backdropDriftY.dp),
+                            ).graphicsLayer(driftGraphicsLayer),
                 )
             }
             val preBlurLoading = isPreS && preBlurredBitmap == null && !canvasActive
@@ -566,6 +645,7 @@ fun AppleMusicPlayerContent(
                         Modifier
                             .weight(1f)
                             .fillMaxHeight()
+                            .navigationBarsPadding()
                             .padding(bottom = contentBottomPadding),
                 )
             }
@@ -577,11 +657,30 @@ fun AppleMusicPlayerContent(
             // controls (seekbar + transport + volume + bottom row) live outside the
             // SharedTransitionLayout so they stay anchored at the bottom — matching
             // ViviMusic's Player_v2 layout exactly.
+            //
+            // The lyrics composable is rendered as a SEPARATE overlay ON TOP of the
+            // SharedTransitionLayout (inside the same weighted Box), but OUTSIDE
+            // the SharedTransitionLayout itself. This is critical for two reasons:
+            //
+            // 1. PERFORMANCE: rendering LyricsEnhanced inside the SharedTransitionLayout
+            //    caused the karaoke syllable fill animation to stutter because the
+            //    shared transition machinery's per-frame tracking stole frame budget.
+            //    The overlay approach gives the lyrics animations the full frame
+            //    budget, matching the standalone LyricsScreen's performance.
+            //
+            // 2. TOUCH ROUTING: the lyrics overlay is bounded to the weighted Box
+            //    (the morph area), so it CANNOT extend over the controls below.
+            //    Previously the overlay used fillMaxSize on the outer Box, covering
+            //    the controls and making them uninteractable when lyrics was open.
+            //    Now the overlay is a sibling of SharedTransitionLayout inside the
+            //    weighted Box, and the controls live in a separate AnimatedVisibility
+            //    below the Box — touches on the controls go directly to the controls.
             Column(
                 modifier = Modifier.fillMaxSize(),
             ) {
+                Box(modifier = Modifier.weight(1f)) {
                 SharedTransitionLayout(
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.fillMaxSize(),
                 ) {
                     AnimatedContent(
                         targetState = morphState,
@@ -646,36 +745,16 @@ fun AppleMusicPlayerContent(
                                         .fillMaxSize()
                                         .windowInsetsPadding(WindowInsets(top = LocalStableSystemBarsTopPadding.current)),
                             ) {
-                                // Canvas continues playing behind the queue/lyrics
-                                // content so it doesn't "stop" when the user opens
-                                // the queue (Issue: Spotify canvas stops playing).
-                                if (canvasActive && !videoShowing) {
-                                    CanvasArtworkPlayer(
-                                        primaryUrl = canvasPrimaryUrl,
-                                        fallbackUrl = canvasFallbackUrl,
-                                        isPlaying = isPlaying,
-                                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
-                                        modifier = Modifier.matchParentSize(),
-                                    )
-                                }
-                                // Touch-to-restore: when auto-hide is active and the
-                                // controls are hidden, any touch on the lyrics area
-                                // restores them and restarts the 3s timer. Uses
-                                // consumeUnhandledPointerInput so the lyrics can still
-                                // handle scroll/click normally.
-                                Box(
-                                    modifier =
-                                        Modifier
-                                            .fillMaxSize()
-                                            .consumeUnhandledPointerInput()
-                                            .pointerInput(lyricsOpen, autoHidePlayerControls) {
-                                                if (!lyricsOpen || !autoHidePlayerControls) return@pointerInput
-                                                awaitEachGesture {
-                                                    awaitFirstDown(requireUnconsumed = false)
-                                                    pokePlayerControlsVisibility()
-                                                }
-                                            },
-                                )
+                                // The blurred backdrop (rendered at the top level
+                                // above) already contains the canvas with
+                                // Modifier.blur(72.dp) when useCanvasBackdrop is
+                                // true. We intentionally do NOT render a second
+                                // non-blurred canvas here — the previous
+                                // implementation did that, which covered the
+                                // blurred backdrop and made it look like the
+                                // blur "went away" when the queue opened.
+                                // The queue sheet renders on a transparent
+                                // background so the blurred canvas shows through.
                                 Column(modifier = Modifier.fillMaxSize()) {
                                     AppleMusicMiniHeader(
                                         artworkRequest = artworkRequest,
@@ -706,58 +785,102 @@ fun AppleMusicPlayerContent(
                                                             ) { it / 4 },
                                                     ),
                                         )
-                                    } else {
-                                        // LYRICS state: inline lyrics composable with the same
-                                        // slide-in/fade animation as the queue sheet. Uses the
-                                        // same LyricsMode preference as the full-screen
-                                        // LyricsScreen (V2 or Enhanced).
-                                        val lyricsMode by rememberEnumPreference(LyricsModeKey, LyricsMode.ENHANCED)
-                                        val lyricsModifier =
-                                            Modifier
-                                                .fillMaxSize()
-                                                .animateEnterExit(
-                                                    enter = slideInVertically(
-                                                        animationSpec = tween(600, easing = FastOutSlowInEasing),
-                                                    ) { it / 4 } + fadeIn(tween(600)),
-                                                    exit = fadeOut(tween(400)) +
-                                                        slideOutVertically(
-                                                            animationSpec = tween(400, easing = FastOutSlowInEasing),
-                                                        ) { it / 4 },
-                                                )
-                                        val lyricsPosProvider = { sliderPosition ?: position }
-                                        when (lyricsMode) {
-                                            LyricsMode.V2 -> LyricsV2(
-                                                sliderPositionProvider = lyricsPosProvider,
-                                                lyricsSyncOffset = lyricsSyncOffset,
-                                                modifier = lyricsModifier,
-                                            )
-                                            LyricsMode.ENHANCED -> LyricsEnhanced(
-                                                sliderPositionProvider = lyricsPosProvider,
-                                                lyricsSyncOffset = lyricsSyncOffset,
-                                                modifier = lyricsModifier,
-                                            )
-                                        }
                                     }
+                                    // NOTE: The LyricsEnhanced/LyricsV2 composable is
+                                    // intentionally NOT rendered here inside the
+                                    // SharedTransitionLayout/AnimatedContent. Rendering it
+                                    // here caused the karaoke syllable fill animation to
+                                    // stutter because the SharedTransitionLayout's per-frame
+                                    // shared-element tracking stole frame budget from the
+                                    // lyrics animation. Instead, the lyrics composable is
+                                    // rendered as a separate overlay BELOW the
+                                    // SharedTransitionLayout — completely outside the shared
+                                    // transition machinery. This gives the lyrics animations
+                                    // the full frame budget, matching the standalone
+                                    // LyricsScreen's performance.
                                 }
                             }
                         }
                     }
                 }
 
+                // Lyrics overlay — INSIDE the weighted Box, ON TOP of the
+                // SharedTransitionLayout but BOUNDED to this Box's area. This means
+                // the lyrics CANNOT extend over the controls below (which live in a
+                // separate AnimatedVisibility outside this Box). Touches on the
+                // controls area go directly to the controls, not to the lyrics.
+                // The mini header (inside SharedTransitionLayout) handles the artwork
+                // morph; this overlay only renders the lyrics content itself,
+                // positioned below where the mini header sits.
+                //
+                // NOTE: we use the standalone AnimatedVisibility (androidx.compose.
+                // animation.AnimatedVisibility) — NOT the ColumnScope extension —
+                // because this is inside a Box, not a Column. The ColumnScope variant
+                // would be a compile error here.
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = lyricsOpen,
+                    enter = fadeIn(tween(400, easing = FastOutSlowInEasing)),
+                    exit = fadeOut(tween(300, easing = FastOutSlowInEasing)),
+                ) {
+                    val lyricsMode by rememberEnumPreference(LyricsModeKey, LyricsMode.ENHANCED)
+                    Box(
+                        modifier =
+                            Modifier
+                                .fillMaxSize()
+                                .windowInsetsPadding(WindowInsets(top = LocalStableSystemBarsTopPadding.current))
+                                .pointerInput(lyricsOpen) {
+                                    if (!lyricsOpen) return@pointerInput
+                                    awaitEachGesture {
+                                        awaitFirstDown(requireUnconsumed = false)
+                                        pokePlayerControlsVisibility()
+                                    }
+                                },
+                    ) {
+                        // Spacer to push lyrics below the mini header. The mini header
+                        // height is approx artwork size + padding; we use the same
+                        // content padding for alignment.
+                        Column(modifier = Modifier.fillMaxSize()) {
+                            Spacer(modifier = Modifier.height(AppleMusicMiniArtworkSize + 16.dp))
+                            when (lyricsMode) {
+                                LyricsMode.V2 -> LyricsV2(
+                                    sliderPositionProvider = lyricsPosProvider,
+                                    lyricsSyncOffset = lyricsSyncOffset,
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                                LyricsMode.ENHANCED -> LyricsEnhanced(
+                                    sliderPositionProvider = lyricsPosProvider,
+                                    lyricsSyncOffset = lyricsSyncOffset,
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                            }
+                        }
+                    }
+                }
+                } // end weighted Box (SharedTransitionLayout + lyrics overlay)
+
                 // Persistent playback controls — anchored at the bottom.
                 // When the queue or lyrics is open, the title row is hidden (it's in the
                 // mini header above) so only the seekbar + transport + volume + bottom
                 // row render.
                 //
-                // Auto-hide: when lyrics is open AND the auto-hide preference is on,
-                // the controls fade out after 3 seconds and restore on any touch
-                // (the pointerInput is on the lyrics area above). Mirrors the
-                // Vivi Music / LyricsScreen auto-hide logic.
-                val controlsVisible = !lyricsOpen || !autoHidePlayerControls || playerControlsExpanded
+                // Auto-hide: when lyrics is open, the controls auto-hide after 3s
+                // (always-on in Apple Music style — no toggle). Touching the lyrics
+                // overlay above restores them.
+                // Slide requires an extra layout pass on top of the fade; skip it when
+                // animations are reduced so the auto-hide/show cycle doesn't compete with
+                // the karaoke lyrics view for frame budget on lower-end devices.
                 AnimatedVisibility(
-                    visible = controlsVisible,
-                    enter = fadeIn(tween(180)) + slideInVertically(tween(180)) { it / 6 },
-                    exit = fadeOut(tween(140)) + slideOutVertically(tween(140)) { it / 8 },
+                    visible = !lyricsOpen || playerControlsExpanded,
+                    enter = if (animationsDisabled) {
+                        fadeIn(tween(120))
+                    } else {
+                        fadeIn(tween(180)) + slideInVertically(tween(180)) { it / 6 }
+                    },
+                    exit = if (animationsDisabled) {
+                        fadeOut(tween(100))
+                    } else {
+                        fadeOut(tween(140)) + slideOutVertically(tween(140)) { it / 8 }
+                    },
                 ) {
                     AppleMusicControlsColumn(
                         mediaMetadata = mediaMetadata,
@@ -790,10 +913,11 @@ fun AppleMusicPlayerContent(
                         modifier =
                             Modifier
                                 .fillMaxWidth()
+                                .navigationBarsPadding()
                                 .padding(bottom = contentBottomPadding),
                     )
                 }
-            }
+            } // end Column (morph area + controls)
         }
     }
 }
@@ -1012,7 +1136,7 @@ private fun AppleMusicControlsColumn(
 
     Column(
         modifier =
-            Modifier
+            modifier
                 .fillMaxWidth()
                 .padding(horizontal = AppleMusicContentPadding)
                 .pointerInput(Unit) {

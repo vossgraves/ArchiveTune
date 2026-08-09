@@ -19,9 +19,10 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.serialization.KSerializer
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.decodeFromJsonElement
+import kotlinx.serialization.json.encodeToJsonElement
 import moe.rukamori.archivetune.constants.TogetherPublicIsHostKey
 import moe.rukamori.archivetune.constants.TogetherPublicRoomCodeKey
 import moe.rukamori.archivetune.constants.TogetherPublicSessionTokenKey
@@ -195,7 +196,7 @@ internal class TogetherPublicClient(
     }
 
     fun leaveRoom() {
-        send(TogetherPublicMessageTypes.LEAVE_ROOM, null)
+        sendNull(TogetherPublicMessageTypes.LEAVE_ROOM)
         externalScope.launch {
             dataStore.edit { prefs ->
                 prefs.remove(TogetherPublicSessionTokenKey)
@@ -239,7 +240,7 @@ internal class TogetherPublicClient(
     }
 
     fun requestSync() {
-        send(TogetherPublicMessageTypes.REQUEST_SYNC, null)
+        sendNull(TogetherPublicMessageTypes.REQUEST_SYNC)
     }
 
     fun kickUser(
@@ -259,18 +260,20 @@ internal class TogetherPublicClient(
         )
     }
 
-    private fun send(
+    private fun sendNull(type: String) {
+        val message = TogetherPublicMessage(type = type, payload = null)
+        val text = json.encodeToString(message)
+        webSocket?.send(text)
+    }
+
+    private inline fun <reified T> send(
         type: String,
-        payload: Any?,
+        payload: T,
     ) {
         val message =
             TogetherPublicMessage(
                 type = type,
-                payload =
-                    payload?.let { p ->
-                        val strategy = p::class.companionObjectInstance as? KSerializer<Any>
-                        if (strategy != null) json.encodeToJsonElement(strategy, p) else null
-                    },
+                payload = json.encodeToJsonElement(payload),
             )
         val text = json.encodeToString(message)
         webSocket?.send(text)
@@ -466,7 +469,11 @@ internal class TogetherPublicClient(
 
     private inline fun <reified T> TogetherPublicMessage.payload(): T? =
         payload?.let { element ->
-            runCatching { json.decodeFromString<T>(element.toString()) }.getOrNull()
+            try {
+                json.decodeFromJsonElement(element)
+            } catch (e: Exception) {
+                null
+            }
         }
 
     private fun startPingJob() {
@@ -475,7 +482,7 @@ internal class TogetherPublicClient(
             externalScope.launch {
                 while (isActive) {
                     delay(25_000L)
-                    send(TogetherPublicMessageTypes.PING, null)
+                    sendNull(TogetherPublicMessageTypes.PING)
                 }
             }
     }

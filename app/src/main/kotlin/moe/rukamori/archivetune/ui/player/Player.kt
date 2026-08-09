@@ -1203,11 +1203,7 @@ fun BottomSheetPlayer(
                 !aodModeEnabled
         val shouldUseArtworkCanvas =
             (archiveTuneCanvasEnabled || spotifyCanvasEnabled) &&
-                (
-                    playerDesignStyle == PlayerDesignStyle.V8 ||
-                        playerDesignStyle == PlayerDesignStyle.V9 ||
-                        playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC
-                ) &&
+                playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC &&
                 !aodModeEnabled
         val shouldFetchV7Canvas = shouldUseV7Canvas && !lowDataModeActive
         val shouldFetchArtworkCanvas = shouldUseArtworkCanvas && !lowDataModeActive
