@@ -1200,11 +1200,7 @@ fun BottomSheetPlayer(
                 !aodModeEnabled
         val shouldUseArtworkCanvas =
             (archiveTuneCanvasEnabled || spotifyCanvasEnabled) &&
-                (
-                    playerDesignStyle == PlayerDesignStyle.V8 ||
-                        playerDesignStyle == PlayerDesignStyle.V9 ||
-                        playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC
-                ) &&
+                playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC &&
                 !aodModeEnabled
         val shouldFetchV7Canvas = shouldUseV7Canvas && !lowDataModeActive
         val shouldFetchArtworkCanvas = shouldUseArtworkCanvas && !lowDataModeActive
@@ -1248,15 +1244,15 @@ fun BottomSheetPlayer(
             }
         }
 
-        LaunchedEffect(playerConnection, mediaMetadata?.id) {
+        LaunchedEffect(playerConnection, mediaMetadata?.id, shouldUseV7Canvas, shouldUseArtworkCanvas) {
             playerConnection.canvasArtworkUpdates.collect { update ->
                 if (update.mediaId != mediaMetadata?.id) return@collect
 
                 canvasArtworkRevision += 1
-                if (!update.artwork.preferredVerticalAnimationUrl.isNullOrBlank()) {
+                if (shouldUseV7Canvas && !update.artwork.preferredVerticalAnimationUrl.isNullOrBlank()) {
                     v7CanvasArtwork = update.artwork
                 }
-                if (!update.artwork.preferredAnimationUrl.isNullOrBlank()) {
+                if (shouldUseArtworkCanvas && !update.artwork.preferredAnimationUrl.isNullOrBlank()) {
                     artworkCanvas = update.artwork
                 }
             }
@@ -1726,7 +1722,6 @@ fun BottomSheetPlayer(
                             onVolumeChange = onPlayerVolumeChange,
                             canvasPrimaryUrl = artworkCanvas?.animated,
                             canvasFallbackUrl = artworkCanvas?.videoUrl,
-                            currentFormat = currentFormat,
                             contentBottomPadding = queueSheetState.collapsedBound,
                             onQueueClick = openQueue,
                             onLyricsClick = { isLyricsScreenVisible = true },
@@ -2081,7 +2076,6 @@ fun BottomSheetPlayer(
                             onVolumeChange = onPlayerVolumeChange,
                             canvasPrimaryUrl = artworkCanvas?.animated,
                             canvasFallbackUrl = artworkCanvas?.videoUrl,
-                            currentFormat = currentFormat,
                             contentBottomPadding = queueSheetState.collapsedBound,
                             onQueueClick = openQueue,
                             onLyricsClick = { isLyricsScreenVisible = true },

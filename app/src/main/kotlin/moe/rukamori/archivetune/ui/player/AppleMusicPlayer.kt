@@ -14,12 +14,9 @@
 package moe.rukamori.archivetune.ui.player
 
 import android.content.Intent
-import android.graphics.Bitmap
 import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -38,18 +35,16 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ripple
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -57,7 +52,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -79,20 +73,7 @@ import androidx.media3.common.Player.STATE_ENDED
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
-import coil3.imageLoader
-import coil3.request.ImageRequest
-import coil3.request.SuccessResult
-import coil3.request.allowHardware
-import coil3.size.Size as CoilSize
-import coil3.toBitmap
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
-import moe.rukamori.archivetune.constants.ThumbnailCornerRadiusKey
-import moe.rukamori.archivetune.db.entities.FormatEntity
-import moe.rukamori.archivetune.db.entities.codecLabel
-import moe.rukamori.archivetune.db.entities.isLossless
 import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.playback.PlayerConnection
@@ -103,11 +84,9 @@ import moe.rukamori.archivetune.ui.menu.PlayerMenu
 import moe.rukamori.archivetune.ui.menu.rememberCastPlayerMenuAction
 import moe.rukamori.archivetune.ui.utils.ShowMediaInfo
 import moe.rukamori.archivetune.ui.utils.highRes
-import moe.rukamori.archivetune.utils.ImageBlurUtils
-import moe.rukamori.archivetune.utils.isLocalMediaId
+import moe.rukamori.archivetune.ui.utils.rememberPreBlurredBitmap
 import moe.rukamori.archivetune.utils.makeTimeString
 import moe.rukamori.archivetune.utils.rememberLowDataModeActive
-import moe.rukamori.archivetune.utils.rememberPreference
 
 private val AppleMusicContentPadding = 28.dp
 private val AppleMusicChipSize = 34.dp
@@ -135,7 +114,6 @@ fun AppleMusicPlayerContent(
     onVolumeChange: (Float) -> Unit,
     canvasPrimaryUrl: String?,
     canvasFallbackUrl: String?,
-    currentFormat: FormatEntity?,
     contentBottomPadding: Dp,
     onQueueClick: () -> Unit,
     onLyricsClick: () -> Unit,
@@ -197,125 +175,80 @@ fun AppleMusicPlayerContent(
     BoxWithConstraints(modifier = modifier) {
         val sharpArtworkHeight = if (landscape) maxHeight else maxHeight * 0.55f
 
+        // 1. Blurred artwork fills the whole player as the base layer.
+        //
+        //    On Android 12+ (API 31+) we use Compose's Modifier.blur — it's backed by the
+        //    platform RenderEffect and runs on the GPU, so it's both fast and high quality.
+        //
+        //    On older Android (API < 31) Modifier.blur is a silent no-op: the artwork would
+        //    render sharp, killing the Apple-Music-blurred-sheet aesthetic. As a fallback we
+        //    pre-blur the artwork bitmap on a background thread via rememberPreBlurredBitmap
+        //    (which uses ImageBlurUtils.stackBlur under the hood) and render that bitmap
+        //    directly. While the blur is in-flight (first frame after artwork change) we
+        //    render a slightly darker version of the sharp artwork + a heavier scrim so the
+        //    transition into the blurred version isn't jarring.
+        val isPreS = Build.VERSION.SDK_INT < Build.VERSION_CODES.S
+        val preBlurredBitmap =
+            if (isPreS) {
+                rememberPreBlurredBitmap(imageUrl = artworkUrl, radiusDp = 72.dp, maxDimensionPx = 720)
+            } else {
+                null
+            }
+
+        if (isPreS && preBlurredBitmap != null) {
+            androidx.compose.foundation.Image(
+                bitmap = preBlurredBitmap.asImageBitmap(),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier =
+                    Modifier
+                        .matchParentSize()
+                        .graphicsLayer {
+                            scaleX = 1.2f
+                            scaleY = 1.2f
+                        },
+            )
+        } else {
+            // Either Android 12+ (use Modifier.blur) or pre-S but the pre-blur hasn't
+            // resolved yet (render sharp + heavier scrim for now).
+            AsyncImage(
+                model = artworkRequest ?: artworkUrl,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier =
+                    Modifier
+                        .matchParentSize()
+                        .then(
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                Modifier.blur(72.dp)
+                            } else {
+                                Modifier
+                            },
+                        ).graphicsLayer {
+                            scaleX = 1.2f
+                            scaleY = 1.2f
+                        },
+            )
+        }
+        // Deep contrast scrim over the blur: the Apple Music sheet reads as a dark, artwork-tinted
+        // panel rather than a bright blur, so the whole surface is pulled well down in brightness
+        // and pushed darker still toward the bottom where the controls sit.
+        //
+        // On pre-S while the pre-blur is still loading, we push the scrim even darker to mask
+        // the un-blurred source artwork (otherwise the layout would "pop" from sharp to blurred).
+        val preBlurLoading = isPreS && preBlurredBitmap == null
         Box(
             modifier =
                 Modifier
                     .matchParentSize()
-                    .background(Color.Black),
-        )
-
-        val videoShowing =
-            LocalVideoArtworkState.current != null &&
-                mediaMetadata.isMusicVideo &&
-                !mediaMetadata.id.isLocalMediaId()
-        val isPreS = Build.VERSION.SDK_INT < Build.VERSION_CODES.S
-        val canvasActive =
-            !canvasPrimaryUrl.isNullOrBlank() || !canvasFallbackUrl.isNullOrBlank()
-        // When a Spotify Canvas (or any canvas artwork) is playing, render the canvas video
-        // itself as the blurred backdrop — "Apple Music player style". On Android 12+,
-        // Modifier.blur works on the TextureView surface that CanvasArtworkPlayer uses, so
-        // the backdrop mirrors the canvas video in real time. Pre-Android-12 falls back to
-        // the album-art blur (RenderEffect is unavailable, so blurring a video surface
-        // efficiently isn't possible).
-        val useCanvasBackdrop = canvasActive && !videoShowing && !isPreS
-        val context = LocalContext.current
-        val imageLoader = context.imageLoader
-        val preBlurredBitmap by produceState<Bitmap?>(null, artworkUrl) {
-            if (!isPreS || artworkUrl.isNullOrBlank() || videoShowing || canvasActive) {
-                value = null
-                return@produceState
-            }
-            value = withContext(Dispatchers.IO) {
-                try {
-                    val request = ImageRequest.Builder(context)
-                        .data(artworkUrl)
-                        .allowHardware(false)
-                        .memoryCacheKey("$artworkUrl#amplayer")
-                        .diskCacheKey("$artworkUrl#amplayer")
-                        .size(CoilSize(720, 720))
-                        .build()
-                    val result = imageLoader.execute(request)
-                    if (result is SuccessResult) {
-                        val bitmap = result.image.toBitmap()
-                            .copy(Bitmap.Config.ARGB_8888, true)
-                        val density = context.resources.displayMetrics.density
-                        ImageBlurUtils.blur(bitmap, 72f * density)
-                    } else null
-                } catch (_: Exception) {
-                    null
-                }
-            }
-        }
-
-        if (!videoShowing) {
-            if (useCanvasBackdrop) {
-                // Canvas-driven backdrop: a second CanvasArtworkPlayer instance rendered
-                // behind the controls with a heavy blur. This makes the backdrop follow
-                // the canvas video in real time — matching Apple Music's player where the
-                // ambient blur behind the controls mirrors whatever is on screen.
-                CanvasArtworkPlayer(
-                    primaryUrl = canvasPrimaryUrl,
-                    fallbackUrl = canvasFallbackUrl,
-                    isPlaying = isPlaying,
-                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
-                    modifier =
-                        Modifier
-                            .matchParentSize()
-                            .blur(72.dp)
-                            .graphicsLayer {
-                                scaleX = 1.2f
-                                scaleY = 1.2f
-                            },
-                )
-            } else if (isPreS && preBlurredBitmap != null) {
-                Image(
-                    bitmap = preBlurredBitmap!!.asImageBitmap(),
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier =
-                        Modifier
-                            .matchParentSize()
-                            .graphicsLayer {
-                                scaleX = 1.2f
-                                scaleY = 1.2f
-                            },
-                )
-            } else {
-                // Either Android 12+ (use Modifier.blur) or pre-S but the pre-blur hasn't
-                // resolved yet (render sharp + heavier scrim for now).
-                AsyncImage(
-                    model = artworkRequest ?: artworkUrl,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier =
-                        Modifier
-                            .matchParentSize()
-                            .then(
-                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                                    Modifier.blur(72.dp)
-                                } else {
-                                    Modifier
-                                },
-                            ).graphicsLayer {
-                                scaleX = 1.2f
-                                scaleY = 1.2f
-                            },
-                )
-            }
-            val preBlurLoading = isPreS && preBlurredBitmap == null && !canvasActive
-            Box(
-                modifier =
-                    Modifier
-                        .matchParentSize()
-                        .background(
-                            Brush.verticalGradient(
-                                0f to Color.Black.copy(alpha = if (useCanvasBackdrop || Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) 0.42f else if (preBlurLoading) 0.62f else 0.52f),
-                                0.5f to Color.Black.copy(alpha = if (useCanvasBackdrop || Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) 0.60f else if (preBlurLoading) 0.74f else 0.68f),
-                                1f to Color.Black.copy(alpha = if (useCanvasBackdrop || Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) 0.82f else if (preBlurLoading) 0.90f else 0.86f),
-                            ),
+                    .background(
+                        Brush.verticalGradient(
+                            0f to Color.Black.copy(alpha = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) 0.42f else if (preBlurLoading) 0.62f else 0.52f),
+                            0.5f to Color.Black.copy(alpha = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) 0.60f else if (preBlurLoading) 0.74f else 0.68f),
+                            1f to Color.Black.copy(alpha = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) 0.82f else if (preBlurLoading) 0.90f else 0.86f),
                         ),
-            )
-        }
+                    ),
+        )
 
         if (landscape) {
             Row(Modifier.fillMaxSize()) {
@@ -326,9 +259,6 @@ fun AppleMusicPlayerContent(
                     canvasFallbackUrl = canvasFallbackUrl,
                     isPlaying = isPlaying,
                     fadeBottom = false,
-                    videoId = mediaMetadata.id.takeIf { !it.isLocalMediaId() },
-                    isMusicVideo = mediaMetadata.isMusicVideo,
-                    landscape = true,
                     modifier =
                         Modifier
                             .weight(1f)
@@ -355,10 +285,6 @@ fun AppleMusicPlayerContent(
                     onLyricsClick = onLyricsClick,
                     onSliderValueChange = onSliderValueChange,
                     onSliderValueChangeFinished = onSliderValueChangeFinished,
-                    currentFormat = currentFormat,
-                    onQualityChipClick = {
-                        bottomSheetPageState.show { ShowMediaInfo(mediaMetadata.id) }
-                    },
                     modifier =
                         Modifier
                             .weight(1f)
@@ -367,16 +293,14 @@ fun AppleMusicPlayerContent(
                 )
             }
         } else {
+            // 2. Sharp artwork occupies the top, fading into the blurred continuation below it.
             AppleMusicSharpArtwork(
                 artworkRequest = artworkRequest,
                 artworkUrl = artworkUrl,
                 canvasPrimaryUrl = canvasPrimaryUrl,
                 canvasFallbackUrl = canvasFallbackUrl,
                 isPlaying = isPlaying,
-                fadeBottom = !videoShowing,
-                videoId = mediaMetadata.id.takeIf { !it.isLocalMediaId() },
-                isMusicVideo = mediaMetadata.isMusicVideo,
-                landscape = false,
+                fadeBottom = true,
                 modifier =
                     Modifier
                         .fillMaxWidth()
@@ -406,10 +330,6 @@ fun AppleMusicPlayerContent(
                 onLyricsClick = onLyricsClick,
                 onSliderValueChange = onSliderValueChange,
                 onSliderValueChangeFinished = onSliderValueChangeFinished,
-                currentFormat = currentFormat,
-                onQualityChipClick = {
-                    bottomSheetPageState.show { ShowMediaInfo(mediaMetadata.id) }
-                },
                 modifier =
                     Modifier
                         .fillMaxWidth()
@@ -429,12 +349,8 @@ private fun AppleMusicSharpArtwork(
     canvasFallbackUrl: String?,
     isPlaying: Boolean,
     fadeBottom: Boolean,
-    videoId: String? = null,
-    isMusicVideo: Boolean = false,
-    landscape: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
-    val playerConnection = LocalPlayerConnection.current
     Box(
         modifier =
             modifier.then(
@@ -458,111 +374,18 @@ private fun AppleMusicSharpArtwork(
                 },
             ),
     ) {
-        val videoArtworkState = LocalVideoArtworkState.current
-        val showVideo =
-            videoArtworkState != null &&
-                isMusicVideo &&
-                !videoId.isNullOrBlank() &&
-                playerConnection != null
-        // "Immersive extended" — when there is no Spotify Canvas (or any animated
-        // artwork) AND no music video, render the still cover as a square using
-        // the SAME sizing formula as the Material Extended (V9) player, instead of
-        // stretching the cover to fill the rectangular stage. When a canvas or
-        // video IS available, we keep the full-bleed display so the animated
-        // artwork can fill the stage.
-        val hasCanvas = !canvasPrimaryUrl.isNullOrBlank() || !canvasFallbackUrl.isNullOrBlank()
-        val immersiveExtendedCard = !showVideo && !hasCanvas
-        if (showVideo) {
-            Box(
-                modifier =
-                    Modifier
-                        .matchParentSize()
-                        .background(Color.Black),
-            )
-        } else if (immersiveExtendedCard) {
-            // "Immersive extended" — render the still cover as a square using the
-            // SAME sizing formula and thresholds as the Material Extended (V9)
-            // player (see V9PortraitContent in PlayerComponents.kt), centered
-            // inside the artwork stage. V9 computes its cap against the FULL
-            // player height, but inside AppleMusicSharpArtwork maxHeight is only
-            // the stage height (55% of the player height in portrait, full
-            // height in landscape) — so we re-derive the full height first and
-            // run ALL the compact-height thresholds against that full height.
-            // Without this, a typical 800dp-tall player would see its 440dp
-            // stage trip the "veryCompact" branch and shrink the artwork from
-            // 0.40 * H to 0.32 * H, making it noticeably smaller than V9.
-            BoxWithConstraints(modifier = Modifier.matchParentSize()) {
-                val horizontalPadding = if (maxWidth < 380.dp) 16.dp else 20.dp
-                val effectiveFullHeight = if (landscape) maxHeight else maxHeight / 0.55f
-                val compactHeight = effectiveFullHeight < 760.dp
-                val veryCompactHeight = effectiveFullHeight < 700.dp
-                // Honor the global thumbnail corner-radius preference (the same
-                // one the "Adjust corner radius" dialog in Appearance settings
-                // controls). The slider's max is 45dp, but for a ~320dp artwork
-                // that would be over-round, so we cap at 32dp — matching V9's
-                // RoundedCornerShape(30.dp) default while still letting the
-                // user drop it to 0 for sharp corners.
-                val (thumbnailCornerRadius, _) = rememberPreference(
-                    ThumbnailCornerRadiusKey,
-                    defaultValue = 16f,
-                )
-                val artworkCornerRadiusDp = thumbnailCornerRadius.coerceAtMost(32f).dp
-                val artworkMinSize =
-                    when {
-                        veryCompactHeight -> 200.dp
-                        compactHeight -> 216.dp
-                        else -> 236.dp
-                    }
-                val artworkHeightLimit =
-                    effectiveFullHeight *
-                        when {
-                            veryCompactHeight -> 0.32f
-                            compactHeight -> 0.35f
-                            else -> 0.40f
-                        }
-                val artworkSize =
-                    (maxWidth - horizontalPadding * 2)
-                        .coerceAtMost(artworkHeightLimit)
-                        .coerceAtLeast(artworkMinSize)
-                Box(
-                    modifier = Modifier.matchParentSize(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    AsyncImage(
-                        model = artworkRequest ?: artworkUrl,
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier =
-                            Modifier
-                                .size(artworkSize)
-                                .shadow(8.dp, RoundedCornerShape(artworkCornerRadiusDp))
-                                .clip(RoundedCornerShape(artworkCornerRadiusDp)),
-                    )
-                }
-            }
-        } else {
-            AsyncImage(
-                model = artworkRequest ?: artworkUrl,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.matchParentSize(),
-            )
-        }
-
-        if (!showVideo &&
-            (!canvasPrimaryUrl.isNullOrBlank() || !canvasFallbackUrl.isNullOrBlank())
-        ) {
+        AsyncImage(
+            model = artworkRequest ?: artworkUrl,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.matchParentSize(),
+        )
+        if (!canvasPrimaryUrl.isNullOrBlank() || !canvasFallbackUrl.isNullOrBlank()) {
             CanvasArtworkPlayer(
                 primaryUrl = canvasPrimaryUrl,
                 fallbackUrl = canvasFallbackUrl,
                 isPlaying = isPlaying,
                 resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
-                modifier = Modifier.matchParentSize(),
-            )
-        }
-
-        if (showVideo) {
-            InlineVideoPlayer(
                 modifier = Modifier.matchParentSize(),
             )
         }
@@ -591,42 +414,37 @@ private fun AppleMusicControlsColumn(
     onLyricsClick: () -> Unit,
     onSliderValueChange: (Long) -> Unit,
     onSliderValueChangeFinished: () -> Unit,
-    // Stream format for the quality chip. Null = no chip rendered.
-    currentFormat: FormatEntity?,
-    // Clicked when the user taps the quality chip — opens the song-detail
-    // bottom sheet (ShowMediaInfo), mirroring how tapping the title/artist
-    // in Apple Music's stock UI opens the song info page.
-    onQualityChipClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var swipeUpAccumulated by remember { mutableFloatStateOf(0f) }
     val swipeUpThreshold = 120f
+    val resetSwipeUp = remember {
+        {
+            if (swipeUpAccumulated != 0f) swipeUpAccumulated = 0f
+        }
+    }
+    LaunchedEffect(Unit) { kotlinx.coroutines.delay(300); resetSwipeUp() }
 
     Column(
         modifier = modifier
             .padding(horizontal = AppleMusicContentPadding)
             .pointerInput(Unit) {
                 detectVerticalDragGestures(
-                    onDragStart = { swipeUpAccumulated = 0f },
-                    onVerticalDrag = { _, dragAmount ->
-                        // Only track upward movement (negative dragAmount = upward)
-                        if (dragAmount < 0f) {
-                            swipeUpAccumulated += dragAmount
-                            if (swipeUpAccumulated < -swipeUpThreshold) {
-                                onQueueClick()
-                                swipeUpAccumulated = 0f
-                            }
+                    onDragEnd = {
+                        if (swipeUpAccumulated < -swipeUpThreshold) {
+                            onQueueClick()
+                        }
+                        swipeUpAccumulated = 0f
+                    },
+                    onVerticalDrag = { change, dragAmount ->
+                        change.consume()
+                        if (dragAmount < 0f) { // upward swipe
+                            swipeUpAccumulated = (swipeUpAccumulated + dragAmount).coerceAtLeast(-swipeUpThreshold * 1.5f)
                         }
                     },
-                    onDragEnd = { swipeUpAccumulated = 0f },
-                    onDragCancel = { swipeUpAccumulated = 0f },
                 )
             },
-        // Use SpaceBetween so the title row sits at the very top (flush with
-        // the artwork's fade-out zone) and the bottom action row stays anchored
-        // at the bottom, while the seekbar / transport / volume rows distribute
-        // evenly across the remaining space — no large empty gap.
-        verticalArrangement = Arrangement.SpaceBetween,
+        verticalArrangement = Arrangement.SpaceEvenly,
     ) {
         // Title / artist row with star + more chips.
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -684,29 +502,18 @@ private fun AppleMusicControlsColumn(
                 onScrub = onSliderValueChange,
                 onScrubFinished = onSliderValueChangeFinished,
             )
-            Spacer(Modifier.height(8.dp))
-            // Mirror the Immersive V8 layout: elapsed time on the left, quality
-            // chip (Lossless / AAC / OPUS) centered, -remaining on the right.
-            // The chip is tappable and opens the song-detail bottom sheet.
-            Box(Modifier.fillMaxWidth()) {
+            Spacer(Modifier.height(6.dp))
+            Row(Modifier.fillMaxWidth()) {
                 Text(
                     text = makeTimeString(sliderPosition ?: position),
                     style = MaterialTheme.typography.labelMedium,
                     color = Color.White.copy(alpha = 0.55f),
-                    modifier = Modifier.align(Alignment.CenterStart),
                 )
-                if (currentFormat != null) {
-                    AppleMusicQualityChip(
-                        currentFormat = currentFormat,
-                        onClick = onQualityChipClick,
-                        modifier = Modifier.align(Alignment.Center),
-                    )
-                }
+                Spacer(Modifier.weight(1f))
                 Text(
                     text = "-" + makeTimeString((duration - (sliderPosition ?: position)).coerceAtLeast(0L)),
                     style = MaterialTheme.typography.labelMedium,
                     color = Color.White.copy(alpha = 0.55f),
-                    modifier = Modifier.align(Alignment.CenterEnd),
                 )
             }
         }
@@ -750,15 +557,31 @@ private fun AppleMusicControlsColumn(
             )
         }
 
-        // Flat volume slider with speaker glyphs. Uses the shared AppleMusicVolumeRow
-        // which has proper drag tracking (dragging state + rememberUpdatedState) so the
-        // fill follows the finger during a drag instead of lagging behind the rounded
-        // device-volume step.
-        AppleMusicVolumeRow(
-            volume = volume,
-            onVolumeChange = onVolumeChange,
+        // Flat volume slider with speaker glyphs.
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.fillMaxWidth(),
-        )
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.player_volume_min),
+                contentDescription = null,
+                tint = Color.White.copy(alpha = 0.55f),
+                modifier = Modifier.size(18.dp),
+            )
+            Spacer(Modifier.width(12.dp))
+            AppleMusicVolumeSlider(
+                volume = volume,
+                onVolumeChange = onVolumeChange,
+                modifier = Modifier.weight(1f),
+            )
+            Spacer(Modifier.width(12.dp))
+            Icon(
+                painter = painterResource(R.drawable.player_volume_up),
+                contentDescription = null,
+                tint = Color.White.copy(alpha = 0.55f),
+                modifier = Modifier.size(18.dp),
+            )
+        }
 
         // Bottom action row: lyrics / media output / queue.
         Row(
@@ -772,7 +595,7 @@ private fun AppleMusicControlsColumn(
                 onClick = onLyricsClick,
             )
             AppleMusicBottomButton(
-                iconRes = R.drawable.cast,
+                iconRes = R.drawable.player_airplay,
                 contentDescription = null,
                 onClick = onOutputClick,
             )
@@ -937,60 +760,41 @@ private fun AppleMusicSeekBar(
 }
 
 /** Flat volume slider matching the scrubber's look. */
-/** NOTE: The local AppleMusicVolumeSlider was removed in favor of the shared
- *  AppleMusicVolumeRow (in AppleMusicSlider.kt) which has proper drag tracking
- *  via `dragging` state + `rememberUpdatedState`. The old local slider used
- *  `pointerInput(Unit)` which captured stale callbacks and didn't track drag
- *  state, causing the fill to lag behind the finger. */
-
-/**
- * Quality chip rendered between the elapsed and -remaining timestamps on the
- * Apple Music player's seek-bar row. Mirrors the Immersive V8 player's
- * `V8QualityChip` (PlayerComponents.kt:2762) — same pill shape, same waveform
- * icon (`R.drawable.player_graphic_eq`), same `codecLabel()` text — but uses
- * `Color.White` as the foreground because the Apple Music player renders on
- * top of artwork-on-black, not a themed surface.
- *
- * Tapping the chip opens the song-detail bottom sheet (`ShowMediaInfo`),
- * matching how Apple Music's stock UI exposes the song info page.
- */
 @Composable
-private fun AppleMusicQualityChip(
-    currentFormat: FormatEntity,
-    onClick: () -> Unit,
+private fun AppleMusicVolumeSlider(
+    volume: Float,
+    onVolumeChange: (Float) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val label = remember(currentFormat.mimeType, currentFormat.codecs) {
-        currentFormat.codecLabel()
-    }
-    val lossless = remember(currentFormat.codecs, currentFormat.mimeType) {
-        currentFormat.isLossless()
-    }
-    Surface(
-        shape = RoundedCornerShape(6.dp),
-        color = Color.White.copy(alpha = 0.1f),
-        border = BorderStroke(width = 1.dp, color = Color.White.copy(alpha = 0.13f)),
-        modifier = modifier.clickable(onClick = onClick),
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(5.dp),
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-        ) {
-            Icon(
-                painter = painterResource(
-                    if (lossless) R.drawable.ic_mqa else R.drawable.player_graphic_eq,
-                ),
-                contentDescription = null,
-                tint = Color.White.copy(alpha = 0.72f),
-                modifier = Modifier.size(if (lossless) 18.dp else 15.dp),
-            )
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelSmall,
-                color = Color.White.copy(alpha = 0.72f),
-                maxLines = 1,
-            )
-        }
-    }
+    Box(
+        modifier =
+            modifier
+                .height(26.dp)
+                .pointerInput(Unit) {
+                    detectTapGestures { offset ->
+                        onVolumeChange((offset.x / size.width).coerceIn(0f, 1f))
+                    }
+                }.pointerInput(Unit) {
+                    detectHorizontalDragGestures { change, _ ->
+                        change.consume()
+                        onVolumeChange((change.position.x / size.width).coerceIn(0f, 1f))
+                    }
+                }.drawWithContent {
+                    val trackHeight = 6.dp.toPx()
+                    val top = (size.height - trackHeight) / 2f
+                    val radius = CornerRadius(trackHeight / 2f)
+                    drawRoundRect(
+                        color = Color.White.copy(alpha = 0.28f),
+                        topLeft = Offset(0f, top),
+                        size = Size(size.width, trackHeight),
+                        cornerRadius = radius,
+                    )
+                    drawRoundRect(
+                        color = Color.White.copy(alpha = 0.85f),
+                        topLeft = Offset(0f, top),
+                        size = Size(size.width * volume.coerceIn(0f, 1f), trackHeight),
+                        cornerRadius = radius,
+                    )
+                },
+    )
 }
