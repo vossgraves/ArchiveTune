@@ -622,12 +622,11 @@ private fun AppleMusicControlsColumn(
                     onDragCancel = { swipeUpAccumulated = 0f },
                 )
             },
-        // Use spacedBy with Top alignment so the title row sits at the very top
-        // of the controls column (flush with the artwork's fade-out zone)
-        // instead of being pushed down by the equal "before" spacing that
-        // SpaceEvenly adds. A weighted spacer before the bottom action row
-        // keeps the lyrics / cast / queue icons anchored at the bottom.
-        verticalArrangement = Arrangement.spacedBy(14.dp, Alignment.Top),
+        // Use SpaceBetween so the title row sits at the very top (flush with
+        // the artwork's fade-out zone) and the bottom action row stays anchored
+        // at the bottom, while the seekbar / transport / volume rows distribute
+        // evenly across the remaining space — no large empty gap.
+        verticalArrangement = Arrangement.SpaceBetween,
     ) {
         // Title / artist row with star + more chips.
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -760,12 +759,6 @@ private fun AppleMusicControlsColumn(
             onVolumeChange = onVolumeChange,
             modifier = Modifier.fillMaxWidth(),
         )
-
-        // Weighted spacer: absorbs leftover vertical space so the bottom
-        // action row (lyrics / cast / queue) stays anchored at the bottom
-        // of the controls column, while the title row stays flush with the
-        // artwork's fade-out zone at the top.
-        Spacer(Modifier.weight(1f))
 
         // Bottom action row: lyrics / media output / queue.
         Row(
