@@ -51,6 +51,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -629,20 +630,20 @@ fun AppleMusicPlayerContent(
             // SharedTransitionLayout so they stay anchored at the bottom — matching
             // ViviMusic's Player_v2 layout exactly.
             //
-            // The lyrics composable is rendered as a SEPARATE overlay inside the
-            // same Box as the SharedTransitionLayout, but OUTSIDE the
-            // SharedTransitionLayout itself. This is critical for performance:
+            // The lyrics composable is rendered as a SEPARATE overlay ON TOP of
+            // the Column (SharedTransitionLayout + controls), completely outside
+            // the SharedTransitionLayout. This is critical for performance:
             // rendering LyricsEnhanced inside the SharedTransitionLayout caused
             // the karaoke syllable fill animation to stutter because the shared
             // transition machinery's per-frame tracking stole frame budget.
             // The overlay approach gives the lyrics animations the full frame
             // budget, matching the standalone LyricsScreen's performance.
-            Column(
-                modifier = Modifier.fillMaxSize(),
-            ) {
-                Box(modifier = Modifier.weight(1f)) {
-                SharedTransitionLayout(
+            Box(modifier = Modifier.fillMaxSize()) {
+                Column(
                     modifier = Modifier.fillMaxSize(),
+                ) {
+                SharedTransitionLayout(
+                    modifier = Modifier.weight(1f),
                 ) {
                     AnimatedContent(
                         targetState = morphState,
@@ -707,26 +708,16 @@ fun AppleMusicPlayerContent(
                                         .fillMaxSize()
                                         .windowInsetsPadding(WindowInsets(top = LocalStableSystemBarsTopPadding.current)),
                             ) {
-                                // Canvas continues playing behind the queue
-                                // content so it doesn't "stop" when the user
-                                // opens the queue (Issue: Spotify canvas stops
-                                // playing). Gated to QUEUE state only — in
-                                // LYRICS state we intentionally don't render
-                                // the canvas so the lyrics animations
-                                // (karaoke syllable sweep, instrumental
-                                // pulsing dots, moving-blur drift) get the
-                                // full frame budget. The LYRICS backdrop is
-                                // a static pre-blurred bitmap (see the
-                                // state-aware backdrop rendering above).
-                                if (canvasActive && !videoShowing && targetState == AppleMusicPlayerState.QUEUE) {
-                                    CanvasArtworkPlayer(
-                                        primaryUrl = canvasPrimaryUrl,
-                                        fallbackUrl = canvasFallbackUrl,
-                                        isPlaying = isPlaying,
-                                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
-                                        modifier = Modifier.matchParentSize(),
-                                    )
-                                }
+                                // The blurred backdrop (rendered at the top level
+                                // above) already contains the canvas with
+                                // Modifier.blur(72.dp) when useCanvasBackdrop is
+                                // true. We intentionally do NOT render a second
+                                // non-blurred canvas here — the previous
+                                // implementation did that, which covered the
+                                // blurred backdrop and made it look like the
+                                // blur "went away" when the queue opened.
+                                // The queue sheet renders on a transparent
+                                // background so the blurred canvas shows through.
                                 Column(modifier = Modifier.fillMaxSize()) {
                                     AppleMusicMiniHeader(
                                         artworkRequest = artworkRequest,
@@ -776,54 +767,6 @@ fun AppleMusicPlayerContent(
                     }
                 }
 
-                // Lyrics overlay — rendered OUTSIDE the SharedTransitionLayout so
-                // the lyrics animations (karaoke syllable fill, auto-scroll) get
-                // the full frame budget. Slides in/fades when lyricsOpen is toggled.
-                // The mini header above (inside SharedTransitionLayout) handles the
-                // artwork morph; this overlay only renders the lyrics content itself,
-                // positioned below where the mini header sits.
-                AnimatedVisibility(
-                    visible = lyricsOpen,
-                    enter = fadeIn(tween(400, easing = FastOutSlowInEasing)),
-                    exit = fadeOut(tween(300, easing = FastOutSlowInEasing)),
-                ) {
-                    val lyricsMode by rememberEnumPreference(LyricsModeKey, LyricsMode.ENHANCED)
-                    val lyricsPosProvider = { sliderPosition ?: position }
-                    Box(
-                        modifier =
-                            Modifier
-                                .fillMaxSize()
-                                .windowInsetsPadding(WindowInsets(top = LocalStableSystemBarsTopPadding.current))
-                                .pointerInput(lyricsOpen) {
-                                    if (!lyricsOpen) return@pointerInput
-                                    awaitEachGesture {
-                                        awaitFirstDown(requireUnconsumed = false)
-                                        pokePlayerControlsVisibility()
-                                    }
-                                },
-                    ) {
-                        // Spacer to push lyrics below the mini header. The mini header
-                        // height is approx artwork size + padding; we use the same
-                        // content padding for alignment.
-                        Column(modifier = Modifier.fillMaxSize()) {
-                            Spacer(modifier = Modifier.height(AppleMusicMiniArtworkSize + 16.dp))
-                            when (lyricsMode) {
-                                LyricsMode.V2 -> LyricsV2(
-                                    sliderPositionProvider = lyricsPosProvider,
-                                    lyricsSyncOffset = lyricsSyncOffset,
-                                    modifier = Modifier.fillMaxSize(),
-                                )
-                                LyricsMode.ENHANCED -> LyricsEnhanced(
-                                    sliderPositionProvider = lyricsPosProvider,
-                                    lyricsSyncOffset = lyricsSyncOffset,
-                                    modifier = Modifier.fillMaxSize(),
-                                )
-                            }
-                        }
-                    }
-                }
-                } // end Box (contains SharedTransitionLayout + lyrics overlay)
-
                 // Persistent playback controls — anchored at the bottom.
                 // When the queue or lyrics is open, the title row is hidden (it's in the
                 // mini header above) so only the seekbar + transport + volume + bottom
@@ -868,10 +811,66 @@ fun AppleMusicPlayerContent(
                         modifier =
                             Modifier
                                 .fillMaxWidth()
+                                .navigationBarsPadding()
                                 .padding(bottom = contentBottomPadding),
                     )
                 }
-            }
+                } // end Column
+
+                // Lyrics overlay — rendered as a SIBLING of the Column (inside the
+                // outer Box), completely OUTSIDE the SharedTransitionLayout. This is
+                // critical for performance: rendering LyricsEnhanced inside the
+                // SharedTransitionLayout caused the karaoke syllable fill animation
+                // to stutter because the shared transition machinery's per-frame
+                // tracking stole frame budget. The overlay approach gives the lyrics
+                // animations the full frame budget, matching the standalone
+                // LyricsScreen's performance.
+                // The mini header (inside SharedTransitionLayout) handles the artwork
+                // morph; this overlay only renders the lyrics content itself,
+                // positioned below where the mini header sits. The overlay sits ON
+                // TOP of the Column (SharedTransitionLayout + controls) so the lyrics
+                // are fully visible.
+                AnimatedVisibility(
+                    visible = lyricsOpen,
+                    enter = fadeIn(tween(400, easing = FastOutSlowInEasing)),
+                    exit = fadeOut(tween(300, easing = FastOutSlowInEasing)),
+                ) {
+                    val lyricsMode by rememberEnumPreference(LyricsModeKey, LyricsMode.ENHANCED)
+                    val lyricsPosProvider = { sliderPosition ?: position }
+                    Box(
+                        modifier =
+                            Modifier
+                                .fillMaxSize()
+                                .windowInsetsPadding(WindowInsets(top = LocalStableSystemBarsTopPadding.current))
+                                .pointerInput(lyricsOpen) {
+                                    if (!lyricsOpen) return@pointerInput
+                                    awaitEachGesture {
+                                        awaitFirstDown(requireUnconsumed = false)
+                                        pokePlayerControlsVisibility()
+                                    }
+                                },
+                    ) {
+                        // Spacer to push lyrics below the mini header. The mini header
+                        // height is approx artwork size + padding; we use the same
+                        // content padding for alignment.
+                        Column(modifier = Modifier.fillMaxSize()) {
+                            Spacer(modifier = Modifier.height(AppleMusicMiniArtworkSize + 16.dp))
+                            when (lyricsMode) {
+                                LyricsMode.V2 -> LyricsV2(
+                                    sliderPositionProvider = lyricsPosProvider,
+                                    lyricsSyncOffset = lyricsSyncOffset,
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                                LyricsMode.ENHANCED -> LyricsEnhanced(
+                                    sliderPositionProvider = lyricsPosProvider,
+                                    lyricsSyncOffset = lyricsSyncOffset,
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                            }
+                        }
+                    }
+                }
+            } // end outer Box (Column + lyrics overlay)
         }
     }
 }
