@@ -271,28 +271,30 @@ fun AppleMusicQueueSheet(
             val activeColor = adaptivePrimary.copy(alpha = 0.25f)
             val inactiveColor = adaptivePrimary.copy(alpha = 0.1f)
 
-            // Shuffle pill — uses the Material "all_inclusive" (∞) drawable
-            // instead of the crossed-arrows shuffle icon, per user request.
-            // The pill still toggles shuffleModeEnabled; only the visual
-            // changes. Using the 24dp vector drawable (same as the Repeat
-            // and Sleep Timer pills) so the infinity glyph matches the size
-            // of the other icons exactly — the previous Text-based ∞ glyph
-            // rendered smaller than 24dp because of font metrics.
+            // Infinity pill — uses the Material "all_inclusive" (∞) drawable.
+            // Semantics: "infinite playback" — clicking it fetches radio /
+            // related songs via startRadioSeamlessly() and appends them to
+            // the queue so playback continues indefinitely. This fixes the
+            // "search → play → empty queue" issue: when the queue is empty
+            // (only the current song), tapping ∞ populates it with related
+            // songs without interrupting playback.
+            // The pill is a one-shot action button (not a toggle), so it
+            // always uses the inactive color.
             Box(
                 modifier =
                     Modifier
                         .weight(1f)
                         .height(QueuePillHeight)
-                        .background(if (shuffleModeEnabled) activeColor else inactiveColor, pillShape)
+                        .background(inactiveColor, pillShape)
                         .clip(pillShape)
                         .clickable {
-                            playerConnection.player.shuffleModeEnabled = !shuffleModeEnabled
+                            playerConnection.startRadioSeamlessly()
                         },
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
                     painter = painterResource(R.drawable.all_inclusive),
-                    contentDescription = "Shuffle",
+                    contentDescription = "Start radio",
                     tint = adaptivePrimary,
                     modifier = Modifier.size(24.dp),
                 )

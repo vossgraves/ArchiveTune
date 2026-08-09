@@ -21,6 +21,7 @@ import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.animation.animateEnterExit
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -121,6 +122,11 @@ import moe.rukamori.archivetune.playback.PlayerConnection
 import moe.rukamori.archivetune.ui.component.BottomSheetPageState
 import moe.rukamori.archivetune.ui.component.BottomSheetState
 import moe.rukamori.archivetune.ui.component.LocalMenuState
+import moe.rukamori.archivetune.ui.component.LyricsEnhanced
+import moe.rukamori.archivetune.ui.component.LyricsV2
+import moe.rukamori.archivetune.constants.LyricsMode
+import moe.rukamori.archivetune.constants.LyricsModeKey
+import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.ui.menu.PlayerMenu
 import moe.rukamori.archivetune.ui.menu.rememberCastPlayerMenuAction
 import moe.rukamori.archivetune.ui.utils.ShowMediaInfo
@@ -142,11 +148,10 @@ private val AppleMusicMiniArtworkSize = 56.dp
  * Internal visual state of the Apple Music player. Mirrors ViviMusic's
  * `PlayerInternalState` enum — COVER shows the full-screen artwork + title
  * row, QUEUE morphs the artwork into a mini header and reveals the in-place
- * queue sheet. LYRICS is handled separately by the existing `onLyricsClick`
- * callback (which opens the full-screen LyricsScreen), so it's not part of
- * this enum.
+ * queue sheet, LYRICS morphs the same way but reveals the inline lyrics
+ * composable instead of the queue list.
  */
-private enum class AppleMusicPlayerState { COVER, QUEUE }
+private enum class AppleMusicPlayerState { COVER, QUEUE, LYRICS }
 
 @OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
@@ -175,6 +180,7 @@ fun AppleMusicPlayerContent(
     onLyricsClick: () -> Unit,
     onSliderValueChange: (Long) -> Unit,
     onSliderValueChangeFinished: () -> Unit,
+    lyricsSyncOffset: Int = 0,
     modifier: Modifier = Modifier,
     landscape: Boolean = false,
 ) {
@@ -184,12 +190,42 @@ fun AppleMusicPlayerContent(
     // morph into a compact mini header while the queue list fades in below —
     // matching ViviMusic's Player_v2 ↔ Queue_v2 transition exactly.
     var queueOpen by remember { mutableStateOf(false) }
-    val toggleQueue = { queueOpen = !queueOpen }
+    // In-place lyrics morph state. Same animation as the queue morph — the
+    // artwork shrinks into the mini header and the lyrics composable fades
+    // in below. Clicking the mini header artwork restores the COVER state.
+    var lyricsOpen by remember { mutableStateOf(false) }
 
-    // Back handler: when the in-place queue is open, back closes it first
-    // (before the outer player-collapse BackHandler in Player.kt fires).
-    androidx.activity.compose.BackHandler(enabled = queueOpen) {
+    // Toggling one closes the other — queue and lyrics are mutually exclusive
+    // (only one morph target can be active at a time).
+    val toggleQueue = {
+        lyricsOpen = false
+        queueOpen = !queueOpen
+    }
+    val toggleLyrics = {
         queueOpen = false
+        lyricsOpen = !lyricsOpen
+    }
+
+    // Back handler: when the in-place queue or lyrics is open, back closes
+    // it first (before the outer player-collapse BackHandler in Player.kt).
+    val morphOpen = queueOpen || lyricsOpen
+    androidx.activity.compose.BackHandler(enabled = morphOpen) {
+        if (lyricsOpen) lyricsOpen = false
+        if (queueOpen) queueOpen = false
+    }
+
+    // The morph target state: COVER (default), QUEUE, or LYRICS.
+    val morphState =
+        when {
+            queueOpen -> AppleMusicPlayerState.QUEUE
+            lyricsOpen -> AppleMusicPlayerState.LYRICS
+            else -> AppleMusicPlayerState.COVER
+        }
+
+    // Clicking the mini header artwork restores the COVER state (main player).
+    val restoreCover = {
+        queueOpen = false
+        lyricsOpen = false
     }
 
     val baseArtworkUrl = mediaMetadata.thumbnailUrl?.highRes()
@@ -432,13 +468,17 @@ fun AppleMusicPlayerContent(
                     modifier = Modifier.weight(1f),
                 ) {
                     AnimatedContent(
-                        targetState = if (queueOpen) AppleMusicPlayerState.QUEUE else AppleMusicPlayerState.COVER,
+                        targetState = morphState,
                         transitionSpec = {
-                            // Pure crossfade with shared-element morph. The SharedTransitionLayout
-                            // handles the artwork morph; the crossfade lets the queue list fade in
-                            // calmly without competing with the morph.
+                            // Crossfade with shared-element morph. The COVER fades out
+                            // quickly (200ms) so the large square artwork disappears fast
+                            // and the rounded mini artwork becomes visible sooner. The
+                            // entering state (QUEUE/LYRICS) fades in over 600ms for a
+                            // smooth reveal. This fixes the "thumbnail stays square for
+                            // most of the transition" issue — the square COVER content
+                            // is gone in 200ms instead of lingering for 600ms.
                             fadeIn(tween(600, easing = FastOutSlowInEasing)) togetherWith
-                                fadeOut(tween(600, easing = FastOutSlowInEasing))
+                                fadeOut(tween(200, easing = FastOutSlowInEasing))
                         },
                         modifier = Modifier.fillMaxSize(),
                         label = "AppleMusicMorph",
@@ -466,14 +506,14 @@ fun AppleMusicPlayerContent(
                                 )
                             }
                         } else {
-                            // QUEUE state: mini header (mini artwork + compact title) + queue sheet.
+                            // QUEUE / LYRICS state: mini header + content below.
                             //
                             // Apply the stable top inset (notch / status bar / display-cutout
-                            // top) so the mini header + queue list sit below the physical notch
+                            // top) so the mini header + content sit below the physical notch
                             // even when the status bar is hidden app-wide for immersive mode.
                             // The COVER state deliberately runs full-bleed (artwork under the
-                            // status bar), but the QUEUE state shows interactive UI (title,
-                            // queue pills, list items) that must not collide with the notch.
+                            // status bar), but the QUEUE/LYRICS state shows interactive UI
+                            // (title, pills, list/lyrics) that must not collide with the notch.
                             // LocalStableSystemBarsTopPadding is computed in MainActivity and
                             // floors against displayCutout so it stays non-zero when the status
                             // bar is hidden — mirroring the pattern used by every other screen.
@@ -491,13 +531,34 @@ fun AppleMusicPlayerContent(
                                     titleActions = titleActions,
                                     onToggleLike = playerConnection::toggleLike,
                                     onMoreClick = onMoreClick,
+                                    onArtworkClick = restoreCover,
                                     animatedVisibilityScope = this@AnimatedContent,
                                     modifier = Modifier.fillMaxWidth(),
                                 )
-                                AppleMusicQueueSheet(
-                                    navController = navController,
-                                    playerBottomSheetState = state,
-                                    modifier =
+                                if (targetState == AppleMusicPlayerState.QUEUE) {
+                                    AppleMusicQueueSheet(
+                                        navController = navController,
+                                        playerBottomSheetState = state,
+                                        modifier =
+                                            Modifier
+                                                .fillMaxSize()
+                                                .animateEnterExit(
+                                                    enter = slideInVertically(
+                                                        animationSpec = tween(600, easing = FastOutSlowInEasing),
+                                                    ) { it / 4 } + fadeIn(tween(600)),
+                                                    exit = fadeOut(tween(400)) +
+                                                        slideOutVertically(
+                                                            animationSpec = tween(400, easing = FastOutSlowInEasing),
+                                                        ) { it / 4 },
+                                                ),
+                                    )
+                                } else {
+                                    // LYRICS state: inline lyrics composable with the same
+                                    // slide-in/fade animation as the queue sheet. Uses the
+                                    // same LyricsMode preference as the full-screen
+                                    // LyricsScreen (V2 or Enhanced).
+                                    val lyricsMode by rememberEnumPreference(LyricsModeKey, LyricsMode.ENHANCED)
+                                    val lyricsModifier =
                                         Modifier
                                             .fillMaxSize()
                                             .animateEnterExit(
@@ -508,16 +569,30 @@ fun AppleMusicPlayerContent(
                                                     slideOutVertically(
                                                         animationSpec = tween(400, easing = FastOutSlowInEasing),
                                                     ) { it / 4 },
-                                            ),
-                                )
+                                            )
+                                    val lyricsPosProvider = { sliderPosition ?: position }
+                                    when (lyricsMode) {
+                                        LyricsMode.V2 -> LyricsV2(
+                                            sliderPositionProvider = lyricsPosProvider,
+                                            lyricsSyncOffset = lyricsSyncOffset,
+                                            modifier = lyricsModifier,
+                                        )
+                                        LyricsMode.ENHANCED -> LyricsEnhanced(
+                                            sliderPositionProvider = lyricsPosProvider,
+                                            lyricsSyncOffset = lyricsSyncOffset,
+                                            modifier = lyricsModifier,
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
                 }
 
                 // Persistent playback controls — always visible, anchored at the bottom.
-                // When the queue is open, the title row is hidden (it's in the mini header
-                // above) so only the seekbar + transport + volume + bottom row render.
+                // When the queue or lyrics is open, the title row is hidden (it's in the
+                // mini header above) so only the seekbar + transport + volume + bottom
+                // row render.
                 AppleMusicControlsColumn(
                     mediaMetadata = mediaMetadata,
                     isPlaying = isPlaying,
@@ -536,18 +611,16 @@ fun AppleMusicPlayerContent(
                     onMoreClick = onMoreClick,
                     onOutputClick = onOutputClick,
                     onQueueClick = toggleQueue,
-                    onLyricsClick = {
-                        queueOpen = false
-                        onLyricsClick()
-                    },
+                    onLyricsClick = toggleLyrics,
                     onSliderValueChange = onSliderValueChange,
                     onSliderValueChangeFinished = onSliderValueChangeFinished,
                     currentFormat = currentFormat,
                     onQualityChipClick = {
                         bottomSheetPageState.show { ShowMediaInfo(mediaMetadata.id) }
                     },
-                    showTitleRow = !queueOpen,
+                    showTitleRow = !morphOpen,
                     isQueueActive = queueOpen,
+                    isLyricsActive = lyricsOpen,
                     modifier =
                         Modifier
                             .fillMaxWidth()
@@ -734,11 +807,13 @@ private fun AppleMusicControlsColumn(
     // bottom sheet (ShowMediaInfo), mirroring how tapping the title/artist
     // in Apple Music's stock UI opens the song info page.
     onQualityChipClick: () -> Unit,
-    // When false, the title/artist row is hidden — used in QUEUE state where
-    // the title lives in the mini header above.
+    // When false, the title/artist row is hidden — used in QUEUE/LYRICS state
+    // where the title lives in the mini header above.
     showTitleRow: Boolean = true,
     // Whether the in-place queue is currently open. Highlights the queue button.
     isQueueActive: Boolean = false,
+    // Whether the in-place lyrics view is currently open. Highlights the lyrics button.
+    isLyricsActive: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     var swipeUpAccumulated by remember { mutableFloatStateOf(0f) }
@@ -756,13 +831,17 @@ private fun AppleMusicControlsColumn(
     // so it must wrap its height — never fillMaxSize). Gaps tighten on short
     // screens so the rows never squeeze together or spill past the bottom
     // edge (SpaceEvenly did both once the transport icons grew to 52/62dp).
+    //
+    // Gap values are calibrated to match the Apple Music reference layout:
+    // generous ~32-40dp between rows on standard screens, compressed on
+    // shorter devices to prevent overflow.
     val screenHeight = LocalConfiguration.current.screenHeightDp.dp
     val compactHeight = screenHeight < 720.dp
     val veryCompactHeight = screenHeight < 620.dp
-    val titleToScrubberGap = if (veryCompactHeight) 8.dp else if (compactHeight) 14.dp else 24.dp
-    val scrubberToTransportGap = if (veryCompactHeight) 10.dp else if (compactHeight) 16.dp else 24.dp
-    val transportToVolumeGap = if (veryCompactHeight) 8.dp else if (compactHeight) 14.dp else 24.dp
-    val volumeToActionsGap = if (veryCompactHeight) 8.dp else if (compactHeight) 12.dp else 20.dp
+    val titleToScrubberGap = if (veryCompactHeight) 10.dp else if (compactHeight) 18.dp else 28.dp
+    val scrubberToTransportGap = if (veryCompactHeight) 12.dp else if (compactHeight) 20.dp else 32.dp
+    val transportToVolumeGap = if (veryCompactHeight) 10.dp else if (compactHeight) 18.dp else 28.dp
+    val volumeToActionsGap = if (veryCompactHeight) 8.dp else if (compactHeight) 14.dp else 24.dp
 
     Column(
         modifier =
@@ -962,6 +1041,7 @@ private fun AppleMusicControlsColumn(
             iconRes = R.drawable.player_lyrics,
             contentDescription = stringResource(R.string.lyrics),
             onClick = onLyricsClick,
+            tint = if (isLyricsActive) Color.White else Color.White.copy(alpha = 0.85f),
         )
         AppleMusicBottomButton(
             iconRes = R.drawable.cast,
@@ -1065,9 +1145,12 @@ private fun AppleMusicBottomButton(
 }
 
 /**
- * Mini header shown at the top of the QUEUE state. Contains a small artwork
- * (shared element with the large COVER artwork), compact title/artist, and
- * like + more buttons. Mirrors ViviMusic's Player_v2 mini header exactly.
+ * Mini header shown at the top of the QUEUE / LYRICS state. Contains a small
+ * artwork (shared element with the large COVER artwork), compact title/artist,
+ * and like + more buttons. Mirrors ViviMusic's Player_v2 mini header exactly.
+ *
+ * @param onArtworkClick Called when the mini artwork is tapped. Restores the
+ *   COVER state (morphs back to the full main player).
  */
 @OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
@@ -1080,6 +1163,7 @@ private fun SharedTransitionScope.AppleMusicMiniHeader(
     onToggleLike: () -> Unit,
     onMoreClick: () -> Unit,
     animatedVisibilityScope: AnimatedVisibilityScope,
+    onArtworkClick: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -1089,11 +1173,17 @@ private fun SharedTransitionScope.AppleMusicMiniHeader(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // Mini artwork — shared element with the large COVER artwork.
+        // Tapping it restores the COVER state (morphs back to the main player).
         Box(
             modifier =
                 Modifier
                     .size(AppleMusicMiniArtworkSize)
                     .clip(RoundedCornerShape(8.dp))
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = ripple(bounded = false, radius = AppleMusicMiniArtworkSize / 2),
+                        onClick = onArtworkClick,
+                    )
                     .sharedBounds(
                         rememberSharedContentState(key = "amCoverArt"),
                         animatedVisibilityScope = animatedVisibilityScope,
