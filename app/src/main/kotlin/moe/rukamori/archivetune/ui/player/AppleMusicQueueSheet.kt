@@ -271,7 +271,9 @@ fun AppleMusicQueueSheet(
             val activeColor = adaptivePrimary.copy(alpha = 0.25f)
             val inactiveColor = adaptivePrimary.copy(alpha = 0.1f)
 
-            // Shuffle pill.
+            // Shuffle pill — uses an Infinity (∞) glyph instead of the
+            // crossed-arrows shuffle drawable, per user request. The pill
+            // still toggles shuffleModeEnabled; only the visual changes.
             Box(
                 modifier =
                     Modifier
@@ -284,11 +286,11 @@ fun AppleMusicQueueSheet(
                         },
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(
-                    painter = painterResource(R.drawable.shuffle),
-                    contentDescription = "Shuffle",
-                    tint = adaptivePrimary,
-                    modifier = Modifier.size(24.dp),
+                Text(
+                    text = "\u221E",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = adaptivePrimary,
+                    maxLines = 1,
                 )
             }
             // Repeat pill.
@@ -412,9 +414,11 @@ fun AppleMusicQueueSheet(
                         // ViviMusic-style glassy pill background for each row.
                         // Active row is more opaque than idle, matching the
                         // adaptiveSurface.copy(alpha = 0.4f / 0.15f) treatment
-                        // from QueueV2.kt.
+                        // from QueueV2.kt — but toned down (0.22 / 0.10) because
+                        // the original 0.4 was reported as too bright/glitchy
+                        // against the frosted-glass blur behind the sheet.
                         val rowBg =
-                            if (isActive) adaptiveSurface.copy(alpha = 0.4f) else adaptiveSurface.copy(alpha = 0.15f)
+                            if (isActive) adaptiveSurface.copy(alpha = 0.22f) else adaptiveSurface.copy(alpha = 0.10f)
                         val rowShape = RoundedCornerShape(12.dp)
 
                         Box(
@@ -431,6 +435,13 @@ fun AppleMusicQueueSheet(
                                 isActive = isActive,
                                 isPlaying = isPlaying && isActive,
                                 shouldLoadImage = true,
+                                // The sheet already paints a glassy pill behind the row
+                                // (rowBg = adaptiveSurface.copy(alpha = 0.4f / 0.15f)).
+                                // Letting ListItem also paint secondaryContainer on top
+                                // produced a bright, opaque, glitchy highlight that
+                                // fought the glass tint. Suppress the container so only
+                                // the glass pill shows.
+                                showActiveContainer = false,
                                 trailingContent = {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         IconButton(
