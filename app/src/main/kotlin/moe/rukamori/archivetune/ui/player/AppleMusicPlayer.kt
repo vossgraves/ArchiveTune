@@ -121,6 +121,7 @@ import coil3.toBitmap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import moe.rukamori.archivetune.LocalAnimationsDisabled
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.R
@@ -208,6 +209,13 @@ fun AppleMusicPlayerContent(
     // artwork shrinks into the mini header and the lyrics composable fades
     // in below. Clicking the mini header artwork restores the COVER state.
     var lyricsOpen by remember { mutableStateOf(false) }
+
+    // Low-RAM / "reduce animations" signal -- also used to gate the karaoke
+    // line-blur RenderEffect (see LyricsEnhanced/LyricsV2). Reused below to drop
+    // the slide component of the auto-hide controls transition, since a slide
+    // forces an extra layout pass on top of whatever the lyrics view is already
+    // spending its frame budget on.
+    val animationsDisabled = LocalAnimationsDisabled.current
 
     // Toggling one closes the other — queue and lyrics are mutually exclusive
     // (only one morph target can be active at a time).
@@ -858,10 +866,21 @@ fun AppleMusicPlayerContent(
                 // Auto-hide: when lyrics is open, the controls auto-hide after 3s
                 // (always-on in Apple Music style — no toggle). Touching the lyrics
                 // overlay above restores them.
+                // Slide requires an extra layout pass on top of the fade; skip it when
+                // animations are reduced so the auto-hide/show cycle doesn't compete with
+                // the karaoke lyrics view for frame budget on lower-end devices.
                 AnimatedVisibility(
                     visible = !lyricsOpen || playerControlsExpanded,
-                    enter = fadeIn(tween(180)) + slideInVertically(tween(180)) { it / 6 },
-                    exit = fadeOut(tween(140)) + slideOutVertically(tween(140)) { it / 8 },
+                    enter = if (animationsDisabled) {
+                        fadeIn(tween(120))
+                    } else {
+                        fadeIn(tween(180)) + slideInVertically(tween(180)) { it / 6 }
+                    },
+                    exit = if (animationsDisabled) {
+                        fadeOut(tween(100))
+                    } else {
+                        fadeOut(tween(140)) + slideOutVertically(tween(140)) { it / 8 }
+                    },
                 ) {
                     AppleMusicControlsColumn(
                         mediaMetadata = mediaMetadata,
