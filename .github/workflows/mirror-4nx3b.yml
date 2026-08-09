@@ -3,23 +3,15 @@ name: Mirror 4nx3b stable releases
 # Mirrors 4nx3b/ArchiveTune onto this fork whenever they publish a STABLE release, so this repo
 # ships the same code under the same version number with the same release notes.
 #
-# WHY THIS EXISTS SEPARATELY FROM upstream-sync.yml
-# ------------------------------------------------
-# upstream-sync.yml tracks rukamori/ArchiveTune, the original project. Both this fork and 4nx3b
-# sync from rukamori independently, which is exactly why the two histories drifted apart. This
-# workflow tracks 4nx3b instead, and it replaces the tree outright rather than merging, because
-# merging can never produce a matching version number (see VERSION PARITY below).
-#
-# THESE TWO CANNOT BOTH OWN dev
-# -----------------------------
-# upstream-sync.yml merges rukamori into dev; this workflow force-pushes 4nx3b's tree over dev.
-# Left both enabled, every mirror is partly undone by the next hourly rukamori merge and dev ends
-# up in whichever state finished last. Running them at different minutes (see the cron below)
-# avoids a mid-operation collision but not the tug of war.
+# THIS IS NOW THE ONLY WORKFLOW THAT OWNS dev
+# -------------------------------------------
+# upstream-sync.yml (hourly rukamori merge) and upstream-sync-merge.yml have been deleted. They
+# tracked rukamori/ArchiveTune directly, fought this workflow for ownership of dev -- every mirror
+# was partly undone by the next hourly merge -- and flooded the Actions log with hourly no-op runs.
 #
 # Mirroring 4nx3b already includes rukamori's work transitively, because 4nx3b syncs from rukamori
-# themselves -- so once this workflow is trusted, upstream-sync.yml is redundant here and should be
-# disabled. It is left in place for now so nothing is removed silently.
+# themselves, so nothing is lost by removing them. This workflow replaces the tree outright rather
+# than merging, because merging can never produce a matching version number (see VERSION PARITY).
 #
 # WHY .github/ IS PRESERVED INSTEAD OF MIRRORED
 # --------------------------------------------
@@ -38,22 +30,14 @@ name: Mirror 4nx3b stable releases
 # and release.yml prefers that over the commit count, so the version matches by construction.
 
 on:
-  # SCHEDULE INTENTIONALLY DISABLED.
+  # Schedule re-enabled. The earlier concern was that the first two scheduled runs pushed a main
+  # with every submodule gitlink deleted; the gitlink restore step below fixes that and asserts on
+  # it, and this workflow no longer races upstream-sync.yml for dev (that workflow is deleted).
   #
-  # The first two scheduled runs pushed a main with every submodule gitlink deleted (see the
-  # gitlink restore step for why). That is fixed, but the fix has not yet been proven by a real
-  # run, and on a schedule this workflow force-pushes main every two hours -- so a second mistake
-  # would land unattended and repeatedly.
-  #
-  # Re-enable by uncommenting the cron below, but only after a `dry_run=true` dispatch shows the
-  # gitlink assertion passing and the diff containing no submodule deletions.
-  #
-  # When re-enabling, keep :43 and not :17 -- upstream-sync.yml runs hourly at :17 and merges
-  # rukamori into dev while this force-pushes 4nx3b over it. The offset only prevents a
-  # mid-operation collision, not the tug of war; see the header note about retiring that workflow.
-  #
-  # schedule:
-  #   - cron: '43 */2 * * *'
+  # This still force-pushes main every two hours, so the gitlink assertion is the safety net: it
+  # fails the run before pushing if any submodule gitlink would be dropped.
+  schedule:
+    - cron: '43 */2 * * *'
   workflow_dispatch:
     inputs:
       tag:
