@@ -1368,6 +1368,10 @@ val CanaryReleasesFingerprintKey = stringPreferencesKey("daily_nightly_releases_
 
 val TogetherOnlineEndpointCacheKey = stringPreferencesKey("together_online_endpoint_cache")
 val TogetherOnlineEndpointLastCheckedAtKey = longPreferencesKey("together_online_endpoint_last_checked_at")
+val TogetherPublicServerUrlKey = stringPreferencesKey("together_public_server_url")
+val TogetherPublicSessionTokenKey = stringPreferencesKey("together_public_session_token")
+val TogetherPublicRoomCodeKey = stringPreferencesKey("together_public_room_code")
+val TogetherPublicIsHostKey = booleanPreferencesKey("together_public_is_host")
 
 enum class UpdateChannel {
     STABLE,

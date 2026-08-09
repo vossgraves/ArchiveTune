@@ -23,7 +23,6 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
@@ -31,8 +30,9 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.HazeStyle
 import dev.chrisbanes.haze.HazeTint
@@ -2177,9 +2177,8 @@ fun BottomSheetPlayer(
                 }
             }
 
-        // Queue sheet — wrapped in AnimatedVisibility. The Queue's BottomSheet
-        // uses morphMode=true so it fades + scales in place instead of sliding
-        // up from the bottom. Hidden while the lyrics screen is on top.
+        // Queue sheet — wrapped in AnimatedVisibility with slide+fade so it
+        // slides in from below. Hidden while the lyrics screen is on top.
         //
         // The Queue's background is transparent (Color.Unspecified) so the player's
         // brightened blurred artwork shows through unimpeded — matching vivi-music's
@@ -2187,10 +2186,10 @@ fun BottomSheetPlayer(
         // on the player's own background for the frosted-glass effect.
         AnimatedVisibility(
             visible = !isLyricsScreenVisible,
-            enter = fadeIn(tween(450, easing = androidx.compose.animation.core.FastOutSlowInEasing)) +
-                scaleIn(tween(450, easing = androidx.compose.animation.core.FastOutSlowInEasing), initialScale = 0.96f),
-            exit = fadeOut(tween(350, easing = androidx.compose.animation.core.FastOutSlowInEasing)) +
-                scaleOut(tween(350, easing = androidx.compose.animation.core.FastOutSlowInEasing), targetScale = 0.96f),
+            enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+            exit =
+                shrinkVertically(shrinkTowards = Alignment.Top) +
+                    slideOutVertically(targetOffsetY = { it }) + fadeOut(),
         ) {
             Queue(
                 state = queueSheetState,

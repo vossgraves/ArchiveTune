@@ -424,11 +424,11 @@ private fun MusicTogetherDialogs(
                 singleLine = false,
                 maxLines = 8,
                 isInputValid = {
-                    if (dialog.onlineMode) {
-                        it.trim().isNotBlank()
-                    } else {
+                    if (dialog.mode == moe.rukamori.archivetune.together.MusicTogetherConnectionMode.LAN) {
                         moe.rukamori.archivetune.together.TogetherLink
                             .decode(it) != null
+                    } else {
+                        it.trim().isNotBlank()
                     }
                 },
                 onDone = viewModel::submitJoinInput,
@@ -703,20 +703,28 @@ private fun HostControlsCard(
     ) {
         SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
             SegmentedButton(
-                selected = !host.onlineMode,
-                onClick = { viewModel.setHostModeOnline(false) },
-                shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+                selected = host.mode == moe.rukamori.archivetune.together.MusicTogetherConnectionMode.LAN,
+                onClick = { viewModel.setHostMode(moe.rukamori.archivetune.together.MusicTogetherConnectionMode.LAN) },
+                shape = SegmentedButtonDefaults.itemShape(index = 0, count = 3),
                 icon = {},
             ) {
                 Text(text = stringResource(R.string.together_lan))
             }
             SegmentedButton(
-                selected = host.onlineMode,
-                onClick = { viewModel.setHostModeOnline(true) },
-                shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+                selected = host.mode == moe.rukamori.archivetune.together.MusicTogetherConnectionMode.ONLINE,
+                onClick = { viewModel.setHostMode(moe.rukamori.archivetune.together.MusicTogetherConnectionMode.ONLINE) },
+                shape = SegmentedButtonDefaults.itemShape(index = 1, count = 3),
                 icon = {},
             ) {
                 Text(text = stringResource(R.string.together_online))
+            }
+            SegmentedButton(
+                selected = host.mode == moe.rukamori.archivetune.together.MusicTogetherConnectionMode.PUBLIC,
+                onClick = { viewModel.setHostMode(moe.rukamori.archivetune.together.MusicTogetherConnectionMode.PUBLIC) },
+                shape = SegmentedButtonDefaults.itemShape(index = 2, count = 3),
+                icon = {},
+            ) {
+                Text(text = stringResource(R.string.together_public))
             }
         }
         SettingsRow(
@@ -725,7 +733,7 @@ private fun HostControlsCard(
             subtitle = host.displayName,
             onClick = viewModel::openDisplayNameDialog,
         )
-        if (!host.onlineMode) {
+        if (host.mode == moe.rukamori.archivetune.together.MusicTogetherConnectionMode.LAN) {
             SettingsRow(
                 iconResId = R.drawable.link,
                 titleResId = R.string.together_port,
@@ -790,22 +798,31 @@ private fun JoinControlsCard(
     ) {
         SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
             SegmentedButton(
-                selected = !join.onlineMode,
+                selected = join.mode == moe.rukamori.archivetune.together.MusicTogetherConnectionMode.LAN,
                 enabled = !join.disabled,
-                onClick = { viewModel.setJoinModeOnline(false) },
-                shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+                onClick = { viewModel.setJoinMode(moe.rukamori.archivetune.together.MusicTogetherConnectionMode.LAN) },
+                shape = SegmentedButtonDefaults.itemShape(index = 0, count = 3),
                 icon = {},
             ) {
                 Text(text = stringResource(R.string.together_join_link))
             }
             SegmentedButton(
-                selected = join.onlineMode,
+                selected = join.mode == moe.rukamori.archivetune.together.MusicTogetherConnectionMode.ONLINE,
                 enabled = !join.disabled,
-                onClick = { viewModel.setJoinModeOnline(true) },
-                shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+                onClick = { viewModel.setJoinMode(moe.rukamori.archivetune.together.MusicTogetherConnectionMode.ONLINE) },
+                shape = SegmentedButtonDefaults.itemShape(index = 1, count = 3),
                 icon = {},
             ) {
                 Text(text = stringResource(R.string.together_join_code))
+            }
+            SegmentedButton(
+                selected = join.mode == moe.rukamori.archivetune.together.MusicTogetherConnectionMode.PUBLIC,
+                enabled = !join.disabled,
+                onClick = { viewModel.setJoinMode(moe.rukamori.archivetune.together.MusicTogetherConnectionMode.PUBLIC) },
+                shape = SegmentedButtonDefaults.itemShape(index = 2, count = 3),
+                icon = {},
+            ) {
+                Text(text = stringResource(R.string.together_public))
             }
         }
         SettingsRow(
