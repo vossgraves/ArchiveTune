@@ -292,7 +292,7 @@ object DiscordPresenceManager {
         return true
     }
 
-    fun stop() {
+    fun stop(clearActivity: Boolean = true) {
         if (!started.getAndSet(false)) return
 
         DiscordSocialPresenceClient.setOnTransportInvalidated(null)
@@ -315,7 +315,9 @@ object DiscordPresenceManager {
                 rpcMutex.withLock {
                     runCatching {
                         withTimeout(STOP_TIMEOUT_MS) {
-                            rpcToClose.stopActivity()
+                            if (clearActivity) {
+                                rpcToClose.stopActivity()
+                            }
                             rpcToClose.closeRPC()
                         }
                     }.onFailure {

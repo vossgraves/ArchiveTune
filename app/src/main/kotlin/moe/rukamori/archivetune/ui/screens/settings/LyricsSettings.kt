@@ -581,6 +581,7 @@ internal fun LyricsProviderOrderDialog(
 
     DefaultDialog(
         onDismiss = onDismiss,
+        constrainContentHeight = true,
         buttons = {
             TextButton(
                 onClick = onDismiss,

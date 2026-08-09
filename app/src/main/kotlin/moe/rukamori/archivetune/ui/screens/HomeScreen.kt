@@ -58,6 +58,7 @@ import kotlinx.coroutines.CoroutineScope
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.constants.QuickPicks
 import moe.rukamori.archivetune.home.HomeAction
 import moe.rukamori.archivetune.home.HomeScreenState
 import moe.rukamori.archivetune.home.HomeUiState
@@ -270,6 +271,10 @@ private fun HomeContent(
     onAction: (HomeAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val remoteQuickPicks =
+        uiState
+            .takeIf { it.quickPicksMode == QuickPicks.QUICK_PICKS }
+            ?.remoteQuickPicks
     val tonalStart = MaterialTheme.colorScheme.primaryContainer
     val tonalMiddle = MaterialTheme.colorScheme.secondaryContainer
     Box(modifier = modifier.fillMaxSize()) {
@@ -349,6 +354,35 @@ private fun HomeContent(
                                 playerConnection = playerConnection,
                                 menuState = menuState,
                                 haptic = haptic,
+                                modifier = Modifier.animateItem(),
+                            )
+                        }
+                    }
+
+                    if (remoteQuickPicks?.items?.isNotEmpty() == true) {
+                        sectionSpacer("remote_quick_picks")
+                        item(
+                            key = "home_remote_quick_picks_header",
+                            contentType = "section_header",
+                        ) {
+                            HomeSectionHeader(
+                                title = remoteQuickPicks.title,
+                                modifier = Modifier.animateItem(),
+                            )
+                        }
+                        item(
+                            key = "home_remote_quick_picks",
+                            contentType = "media_shelf",
+                        ) {
+                            HomePageSectionContent(
+                                section = remoteQuickPicks,
+                                mediaMetadata = mediaMetadata,
+                                isPlaying = isPlaying,
+                                navController = navController,
+                                playerConnection = playerConnection,
+                                menuState = menuState,
+                                haptic = haptic,
+                                scope = scope,
                                 modifier = Modifier.animateItem(),
                             )
                         }

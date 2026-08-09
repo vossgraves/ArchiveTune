@@ -182,7 +182,6 @@ internal class CastRoutePickerViewModel(
             id != defaultRoute.id &&
             !isDefault &&
             !isBluetooth &&
-            !isSystemRoute &&
             matchesSelector(selector)
     }
 
