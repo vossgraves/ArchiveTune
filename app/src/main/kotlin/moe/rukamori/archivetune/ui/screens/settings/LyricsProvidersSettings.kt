@@ -53,6 +53,9 @@ import moe.rukamori.archivetune.constants.EnablePaxsenixNeteaseLyricsKey
 import moe.rukamori.archivetune.constants.EnablePaxsenixSpotifyLyricsKey
 import moe.rukamori.archivetune.constants.EnablePaxsenixYouTubeLyricsKey
 import moe.rukamori.archivetune.constants.EnableSimpMusicLyricsKey
+import moe.rukamori.archivetune.constants.EnableTidalLyricsKey
+import moe.rukamori.archivetune.constants.EnableQobuzLyricsKey
+import moe.rukamori.archivetune.constants.EnableDeezerLyricsKey
 import moe.rukamori.archivetune.constants.EnableUnisonLyricsKey
 import moe.rukamori.archivetune.constants.EnableYouLyPlusLyricsKey
 import moe.rukamori.archivetune.constants.LyricsProviderOrderKey
@@ -111,6 +114,12 @@ fun LyricsProvidersSettings(
         rememberPreference(key = EnablePaxsenixYouTubeLyricsKey, defaultValue = true)
     val (enableUnisonLyrics, onEnableUnisonLyricsChange) =
         rememberPreference(key = EnableUnisonLyricsKey, defaultValue = true)
+    val (enableTidalLyrics, onEnableTidalLyricsChange) =
+        rememberPreference(key = EnableTidalLyricsKey, defaultValue = true)
+    val (enableQobuzLyrics, onEnableQobuzLyricsChange) =
+        rememberPreference(key = EnableQobuzLyricsKey, defaultValue = true)
+    val (enableDeezerLyrics, onEnableDeezerLyricsChange) =
+        rememberPreference(key = EnableDeezerLyricsKey, defaultValue = true)
     val (prioritizeWordSynced, onPrioritizeWordSyncedChange) =
         rememberPreference(key = PrioritizeWordSyncedLyricsKey, defaultValue = false)
     val (enableMusixmatchExperimental, onEnableMusixmatchExperimentalChange) =
@@ -354,6 +363,36 @@ fun LyricsProvidersSettings(
                         icon = { Icon(painterResource(R.drawable.lyrics), null) },
                         checked = enablePaxsenixYouTubeLyrics,
                         onCheckedChange = onEnablePaxsenixYouTubeLyricsChange,
+                        isEnabled = providerTogglesEnabled,
+                    )
+                }
+
+                item {
+                    SwitchPreference(
+                        title = { Text(stringResource(R.string.enable_tidal_lyrics)) },
+                        icon = { Icon(painterResource(R.drawable.lyrics), null) },
+                        checked = enableTidalLyrics,
+                        onCheckedChange = onEnableTidalLyricsChange,
+                        isEnabled = providerTogglesEnabled,
+                    )
+                }
+
+                item {
+                    SwitchPreference(
+                        title = { Text(stringResource(R.string.enable_qobuz_lyrics)) },
+                        icon = { Icon(painterResource(R.drawable.lyrics), null) },
+                        checked = enableQobuzLyrics,
+                        onCheckedChange = onEnableQobuzLyricsChange,
+                        isEnabled = providerTogglesEnabled,
+                    )
+                }
+
+                item {
+                    SwitchPreference(
+                        title = { Text(stringResource(R.string.enable_deezer_lyrics)) },
+                        icon = { Icon(painterResource(R.drawable.lyrics), null) },
+                        checked = enableDeezerLyrics,
+                        onCheckedChange = onEnableDeezerLyricsChange,
                         isEnabled = providerTogglesEnabled,
                     )
                 }

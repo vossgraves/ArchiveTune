@@ -5190,6 +5190,8 @@ class MusicService :
                 }
             }
 
+            client.createRoom()
+
             scope.launch(SilentHandler) {
                 togetherSessionState.value =
                     moe.rukamori.archivetune.together.TogetherSessionState.JoiningOnline(

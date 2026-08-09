@@ -517,4 +517,44 @@ object TidalAccountManager {
             null
         }
     }
+
+    // -------------------------------------------------------------------------
+    // Lyrics (official API, needs a bearer token)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Fetches Tidal lyrics for a track via the official API `tracks/{id}/lyrics` using
+     * [accessToken]. Searches for the best-matching track, then returns the lyrics text.
+     * Returns failure when no match or no lyrics are available.
+     */
+    suspend fun getLyrics(
+        accessToken: String,
+        title: String,
+        artists: List<String>,
+        durationMs: Long?,
+        countryCode: String = COUNTRY_CODE,
+    ): Result<String> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val match =
+                    searchTrack(accessToken, title, artists, durationMs, countryCode)
+                        ?: throw java.io.IOException("no Tidal match for lyrics")
+                val url = "$API_BASE/tracks/${match.id}/lyrics"
+                val request =
+                    Request
+                        .Builder()
+                        .url(url)
+                        .header("Authorization", "Bearer $accessToken")
+                        .get()
+                        .build()
+                client.newCall(request).execute().use { response ->
+                    if (response.code == 401) throw TidalUnauthorizedException()
+                    if (!response.isSuccessful) throw java.io.IOException("Tidal lyrics HTTP ${response.code}")
+                    val root = runCatching { JSONObject(response.body?.string().orEmpty()) }.getOrNull()
+                        ?: throw java.io.IOException("bad Tidal lyrics payload")
+                    root.optString("lyrics").takeIf { it.isNotBlank() }
+                        ?: throw java.io.IOException("empty Tidal lyrics")
+                }
+            }
+        }
 }
