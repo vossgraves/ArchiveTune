@@ -293,6 +293,9 @@ import moe.rukamori.archivetune.scrobbling.LastFmServiceConfig
 import moe.rukamori.archivetune.storage.StorageFolderKind
 import moe.rukamori.archivetune.storage.StorageLocationRepository
 import moe.rukamori.archivetune.together.TogetherPlaybackSync
+import moe.rukamori.archivetune.together.toPublicTrackInfo
+import moe.rukamori.archivetune.together.toTogetherRoomState
+import moe.rukamori.archivetune.together.toTogetherTrack
 import moe.rukamori.archivetune.ui.screens.settings.DiscordPresenceManager
 import moe.rukamori.archivetune.ui.screens.settings.ListenBrainzManager
 import moe.rukamori.archivetune.utils.AuthScopedCacheValue
@@ -5423,8 +5426,18 @@ class MusicService :
             is moe.rukamori.archivetune.together.TogetherPublicEvent.UserLeft,
             is moe.rukamori.archivetune.together.TogetherPublicEvent.UserDisconnected,
             -> {
-                val userId = event.userId
-                val name = event.username
+                val userId =
+                    when (event) {
+                        is moe.rukamori.archivetune.together.TogetherPublicEvent.UserLeft -> event.userId
+                        is moe.rukamori.archivetune.together.TogetherPublicEvent.UserDisconnected -> event.userId
+                        else -> return
+                    }
+                val name =
+                    when (event) {
+                        is moe.rukamori.archivetune.together.TogetherPublicEvent.UserLeft -> event.username
+                        is moe.rukamori.archivetune.together.TogetherPublicEvent.UserDisconnected -> event.username
+                        else -> return
+                    }
                 togetherPublicParticipants =
                     togetherPublicParticipants.filterNot { it.id == userId }
                 togetherParticipantNames.remove(userId)?.let {
@@ -5553,7 +5566,12 @@ class MusicService :
                                     role = moe.rukamori.archivetune.together.TogetherRole.Guest,
                                     sessionId = current.sessionId,
                                     selfParticipantId = selfId ?: "",
-                                    roomState = current.roomState,
+                                    roomState =
+                                        current.roomState
+                                            ?: moe.rukamori.archivetune.together.TogetherRoomState(
+                                                sessionId = current.sessionId,
+                                                hostId = event.newHostId,
+                                            ),
                                 )
                         }
                     }
