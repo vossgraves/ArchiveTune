@@ -413,6 +413,12 @@ fun Queue(
         backgroundColor = Color.Unspecified,
         modifier = modifier,
         morphMode = true,
+        // Keep the queue list composed while the sheet is collapsed at the peek
+        // height — otherwise the `!state.isCollapsed` gate unmounts the whole
+        // LazyColumn (and its scroll/selection state) the moment a drag reaches
+        // the peek, which combined with the old no-slide morph made the queue
+        // vanish while dragging it down.
+        keepContentAlive = true,
         collapsedContent = {
             when (playerDesignStyle) {
                 PlayerDesignStyle.V2 -> {

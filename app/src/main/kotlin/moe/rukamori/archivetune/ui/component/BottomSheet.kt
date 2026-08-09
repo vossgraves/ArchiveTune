@@ -70,12 +70,12 @@ import moe.rukamori.archivetune.constants.BottomSheetSoftAnimationSpec
  *   the stream URL and re-buffering (causing the "video pauses, audio keeps
  *   playing" bug). Default is false to preserve the original behavior for
  *   other sheets (queue, etc.) that don't need this.
- * @param morphMode When true, the sheet does NOT slide up from the bottom.
- *   Instead, the content fades + scales in place (0.94 → 1.0) over 450ms
- *   with FastOutSlowInEasing. The collapsed content fades out simultaneously.
- *   This is used by the queue to create an in-place morph transition instead
- *   of the traditional BottomSheet slide. Drag-to-dismiss still works.
- *   Default is false to preserve the original slide behavior for other sheets.
+ * @param morphMode When true, the sheet fades + scales in place (0.94 → 1.0) over
+ *   450ms with FastOutSlowInEasing instead of a plain slide on open. The sheet
+ *   still slides vertically with the finger while dragging. This is used by the
+ *   queue to add an in-place morph open transition on top of the normal
+ *   bottom-sheet behavior. Default is false to preserve the original slide
+ *   behavior for other sheets.
  */
 @Composable
 fun BottomSheet(
@@ -85,6 +85,7 @@ fun BottomSheet(
     onDismiss: (() -> Unit)? = null,
     keepContentAlive: Boolean = false,
     morphMode: Boolean = false,
+    backHandlerEnabled: Boolean = true,
     collapsedContent: @Composable BoxScope.() -> Unit,
     content: @Composable BoxScope.() -> Unit,
 ) {
@@ -92,27 +93,17 @@ fun BottomSheet(
         modifier =
             modifier
                 .fillMaxSize()
-                .let { base ->
-                    if (morphMode) {
-                        // Morph mode: NO vertical offset (no slide). The sheet
-                        // stays in place and content fades + scales in via the
-                        // graphicsLayer below. Drag-to-dismiss still works via
-                        // bottomSheetDraggable.
-                        base
-                    } else {
-                        base.offset {
-                            val y =
-                                (state.expandedBound - state.value)
-                                    .roundToPx()
-                                    .coerceAtLeast(0)
-                            IntOffset(x = 0, y = y)
-                        }
-                    }
+                .offset {
+                    val y =
+                        (state.expandedBound - state.value)
+                            .roundToPx()
+                            .coerceAtLeast(0)
+                    IntOffset(x = 0, y = y)
                 }.bottomSheetDraggable(state, onDismiss)
                 .clip(
                     RoundedCornerShape(
-                        topStart = if (!state.isExpanded && !morphMode) 16.dp else 0.dp,
-                        topEnd = if (!state.isExpanded && !morphMode) 16.dp else 0.dp,
+                        topStart = if (!state.isExpanded) 16.dp else 0.dp,
+                        topEnd = if (!state.isExpanded) 16.dp else 0.dp,
                     ),
                 ).background(
                     backgroundColor.copy(
@@ -120,7 +111,7 @@ fun BottomSheet(
                     ),
                 ),
     ) {
-        if (state.isExpandedOrExpanding) {
+        if (state.isExpandedOrExpanding && backHandlerEnabled) {
             BackHandler(onBack = state::collapseSoft)
         }
 
@@ -135,9 +126,12 @@ fun BottomSheet(
                         .graphicsLayer {
                             if (morphMode) {
                                 // Morph: fade + scale (0.94 → 1.0) based on
-                                // expand progress. No offset, no clipping.
+                                // expand progress, with a 25% dead-band so the
+                                // content stays opaque for the first part of a
+                                // drag. No offset — the offset is applied on
+                                // the sheet root so the whole sheet slides.
                                 val p = state.progress.coerceIn(0f, 1f)
-                                alpha = p
+                                alpha = ((p - 0.25f) * 4).coerceIn(0f, 1f)
                                 scaleX = 0.94f + 0.06f * p
                                 scaleY = 0.94f + 0.06f * p
                             } else {
@@ -154,7 +148,7 @@ fun BottomSheet(
                         .graphicsLayer {
                             if (morphMode) {
                                 val p = state.progress.coerceIn(0f, 1f)
-                                alpha = p
+                                alpha = ((p - 0.25f) * 4).coerceIn(0f, 1f)
                                 scaleX = 0.94f + 0.06f * p
                                 scaleY = 0.94f + 0.06f * p
                             } else {

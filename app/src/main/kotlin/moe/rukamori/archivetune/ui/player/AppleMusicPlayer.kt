@@ -732,49 +732,65 @@ private fun AppleMusicControlsColumn(
     }
     LaunchedEffect(Unit) { kotlinx.coroutines.delay(300); resetSwipeUp() }
 
-    Column(
-        modifier = modifier
-            .padding(horizontal = AppleMusicContentPadding)
-            .pointerInput(Unit) {
-                awaitEachGesture {
-                    awaitFirstDown(requireUnconsumed = false)
-                    var accumulated = 0f
-                    var swipeActivated = false
-                    while (true) {
-                        val event = awaitPointerEvent(PointerEventPass.Main)
-                        val change = event.changes.firstOrNull() ?: break
-                        if (change.changedToUp()) break
+    BoxWithConstraints(modifier = modifier) {
+        // The controls cluster (title → bottom action row) is ~300dp tall. Seat it
+        // at the bottom of the sheet and let a single weight spacer absorb slack at
+        // the top, with compact-height gaps so the rows never squeeze together or
+        // spill past the bottom edge (SpaceEvenly did both once the transport
+        // icons grew to 52/62dp).
+        val compactHeight = maxHeight < 720.dp
+        val veryCompactHeight = maxHeight < 620.dp
+        val titleToScrubberGap = if (veryCompactHeight) 8.dp else if (compactHeight) 14.dp else 24.dp
+        val scrubberToTransportGap = if (veryCompactHeight) 10.dp else if (compactHeight) 16.dp else 24.dp
+        val transportToVolumeGap = if (veryCompactHeight) 8.dp else if (compactHeight) 14.dp else 24.dp
+        val volumeToActionsGap = if (veryCompactHeight) 8.dp else if (compactHeight) 12.dp else 20.dp
 
-                        val dragDelta = change.positionChange().y
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = AppleMusicContentPadding)
+                    .pointerInput(Unit) {
+                        awaitEachGesture {
+                            awaitFirstDown(requireUnconsumed = false)
+                            var accumulated = 0f
+                            var swipeActivated = false
+                            while (true) {
+                                val event = awaitPointerEvent(PointerEventPass.Main)
+                                val change = event.changes.firstOrNull() ?: break
+                                if (change.changedToUp()) break
 
-                        if (!swipeActivated) {
-                            // Track upward movement but don't consume yet — let child taps win.
-                            if (dragDelta < 0f) {
-                                accumulated += dragDelta
+                                val dragDelta = change.positionChange().y
+
+                                if (!swipeActivated) {
+                                    // Track upward movement but don't consume yet — let child taps win.
+                                    if (dragDelta < 0f) {
+                                        accumulated += dragDelta
+                                    }
+                                    if (abs(accumulated) > swipeActivationThreshold) {
+                                        swipeActivated = true
+                                        swipeUpAccumulated = accumulated
+                                        change.consume()
+                                    }
+                                } else {
+                                    // Swipe is confirmed — consume to prevent child handling.
+                                    if (dragDelta < 0f) {
+                                        swipeUpAccumulated =
+                                            (swipeUpAccumulated + dragDelta).coerceAtLeast(-swipeUpThreshold * 1.5f)
+                                    }
+                                    change.consume()
+                                }
                             }
-                            if (abs(accumulated) > swipeActivationThreshold) {
-                                swipeActivated = true
-                                swipeUpAccumulated = accumulated
-                                change.consume()
+
+                            if (swipeActivated && swipeUpAccumulated < -swipeUpThreshold) {
+                                onQueueClick()
                             }
-                        } else {
-                            // Swipe is confirmed — consume to prevent child handling.
-                            if (dragDelta < 0f) {
-                                swipeUpAccumulated =
-                                    (swipeUpAccumulated + dragDelta).coerceAtLeast(-swipeUpThreshold * 1.5f)
-                            }
-                            change.consume()
+                            swipeUpAccumulated = 0f
                         }
-                    }
-
-                    if (swipeActivated && swipeUpAccumulated < -swipeUpThreshold) {
-                        onQueueClick()
-                    }
-                    swipeUpAccumulated = 0f
-                }
-            },
-        verticalArrangement = Arrangement.SpaceEvenly,
-    ) {
+                    },
+        ) {
+            // Slack absorber — keeps the controls seated at the bottom of the sheet.
+            Spacer(Modifier.weight(1f))
         // Title / artist row with star + more chips.
         // Hidden when showTitleRow = false (queue is open — the title lives in
         // the mini header above the queue list).
@@ -827,6 +843,8 @@ private fun AppleMusicControlsColumn(
             }
         }
 
+        Spacer(Modifier.height(titleToScrubberGap))
+
         // Thin scrubber + elapsed / -remaining.
         Column {
             AppleMusicSeekBar(
@@ -861,6 +879,8 @@ private fun AppleMusicControlsColumn(
                 )
             }
         }
+
+        Spacer(Modifier.height(scrubberToTransportGap))
 
         // Bare transport glyphs.
         Row(
@@ -901,6 +921,8 @@ private fun AppleMusicControlsColumn(
             )
         }
 
+        Spacer(Modifier.height(transportToVolumeGap))
+
         // Flat volume slider with speaker glyphs. Uses the shared AppleMusicVolumeRow
         // which has proper drag tracking (dragging state + rememberUpdatedState) so the
         // fill follows the finger during a drag instead of lagging behind the rounded
@@ -910,6 +932,8 @@ private fun AppleMusicControlsColumn(
             onVolumeChange = onVolumeChange,
             modifier = Modifier.fillMaxWidth(),
         )
+
+        Spacer(Modifier.height(volumeToActionsGap))
 
         // Bottom action row: lyrics / media output / queue.
         Row(
@@ -933,6 +957,7 @@ private fun AppleMusicControlsColumn(
                 onClick = onQueueClick,
                 tint = if (isQueueActive) Color.White else Color.White.copy(alpha = 0.85f),
             )
+        }
         }
     }
 }

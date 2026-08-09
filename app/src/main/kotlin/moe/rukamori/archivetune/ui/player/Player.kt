@@ -918,15 +918,17 @@ fun BottomSheetPlayer(
             }
         }
 
-    BackHandler(
-        enabled =
-            queueSheetState.isExpandedOrExpanding ||
-                state.isExpandedOrExpanding,
-    ) {
-        when {
-            isLyricsScreenVisible && state.isExpandedOrExpanding -> isLyricsScreenVisible = false
-            queueSheetState.isExpandedOrExpanding -> queueSheetState.collapseSoft()
-            state.isExpandedOrExpanding -> state.collapseSoft()
+    if (!aodModeEnabled) {
+        BackHandler(
+            enabled =
+                queueSheetState.isExpandedOrExpanding ||
+                    state.isExpandedOrExpanding,
+        ) {
+            when {
+                isLyricsScreenVisible && state.isExpandedOrExpanding -> isLyricsScreenVisible = false
+                queueSheetState.isExpandedOrExpanding -> queueSheetState.collapseSoft()
+                state.isExpandedOrExpanding -> state.collapseSoft()
+            }
         }
     }
 
@@ -1121,6 +1123,7 @@ fun BottomSheetPlayer(
         onDismiss = {
             playerConnection.service.stopAndClearPlayback(clearPersistentState = true)
         },
+        backHandlerEnabled = !aodModeEnabled,
         keepContentAlive = true,
         collapsedContent = {
             MiniPlayer(
@@ -1727,7 +1730,7 @@ fun BottomSheetPlayer(
                             canvasPrimaryUrl = artworkCanvas?.animated,
                             canvasFallbackUrl = artworkCanvas?.videoUrl,
                             currentFormat = currentFormat,
-                            contentBottomPadding = queueSheetState.collapsedBound,
+                            contentBottomPadding = queueSheetState.collapsedBound + 16.dp,
                             onQueueClick = openQueue,
                             onLyricsClick = { isLyricsScreenVisible = true },
                             onSliderValueChange = onSliderValueChange,
@@ -2082,7 +2085,7 @@ fun BottomSheetPlayer(
                             canvasPrimaryUrl = artworkCanvas?.animated,
                             canvasFallbackUrl = artworkCanvas?.videoUrl,
                             currentFormat = currentFormat,
-                            contentBottomPadding = queueSheetState.collapsedBound,
+                            contentBottomPadding = queueSheetState.collapsedBound + 16.dp,
                             onQueueClick = openQueue,
                             onLyricsClick = { isLyricsScreenVisible = true },
                             onSliderValueChange = onSliderValueChange,
@@ -2467,8 +2470,7 @@ private fun V8PlayerBackdrop(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.30f)),
-        )
+                    .background(Color.Black.copy(alpha = 0.30f)),        )
     }
 }
 
