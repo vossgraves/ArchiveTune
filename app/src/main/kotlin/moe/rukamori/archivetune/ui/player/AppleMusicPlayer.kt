@@ -45,11 +45,13 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ripple
@@ -107,6 +109,7 @@ import coil3.toBitmap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalPlayerConnection
+import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.ThumbnailCornerRadiusKey
 import moe.rukamori.archivetune.db.entities.FormatEntity
@@ -456,7 +459,7 @@ fun AppleMusicPlayerContent(
                                     modifier =
                                         Modifier
                                             .fillMaxSize()
-                                            .sharedElement(
+                                            .sharedBounds(
                                                 rememberSharedContentState(key = "amCoverArt"),
                                                 animatedVisibilityScope = this@AnimatedContent,
                                             ),
@@ -464,7 +467,22 @@ fun AppleMusicPlayerContent(
                             }
                         } else {
                             // QUEUE state: mini header (mini artwork + compact title) + queue sheet.
-                            Column(modifier = Modifier.fillMaxSize()) {
+                            //
+                            // Apply the stable top inset (notch / status bar / display-cutout
+                            // top) so the mini header + queue list sit below the physical notch
+                            // even when the status bar is hidden app-wide for immersive mode.
+                            // The COVER state deliberately runs full-bleed (artwork under the
+                            // status bar), but the QUEUE state shows interactive UI (title,
+                            // queue pills, list items) that must not collide with the notch.
+                            // LocalStableSystemBarsTopPadding is computed in MainActivity and
+                            // floors against displayCutout so it stays non-zero when the status
+                            // bar is hidden — mirroring the pattern used by every other screen.
+                            Column(
+                                modifier =
+                                    Modifier
+                                        .fillMaxSize()
+                                        .windowInsetsPadding(WindowInsets(top = LocalStableSystemBarsTopPadding.current)),
+                            ) {
                                 AppleMusicMiniHeader(
                                     artworkRequest = artworkRequest,
                                     artworkUrl = artworkUrl,
@@ -1076,7 +1094,7 @@ private fun SharedTransitionScope.AppleMusicMiniHeader(
                 Modifier
                     .size(AppleMusicMiniArtworkSize)
                     .clip(RoundedCornerShape(8.dp))
-                    .sharedElement(
+                    .sharedBounds(
                         rememberSharedContentState(key = "amCoverArt"),
                         animatedVisibilityScope = animatedVisibilityScope,
                     ),

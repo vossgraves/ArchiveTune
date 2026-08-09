@@ -271,9 +271,13 @@ fun AppleMusicQueueSheet(
             val activeColor = adaptivePrimary.copy(alpha = 0.25f)
             val inactiveColor = adaptivePrimary.copy(alpha = 0.1f)
 
-            // Shuffle pill — uses an Infinity (∞) glyph instead of the
-            // crossed-arrows shuffle drawable, per user request. The pill
-            // still toggles shuffleModeEnabled; only the visual changes.
+            // Shuffle pill — uses the Material "all_inclusive" (∞) drawable
+            // instead of the crossed-arrows shuffle icon, per user request.
+            // The pill still toggles shuffleModeEnabled; only the visual
+            // changes. Using the 24dp vector drawable (same as the Repeat
+            // and Sleep Timer pills) so the infinity glyph matches the size
+            // of the other icons exactly — the previous Text-based ∞ glyph
+            // rendered smaller than 24dp because of font metrics.
             Box(
                 modifier =
                     Modifier
@@ -286,11 +290,11 @@ fun AppleMusicQueueSheet(
                         },
                 contentAlignment = Alignment.Center,
             ) {
-                Text(
-                    text = "\u221E",
-                    style = MaterialTheme.typography.titleLarge,
-                    color = adaptivePrimary,
-                    maxLines = 1,
+                Icon(
+                    painter = painterResource(R.drawable.all_inclusive),
+                    contentDescription = "Shuffle",
+                    tint = adaptivePrimary,
+                    modifier = Modifier.size(24.dp),
                 )
             }
             // Repeat pill.
