@@ -2008,9 +2008,14 @@ class MusicService :
                         cleared
                     }
 
-                    HiddenReason.Disabled,
-                    HiddenReason.ServiceStopping,
-                    -> {
+                    HiddenReason.Disabled -> {
+                        ensureDiscordSyncFresh(request.epoch)
+                        DiscordPresenceManager.stop(clearActivity = false)
+                        lastPresenceToken = null
+                        true
+                    }
+
+                    HiddenReason.ServiceStopping -> {
                         val clearToken = token.takeIf { it.isNotBlank() } ?: lastPresenceToken
                         ensureDiscordSyncFresh(request.epoch)
                         val cleared =
@@ -4050,6 +4055,14 @@ class MusicService :
                 queue.shouldBootstrapInfiniteQueue()
             ) {
                 onInfiniteQueueEnabled(queue.infiniteQueueSeedMediaId())
+            }
+
+            if (
+                autoLoadMoreEnabled &&
+                !queue.hasNextPage() &&
+                player.mediaItemCount - player.currentMediaItemIndex <= 3
+            ) {
+                onInfiniteQueueEnabled()
             }
         }
     }

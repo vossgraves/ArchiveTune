@@ -82,6 +82,7 @@ fun DefaultDialog(
     buttons: (@Composable RowScope.() -> Unit)? = null,
     horizontalAlignment: Alignment.Horizontal = Alignment.CenterHorizontally,
     contentScrollable: Boolean = false,
+    constrainContentHeight: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     // Signal "dialog showing" to the parent screen so it can apply a
@@ -120,12 +121,13 @@ fun DefaultDialog(
                     modifier = modifier.padding(24.dp),
                 ) {
                     val bodyModifier =
-                        if (contentScrollable) {
-                            Modifier
-                                .weight(1f, fill = false)
-                                .verticalScroll(rememberScrollState())
-                        } else {
-                            Modifier
+                        when {
+                            contentScrollable ->
+                                Modifier
+                                    .weight(1f, fill = false)
+                                    .verticalScroll(rememberScrollState())
+                            constrainContentHeight -> Modifier.weight(1f, fill = false)
+                            else -> Modifier
                         }
 
                     Column(
