@@ -44,6 +44,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -80,6 +81,7 @@ import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.QueueEditLockKey
 import moe.rukamori.archivetune.extensions.move
+import moe.rukamori.archivetune.extensions.metadata
 import moe.rukamori.archivetune.extensions.toggleRepeatMode
 import moe.rukamori.archivetune.ui.component.BottomSheetState
 import moe.rukamori.archivetune.ui.component.LocalBottomSheetPageState
