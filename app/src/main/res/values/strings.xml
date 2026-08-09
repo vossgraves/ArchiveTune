@@ -1291,6 +1291,7 @@
     <string name="together_require_approval">Require approval</string>
     <string name="together_lan">LAN</string>
     <string name="together_online">Online</string>
+    <string name="together_public">Public</string>
     <string name="together_join_link">Link</string>
     <string name="together_join_code">Code</string>
     <string name="together_join_link_hint">Paste a join link or code</string>
@@ -1311,6 +1312,7 @@
     <string name="together_connection_timed_out">Connection timed out</string>
     <string name="together_session_not_found">Session not found</string>
     <string name="together_server_error">Server error, please try again later</string>
+    <string name="together_kicked">You were kicked from the session</string>
     <string name="leave">Leave</string>
     <string name="join">Join</string>
     <string name="joined">Joined</string>
