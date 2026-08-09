@@ -4553,24 +4553,9 @@ class MusicService :
                 return@launch
             }
 
-            val togetherToken =
-                moe.rukamori.archivetune.BuildConfig.TOGETHER_BEARER_TOKEN
-                    .trim()
-                    .takeIf { it.isNotBlank() }
-            if (togetherToken == null) {
-                scope.launch(SilentHandler) {
-                    togetherSessionState.value =
-                        moe.rukamori.archivetune.together.TogetherSessionState.Error(
-                            message = getString(R.string.together_token_missing),
-                            recoverable = true,
-                        )
-                }
-                return@launch
-            }
-
             val api =
                 moe.rukamori.archivetune.together
-                    .TogetherOnlineApi(baseUrl = baseUrl, bearerToken = togetherToken)
+                    .TogetherOnlineApi(baseUrl = baseUrl)
             val hostName = displayName.trim().ifBlank { getString(R.string.app_name) }
 
             val created =
@@ -4600,7 +4585,6 @@ class MusicService :
                     hostDisplayName = hostName,
                     initialSettings = created.settings,
                     clientId = getOrCreateTogetherClientId(),
-                    bearerToken = togetherToken,
                 )
 
             onlineHost.onEvent = { event ->
@@ -4939,24 +4923,9 @@ class MusicService :
                 return@launch
             }
 
-            val togetherToken =
-                moe.rukamori.archivetune.BuildConfig.TOGETHER_BEARER_TOKEN
-                    .trim()
-                    .takeIf { it.isNotBlank() }
-            if (togetherToken == null) {
-                scope.launch(SilentHandler) {
-                    togetherSessionState.value =
-                        moe.rukamori.archivetune.together.TogetherSessionState.Error(
-                            message = getString(R.string.together_token_missing),
-                            recoverable = true,
-                        )
-                }
-                return@launch
-            }
-
             val api =
                 moe.rukamori.archivetune.together
-                    .TogetherOnlineApi(baseUrl = baseUrl, bearerToken = togetherToken)
+                    .TogetherOnlineApi(baseUrl = baseUrl)
             val resolved =
                 runCatching { api.resolveCode(trimmedCode) }
                     .getOrElse { t ->
@@ -4975,7 +4944,6 @@ class MusicService :
                 moe.rukamori.archivetune.together.TogetherClient(
                     ioScope,
                     clientId = getOrCreateTogetherClientId(),
-                    bearerToken = togetherToken,
                 )
             togetherClient = client
             togetherClock =
