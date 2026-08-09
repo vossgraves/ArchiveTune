@@ -2337,7 +2337,11 @@ private fun V8PortraitContent(
         val artworkSize =
             maxArtworkSize
                 .coerceAtMost(maxHeight - reservedControlsHeight)
-                .coerceAtLeast(0.dp)
+                // Never let the artwork collapse to nothing: if it clamps to 0
+                // the metadata/transport cluster below it rides up to the top of
+                // the player (slack spacer above the artwork can't absorb the
+                // deficit). A minimum keeps the controls seated at the bottom.
+                .coerceAtLeast(96.dp)
 
         Column(
             modifier =
