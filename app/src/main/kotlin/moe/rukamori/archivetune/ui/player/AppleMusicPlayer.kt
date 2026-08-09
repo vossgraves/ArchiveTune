@@ -656,7 +656,12 @@ private fun AppleMusicControlsColumn(
                     swipeUpAccumulated = 0f
                 }
             },
-        verticalArrangement = Arrangement.SpaceEvenly,
+        // Use spacedBy with Top alignment so the title row sits at the very top
+        // of the controls column (flush with the artwork's fade-out zone)
+        // instead of being pushed down by the equal "before" spacing that
+        // SpaceEvenly adds. A weighted spacer before the bottom action row
+        // keeps the lyrics / cast / queue icons anchored at the bottom.
+        verticalArrangement = Arrangement.spacedBy(14.dp, Alignment.Top),
     ) {
         // Title / artist row with star + more chips.
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -714,7 +719,7 @@ private fun AppleMusicControlsColumn(
                 onScrub = onSliderValueChange,
                 onScrubFinished = onSliderValueChangeFinished,
             )
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(8.dp))
             // Mirror the Immersive V8 layout: elapsed time on the left, quality
             // chip (Lossless / AAC / OPUS) centered, -remaining on the right.
             // The chip is tappable and opens the song-detail bottom sheet.
@@ -789,6 +794,12 @@ private fun AppleMusicControlsColumn(
             onVolumeChange = onVolumeChange,
             modifier = Modifier.fillMaxWidth(),
         )
+
+        // Weighted spacer: absorbs leftover vertical space so the bottom
+        // action row (lyrics / cast / queue) stays anchored at the bottom
+        // of the controls column, while the title row stays flush with the
+        // artwork's fade-out zone at the top.
+        Spacer(Modifier.weight(1f))
 
         // Bottom action row: lyrics / media output / queue.
         Row(
