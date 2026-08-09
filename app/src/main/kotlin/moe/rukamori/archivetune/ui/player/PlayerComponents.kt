@@ -79,6 +79,7 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
@@ -101,6 +102,14 @@ import androidx.media3.common.Player.STATE_ENDED
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
+import coil3.request.allowHardware
+import coil3.request.size
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.HazeStyle
+import dev.chrisbanes.haze.HazeTint
+import dev.chrisbanes.haze.hazeEffect
+import dev.chrisbanes.haze.hazeSource
 import me.saket.squiggles.SquigglySlider
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
@@ -3857,6 +3866,16 @@ fun PlayerBackground(
     Box(modifier = Modifier.fillMaxSize()) {
         when (playerBackground) {
             PlayerBackgroundStyle.BLUR -> {
+                // ViviMusic-faithful blur: Haze source + Haze effect with
+                // tint = Color.Black.copy(alpha = 0.30f), blurRadius = 80.dp,
+                // noiseFactor = 0.15. Ported verbatim from vivi-music Player.kt
+                // to replace the previous dark palette-gradient overlay approach
+                // (alpha 0.78-0.82) which was desaturating the album art into a
+                // muddy grey. The Haze approach preserves the artwork's actual
+                // colours at full saturation, darkened only by a uniform 30%
+                // black tint for text legibility.
+                val context = LocalContext.current
+                val backgroundHazeState = remember { HazeState() }
                 AnimatedContent(
                     targetState = backgroundThumbnailUrl,
                     transitionSpec = {
@@ -3866,29 +3885,36 @@ fun PlayerBackground(
                 ) { thumbnailUrl ->
                     if (thumbnailUrl != null) {
                         Box(modifier = Modifier.fillMaxSize()) {
+                            // 1. The source component displaying the unblurred image
                             AsyncImage(
-                                model = thumbnailUrl.highRes(),
+                                model =
+                                    ImageRequest
+                                        .Builder(context)
+                                        .data(thumbnailUrl)
+                                        .size(256, 256)
+                                        .allowHardware(false)
+                                        .build(),
                                 contentDescription = "Blurred background",
                                 contentScale = ContentScale.Crop,
                                 modifier =
-                                    Modifier.fillMaxSize().let {
-                                        if (styleAppliesBlur) it.blur(radius = effectiveBlurRadius.dp) else it
-                                    },
+                                    Modifier
+                                        .fillMaxSize()
+                                        .hazeSource(state = backgroundHazeState),
                             )
-                            val overlayStops = PlayerBackgroundColorUtils.buildBlurOverlayStops(gradientColors)
+                            // 2. The overlay component rendering the Haze blur effect
                             Box(
                                 modifier =
                                     Modifier
                                         .fillMaxSize()
-                                        .background(Brush.verticalGradient(colorStops = overlayStops)),
-                            )
-                            // Subtle scrim only — keeps text legible on very bright artwork
-                            // without dimming the whole player back down.
-                            Box(
-                                modifier =
-                                    Modifier
-                                        .fillMaxSize()
-                                        .background(Color.Black.copy(alpha = 0.02f)),
+                                        .hazeEffect(
+                                            state = backgroundHazeState,
+                                            style =
+                                                HazeStyle(
+                                                    blurRadius = 80.dp,
+                                                    tint = HazeTint(Color.Black.copy(alpha = 0.30f)),
+                                                    noiseFactor = 0.15f,
+                                                ),
+                                        ),
                             )
                         }
                     }

@@ -70,6 +70,12 @@ import moe.rukamori.archivetune.constants.BottomSheetSoftAnimationSpec
  *   the stream URL and re-buffering (causing the "video pauses, audio keeps
  *   playing" bug). Default is false to preserve the original behavior for
  *   other sheets (queue, etc.) that don't need this.
+ * @param morphMode When true, the sheet does NOT slide up from the bottom.
+ *   Instead, the content fades + scales in place (0.94 → 1.0) over 450ms
+ *   with FastOutSlowInEasing. The collapsed content fades out simultaneously.
+ *   This is used by the queue to create an in-place morph transition instead
+ *   of the traditional BottomSheet slide. Drag-to-dismiss still works.
+ *   Default is false to preserve the original slide behavior for other sheets.
  */
 @Composable
 fun BottomSheet(
@@ -78,6 +84,7 @@ fun BottomSheet(
     backgroundColor: Color,
     onDismiss: (() -> Unit)? = null,
     keepContentAlive: Boolean = false,
+    morphMode: Boolean = false,
     collapsedContent: @Composable BoxScope.() -> Unit,
     content: @Composable BoxScope.() -> Unit,
 ) {
@@ -85,17 +92,27 @@ fun BottomSheet(
         modifier =
             modifier
                 .fillMaxSize()
-                .offset {
-                    val y =
-                        (state.expandedBound - state.value)
-                            .roundToPx()
-                            .coerceAtLeast(0)
-                    IntOffset(x = 0, y = y)
+                .let { base ->
+                    if (morphMode) {
+                        // Morph mode: NO vertical offset (no slide). The sheet
+                        // stays in place and content fades + scales in via the
+                        // graphicsLayer below. Drag-to-dismiss still works via
+                        // bottomSheetDraggable.
+                        base
+                    } else {
+                        base.offset {
+                            val y =
+                                (state.expandedBound - state.value)
+                                    .roundToPx()
+                                    .coerceAtLeast(0)
+                            IntOffset(x = 0, y = y)
+                        }
+                    }
                 }.bottomSheetDraggable(state, onDismiss)
                 .clip(
                     RoundedCornerShape(
-                        topStart = if (!state.isExpanded) 16.dp else 0.dp,
-                        topEnd = if (!state.isExpanded) 16.dp else 0.dp,
+                        topStart = if (!state.isExpanded && !morphMode) 16.dp else 0.dp,
+                        topEnd = if (!state.isExpanded && !morphMode) 16.dp else 0.dp,
                     ),
                 ).background(
                     backgroundColor.copy(
@@ -116,7 +133,16 @@ fun BottomSheet(
                     Modifier
                         .fillMaxSize()
                         .graphicsLayer {
-                            alpha = if (state.isCollapsed) 0f else ((state.progress - 0.25f) * 4).coerceIn(0f, 1f)
+                            if (morphMode) {
+                                // Morph: fade + scale (0.94 → 1.0) based on
+                                // expand progress. No offset, no clipping.
+                                val p = state.progress.coerceIn(0f, 1f)
+                                alpha = p
+                                scaleX = 0.94f + 0.06f * p
+                                scaleY = 0.94f + 0.06f * p
+                            } else {
+                                alpha = if (state.isCollapsed) 0f else ((state.progress - 0.25f) * 4).coerceIn(0f, 1f)
+                            }
                         },
                 content = content,
             )
@@ -126,7 +152,14 @@ fun BottomSheet(
                     Modifier
                         .fillMaxSize()
                         .graphicsLayer {
-                            alpha = ((state.progress - 0.25f) * 4).coerceIn(0f, 1f)
+                            if (morphMode) {
+                                val p = state.progress.coerceIn(0f, 1f)
+                                alpha = p
+                                scaleX = 0.94f + 0.06f * p
+                                scaleY = 0.94f + 0.06f * p
+                            } else {
+                                alpha = ((state.progress - 0.25f) * 4).coerceIn(0f, 1f)
+                            }
                         },
                 content = content,
             )

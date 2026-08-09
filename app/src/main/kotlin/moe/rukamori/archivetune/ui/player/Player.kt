@@ -23,6 +23,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
@@ -30,9 +31,8 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.HazeStyle
 import dev.chrisbanes.haze.HazeTint
@@ -2170,9 +2170,9 @@ fun BottomSheetPlayer(
                 }
             }
 
-        // Queue sheet — wrapped in AnimatedVisibility with slide+fade so it slides in from below
-        // (mirrors vivi-music's Player.kt transition verbatim). Hidden while the lyrics screen
-        // is on top.
+        // Queue sheet — wrapped in AnimatedVisibility. The Queue's BottomSheet
+        // uses morphMode=true so it fades + scales in place instead of sliding
+        // up from the bottom. Hidden while the lyrics screen is on top.
         //
         // The Queue's background is transparent (Color.Unspecified) so the player's
         // brightened blurred artwork shows through unimpeded — matching vivi-music's
@@ -2180,10 +2180,10 @@ fun BottomSheetPlayer(
         // on the player's own background for the frosted-glass effect.
         AnimatedVisibility(
             visible = !isLyricsScreenVisible,
-            enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
-            exit =
-                shrinkVertically(shrinkTowards = Alignment.Top) +
-                    slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+            enter = fadeIn(tween(450, easing = androidx.compose.animation.core.FastOutSlowInEasing)) +
+                scaleIn(tween(450, easing = androidx.compose.animation.core.FastOutSlowInEasing), initialScale = 0.96f),
+            exit = fadeOut(tween(350, easing = androidx.compose.animation.core.FastOutSlowInEasing)) +
+                scaleOut(tween(350, easing = androidx.compose.animation.core.FastOutSlowInEasing), targetScale = 0.96f),
         ) {
             Queue(
                 state = queueSheetState,
@@ -2406,7 +2406,12 @@ private fun V8PlayerBackdrop(
                             .graphicsLayer {
                                 scaleX = 1.16f
                                 scaleY = 1.16f
-                                alpha = 0.66f
+                                // Raised from 0.66 → 1.0 — let the artwork's
+                                // actual colours through; the previous 0.66
+                                // alpha combined with the 0.52 black scrim below
+                                // was crushing the brightness down to a muddy
+                                // grey. Matches ViviMusic's bright-blur aesthetic.
+                                alpha = 1.0f
                             },
                     onState = { state ->
                         if (state is coil3.compose.AsyncImagePainter.State.Error) {
@@ -2424,7 +2429,7 @@ private fun V8PlayerBackdrop(
                             .graphicsLayer {
                                 scaleX = 1.16f
                                 scaleY = 1.16f
-                                alpha = 0.66f
+                                alpha = 1.0f
                             },
                     onError = { failedUrl ->
                         getNextFallbackUrl(failedUrl)?.let { currentUrl = it }
@@ -2441,7 +2446,7 @@ private fun V8PlayerBackdrop(
                             .graphicsLayer {
                                 scaleX = 1.16f
                                 scaleY = 1.16f
-                                alpha = 0.66f
+                                alpha = 1.0f
                             },
                     onState = { state ->
                         if (state is coil3.compose.AsyncImagePainter.State.Error) {
@@ -2452,11 +2457,17 @@ private fun V8PlayerBackdrop(
             }
         }
 
+        // ViviMusic-faithful scrim: a single uniform 30% black tint, like
+        // HazeTint(Color.Black.copy(alpha = 0.30f)). Previously this was a
+        // 0.52-alpha black box which, combined with the 0.66 graphicsLayer
+        // alpha above, produced an effective ~83% darkening — the opposite
+        // of ViviMusic's bright, vibrant blur. The 0.30 tint preserves the
+        // album art's colour while keeping text legible.
         Box(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.52f)),
+                    .background(Color.Black.copy(alpha = 0.30f)),
         )
     }
 }
@@ -2688,15 +2699,20 @@ private fun V7PlayerBackdrop(
     val sharpStageBottomScrim =
         remember(backdropPalette) {
             val blendColor = backdropPalette.bottom
+            // ViviMusic-faithful: reduced alphas (0.18/0.52/0.82/1.0 →
+            // 0.10/0.28/0.46/0.62) so the bottom of the sharp stage still
+            // blends into the backdrop but doesn't aggressively darken the
+            // artwork. Combined with the brighter palette tone and raised
+            // backdrop alpha, the result reads as vibrant rather than muddy.
             Brush.verticalGradient(
                 colorStops =
                     arrayOf(
                         0f to Color.Transparent,
                         V7SharpStageBottomScrimStartFraction to Color.Transparent,
-                        0.60f to blendColor.copy(alpha = 0.18f),
-                        0.76f to blendColor.copy(alpha = 0.52f),
-                        0.88f to blendColor.copy(alpha = 0.82f),
-                        1f to blendColor,
+                        0.60f to blendColor.copy(alpha = 0.10f),
+                        0.76f to blendColor.copy(alpha = 0.28f),
+                        0.88f to blendColor.copy(alpha = 0.46f),
+                        1f to blendColor.copy(alpha = 0.62f),
                     ),
             )
         }
@@ -2720,7 +2736,14 @@ private fun V7PlayerBackdrop(
                 .graphicsLayer {
                     scaleX = V7BackdropBlurScale
                     scaleY = V7BackdropBlurScale
-                    alpha = if (disableBlur || !needsBlur) 0.20f else 0.58f
+                    // Raised from 0.58 → 0.92 (and 0.20 → 0.50 for the
+                    // no-blur branch) so the artwork's actual colours shine
+                    // through. The previous 0.58 alpha combined with the
+                    // valueMax=0.32 palette floor below was crushing the
+                    // backdrop into a dark, desaturated sludge — the opposite
+                    // of ViviMusic's bright, vibrant blur. 0.92 keeps a tiny
+                    // headroom for the sharp stage to dominate visually.
+                    alpha = if (disableBlur || !needsBlur) 0.50f else 0.92f
                 }
         }
     val canvasStageModifier =
@@ -2894,10 +2917,14 @@ private data class V7BackdropPalette(
             // (e.g. red → green at +120°) which are wrong for a backdrop that should feel
             // coherent. We derive mid/bottom by darkening the same hue instead.
             val dominantColor = colors.firstOrNull()
-            val fallback = Color(fallbackColor).v7BackdropTone(valueMin = 0.12f, valueMax = 0.38f)
-            val top = dominantColor?.v7BackdropTone(valueMin = 0.20f, valueMax = 0.72f) ?: fallback
-            val mid = dominantColor?.v7BackdropTone(valueMin = 0.13f, valueMax = 0.48f) ?: top
-            val bottom = dominantColor?.v7BackdropTone(valueMin = 0.08f, valueMax = 0.32f) ?: mid
+            // ViviMusic-faithful: previous valueMax caps (0.32/0.48/0.72) were
+            // crushing the palette into a dark, muddy sludge. New caps
+            // (0.62/0.78/0.92) let the actual dominant colour through, matching
+            // ViviMusic's bright, vibrant blur aesthetic.
+            val fallback = Color(fallbackColor).v7BackdropTone(valueMin = 0.20f, valueMax = 0.62f)
+            val top = dominantColor?.v7BackdropTone(valueMin = 0.32f, valueMax = 0.92f) ?: fallback
+            val mid = dominantColor?.v7BackdropTone(valueMin = 0.26f, valueMax = 0.78f) ?: top
+            val bottom = dominantColor?.v7BackdropTone(valueMin = 0.20f, valueMax = 0.62f) ?: mid
             return V7BackdropPalette(
                 top = top,
                 mid = mid,

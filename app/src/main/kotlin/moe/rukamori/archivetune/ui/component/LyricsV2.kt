@@ -160,6 +160,15 @@ private const val TTML_LEAD_MS = 0L
 
 private const val LYRIC_VISUAL_TUNING_OFFSET_MS = 150L
 
+/**
+ * Minimum duration (ms) for the per-word letter-by-letter sweep animation.
+ * Without this floor, very short words (< ~50ms) can be skipped entirely
+ * between 16ms position polls, causing the word to jump from 0% to 100%
+ * with no visible sweep. 180ms is long enough to be clearly visible while
+ * short enough not to lag noticeably behind the audio for typical words.
+ */
+private const val MIN_SWEEP_MS = 180L
+
 /** Seconds to wait before auto-scroll resumes after manual scroll. */
 private const val MANUAL_SCROLL_TIMEOUT_MS = 3000L
 
@@ -1286,13 +1295,55 @@ private fun AnimatedWordV2(
     val isWordComplete = currentPositionMs >= wordEndMs
     val isWordActive = currentPositionMs in wordStartMs until wordEndMs
 
-    // Perfect linear progress [0..1] that matches individual word timings
-    val progress =
+    // ── Sweep progress: Animatable-driven for robustness ──
+    // Previously, progress was computed directly from currentPositionMs:
+    //   progress = (currentPositionMs - wordStartMs) / wordDuration
+    // This broke for very short words (< ~50ms): the 16ms position poll
+    // could skip the entire isWordActive window, causing the word to jump
+    // from 0% to 100% with no letter-by-letter sweep. The user reported
+    // "sometimes words don't animate letter by letter" — this is the cause.
+    //
+    // Fix: drive the sweep with an Animatable that starts when the word
+    // becomes active and runs for max(wordDuration, MIN_SWEEP_MS). This
+    // guarantees a visible sweep even for 1-frame words, and decouples
+    // the animation smoothness from the position-poll cadence.
+    val sweepAnimatable = remember(word) { androidx.compose.animation.core.Animatable(0f) }
+    androidx.compose.runtime.LaunchedEffect(isWordActive, isWordComplete, wordStartMs, wordEndMs) {
         when {
-            isWordComplete -> 1f
-            currentPositionMs <= wordStartMs -> 0f
-            else -> ((currentPositionMs - wordStartMs).toFloat() / wordDuration).coerceIn(0f, 1f)
+            isWordComplete && sweepAnimatable.value < 1f -> {
+                // Snap to 1 if we missed the active window entirely (very
+                // short word skipped between polls). Use a quick tween
+                // instead of snapTo so there's at least a flicker of motion.
+                sweepAnimatable.animateTo(
+                    1f,
+                    androidx.compose.animation.core.tween(
+                        durationMillis = 80,
+                        easing = androidx.compose.animation.core.LinearEasing,
+                    ),
+                )
+            }
+            isWordActive -> {
+                // Animate from current value to 1 over the remaining word
+                // duration, but at least MIN_SWEEP_MS so short words still
+                // get a visible sweep.
+                val remainingMs = (wordEndMs - currentPositionMs).coerceAtLeast(1L)
+                val animDurationMs = maxOf(remainingMs, MIN_SWEEP_MS)
+                sweepAnimatable.animateTo(
+                    1f,
+                    androidx.compose.animation.core.tween(
+                        durationMillis = animDurationMs.toInt().coerceAtLeast(1),
+                        easing = androidx.compose.animation.core.LinearEasing,
+                    ),
+                )
+            }
+            else -> {
+                // Word not yet started — reset to 0 so the next active
+                // window begins fresh.
+                sweepAnimatable.snapTo(0f)
+            }
         }
+    }
+    val progress = if (isWordComplete) 1f else sweepAnimatable.value
 
     // ── Bounce and Float animation ──
     // Subtle scale up peaking halfway through the word. Exact timing sync!

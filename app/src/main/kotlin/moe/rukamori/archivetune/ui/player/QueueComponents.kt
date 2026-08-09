@@ -10,6 +10,17 @@
 package moe.rukamori.archivetune.ui.player
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
@@ -22,6 +33,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -1617,6 +1630,67 @@ private val CompactQueueThumbnailRadius = 12.dp
 private val CompactQueueHorizontalPadding = 12.dp
 
 /**
+ * Animated 3-bar equalizer indicator for the currently-playing queue row.
+ * Bars oscillate with slightly different phases + durations so the motion
+ * looks organic rather than mechanical. When [isPlaying] is false, bars
+ * freeze at their current height (paused state) — matching the typical
+ * "now playing" affordance in music apps.
+ *
+ * Visual spec: 3 rounded-rect bars, ~2.5dp wide, ~14dp max height, white,
+ * sitting on a translucent black disc over the album artwork. The bars
+ * animate from 30% → 100% height with a fast tween + reverse repeat.
+ */
+@Composable
+private fun AnimatedEqualizerBars(
+    isPlaying: Boolean,
+    modifier: Modifier = Modifier,
+    barColor: Color = Color.White,
+) {
+    val transition = rememberInfiniteTransition(label = "eq")
+    // Three bars with different durations + initial phases so they don't sync.
+    val durations = intArrayOf(420, 540, 480)
+    val initialOffsets = floatArrayOf(0f, 0.33f, 0.66f)
+    val heights =
+        (0..2).map { i ->
+            transition.animateFloat(
+                initialValue = 0.30f + initialOffsets[i] * 0.40f,
+                targetValue = 1.0f,
+                animationSpec =
+                    infiniteRepeatable(
+                        animation =
+                            tween(
+                                durationMillis = durations[i],
+                                easing = LinearEasing,
+                            ),
+                        repeatMode = RepeatMode.Reverse,
+                    ),
+                label = "bar_$i",
+            )
+        }
+
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        verticalAlignment = Alignment.Bottom,
+    ) {
+        heights.forEachIndexed { i, h ->
+            // When paused, freeze the bar at 0.5f height by overriding the
+            // animated value. We can't actually pause an InfiniteTransition,
+            // so we gate the value with isPlaying instead.
+            val heightFraction = if (isPlaying) h.value else 0.5f
+            Box(
+                modifier =
+                    Modifier
+                        .width(2.5.dp)
+                        .height((14.dp * heightFraction).coerceAtLeast(2.dp))
+                        .clip(RoundedCornerShape(1.25.dp))
+                        .background(barColor),
+            )
+        }
+    }
+}
+
+/**
  * Minimal "Queue" heading with controls on the right.
  * Replaces the old [CurrentSongHeader] when the compact queue is enabled —
  * the active track's artwork and metadata are already visible in the
@@ -1636,11 +1710,22 @@ fun CompactQueueHeader(
     onInfiniteQueueClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // Dynamic notch-aware top padding: combine the cached status-bar inset
+    // (LocalStableSystemBarsTopPadding — survives "hide status bar" mode by
+    // preserving the last non-zero value) with the physical display-cutout
+    // inset (which is reported independently of the status bar visibility
+    // state). Taking the max guarantees the queue header always sits below
+    // every phone's notch/punch-hole/camera cutout, even when the user has
+    // enabled "Hide status bar" in settings.
+    val stableStatusBarTop = LocalStableSystemBarsTopPadding.current
+    val displayCutoutTop = WindowInsets.displayCutout.only(WindowInsetsSides.Top).asPaddingValues().calculateTopPadding()
+    val notchSafeTopPadding = maxOf(stableStatusBarTop, displayCutoutTop)
     Column(
         modifier =
             modifier
                 .fillMaxWidth()
-                .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
+                .windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal))
+                .padding(top = notchSafeTopPadding)
                 .bottomSheetDraggable(sheetState)
                 .padding(horizontal = CompactQueueHorizontalPadding)
                 .padding(top = 12.dp, bottom = 4.dp),
@@ -1856,8 +1941,12 @@ fun CompactQueueItem(
                             ),
                 )
                 if (isActive && shouldLoadImage) {
-                    // Translucent dim layer + glyph — keeps the artwork visible
-                    // while making the playing state unambiguous.
+                    // Translucent dim layer + animated equalizer bars — keeps
+                    // the artwork visible while making the playing state
+                    // unambiguous. Replaces the previous static pause/play
+                    // glyph with the classic 3-bar "now playing" indicator
+                    // that animates while music is playing and freezes when
+                    // paused.
                     Box(
                         modifier =
                             Modifier
@@ -1866,14 +1955,9 @@ fun CompactQueueItem(
                                 .background(Color.Black.copy(alpha = 0.38f)),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Icon(
-                            painter =
-                                painterResource(
-                                    if (isPlaying) R.drawable.player_pause else R.drawable.player_play,
-                                ),
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(20.dp),
+                        AnimatedEqualizerBars(
+                            isPlaying = isPlaying,
+                            modifier = Modifier.height(14.dp),
                         )
                     }
                 }

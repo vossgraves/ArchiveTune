@@ -89,14 +89,18 @@ object PlayerBackgroundColorUtils {
         val first = comfortable[0]
         val second = comfortable.getOrNull(1) ?: first
         val third = comfortable.getOrNull(2) ?: second
-        // Same brightening pass as buildBlurOverlayStops — alphas lifted
-        // from 0.55/0.48/0.42/0.38/0.35 → 0.82/0.78/0.74/0.70/0.66.
+        // ViviMusic-faithful: dramatically reduced alphas
+        // (0.82/0.78/0.74/0.70/0.66 → 0.32/0.28/0.24/0.20/0.16) so the
+        // actual album artwork's colours shine through the blur. The
+        // previous high-alpha gradient was desaturating the artwork into a
+        // muddy, monochrome wash. The new subtle gradient provides a hint
+        // of palette colour while preserving the artwork's vibrancy.
         return arrayOf(
-            0f to first.copy(alpha = 0.82f),
-            0.2f to lerp(first, second, 0.3f).copy(alpha = 0.78f),
-            0.5f to second.copy(alpha = 0.74f),
-            0.8f to lerp(second, third, 0.6f).copy(alpha = 0.70f),
-            1f to third.copy(alpha = 0.66f),
+            0f to first.copy(alpha = 0.32f),
+            0.2f to lerp(first, second, 0.3f).copy(alpha = 0.28f),
+            0.5f to second.copy(alpha = 0.24f),
+            0.8f to lerp(second, third, 0.6f).copy(alpha = 0.20f),
+            1f to third.copy(alpha = 0.16f),
         )
     }
 
