@@ -16,18 +16,6 @@ package moe.rukamori.archivetune.ui.player
 import android.content.Intent
 import android.graphics.Bitmap
 import android.os.Build
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.AnimatedVisibilityScope
-import androidx.compose.animation.ExperimentalSharedTransitionApi
-import androidx.compose.animation.SharedTransitionLayout
-import androidx.compose.animation.SharedTransitionScope
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.BorderStroke
@@ -132,19 +120,7 @@ private val AppleMusicChipSize = 34.dp
 private val AppleMusicTransportIconSize = 52.dp
 private val AppleMusicPlayPauseIconSize = 62.dp
 private val AppleMusicBottomIconSize = 24.dp
-private val AppleMusicMiniArtworkSize = 56.dp
 
-/**
- * Internal visual state of the Apple Music player. Mirrors ViviMusic's
- * `PlayerInternalState` enum — COVER shows the full-screen artwork + title
- * row, QUEUE morphs the artwork into a mini header and reveals the in-place
- * queue sheet. LYRICS is handled separately by the existing `onLyricsClick`
- * callback (which opens the full-screen LyricsScreen), so it's not part of
- * this enum.
- */
-private enum class AppleMusicPlayerState { COVER, QUEUE }
-
-@OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 fun AppleMusicPlayerContent(
     mediaMetadata: MediaMetadata,
@@ -174,20 +150,6 @@ fun AppleMusicPlayerContent(
     modifier: Modifier = Modifier,
     landscape: Boolean = false,
 ) {
-    // In-place queue morph state. When the user taps the queue button (or
-    // swipes up on the controls area), we toggle this state instead of
-    // opening the separate queue BottomSheet. The artwork + title row then
-    // morph into a compact mini header while the queue list fades in below —
-    // matching ViviMusic's Player_v2 ↔ Queue_v2 transition exactly.
-    var queueOpen by remember { mutableStateOf(false) }
-    val toggleQueue = { queueOpen = !queueOpen }
-
-    // Back handler: when the in-place queue is open, back closes it first
-    // (before the outer player-collapse BackHandler in Player.kt fires).
-    androidx.activity.compose.BackHandler(enabled = queueOpen) {
-        queueOpen = false
-    }
-
     val baseArtworkUrl = mediaMetadata.thumbnailUrl?.highRes()
     val thumbnailSwapState =
         rememberThumbnailSwapState(
@@ -347,18 +309,15 @@ fun AppleMusicPlayerContent(
                 )
             }
             val preBlurLoading = isPreS && preBlurredBitmap == null && !canvasActive
-            // Brightened scrim — matches ViviMusic's brighter aesthetic.
-            // Previous alphas (0.42/0.60/0.82) were too dark; reduced to
-            // 0.25/0.40/0.65 so the blurred artwork's color shows through.
             Box(
                 modifier =
                     Modifier
                         .matchParentSize()
                         .background(
                             Brush.verticalGradient(
-                                0f to Color.Black.copy(alpha = if (useCanvasBackdrop || Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) 0.25f else if (preBlurLoading) 0.55f else 0.40f),
-                                0.5f to Color.Black.copy(alpha = if (useCanvasBackdrop || Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) 0.40f else if (preBlurLoading) 0.65f else 0.55f),
-                                1f to Color.Black.copy(alpha = if (useCanvasBackdrop || Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) 0.65f else if (preBlurLoading) 0.85f else 0.75f),
+                                0f to Color.Black.copy(alpha = if (useCanvasBackdrop || Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) 0.42f else if (preBlurLoading) 0.62f else 0.52f),
+                                0.5f to Color.Black.copy(alpha = if (useCanvasBackdrop || Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) 0.60f else if (preBlurLoading) 0.74f else 0.68f),
+                                1f to Color.Black.copy(alpha = if (useCanvasBackdrop || Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) 0.82f else if (preBlurLoading) 0.90f else 0.86f),
                             ),
                         ),
             )
@@ -414,127 +373,56 @@ fun AppleMusicPlayerContent(
                 )
             }
         } else {
-            // Portrait layout with ViviMusic-style in-place queue morph.
-            //
-            // The artwork + title row live inside a SharedTransitionLayout so they
-            // can morph (large → mini) when the user toggles the queue. The playback
-            // controls (seekbar + transport + volume + bottom row) live outside the
-            // SharedTransitionLayout so they stay anchored at the bottom — matching
-            // ViviMusic's Player_v2 layout exactly.
-            Column(
-                modifier = Modifier.fillMaxSize(),
-            ) {
-                SharedTransitionLayout(
-                    modifier = Modifier.weight(1f),
-                ) {
-                    AnimatedContent(
-                        targetState = if (queueOpen) AppleMusicPlayerState.QUEUE else AppleMusicPlayerState.COVER,
-                        transitionSpec = {
-                            // Pure crossfade with shared-element morph. The SharedTransitionLayout
-                            // handles the artwork morph; the crossfade lets the queue list fade in
-                            // calmly without competing with the morph.
-                            fadeIn(tween(600, easing = FastOutSlowInEasing)) togetherWith
-                                fadeOut(tween(600, easing = FastOutSlowInEasing))
-                        },
-                        modifier = Modifier.fillMaxSize(),
-                        label = "AppleMusicMorph",
-                    ) { targetState ->
-                        if (targetState == AppleMusicPlayerState.COVER) {
-                            // COVER state: large sharp artwork fills the morph area.
-                            Box(modifier = Modifier.fillMaxSize()) {
-                                AppleMusicSharpArtwork(
-                                    artworkRequest = artworkRequest,
-                                    artworkUrl = artworkUrl,
-                                    canvasPrimaryUrl = canvasPrimaryUrl,
-                                    canvasFallbackUrl = canvasFallbackUrl,
-                                    isPlaying = isPlaying,
-                                    fadeBottom = !videoShowing,
-                                    videoId = mediaMetadata.id.takeIf { !it.isLocalMediaId() },
-                                    isMusicVideo = mediaMetadata.isMusicVideo,
-                                    landscape = false,
-                                    modifier =
-                                        Modifier
-                                            .fillMaxSize()
-                                            .sharedElement(
-                                                rememberSharedContentState(key = "amCoverArt"),
-                                                animatedVisibilityScope = this@AnimatedContent,
-                                            ),
-                                )
-                            }
-                        } else {
-                            // QUEUE state: mini header (mini artwork + compact title) + queue sheet.
-                            Column(modifier = Modifier.fillMaxSize()) {
-                                AppleMusicMiniHeader(
-                                    artworkRequest = artworkRequest,
-                                    artworkUrl = artworkUrl,
-                                    mediaMetadata = mediaMetadata,
-                                    currentSongLiked = currentSongLiked,
-                                    titleActions = titleActions,
-                                    onToggleLike = playerConnection::toggleLike,
-                                    onMoreClick = onMoreClick,
-                                    animatedVisibilityScope = this@AnimatedContent,
-                                    modifier = Modifier.fillMaxWidth(),
-                                )
-                                AppleMusicQueueSheet(
-                                    navController = navController,
-                                    playerBottomSheetState = state,
-                                    modifier =
-                                        Modifier
-                                            .fillMaxSize()
-                                            .animateEnterExit(
-                                                enter = slideInVertically(
-                                                    animationSpec = tween(600, easing = FastOutSlowInEasing),
-                                                ) { it / 4 } + fadeIn(tween(600)),
-                                                exit = fadeOut(tween(400)) +
-                                                    slideOutVertically(
-                                                        animationSpec = tween(400, easing = FastOutSlowInEasing),
-                                                    ) { it / 4 },
-                                            ),
-                                )
-                            }
-                        }
-                    }
-                }
+            AppleMusicSharpArtwork(
+                artworkRequest = artworkRequest,
+                artworkUrl = artworkUrl,
+                canvasPrimaryUrl = canvasPrimaryUrl,
+                canvasFallbackUrl = canvasFallbackUrl,
+                isPlaying = isPlaying,
+                fadeBottom = !videoShowing,
+                videoId = mediaMetadata.id.takeIf { !it.isLocalMediaId() },
+                isMusicVideo = mediaMetadata.isMusicVideo,
+                landscape = false,
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .height(sharpArtworkHeight)
+                        .align(Alignment.TopCenter),
+            )
 
-                // Persistent playback controls — always visible, anchored at the bottom.
-                // When the queue is open, the title row is hidden (it's in the mini header
-                // above) so only the seekbar + transport + volume + bottom row render.
-                AppleMusicControlsColumn(
-                    mediaMetadata = mediaMetadata,
-                    isPlaying = isPlaying,
-                    isLoading = isLoading,
-                    canSkipPrevious = canSkipPrevious,
-                    canSkipNext = canSkipNext,
-                    sliderPosition = sliderPosition,
-                    position = position,
-                    duration = duration,
-                    playerConnection = playerConnection,
-                    currentSongLiked = currentSongLiked,
-                    volume = volume,
-                    onVolumeChange = onVolumeChange,
-                    titleActions = titleActions,
-                    onPlayPauseClick = onPlayPauseClick,
-                    onMoreClick = onMoreClick,
-                    onOutputClick = onOutputClick,
-                    onQueueClick = toggleQueue,
-                    onLyricsClick = {
-                        queueOpen = false
-                        onLyricsClick()
-                    },
-                    onSliderValueChange = onSliderValueChange,
-                    onSliderValueChangeFinished = onSliderValueChangeFinished,
-                    currentFormat = currentFormat,
-                    onQualityChipClick = {
-                        bottomSheetPageState.show { ShowMediaInfo(mediaMetadata.id) }
-                    },
-                    showTitleRow = !queueOpen,
-                    isQueueActive = queueOpen,
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = contentBottomPadding),
-                )
-            }
+            // 3. Controls anchored to the bottom.
+            AppleMusicControlsColumn(
+                mediaMetadata = mediaMetadata,
+                isPlaying = isPlaying,
+                isLoading = isLoading,
+                canSkipPrevious = canSkipPrevious,
+                canSkipNext = canSkipNext,
+                sliderPosition = sliderPosition,
+                position = position,
+                duration = duration,
+                playerConnection = playerConnection,
+                currentSongLiked = currentSongLiked,
+                volume = volume,
+                onVolumeChange = onVolumeChange,
+                titleActions = titleActions,
+                onPlayPauseClick = onPlayPauseClick,
+                onMoreClick = onMoreClick,
+                onOutputClick = onOutputClick,
+                onQueueClick = onQueueClick,
+                onLyricsClick = onLyricsClick,
+                onSliderValueChange = onSliderValueChange,
+                onSliderValueChangeFinished = onSliderValueChangeFinished,
+                currentFormat = currentFormat,
+                onQualityChipClick = {
+                    bottomSheetPageState.show { ShowMediaInfo(mediaMetadata.id) }
+                },
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .fillMaxHeight(0.5f)
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = contentBottomPadding),
+            )
         }
     }
 }
@@ -715,11 +603,6 @@ private fun AppleMusicControlsColumn(
     // bottom sheet (ShowMediaInfo), mirroring how tapping the title/artist
     // in Apple Music's stock UI opens the song info page.
     onQualityChipClick: () -> Unit,
-    // When false, the title/artist row is hidden — used in QUEUE state where
-    // the title lives in the mini header above.
-    showTitleRow: Boolean = true,
-    // Whether the in-place queue is currently open. Highlights the queue button.
-    isQueueActive: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     var swipeUpAccumulated by remember { mutableFloatStateOf(0f) }
@@ -776,55 +659,51 @@ private fun AppleMusicControlsColumn(
         verticalArrangement = Arrangement.SpaceEvenly,
     ) {
         // Title / artist row with star + more chips.
-        // Hidden when showTitleRow = false (queue is open — the title lives in
-        // the mini header above the queue list).
-        if (showTitleRow) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        text = mediaMetadata.title,
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier =
-                            Modifier.clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null,
-                                onClick = titleActions.onTitleClick,
-                            ),
-                    )
-                    Text(
-                        text = mediaMetadata.artists.joinToString { it.name },
-                        style = MaterialTheme.typography.titleMedium,
-                        color = Color.White.copy(alpha = 0.64f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier =
-                            Modifier.clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null,
-                            ) {
-                                mediaMetadata.artists.firstOrNull()?.id?.let(titleActions.onArtistClick)
-                            },
-                    )
-                }
-                Spacer(Modifier.width(12.dp))
-                AppleMusicChip(
-                    iconRes = if (currentSongLiked) R.drawable.player_star_filled else R.drawable.player_star,
-                    tint = Color.White,
-                    contentDescription = null,
-                    onClick = playerConnection::toggleLike,
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = mediaMetadata.title,
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier =
+                        Modifier.clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = titleActions.onTitleClick,
+                        ),
                 )
-                Spacer(Modifier.width(10.dp))
-                AppleMusicChip(
-                    iconRes = R.drawable.player_more_horiz,
-                    tint = Color.White,
-                    contentDescription = null,
-                    onClick = onMoreClick,
+                Text(
+                    text = mediaMetadata.artists.joinToString { it.name },
+                    style = MaterialTheme.typography.titleMedium,
+                    color = Color.White.copy(alpha = 0.64f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier =
+                        Modifier.clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                        ) {
+                            mediaMetadata.artists.firstOrNull()?.id?.let(titleActions.onArtistClick)
+                        },
                 )
             }
+            Spacer(Modifier.width(12.dp))
+            AppleMusicChip(
+                iconRes = if (currentSongLiked) R.drawable.player_star_filled else R.drawable.player_star,
+                tint = Color.White,
+                contentDescription = null,
+                onClick = playerConnection::toggleLike,
+            )
+            Spacer(Modifier.width(10.dp))
+            AppleMusicChip(
+                iconRes = R.drawable.player_more_horiz,
+                tint = Color.White,
+                contentDescription = null,
+                onClick = onMoreClick,
+            )
         }
 
         // Thin scrubber + elapsed / -remaining.
@@ -931,7 +810,6 @@ private fun AppleMusicControlsColumn(
                 iconRes = R.drawable.player_queue_music,
                 contentDescription = stringResource(R.string.queue),
                 onClick = onQueueClick,
-                tint = if (isQueueActive) Color.White else Color.White.copy(alpha = 0.85f),
             )
         }
     }
@@ -1000,7 +878,6 @@ private fun AppleMusicBottomButton(
     iconRes: Int,
     contentDescription: String?,
     onClick: () -> Unit,
-    tint: Color = Color.White.copy(alpha = 0.85f),
 ) {
     Box(
         contentAlignment = Alignment.Center,
@@ -1017,97 +894,8 @@ private fun AppleMusicBottomButton(
         Icon(
             painter = painterResource(iconRes),
             contentDescription = contentDescription,
-            tint = tint,
+            tint = Color.White.copy(alpha = 0.85f),
             modifier = Modifier.size(AppleMusicBottomIconSize),
-        )
-    }
-}
-
-/**
- * Mini header shown at the top of the QUEUE state. Contains a small artwork
- * (shared element with the large COVER artwork), compact title/artist, and
- * like + more buttons. Mirrors ViviMusic's Player_v2 mini header exactly.
- */
-@OptIn(ExperimentalSharedTransitionApi::class)
-@Composable
-private fun SharedTransitionScope.AppleMusicMiniHeader(
-    artworkRequest: coil3.request.ImageRequest?,
-    artworkUrl: String?,
-    mediaMetadata: MediaMetadata,
-    currentSongLiked: Boolean,
-    titleActions: PlayerTitleActions,
-    onToggleLike: () -> Unit,
-    onMoreClick: () -> Unit,
-    animatedVisibilityScope: AnimatedVisibilityScope,
-    modifier: Modifier = Modifier,
-) {
-    Row(
-        modifier =
-            modifier
-                .padding(horizontal = AppleMusicContentPadding, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        // Mini artwork — shared element with the large COVER artwork.
-        Box(
-            modifier =
-                Modifier
-                    .size(AppleMusicMiniArtworkSize)
-                    .clip(RoundedCornerShape(8.dp))
-                    .sharedElement(
-                        rememberSharedContentState(key = "amCoverArt"),
-                        animatedVisibilityScope = animatedVisibilityScope,
-                    ),
-        ) {
-            AsyncImage(
-                model = artworkRequest ?: artworkUrl,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
-            )
-        }
-        Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
-            Text(
-                text = mediaMetadata.title,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = Color.White,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier =
-                    Modifier.clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = titleActions.onTitleClick,
-                    ),
-            )
-            Text(
-                text = mediaMetadata.artists.joinToString { it.name },
-                style = MaterialTheme.typography.titleSmall,
-                color = Color.White.copy(alpha = 0.7f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier =
-                    Modifier.clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                    ) {
-                        mediaMetadata.artists.firstOrNull()?.id?.let(titleActions.onArtistClick)
-                    },
-            )
-        }
-        AppleMusicChip(
-            iconRes = if (currentSongLiked) R.drawable.player_star_filled else R.drawable.player_star,
-            tint = Color.White,
-            contentDescription = null,
-            onClick = onToggleLike,
-        )
-        Spacer(Modifier.width(8.dp))
-        AppleMusicChip(
-            iconRes = R.drawable.player_more_horiz,
-            tint = Color.White,
-            contentDescription = null,
-            onClick = onMoreClick,
         )
     }
 }
