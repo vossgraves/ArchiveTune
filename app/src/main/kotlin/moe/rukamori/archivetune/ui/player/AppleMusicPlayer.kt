@@ -17,11 +17,16 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.os.Build
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -48,6 +53,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -64,10 +70,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
@@ -107,10 +115,13 @@ import coil3.request.allowHardware
 import coil3.size.Size as CoilSize
 import coil3.toBitmap
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.constants.AutoHideLyricsPlayerControlsKey
+import moe.rukamori.archivetune.constants.ShowLyricsPlayerControlsKey
 import moe.rukamori.archivetune.constants.ThumbnailCornerRadiusKey
 import moe.rukamori.archivetune.db.entities.FormatEntity
 import moe.rukamori.archivetune.db.entities.codecLabel
@@ -126,6 +137,7 @@ import moe.rukamori.archivetune.ui.component.LyricsV2
 import moe.rukamori.archivetune.constants.LyricsMode
 import moe.rukamori.archivetune.constants.LyricsModeKey
 import moe.rukamori.archivetune.utils.rememberEnumPreference
+import moe.rukamori.archivetune.ui.menu.LyricsMenu
 import moe.rukamori.archivetune.ui.menu.PlayerMenu
 import moe.rukamori.archivetune.ui.menu.rememberCastPlayerMenuAction
 import moe.rukamori.archivetune.ui.utils.ShowMediaInfo
@@ -180,6 +192,7 @@ fun AppleMusicPlayerContent(
     onSliderValueChange: (Long) -> Unit,
     onSliderValueChangeFinished: () -> Unit,
     lyricsSyncOffset: Int = 0,
+    onLyricsSyncOffsetChange: (Int) -> Unit = {},
     modifier: Modifier = Modifier,
     landscape: Boolean = false,
 ) {
@@ -227,6 +240,74 @@ fun AppleMusicPlayerContent(
         lyricsOpen = false
     }
 
+    // === Lyrics auto-hide controls (mirrors LyricsScreen / Vivi Music logic) ===
+    // When the in-place lyrics view is open, the bottom controls (seekbar +
+    // transport + volume + action row) auto-hide after 3 seconds. Touching
+    // anywhere or scrolling the lyrics restores them and restarts the timer.
+    var playerControlsExpanded by remember(mediaMetadata.id) { mutableStateOf(true) }
+    var playerControlsVisibilityTick by remember(mediaMetadata.id) { mutableIntStateOf(0) }
+    val autoHideDelayMs = 3_000L
+
+    val showPlayerControlsState =
+        rememberPreference(ShowLyricsPlayerControlsKey, true)
+    val onShowPlayerControlsChange =
+        remember(showPlayerControlsState) {
+            { showControls: Boolean ->
+                showPlayerControlsState.value = showControls
+                playerControlsExpanded = showControls
+            }
+        }
+    val (autoHidePlayerControls, _) =
+        rememberPreference(AutoHideLyricsPlayerControlsKey, false)
+
+    LaunchedEffect(lyricsOpen) {
+        if (lyricsOpen) {
+            playerControlsExpanded = true
+            playerControlsVisibilityTick++
+        } else {
+            playerControlsExpanded = true
+        }
+    }
+    LaunchedEffect(lyricsOpen, autoHidePlayerControls, playerControlsVisibilityTick) {
+        if (!lyricsOpen || !autoHidePlayerControls) return@LaunchedEffect
+        playerControlsExpanded = true
+        delay(autoHideDelayMs)
+        playerControlsExpanded = false
+    }
+    val pokePlayerControlsVisibility = {
+        if (lyricsOpen && autoHidePlayerControls) {
+            playerControlsExpanded = true
+            playerControlsVisibilityTick++
+        }
+    }
+
+    // === Moving blur drift for the backdrop when lyrics is open ===
+    // Mirrors the MovingBlurBackground from LyricsScreen: the blurred artwork
+    // slowly drifts horizontally and vertically, creating an ambient motion
+    // behind the lyrics. Only active when lyricsOpen = true.
+    val blurTransition = rememberInfiniteTransition(label = "am-lyrics-blur-drift")
+    val blurDriftX by blurTransition.animateFloat(
+        initialValue = -80f,
+        targetValue = 80f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 19_000, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "am-lyrics-drift-x",
+    )
+    val blurDriftY by blurTransition.animateFloat(
+        initialValue = -60f,
+        targetValue = 60f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 27_000, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "am-lyrics-drift-y",
+    )
+    val backdropDriftX = if (lyricsOpen) blurDriftX else 0f
+    val backdropDriftY = if (lyricsOpen) blurDriftY else 0f
+    val backdropDriftScale = if (lyricsOpen) 1.4f else 1.2f
+
     val baseArtworkUrl = mediaMetadata.thumbnailUrl?.highRes()
     val thumbnailSwapState =
         rememberThumbnailSwapState(
@@ -241,6 +322,10 @@ fun AppleMusicPlayerContent(
     val menuState = LocalMenuState.current
     val context = LocalContext.current
 
+    // Current lyrics for the LyricsMenu (shown when lyrics is open and the
+    // user taps the overflow "more" button).
+    val currentLyrics by playerConnection.currentLyrics.collectAsState(initial = null)
+
     val onPlayPauseClick = {
         if (playbackState == STATE_ENDED) {
             playerConnection.player.seekTo(0, 0)
@@ -250,20 +335,48 @@ fun AppleMusicPlayerContent(
         }
     }
     val onMoreClick = {
-        menuState.show {
-            PlayerMenu(
-                mediaMetadata = mediaMetadata,
-                navController = navController,
-                playerBottomSheetState = state,
-                onShowDetailsDialog = {
-                    mediaMetadata.id.let {
-                        bottomSheetPageState.show {
-                            ShowMediaInfo(it)
+        if (lyricsOpen) {
+            // When lyrics is open, the overflow menu shows the LyricsMenu
+            // (Edit / Refetch / Translate / Sync offset / Search + the
+            // "Show player controls" and "Auto-hide controls" toggles)
+            // instead of the regular PlayerMenu. Mirrors the full-screen
+            // LyricsScreen behavior.
+            menuState.show {
+                LyricsMenu(
+                    lyricsProvider = { currentLyrics },
+                    mediaMetadataProvider = { mediaMetadata },
+                    lyricsSyncOffset = lyricsSyncOffset,
+                    onLyricsSyncOffsetChange = onLyricsSyncOffsetChange,
+                    showPlayerControlsState = showPlayerControlsState,
+                    onShowPlayerControlsChange = onShowPlayerControlsChange,
+                    onAutoHidePlayerControlsChange = { enabled ->
+                        // LyricsMenu already updates the preference internally;
+                        // this callback just triggers the UI update so the
+                        // controls expand/restart the auto-hide timer.
+                        if (enabled && lyricsOpen) {
+                            playerControlsExpanded = true
+                            playerControlsVisibilityTick++
                         }
-                    }
-                },
-                onDismiss = menuState::dismiss,
-            )
+                    },
+                    onDismiss = menuState::dismiss,
+                )
+            }
+        } else {
+            menuState.show {
+                PlayerMenu(
+                    mediaMetadata = mediaMetadata,
+                    navController = navController,
+                    playerBottomSheetState = state,
+                    onShowDetailsDialog = {
+                        mediaMetadata.id.let {
+                            bottomSheetPageState.show {
+                                ShowMediaInfo(it)
+                            }
+                        }
+                    },
+                    onDismiss = menuState::dismiss,
+                )
+            }
         }
     }
     // The "AirPlay" slot opens the Cast route picker on flavors that ship Cast (gms). This also
@@ -346,9 +459,10 @@ fun AppleMusicPlayerContent(
                             .matchParentSize()
                             .blur(72.dp)
                             .graphicsLayer {
-                                scaleX = 1.2f
-                                scaleY = 1.2f
-                            },
+                                scaleX = backdropDriftScale
+                                scaleY = backdropDriftScale
+                            }
+                            .offset(x = backdropDriftX.dp, y = backdropDriftY.dp),
                 )
             } else if (isPreS && preBlurredBitmap != null) {
                 Image(
@@ -359,9 +473,10 @@ fun AppleMusicPlayerContent(
                         Modifier
                             .matchParentSize()
                             .graphicsLayer {
-                                scaleX = 1.2f
-                                scaleY = 1.2f
-                            },
+                                scaleX = backdropDriftScale
+                                scaleY = backdropDriftScale
+                            }
+                            .offset(x = backdropDriftX.dp, y = backdropDriftY.dp),
                 )
             } else {
                 // Either Android 12+ (use Modifier.blur) or pre-S but the pre-blur hasn't
@@ -380,9 +495,10 @@ fun AppleMusicPlayerContent(
                                     Modifier
                                 },
                             ).graphicsLayer {
-                                scaleX = 1.2f
-                                scaleY = 1.2f
-                            },
+                                scaleX = backdropDriftScale
+                                scaleY = backdropDriftScale
+                            }
+                            .offset(x = backdropDriftX.dp, y = backdropDriftY.dp),
                 )
             }
             val preBlurLoading = isPreS && preBlurredBitmap == null && !canvasActive
@@ -507,6 +623,13 @@ fun AppleMusicPlayerContent(
                         } else {
                             // QUEUE / LYRICS state: mini header + content below.
                             //
+                            // The Spotify Canvas continues playing behind the
+                            // queue/lyrics content so it doesn't "stop" when the
+                            // user opens the queue. The canvas is rendered without
+                            // blur (the haze overlay from the queue list provides the
+                            // frosted-glass effect), and the lyrics composable has
+                            // its own scrim for readability.
+                            //
                             // Apply the stable top inset (notch / status bar / display-cutout
                             // top) so the mini header + content sit below the physical notch
                             // even when the status bar is hidden app-wide for immersive mode.
@@ -516,29 +639,79 @@ fun AppleMusicPlayerContent(
                             // LocalStableSystemBarsTopPadding is computed in MainActivity and
                             // floors against displayCutout so it stays non-zero when the status
                             // bar is hidden — mirroring the pattern used by every other screen.
-                            Column(
+                            Box(
                                 modifier =
                                     Modifier
                                         .fillMaxSize()
                                         .windowInsetsPadding(WindowInsets(top = LocalStableSystemBarsTopPadding.current)),
                             ) {
-                                AppleMusicMiniHeader(
-                                    artworkRequest = artworkRequest,
-                                    artworkUrl = artworkUrl,
-                                    mediaMetadata = mediaMetadata,
-                                    currentSongLiked = currentSongLiked,
-                                    titleActions = titleActions,
-                                    onToggleLike = playerConnection::toggleLike,
-                                    onMoreClick = onMoreClick,
-                                    onArtworkClick = restoreCover,
-                                    animatedVisibilityScope = this@AnimatedContent,
-                                    modifier = Modifier.fillMaxWidth(),
+                                // Canvas continues playing behind the queue/lyrics
+                                // content so it doesn't "stop" when the user opens
+                                // the queue (Issue: Spotify canvas stops playing).
+                                if (canvasActive && !videoShowing) {
+                                    CanvasArtworkPlayer(
+                                        primaryUrl = canvasPrimaryUrl,
+                                        fallbackUrl = canvasFallbackUrl,
+                                        isPlaying = isPlaying,
+                                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
+                                        modifier = Modifier.matchParentSize(),
+                                    )
+                                }
+                                // Touch-to-restore: when auto-hide is active and the
+                                // controls are hidden, any touch on the lyrics area
+                                // restores them and restarts the 3s timer. Uses
+                                // consumeUnhandledPointerInput so the lyrics can still
+                                // handle scroll/click normally.
+                                Box(
+                                    modifier =
+                                        Modifier
+                                            .fillMaxSize()
+                                            .consumeUnhandledPointerInput()
+                                            .pointerInput(lyricsOpen, autoHidePlayerControls) {
+                                                if (!lyricsOpen || !autoHidePlayerControls) return@pointerInput
+                                                awaitEachGesture {
+                                                    awaitFirstDown(requireUnconsumed = false)
+                                                    pokePlayerControlsVisibility()
+                                                }
+                                            },
                                 )
-                                if (targetState == AppleMusicPlayerState.QUEUE) {
-                                    AppleMusicQueueSheet(
-                                        navController = navController,
-                                        playerBottomSheetState = state,
-                                        modifier =
+                                Column(modifier = Modifier.fillMaxSize()) {
+                                    AppleMusicMiniHeader(
+                                        artworkRequest = artworkRequest,
+                                        artworkUrl = artworkUrl,
+                                        mediaMetadata = mediaMetadata,
+                                        currentSongLiked = currentSongLiked,
+                                        titleActions = titleActions,
+                                        onToggleLike = playerConnection::toggleLike,
+                                        onMoreClick = onMoreClick,
+                                        onArtworkClick = restoreCover,
+                                        animatedVisibilityScope = this@AnimatedContent,
+                                        modifier = Modifier.fillMaxWidth(),
+                                    )
+                                    if (targetState == AppleMusicPlayerState.QUEUE) {
+                                        AppleMusicQueueSheet(
+                                            navController = navController,
+                                            playerBottomSheetState = state,
+                                            modifier =
+                                                Modifier
+                                                    .fillMaxSize()
+                                                    .animateEnterExit(
+                                                        enter = slideInVertically(
+                                                            animationSpec = tween(600, easing = FastOutSlowInEasing),
+                                                        ) { it / 4 } + fadeIn(tween(600)),
+                                                        exit = fadeOut(tween(400)) +
+                                                            slideOutVertically(
+                                                                animationSpec = tween(400, easing = FastOutSlowInEasing),
+                                                            ) { it / 4 },
+                                                    ),
+                                        )
+                                    } else {
+                                        // LYRICS state: inline lyrics composable with the same
+                                        // slide-in/fade animation as the queue sheet. Uses the
+                                        // same LyricsMode preference as the full-screen
+                                        // LyricsScreen (V2 or Enhanced).
+                                        val lyricsMode by rememberEnumPreference(LyricsModeKey, LyricsMode.ENHANCED)
+                                        val lyricsModifier =
                                             Modifier
                                                 .fillMaxSize()
                                                 .animateEnterExit(
@@ -549,38 +722,20 @@ fun AppleMusicPlayerContent(
                                                         slideOutVertically(
                                                             animationSpec = tween(400, easing = FastOutSlowInEasing),
                                                         ) { it / 4 },
-                                                ),
-                                    )
-                                } else {
-                                    // LYRICS state: inline lyrics composable with the same
-                                    // slide-in/fade animation as the queue sheet. Uses the
-                                    // same LyricsMode preference as the full-screen
-                                    // LyricsScreen (V2 or Enhanced).
-                                    val lyricsMode by rememberEnumPreference(LyricsModeKey, LyricsMode.ENHANCED)
-                                    val lyricsModifier =
-                                        Modifier
-                                            .fillMaxSize()
-                                            .animateEnterExit(
-                                                enter = slideInVertically(
-                                                    animationSpec = tween(600, easing = FastOutSlowInEasing),
-                                                ) { it / 4 } + fadeIn(tween(600)),
-                                                exit = fadeOut(tween(400)) +
-                                                    slideOutVertically(
-                                                        animationSpec = tween(400, easing = FastOutSlowInEasing),
-                                                    ) { it / 4 },
+                                                )
+                                        val lyricsPosProvider = { sliderPosition ?: position }
+                                        when (lyricsMode) {
+                                            LyricsMode.V2 -> LyricsV2(
+                                                sliderPositionProvider = lyricsPosProvider,
+                                                lyricsSyncOffset = lyricsSyncOffset,
+                                                modifier = lyricsModifier,
                                             )
-                                    val lyricsPosProvider = { sliderPosition ?: position }
-                                    when (lyricsMode) {
-                                        LyricsMode.V2 -> LyricsV2(
-                                            sliderPositionProvider = lyricsPosProvider,
-                                            lyricsSyncOffset = lyricsSyncOffset,
-                                            modifier = lyricsModifier,
-                                        )
-                                        LyricsMode.ENHANCED -> LyricsEnhanced(
-                                            sliderPositionProvider = lyricsPosProvider,
-                                            lyricsSyncOffset = lyricsSyncOffset,
-                                            modifier = lyricsModifier,
-                                        )
+                                            LyricsMode.ENHANCED -> LyricsEnhanced(
+                                                sliderPositionProvider = lyricsPosProvider,
+                                                lyricsSyncOffset = lyricsSyncOffset,
+                                                modifier = lyricsModifier,
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -588,43 +743,55 @@ fun AppleMusicPlayerContent(
                     }
                 }
 
-                // Persistent playback controls — always visible, anchored at the bottom.
+                // Persistent playback controls — anchored at the bottom.
                 // When the queue or lyrics is open, the title row is hidden (it's in the
                 // mini header above) so only the seekbar + transport + volume + bottom
                 // row render.
-                AppleMusicControlsColumn(
-                    mediaMetadata = mediaMetadata,
-                    isPlaying = isPlaying,
-                    isLoading = isLoading,
-                    canSkipPrevious = canSkipPrevious,
-                    canSkipNext = canSkipNext,
-                    sliderPosition = sliderPosition,
-                    position = position,
-                    duration = duration,
-                    playerConnection = playerConnection,
-                    currentSongLiked = currentSongLiked,
-                    volume = volume,
-                    onVolumeChange = onVolumeChange,
-                    titleActions = titleActions,
-                    onPlayPauseClick = onPlayPauseClick,
-                    onMoreClick = onMoreClick,
-                    onOutputClick = onOutputClick,
-                    onQueueClick = toggleQueue,
-                    onLyricsClick = toggleLyrics,
-                    onSliderValueChange = onSliderValueChange,
-                    onSliderValueChangeFinished = onSliderValueChangeFinished,
-                    currentFormat = currentFormat,
-                    onQualityChipClick = {
-                        bottomSheetPageState.show { ShowMediaInfo(mediaMetadata.id) }
-                    },
-                    showTitleRow = !morphOpen,
-                    isQueueActive = queueOpen,
-                    isLyricsActive = lyricsOpen,
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = contentBottomPadding),
-                )
+                //
+                // Auto-hide: when lyrics is open AND the auto-hide preference is on,
+                // the controls fade out after 3 seconds and restore on any touch
+                // (the pointerInput is on the lyrics area above). Mirrors the
+                // Vivi Music / LyricsScreen auto-hide logic.
+                val controlsVisible = !lyricsOpen || !autoHidePlayerControls || playerControlsExpanded
+                AnimatedVisibility(
+                    visible = controlsVisible,
+                    enter = fadeIn(tween(180)) + slideInVertically(tween(180)) { it / 6 },
+                    exit = fadeOut(tween(140)) + slideOutVertically(tween(140)) { it / 8 },
+                ) {
+                    AppleMusicControlsColumn(
+                        mediaMetadata = mediaMetadata,
+                        isPlaying = isPlaying,
+                        isLoading = isLoading,
+                        canSkipPrevious = canSkipPrevious,
+                        canSkipNext = canSkipNext,
+                        sliderPosition = sliderPosition,
+                        position = position,
+                        duration = duration,
+                        playerConnection = playerConnection,
+                        currentSongLiked = currentSongLiked,
+                        volume = volume,
+                        onVolumeChange = onVolumeChange,
+                        titleActions = titleActions,
+                        onPlayPauseClick = onPlayPauseClick,
+                        onMoreClick = onMoreClick,
+                        onOutputClick = onOutputClick,
+                        onQueueClick = toggleQueue,
+                        onLyricsClick = toggleLyrics,
+                        onSliderValueChange = onSliderValueChange,
+                        onSliderValueChangeFinished = onSliderValueChangeFinished,
+                        currentFormat = currentFormat,
+                        onQualityChipClick = {
+                            bottomSheetPageState.show { ShowMediaInfo(mediaMetadata.id) }
+                        },
+                        showTitleRow = !morphOpen,
+                        isQueueActive = queueOpen,
+                        isLyricsActive = lyricsOpen,
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = contentBottomPadding),
+                    )
+                }
             }
         }
     }
@@ -840,7 +1007,7 @@ private fun AppleMusicControlsColumn(
     val titleToScrubberGap = if (veryCompactHeight) 10.dp else if (compactHeight) 18.dp else 28.dp
     val scrubberToTransportGap = if (veryCompactHeight) 12.dp else if (compactHeight) 20.dp else 32.dp
     val transportToVolumeGap = if (veryCompactHeight) 10.dp else if (compactHeight) 18.dp else 28.dp
-    val volumeToActionsGap = if (veryCompactHeight) 8.dp else if (compactHeight) 14.dp else 24.dp
+    val volumeToActionsGap = if (veryCompactHeight) 12.dp else if (compactHeight) 18.dp else 28.dp
 
     Column(
         modifier =

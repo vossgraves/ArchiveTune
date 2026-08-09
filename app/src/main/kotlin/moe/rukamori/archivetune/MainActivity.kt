@@ -1400,10 +1400,6 @@ class MainActivity : ComponentActivity() {
                                 menuState.isVisible &&
                                     playerBottomSheetState.isExpandedOrExpanding
                             ) ||
-                            (
-                                playerBottomSheetState.isExpandedOrExpanding &&
-                                    (playerDesignStyle == PlayerDesignStyle.V7 || playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC)
-                            ) ||
                             (playerBottomSheetState.isExpandedOrExpanding && isPlayerLyricsFullScreen)
 
                     LaunchedEffect(shouldHideStatusBars, menuState.isVisible, aodModeEnabled) {

@@ -293,7 +293,10 @@ fun FloatingNavigationToolbar(
 
     val indicatorColor =
         when {
-            canLiquidGlass -> MaterialTheme.colorScheme.primary.copy(alpha = 0.32f)
+            // Liquid Glass: transparent indicator — the glass pill itself is the
+            // indicator. Setting this to transparent avoids a theme-tinted blob
+            // behind the active item.
+            canLiquidGlass -> Color.Transparent
             // Tint-frosted: the bar is now a DARK tinted glass (Color.Black at
             // 55% alpha), so the pill uses a translucent white blob — the
             // selected icon stands out against the dark bar without being a
@@ -830,7 +833,10 @@ fun FloatingNavigationToolbar(
             if (pillWidth > 0.dp && pillHeight > 0.dp && dragAnim != null && tabWidthPx > 0f) {
                 val pillShape = RoundedCornerShape(percent = 50)
                 val isDark = isSystemInDarkTheme()
-                val primaryColor = MaterialTheme.colorScheme.primary
+                // Liquid Glass pill: always use white for the active icon/label so
+                // they don't change with the app's color theme. The pill's glass
+                // effect provides enough contrast on its own.
+                val primaryColor = Color.White
                 // Fallback surface drawn UNDER the backdrop sample. Hoisted to the
                 // composable scope because MaterialTheme.colorScheme is only
                 // accessible from a @Composable context (onDrawBehind is a plain
@@ -937,7 +943,7 @@ fun FloatingNavigationToolbar(
                         Icon(
                             painter = painterResource(displayScreen.iconIdActive),
                             contentDescription = null,
-                            tint = primaryColor,
+                            tint = Color.White,
                             modifier =
                                 Modifier.graphicsLayer {
                                     // SukiSU LocalFloatingBottomBarTabScale: the
@@ -950,7 +956,7 @@ fun FloatingNavigationToolbar(
                         if (!hideNavigationLabels) {
                             Text(
                                 text = stringResource(displayScreen.titleId),
-                                color = primaryColor,
+                                color = Color.White,
                                 fontWeight = FontWeight.SemiBold,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,

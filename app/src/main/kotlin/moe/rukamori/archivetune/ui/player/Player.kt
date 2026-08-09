@@ -1730,12 +1730,13 @@ fun BottomSheetPlayer(
                             canvasPrimaryUrl = artworkCanvas?.animated,
                             canvasFallbackUrl = artworkCanvas?.videoUrl,
                             currentFormat = currentFormat,
-                            contentBottomPadding = queueSheetState.collapsedBound + 40.dp,
+                            contentBottomPadding = queueSheetState.collapsedBound + 52.dp,
                             onQueueClick = openQueue,
                             onLyricsClick = { isLyricsScreenVisible = true },
                             onSliderValueChange = onSliderValueChange,
                             onSliderValueChangeFinished = onSliderValueChangeFinished,
                             lyricsSyncOffset = lyricsSyncOffset,
+                            onLyricsSyncOffsetChange = { lyricsSyncOffset = it },
                             landscape = true,
                             modifier =
                                 Modifier
@@ -2086,12 +2087,13 @@ fun BottomSheetPlayer(
                             canvasPrimaryUrl = artworkCanvas?.animated,
                             canvasFallbackUrl = artworkCanvas?.videoUrl,
                             currentFormat = currentFormat,
-                            contentBottomPadding = queueSheetState.collapsedBound + 40.dp,
+                            contentBottomPadding = queueSheetState.collapsedBound + 52.dp,
                             onQueueClick = openQueue,
                             onLyricsClick = { isLyricsScreenVisible = true },
                             onSliderValueChange = onSliderValueChange,
                             onSliderValueChangeFinished = onSliderValueChangeFinished,
                             lyricsSyncOffset = lyricsSyncOffset,
+                            onLyricsSyncOffsetChange = { lyricsSyncOffset = it },
                             // Full-bleed: the artwork runs under the status bar by design, so no
                             // top inset here (mirrors the reference layout).
                             modifier =
@@ -2722,11 +2724,20 @@ private fun V7PlayerBackdrop(
         }
     val backdropFloor =
         remember(backdropPalette) {
+            // Gradient floor: transparent at the top so the blurred backdrop
+            // artwork shows through, fading to the thumbnail-derived palette
+            // color at the bottom. This creates the "gradient behind the
+            // bottom controls that blends with the thumbnail" effect — the
+            // controls sit over a smooth transition from blurred artwork to
+            // the dominant thumbnail color, improving both aesthetics and
+            // text legibility. Previously all three stops were the same
+            // color, making it a flat solid block that hid the backdrop.
             Brush.verticalGradient(
                 colorStops =
                     arrayOf(
-                        0f to backdropPalette.bottom,
-                        V7BackdropFloorBlackStartFraction to backdropPalette.bottom,
+                        0f to Color.Transparent,
+                        0.45f to Color.Transparent,
+                        V7BackdropFloorBlackStartFraction to backdropPalette.bottom.copy(alpha = 0.85f),
                         1f to backdropPalette.bottom,
                     ),
             )

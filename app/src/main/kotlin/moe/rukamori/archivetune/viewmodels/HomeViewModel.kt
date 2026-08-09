@@ -34,6 +34,7 @@ import moe.rukamori.archivetune.constants.ContentLanguageKey
 import moe.rukamori.archivetune.constants.DataSyncIdKey
 import moe.rukamori.archivetune.constants.HideExplicitKey
 import moe.rukamori.archivetune.constants.HideVideoKey
+import moe.rukamori.archivetune.constants.HiddenHomeItemsKey
 import moe.rukamori.archivetune.constants.InnerTubeCookieKey
 import moe.rukamori.archivetune.constants.QuickPicks
 import moe.rukamori.archivetune.constants.QuickPicksKey
@@ -228,6 +229,27 @@ class HomeViewModel
         private val forgottenFavorites = MutableStateFlow<List<Song>?>(null)
         private val keepListening = MutableStateFlow<List<LocalItem>?>(null)
         private val recentlyPlayed = MutableStateFlow<List<Song>?>(null)
+
+        // IDs of items the user has hidden from the "Keep Listening" section.
+        // Combined with keepListening to produce a filtered flow that excludes
+        // hidden items. The user can hide items via the long-press menu.
+        private val hiddenHomeItems =
+            context.dataStore.data
+                .map { it[HiddenHomeItemsKey] ?: emptySet() }
+                .distinctUntilChanged()
+        private val filteredKeepListening =
+            combine(keepListening, hiddenHomeItems) { items, hidden ->
+                if (items == null || hidden.isEmpty()) items
+                else items.filter { item ->
+                    val id = when (item) {
+                        is Song -> item.id
+                        is Album -> item.id
+                        is Artist -> item.id
+                        is Playlist -> item.id
+                    }
+                    id !in hidden
+                }
+            }
         // Three random songs from `quickPicks`, re-shuffled on every refresh.
         // Drives the "Jump back in" hero so the home page surfaces fresh
         // listening-preference-based picks each time the user opens the app
@@ -264,7 +286,7 @@ class HomeViewModel
                 quickPicks,
                 speedDialItems,
                 forgottenFavorites,
-                keepListening,
+                filteredKeepListening,
                 recentlyPlayed,
             ) { quickPicks, speedDialItems, forgottenFavorites, keepListening, recentlyPlayed ->
                 HomeLocalContentStage(

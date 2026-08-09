@@ -1201,6 +1201,14 @@ fun HomePageSectionTitle(
     HomeSectionHeader(
         title = section.title,
         label = section.label,
+        leadingIcon = {
+            // Live performances section gets a microphone icon to match
+            // the Recently Played (history) and Keep Listening (listening)
+            // headers — every home section now has a leading icon.
+            if (section.title.contains("Live performance", ignoreCase = true)) {
+                HomeSectionLeadingIcon(iconRes = R.drawable.mic)
+            }
+        },
         thumbnail =
             section.thumbnail?.let { thumbnailUrl ->
                 {

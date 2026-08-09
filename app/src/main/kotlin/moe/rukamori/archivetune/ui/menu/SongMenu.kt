@@ -18,6 +18,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
+import androidx.datastore.preferences.core.edit
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
@@ -86,6 +87,7 @@ import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.ArtistSeparatorsKey
 import moe.rukamori.archivetune.constants.ExternalDownloaderEnabledKey
 import moe.rukamori.archivetune.constants.ExternalDownloaderPackageKey
+import moe.rukamori.archivetune.constants.HiddenHomeItemsKey
 import moe.rukamori.archivetune.constants.ListThumbnailSize
 import moe.rukamori.archivetune.constants.SpeedDialSongIdsKey
 import moe.rukamori.archivetune.db.entities.ArtistEntity
@@ -118,6 +120,7 @@ import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.utils.serializeSpeedDialPins
 import moe.rukamori.archivetune.utils.shareLocalAudio
 import moe.rukamori.archivetune.utils.toggleSpeedDialPin
+import moe.rukamori.archivetune.utils.dataStore
 import moe.rukamori.archivetune.viewmodels.CachePlaylistViewModel
 
 @Composable
@@ -1088,6 +1091,30 @@ fun SongMenu(
                         },
                         modifier =
                             Modifier.clickable { showSleepTimerSheet = true },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    )
+
+                    // Hide from "Keep Listening" on home — adds the song's ID to
+                    // the HiddenHomeItemsKey preference set. The HomeViewModel
+                    // filters out hidden items from the keepListening flow.
+                    ListItem(
+                        headlineContent = { Text(text = stringResource(R.string.hide_from_home)) },
+                        leadingContent = {
+                            Icon(
+                                painter = painterResource(R.drawable.visibility_off),
+                                contentDescription = null,
+                            )
+                        },
+                        modifier =
+                            Modifier.clickable {
+                                coroutineScope.launch {
+                                    context.dataStore.edit { preferences ->
+                                        val current = preferences[HiddenHomeItemsKey] ?: emptySet()
+                                        preferences[HiddenHomeItemsKey] = current + originalSong.id
+                                    }
+                                    onDismiss()
+                                }
+                            },
                         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                     )
                 }

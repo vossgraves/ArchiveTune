@@ -1007,6 +1007,14 @@ val SpotifyAccountAvatarUrlKey = stringPreferencesKey("spotify_account_avatar_ur
 val ShowSpotifyPlaylistsKey = booleanPreferencesKey("show_spotify_playlists")
 val SpotifyLibraryPlaylistsCacheKey = stringPreferencesKey("spotify_library_playlists_cache")
 
+/**
+ * Set of item IDs (song/album/artist) that the user has hidden from the
+ * "Keep Listening" section on the home page. When the user long-presses an
+ * item in Keep Listening and selects "Hide from home," the item's ID is
+ * added here and filtered out of the keepListening flow.
+ */
+val HiddenHomeItemsKey = stringSetPreferencesKey("hidden_home_items")
+
 // Tidal music source integration (ported from MetroFuse)
 val TidalCookieKey = stringPreferencesKey("tidalCookie")
 val TidalEnabledKey = booleanPreferencesKey("tidalEnabled")

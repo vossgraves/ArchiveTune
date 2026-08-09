@@ -802,6 +802,7 @@
     <string name="display">Display</string>
     <string name="romanization">Romanization</string>
     <string name="hide_explicit">Hide explicit content</string>
+    <string name="hide_from_home">Hide from home</string>
     <string name="allow_age_restricted">Allow age-restricted content</string>
     <string name="allow_age_restricted_summary">Enable playback of age-restricted songs that are normally filtered out</string>
     <string name="hide_video">Hide music videos</string>

@@ -458,6 +458,9 @@ private fun HomeContent(
                         ) {
                             HomeSectionHeader(
                                 title = stringResource(R.string.keep_listening),
+                                leadingIcon = {
+                                    HomeSectionLeadingIcon(iconRes = R.drawable.listening)
+                                },
                                 modifier = Modifier.animateItem(),
                             )
                         }
