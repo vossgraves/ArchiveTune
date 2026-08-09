@@ -1296,6 +1296,11 @@ fun MediaMetadataListItem(
     isActive: Boolean = false,
     isPlaying: Boolean = false,
     shouldLoadImage: Boolean = true,
+    // Forwarded to ListItem so callers that already paint their own row
+    // background (e.g. AppleMusicQueueSheet's glassy pill) can suppress the
+    // default secondaryContainer highlight that would otherwise stack on
+    // top and produce a bright, glitchy double-background.
+    showActiveContainer: Boolean = true,
     trailingContent: @Composable RowScope.() -> Unit = {},
 ) {
     ListItem(
@@ -1320,6 +1325,7 @@ fun MediaMetadataListItem(
         trailingContent = trailingContent,
         modifier = modifier,
         isActive = isActive,
+        showActiveContainer = showActiveContainer,
     )
 }
 
