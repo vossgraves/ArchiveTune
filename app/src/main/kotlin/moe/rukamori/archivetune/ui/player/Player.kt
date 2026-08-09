@@ -2174,10 +2174,10 @@ fun BottomSheetPlayer(
         // (mirrors vivi-music's Player.kt transition verbatim). Hidden while the lyrics screen
         // is on top.
         //
-        // The Queue's background is transparent (Color.Unspecified) so the Haze-effect overlay
-        // rendered above shows through unimpeded — matching vivi-music's queue which paints
-        // Color.Unspecified behind its list and relies entirely on the player's Haze layer for
-        // the frosted-glass effect.
+        // The Queue's background is transparent (Color.Unspecified) so the player's
+        // brightened blurred artwork shows through unimpeded — matching vivi-music's
+        // queue which paints Color.Unspecified behind its list and relies entirely
+        // on the player's own background for the frosted-glass effect.
         AnimatedVisibility(
             visible = !isLyricsScreenVisible,
             enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),

@@ -14,6 +14,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -88,6 +89,7 @@ import moe.rukamori.archivetune.ui.component.ActionPromptDialog
 import moe.rukamori.archivetune.ui.component.BottomSheetState
 import moe.rukamori.archivetune.ui.component.ItemThumbnail
 import moe.rukamori.archivetune.ui.component.bottomSheetDraggable
+import moe.rukamori.archivetune.utils.joinByBullet
 import moe.rukamori.archivetune.utils.makeTimeString
 import moe.rukamori.archivetune.utils.rememberPreference
 import kotlin.math.roundToInt
@@ -1589,6 +1591,359 @@ fun QueueCollapsedContentV9(
                     }
                 }
             }
+        }
+    }
+}
+
+// =====================================================================
+// Compact queue UI — Vivi Music / Apple Music "Up Next" inspired
+// =====================================================================
+//
+// Design contract (kept here so future editors don't drift):
+//   - Row height: ~60dp (was 72dp). More songs visible without scrolling.
+//   - Artwork: 48dp square, 12dp corner radius.
+//   - Active item: translucent highlight band + play/pause indicator
+//     over the artwork. No card-style background on inactive items.
+//   - Separators: 0.5dp hairline at 1dp from the bottom, alpha 0.08.
+//   - Trailing: vertical 3-dot menu, always present, right-aligned.
+//   - Drag handle: shown only when queue is unlocked (existing behaviour).
+//   - No huge rounded cards. The whole list reads as one continuous surface
+//     sitting on top of the player's blurred artwork.
+
+private val CompactQueueItemHeight = 60.dp
+private val CompactQueueThumbnailSize = 48.dp
+private val CompactQueueThumbnailRadius = 12.dp
+private val CompactQueueHorizontalPadding = 12.dp
+
+/**
+ * Minimal "Queue" heading with controls on the right.
+ * Replaces the old [CurrentSongHeader] when the compact queue is enabled —
+ * the active track's artwork and metadata are already visible in the
+ * player above, so repeating them in the queue header was visual clutter.
+ */
+@Composable
+fun CompactQueueHeader(
+    sheetState: BottomSheetState,
+    songCount: Int,
+    queueDuration: Int,
+    locked: Boolean,
+    infiniteQueueEnabled: Boolean,
+    infiniteQueueLoading: Boolean,
+    onBackgroundColor: Color,
+    onLockClick: () -> Unit,
+    onClearQueueClick: () -> Unit,
+    onInfiniteQueueClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
+                .bottomSheetDraggable(sheetState)
+                .padding(horizontal = CompactQueueHorizontalPadding)
+                .padding(top = 12.dp, bottom = 4.dp),
+    ) {
+        // Drag handle — barely visible, just enough to signal "this sheet slides"
+        Box(
+            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Box(
+                modifier =
+                    Modifier
+                        .width(36.dp)
+                        .height(4.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(onBackgroundColor.copy(alpha = 0.32f)),
+            )
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            // Heading + meta — single line, compact
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.weight(1f),
+            ) {
+                Text(
+                    text = stringResource(R.string.queue),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = onBackgroundColor,
+                    maxLines = 1,
+                )
+                Text(
+                    text =
+                        pluralStringResource(R.plurals.n_song, songCount, songCount) +
+                            "  •  " + makeTimeString(queueDuration * 1000L),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = onBackgroundColor.copy(alpha = 0.55f),
+                    maxLines = 1,
+                )
+            }
+
+            // Right-side controls: lock, infinite queue, clear — compact icon strip
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(0.dp),
+            ) {
+                IconButton(
+                    onClick = onInfiniteQueueClick,
+                    modifier = Modifier.size(40.dp),
+                    enabled = !infiniteQueueLoading,
+                    colors =
+                        IconButtonDefaults.iconButtonColors(
+                            contentColor =
+                                if (infiniteQueueEnabled) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    onBackgroundColor.copy(alpha = 0.7f)
+                                },
+                        ),
+                ) {
+                    if (infiniteQueueLoading) {
+                        CircularWavyProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            color = LocalContentColor.current,
+                        )
+                    } else {
+                        Icon(
+                            painter = painterResource(R.drawable.player_all_inclusive),
+                            contentDescription = stringResource(R.string.similar_content),
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
+                }
+                IconButton(
+                    onClick = onLockClick,
+                    modifier = Modifier.size(40.dp),
+                    colors =
+                        IconButtonDefaults.iconButtonColors(
+                            contentColor = onBackgroundColor.copy(alpha = 0.7f),
+                        ),
+                ) {
+                    Icon(
+                        painter = painterResource(if (locked) R.drawable.player_lock else R.drawable.player_lock_open),
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+                IconButton(
+                    onClick = onClearQueueClick,
+                    modifier = Modifier.size(40.dp),
+                    colors =
+                        IconButtonDefaults.iconButtonColors(
+                            contentColor = MaterialTheme.colorScheme.error,
+                        ),
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.player_delete),
+                        contentDescription = stringResource(R.string.clear),
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+            }
+        }
+
+        HorizontalDivider(
+            color = onBackgroundColor.copy(alpha = 0.10f),
+            thickness = 0.5.dp,
+            modifier = Modifier.padding(top = 6.dp),
+        )
+    }
+}
+
+/**
+ * Compact horizontal queue row.
+ *
+ * Visual contract (per user spec, 2026-08-09):
+ *   - ~48dp square artwork on the left, 12dp corner radius
+ *   - Song title to the right of artwork (single line, bold for active)
+ *   - Artist + duration subtitle underneath (muted)
+ *   - Vertical three-dot menu aligned to far right
+ *   - Currently-playing item gets a translucent highlight band and a
+ *     play/pause indicator layered over the artwork
+ *   - Subtle 0.5dp hairline separator below each row, no big rounded cards
+ *
+ * Behavioural contract (UNCHANGED from previous implementation):
+ *   - Click: play that queue item (or toggle play/pause for the active item)
+ *   - Long-press: enter selection mode
+ *   - Swipe-to-dismiss: removed by parent (this composable is just the row)
+ *   - Drag handle (when unlocked): rendered as part of trailingContent
+ */
+@Composable
+fun CompactQueueItem(
+    mediaMetadata: MediaMetadata,
+    isActive: Boolean,
+    isPlaying: Boolean,
+    isSelected: Boolean,
+    shouldLoadImage: Boolean,
+    onBackgroundColor: Color,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    onMenuClick: () -> Unit,
+    dragHandle: @Composable () -> Unit = {},
+    modifier: Modifier = Modifier,
+) {
+    val titleColor =
+        if (isActive) {
+            onBackgroundColor
+        } else {
+            onBackgroundColor.copy(alpha = 0.92f)
+        }
+    val subtitleColor = onBackgroundColor.copy(alpha = if (isActive) 0.72f else 0.55f)
+
+    // Glassmorphism-style highlight for the active row: very low-opacity
+    // white tint that lets the blurred album-art background show through,
+    // plus a 1dp border at the same alpha for definition.
+    val activeOverlay = onBackgroundColor.copy(alpha = 0.12f)
+    val activeBorder = onBackgroundColor.copy(alpha = 0.18f)
+
+    Box(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .height(CompactQueueItemHeight)
+                .combinedClickable(
+                    onClick = onClick,
+                    onLongClick = onLongClick,
+                )
+                .then(
+                    if (isActive) {
+                        Modifier
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(activeOverlay)
+                            .border(0.5.dp, activeBorder, RoundedCornerShape(14.dp))
+                    } else {
+                        Modifier
+                    },
+                ),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = CompactQueueHorizontalPadding),
+        ) {
+            // Artwork with optional play/pause indicator overlay for the active track
+            Box(contentAlignment = Alignment.Center) {
+                AsyncImage(
+                    model = mediaMetadata.thumbnailUrl,
+                    contentDescription = mediaMetadata.title,
+                    contentScale = ContentScale.Crop,
+                    modifier =
+                        Modifier
+                            .size(CompactQueueThumbnailSize)
+                            .clip(RoundedCornerShape(CompactQueueThumbnailRadius))
+                            .background(onBackgroundColor.copy(alpha = 0.08f))
+                            .then(
+                                if (isSelected) {
+                                    Modifier.border(
+                                        2.dp,
+                                        MaterialTheme.colorScheme.primary,
+                                        RoundedCornerShape(CompactQueueThumbnailRadius),
+                                    )
+                                } else {
+                                    Modifier
+                                },
+                            ),
+                )
+                if (isActive && shouldLoadImage) {
+                    // Translucent dim layer + glyph — keeps the artwork visible
+                    // while making the playing state unambiguous.
+                    Box(
+                        modifier =
+                            Modifier
+                                .size(CompactQueueThumbnailSize)
+                                .clip(RoundedCornerShape(CompactQueueThumbnailRadius))
+                                .background(Color.Black.copy(alpha = 0.38f)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            painter =
+                                painterResource(
+                                    if (isPlaying) R.drawable.player_pause else R.drawable.player_play,
+                                ),
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                }
+            }
+
+            // Title + artist • duration
+            Column(
+                modifier =
+                    Modifier
+                        .weight(1f)
+                        .padding(start = 12.dp, end = 8.dp),
+                verticalArrangement = Arrangement.Center,
+            ) {
+                Text(
+                    text = mediaMetadata.title,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium,
+                    fontSize = 14.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    color = titleColor,
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text =
+                        joinByBullet(
+                            mediaMetadata.artists.joinToString { it.name },
+                            makeTimeString(mediaMetadata.duration * 1000L),
+                        ),
+                    style = MaterialTheme.typography.bodySmall,
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    color = subtitleColor,
+                )
+            }
+
+            // Drag handle (when unlocked) — kept in front of the menu so it
+            // remains grabbable. Visibility is controlled by the caller via
+            // the dragHandle composable; if empty, nothing renders.
+            dragHandle()
+
+            // Three-dot menu, always present, right-aligned
+            IconButton(
+                onClick = onMenuClick,
+                modifier = Modifier.size(36.dp),
+                colors =
+                    IconButtonDefaults.iconButtonColors(
+                        contentColor = onBackgroundColor.copy(alpha = 0.7f),
+                    ),
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.player_more_vert),
+                    contentDescription = stringResource(R.string.more_options),
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+        }
+
+        // Hairline separator — sits at the bottom edge, full-width minus the
+        // horizontal padding so it visually aligns with the text columns.
+        // Skipped on the active row (the highlight band already separates it).
+        if (!isActive) {
+            HorizontalDivider(
+                color = onBackgroundColor.copy(alpha = 0.08f),
+                thickness = 0.5.dp,
+                modifier =
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(horizontal = CompactQueueHorizontalPadding),
+            )
         }
     }
 }

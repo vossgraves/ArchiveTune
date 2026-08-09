@@ -3882,11 +3882,13 @@ fun PlayerBackground(
                                         .fillMaxSize()
                                         .background(Brush.verticalGradient(colorStops = overlayStops)),
                             )
+                            // Subtle scrim only — keeps text legible on very bright artwork
+                            // without dimming the whole player back down.
                             Box(
                                 modifier =
                                     Modifier
                                         .fillMaxSize()
-                                        .background(Color.Black.copy(alpha = 0.08f)),
+                                        .background(Color.Black.copy(alpha = 0.02f)),
                             )
                         }
                     }

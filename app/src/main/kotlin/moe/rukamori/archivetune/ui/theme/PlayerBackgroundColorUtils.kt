@@ -13,8 +13,13 @@ import androidx.compose.ui.graphics.toArgb
 import android.graphics.Color as AndroidColor
 
 object PlayerBackgroundColorUtils {
-    private const val DEFAULT_MIN_BRIGHTNESS = 0.15f
-    private const val DEFAULT_MAX_BRIGHTNESS = 0.58f
+    // Brightened ranges — previously [0.15, 0.58] which forced even vibrant
+    // artwork into a dim, muddy hue. The new [0.35, 0.85] window lets the
+    // actual dominant artwork colour shine through the blur (matching the
+    // bright, airy Vivi Music aesthetic) while still keeping a sensible
+    // floor so pure-black artwork doesn't blow out text contrast.
+    private const val DEFAULT_MIN_BRIGHTNESS = 0.35f
+    private const val DEFAULT_MAX_BRIGHTNESS = 0.85f
 
     /**
      * Constrains brightness for readability. Saturation is intentionally NOT clamped:
@@ -40,14 +45,17 @@ object PlayerBackgroundColorUtils {
     }
 
     fun buildColoringStops(baseColor: Color): Array<Pair<Float, Color>> {
-        val comfortable = ensureComfortableColor(baseColor, minBrightness = 0.18f, maxBrightness = 0.5f)
-        val mid = darkenColor(comfortable, 0.82f)
-        val deep = darkenColor(comfortable, 0.6f)
+        // Coloring style keeps a touch more depth than BLUR/BLUR_GRADIENT because
+        // it's a flat fill with no underlying image — the gradient is the only
+        // visual interest. Still brighter than before (was 0.18–0.5).
+        val comfortable = ensureComfortableColor(baseColor, minBrightness = 0.42f, maxBrightness = 0.72f)
+        val mid = darkenColor(comfortable, 0.86f)
+        val deep = darkenColor(comfortable, 0.7f)
         return arrayOf(
             0f to comfortable.copy(alpha = 0.97f),
             0.4f to mid.copy(alpha = 0.94f),
             0.75f to deep.copy(alpha = 0.92f),
-            1f to Color.Black.copy(alpha = 0.88f),
+            1f to deep.copy(alpha = 0.88f),
         )
     }
 
@@ -59,11 +67,14 @@ object PlayerBackgroundColorUtils {
         val first = comfortable[0]
         val second = comfortable.getOrNull(1) ?: first
         val third = comfortable.getOrNull(2) ?: second
+        // Alphas raised from 0.45/0.38/0.35/0.50 → 0.78/0.72/0.68/0.82 so the
+        // brightened colour overlay actually obscures the dark blurred artwork
+        // underneath instead of letting it desaturate the result.
         return arrayOf(
-            0f to first.copy(alpha = 0.45f),
-            0.4f to lerp(first, second, 0.5f).copy(alpha = 0.38f),
-            0.75f to lerp(second, third, 0.55f).copy(alpha = 0.35f),
-            1f to third.copy(alpha = 0.50f),
+            0f to first.copy(alpha = 0.78f),
+            0.4f to lerp(first, second, 0.5f).copy(alpha = 0.72f),
+            0.75f to lerp(second, third, 0.55f).copy(alpha = 0.68f),
+            1f to third.copy(alpha = 0.82f),
         )
     }
 
@@ -78,19 +89,21 @@ object PlayerBackgroundColorUtils {
         val first = comfortable[0]
         val second = comfortable.getOrNull(1) ?: first
         val third = comfortable.getOrNull(2) ?: second
+        // Same brightening pass as buildBlurOverlayStops — alphas lifted
+        // from 0.55/0.48/0.42/0.38/0.35 → 0.82/0.78/0.74/0.70/0.66.
         return arrayOf(
-            0f to first.copy(alpha = 0.55f),
-            0.2f to lerp(first, second, 0.3f).copy(alpha = 0.48f),
-            0.5f to second.copy(alpha = 0.42f),
-            0.8f to lerp(second, third, 0.6f).copy(alpha = 0.38f),
-            1f to third.copy(alpha = 0.35f),
+            0f to first.copy(alpha = 0.82f),
+            0.2f to lerp(first, second, 0.3f).copy(alpha = 0.78f),
+            0.5f to second.copy(alpha = 0.74f),
+            0.8f to lerp(second, third, 0.6f).copy(alpha = 0.70f),
+            1f to third.copy(alpha = 0.66f),
         )
     }
 
     private fun defaultBlurOverlayStops(): Array<Pair<Float, Color>> =
         arrayOf(
-            0f to Color.Black.copy(alpha = 0.35f),
-            1f to Color.Black.copy(alpha = 0.45f),
+            0f to Color.Black.copy(alpha = 0.20f),
+            1f to Color.Black.copy(alpha = 0.30f),
         )
 
     private fun Color.toHsv(): FloatArray {
