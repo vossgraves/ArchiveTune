@@ -9,6 +9,8 @@
 
 package moe.rukamori.archivetune.ui.screens.settings
 
+import android.content.Intent
+import android.net.Uri
 import android.widget.Toast
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Spring
@@ -30,6 +32,7 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -98,7 +101,14 @@ import moe.rukamori.archivetune.constants.AiProvider
 import moe.rukamori.archivetune.constants.AiProviderKey
 import moe.rukamori.archivetune.constants.AiSelectedModelKey
 import moe.rukamori.archivetune.constants.AutoTranslateLyricsKey
+import moe.rukamori.archivetune.constants.DeeplApiKeyKey
+import moe.rukamori.archivetune.constants.DeeplFormalityKey
 import moe.rukamori.archivetune.constants.HideAiMixKey
+import moe.rukamori.archivetune.constants.OpenRouterApiKeyKey
+import moe.rukamori.archivetune.constants.OpenRouterBaseUrlKey
+import moe.rukamori.archivetune.constants.OpenRouterModelKey
+import moe.rukamori.archivetune.constants.TranslateModeKey
+import moe.rukamori.archivetune.constants.TranslateLanguageKey
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.EditTextPreference
 import moe.rukamori.archivetune.ui.component.IconButton
@@ -131,7 +141,21 @@ fun AiIntegrationSettings(
     val (hideAiMix, onHideAiMixChange) = rememberPreference(HideAiMixKey, defaultValue = false)
     val (autoTranslateLyrics, onAutoTranslateLyricsChange) =
         rememberPreference(AutoTranslateLyricsKey, defaultValue = false)
+    // DeepL / OpenRouter / Mistral-specific preferences (ported from vivi-music).
+    val (deeplApiKey, setDeeplApiKey) = rememberPreference(DeeplApiKeyKey, "")
+    val (deeplFormality, setDeeplFormality) = rememberPreference(DeeplFormalityKey, "default")
+    val (openRouterApiKey, setOpenRouterApiKey) = rememberPreference(OpenRouterApiKeyKey, "")
+    val (openRouterBaseUrl, setOpenRouterBaseUrl) = rememberPreference(OpenRouterBaseUrlKey, "")
+    val (openRouterModel, setOpenRouterModel) = rememberPreference(OpenRouterModelKey, "openai/gpt-4o-mini")
+    val (translateMode, setTranslateMode) = rememberPreference(TranslateModeKey, "translate")
+    val (translateLanguage, setTranslateLanguage) = rememberPreference(TranslateLanguageKey, "en")
+    var showDeeplKeyDialog by rememberSaveable { mutableStateOf(false) }
+    var showOpenRouterKeyDialog by rememberSaveable { mutableStateOf(false) }
+    var showOpenRouterModelDialog by rememberSaveable { mutableStateOf(false) }
     var showApiKeyDialog by rememberSaveable { mutableStateOf(false) }
+    var showDeeplFormalityDialog by rememberSaveable { mutableStateOf(false) }
+    var showTranslateModeDialog by rememberSaveable { mutableStateOf(false) }
+    var showTranslateLanguageDialog by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         viewModel.events.collect { message ->
@@ -140,16 +164,26 @@ fun AiIntegrationSettings(
     }
 
     val hasCustomEndpoint = provider != AiProvider.CUSTOM || customEndpoint.isNotBlank()
-    val hasApiConfiguration = provider != AiProvider.NONE && apiKey.isNotBlank() && hasCustomEndpoint
+    val hasApiConfiguration =
+        when (provider) {
+            AiProvider.DEEPL -> deeplApiKey.isNotBlank()
+            AiProvider.OPENROUTER -> openRouterApiKey.isNotBlank()
+            AiProvider.MISTRAL -> apiKey.isNotBlank()
+            AiProvider.NONE -> false
+            else -> apiKey.isNotBlank() && hasCustomEndpoint
+        }
     val hasModelConfiguration =
         when (provider) {
             AiProvider.CUSTOM -> customModel.isNotBlank()
+            AiProvider.DEEPL -> true // No model picker for DeepL; the API key determines the tier.
             AiProvider.NONE -> false
-            else -> selectedModel.isNotBlank()
+            else -> selectedModel.isNotBlank() || openRouterModel.isNotBlank()
         }
     val canUseModelPicker =
         provider != AiProvider.NONE &&
             provider != AiProvider.CUSTOM &&
+            provider != AiProvider.DEEPL &&
+            provider != AiProvider.OPENROUTER &&
             apiKey.isNotBlank()
     val canTestApi = hasApiConfiguration && hasModelConfiguration && !actionState.isTesting
 
@@ -165,11 +199,115 @@ fun AiIntegrationSettings(
         )
     }
 
+    if (showDeeplKeyDialog) {
+        ApiKeyDialog(
+            value = deeplApiKey,
+            onDismiss = { showDeeplKeyDialog = false },
+            onSave = { value ->
+                setDeeplApiKey(value.trim())
+                setValidationStatus(AiApiValidationStatus.UNKNOWN)
+            },
+        )
+    }
+
+    if (showOpenRouterKeyDialog) {
+        ApiKeyDialog(
+            value = openRouterApiKey,
+            onDismiss = { showOpenRouterKeyDialog = false },
+            onSave = { value ->
+                setOpenRouterApiKey(value.trim())
+                setValidationStatus(AiApiValidationStatus.UNKNOWN)
+            },
+        )
+    }
+
+    if (showDeeplFormalityDialog) {
+        DefaultDialog(
+            onDismiss = { showDeeplFormalityDialog = false },
+            title = { Text(stringResource(R.string.deepl_formality)) },
+            buttons = {
+                TextButton(onClick = { showDeeplFormalityDialog = false }) { Text(stringResource(R.string.cancel)) }
+            },
+        ) {
+            Column {
+                listOf("default" to R.string.deepl_formality_default, "more" to R.string.deepl_formality_more, "less" to R.string.deepl_formality_less).forEach { (value, labelRes) ->
+                    TextButton(
+                        onClick = {
+                            setDeeplFormality(value)
+                            showDeeplFormalityDialog = false
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(stringResource(labelRes))
+                    }
+                }
+            }
+        }
+    }
+
+    if (showTranslateModeDialog) {
+        DefaultDialog(
+            onDismiss = { showTranslateModeDialog = false },
+            title = { Text(stringResource(R.string.translate_mode)) },
+            buttons = {
+                TextButton(onClick = { showTranslateModeDialog = false }) { Text(stringResource(R.string.cancel)) }
+            },
+        ) {
+            Column {
+                listOf("translate" to R.string.translate_mode_translate, "romanize" to R.string.translate_mode_romanize).forEach { (value, labelRes) ->
+                    TextButton(
+                        onClick = {
+                            setTranslateMode(value)
+                            showTranslateModeDialog = false
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(stringResource(labelRes))
+                    }
+                }
+            }
+        }
+    }
+
+    if (showTranslateLanguageDialog) {
+        var langField by remember { mutableStateOf(translateLanguage) }
+        DefaultDialog(
+            onDismiss = { showTranslateLanguageDialog = false },
+            title = { Text(stringResource(R.string.translate_language)) },
+            buttons = {
+                TextButton(onClick = { showTranslateLanguageDialog = false }) { Text(stringResource(R.string.cancel)) }
+                TextButton(
+                    onClick = {
+                        setTranslateLanguage(langField.trim())
+                        showTranslateLanguageDialog = false
+                    },
+                    enabled = langField.isNotBlank(),
+                ) { Text(stringResource(R.string.save)) }
+            },
+        ) {
+            OutlinedTextField(
+                value = langField,
+                onValueChange = { langField = it },
+                singleLine = true,
+                label = { Text(stringResource(R.string.translate_language_hint)) },
+            )
+        }
+    }
+
+    // Mini-player aware bottom padding — keeps the last settings row from being
+    // covered by the persistent mini player when a song is loaded. Other settings
+    // screens (e.g. NavigationBarSettings) use the same pattern.
+    val playerAwareBottomPadding =
+        LocalPlayerAwareWindowInsets.current
+            .only(WindowInsetsSides.Bottom)
+            .asPaddingValues()
+            .calculateBottomPadding()
+
     Column(
         Modifier
             .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal))
             .verticalScroll(rememberScrollState())
-            .padding(bottom = SettingsDimensions.ScreenBottomPadding),
+            .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
     ) {
         Spacer(
             Modifier.windowInsetsPadding(
@@ -188,6 +326,9 @@ fun AiIntegrationSettings(
                         listOf(
                             AiProvider.GEMINI,
                             AiProvider.CHATGPT,
+                            AiProvider.DEEPL,
+                            AiProvider.OPENROUTER,
+                            AiProvider.MISTRAL,
                             AiProvider.CUSTOM,
                             AiProvider.NONE,
                         ),
@@ -214,6 +355,31 @@ fun AiIntegrationSettings(
                         viewModel.clearError()
                     },
                     isInputValid = { it.startsWith("https://") || it.startsWith("http://") },
+                )
+            }
+
+            // Inline hint that tells the user where to obtain an API key for the
+            // currently-selected provider. Tapping the row opens the provider's
+            // developer console / sign-up page in the system browser. Hidden for
+            // CUSTOM (user supplies their own endpoint/key) and NONE.
+            item(visible = provider != AiProvider.NONE && provider != AiProvider.CUSTOM) {
+                val keyPortalUrl = provider.apiKeyPortalUrl()
+                val keyPortalLabel = provider.apiKeyPortalLabel()
+                PreferenceEntry(
+                    title = { Text("Get API key") },
+                    description = keyPortalLabel,
+                    icon = { Icon(painterResource(R.drawable.link), null) },
+                    onClick = {
+                        if (!keyPortalUrl.isNullOrBlank()) {
+                            runCatching {
+                                context.startActivity(
+                                    Intent(Intent.ACTION_VIEW, Uri.parse(keyPortalUrl)).apply {
+                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    },
+                                )
+                            }
+                        }
+                    },
                 )
             }
 
@@ -370,6 +536,96 @@ fun AiIntegrationSettings(
                 )
             }
         }
+
+        // DeepL / OpenRouter / Mistral provider-specific configuration. These three providers
+        // (ported from vivi-music) have dedicated preference keys separate from the generic
+        // CHATGPT/GEMINI/CUSTOM chat-completion path, so they each get their own subsection.
+        if (provider == AiProvider.DEEPL || provider == AiProvider.OPENROUTER || provider == AiProvider.MISTRAL) {
+            PreferenceGroup(title = stringResource(R.string.ai_translation_settings)) {
+                if (provider == AiProvider.DEEPL) {
+                    item {
+                        PreferenceEntry(
+                            title = { Text(stringResource(R.string.deepl_api_key)) },
+                            description = if (deeplApiKey.isBlank()) stringResource(R.string.deepl_api_key_not_set) else stringResource(R.string.deepl_api_key_set),
+                            icon = { Icon(painterResource(R.drawable.token), null) },
+                            onClick = { showDeeplKeyDialog = true },
+                        )
+                    }
+                    item {
+                        PreferenceEntry(
+                            title = { Text(stringResource(R.string.deepl_formality)) },
+                            description = deeplFormality,
+                            icon = { Icon(painterResource(R.drawable.text_fields), null) },
+                            onClick = { showDeeplFormalityDialog = true },
+                        )
+                    }
+                }
+                if (provider == AiProvider.OPENROUTER) {
+                    item {
+                        PreferenceEntry(
+                            title = { Text(stringResource(R.string.openrouter_api_key)) },
+                            description = if (openRouterApiKey.isBlank()) stringResource(R.string.openrouter_api_key_not_set) else stringResource(R.string.openrouter_api_key_set),
+                            icon = { Icon(painterResource(R.drawable.token), null) },
+                            onClick = { showOpenRouterKeyDialog = true },
+                        )
+                    }
+                    item {
+                        EditTextPreference(
+                            title = { Text(stringResource(R.string.openrouter_base_url)) },
+                            icon = { Icon(painterResource(R.drawable.website), null) },
+                            value = openRouterBaseUrl,
+                            onValueChange = { setOpenRouterBaseUrl(it.trim()) },
+                            isInputValid = { it.isBlank() || it.startsWith("http://") || it.startsWith("https://") },
+                        )
+                    }
+                    item {
+                        EditTextPreference(
+                            title = { Text(stringResource(R.string.openrouter_model)) },
+                            icon = { Icon(painterResource(R.drawable.tune), null) },
+                            value = openRouterModel,
+                            onValueChange = { setOpenRouterModel(it.trim()) },
+                            isInputValid = { it.isNotBlank() },
+                        )
+                    }
+                }
+                if (provider == AiProvider.MISTRAL) {
+                    item {
+                        PreferenceEntry(
+                            title = { Text(stringResource(R.string.mistral_api_key)) },
+                            description = if (apiKey.isBlank()) stringResource(R.string.mistral_api_key_not_set) else stringResource(R.string.mistral_api_key_set),
+                            icon = { Icon(painterResource(R.drawable.token), null) },
+                            onClick = { showApiKeyDialog = true },
+                        )
+                    }
+                    item {
+                        EditTextPreference(
+                            title = { Text(stringResource(R.string.mistral_model)) },
+                            icon = { Icon(painterResource(R.drawable.tune), null) },
+                            value = selectedModel,
+                            onValueChange = { setSelectedModel(it.trim()) },
+                            isInputValid = { it.isNotBlank() },
+                        )
+                    }
+                }
+                // Translation target language + mode shared by DeepL/OpenRouter/Mistral.
+                item {
+                    PreferenceEntry(
+                        title = { Text(stringResource(R.string.translate_language)) },
+                        description = translateLanguage,
+                        icon = { Icon(painterResource(R.drawable.translate), null) },
+                        onClick = { showTranslateLanguageDialog = true },
+                    )
+                }
+                item {
+                    PreferenceEntry(
+                        title = { Text(stringResource(R.string.translate_mode)) },
+                        description = if (translateMode == "romanize") stringResource(R.string.translate_mode_romanize) else stringResource(R.string.translate_mode_translate),
+                        icon = { Icon(painterResource(R.drawable.text_fields), null) },
+                        onClick = { showTranslateModeDialog = true },
+                    )
+                }
+            }
+        }
     }
 
     TopAppBar(
@@ -446,7 +702,40 @@ private fun AiProvider.label(): String =
         AiProvider.CHATGPT -> "OpenAI"
         AiProvider.GEMINI -> "Gemini"
         AiProvider.CUSTOM -> stringResource(R.string.custom)
+        AiProvider.DEEPL -> "DeepL"
+        AiProvider.OPENROUTER -> "OpenRouter"
+        AiProvider.MISTRAL -> "Mistral AI"
         AiProvider.NONE -> stringResource(R.string.ai_provider_none)
+    }
+
+/**
+ * Returns the developer-portal URL where the user can sign up for / fetch an API
+ * key for this provider. Null for providers that don't have a public self-serve
+ * portal (CUSTOM relies on the user's own endpoint, NONE is the off state).
+ */
+private fun AiProvider.apiKeyPortalUrl(): String? =
+    when (this) {
+        AiProvider.CHATGPT -> "https://platform.openai.com/api-keys"
+        AiProvider.GEMINI -> "https://aistudio.google.com/app/apikey"
+        AiProvider.DEEPL -> "https://www.deepl.com/pro-api"
+        AiProvider.OPENROUTER -> "https://openrouter.ai/keys"
+        AiProvider.MISTRAL -> "https://console.mistral.ai/api-keys"
+        AiProvider.CUSTOM, AiProvider.NONE -> null
+    }
+
+/**
+ * One-line description shown under the "Get API key" row. Tells the user which
+ * portal the row opens and (where relevant) which plan is needed for API access.
+ */
+@Composable
+private fun AiProvider.apiKeyPortalLabel(): String =
+    when (this) {
+        AiProvider.CHATGPT -> "platform.openai.com/api-keys — create a key with the \"ChatGPT\" or \"Project\" scope"
+        AiProvider.GEMINI -> "aistudio.google.com/app/apikey — free tier available with a Google account"
+        AiProvider.DEEPL -> "deepl.com/pro-api — DeepL Pro plan required for API access"
+        AiProvider.OPENROUTER -> "openrouter.ai/keys — free + paid models, billable by usage"
+        AiProvider.MISTRAL -> "console.mistral.ai/api-keys — create a key under \"API Keys\""
+        AiProvider.CUSTOM, AiProvider.NONE -> ""
     }
 
 @Composable

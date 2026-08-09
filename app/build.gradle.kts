@@ -446,6 +446,7 @@ dependencies {
     implementation(libs.compose.animation)
     implementation(libs.compose.material.icons.extended)
     implementation(libs.compose.reorderable)
+    implementation(libs.haze)
 
     implementation(libs.viewmodel)
     implementation(libs.viewmodel.compose)
@@ -522,6 +523,7 @@ dependencies {
     implementation(project(":spotifycore"))
     implementation(project(":moriextractor"))
     implementation(project(":morideobfuscator"))
+    implementation(project(":jiosaavn"))
     implementation("com.materialkolor:material-kolor:5.0.0-alpha07")
 
     implementation(libs.ktor.client.core)

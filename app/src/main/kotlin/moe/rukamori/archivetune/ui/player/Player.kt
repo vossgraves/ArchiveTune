@@ -24,11 +24,20 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.HazeStyle
+import dev.chrisbanes.haze.HazeTint
+import dev.chrisbanes.haze.hazeSource
+import dev.chrisbanes.haze.hazeEffect
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -59,6 +68,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -163,6 +173,7 @@ import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalAnimationsDisabled
 import moe.rukamori.archivetune.LocalDownloadUtil
 import moe.rukamori.archivetune.LocalPlayerConnection
+import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.canvas.models.CanvasArtwork
 import moe.rukamori.archivetune.constants.ArchiveTuneCanvasKey
@@ -866,6 +877,16 @@ fun BottomSheetPlayer(
             initialAnchor = COLLAPSED_ANCHOR,
         )
 
+    // Haze state for the frosted-glass blur behind the queue sheet. Ported
+    // verbatim from vivi-music's Player.kt: the player's backdrop artwork is
+    // tagged as the haze source, and a Haze-effect overlay (blurRadius = 80.dp,
+    // tint = Black 0.30, noiseFactor = 0.15) fades in over the player content
+    // while the queue is expanded. The queue's own background is transparent
+    // (Color.Unspecified) so the Haze shows through. This replaces the previous
+    // Compose BlurEffect(radius=32f) approach which was less blurred than
+    // vivi-music and only worked on Android 12+.
+    val playerHazeState = remember { HazeState() }
+
     LaunchedEffect(state.isExpandedOrExpanding) {
         if (state.isExpandedOrExpanding && !queueSheetState.isCollapsed) {
             queueSheetState.collapseSoft()
@@ -1179,11 +1200,7 @@ fun BottomSheetPlayer(
                 !aodModeEnabled
         val shouldUseArtworkCanvas =
             (archiveTuneCanvasEnabled || spotifyCanvasEnabled) &&
-                (
-                    playerDesignStyle == PlayerDesignStyle.V8 ||
-                        playerDesignStyle == PlayerDesignStyle.V9 ||
-                        playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC
-                ) &&
+                playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC &&
                 !aodModeEnabled
         val shouldFetchV7Canvas = shouldUseV7Canvas && !lowDataModeActive
         val shouldFetchArtworkCanvas = shouldUseArtworkCanvas && !lowDataModeActive
@@ -1227,15 +1244,15 @@ fun BottomSheetPlayer(
             }
         }
 
-        LaunchedEffect(playerConnection, mediaMetadata?.id) {
+        LaunchedEffect(playerConnection, mediaMetadata?.id, shouldUseV7Canvas, shouldUseArtworkCanvas) {
             playerConnection.canvasArtworkUpdates.collect { update ->
                 if (update.mediaId != mediaMetadata?.id) return@collect
 
                 canvasArtworkRevision += 1
-                if (!update.artwork.preferredVerticalAnimationUrl.isNullOrBlank()) {
+                if (shouldUseV7Canvas && !update.artwork.preferredVerticalAnimationUrl.isNullOrBlank()) {
                     v7CanvasArtwork = update.artwork
                 }
-                if (!update.artwork.preferredAnimationUrl.isNullOrBlank()) {
+                if (shouldUseArtworkCanvas && !update.artwork.preferredAnimationUrl.isNullOrBlank()) {
                     artworkCanvas = update.artwork
                 }
             }
@@ -1349,6 +1366,33 @@ fun BottomSheetPlayer(
             )
         }
 
+        // Haze-driven frosted-glass blur behind the queue sheet. Ported
+        // verbatim from vivi-music (beta) Player.kt — the player's backdrop
+        // artwork + controls are tagged as the haze source, and a Haze-effect
+        // overlay (blurRadius = 80.dp, tint = HazeTint(Black 0.30), noiseFactor
+        // = 0.15) fades in over them while the queue is expanded. The queue
+        // itself (rendered AFTER this Box closes) has a transparent background,
+        // so the Haze shows through. This replaces the previous Compose
+        // BlurEffect(radius=32f) approach which was less blurred than
+        // vivi-music and only worked on Android 12+ (Haze handles the API
+        // level gate internally and falls back to a software blur on older
+        // devices).
+        val queueBlurEnabled =
+            queueSheetState.isExpandedOrExpanding &&
+                !isLyricsScreenVisible
+
+        val queueHazeAlpha by animateFloatAsState(
+            targetValue = if (queueBlurEnabled) 1f else 0f,
+            animationSpec = tween(durationMillis = 300),
+            label = "queueHazeAlpha",
+        )
+
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .hazeSource(state = playerHazeState),
+        ) {
         if (!state.isCollapsed &&
             !aodModeEnabled &&
             playerDesignStyle != PlayerDesignStyle.V5 &&
@@ -1415,9 +1459,8 @@ fun BottomSheetPlayer(
                                         onSkipPrevious = playerConnection::seekToPrevious,
                                         onSkipNext = playerConnection::seekToNext,
                                     ).windowInsetsPadding(
-                                        WindowInsets.systemBars.only(
-                                            WindowInsetsSides.Horizontal + WindowInsetsSides.Top + WindowInsetsSides.Bottom,
-                                        ),
+                                        WindowInsets(top = LocalStableSystemBarsTopPadding.current)
+                                            .union(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)),
                                     ),
                         ) {
                             enrichedMetadata?.let { metadata ->
@@ -1487,7 +1530,7 @@ fun BottomSheetPlayer(
                                 canvasStaticUrl = v7CanvasArtwork?.static,
                                 canvasPrimaryUrl = v7CanvasArtwork?.animatedVertical,
                                 canvasFallbackUrl = v7CanvasArtwork?.videoUrlVertical,
-                                isPlaying = isPlaying,
+                                isPlaying = isPlaying && !isLyricsScreenVisible,
                                 disableBlur = disableBlur,
                                 backdropBlurAmount = backdropBlurAmount,
                                 label = "v7BackdropLandscape",
@@ -1616,9 +1659,8 @@ fun BottomSheetPlayer(
                                         .fillMaxSize()
                                         .padding(bottom = queueSheetState.collapsedBound)
                                         .windowInsetsPadding(
-                                            WindowInsets.systemBars.only(
-                                                WindowInsetsSides.Top + WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
-                                            ),
+                                            WindowInsets(top = LocalStableSystemBarsTopPadding.current)
+                                                .union(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)),
                                         ).nestedScroll(state.preUpPostDownNestedScrollConnection),
                             )
                         }
@@ -1654,9 +1696,8 @@ fun BottomSheetPlayer(
                                     .fillMaxSize()
                                     .padding(bottom = queueSheetState.collapsedBound)
                                     .windowInsetsPadding(
-                                        WindowInsets.systemBars.only(
-                                            WindowInsetsSides.Top + WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
-                                        ),
+                                        WindowInsets(top = LocalStableSystemBarsTopPadding.current)
+                                            .union(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)),
                                     ).nestedScroll(state.preUpPostDownNestedScrollConnection),
                         )
                     }
@@ -1665,7 +1706,7 @@ fun BottomSheetPlayer(
                         AppleMusicPlayerContent(
                             mediaMetadata = metadata,
                             playbackState = playbackState,
-                            isPlaying = isPlaying,
+                            isPlaying = isPlaying && !isLyricsScreenVisible,
                             isLoading = isLoading,
                             canSkipPrevious = canSkipPrevious,
                             canSkipNext = canSkipNext,
@@ -1681,7 +1722,6 @@ fun BottomSheetPlayer(
                             onVolumeChange = onPlayerVolumeChange,
                             canvasPrimaryUrl = artworkCanvas?.animated,
                             canvasFallbackUrl = artworkCanvas?.videoUrl,
-                            currentFormat = currentFormat,
                             contentBottomPadding = queueSheetState.collapsedBound,
                             onQueueClick = openQueue,
                             onLyricsClick = { isLyricsScreenVisible = true },
@@ -1718,7 +1758,7 @@ fun BottomSheetPlayer(
                             modifier =
                                 Modifier
                                     .weight(1f)
-                                    .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Top)),
+                                    .windowInsetsPadding(WindowInsets(top = LocalStableSystemBarsTopPadding.current)),
                         ) {
                             Spacer(Modifier.weight(1f))
 
@@ -1777,9 +1817,8 @@ fun BottomSheetPlayer(
                                         onSkipPrevious = playerConnection::seekToPrevious,
                                         onSkipNext = playerConnection::seekToNext,
                                     ).windowInsetsPadding(
-                                        WindowInsets.systemBars.only(
-                                            WindowInsetsSides.Horizontal + WindowInsetsSides.Top + WindowInsetsSides.Bottom,
-                                        ),
+                                        WindowInsets(top = LocalStableSystemBarsTopPadding.current)
+                                            .union(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)),
                                     ),
                         ) {
                             enrichedMetadata?.let { metadata ->
@@ -1849,7 +1888,7 @@ fun BottomSheetPlayer(
                                 canvasStaticUrl = v7CanvasArtwork?.static,
                                 canvasPrimaryUrl = v7CanvasArtwork?.animatedVertical,
                                 canvasFallbackUrl = v7CanvasArtwork?.videoUrlVertical,
-                                isPlaying = isPlaying,
+                                isPlaying = isPlaying && !isLyricsScreenVisible,
                                 disableBlur = disableBlur,
                                 backdropBlurAmount = backdropBlurAmount,
                                 label = "v7BackdropPortrait",
@@ -1975,9 +2014,8 @@ fun BottomSheetPlayer(
                                         .fillMaxSize()
                                         .padding(bottom = queueSheetState.collapsedBound)
                                         .windowInsetsPadding(
-                                            WindowInsets.systemBars.only(
-                                                WindowInsetsSides.Top + WindowInsetsSides.Horizontal,
-                                            ),
+                                            WindowInsets(top = LocalStableSystemBarsTopPadding.current)
+                                                .union(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal)),
                                         ).nestedScroll(state.preUpPostDownNestedScrollConnection),
                             )
                         }
@@ -2012,9 +2050,8 @@ fun BottomSheetPlayer(
                                     .fillMaxSize()
                                     .padding(bottom = queueSheetState.collapsedBound)
                                     .windowInsetsPadding(
-                                        WindowInsets.systemBars.only(
-                                            WindowInsetsSides.Top + WindowInsetsSides.Horizontal,
-                                        ),
+                                        WindowInsets(top = LocalStableSystemBarsTopPadding.current)
+                                            .union(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal)),
                                     ).nestedScroll(state.preUpPostDownNestedScrollConnection),
                         )
                     }
@@ -2023,7 +2060,7 @@ fun BottomSheetPlayer(
                         AppleMusicPlayerContent(
                             mediaMetadata = metadata,
                             playbackState = playbackState,
-                            isPlaying = isPlaying,
+                            isPlaying = isPlaying && !isLyricsScreenVisible,
                             isLoading = isLoading,
                             canSkipPrevious = canSkipPrevious,
                             canSkipNext = canSkipNext,
@@ -2039,7 +2076,6 @@ fun BottomSheetPlayer(
                             onVolumeChange = onPlayerVolumeChange,
                             canvasPrimaryUrl = artworkCanvas?.animated,
                             canvasFallbackUrl = artworkCanvas?.videoUrl,
-                            currentFormat = currentFormat,
                             contentBottomPadding = queueSheetState.collapsedBound,
                             onQueueClick = openQueue,
                             onLyricsClick = { isLyricsScreenVisible = true },
@@ -2084,6 +2120,32 @@ fun BottomSheetPlayer(
                 }
             }
         }
+        } // close player-content haze-source Box
+
+        // Haze-effect overlay — renders the blurred player content (the
+        // hazeSource Box above) as a frosted-glass layer that fades in while
+        // the queue is expanded. Exact vivi-music parameters: blurRadius =
+        // 80.dp, tint = HazeTint(Black 0.30), noiseFactor = 0.15. The queue
+        // sheet (rendered next, with a transparent background) sits on top of
+        // this overlay so the frosted-glass effect shows through behind the
+        // queue list.
+        if (queueHazeAlpha > 0f) {
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .graphicsLayer { alpha = queueHazeAlpha }
+                        .hazeEffect(
+                            state = playerHazeState,
+                            style =
+                                HazeStyle(
+                                    blurRadius = 80.dp,
+                                    tint = HazeTint(Color.Black.copy(alpha = 0.30f)),
+                                    noiseFactor = 0.15f,
+                                ),
+                        ),
+            )
+        }
 
         val queueOnBackgroundColor = if (useBlackBackground) Color.White else MaterialTheme.colorScheme.onSurface
         val queueSurfaceColor = if (useBlackBackground) Color.Black else MaterialTheme.colorScheme.surface
@@ -2102,23 +2164,33 @@ fun BottomSheetPlayer(
                 }
             }
 
-        Queue(
-            state = queueSheetState,
-            playerBottomSheetState = state,
-            navController = navController,
-            backgroundColor =
-                if (useBlackBackground) {
-                    Color.Black
-                } else {
-                    MaterialTheme.colorScheme.surfaceContainer
-                },
-            onBackgroundColor = queueOnBackgroundColor,
-            TextBackgroundColor = TextBackgroundColor,
-            textButtonColor = textButtonColor,
-            iconButtonColor = iconButtonColor,
-            onShowLyrics = { isLyricsScreenVisible = true },
-            pureBlack = pureBlack,
-        )
+        // Queue sheet — wrapped in AnimatedVisibility with slide+fade so it
+        // slides in from below. Hidden while the lyrics screen is on top.
+        //
+        // The Queue's background is transparent (Color.Unspecified) so the player's
+        // brightened blurred artwork shows through unimpeded — matching vivi-music's
+        // queue which paints Color.Unspecified behind its list and relies entirely
+        // on the player's own background for the frosted-glass effect.
+        AnimatedVisibility(
+            visible = !isLyricsScreenVisible,
+            enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+            exit =
+                shrinkVertically(shrinkTowards = Alignment.Top) +
+                    slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+        ) {
+            Queue(
+                state = queueSheetState,
+                playerBottomSheetState = state,
+                navController = navController,
+                backgroundColor = Color.Unspecified,
+                onBackgroundColor = queueOnBackgroundColor,
+                TextBackgroundColor = TextBackgroundColor,
+                textButtonColor = textButtonColor,
+                iconButtonColor = iconButtonColor,
+                onShowLyrics = { isLyricsScreenVisible = true },
+                pureBlack = pureBlack,
+            )
+        }
 
         mediaMetadata?.let { metadata ->
             MikoLyricsTransition(
@@ -2327,7 +2399,12 @@ private fun V8PlayerBackdrop(
                             .graphicsLayer {
                                 scaleX = 1.16f
                                 scaleY = 1.16f
-                                alpha = 0.66f
+                                // Raised from 0.66 → 1.0 — let the artwork's
+                                // actual colours through; the previous 0.66
+                                // alpha combined with the 0.52 black scrim below
+                                // was crushing the brightness down to a muddy
+                                // grey. Matches ViviMusic's bright-blur aesthetic.
+                                alpha = 1.0f
                             },
                     onState = { state ->
                         if (state is coil3.compose.AsyncImagePainter.State.Error) {
@@ -2345,7 +2422,7 @@ private fun V8PlayerBackdrop(
                             .graphicsLayer {
                                 scaleX = 1.16f
                                 scaleY = 1.16f
-                                alpha = 0.66f
+                                alpha = 1.0f
                             },
                     onError = { failedUrl ->
                         getNextFallbackUrl(failedUrl)?.let { currentUrl = it }
@@ -2362,7 +2439,7 @@ private fun V8PlayerBackdrop(
                             .graphicsLayer {
                                 scaleX = 1.16f
                                 scaleY = 1.16f
-                                alpha = 0.66f
+                                alpha = 1.0f
                             },
                     onState = { state ->
                         if (state is coil3.compose.AsyncImagePainter.State.Error) {
@@ -2373,11 +2450,17 @@ private fun V8PlayerBackdrop(
             }
         }
 
+        // ViviMusic-faithful scrim: a single uniform 30% black tint, like
+        // HazeTint(Color.Black.copy(alpha = 0.30f)). Previously this was a
+        // 0.52-alpha black box which, combined with the 0.66 graphicsLayer
+        // alpha above, produced an effective ~83% darkening — the opposite
+        // of ViviMusic's bright, vibrant blur. The 0.30 tint preserves the
+        // album art's colour while keeping text legible.
         Box(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.52f)),
+                    .background(Color.Black.copy(alpha = 0.30f)),
         )
     }
 }
@@ -2609,15 +2692,20 @@ private fun V7PlayerBackdrop(
     val sharpStageBottomScrim =
         remember(backdropPalette) {
             val blendColor = backdropPalette.bottom
+            // ViviMusic-faithful: reduced alphas (0.18/0.52/0.82/1.0 →
+            // 0.10/0.28/0.46/0.62) so the bottom of the sharp stage still
+            // blends into the backdrop but doesn't aggressively darken the
+            // artwork. Combined with the brighter palette tone and raised
+            // backdrop alpha, the result reads as vibrant rather than muddy.
             Brush.verticalGradient(
                 colorStops =
                     arrayOf(
                         0f to Color.Transparent,
                         V7SharpStageBottomScrimStartFraction to Color.Transparent,
-                        0.60f to blendColor.copy(alpha = 0.18f),
-                        0.76f to blendColor.copy(alpha = 0.52f),
-                        0.88f to blendColor.copy(alpha = 0.82f),
-                        1f to blendColor,
+                        0.60f to blendColor.copy(alpha = 0.10f),
+                        0.76f to blendColor.copy(alpha = 0.28f),
+                        0.88f to blendColor.copy(alpha = 0.46f),
+                        1f to blendColor.copy(alpha = 0.62f),
                     ),
             )
         }
@@ -2641,7 +2729,14 @@ private fun V7PlayerBackdrop(
                 .graphicsLayer {
                     scaleX = V7BackdropBlurScale
                     scaleY = V7BackdropBlurScale
-                    alpha = if (disableBlur || !needsBlur) 0.20f else 0.58f
+                    // Raised from 0.58 → 0.92 (and 0.20 → 0.50 for the
+                    // no-blur branch) so the artwork's actual colours shine
+                    // through. The previous 0.58 alpha combined with the
+                    // valueMax=0.32 palette floor below was crushing the
+                    // backdrop into a dark, desaturated sludge — the opposite
+                    // of ViviMusic's bright, vibrant blur. 0.92 keeps a tiny
+                    // headroom for the sharp stage to dominate visually.
+                    alpha = if (disableBlur || !needsBlur) 0.50f else 0.92f
                 }
         }
     val canvasStageModifier =
@@ -2815,10 +2910,14 @@ private data class V7BackdropPalette(
             // (e.g. red → green at +120°) which are wrong for a backdrop that should feel
             // coherent. We derive mid/bottom by darkening the same hue instead.
             val dominantColor = colors.firstOrNull()
-            val fallback = Color(fallbackColor).v7BackdropTone(valueMin = 0.12f, valueMax = 0.38f)
-            val top = dominantColor?.v7BackdropTone(valueMin = 0.20f, valueMax = 0.72f) ?: fallback
-            val mid = dominantColor?.v7BackdropTone(valueMin = 0.13f, valueMax = 0.48f) ?: top
-            val bottom = dominantColor?.v7BackdropTone(valueMin = 0.08f, valueMax = 0.32f) ?: mid
+            // ViviMusic-faithful: previous valueMax caps (0.32/0.48/0.72) were
+            // crushing the palette into a dark, muddy sludge. New caps
+            // (0.62/0.78/0.92) let the actual dominant colour through, matching
+            // ViviMusic's bright, vibrant blur aesthetic.
+            val fallback = Color(fallbackColor).v7BackdropTone(valueMin = 0.20f, valueMax = 0.62f)
+            val top = dominantColor?.v7BackdropTone(valueMin = 0.32f, valueMax = 0.92f) ?: fallback
+            val mid = dominantColor?.v7BackdropTone(valueMin = 0.26f, valueMax = 0.78f) ?: top
+            val bottom = dominantColor?.v7BackdropTone(valueMin = 0.20f, valueMax = 0.62f) ?: mid
             return V7BackdropPalette(
                 top = top,
                 mid = mid,

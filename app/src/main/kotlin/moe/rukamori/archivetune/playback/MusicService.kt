@@ -204,10 +204,14 @@ import moe.rukamori.archivetune.constants.toFormatId
 import moe.rukamori.archivetune.constants.DeezerAudioQuality
 import moe.rukamori.archivetune.constants.DeezerAudioQualityKey
 import moe.rukamori.archivetune.constants.DeezerEnabledKey
+import moe.rukamori.archivetune.constants.JioSaavnEnabledKey
+import moe.rukamori.archivetune.constants.SaavnAudioQuality
+import moe.rukamori.archivetune.constants.SaavnAudioQualityKey
 import moe.rukamori.archivetune.constants.toFormatName
 import moe.rukamori.archivetune.deezer.DeezerAudioProvider
 import moe.rukamori.archivetune.deezer.DeezerCrypto
 import moe.rukamori.archivetune.deezer.DeezerDecryptingDataSource
+import moe.rukamori.archivetune.jiosaavn.SaavnService
 import moe.rukamori.archivetune.qobuz.QobuzAudioProvider
 import moe.rukamori.archivetune.qobuz.QobuzToken
 import moe.rukamori.archivetune.audiosource.AudioSourceConfig
@@ -7799,6 +7803,7 @@ class MusicService :
                 AudioSourceType.TIDAL to dataStore.get(TidalEnabledKey, true),
                 AudioSourceType.QOBUZ to dataStore.get(QobuzEnabledKey, false),
                 AudioSourceType.DEEZER to dataStore.get(DeezerEnabledKey, false),
+                AudioSourceType.JIOSAAVN to dataStore.get(JioSaavnEnabledKey, false),
                 AudioSourceType.YOUTUBE to true,
             )
         // The single stored order is authoritative (top = preferred). Only sources listed BEFORE
@@ -8135,6 +8140,7 @@ class MusicService :
                     AudioSourceType.TIDAL -> resolveTidalStream(query)
                     AudioSourceType.QOBUZ -> resolveQobuzStream(query)
                     AudioSourceType.DEEZER -> resolveDeezerStream(query)
+                    AudioSourceType.JIOSAAVN -> resolveJioSaavnStream(query)
                     AudioSourceType.YOUTUBE -> null
                 }
             if (stream == null) {
@@ -8611,6 +8617,87 @@ class MusicService :
     private fun parseDeezerAudioQuality(): DeezerAudioQuality {
         val stored = dataStore.get(DeezerAudioQualityKey, DeezerAudioQuality.FLAC.name)
         return runCatching { DeezerAudioQuality.valueOf(stored) }.getOrDefault(DeezerAudioQuality.FLAC)
+    }
+
+    /**
+     * Resolves a JioSaavn stream. Ported from vivi-music (https://github.com/vivizzz007/vivi-music).
+     *
+     * JioSaavn is unauthenticated: we search the public JioSaavn API, pick the best match by
+     * title/artist/duration, decrypt the encrypted_media_url via DES-ECB, and select the
+     * stream URL matching the user's quality preference. Falls back to YouTube on any failure.
+     */
+    private fun resolveJioSaavnStream(query: SourceQuery): DirectStream? {
+        if (!dataStore.get(JioSaavnEnabledKey, false)) return null
+        val quality = SaavnAudioQuality.fromStoredName(dataStore.get(SaavnAudioQualityKey, SaavnAudioQuality.QUALITY_320.name))
+        val qualityApiValue = quality.toApiValue()
+        Timber.tag("MusicService").d("JioSaavn resolve start | quality=%s", qualityApiValue)
+
+        // Build a search query from title + primary artist (+ album as a soft hint).
+        val artistHint = query.artists.firstOrNull()?.takeIf { it.isNotBlank() } ?: ""
+        val albumHint = query.album?.takeIf { it.isNotBlank() } ?: ""
+        val searchQuery =
+            buildString {
+                append(query.title)
+                if (artistHint.isNotBlank()) append(" ").append(artistHint)
+                if (albumHint.isNotBlank()) append(" ").append(albumHint)
+            }.trim()
+
+        return runCatching {
+            runBlocking(Dispatchers.IO) {
+                val searchResult = SaavnService.searchSongs(searchQuery).getOrNull() ?: return@runBlocking null
+                if (searchResult.isEmpty()) return@runBlocking null
+
+                // Pick best candidate by title/artist/duration. Prefer non-Pro tracks (Pro-Only tracks
+                // return a 30-second preview from JioSaavn's CDN and we cannot stream them).
+                val wantedDurationSec = query.durationMs?.let { it / 1000 }
+                val candidate =
+                    searchResult
+                        .filter { !it.isProOnly && it.downloadUrl.isNotEmpty() }
+                        .minByOrNull { song ->
+                            var penalty = 0
+                            // Title similarity (simple normalized contains + length delta)
+                            val normTitle = song.name.lowercase().replace("[^a-z0-9]".toRegex(), "")
+                            val normWanted = query.title.lowercase().replace("[^a-z0-9]".toRegex(), "")
+                            penalty += if (normTitle == normWanted) 0 else if (normTitle.contains(normWanted) || normWanted.contains(normTitle)) 1 else 5
+                            // Artist match
+                            val candidateArtist = song.artists.primary.firstOrNull()?.name?.lowercase()?.replace("[^a-z0-9]".toRegex(), "") ?: ""
+                            val wantedArtist = artistHint.lowercase().replace("[^a-z0-9]".toRegex(), "")
+                            if (wantedArtist.isNotBlank() && candidateArtist.isNotBlank()) {
+                                penalty += if (candidateArtist == wantedArtist) 0 else if (candidateArtist.contains(wantedArtist) || wantedArtist.contains(candidateArtist)) 1 else 3
+                            }
+                            // Duration delta
+                            if (wantedDurationSec != null && song.duration != null) {
+                                val candidateDuration = song.duration!!.toLong()
+                                val wantedSec = wantedDurationSec!!
+                                val delta = kotlin.math.abs(candidateDuration - wantedSec)
+                                penalty += when {
+                                    delta <= 3 -> 0
+                                    delta <= 10 -> 2
+                                    else -> 6
+                                }
+                            }
+                            penalty
+                        } ?: return@runBlocking null
+
+                val streamUrl = SaavnService.selectBestUrl(candidate.downloadUrl, qualityApiValue) ?: return@runBlocking null
+                val durationMs = candidate.duration?.toLong()?.times(1000L)
+
+                DirectStream(
+                    uri = streamUrl,
+                    mimeType = "audio/mp4",
+                    codecs = "mp4a.40.2",
+                    contentLength = null,
+                    label = "JioSaavn ${quality.toLabel()}",
+                    source = AudioSourceType.JIOSAAVN,
+                    matchedTitle = candidate.name,
+                    matchedArtist = candidate.artists.primary.firstOrNull()?.name,
+                    matchedAlbum = candidate.album?.name,
+                    matchedDurationMs = durationMs,
+                )
+            }
+        }.onFailure { error ->
+            Timber.tag("MusicService").w(error, "JIOSAAVN stream resolution failed for %s", query.mediaId)
+        }.getOrNull()
     }
 
     /**

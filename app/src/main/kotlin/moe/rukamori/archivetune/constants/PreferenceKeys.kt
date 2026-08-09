@@ -300,6 +300,24 @@ val AiApiValidationStatusKey = stringPreferencesKey("ai_api_validation_status")
 val AiSelectedModelKey = stringPreferencesKey("ai_selected_model")
 val AiCustomModelKey = stringPreferencesKey("ai_custom_model")
 
+// --- DeepL / OpenRouter / Mistral translation providers (ported from vivi-music) ---
+// DeepL: API key with `:fx` suffix routes through api-free.deepl.com; otherwise api.deepl.com.
+val DeeplApiKeyKey = stringPreferencesKey("deeplApiKey")
+// "default" / "more" / "less" — controls DeepL's formality parameter.
+val DeeplFormalityKey = stringPreferencesKey("deeplFormality")
+
+// OpenRouter: chat-completions style translation. User can override base URL and model.
+val OpenRouterApiKeyKey = stringPreferencesKey("openRouterApiKey")
+val OpenRouterBaseUrlKey = stringPreferencesKey("openRouterBaseUrl")
+val OpenRouterModelKey = stringPreferencesKey("openRouterModel")
+
+// Translation mode for OpenRouter: "translate" (full translation) or "romanize" (transliteration).
+val TranslateModeKey = stringPreferencesKey("translateMode")
+// Target language code for translation (e.g. "en", "zh-CN", "ja").
+val TranslateLanguageKey = stringPreferencesKey("translateLanguage")
+// Optional source language hint (null = auto-detect).
+val TranslateSourceLanguageKey = stringPreferencesKey("translateSourceLanguage")
+
 // Hides the AI-generated "Top mixes" section in the library Mix tab (and stops auto-generation).
 val HideAiMixKey = booleanPreferencesKey("hide_ai_mix")
 
@@ -325,6 +343,9 @@ enum class AiProvider {
     CHATGPT,
     GEMINI,
     CUSTOM,
+    DEEPL,
+    OPENROUTER,
+    MISTRAL,
     NONE,
 }
 
@@ -1141,6 +1162,7 @@ enum class AudioSourceType {
     TIDAL,
     QOBUZ,
     DEEZER,
+    JIOSAAVN,
     YOUTUBE,
 }
 
@@ -1179,6 +1201,43 @@ val DeezerAccountNameKey = stringPreferencesKey("deezerAccountName")
 // Whether the manual account reported a lossless-capable plan. Only orders resolution attempts;
 // the provider still verifies the real tier per track.
 val DeezerAccountPremiumKey = booleanPreferencesKey("deezerAccountPremium")
+
+// ---------------------------------------------------------------------------
+// JioSaavn source
+// ---------------------------------------------------------------------------
+// Ported from vivi-music (https://github.com/vivizzz007/vivi-music) under GPL-3.0.
+// JioSaavn streams are unauthenticated MP4/AAC; CDN URLs are decrypted locally via DES-ECB.
+// Defaults OFF because the source requires JioSaavn's public API to be reachable.
+val JioSaavnEnabledKey = booleanPreferencesKey("enableSaavnStreaming")
+
+// Bitrate selection: 96 / 160 / 320 kbps AAC.
+val SaavnAudioQualityKey = stringPreferencesKey("saavnAudioQuality")
+
+enum class SaavnAudioQuality {
+    QUALITY_320,
+    QUALITY_160,
+    QUALITY_96,
+    ;
+
+    fun toApiValue(): String =
+        when (this) {
+            QUALITY_320 -> "320kbps"
+            QUALITY_160 -> "160kbps"
+            QUALITY_96 -> "96kbps"
+        }
+
+    fun toLabel(): String =
+        when (this) {
+            QUALITY_320 -> "320 kbps"
+            QUALITY_160 -> "160 kbps"
+            QUALITY_96 -> "96 kbps"
+        }
+
+    companion object {
+        fun fromStoredName(name: String?): SaavnAudioQuality =
+            runCatching { valueOf(name?.uppercase() ?: "") }.getOrDefault(QUALITY_320)
+    }
+}
 
 val WebClientPoTokenEnabledKey = booleanPreferencesKey("webClientPoTokenEnabled")
 val PoTokenGvsKey = stringPreferencesKey("poTokenGvs")

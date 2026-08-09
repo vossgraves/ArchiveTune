@@ -63,6 +63,13 @@ accompanist-core = "0.4.7"
 androidsvg = "1.4"
 aboutLibraries = "15.0.3"
 liquid-glass = "2.0.0"
+# Haze library — used by the queue's frosted-glass blur behind the player artwork.
+# Ported from vivi-music (beta) which uses these exact parameters:
+# blurRadius = 80.dp, tint = HazeTint(Color.Black.copy(alpha = 0.30f)), noiseFactor = 0.15f.
+# Haze handles the RenderEffect plumbing on API 31+ internally and falls back to
+# a software blur on older devices, so we no longer need the API 31+ gate that
+# the previous Compose BlurEffect approach required.
+haze = "1.7.2"
 
 
 [libraries]
@@ -87,6 +94,7 @@ compose-ui-tooling = { module = "androidx.compose.ui:ui-tooling", version.ref = 
 compose-animation = { module = "androidx.compose.animation:animation-graphics", version.ref = "compose" }
 compose-material-icons-extended = { module = "androidx.compose.material:material-icons-extended", version.ref = "materialiconsextended" }
 compose-reorderable = { module = "sh.calvin.reorderable:reorderable", version.ref = "composeReorderable" }
+haze = { module = "dev.chrisbanes.haze:haze", version.ref = "haze" }
 
 squigglyslider = { module = "me.saket.squigglyslider:squigglyslider", version.ref = "squigglyslider" }
 
