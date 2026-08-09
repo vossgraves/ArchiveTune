@@ -21,7 +21,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.serializer
+import kotlinx.serialization.serializer
 import moe.rukamori.archivetune.constants.TogetherPublicIsHostKey
 import moe.rukamori.archivetune.constants.TogetherPublicRoomCodeKey
 import moe.rukamori.archivetune.constants.TogetherPublicSessionTokenKey

@@ -5555,7 +5555,12 @@ class MusicService :
                                     role = moe.rukamori.archivetune.together.TogetherRole.Guest,
                                     sessionId = current.sessionId,
                                     selfParticipantId = selfId ?: "",
-                                    roomState = current.roomState,
+                                    roomState =
+                                        current.roomState
+                                            ?: buildTogetherRoomState(
+                                                sessionId = current.sessionId,
+                                                hostId = togetherSelfParticipantId ?: togetherHostId,
+                                            ),
                                 )
                         }
                     }

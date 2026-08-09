@@ -991,7 +991,7 @@ object QobuzAudioProvider {
                         download = { _, _ -> null },
                     )
                 val match =
-                    bestMatch(backend, query.searchTitle(), query)
+                    bestMatch(backend, query.title.searchTitle(), query)
                         ?: throw java.io.IOException("no Qobuz match for lyrics")
                 val url =
                     "$QOBUZ_API_BASE/track/getTrackLyrics"
