@@ -143,6 +143,11 @@ fun LyricsMenu(
     onAutoHidePlayerControlsChange: (Boolean) -> Unit = {},
     onDismiss: () -> Unit,
     viewModel: LyricsMenuViewModel = hiltViewModel(),
+    // When false, the "Show player controls" and "Auto-hide player controls"
+    // toggles are NOT rendered. Used by the in-place Apple Music player lyrics
+    // view (AppleMusicPlayer.kt) — those toggles were suspected of causing
+    // lyrics animation stutter there. The standalone LyricsScreen keeps them.
+    showControlsToggles: Boolean = true,
 ) {
     val context = LocalContext.current
     val showPlayerControls by showPlayerControlsState
@@ -778,55 +783,62 @@ fun LyricsMenu(
                         ),
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
                 )
-                NewMenuItem(
-                    headlineContent = {
-                        Text(stringResource(R.string.show_lyrics_player_controls))
-                    },
-                    trailingContent = {
-                        Switch(
-                            checked = showPlayerControls,
-                            onCheckedChange = onShowPlayerControlsChange,
-                        )
-                    },
-                    onClick = {
-                        onShowPlayerControlsChange(!showPlayerControls)
-                    },
-                    modifier =
-                        Modifier.padding(
-                            start = 8.dp,
-                            end = 8.dp,
-                        ),
-                )
-                NewMenuItem(
-                    headlineContent = {
-                        Text(stringResource(R.string.auto_hide_lyrics_player_controls))
-                    },
-                    supportingContent = {
-                        Text(stringResource(R.string.auto_hide_lyrics_player_controls_description))
-                    },
-                    trailingContent = {
-                        Switch(
-                            checked = autoHidePlayerControls,
-                            onCheckedChange = {
-                                onAutoHidePlayerControlsPreferenceChange(it)
-                                onAutoHidePlayerControlsChange(it)
-                            },
-                            enabled = showPlayerControls,
-                        )
-                    },
-                    enabled = showPlayerControls,
-                    onClick = {
-                        val nextValue = !autoHidePlayerControls
-                        onAutoHidePlayerControlsPreferenceChange(nextValue)
-                        onAutoHidePlayerControlsChange(nextValue)
-                    },
-                    modifier =
-                        Modifier.padding(
-                            start = 8.dp,
-                            end = 8.dp,
-                            bottom = 8.dp,
-                        ),
-                )
+                // "Show player controls" / "Auto-hide player controls" toggles
+                // are gated behind showControlsToggles. The Apple Music in-place
+                // lyrics view passes false because those toggles were suspected
+                // of contributing to the lyrics animation stutter; the standalone
+                // LyricsScreen still renders them.
+                if (showControlsToggles) {
+                    NewMenuItem(
+                        headlineContent = {
+                            Text(stringResource(R.string.show_lyrics_player_controls))
+                        },
+                        trailingContent = {
+                            Switch(
+                                checked = showPlayerControls,
+                                onCheckedChange = onShowPlayerControlsChange,
+                            )
+                        },
+                        onClick = {
+                            onShowPlayerControlsChange(!showPlayerControls)
+                        },
+                        modifier =
+                            Modifier.padding(
+                                start = 8.dp,
+                                end = 8.dp,
+                            ),
+                    )
+                    NewMenuItem(
+                        headlineContent = {
+                            Text(stringResource(R.string.auto_hide_lyrics_player_controls))
+                        },
+                        supportingContent = {
+                            Text(stringResource(R.string.auto_hide_lyrics_player_controls_description))
+                        },
+                        trailingContent = {
+                            Switch(
+                                checked = autoHidePlayerControls,
+                                onCheckedChange = {
+                                    onAutoHidePlayerControlsPreferenceChange(it)
+                                    onAutoHidePlayerControlsChange(it)
+                                },
+                                enabled = showPlayerControls,
+                            )
+                        },
+                        enabled = showPlayerControls,
+                        onClick = {
+                            val nextValue = !autoHidePlayerControls
+                            onAutoHidePlayerControlsPreferenceChange(nextValue)
+                            onAutoHidePlayerControlsChange(nextValue)
+                        },
+                        modifier =
+                            Modifier.padding(
+                                start = 8.dp,
+                                end = 8.dp,
+                                bottom = 8.dp,
+                            ),
+                    )
+                }
             }
         }
     }

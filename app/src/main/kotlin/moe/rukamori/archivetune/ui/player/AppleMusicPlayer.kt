@@ -350,10 +350,13 @@ fun AppleMusicPlayerContent(
     val onMoreClick = {
         if (lyricsOpen) {
             // When lyrics is open, the overflow menu shows the LyricsMenu
-            // (Edit / Refetch / Translate / Sync offset / Search + the
-            // "Show player controls" and "Auto-hide controls" toggles)
-            // instead of the regular PlayerMenu. Mirrors the full-screen
-            // LyricsScreen behavior.
+            // (Edit / Refetch / Translate / Sync offset / Search) instead of
+            // the regular PlayerMenu. The "Show player controls" and
+            // "Auto-hide player controls" toggles are deliberately NOT shown
+            // here — pass showControlsToggles = false. They were suspected of
+            // contributing to the lyrics animation stutter in the in-place
+            // Apple Music lyrics view. Users can still toggle them from the
+            // standalone full-screen LyricsScreen or Settings.
             menuState.show {
                 LyricsMenu(
                     lyricsProvider = { currentLyrics },
@@ -362,16 +365,13 @@ fun AppleMusicPlayerContent(
                     onLyricsSyncOffsetChange = onLyricsSyncOffsetChange,
                     showPlayerControlsState = showPlayerControlsState,
                     onShowPlayerControlsChange = onShowPlayerControlsChange,
-                    onAutoHidePlayerControlsChange = { enabled ->
-                        // LyricsMenu already updates the preference internally;
-                        // this callback just triggers the UI update so the
-                        // controls expand/restart the auto-hide timer.
-                        if (enabled && lyricsOpen) {
-                            playerControlsExpanded = true
-                            playerControlsVisibilityTick++
-                        }
-                    },
+                    // The auto-hide callback uses the default empty lambda —
+                    // the toggles are hidden (showControlsToggles = false) so
+                    // this callback will never be invoked from this menu. The
+                    // auto-hide state is still read directly from the
+                    // preference key elsewhere in AppleMusicPlayer.
                     onDismiss = menuState::dismiss,
+                    showControlsToggles = false,
                 )
             }
         } else {
