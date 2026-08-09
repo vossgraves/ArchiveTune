@@ -138,19 +138,20 @@ fun LyricsMenu(
     mediaMetadataProvider: () -> MediaMetadata,
     lyricsSyncOffset: Int,
     onLyricsSyncOffsetChange: (Int) -> Unit,
-    showPlayerControlsState: State<Boolean>,
-    onShowPlayerControlsChange: (Boolean) -> Unit,
-    onAutoHidePlayerControlsChange: (Boolean) -> Unit = {},
     onDismiss: () -> Unit,
     viewModel: LyricsMenuViewModel = hiltViewModel(),
-    // When false, the "Show player controls" and "Auto-hide player controls"
-    // toggles are NOT rendered. Used by the in-place Apple Music player lyrics
-    // view (AppleMusicPlayer.kt) — those toggles were suspected of causing
-    // lyrics animation stutter there. The standalone LyricsScreen keeps them.
+    // The "Show player controls" / "Auto-hide player controls" toggles are
+    // optional. The standalone LyricsScreen passes real state + callbacks;
+    // the in-place Apple Music player lyrics view omits them entirely
+    // (showControlsToggles = false) because that style always shows the
+    // controls — auto-hide is not supported there.
+    showPlayerControlsState: State<Boolean>? = null,
+    onShowPlayerControlsChange: ((Boolean) -> Unit)? = null,
+    onAutoHidePlayerControlsChange: (Boolean) -> Unit = {},
     showControlsToggles: Boolean = true,
 ) {
     val context = LocalContext.current
-    val showPlayerControls by showPlayerControlsState
+    val showPlayerControls = showPlayerControlsState?.value ?: true
     val (autoHidePlayerControls, onAutoHidePlayerControlsPreferenceChange) =
         rememberPreference(AutoHideLyricsPlayerControlsKey, false)
 
@@ -796,11 +797,11 @@ fun LyricsMenu(
                         trailingContent = {
                             Switch(
                                 checked = showPlayerControls,
-                                onCheckedChange = onShowPlayerControlsChange,
+                                onCheckedChange = { v -> onShowPlayerControlsChange?.invoke(v) },
                             )
                         },
                         onClick = {
-                            onShowPlayerControlsChange(!showPlayerControls)
+                            onShowPlayerControlsChange?.invoke(!showPlayerControls)
                         },
                         modifier =
                             Modifier.padding(

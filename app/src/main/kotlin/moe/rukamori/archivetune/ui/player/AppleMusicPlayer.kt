@@ -17,7 +17,6 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.os.Build
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionLayout
@@ -70,7 +69,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -117,13 +115,10 @@ import coil3.request.allowHardware
 import coil3.size.Size as CoilSize
 import coil3.toBitmap
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.R
-import moe.rukamori.archivetune.constants.AutoHideLyricsPlayerControlsKey
-import moe.rukamori.archivetune.constants.ShowLyricsPlayerControlsKey
 import moe.rukamori.archivetune.constants.ThumbnailCornerRadiusKey
 import moe.rukamori.archivetune.db.entities.FormatEntity
 import moe.rukamori.archivetune.db.entities.codecLabel
@@ -242,46 +237,20 @@ fun AppleMusicPlayerContent(
         lyricsOpen = false
     }
 
-    // === Lyrics auto-hide controls (mirrors LyricsScreen / Vivi Music logic) ===
-    // When the in-place lyrics view is open, the bottom controls (seekbar +
-    // transport + volume + action row) auto-hide after 3 seconds. Touching
-    // anywhere or scrolling the lyrics restores them and restarts the timer.
-    var playerControlsExpanded by remember(mediaMetadata.id) { mutableStateOf(true) }
-    var playerControlsVisibilityTick by remember(mediaMetadata.id) { mutableIntStateOf(0) }
-    val autoHideDelayMs = 3_000L
-
-    val showPlayerControlsState =
-        rememberPreference(ShowLyricsPlayerControlsKey, true)
-    val onShowPlayerControlsChange =
-        remember(showPlayerControlsState) {
-            { showControls: Boolean ->
-                showPlayerControlsState.value = showControls
-                playerControlsExpanded = showControls
-            }
-        }
-    val (autoHidePlayerControls, _) =
-        rememberPreference(AutoHideLyricsPlayerControlsKey, false)
-
-    LaunchedEffect(lyricsOpen) {
-        if (lyricsOpen) {
-            playerControlsExpanded = true
-            playerControlsVisibilityTick++
-        } else {
-            playerControlsExpanded = true
-        }
-    }
-    LaunchedEffect(lyricsOpen, autoHidePlayerControls, playerControlsVisibilityTick) {
-        if (!lyricsOpen || !autoHidePlayerControls) return@LaunchedEffect
-        playerControlsExpanded = true
-        delay(autoHideDelayMs)
-        playerControlsExpanded = false
-    }
-    val pokePlayerControlsVisibility = {
-        if (lyricsOpen && autoHidePlayerControls) {
-            playerControlsExpanded = true
-            playerControlsVisibilityTick++
-        }
-    }
+    // NOTE: The in-place Apple Music lyrics view does NOT support auto-hiding
+    // the player controls — the seekbar + transport + volume + action row are
+    // always visible while lyrics is open. This is a deliberate difference
+    // from the standalone LyricsScreen (which has a "Show player controls" +
+    // "Auto-hide player controls" pair). The auto-hide state machinery was
+    // removed because:
+    //   1. The Apple Music style shows the controls inline below the lyrics,
+    //      so hiding them would leave a large empty gap — bad UX.
+    //   2. The LaunchedEffect timer + touch-poke pointerInput were suspected
+    //      of contributing to the lyrics animation stutter (extra recompositions
+    //      on every touch event and every 3s timer tick).
+    // The LyricsMenu overflow no longer renders those toggles either
+    // (showControlsToggles = false). Users can still toggle auto-hide from
+    // the standalone LyricsScreen or Settings.
 
     // === Moving blur drift for the backdrop when lyrics is open ===
     // Mirrors the MovingBlurBackground from LyricsScreen: the blurred artwork
@@ -352,24 +321,16 @@ fun AppleMusicPlayerContent(
             // When lyrics is open, the overflow menu shows the LyricsMenu
             // (Edit / Refetch / Translate / Sync offset / Search) instead of
             // the regular PlayerMenu. The "Show player controls" and
-            // "Auto-hide player controls" toggles are deliberately NOT shown
-            // here — pass showControlsToggles = false. They were suspected of
-            // contributing to the lyrics animation stutter in the in-place
-            // Apple Music lyrics view. Users can still toggle them from the
-            // standalone full-screen LyricsScreen or Settings.
+            // "Auto-hide player controls" toggles are NOT passed at all —
+            // the in-place Apple Music lyrics view does not support auto-hide
+            // (controls are always visible), so those toggles would be no-ops.
+            // showControlsToggles = false hides them from the UI.
             menuState.show {
                 LyricsMenu(
                     lyricsProvider = { currentLyrics },
                     mediaMetadataProvider = { mediaMetadata },
                     lyricsSyncOffset = lyricsSyncOffset,
                     onLyricsSyncOffsetChange = onLyricsSyncOffsetChange,
-                    showPlayerControlsState = showPlayerControlsState,
-                    onShowPlayerControlsChange = onShowPlayerControlsChange,
-                    // The auto-hide callback uses the default empty lambda —
-                    // the toggles are hidden (showControlsToggles = false) so
-                    // this callback will never be invoked from this menu. The
-                    // auto-hide state is still read directly from the
-                    // preference key elsewhere in AppleMusicPlayer.
                     onDismiss = menuState::dismiss,
                     showControlsToggles = false,
                 )
@@ -735,24 +696,6 @@ fun AppleMusicPlayerContent(
                                         modifier = Modifier.matchParentSize(),
                                     )
                                 }
-                                // Touch-to-restore: when auto-hide is active and the
-                                // controls are hidden, any touch on the lyrics area
-                                // restores them and restarts the 3s timer. Uses
-                                // consumeUnhandledPointerInput so the lyrics can still
-                                // handle scroll/click normally.
-                                Box(
-                                    modifier =
-                                        Modifier
-                                            .fillMaxSize()
-                                            .consumeUnhandledPointerInput()
-                                            .pointerInput(lyricsOpen, autoHidePlayerControls) {
-                                                if (!lyricsOpen || !autoHidePlayerControls) return@pointerInput
-                                                awaitEachGesture {
-                                                    awaitFirstDown(requireUnconsumed = false)
-                                                    pokePlayerControlsVisibility()
-                                                }
-                                            },
-                                )
                                 Column(modifier = Modifier.fillMaxSize()) {
                                     AppleMusicMiniHeader(
                                         artworkRequest = artworkRequest,
@@ -826,50 +769,42 @@ fun AppleMusicPlayerContent(
                 // mini header above) so only the seekbar + transport + volume + bottom
                 // row render.
                 //
-                // Auto-hide: when lyrics is open AND the auto-hide preference is on,
-                // the controls fade out after 3 seconds and restore on any touch
-                // (the pointerInput is on the lyrics area above). Mirrors the
-                // Vivi Music / LyricsScreen auto-hide logic.
-                val controlsVisible = !lyricsOpen || !autoHidePlayerControls || playerControlsExpanded
-                AnimatedVisibility(
-                    visible = controlsVisible,
-                    enter = fadeIn(tween(180)) + slideInVertically(tween(180)) { it / 6 },
-                    exit = fadeOut(tween(140)) + slideOutVertically(tween(140)) { it / 8 },
-                ) {
-                    AppleMusicControlsColumn(
-                        mediaMetadata = mediaMetadata,
-                        isPlaying = isPlaying,
-                        isLoading = isLoading,
-                        canSkipPrevious = canSkipPrevious,
-                        canSkipNext = canSkipNext,
-                        sliderPosition = sliderPosition,
-                        position = position,
-                        duration = duration,
-                        playerConnection = playerConnection,
-                        currentSongLiked = currentSongLiked,
-                        volume = volume,
-                        onVolumeChange = onVolumeChange,
-                        titleActions = titleActions,
-                        onPlayPauseClick = onPlayPauseClick,
-                        onMoreClick = onMoreClick,
-                        onOutputClick = onOutputClick,
-                        onQueueClick = toggleQueue,
-                        onLyricsClick = toggleLyrics,
-                        onSliderValueChange = onSliderValueChange,
-                        onSliderValueChangeFinished = onSliderValueChangeFinished,
-                        currentFormat = currentFormat,
-                        onQualityChipClick = {
-                            bottomSheetPageState.show { ShowMediaInfo(mediaMetadata.id) }
-                        },
-                        showTitleRow = !morphOpen,
-                        isQueueActive = queueOpen,
-                        isLyricsActive = lyricsOpen,
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = contentBottomPadding),
-                    )
-                }
+                // The in-place Apple Music lyrics view does NOT auto-hide the
+                // controls — they are always visible while lyrics is open. This
+                // is a deliberate difference from the standalone LyricsScreen.
+                AppleMusicControlsColumn(
+                    mediaMetadata = mediaMetadata,
+                    isPlaying = isPlaying,
+                    isLoading = isLoading,
+                    canSkipPrevious = canSkipPrevious,
+                    canSkipNext = canSkipNext,
+                    sliderPosition = sliderPosition,
+                    position = position,
+                    duration = duration,
+                    playerConnection = playerConnection,
+                    currentSongLiked = currentSongLiked,
+                    volume = volume,
+                    onVolumeChange = onVolumeChange,
+                    titleActions = titleActions,
+                    onPlayPauseClick = onPlayPauseClick,
+                    onMoreClick = onMoreClick,
+                    onOutputClick = onOutputClick,
+                    onQueueClick = toggleQueue,
+                    onLyricsClick = toggleLyrics,
+                    onSliderValueChange = onSliderValueChange,
+                    onSliderValueChangeFinished = onSliderValueChangeFinished,
+                    currentFormat = currentFormat,
+                    onQualityChipClick = {
+                        bottomSheetPageState.show { ShowMediaInfo(mediaMetadata.id) }
+                    },
+                    showTitleRow = !morphOpen,
+                    isQueueActive = queueOpen,
+                    isLyricsActive = lyricsOpen,
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = contentBottomPadding),
+                )
             }
         }
     }
