@@ -9636,16 +9636,27 @@ class MusicService :
                 perceptualLoudnessDb = null,
                 playbackUrl = null,
             )
-        // Don't clobber the authoritative format row (itag != 0, written by the YouTube
-        // resolver together with real loudness data). Overwriting it with itag=0/loudnessDb=null
-        // made the details card and the normalization pipeline read the direct-stream stub over
-        // the real format after a source switch. Only persist the direct-stream info when no
-        // real format exists yet (e.g. songs that always play through a lossless source).
-        val hasAuthoritativeFormat =
+        // Update the format row with the resolved stream's codec info so the player codec badge
+        // reflects what's actually playing (e.g. FLAC, not the YouTube opus row that was
+        // persisted by the YouTube resolver). Preserve the authoritative itag and loudness data
+        // so the details card and the normalization pipeline keep the real YouTube metadata.
+        val existing =
             runBlocking(Dispatchers.IO) {
-                database.getFormatsByIds(listOf(mediaId)).firstOrNull()?.let { it.itag != 0 } ?: false
+                database.getFormatsByIds(listOf(mediaId)).firstOrNull()
             }
-        if (!hasAuthoritativeFormat) {
+        if (existing != null) {
+            database.query {
+                upsert(
+                    existing.copy(
+                        mimeType = mime,
+                        codecs = codecs,
+                        bitrate = bitrate,
+                        sampleRate = sampleRate,
+                        contentLength = knownContentLength ?: 0L,
+                    ),
+                )
+            }
+        } else {
             database.query { upsert(formatEntity) }
         }
 
