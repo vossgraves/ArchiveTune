@@ -17,6 +17,7 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.os.Build
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionLayout
@@ -69,6 +70,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -115,6 +117,7 @@ import coil3.request.allowHardware
 import coil3.size.Size as CoilSize
 import coil3.toBitmap
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
@@ -237,20 +240,38 @@ fun AppleMusicPlayerContent(
         lyricsOpen = false
     }
 
-    // NOTE: The in-place Apple Music lyrics view does NOT support auto-hiding
-    // the player controls — the seekbar + transport + volume + action row are
-    // always visible while lyrics is open. This is a deliberate difference
-    // from the standalone LyricsScreen (which has a "Show player controls" +
-    // "Auto-hide player controls" pair). The auto-hide state machinery was
-    // removed because:
-    //   1. The Apple Music style shows the controls inline below the lyrics,
-    //      so hiding them would leave a large empty gap — bad UX.
-    //   2. The LaunchedEffect timer + touch-poke pointerInput were suspected
-    //      of contributing to the lyrics animation stutter (extra recompositions
-    //      on every touch event and every 3s timer tick).
-    // The LyricsMenu overflow no longer renders those toggles either
-    // (showControlsToggles = false). Users can still toggle auto-hide from
-    // the standalone LyricsScreen or Settings.
+    // === Auto-hide player controls (always-on in Apple Music style) ===
+    // The in-place Apple Music lyrics view ALWAYS auto-hides the bottom
+    // controls (seekbar + transport + volume + action row) after 3 seconds.
+    // Touching anywhere on the lyrics restores them and restarts the timer.
+    // This is hardcoded behavior — there is no toggle in the LyricsMenu
+    // overflow because the Apple Music style is designed to auto-hide.
+    // The standalone LyricsScreen still has the toggle (for other player
+    // styles that use it).
+    var playerControlsExpanded by remember(mediaMetadata.id) { mutableStateOf(true) }
+    var playerControlsVisibilityTick by remember(mediaMetadata.id) { mutableIntStateOf(0) }
+    val autoHideDelayMs = 3_000L
+
+    LaunchedEffect(lyricsOpen) {
+        if (lyricsOpen) {
+            playerControlsExpanded = true
+            playerControlsVisibilityTick++
+        } else {
+            playerControlsExpanded = true
+        }
+    }
+    LaunchedEffect(lyricsOpen, playerControlsVisibilityTick) {
+        if (!lyricsOpen) return@LaunchedEffect
+        playerControlsExpanded = true
+        delay(autoHideDelayMs)
+        playerControlsExpanded = false
+    }
+    val pokePlayerControlsVisibility = {
+        if (lyricsOpen) {
+            playerControlsExpanded = true
+            playerControlsVisibilityTick++
+        }
+    }
 
     // === Moving blur drift for the backdrop when lyrics is open ===
     // Mirrors the MovingBlurBackground from LyricsScreen: the blurred artwork
@@ -607,11 +628,21 @@ fun AppleMusicPlayerContent(
             // controls (seekbar + transport + volume + bottom row) live outside the
             // SharedTransitionLayout so they stay anchored at the bottom — matching
             // ViviMusic's Player_v2 layout exactly.
+            //
+            // The lyrics composable is rendered as a SEPARATE overlay inside the
+            // same Box as the SharedTransitionLayout, but OUTSIDE the
+            // SharedTransitionLayout itself. This is critical for performance:
+            // rendering LyricsEnhanced inside the SharedTransitionLayout caused
+            // the karaoke syllable fill animation to stutter because the shared
+            // transition machinery's per-frame tracking stole frame budget.
+            // The overlay approach gives the lyrics animations the full frame
+            // budget, matching the standalone LyricsScreen's performance.
             Column(
                 modifier = Modifier.fillMaxSize(),
             ) {
+                Box(modifier = Modifier.weight(1f)) {
                 SharedTransitionLayout(
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.fillMaxSize(),
                 ) {
                     AnimatedContent(
                         targetState = morphState,
@@ -726,85 +757,120 @@ fun AppleMusicPlayerContent(
                                                             ) { it / 4 },
                                                     ),
                                         )
-                                    } else {
-                                        // LYRICS state: inline lyrics composable with the same
-                                        // slide-in/fade animation as the queue sheet. Uses the
-                                        // same LyricsMode preference as the full-screen
-                                        // LyricsScreen (V2 or Enhanced).
-                                        val lyricsMode by rememberEnumPreference(LyricsModeKey, LyricsMode.ENHANCED)
-                                        val lyricsModifier =
-                                            Modifier
-                                                .fillMaxSize()
-                                                .animateEnterExit(
-                                                    enter = slideInVertically(
-                                                        animationSpec = tween(600, easing = FastOutSlowInEasing),
-                                                    ) { it / 4 } + fadeIn(tween(600)),
-                                                    exit = fadeOut(tween(400)) +
-                                                        slideOutVertically(
-                                                            animationSpec = tween(400, easing = FastOutSlowInEasing),
-                                                        ) { it / 4 },
-                                                )
-                                        val lyricsPosProvider = { sliderPosition ?: position }
-                                        when (lyricsMode) {
-                                            LyricsMode.V2 -> LyricsV2(
-                                                sliderPositionProvider = lyricsPosProvider,
-                                                lyricsSyncOffset = lyricsSyncOffset,
-                                                modifier = lyricsModifier,
-                                            )
-                                            LyricsMode.ENHANCED -> LyricsEnhanced(
-                                                sliderPositionProvider = lyricsPosProvider,
-                                                lyricsSyncOffset = lyricsSyncOffset,
-                                                modifier = lyricsModifier,
-                                            )
-                                        }
                                     }
+                                    // NOTE: The LyricsEnhanced/LyricsV2 composable is
+                                    // intentionally NOT rendered here inside the
+                                    // SharedTransitionLayout/AnimatedContent. Rendering it
+                                    // here caused the karaoke syllable fill animation to
+                                    // stutter because the SharedTransitionLayout's per-frame
+                                    // shared-element tracking stole frame budget from the
+                                    // lyrics animation. Instead, the lyrics composable is
+                                    // rendered as a separate overlay BELOW the
+                                    // SharedTransitionLayout — completely outside the shared
+                                    // transition machinery. This gives the lyrics animations
+                                    // the full frame budget, matching the standalone
+                                    // LyricsScreen's performance.
                                 }
                             }
                         }
                     }
                 }
 
+                // Lyrics overlay — rendered OUTSIDE the SharedTransitionLayout so
+                // the lyrics animations (karaoke syllable fill, auto-scroll) get
+                // the full frame budget. Slides in/fades when lyricsOpen is toggled.
+                // The mini header above (inside SharedTransitionLayout) handles the
+                // artwork morph; this overlay only renders the lyrics content itself,
+                // positioned below where the mini header sits.
+                AnimatedVisibility(
+                    visible = lyricsOpen,
+                    enter = fadeIn(tween(400, easing = FastOutSlowInEasing)),
+                    exit = fadeOut(tween(300, easing = FastOutSlowInEasing)),
+                ) {
+                    val lyricsMode by rememberEnumPreference(LyricsModeKey, LyricsMode.ENHANCED)
+                    val lyricsPosProvider = { sliderPosition ?: position }
+                    Box(
+                        modifier =
+                            Modifier
+                                .fillMaxSize()
+                                .windowInsetsPadding(WindowInsets(top = LocalStableSystemBarsTopPadding.current))
+                                .pointerInput(lyricsOpen) {
+                                    if (!lyricsOpen) return@pointerInput
+                                    awaitEachGesture {
+                                        awaitFirstDown(requireUnconsumed = false)
+                                        pokePlayerControlsVisibility()
+                                    }
+                                },
+                    ) {
+                        // Spacer to push lyrics below the mini header. The mini header
+                        // height is approx artwork size + padding; we use the same
+                        // content padding for alignment.
+                        Column(modifier = Modifier.fillMaxSize()) {
+                            Spacer(modifier = Modifier.height(AppleMusicMiniArtworkSize + 16.dp))
+                            when (lyricsMode) {
+                                LyricsMode.V2 -> LyricsV2(
+                                    sliderPositionProvider = lyricsPosProvider,
+                                    lyricsSyncOffset = lyricsSyncOffset,
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                                LyricsMode.ENHANCED -> LyricsEnhanced(
+                                    sliderPositionProvider = lyricsPosProvider,
+                                    lyricsSyncOffset = lyricsSyncOffset,
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                            }
+                        }
+                    }
+                }
+                } // end Box (contains SharedTransitionLayout + lyrics overlay)
+
                 // Persistent playback controls — anchored at the bottom.
                 // When the queue or lyrics is open, the title row is hidden (it's in the
                 // mini header above) so only the seekbar + transport + volume + bottom
                 // row render.
                 //
-                // The in-place Apple Music lyrics view does NOT auto-hide the
-                // controls — they are always visible while lyrics is open. This
-                // is a deliberate difference from the standalone LyricsScreen.
-                AppleMusicControlsColumn(
-                    mediaMetadata = mediaMetadata,
-                    isPlaying = isPlaying,
-                    isLoading = isLoading,
-                    canSkipPrevious = canSkipPrevious,
-                    canSkipNext = canSkipNext,
-                    sliderPosition = sliderPosition,
-                    position = position,
-                    duration = duration,
-                    playerConnection = playerConnection,
-                    currentSongLiked = currentSongLiked,
-                    volume = volume,
-                    onVolumeChange = onVolumeChange,
-                    titleActions = titleActions,
-                    onPlayPauseClick = onPlayPauseClick,
-                    onMoreClick = onMoreClick,
-                    onOutputClick = onOutputClick,
-                    onQueueClick = toggleQueue,
-                    onLyricsClick = toggleLyrics,
-                    onSliderValueChange = onSliderValueChange,
-                    onSliderValueChangeFinished = onSliderValueChangeFinished,
-                    currentFormat = currentFormat,
-                    onQualityChipClick = {
-                        bottomSheetPageState.show { ShowMediaInfo(mediaMetadata.id) }
-                    },
-                    showTitleRow = !morphOpen,
-                    isQueueActive = queueOpen,
-                    isLyricsActive = lyricsOpen,
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = contentBottomPadding),
-                )
+                // Auto-hide: when lyrics is open, the controls auto-hide after 3s
+                // (always-on in Apple Music style — no toggle). Touching the lyrics
+                // overlay above restores them.
+                AnimatedVisibility(
+                    visible = !lyricsOpen || playerControlsExpanded,
+                    enter = fadeIn(tween(180)) + slideInVertically(tween(180)) { it / 6 },
+                    exit = fadeOut(tween(140)) + slideOutVertically(tween(140)) { it / 8 },
+                ) {
+                    AppleMusicControlsColumn(
+                        mediaMetadata = mediaMetadata,
+                        isPlaying = isPlaying,
+                        isLoading = isLoading,
+                        canSkipPrevious = canSkipPrevious,
+                        canSkipNext = canSkipNext,
+                        sliderPosition = sliderPosition,
+                        position = position,
+                        duration = duration,
+                        playerConnection = playerConnection,
+                        currentSongLiked = currentSongLiked,
+                        volume = volume,
+                        onVolumeChange = onVolumeChange,
+                        titleActions = titleActions,
+                        onPlayPauseClick = onPlayPauseClick,
+                        onMoreClick = onMoreClick,
+                        onOutputClick = onOutputClick,
+                        onQueueClick = toggleQueue,
+                        onLyricsClick = toggleLyrics,
+                        onSliderValueChange = onSliderValueChange,
+                        onSliderValueChangeFinished = onSliderValueChangeFinished,
+                        currentFormat = currentFormat,
+                        onQualityChipClick = {
+                            bottomSheetPageState.show { ShowMediaInfo(mediaMetadata.id) }
+                        },
+                        showTitleRow = !morphOpen,
+                        isQueueActive = queueOpen,
+                        isLyricsActive = lyricsOpen,
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = contentBottomPadding),
+                    )
+                }
             }
         }
     }
