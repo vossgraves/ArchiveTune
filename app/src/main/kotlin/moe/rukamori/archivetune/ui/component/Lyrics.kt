@@ -435,7 +435,9 @@ fun Lyrics(
     val lyricsAnimationStyle by rememberEnumPreference(LyricsAnimationStyleKey, LyricsAnimationStyle.APPLE)
     val lyricsTextSize by rememberPreference(LyricsTextSizeKey, 26f)
     val lyricsLineSpacing by rememberPreference(LyricsLineSpacingKey, 1.3f)
-    val lyricsLineBlur by rememberPreference(LyricsLineBlurKey, true)
+    // Default OFF: per-line blur is the heaviest per-frame cost in the lyrics
+    // renderers and is the main source of choppy word-synced playback.
+    val lyricsLineBlur by rememberPreference(LyricsLineBlurKey, false)
     val animationsDisabled = LocalAnimationsDisabled.current
     val lyricsFontFamily = rememberArchiveTuneLyricsFontFamily()
 
