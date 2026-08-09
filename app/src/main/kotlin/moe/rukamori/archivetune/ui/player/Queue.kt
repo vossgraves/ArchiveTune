@@ -412,7 +412,6 @@ fun Queue(
         state = state,
         backgroundColor = Color.Unspecified,
         modifier = modifier,
-        morphMode = true,
         collapsedContent = {
             when (playerDesignStyle) {
                 PlayerDesignStyle.V2 -> {

@@ -22,8 +22,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -47,7 +46,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -69,10 +67,6 @@ import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.positionChange
-import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.changedToUp
-import kotlin.math.abs
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -607,54 +601,26 @@ private fun AppleMusicControlsColumn(
 ) {
     var swipeUpAccumulated by remember { mutableFloatStateOf(0f) }
     val swipeUpThreshold = 120f
-    val swipeActivationThreshold = 72f
-    val resetSwipeUp = remember {
-        {
-            if (swipeUpAccumulated != 0f) swipeUpAccumulated = 0f
-        }
-    }
-    LaunchedEffect(Unit) { kotlinx.coroutines.delay(300); resetSwipeUp() }
 
     Column(
         modifier = modifier
             .padding(horizontal = AppleMusicContentPadding)
             .pointerInput(Unit) {
-                awaitEachGesture {
-                    awaitFirstDown(requireUnconsumed = false)
-                    var accumulated = 0f
-                    var swipeActivated = false
-                    while (true) {
-                        val event = awaitPointerEvent(PointerEventPass.Main)
-                        val change = event.changes.firstOrNull() ?: break
-                        if (change.changedToUp()) break
-
-                        val dragDelta = change.positionChange().y
-
-                        if (!swipeActivated) {
-                            // Track upward movement but don't consume yet — let child taps win.
-                            if (dragDelta < 0f) {
-                                accumulated += dragDelta
+                detectVerticalDragGestures(
+                    onDragStart = { swipeUpAccumulated = 0f },
+                    onVerticalDrag = { _, dragAmount ->
+                        // Only track upward movement (negative dragAmount = upward)
+                        if (dragAmount < 0f) {
+                            swipeUpAccumulated += dragAmount
+                            if (swipeUpAccumulated < -swipeUpThreshold) {
+                                onQueueClick()
+                                swipeUpAccumulated = 0f
                             }
-                            if (abs(accumulated) > swipeActivationThreshold) {
-                                swipeActivated = true
-                                swipeUpAccumulated = accumulated
-                                change.consume()
-                            }
-                        } else {
-                            // Swipe is confirmed — consume to prevent child handling.
-                            if (dragDelta < 0f) {
-                                swipeUpAccumulated =
-                                    (swipeUpAccumulated + dragDelta).coerceAtLeast(-swipeUpThreshold * 1.5f)
-                            }
-                            change.consume()
                         }
-                    }
-
-                    if (swipeActivated && swipeUpAccumulated < -swipeUpThreshold) {
-                        onQueueClick()
-                    }
-                    swipeUpAccumulated = 0f
-                }
+                    },
+                    onDragEnd = { swipeUpAccumulated = 0f },
+                    onDragCancel = { swipeUpAccumulated = 0f },
+                )
             },
         // Use spacedBy with Top alignment so the title row sits at the very top
         // of the controls column (flush with the artwork's fade-out zone)
