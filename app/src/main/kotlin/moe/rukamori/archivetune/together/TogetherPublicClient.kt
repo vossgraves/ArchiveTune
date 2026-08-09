@@ -19,9 +19,9 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.serializer
 import moe.rukamori.archivetune.constants.TogetherPublicIsHostKey
 import moe.rukamori.archivetune.constants.TogetherPublicRoomCodeKey
 import moe.rukamori.archivetune.constants.TogetherPublicSessionTokenKey
@@ -266,7 +266,11 @@ internal class TogetherPublicClient(
         val message =
             TogetherPublicMessage(
                 type = type,
-                payload = payload?.let { json.encodeToJsonElement(json.serializer(it::class), it) },
+                payload =
+                    payload?.let { p ->
+                        val strategy = p::class.companionObjectInstance as? KSerializer<Any>
+                        if (strategy != null) json.encodeToJsonElement(strategy, p) else null
+                    },
             )
         val text = json.encodeToString(message)
         webSocket?.send(text)
@@ -462,7 +466,7 @@ internal class TogetherPublicClient(
 
     private inline fun <reified T> TogetherPublicMessage.payload(): T? =
         payload?.let { element ->
-            runCatching { json.decodeFromJsonElement<T>(element) }.getOrNull()
+            runCatching { json.decodeFromString<T>(element.toString()) }.getOrNull()
         }
 
     private fun startPingJob() {

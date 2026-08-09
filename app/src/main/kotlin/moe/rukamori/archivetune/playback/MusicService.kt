@@ -9678,11 +9678,14 @@ class MusicService :
                     mediaOkHttpClient.newCall(headRequest).execute().use { response ->
                         val len = response.header("Content-Length")?.toLongOrNull() ?: -1L
                         if (len > 0L) {
-                            if (!hasAuthoritativeFormat) {
-                                // Re-read the row so we don't clobber any concurrent
-                                // updates to other fields (e.g. loudness) — only
-                                // patch the contentLength column.
-                                val refreshed = formatEntity.copy(contentLength = len)
+                            // Re-read the row so we don't clobber any concurrent
+                            // updates to other fields (e.g. loudness) — only
+                            // patch the contentLength column.
+                            val refreshed =
+                                runBlocking(Dispatchers.IO) {
+                                    database.getFormatsByIds(listOf(mediaId)).firstOrNull()
+                                }?.copy(contentLength = len)
+                            if (refreshed != null) {
                                 database.query { upsert(refreshed) }
                             }
                             // Also surface the size in the in-memory cache so the
