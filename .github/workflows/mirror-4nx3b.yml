@@ -102,28 +102,47 @@ jobs:
               exit 1
             fi
           else
-            # Newest release that is neither a draft nor a pre-release. The API returns releases
-            # newest first, so the first match is the current stable.
+            # Newest non-draft release, stable or not. Originally this required
+            # draft==false && prerelease==false, but 4nx3b has -- so far -- only ever published
+            # prereleases (tag names like N202608091717); with the stable-only filter should_mirror
+            # was false on every single scheduled run and nothing was ever mirrored. Prereleases are
+            # still a published, tagged build (not a draft), so treat them as mirror-worthy too. The
+            # API returns releases newest first, so the first non-draft match is the one to take.
             REL_JSON="$(gh api "repos/${UPSTREAM}/releases" --paginate \
-              --jq '[.[] | select(.draft==false and .prerelease==false)][0] // empty')"
+              --jq '[.[] | select(.draft==false)][0] // empty')"
             if [ -z "$REL_JSON" ]; then
-              echo "No stable release published on ${UPSTREAM} yet -- nothing to mirror."
+              echo "No release published on ${UPSTREAM} yet -- nothing to mirror."
               echo "should_mirror=false" >> "$GITHUB_OUTPUT"
               exit 0
             fi
           fi
 
           TAG="$(printf '%s' "$REL_JSON" | jq -r '.tag_name')"
+          REL_NAME="$(printf '%s' "$REL_JSON" | jq -r '.name // ""')"
 
-          # Their tags are v<major>.<minor>.<commitcount>. Strip a leading v defensively in case
-          # that ever changes.
-          VERSION="${TAG#v}"
+          # Two tag/name shapes have been observed on 4nx3b:
+          #   stable:  tag v<major>.<minor>.<commitcount>              (e.g. v14.0.5362)
+          #   canary:  tag N<timestamp>, name "Canary <version>-<sha> (<build>)"
+          #            (e.g. tag N202608091717, name "Canary 14.0.5682-6a3bf2e01 (202608091717)")
+          # The canary tag itself carries no version at all -- stripping a leading v from
+          # "N202608091717" is a no-op, and the old commitcount extraction would take the whole
+          # string as VERSION_CODE and fail the integer check below. Prefer whatever's embedded in
+          # the release name when the tag doesn't already look like v<ver>, since that's where 4nx3b
+          # actually puts the version for their only release type so far.
+          if [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            VERSION="${TAG#v}"
+          elif [[ "$REL_NAME" =~ ([0-9]+\.[0-9]+\.[0-9]+) ]]; then
+            VERSION="${BASH_REMATCH[1]}"
+          else
+            echo "::error::Could not find a <major>.<minor>.<commitcount> version in tag '${TAG}' or name '${REL_NAME}'."
+            exit 1
+          fi
 
-          # versionCode must be a positive integer or Android refuses the upgrade. They use the
-          # commit count, which is the final dot-segment.
+          # versionCode must be a positive integer or Android refuses the upgrade. Both shapes end
+          # in the commit count as the final dot-segment.
           VERSION_CODE="${VERSION##*.}"
           if ! printf '%s' "$VERSION_CODE" | grep -qE '^[0-9]+$'; then
-            echo "::error::Could not derive an integer versionCode from tag '${TAG}'."
+            echo "::error::Could not derive an integer versionCode from version '${VERSION}' (tag '${TAG}')."
             exit 1
           fi
 
