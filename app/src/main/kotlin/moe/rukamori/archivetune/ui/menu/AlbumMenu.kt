@@ -80,6 +80,7 @@ import moe.rukamori.archivetune.LocalDownloadUtil
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.ArtistSeparatorsKey
+import moe.rukamori.archivetune.constants.HiddenHomeItemsKey
 import moe.rukamori.archivetune.constants.ListItemHeight
 import moe.rukamori.archivetune.constants.ListThumbnailSize
 import moe.rukamori.archivetune.constants.SpeedDialSongIdsKey
@@ -102,6 +103,7 @@ import moe.rukamori.archivetune.ui.utils.resize
 import moe.rukamori.archivetune.ui.utils.sendAddMissingDownloads
 import moe.rukamori.archivetune.utils.SpeedDialPin
 import moe.rukamori.archivetune.utils.SpeedDialPinType
+import moe.rukamori.archivetune.utils.dataStore
 import moe.rukamori.archivetune.utils.parseSpeedDialPins
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.utils.serializeSpeedDialPins
@@ -715,6 +717,38 @@ fun AlbumMenu(
                             colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                         )
                     }
+
+                    HorizontalDivider(
+                        modifier = dividerModifier,
+                        color = MaterialTheme.colorScheme.outlineVariant,
+                    )
+
+                    // Hide from "Keep Listening" on home — adds the album's ID to
+                    // the HiddenHomeItemsKey preference set. The HomeViewModel
+                    // filters out hidden items from the keepListening flow so the
+                    // album no longer appears on the home page. The user wants
+                    // to be able to hide entire albums/playlists from Keep
+                    // Listening, not individual songs.
+                    ListItem(
+                        headlineContent = { Text(text = stringResource(R.string.hide_from_home)) },
+                        leadingContent = {
+                            Icon(
+                                painter = painterResource(R.drawable.visibility_off),
+                                contentDescription = null,
+                            )
+                        },
+                        modifier =
+                            Modifier.clickable {
+                                coroutineScope.launch {
+                                    context.dataStore.edit { preferences ->
+                                        val current = preferences[HiddenHomeItemsKey] ?: emptySet()
+                                        preferences[HiddenHomeItemsKey] = current + album.id
+                                    }
+                                    onDismiss()
+                                }
+                            },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    )
                 }
             }
         }

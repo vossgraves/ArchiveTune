@@ -445,11 +445,72 @@ fun AppleMusicPlayerContent(
         }
 
         if (!videoShowing) {
-            if (useCanvasBackdrop) {
-                // Canvas-driven backdrop: a second CanvasArtworkPlayer instance rendered
-                // behind the controls with a heavy blur. This makes the backdrop follow
-                // the canvas video in real time — matching Apple Music's player where the
-                // ambient blur behind the controls mirrors whatever is on screen.
+            // Backdrop rendering is state-aware to avoid jank:
+            //
+            // • COVER state — render the live canvas (or static artwork) with
+            //   heavy blur, no drift. The drift values collapse to 0/1.2 when
+            //   lyricsOpen=false, so the offset/scale modifiers are no-ops.
+            //
+            // • QUEUE state — same as COVER: live canvas backdrop (blurred).
+            //   A second non-blurred canvas in the QUEUE state Box makes the
+            //   canvas visibly continue playing behind the queue list's haze
+            //   overlay. (Both canvases run without drift animation, so the
+            //   frame budget is fine.)
+            //
+            // • LYRICS state — DON'T render the live canvas backdrop. A
+            //   TextureView + Modifier.blur + per-frame animated offset is the
+            //   single biggest source of GPU stalls on Android — it makes the
+            //   karaoke syllable sweep, instrumental pulsing dots, and the
+            //   moving blur itself all stutter. Instead, render a STATIC
+            //   AsyncImage (album art) with Modifier.blur + drift. The drift
+            //   on a static image is cheap (just a matrix transform), and the
+            //   visual matches the standalone LyricsScreen.kt MovingBlurBackground
+            //   exactly. The canvas is also removed from the LYRICS state Box
+            //   below, so there's exactly zero video decoders running while
+            //   the user reads lyrics — maximum frame budget for lyrics
+            //   animations.
+            if (lyricsOpen) {
+                // LYRICS: static image with blur + drift (matches LyricsScreen.kt's MovingBlurBackground).
+                if (isPreS && preBlurredBitmap != null) {
+                    Image(
+                        bitmap = preBlurredBitmap!!.asImageBitmap(),
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier =
+                            Modifier
+                                .matchParentSize()
+                                .graphicsLayer {
+                                    scaleX = backdropDriftScale
+                                    scaleY = backdropDriftScale
+                                }
+                                .offset(x = backdropDriftX.dp, y = backdropDriftY.dp),
+                    )
+                } else {
+                    AsyncImage(
+                        model = artworkRequest ?: artworkUrl,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier =
+                            Modifier
+                                .matchParentSize()
+                                .then(
+                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                        Modifier.blur(64.dp)
+                                    } else {
+                                        Modifier
+                                    },
+                                ).graphicsLayer {
+                                    scaleX = backdropDriftScale
+                                    scaleY = backdropDriftScale
+                                }
+                                .offset(x = backdropDriftX.dp, y = backdropDriftY.dp),
+                    )
+                }
+            } else if (useCanvasBackdrop) {
+                // COVER / QUEUE: live canvas backdrop (blurred), no drift.
+                // Drift values are 0/1.2 when lyricsOpen=false, so the offset
+                // is 0 and the scale is fixed — effectively a static blur on
+                // a moving video surface, which is GPU-friendly.
                 CanvasArtworkPlayer(
                     primaryUrl = canvasPrimaryUrl,
                     fallbackUrl = canvasFallbackUrl,
@@ -646,10 +707,18 @@ fun AppleMusicPlayerContent(
                                         .fillMaxSize()
                                         .windowInsetsPadding(WindowInsets(top = LocalStableSystemBarsTopPadding.current)),
                             ) {
-                                // Canvas continues playing behind the queue/lyrics
-                                // content so it doesn't "stop" when the user opens
-                                // the queue (Issue: Spotify canvas stops playing).
-                                if (canvasActive && !videoShowing) {
+                                // Canvas continues playing behind the queue
+                                // content so it doesn't "stop" when the user
+                                // opens the queue (Issue: Spotify canvas stops
+                                // playing). Gated to QUEUE state only — in
+                                // LYRICS state we intentionally don't render
+                                // the canvas so the lyrics animations
+                                // (karaoke syllable sweep, instrumental
+                                // pulsing dots, moving-blur drift) get the
+                                // full frame budget. The LYRICS backdrop is
+                                // a static pre-blurred bitmap (see the
+                                // state-aware backdrop rendering above).
+                                if (canvasActive && !videoShowing && targetState == AppleMusicPlayerState.QUEUE) {
                                     CanvasArtworkPlayer(
                                         primaryUrl = canvasPrimaryUrl,
                                         fallbackUrl = canvasFallbackUrl,
