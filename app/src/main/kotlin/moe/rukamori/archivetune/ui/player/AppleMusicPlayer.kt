@@ -804,7 +804,12 @@ fun AppleMusicPlayerContent(
                 // The mini header (inside SharedTransitionLayout) handles the artwork
                 // morph; this overlay only renders the lyrics content itself,
                 // positioned below where the mini header sits.
-                AnimatedVisibility(
+                //
+                // NOTE: we use the standalone AnimatedVisibility (androidx.compose.
+                // animation.AnimatedVisibility) — NOT the ColumnScope extension —
+                // because this is inside a Box, not a Column. The ColumnScope variant
+                // would be a compile error here.
+                androidx.compose.animation.AnimatedVisibility(
                     visible = lyricsOpen,
                     enter = fadeIn(tween(400, easing = FastOutSlowInEasing)),
                     exit = fadeOut(tween(300, easing = FastOutSlowInEasing)),
