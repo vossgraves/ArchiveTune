@@ -139,6 +139,17 @@ fun CurrentSongHeader(
     val view = LocalView.current
     val (enableHapticFeedback) = rememberPreference(EnableHapticFeedbackKey, true)
 
+    // NOTE: The previous version applied `.bottomSheetDraggable(sheetState)` to this Column.
+    // That was redundant — the outer `BottomSheet` Box already has `bottomSheetDraggable`,
+    // so the user can still drag the sheet from anywhere in the header. Worse, the duplicate
+    // `detectVerticalDragGestures` pointerInput on the header was competing with the
+    // IconButtons' click handlers: when the user tapped the favourite or overflow-menu icon,
+    // any sub-touchSlop finger drift was enough for the drag detector to consume the gesture
+    // (cancelling the tap) and dispatch a small downward delta to the sheet. The sheet then
+    // flung-collapsed on pointer-up, taking the user back to the full player — the exact
+    // "clicking favourite / overflow on the queue page closes the queue" regression that was
+    // reported. Removing the redundant draggable here lets the IconButtons' clickables win
+    // the gesture uncontested, while the outer Box's draggable still handles real swipes.
     Column(
         modifier =
             modifier
@@ -156,13 +167,12 @@ fun CurrentSongHeader(
                     WindowInsets(top = LocalStableSystemBarsTopPadding.current)
                         .union(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal)),
                 )
-                .bottomSheetDraggable(sheetState)
                 .padding(horizontal = 16.dp)
                 .padding(top = 12.dp, bottom = 8.dp),
     ) {
         // The drag-handle "dash" bar that previously sat at the top of the queue sheet
         // has been removed per design feedback — the sheet remains draggable via the
-        // header area itself (bottomSheetDraggable above).
+        // outer BottomSheet's `bottomSheetDraggable` modifier.
 
         Row(
             modifier = Modifier.fillMaxWidth(),

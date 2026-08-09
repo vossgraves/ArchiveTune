@@ -155,7 +155,13 @@ private val AppleMusicContentPadding = 28.dp
 private val AppleMusicChipSize = 34.dp
 private val AppleMusicTransportIconSize = 52.dp
 private val AppleMusicPlayPauseIconSize = 62.dp
-private val AppleMusicBottomIconSize = 24.dp
+// Bottom action row (lyrics / cast / queue) — enlarged to match the visual
+// weight of the transport row above. Previously 24dp icons in 44dp boxes,
+// which looked noticeably smaller than the 52dp transport buttons and were
+// harder to tap. Now 30dp icons in 56dp boxes — closer to the transport row
+// and meeting the 48dp minimum touch target guideline.
+private val AppleMusicBottomIconSize = 30.dp
+private val AppleMusicBottomButtonSize = 56.dp
 private val AppleMusicMiniArtworkSize = 56.dp
 
 /**
@@ -286,19 +292,31 @@ fun AppleMusicPlayerContent(
     }
 
     // === Deferred position reads for the lyrics overlay ===
-    // `position` updates every 100ms (from Player.kt's polling loop) and
-    // `sliderPosition` changes during scrubbing. If the lyrics overlay's
-    // AnimatedVisibility content lambda reads them directly, it recomposes
-    // every 100ms — recreating the lyricsPosProvider lambda, re-invoking
-    // the Box/Column/LyricsEnhanced calls, and stealing frame budget from
-    // the karaoke syllable sweep. By wrapping them in rememberUpdatedState
-    // and capturing them in a stable remember'd lambda, the overlay content
-    // never recomposes on position changes — only the State objects update,
-    // and the lambda reads them lazily when the lyrics frame loop polls.
+    // `sliderPosition` is non-null ONLY while the user is actively scrubbing
+    // the seekbar. When null, LyricsEnhanced/LyricsV2 fall back to reading
+    // `player.currentPosition` directly inside their own 60Hz `withFrameNanos`
+    // interpolation loop — which is what gives the karaoke syllable fill its
+    // smooth, continuous sweep.
+    //
+    // CRITICAL: we must NOT pass `position` (the 100ms-polled value from
+    // Player.kt) as a fallback. If we do, the provider always returns non-null,
+    // which makes LyricsEnhanced think the slider is ALWAYS active. It then
+    // skips its 60Hz interpolation loop and just snaps `playbackPositionMs`
+    // to the polled `position` every 100ms — making the karaoke fill visibly
+    // step instead of smoothly progressing. This was the root cause of the
+    // "lyrics smooth for first few seconds, then janky after ~20s" report:
+    // the snapping is barely visible on the first line (short duration) but
+    // becomes very noticeable once a long sustained line is active.
+    //
+    // The standalone LyricsScreen.kt does exactly the same thing — it passes
+    // `{ sliderPosition }` (nullable), NOT `{ sliderPosition ?: position }`.
+    //
+    // We wrap `sliderPosition` in `rememberUpdatedState` so the stable
+    // `remember`'d lambda always sees the latest value without the overlay's
+    // content lambda needing to recompose on every scrub tick.
     val sliderPositionState = rememberUpdatedState(sliderPosition)
-    val positionState = rememberUpdatedState(position)
     val lyricsPosProvider = remember {
-        { sliderPositionState.value ?: positionState.value }
+        { sliderPositionState.value }
     }
 
     // === Moving blur drift for the backdrop when lyrics is open ===
@@ -467,30 +485,25 @@ fun AppleMusicPlayerContent(
         }
 
         if (!videoShowing) {
-            // Backdrop rendering is state-aware to avoid jank:
+            // Backdrop rendering — keeps the canvas ExoPlayer alive across
+            // lyrics open/close to avoid the multi-second reload delay that
+            // left a black gap behind the bottom controls.
             //
-            // • COVER state — render the live canvas (or static artwork) with
-            //   heavy blur, no drift. The drift values collapse to 0/1.2 when
-            //   lyricsOpen=false, so the offset/scale modifiers are no-ops.
+            // • COVER / QUEUE state (canvas) — render the live canvas with
+            //   heavy blur (72.dp), fixed 1.2x scale, no drift. The canvas
+            //   keeps playing continuously across COVER↔QUEUE morphs because
+            //   it lives outside the SharedTransitionLayout / AnimatedContent.
             //
-            // • QUEUE state — same as COVER: live canvas backdrop (blurred).
-            //   A second non-blurred canvas in the QUEUE state Box makes the
-            //   canvas visibly continue playing behind the queue list's haze
-            //   overlay. (Both canvases run without drift animation, so the
-            //   frame budget is fine.)
+            // • LYRICS state (canvas) — the canvas is PAUSED (isPlaying=false)
+            //   to free GPU for the karaoke syllable sweep, but the ExoPlayer
+            //   instance is retained (no disposal). A static AsyncImage with
+            //   blur + drift is overlaid ON TOP of the paused canvas so the
+            //   user sees the moving-blur aesthetic. When lyrics closes, the
+            //   canvas resumes instantly — no reload delay.
             //
-            // • LYRICS state — DON'T render the live canvas backdrop. A
-            //   TextureView + Modifier.blur + per-frame animated offset is the
-            //   single biggest source of GPU stalls on Android — it makes the
-            //   karaoke syllable sweep, instrumental pulsing dots, and the
-            //   moving blur itself all stutter. Instead, render a STATIC
-            //   AsyncImage (album art) with Modifier.blur + drift. The drift
-            //   on a static image is cheap (just a matrix transform), and the
-            //   visual matches the standalone LyricsScreen.kt MovingBlurBackground
-            //   exactly. The canvas is also removed from the LYRICS state Box
-            //   below, so there's exactly zero video decoders running while
-            //   the user reads lyrics — maximum frame budget for lyrics
-            //   animations.
+            // • Non-canvas backdrop (no Spotify Canvas) — same as before:
+            //   static album art with blur, drift enabled during lyrics.
+            //
             // Helper: deferred-read graphicsLayer for the drift. Reads the
             // animation State<Float> inside the lambda (draw phase) so the
             // parent composable is NOT invalidated every frame.
@@ -507,8 +520,85 @@ fun AppleMusicPlayerContent(
                     translationY = blurDriftYState.value * driftDpToPx
                 }
             }
-            if (lyricsOpen) {
-                // LYRICS: static image with blur + drift (matches LyricsScreen.kt's MovingBlurBackground).
+            if (useCanvasBackdrop) {
+                // Fallback: blurred album art BEHIND the canvas. Visible while
+                // the canvas video is loading (isVideoReady = false → canvas
+                // alpha = 0). Without this, the user sees a black gap behind
+                // the bottom controls during the initial song load (when the
+                // canvas ExoPlayer is first created and buffering). Once the
+                // canvas is ready, it covers this fallback entirely.
+                AsyncImage(
+                    model = artworkRequest ?: artworkUrl,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier =
+                        Modifier
+                            .matchParentSize()
+                            .then(
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                    Modifier.blur(72.dp)
+                                } else {
+                                    Modifier
+                                },
+                            ).graphicsLayer {
+                                scaleX = 1.2f
+                                scaleY = 1.2f
+                            },
+                )
+                // Canvas backdrop — ALWAYS rendered (not conditionally on
+                // !lyricsOpen) so the ExoPlayer survives the lyrics open/close
+                // cycle. Paused during lyrics to save GPU; the static image
+                // overlay below visually replaces it.
+                CanvasArtworkPlayer(
+                    primaryUrl = canvasPrimaryUrl,
+                    fallbackUrl = canvasFallbackUrl,
+                    isPlaying = isPlaying && !lyricsOpen,
+                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
+                    modifier =
+                        Modifier
+                            .matchParentSize()
+                            .blur(72.dp)
+                            .graphicsLayer {
+                                // Fixed 1.2x scale (no drift) — the canvas is
+                                // paused during lyrics so drift would be wasted.
+                                scaleX = 1.2f
+                                scaleY = 1.2f
+                            },
+                )
+                // Static image overlay for lyrics — rendered ON TOP of the
+                // (paused) canvas so the user sees the moving-blur aesthetic.
+                // Without this, the paused canvas's last frame would show.
+                if (lyricsOpen) {
+                    if (isPreS && preBlurredBitmap != null) {
+                        Image(
+                            bitmap = preBlurredBitmap!!.asImageBitmap(),
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier =
+                                Modifier
+                                    .matchParentSize()
+                                    .graphicsLayer(driftGraphicsLayer),
+                        )
+                    } else {
+                        AsyncImage(
+                            model = artworkRequest ?: artworkUrl,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier =
+                                Modifier
+                                    .matchParentSize()
+                                    .then(
+                                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                            Modifier.blur(64.dp)
+                                        } else {
+                                            Modifier
+                                        },
+                                    ).graphicsLayer(driftGraphicsLayer),
+                        )
+                    }
+                }
+            } else if (lyricsOpen) {
+                // Non-canvas backdrop, LYRICS state: static image with blur + drift.
                 if (isPreS && preBlurredBitmap != null) {
                     Image(
                         bitmap = preBlurredBitmap!!.asImageBitmap(),
@@ -536,23 +626,8 @@ fun AppleMusicPlayerContent(
                                 ).graphicsLayer(driftGraphicsLayer),
                     )
                 }
-            } else if (useCanvasBackdrop) {
-                // COVER / QUEUE: live canvas backdrop (blurred), no drift.
-                // The driftGraphicsLayer lambda collapses translationX/Y to 0
-                // when lyricsOpen=false, so only the fixed 1.2x scale applies —
-                // effectively a static blur on a moving video surface.
-                CanvasArtworkPlayer(
-                    primaryUrl = canvasPrimaryUrl,
-                    fallbackUrl = canvasFallbackUrl,
-                    isPlaying = isPlaying,
-                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
-                    modifier =
-                        Modifier
-                            .matchParentSize()
-                            .blur(72.dp)
-                            .graphicsLayer(driftGraphicsLayer),
-                )
             } else if (isPreS && preBlurredBitmap != null) {
+                // Non-canvas backdrop, COVER/QUEUE state, pre-S with pre-blurred bitmap.
                 Image(
                     bitmap = preBlurredBitmap!!.asImageBitmap(),
                     contentDescription = null,
@@ -563,8 +638,7 @@ fun AppleMusicPlayerContent(
                             .graphicsLayer(driftGraphicsLayer),
                 )
             } else {
-                // Either Android 12+ (use Modifier.blur) or pre-S but the pre-blur hasn't
-                // resolved yet (render sharp + heavier scrim for now).
+                // Non-canvas backdrop, COVER/QUEUE state, S+ or loading.
                 AsyncImage(
                     model = artworkRequest ?: artworkUrl,
                     contentDescription = null,
@@ -700,6 +774,11 @@ fun AppleMusicPlayerContent(
                     ) { targetState ->
                         if (targetState == AppleMusicPlayerState.COVER) {
                             // COVER state: large sharp artwork fills the morph area.
+                            // The canvas lives inside AppleMusicSharpArtwork (default
+                            // showCanvas = true). It IS disposed/recreated on morph
+                            // transitions, but hoisting it outside AnimatedContent
+                            // breaks touch routing (see comment above the lyrics
+                            // overlay for details).
                             Box(modifier = Modifier.fillMaxSize()) {
                                 AppleMusicSharpArtwork(
                                     artworkRequest = artworkRequest,
@@ -804,6 +883,29 @@ fun AppleMusicPlayerContent(
                     }
                 }
 
+                // === Foreground sharp canvas ===
+                //
+                // NOTE: The foreground canvas (sharp, inside AppleMusicSharpArtwork)
+                // is NOT hoisted here. Hoisting it outside the AnimatedContent would
+                // keep the ExoPlayer alive across morph transitions (avoiding reload
+                // delay), BUT an always-composed TextureView with alpha=0 still
+                // participates in Compose's hit-testing and would intercept touches
+                // on the mini header (QUEUE/LYRICS state) and the queue sheet —
+                // breaking the thumbnail-click-to-restore-cover and queue scrolling.
+                //
+                // Compose does NOT propagate unconsumed pointer events to siblings,
+                // so the only way to keep the mini header clickable is to ensure the
+                // canvas is NOT the topmost composable at the mini header's touch
+                // point. The canvas therefore stays inside AppleMusicSharpArtwork
+                // (in the AnimatedContent's COVER branch), which means it IS
+                // disposed/recreated on morph transitions. The reload delay is
+                // accepted as a trade-off for correct touch routing.
+                //
+                // The BACKDROP canvas (blurred, rendered above in the if (!videoShowing)
+                // block) IS always alive — it lives outside the AnimatedContent, so
+                // it doesn't interfere with the morph state changes or touch routing.
+                // That fixes the "behind of bottom controls are black" issue.
+
                 // Lyrics overlay — INSIDE the weighted Box, ON TOP of the
                 // SharedTransitionLayout but BOUNDED to this Box's area. This means
                 // the lyrics CANNOT extend over the controls below (which live in a
@@ -817,30 +919,58 @@ fun AppleMusicPlayerContent(
                 // animation.AnimatedVisibility) — NOT the ColumnScope extension —
                 // because this is inside a Box, not a Column. The ColumnScope variant
                 // would be a compile error here.
+                //
+                // THUMBNAIL CLICK FIX: the overlay Box previously used fillMaxSize
+                // with a pointerInput that observed (but didn't consume) touches.
+                // Because the overlay was on top of the SharedTransitionLayout,
+                // touches on the mini header area (top of the overlay) hit the
+                // overlay's pointerInput — NOT the mini header's clickable — so
+                // tapping the thumbnail to restore the COVER state didn't work.
+                // Now the overlay's Column has a dedicated clickable Box in the
+                // mini-header area (top AppleMusicMiniArtworkSize + 16.dp) that
+                // calls restoreCover(). Touches below that area go to the lyrics
+                // composable (scroll + poke controls).
                 androidx.compose.animation.AnimatedVisibility(
                     visible = lyricsOpen,
                     enter = fadeIn(tween(400, easing = FastOutSlowInEasing)),
                     exit = fadeOut(tween(300, easing = FastOutSlowInEasing)),
                 ) {
                     val lyricsMode by rememberEnumPreference(LyricsModeKey, LyricsMode.ENHANCED)
-                    Box(
+                    Column(
                         modifier =
                             Modifier
                                 .fillMaxSize()
-                                .windowInsetsPadding(WindowInsets(top = LocalStableSystemBarsTopPadding.current))
-                                .pointerInput(lyricsOpen) {
-                                    if (!lyricsOpen) return@pointerInput
-                                    awaitEachGesture {
-                                        awaitFirstDown(requireUnconsumed = false)
-                                        pokePlayerControlsVisibility()
-                                    }
-                                },
+                                .windowInsetsPadding(WindowInsets(top = LocalStableSystemBarsTopPadding.current)),
                     ) {
-                        // Spacer to push lyrics below the mini header. The mini header
-                        // height is approx artwork size + padding; we use the same
-                        // content padding for alignment.
-                        Column(modifier = Modifier.fillMaxSize()) {
-                            Spacer(modifier = Modifier.height(AppleMusicMiniArtworkSize + 16.dp))
+                        // Mini header area — tapping here restores the COVER state
+                        // (same as tapping the mini header artwork below). This is
+                        // necessary because the overlay is on top of the mini header
+                        // and intercepts its touches. We use a transparent clickable
+                        // Box sized to match the mini header height.
+                        Box(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .height(AppleMusicMiniArtworkSize + 16.dp)
+                                    .clickable(
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = null,
+                                        onClick = restoreCover,
+                                    ),
+                        )
+                        // Lyrics area — poke controls on touch, lyrics scroll.
+                        Box(
+                            modifier =
+                                Modifier
+                                    .fillMaxSize()
+                                    .pointerInput(lyricsOpen) {
+                                        if (!lyricsOpen) return@pointerInput
+                                        awaitEachGesture {
+                                            awaitFirstDown(requireUnconsumed = false)
+                                            pokePlayerControlsVisibility()
+                                        }
+                                    },
+                        ) {
                             when (lyricsMode) {
                                 LyricsMode.V2 -> LyricsV2(
                                     sliderPositionProvider = lyricsPosProvider,
@@ -933,6 +1063,11 @@ private fun AppleMusicSharpArtwork(
     videoId: String? = null,
     isMusicVideo: Boolean = false,
     landscape: Boolean = false,
+    // When false, the CanvasArtworkPlayer is NOT rendered inside this composable.
+    // The caller is responsible for rendering the canvas separately (hoisted
+    // outside the AnimatedContent) to keep the ExoPlayer alive across morph
+    // state transitions. Used by the portrait Apple Music layout.
+    showCanvas: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     val playerConnection = LocalPlayerConnection.current
@@ -1050,7 +1185,7 @@ private fun AppleMusicSharpArtwork(
             )
         }
 
-        if (!showVideo &&
+        if (showCanvas && !showVideo &&
             (!canvasPrimaryUrl.isNullOrBlank() || !canvasFallbackUrl.isNullOrBlank())
         ) {
             CanvasArtworkPlayer(
@@ -1418,11 +1553,11 @@ private fun AppleMusicBottomButton(
         contentAlignment = Alignment.Center,
         modifier =
             Modifier
-                .size(44.dp)
+                .size(AppleMusicBottomButtonSize)
                 .clip(CircleShape)
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
-                    indication = ripple(bounded = false, radius = 26.dp),
+                    indication = ripple(bounded = false, radius = AppleMusicBottomButtonSize / 2),
                     onClick = onClick,
                 ),
     ) {
