@@ -86,6 +86,7 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.changedToUp
 import kotlin.math.abs
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -732,233 +733,230 @@ private fun AppleMusicControlsColumn(
     }
     LaunchedEffect(Unit) { kotlinx.coroutines.delay(300); resetSwipeUp() }
 
-    BoxWithConstraints(modifier = modifier) {
-        // The controls cluster (title → bottom action row) is ~300dp tall. Seat it
-        // at the bottom of the sheet and let a single weight spacer absorb slack at
-        // the top, with compact-height gaps so the rows never squeeze together or
-        // spill past the bottom edge (SpaceEvenly did both once the transport
-        // icons grew to 52/62dp).
-        val compactHeight = maxHeight < 720.dp
-        val veryCompactHeight = maxHeight < 620.dp
-        val titleToScrubberGap = if (veryCompactHeight) 8.dp else if (compactHeight) 14.dp else 24.dp
-        val scrubberToTransportGap = if (veryCompactHeight) 10.dp else if (compactHeight) 16.dp else 24.dp
-        val transportToVolumeGap = if (veryCompactHeight) 8.dp else if (compactHeight) 14.dp else 24.dp
-        val volumeToActionsGap = if (veryCompactHeight) 8.dp else if (compactHeight) 12.dp else 20.dp
+    // The controls cluster (title → bottom action row) is ~300dp tall and is
+    // bottom-anchored by the caller (it sits below the weight(1f) morph area,
+    // so it must wrap its height — never fillMaxSize). Gaps tighten on short
+    // screens so the rows never squeeze together or spill past the bottom
+    // edge (SpaceEvenly did both once the transport icons grew to 52/62dp).
+    val screenHeight = LocalConfiguration.current.screenHeightDp.dp
+    val compactHeight = screenHeight < 720.dp
+    val veryCompactHeight = screenHeight < 620.dp
+    val titleToScrubberGap = if (veryCompactHeight) 8.dp else if (compactHeight) 14.dp else 24.dp
+    val scrubberToTransportGap = if (veryCompactHeight) 10.dp else if (compactHeight) 16.dp else 24.dp
+    val transportToVolumeGap = if (veryCompactHeight) 8.dp else if (compactHeight) 14.dp else 24.dp
+    val volumeToActionsGap = if (veryCompactHeight) 8.dp else if (compactHeight) 12.dp else 20.dp
 
-        Column(
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = AppleMusicContentPadding)
-                    .pointerInput(Unit) {
-                        awaitEachGesture {
-                            awaitFirstDown(requireUnconsumed = false)
-                            var accumulated = 0f
-                            var swipeActivated = false
-                            while (true) {
-                                val event = awaitPointerEvent(PointerEventPass.Main)
-                                val change = event.changes.firstOrNull() ?: break
-                                if (change.changedToUp()) break
+    Column(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = AppleMusicContentPadding)
+                .pointerInput(Unit) {
+                    awaitEachGesture {
+                        awaitFirstDown(requireUnconsumed = false)
+                        var accumulated = 0f
+                        var swipeActivated = false
+                        while (true) {
+                            val event = awaitPointerEvent(PointerEventPass.Main)
+                            val change = event.changes.firstOrNull() ?: break
+                            if (change.changedToUp()) break
 
-                                val dragDelta = change.positionChange().y
+                            val dragDelta = change.positionChange().y
 
-                                if (!swipeActivated) {
-                                    // Track upward movement but don't consume yet — let child taps win.
-                                    if (dragDelta < 0f) {
-                                        accumulated += dragDelta
-                                    }
-                                    if (abs(accumulated) > swipeActivationThreshold) {
-                                        swipeActivated = true
-                                        swipeUpAccumulated = accumulated
-                                        change.consume()
-                                    }
-                                } else {
-                                    // Swipe is confirmed — consume to prevent child handling.
-                                    if (dragDelta < 0f) {
-                                        swipeUpAccumulated =
-                                            (swipeUpAccumulated + dragDelta).coerceAtLeast(-swipeUpThreshold * 1.5f)
-                                    }
+                            if (!swipeActivated) {
+                                // Track upward movement but don't consume yet — let child taps win.
+                                if (dragDelta < 0f) {
+                                    accumulated += dragDelta
+                                }
+                                if (abs(accumulated) > swipeActivationThreshold) {
+                                    swipeActivated = true
+                                    swipeUpAccumulated = accumulated
                                     change.consume()
                                 }
+                            } else {
+                                // Swipe is confirmed — consume to prevent child handling.
+                                if (dragDelta < 0f) {
+                                    swipeUpAccumulated =
+                                        (swipeUpAccumulated + dragDelta).coerceAtLeast(-swipeUpThreshold * 1.5f)
+                                }
+                                change.consume()
                             }
-
-                            if (swipeActivated && swipeUpAccumulated < -swipeUpThreshold) {
-                                onQueueClick()
-                            }
-                            swipeUpAccumulated = 0f
                         }
-                    },
-        ) {
-            // Slack absorber — keeps the controls seated at the bottom of the sheet.
-            Spacer(Modifier.weight(1f))
-        // Title / artist row with star + more chips.
-        // Hidden when showTitleRow = false (queue is open — the title lives in
-        // the mini header above the queue list).
-        if (showTitleRow) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        text = mediaMetadata.title,
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier =
-                            Modifier.clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null,
-                                onClick = titleActions.onTitleClick,
-                            ),
-                    )
-                    Text(
-                        text = mediaMetadata.artists.joinToString { it.name },
-                        style = MaterialTheme.typography.titleMedium,
-                        color = Color.White.copy(alpha = 0.64f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier =
-                            Modifier.clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null,
-                            ) {
-                                mediaMetadata.artists.firstOrNull()?.id?.let(titleActions.onArtistClick)
-                            },
-                    )
-                }
-                Spacer(Modifier.width(12.dp))
-                AppleMusicChip(
-                    iconRes = if (currentSongLiked) R.drawable.player_star_filled else R.drawable.player_star,
-                    tint = Color.White,
-                    contentDescription = null,
-                    onClick = playerConnection::toggleLike,
-                )
-                Spacer(Modifier.width(10.dp))
-                AppleMusicChip(
-                    iconRes = R.drawable.player_more_horiz,
-                    tint = Color.White,
-                    contentDescription = null,
-                    onClick = onMoreClick,
-                )
-            }
-        }
 
-        Spacer(Modifier.height(titleToScrubberGap))
-
-        // Thin scrubber + elapsed / -remaining.
-        Column {
-            AppleMusicSeekBar(
-                position = sliderPosition ?: position,
-                duration = duration,
-                onScrub = onSliderValueChange,
-                onScrubFinished = onSliderValueChangeFinished,
-            )
-            Spacer(Modifier.height(6.dp))
-            // Mirror the Immersive V8 layout: elapsed time on the left, quality
-            // chip (Lossless / AAC / OPUS) centered, -remaining on the right.
-            // The chip is tappable and opens the song-detail bottom sheet.
-            Box(Modifier.fillMaxWidth()) {
+                        if (swipeActivated && swipeUpAccumulated < -swipeUpThreshold) {
+                            onQueueClick()
+                        }
+                        swipeUpAccumulated = 0f
+                    }
+                },
+    ) {
+    // Title / artist row with star + more chips.
+    // Hidden when showTitleRow = false (queue is open — the title lives in
+    // the mini header above the queue list).
+    if (showTitleRow) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
                 Text(
-                    text = makeTimeString(sliderPosition ?: position),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = Color.White.copy(alpha = 0.55f),
-                    modifier = Modifier.align(Alignment.CenterStart),
+                    text = mediaMetadata.title,
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier =
+                        Modifier.clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = titleActions.onTitleClick,
+                        ),
                 )
-                if (currentFormat != null) {
-                    AppleMusicQualityChip(
-                        currentFormat = currentFormat,
-                        onClick = onQualityChipClick,
-                        modifier = Modifier.align(Alignment.Center),
-                    )
-                }
                 Text(
-                    text = "-" + makeTimeString((duration - (sliderPosition ?: position)).coerceAtLeast(0L)),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = Color.White.copy(alpha = 0.55f),
-                    modifier = Modifier.align(Alignment.CenterEnd),
+                    text = mediaMetadata.artists.joinToString { it.name },
+                    style = MaterialTheme.typography.titleMedium,
+                    color = Color.White.copy(alpha = 0.64f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier =
+                        Modifier.clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                        ) {
+                            mediaMetadata.artists.firstOrNull()?.id?.let(titleActions.onArtistClick)
+                        },
                 )
             }
-        }
-
-        Spacer(Modifier.height(scrubberToTransportGap))
-
-        // Bare transport glyphs.
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            AppleMusicTransportButton(
-                iconRes = R.drawable.player_fast_forward,
-                enabled = canSkipPrevious,
-                mirrored = true,
-                iconSize = AppleMusicTransportIconSize,
-                onClick = playerConnection::seekToPrevious,
-            )
-            Box(contentAlignment = Alignment.Center) {
-                if (isLoading) {
-                    CircularProgressIndicator(
-                        color = Color.White,
-                        modifier = Modifier.size(AppleMusicPlayPauseIconSize),
-                        strokeWidth = 3.dp,
-                    )
-                } else {
-                    AppleMusicTransportButton(
-                        iconRes = if (isPlaying) R.drawable.player_pause else R.drawable.player_play,
-                        enabled = true,
-                        mirrored = false,
-                        iconSize = AppleMusicPlayPauseIconSize,
-                        onClick = onPlayPauseClick,
-                    )
-                }
-            }
-            AppleMusicTransportButton(
-                iconRes = R.drawable.player_fast_forward,
-                enabled = canSkipNext,
-                mirrored = false,
-                iconSize = AppleMusicTransportIconSize,
-                onClick = playerConnection::seekToNext,
-            )
-        }
-
-        Spacer(Modifier.height(transportToVolumeGap))
-
-        // Flat volume slider with speaker glyphs. Uses the shared AppleMusicVolumeRow
-        // which has proper drag tracking (dragging state + rememberUpdatedState) so the
-        // fill follows the finger during a drag instead of lagging behind the rounded
-        // device-volume step.
-        AppleMusicVolumeRow(
-            volume = volume,
-            onVolumeChange = onVolumeChange,
-            modifier = Modifier.fillMaxWidth(),
-        )
-
-        Spacer(Modifier.height(volumeToActionsGap))
-
-        // Bottom action row: lyrics / media output / queue.
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            AppleMusicBottomButton(
-                iconRes = R.drawable.player_lyrics,
-                contentDescription = stringResource(R.string.lyrics),
-                onClick = onLyricsClick,
-            )
-            AppleMusicBottomButton(
-                iconRes = R.drawable.cast,
+            Spacer(Modifier.width(12.dp))
+            AppleMusicChip(
+                iconRes = if (currentSongLiked) R.drawable.player_star_filled else R.drawable.player_star,
+                tint = Color.White,
                 contentDescription = null,
-                onClick = onOutputClick,
+                onClick = playerConnection::toggleLike,
             )
-            AppleMusicBottomButton(
-                iconRes = R.drawable.player_queue_music,
-                contentDescription = stringResource(R.string.queue),
-                onClick = onQueueClick,
-                tint = if (isQueueActive) Color.White else Color.White.copy(alpha = 0.85f),
+            Spacer(Modifier.width(10.dp))
+            AppleMusicChip(
+                iconRes = R.drawable.player_more_horiz,
+                tint = Color.White,
+                contentDescription = null,
+                onClick = onMoreClick,
             )
         }
+    }
+
+    Spacer(Modifier.height(titleToScrubberGap))
+
+    // Thin scrubber + elapsed / -remaining.
+    Column {
+        AppleMusicSeekBar(
+            position = sliderPosition ?: position,
+            duration = duration,
+            onScrub = onSliderValueChange,
+            onScrubFinished = onSliderValueChangeFinished,
+        )
+        Spacer(Modifier.height(6.dp))
+        // Mirror the Immersive V8 layout: elapsed time on the left, quality
+        // chip (Lossless / AAC / OPUS) centered, -remaining on the right.
+        // The chip is tappable and opens the song-detail bottom sheet.
+        Box(Modifier.fillMaxWidth()) {
+            Text(
+                text = makeTimeString(sliderPosition ?: position),
+                style = MaterialTheme.typography.labelMedium,
+                color = Color.White.copy(alpha = 0.55f),
+                modifier = Modifier.align(Alignment.CenterStart),
+            )
+            if (currentFormat != null) {
+                AppleMusicQualityChip(
+                    currentFormat = currentFormat,
+                    onClick = onQualityChipClick,
+                    modifier = Modifier.align(Alignment.Center),
+                )
+            }
+            Text(
+                text = "-" + makeTimeString((duration - (sliderPosition ?: position)).coerceAtLeast(0L)),
+                style = MaterialTheme.typography.labelMedium,
+                color = Color.White.copy(alpha = 0.55f),
+                modifier = Modifier.align(Alignment.CenterEnd),
+            )
         }
+    }
+
+    Spacer(Modifier.height(scrubberToTransportGap))
+
+    // Bare transport glyphs.
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        AppleMusicTransportButton(
+            iconRes = R.drawable.player_fast_forward,
+            enabled = canSkipPrevious,
+            mirrored = true,
+            iconSize = AppleMusicTransportIconSize,
+            onClick = playerConnection::seekToPrevious,
+        )
+        Box(contentAlignment = Alignment.Center) {
+            if (isLoading) {
+                CircularProgressIndicator(
+                    color = Color.White,
+                    modifier = Modifier.size(AppleMusicPlayPauseIconSize),
+                    strokeWidth = 3.dp,
+                )
+            } else {
+                AppleMusicTransportButton(
+                    iconRes = if (isPlaying) R.drawable.player_pause else R.drawable.player_play,
+                    enabled = true,
+                    mirrored = false,
+                    iconSize = AppleMusicPlayPauseIconSize,
+                    onClick = onPlayPauseClick,
+                )
+            }
+        }
+        AppleMusicTransportButton(
+            iconRes = R.drawable.player_fast_forward,
+            enabled = canSkipNext,
+            mirrored = false,
+            iconSize = AppleMusicTransportIconSize,
+            onClick = playerConnection::seekToNext,
+        )
+    }
+
+    Spacer(Modifier.height(transportToVolumeGap))
+
+    // Flat volume slider with speaker glyphs. Uses the shared AppleMusicVolumeRow
+    // which has proper drag tracking (dragging state + rememberUpdatedState) so the
+    // fill follows the finger during a drag instead of lagging behind the rounded
+    // device-volume step.
+    AppleMusicVolumeRow(
+        volume = volume,
+        onVolumeChange = onVolumeChange,
+        modifier = Modifier.fillMaxWidth(),
+    )
+
+    Spacer(Modifier.height(volumeToActionsGap))
+
+    // Bottom action row: lyrics / media output / queue.
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        AppleMusicBottomButton(
+            iconRes = R.drawable.player_lyrics,
+            contentDescription = stringResource(R.string.lyrics),
+            onClick = onLyricsClick,
+        )
+        AppleMusicBottomButton(
+            iconRes = R.drawable.cast,
+            contentDescription = null,
+            onClick = onOutputClick,
+        )
+        AppleMusicBottomButton(
+            iconRes = R.drawable.player_queue_music,
+            contentDescription = stringResource(R.string.queue),
+            onClick = onQueueClick,
+            tint = if (isQueueActive) Color.White else Color.White.copy(alpha = 0.85f),
+        )
+    }
     }
 }
 
