@@ -998,14 +998,15 @@ fun Queue(
                                 }
                             }
 
-                            val content: @Composable () -> Unit = {
+                            val content: @Composable () -> Unit = content@{
                                 val shouldLoadImages by remember {
                                     derivedStateOf {
                                         state.value > state.collapsedBound + 80.dp
                                     }
                                 }
 
-                                val trackMetadata = window.mediaItem.metadata ?: return@content
+                                val trackMetadata = window.mediaItem.metadata
+                                if (trackMetadata == null) return@content
                                 CompactQueueItem(
                                     mediaMetadata = trackMetadata,
                                     isActive = isActive,
