@@ -53,7 +53,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -90,6 +89,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.GraphicsLayerScope
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
@@ -104,6 +104,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.Player.STATE_ENDED
 import androidx.media3.ui.AspectRatioFrameLayout
@@ -286,8 +287,19 @@ fun AppleMusicPlayerContent(
     // Mirrors the MovingBlurBackground from LyricsScreen: the blurred artwork
     // slowly drifts horizontally and vertically, creating an ambient motion
     // behind the lyrics. Only active when lyricsOpen = true.
+    //
+    // CRITICAL PERF: we keep the State<Float> objects (NOT `by` delegation) so
+    // the animation values are read ONLY inside Modifier.graphicsLayer { }
+    // lambdas (draw-phase deferred reads). Reading them during composition —
+    // e.g. `val backdropDriftX = if (lyricsOpen) blurDriftX else 0f` — would
+    // invalidate the ENTIRE AppleMusicPlayerContent composable every frame
+    // (SharedTransitionLayout, AnimatedContent, ControlsColumn, and the inline
+    // LyricsEnhanced all recompose at ~60fps), stealing the frame budget from
+    // the karaoke syllable sweep. This was the root cause of the Apple-Music-
+    // style-only lyrics jank — LyricsScreen.kt doesn't have it because its
+    // drift lives in a separate MovingBlurBackground composable.
     val blurTransition = rememberInfiniteTransition(label = "am-lyrics-blur-drift")
-    val blurDriftX by blurTransition.animateFloat(
+    val blurDriftXState = blurTransition.animateFloat(
         initialValue = -80f,
         targetValue = 80f,
         animationSpec = infiniteRepeatable(
@@ -296,7 +308,7 @@ fun AppleMusicPlayerContent(
         ),
         label = "am-lyrics-drift-x",
     )
-    val blurDriftY by blurTransition.animateFloat(
+    val blurDriftYState = blurTransition.animateFloat(
         initialValue = -60f,
         targetValue = 60f,
         animationSpec = infiniteRepeatable(
@@ -305,9 +317,9 @@ fun AppleMusicPlayerContent(
         ),
         label = "am-lyrics-drift-y",
     )
-    val backdropDriftX = if (lyricsOpen) blurDriftX else 0f
-    val backdropDriftY = if (lyricsOpen) blurDriftY else 0f
-    val backdropDriftScale = if (lyricsOpen) 1.4f else 1.2f
+    // Pre-compute dp→px once (graphicsLayer.translationX is in pixels). Density
+    // doesn't change per-frame so this is a one-time composition-phase read.
+    val driftDpToPx = with(LocalDensity.current) { 1.dp.toPx() }
 
     val baseArtworkUrl = mediaMetadata.thumbnailUrl?.highRes()
     val thumbnailSwapState =
@@ -469,6 +481,22 @@ fun AppleMusicPlayerContent(
             //   below, so there's exactly zero video decoders running while
             //   the user reads lyrics — maximum frame budget for lyrics
             //   animations.
+            // Helper: deferred-read graphicsLayer for the drift. Reads the
+            // animation State<Float> inside the lambda (draw phase) so the
+            // parent composable is NOT invalidated every frame.
+            val driftGraphicsLayer: GraphicsLayerScope.() -> Unit = {
+                // lyricsOpen is a stable Boolean state — reading it here is a
+                // deferred read that only triggers a layer update on toggle.
+                val active = lyricsOpen
+                val scale = if (active) 1.4f else 1.2f
+                scaleX = scale
+                scaleY = scale
+                if (active) {
+                    // State.value reads are deferred to the draw phase.
+                    translationX = blurDriftXState.value * driftDpToPx
+                    translationY = blurDriftYState.value * driftDpToPx
+                }
+            }
             if (lyricsOpen) {
                 // LYRICS: static image with blur + drift (matches LyricsScreen.kt's MovingBlurBackground).
                 if (isPreS && preBlurredBitmap != null) {
@@ -479,11 +507,7 @@ fun AppleMusicPlayerContent(
                         modifier =
                             Modifier
                                 .matchParentSize()
-                                .graphicsLayer {
-                                    scaleX = backdropDriftScale
-                                    scaleY = backdropDriftScale
-                                }
-                                .offset(x = backdropDriftX.dp, y = backdropDriftY.dp),
+                                .graphicsLayer(driftGraphicsLayer),
                     )
                 } else {
                     AsyncImage(
@@ -499,18 +523,14 @@ fun AppleMusicPlayerContent(
                                     } else {
                                         Modifier
                                     },
-                                ).graphicsLayer {
-                                    scaleX = backdropDriftScale
-                                    scaleY = backdropDriftScale
-                                }
-                                .offset(x = backdropDriftX.dp, y = backdropDriftY.dp),
+                                ).graphicsLayer(driftGraphicsLayer),
                     )
                 }
             } else if (useCanvasBackdrop) {
                 // COVER / QUEUE: live canvas backdrop (blurred), no drift.
-                // Drift values are 0/1.2 when lyricsOpen=false, so the offset
-                // is 0 and the scale is fixed — effectively a static blur on
-                // a moving video surface, which is GPU-friendly.
+                // The driftGraphicsLayer lambda collapses translationX/Y to 0
+                // when lyricsOpen=false, so only the fixed 1.2x scale applies —
+                // effectively a static blur on a moving video surface.
                 CanvasArtworkPlayer(
                     primaryUrl = canvasPrimaryUrl,
                     fallbackUrl = canvasFallbackUrl,
@@ -520,11 +540,7 @@ fun AppleMusicPlayerContent(
                         Modifier
                             .matchParentSize()
                             .blur(72.dp)
-                            .graphicsLayer {
-                                scaleX = backdropDriftScale
-                                scaleY = backdropDriftScale
-                            }
-                            .offset(x = backdropDriftX.dp, y = backdropDriftY.dp),
+                            .graphicsLayer(driftGraphicsLayer),
                 )
             } else if (isPreS && preBlurredBitmap != null) {
                 Image(
@@ -534,11 +550,7 @@ fun AppleMusicPlayerContent(
                     modifier =
                         Modifier
                             .matchParentSize()
-                            .graphicsLayer {
-                                scaleX = backdropDriftScale
-                                scaleY = backdropDriftScale
-                            }
-                            .offset(x = backdropDriftX.dp, y = backdropDriftY.dp),
+                            .graphicsLayer(driftGraphicsLayer),
                 )
             } else {
                 // Either Android 12+ (use Modifier.blur) or pre-S but the pre-blur hasn't
@@ -556,11 +568,7 @@ fun AppleMusicPlayerContent(
                                 } else {
                                     Modifier
                                 },
-                            ).graphicsLayer {
-                                scaleX = backdropDriftScale
-                                scaleY = backdropDriftScale
-                            }
-                            .offset(x = backdropDriftX.dp, y = backdropDriftY.dp),
+                            ).graphicsLayer(driftGraphicsLayer),
                 )
             }
             val preBlurLoading = isPreS && preBlurredBitmap == null && !canvasActive
