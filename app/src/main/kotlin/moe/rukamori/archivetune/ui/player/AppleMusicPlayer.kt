@@ -75,6 +75,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
@@ -267,11 +268,29 @@ fun AppleMusicPlayerContent(
         delay(autoHideDelayMs)
         playerControlsExpanded = false
     }
-    val pokePlayerControlsVisibility = {
-        if (lyricsOpen) {
-            playerControlsExpanded = true
-            playerControlsVisibilityTick++
+    val pokePlayerControlsVisibility = remember {
+        {
+            if (lyricsOpen) {
+                playerControlsExpanded = true
+                playerControlsVisibilityTick++
+            }
         }
+    }
+
+    // === Deferred position reads for the lyrics overlay ===
+    // `position` updates every 100ms (from Player.kt's polling loop) and
+    // `sliderPosition` changes during scrubbing. If the lyrics overlay's
+    // AnimatedVisibility content lambda reads them directly, it recomposes
+    // every 100ms — recreating the lyricsPosProvider lambda, re-invoking
+    // the Box/Column/LyricsEnhanced calls, and stealing frame budget from
+    // the karaoke syllable sweep. By wrapping them in rememberUpdatedState
+    // and capturing them in a stable remember'd lambda, the overlay content
+    // never recomposes on position changes — only the State objects update,
+    // and the lambda reads them lazily when the lyrics frame loop polls.
+    val sliderPositionState = rememberUpdatedState(sliderPosition)
+    val positionState = rememberUpdatedState(position)
+    val lyricsPosProvider = remember {
+        { sliderPositionState.value ?: positionState.value }
     }
 
     // === Moving blur drift for the backdrop when lyrics is open ===
@@ -618,6 +637,7 @@ fun AppleMusicPlayerContent(
                         Modifier
                             .weight(1f)
                             .fillMaxHeight()
+                            .navigationBarsPadding()
                             .padding(bottom = contentBottomPadding),
                 )
             }
@@ -630,20 +650,29 @@ fun AppleMusicPlayerContent(
             // SharedTransitionLayout so they stay anchored at the bottom — matching
             // ViviMusic's Player_v2 layout exactly.
             //
-            // The lyrics composable is rendered as a SEPARATE overlay ON TOP of
-            // the Column (SharedTransitionLayout + controls), completely outside
-            // the SharedTransitionLayout. This is critical for performance:
-            // rendering LyricsEnhanced inside the SharedTransitionLayout caused
-            // the karaoke syllable fill animation to stutter because the shared
-            // transition machinery's per-frame tracking stole frame budget.
-            // The overlay approach gives the lyrics animations the full frame
-            // budget, matching the standalone LyricsScreen's performance.
-            Box(modifier = Modifier.fillMaxSize()) {
-                Column(
-                    modifier = Modifier.fillMaxSize(),
-                ) {
+            // The lyrics composable is rendered as a SEPARATE overlay ON TOP of the
+            // SharedTransitionLayout (inside the same weighted Box), but OUTSIDE
+            // the SharedTransitionLayout itself. This is critical for two reasons:
+            //
+            // 1. PERFORMANCE: rendering LyricsEnhanced inside the SharedTransitionLayout
+            //    caused the karaoke syllable fill animation to stutter because the
+            //    shared transition machinery's per-frame tracking stole frame budget.
+            //    The overlay approach gives the lyrics animations the full frame
+            //    budget, matching the standalone LyricsScreen's performance.
+            //
+            // 2. TOUCH ROUTING: the lyrics overlay is bounded to the weighted Box
+            //    (the morph area), so it CANNOT extend over the controls below.
+            //    Previously the overlay used fillMaxSize on the outer Box, covering
+            //    the controls and making them uninteractable when lyrics was open.
+            //    Now the overlay is a sibling of SharedTransitionLayout inside the
+            //    weighted Box, and the controls live in a separate AnimatedVisibility
+            //    below the Box — touches on the controls go directly to the controls.
+            Column(
+                modifier = Modifier.fillMaxSize(),
+            ) {
+                Box(modifier = Modifier.weight(1f)) {
                 SharedTransitionLayout(
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.fillMaxSize(),
                 ) {
                     AnimatedContent(
                         targetState = morphState,
@@ -767,6 +796,55 @@ fun AppleMusicPlayerContent(
                     }
                 }
 
+                // Lyrics overlay — INSIDE the weighted Box, ON TOP of the
+                // SharedTransitionLayout but BOUNDED to this Box's area. This means
+                // the lyrics CANNOT extend over the controls below (which live in a
+                // separate AnimatedVisibility outside this Box). Touches on the
+                // controls area go directly to the controls, not to the lyrics.
+                // The mini header (inside SharedTransitionLayout) handles the artwork
+                // morph; this overlay only renders the lyrics content itself,
+                // positioned below where the mini header sits.
+                AnimatedVisibility(
+                    visible = lyricsOpen,
+                    enter = fadeIn(tween(400, easing = FastOutSlowInEasing)),
+                    exit = fadeOut(tween(300, easing = FastOutSlowInEasing)),
+                ) {
+                    val lyricsMode by rememberEnumPreference(LyricsModeKey, LyricsMode.ENHANCED)
+                    Box(
+                        modifier =
+                            Modifier
+                                .fillMaxSize()
+                                .windowInsetsPadding(WindowInsets(top = LocalStableSystemBarsTopPadding.current))
+                                .pointerInput(lyricsOpen) {
+                                    if (!lyricsOpen) return@pointerInput
+                                    awaitEachGesture {
+                                        awaitFirstDown(requireUnconsumed = false)
+                                        pokePlayerControlsVisibility()
+                                    }
+                                },
+                    ) {
+                        // Spacer to push lyrics below the mini header. The mini header
+                        // height is approx artwork size + padding; we use the same
+                        // content padding for alignment.
+                        Column(modifier = Modifier.fillMaxSize()) {
+                            Spacer(modifier = Modifier.height(AppleMusicMiniArtworkSize + 16.dp))
+                            when (lyricsMode) {
+                                LyricsMode.V2 -> LyricsV2(
+                                    sliderPositionProvider = lyricsPosProvider,
+                                    lyricsSyncOffset = lyricsSyncOffset,
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                                LyricsMode.ENHANCED -> LyricsEnhanced(
+                                    sliderPositionProvider = lyricsPosProvider,
+                                    lyricsSyncOffset = lyricsSyncOffset,
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                            }
+                        }
+                    }
+                }
+                } // end weighted Box (SharedTransitionLayout + lyrics overlay)
+
                 // Persistent playback controls — anchored at the bottom.
                 // When the queue or lyrics is open, the title row is hidden (it's in the
                 // mini header above) so only the seekbar + transport + volume + bottom
@@ -815,62 +893,7 @@ fun AppleMusicPlayerContent(
                                 .padding(bottom = contentBottomPadding),
                     )
                 }
-                } // end Column
-
-                // Lyrics overlay — rendered as a SIBLING of the Column (inside the
-                // outer Box), completely OUTSIDE the SharedTransitionLayout. This is
-                // critical for performance: rendering LyricsEnhanced inside the
-                // SharedTransitionLayout caused the karaoke syllable fill animation
-                // to stutter because the shared transition machinery's per-frame
-                // tracking stole frame budget. The overlay approach gives the lyrics
-                // animations the full frame budget, matching the standalone
-                // LyricsScreen's performance.
-                // The mini header (inside SharedTransitionLayout) handles the artwork
-                // morph; this overlay only renders the lyrics content itself,
-                // positioned below where the mini header sits. The overlay sits ON
-                // TOP of the Column (SharedTransitionLayout + controls) so the lyrics
-                // are fully visible.
-                AnimatedVisibility(
-                    visible = lyricsOpen,
-                    enter = fadeIn(tween(400, easing = FastOutSlowInEasing)),
-                    exit = fadeOut(tween(300, easing = FastOutSlowInEasing)),
-                ) {
-                    val lyricsMode by rememberEnumPreference(LyricsModeKey, LyricsMode.ENHANCED)
-                    val lyricsPosProvider = { sliderPosition ?: position }
-                    Box(
-                        modifier =
-                            Modifier
-                                .fillMaxSize()
-                                .windowInsetsPadding(WindowInsets(top = LocalStableSystemBarsTopPadding.current))
-                                .pointerInput(lyricsOpen) {
-                                    if (!lyricsOpen) return@pointerInput
-                                    awaitEachGesture {
-                                        awaitFirstDown(requireUnconsumed = false)
-                                        pokePlayerControlsVisibility()
-                                    }
-                                },
-                    ) {
-                        // Spacer to push lyrics below the mini header. The mini header
-                        // height is approx artwork size + padding; we use the same
-                        // content padding for alignment.
-                        Column(modifier = Modifier.fillMaxSize()) {
-                            Spacer(modifier = Modifier.height(AppleMusicMiniArtworkSize + 16.dp))
-                            when (lyricsMode) {
-                                LyricsMode.V2 -> LyricsV2(
-                                    sliderPositionProvider = lyricsPosProvider,
-                                    lyricsSyncOffset = lyricsSyncOffset,
-                                    modifier = Modifier.fillMaxSize(),
-                                )
-                                LyricsMode.ENHANCED -> LyricsEnhanced(
-                                    sliderPositionProvider = lyricsPosProvider,
-                                    lyricsSyncOffset = lyricsSyncOffset,
-                                    modifier = Modifier.fillMaxSize(),
-                                )
-                            }
-                        }
-                    }
-                }
-            } // end outer Box (Column + lyrics overlay)
+            } // end Column (morph area + controls)
         }
     }
 }
@@ -1089,7 +1112,7 @@ private fun AppleMusicControlsColumn(
 
     Column(
         modifier =
-            Modifier
+            modifier
                 .fillMaxWidth()
                 .padding(horizontal = AppleMusicContentPadding)
                 .pointerInput(Unit) {
