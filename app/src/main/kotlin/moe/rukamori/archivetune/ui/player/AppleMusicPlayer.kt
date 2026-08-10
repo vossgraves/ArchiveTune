@@ -23,12 +23,15 @@ import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.SharedTransitionScope.OverlayClip
+import androidx.compose.animation.BoundsTransform
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -931,15 +934,26 @@ fun AppleMusicPlayerContent(
                                                 // rounded" bug.
                                                 clipInOverlayDuringTransition =
                                                     OverlayClip(RoundedCornerShape(artworkCornerRadiusDp)),
-                                                // boundsTransform intentionally omitted:
-                                                // fall back to the SharedTransition
-                                                // default spring (LowBouncy). The
-                                                // rounded OverlayClip above keeps the
-                                                // corners rounded for the entire
-                                                // duration of the morph, so the default
-                                                // 1-2s spring no longer risks a
-                                                // sharp-corner flash — restoring the
-                                                // original, slower morph feel.
+                                                // Use the default SharedTransition
+                                                // stiffness (StiffnessMediumLow, the
+                                                // same as the framework default) so
+                                                // the morph duration matches the
+                                                // original feel, but drop the bouncy
+                                                // overshoot (DampingRatioNoBouncy).
+                                                // The default LowBouncy damping makes
+                                                // the bounds oscillate past their
+                                                // target, and on each oscillation
+                                                // frame the rounded OverlayClip has
+                                                // to be re-rendered — that was the
+                                                // source of the millisecond stutter
+                                                // during the transition.
+                                                boundsTransform =
+                                                    BoundsTransform { _, _ ->
+                                                        spring(
+                                                            dampingRatio = Spring.DampingRatioNoBouncy,
+                                                            stiffness = Spring.StiffnessMediumLow,
+                                                        )
+                                                    },
                                             ),
                                 )
                             }
@@ -1893,9 +1907,17 @@ private fun SharedTransitionScope.AppleMusicMiniHeader(
                         animatedVisibilityScope = animatedVisibilityScope,
                         clipInOverlayDuringTransition =
                             OverlayClip(RoundedCornerShape(8.dp)),
-                        // boundsTransform intentionally omitted: fall back to the
-                        // SharedTransition default spring (LowBouncy) so the
-                        // mini↔cover morph duration matches the COVER state.
+                        // Match the COVER state's boundsTransform (non-bouncy
+                        // spring at default stiffness) so the morph duration
+                        // and feel are identical in both directions and the
+                        // overlay clip doesn't stutter on oscillation.
+                        boundsTransform =
+                            BoundsTransform { _, _ ->
+                                spring(
+                                    dampingRatio = Spring.DampingRatioNoBouncy,
+                                    stiffness = Spring.StiffnessMediumLow,
+                                )
+                            },
                     ),
         ) {
             AsyncImage(
