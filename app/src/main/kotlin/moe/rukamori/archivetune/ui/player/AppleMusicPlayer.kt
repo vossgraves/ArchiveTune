@@ -52,14 +52,11 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
@@ -1041,24 +1038,32 @@ fun AppleMusicPlayerContent(
                     // (maxHeight - miniHeaderHeight) and offset down by
                     // miniHeaderHeight so it doesn't cover the mini header.
                     //
-                    // HORIZONTAL INSETS: the inline overlay must apply system-bar
-                    // horizontal padding (status bar on landscape, gesture-nav
-                    // pill / display cutout on portrait) AND a minimum horizontal
-                    // margin, mirroring the standalone LyricsScreen.kt which uses
-                    // windowInsetsPadding(systemBars) + 24dp horizontal padding.
-                    // Without this, the lyrics text extends to the absolute screen
-                    // edge and the rightmost characters are clipped on devices
-                    // with curved edges / side cutouts — particularly visible on
-                    // long Japanese CJK lines.
+                    // HORIZONTAL INSETS: deliberately NOT applying
+                    // `windowInsetsPadding(systemBars.only(Horizontal))` here.
+                    // The mini header above (AppleMusicMiniHeader's Row, line ~1798)
+                    // has NO horizontal systemBars padding — its parent Box only
+                    // applies `windowInsetsPadding(WindowInsets(top = ...))` for the
+                    // notch/status bar TOP inset. So the album art's LEFT edge sits
+                    // at exactly AppleMusicContentPadding (28dp) from the screen edge.
+                    //
+                    // If we added systemBars horizontal padding to this lyrics overlay
+                    // Box, the lyrics' left edge would be pushed further right than
+                    // the album art (by systemBars.left), breaking alignment. Skipping
+                    // the horizontal inset keeps the lyrics overlay's bounds identical
+                    // to the mini header's bounds — both at 0..screenWidth with no
+                    // system-bar horizontal inset — so the inner 28dp-based padding
+                    // calculations align perfectly.
+                    //
+                    // (Vertical inset is also intentionally skipped: the overlay is
+                    // explicitly positioned via .offset(y = miniHeaderHeight) below
+                    // the mini header, and the bottom inset is handled by the parent
+                    // weighted Box / navigationBarsPadding on the controls below.)
                     Box(
                         modifier =
                             Modifier
                                 .fillMaxWidth()
                                 .height(maxHeight - miniHeaderHeight)
                                 .offset(y = miniHeaderHeight)
-                                .windowInsetsPadding(
-                                    WindowInsets.systemBars.only(WindowInsetsSides.Horizontal),
-                                )
                                 .pointerInput(lyricsOpen) {
                                     if (!lyricsOpen) return@pointerInput
                                     awaitEachGesture {
@@ -1067,62 +1072,67 @@ fun AppleMusicPlayerContent(
                                     }
                                 },
                     ) {
-                        // HORIZONTAL PADDING — mirror the standalone LyricsScreen's
-                        // AppleMusicLyricsPane (LyricsScreen.kt:1208-1217) behaviour:
-                        //   • fillMaxSize()
-                        //   • padding(horizontal = AppleMusicContentPadding)
-                        //   • NO clipToBounds()
+                        // HORIZONTAL PADDING — compensate for the mocharealm
+                        // KaraokeLineText library's INTERNAL 16dp horizontal padding
+                        // (see lyrics-ui-android sources: KaraokeLineText.kt line ~514
+                        // applies `padding(vertical = 8.dp, horizontal = 16.dp)` to its
+                        // Column for non-accompaniment lines).
                         //
-                        // Why NO clipToBounds (reverting the previous fix at commit
-                        // 21d193444): the previous fix added clipToBounds() AFTER the
-                        // padding to "cleanly" clip any karaoke-line overflow at the
-                        // padded bounds. But the mocharealm KaraokeLyricsView library
-                        // renders the active (currently-sung) line with a ~1.6-1.8x
-                        // font-size emphasis AND lays out each syllable as a separate
-                        // Text in a non-wrapping Row. For long word-synced Japanese
-                        // CJK lines, the active line's rendered width STILL exceeds
-                        // the parent's max width even at 24dp padding, and
-                        // clipToBounds() then hard-slices the last character at the
-                        // padded boundary — which the user still perceives as a
-                        // cut-off.
+                        // The album art's left edge sits at AppleMusicContentPadding
+                        // (28dp) from the screen edge (via AppleMusicMiniHeader's Row
+                        // padding). For the lyrics TEXT left edge to align EXACTLY with
+                        // the album art's left edge, we need:
                         //
-                        // The standalone LyricsScreen's AppleMusicLyricsPane does NOT
-                        // use clipToBounds() for exactly this reason: any residual
-                        // overflow is allowed to extend into the empty padded area
-                        // (between the lyrics pane and the system-bar edge) and only
-                        // gets clipped by the physical screen edge if the line is
-                        // truly wider than the screen. The user perceives this as
-                        // "text running close to the edge" rather than "text sliced
-                        // at a hard boundary", which is the same behaviour Apple
-                        // Music's own lyrics view exhibits.
+                        //   our_padding + library_padding(16dp) = AppleMusicContentPadding(28dp)
+                        //   our_padding = 12dp
                         //
-                        // PADDING VALUE: AppleMusicContentPadding (28dp) — NOT 24dp.
-                        // The mini header above this overlay (AppleMusicMiniHeader,
-                        // line ~1798) uses `padding(horizontal = AppleMusicContentPadding)`
-                        // for its Row, which means the album art's LEFT edge sits at
-                        // 28dp from the screen edge. The lyrics MUST use the same
-                        // 28dp horizontal padding so the lyrics' left edge aligns
-                        // exactly with the album art's left edge. The previous fix
-                        // used 24dp (matching the standalone LyricsScreen's pane),
-                        // which left the lyrics 4dp to the LEFT of the album art —
-                        // visually misaligned with the mini header.
+                        // Previous fix (commit 7e8503806) used AppleMusicContentPadding
+                        // (28dp) directly, which left the lyrics text at 28 + 16 = 44dp
+                        // from the screen edge — 16dp to the RIGHT of the album art.
+                        // The user reported this as "still shifted towards right a bit
+                        // and not aligned".
                         //
-                        // This mirrors the bottom-sheet lyrics behaviour (no clip,
-                        // padding-only) while also aligning with the album art.
+                        // Using AppleMusicContentPadding - 16.dp (= 12dp) as our padding
+                        // makes the lyrics text left edge land at 12 + 16 = 28dp from
+                        // the screen edge, EXACTLY aligned with the album art.
+                        //
+                        // LIBRARY WRAP BEHAVIOUR: the mocharealm library DOES wrap long
+                        // lines — `calculateBalancedLines` (LyricsLayoutCalculator.kt
+                        // line ~273) uses Knuth's optimal line-breaking algorithm with
+                        // the availableWidthPx from BoxWithConstraints inside
+                        // KaraokeLineText. Long word-synced lines that exceed the
+                        // available width are automatically broken into multiple visual
+                        // rows. By reducing our padding from 28dp to 12dp, we give the
+                        // library MORE width to work with (screen_width - 24dp instead
+                        // of screen_width - 56dp), so wrap triggers later for
+                        // medium-length lines (fewer awkward wraps) but still triggers
+                        // for genuinely long lines (matching the user's request:
+                        // "whenever a song with enhanced style word synced lyrics have
+                        // long enough lines that cross the display area, shift the
+                        // words into another line").
+                        //
+                        // NO clipToBounds(): mirrors the standalone LyricsScreen's
+                        // AppleMusicLyricsPane (LyricsScreen.kt:1208-1217), which uses
+                        // fillMaxSize() + padding(horizontal = ...) with NO clip. Any
+                        // residual draw-phase overflow (e.g., the swell animation
+                        // scaling a syllable by ~10% beyond its layout width) is
+                        // allowed to extend into the empty padded area and only gets
+                        // clipped by the physical screen edge if truly necessary.
+                        val lyricsHorizontalPadding = AppleMusicContentPadding - 16.dp
                         when (lyricsMode) {
                             LyricsMode.V2 -> LyricsV2(
                                 sliderPositionProvider = lyricsPosProvider,
                                 lyricsSyncOffset = lyricsSyncOffset,
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .padding(horizontal = AppleMusicContentPadding),
+                                    .padding(horizontal = lyricsHorizontalPadding),
                             )
                             LyricsMode.ENHANCED -> LyricsEnhanced(
                                 sliderPositionProvider = lyricsPosProvider,
                                 lyricsSyncOffset = lyricsSyncOffset,
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .padding(horizontal = AppleMusicContentPadding),
+                                    .padding(horizontal = lyricsHorizontalPadding),
                             )
                         }
                     }
