@@ -390,11 +390,24 @@ object LyricsUtils {
     fun shouldAutoTranslate(lyrics: String, targetLanguage: String): Boolean {
         if (lyrics.isBlank()) return false
         val allowedScripts = allowedScriptsForLanguage(targetLanguage)
+        // When the target is English (or unset, which defaults to English), we also
+        // trigger on non-ASCII Latin letters (á, é, í, ó, ú, ñ, ü, ç, etc.) so that
+        // Spanish/French/German/Portuguese/Italian lyrics auto-translate to English.
+        // Without this, Latin-to-English pairs never fire because both share the
+        // Latin script. For non-English Latin targets (e.g. Spanish→French), we
+        // skip this heuristic to avoid wasteful same-script translations.
+        val targetIsEnglish = isEnglishTarget(targetLanguage)
         return lyrics.asSequence().any { char ->
             if (!char.isLetter()) return@any false
             val script = UnicodeScript.of(char.code)
-            script !in allowedScripts
+            script !in allowedScripts ||
+                (targetIsEnglish && script == UnicodeScript.LATIN && char.code > 127)
         }
+    }
+
+    private fun isEnglishTarget(language: String): Boolean {
+        val normalized = language.trim().lowercase().replace('_', '-').substringBefore('-')
+        return normalized.isEmpty() || normalized == "english" || normalized == "en"
     }
 
     private fun allowedScriptsForLanguage(language: String): Set<UnicodeScript> {

@@ -1523,7 +1523,17 @@ object YTPlayerUtils {
         return NewPipeUtils
             .getStreamUrl(format, videoId)
             .map { url ->
-                if (client == null) url else StreamClientUtils.patchClientVersion(url, client.clientVersion)
+                if (client == null) {
+                    url
+                } else {
+                    val patched = StreamClientUtils.patchClientVersion(url, client.clientVersion)
+                    // Web-family clients (WEB / WEB_REMIX / WEB_CREATOR) mint a poToken in the
+                    // player request; YouTube's CDN requires the same token as a `pot` query
+                    // parameter on the stream URL itself, otherwise it answers 403.
+                    authState.resolvePlayerPoToken(client)?.let { poToken ->
+                        StreamClientUtils.appendPoToken(patched, poToken)
+                    } ?: patched
+                }
             }.onSuccess { Timber.tag(logTag).i("Stream URL obtained successfully") }
     }
 
