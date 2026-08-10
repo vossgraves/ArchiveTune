@@ -117,7 +117,6 @@ include(":lastfm")
 include(":canvas")
 include(":shazamkit")
 include(":spotifycore")
-include(":moriextractor")
 include(":morideobfuscator")
 include(":jiosaavn")
 

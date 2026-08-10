@@ -90,3 +90,26 @@ git push --force-with-lease origin dev
 
 **Actions → Upstream Sync → Run workflow** (branch `main`). Watch the log;
 the report issue appears within a minute of the run finishing.
+
+## 2026-08 koiverse cleanup (read before the next sync run)
+
+The koiverse phone-home surface was removed from the fork:
+
+- `TogetherOnlineApi` / `TogetherOnlineEndpoint` / `TogetherOnlineHost` and the
+  `MusicTogetherConnectionMode.ONLINE` path are gone. Listen Together now runs
+  on LAN (`TogetherServer`/`TogetherClient`) and the vivimusic public servers
+  (`TogetherPublicServers`/`TogetherPublicClient`) only.
+- `ArchiveTuneKoiverseServer.txt`, `DataServer.txt`, `Koiverse.jks`,
+  `Koiverse.jks.base64` were deleted; `DataServer.txt` and the
+  `DATA_SERVER_URL`/`API_BEARER_TOKEN`/`CANVAS_BEARER_TOKEN` BuildConfig fields
+  are gone from `app/build.gradle.kts`.
+- The canvas artwork proxy (`ArchiveTuneCanvas` → artwork-archivetune.koiiverse.cloud
+  / artwork.boidu.dev) was removed; canvas now resolves via
+  `SpotifyCanvasProvider` and `AppleMusicProvider`.
+- The `moriextractor` submodule was dropped (phantom dependency) and the inert
+  cipher UI (`ChiperSettings`, `MoriCipherUpdateWorker`, cipher package) was
+  removed while the `morideobfuscator` module was kept.
+
+If an upstream merge reintroduces any `koiiverse.cloud` reference or the
+`TogetherOnlineEndpoint` path, `scripts/upstream_sync.sh` Phase 4 will abort.
+Do not "restore" these files: they are fork-invariant removals.

@@ -42,17 +42,24 @@ the fork invariants below — especially when merging upstream changes.
    `app/persistent-debug.keystore` when the `KEYSTORE` secret is absent
    (forks have no release keystore). Upstream's workflows must not overwrite
    this logic (see `build.yml`, `release.yml`).
-5. **Protected files** — `Koiverse.jks`, `Koiverse.jks.base64`,
-   `ArchiveTuneKoiverseServer.txt`, `DataServer.txt`, and the `applicationId`
-   (`moe.rukamori.archivetune`) in `app/build.gradle.kts` are fork-identity
-   files: do not adopt upstream changes to them without explicit instruction.
+5. **Listen Together runs on LAN + the vivimusic public servers only** —
+   there is no koiverse REST/WS path and no `*.koiiverse.cloud` or
+   `raw.githubusercontent.com/koiverse/*` network call anywhere in the tree.
+   Public rooms connect via `TogetherPublicServers` (vivimusic WSS endpoints)
+   and `TogetherPublicClient`; LAN rooms via `TogetherServer`/`TogetherClient`.
+6. **Protected files** — the `applicationId` (`moe.rukamori.archivetune`) in
+   `app/build.gradle.kts` is a fork-identity file: do not adopt upstream
+   changes to it without explicit instruction. (`Koiverse.jks`,
+   `Koiverse.jks.base64`, `ArchiveTuneKoiverseServer.txt` and `DataServer.txt`
+   were removed as part of the koiverse phone-home cleanup and must never be
+   restored.)
 
 ## Submodules
 
 - `core` → **vossgraves/core** (our fork of rukamori/core). Sync strategy:
   merge `rukamori/core` into `vossgraves/core` first, then pin the gitlink to
   the merged commit — never blindly adopt upstream's gitlink.
-- `lyrics`, `moriextractor`, `IconPack`, `morideobfuscator` → rukamori-owned;
+- `lyrics`, `IconPack`, `morideobfuscator` → rukamori-owned;
   always adopt upstream's recorded pointers.
 
 ## Automated upstream sync

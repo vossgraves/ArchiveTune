@@ -29,10 +29,7 @@ AI_USED=false
 
 # --- Fork invariants (keep in sync with AGENTS.md) ---------------------------
 NEVER_TOUCH=(
-  "Koiverse.jks"
-  "Koiverse.jks.base64"
-  "ArchiveTuneKoiverseServer.txt"
-  "DataServer.txt"
+  "app/persistent-debug.keystore"
 )
 EXPECTED_APP_ID='applicationId = "moe.rukamori.archivetune"'
 # -----------------------------------------------------------------------------
@@ -158,7 +155,7 @@ fi
 
 # --- Submodule pointers -------------------------------------------------------
 # rukamori-owned submodules: adopt upstream's recorded pointers exactly.
-for sm in lyrics moriextractor IconPack morideobfuscator; do
+for sm in lyrics IconPack morideobfuscator; do
   SHA=$(git ls-tree upstream/dev "$sm" | awk '{print $3}')
   if [ -n "$SHA" ]; then
     (cd "$sm" && git fetch --quiet origin && git checkout --quiet "$SHA") \
@@ -195,6 +192,17 @@ grep -q "TelegramDataSource" \
   || die "telegram data source no longer wired in MusicService.kt"
 grep -q "persistent-debug.keystore" .github/workflows/build.yml \
   || die "fork CI signing patch (persistent-debug.keystore) lost in build.yml"
+
+# 4b2. koiverse phone-home must never come back
+if grep -rq "koiiverse.cloud" app/src canvas/src; then
+  die "koiverse phone-home reintroduced after merge"
+fi
+if grep -rq "TogetherOnlineEndpoint" app/src; then
+  die "koiverse together path reintroduced after merge"
+fi
+grep -q "TogetherPublicServers" \
+  app/src/main/kotlin/moe/rukamori/archivetune/playback/MusicService.kt \
+  || die "vivimusic listen-together path lost after merge"
 
 # 4c. commit the merge, then prove protected files are byte-identical to backup
 git commit --quiet -m "chore(sync): merge upstream/dev ($BEHIND commits) + core submodule sync" \
@@ -253,7 +261,7 @@ log "Phase 7: report"
   echo
   echo "### Submodule actions"
   echo "- \`core\` -> vossgraves/core @ \`${CORE_NEW_SHA:0:9}\` (merged with rukamori/core first)"
-  echo "- \`lyrics\`, \`moriextractor\`, \`IconPack\`, \`morideobfuscator\` -> upstream pointers"
+  echo "- \`lyrics\`, \`IconPack\`, \`morideobfuscator\` -> upstream pointers"
   if [ "${#AI_RESOLVED_FILES[@]}" -gt 0 ] || [ "$AI_USED" = true ]; then
     echo
     echo "### AI-resolved files (review these)"
