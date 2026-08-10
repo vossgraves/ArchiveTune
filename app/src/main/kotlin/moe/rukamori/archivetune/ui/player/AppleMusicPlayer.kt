@@ -87,7 +87,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
@@ -1068,49 +1067,62 @@ fun AppleMusicPlayerContent(
                                     }
                                 },
                     ) {
-                        // HORIZONTAL PADDING + CLIP:
+                        // HORIZONTAL PADDING — mirror the standalone LyricsScreen's
+                        // AppleMusicLyricsPane (LyricsScreen.kt:1208-1217) behaviour:
+                        //   • fillMaxSize()
+                        //   • padding(horizontal = AppleMusicContentPadding)
+                        //   • NO clipToBounds()
                         //
-                        // 24dp horizontal padding matches the standalone LyricsScreen's
-                        // AppleMusicLyricsPane (LyricsScreen.kt:1215). The previous 16dp
-                        // value was chosen to "maximize the lyrics area", but the
-                        // mocharealm KaraokeLyricsView library renders the active
-                        // (currently-sung) line with a ~1.6-1.8x font-size emphasis
-                        // AND lays out each syllable as a separate Text in a
-                        // non-wrapping Row. For word-synced Japanese lyrics, this
-                        // means the active line's rendered width can exceed the
-                        // parent's max width — and without an explicit clip, the
-                        // overflow extends PAST the parent's padded bounds all the
-                        // way to the screen edge, making the cutoff look catastrophic
-                        // (last character sliced at the physical screen edge).
+                        // Why NO clipToBounds (reverting the previous fix at commit
+                        // 21d193444): the previous fix added clipToBounds() AFTER the
+                        // padding to "cleanly" clip any karaoke-line overflow at the
+                        // padded bounds. But the mocharealm KaraokeLyricsView library
+                        // renders the active (currently-sung) line with a ~1.6-1.8x
+                        // font-size emphasis AND lays out each syllable as a separate
+                        // Text in a non-wrapping Row. For long word-synced Japanese
+                        // CJK lines, the active line's rendered width STILL exceeds
+                        // the parent's max width even at 24dp padding, and
+                        // clipToBounds() then hard-slices the last character at the
+                        // padded boundary — which the user still perceives as a
+                        // cut-off.
                         //
-                        // 24dp padding gives the active-line emphasis scaling more
-                        // headroom so most lines fit, and clipToBounds() ensures any
-                        // residual overflow is clipped at the padded bounds (24dp
-                        // from the screen edge) — so even in the worst case the user
-                        // sees a clean cut with visible right margin, not text
-                        // running off the screen.
+                        // The standalone LyricsScreen's AppleMusicLyricsPane does NOT
+                        // use clipToBounds() for exactly this reason: any residual
+                        // overflow is allowed to extend into the empty padded area
+                        // (between the lyrics pane and the system-bar edge) and only
+                        // gets clipped by the physical screen edge if the line is
+                        // truly wider than the screen. The user perceives this as
+                        // "text running close to the edge" rather than "text sliced
+                        // at a hard boundary", which is the same behaviour Apple
+                        // Music's own lyrics view exhibits.
                         //
-                        // This specifically fixes word-synced Japanese lyrics in
-                        // Apple Music style. Line-by-line lyrics (SyncedLine) wrap
-                        // naturally via Text's softWrap, so they never had this
-                        // issue. The cut-off was exclusive to the word-synced
-                        // (KaraokeLine) path.
+                        // PADDING VALUE: AppleMusicContentPadding (28dp) — NOT 24dp.
+                        // The mini header above this overlay (AppleMusicMiniHeader,
+                        // line ~1798) uses `padding(horizontal = AppleMusicContentPadding)`
+                        // for its Row, which means the album art's LEFT edge sits at
+                        // 28dp from the screen edge. The lyrics MUST use the same
+                        // 28dp horizontal padding so the lyrics' left edge aligns
+                        // exactly with the album art's left edge. The previous fix
+                        // used 24dp (matching the standalone LyricsScreen's pane),
+                        // which left the lyrics 4dp to the LEFT of the album art —
+                        // visually misaligned with the mini header.
+                        //
+                        // This mirrors the bottom-sheet lyrics behaviour (no clip,
+                        // padding-only) while also aligning with the album art.
                         when (lyricsMode) {
                             LyricsMode.V2 -> LyricsV2(
                                 sliderPositionProvider = lyricsPosProvider,
                                 lyricsSyncOffset = lyricsSyncOffset,
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .padding(horizontal = 24.dp)
-                                    .clipToBounds(),
+                                    .padding(horizontal = AppleMusicContentPadding),
                             )
                             LyricsMode.ENHANCED -> LyricsEnhanced(
                                 sliderPositionProvider = lyricsPosProvider,
                                 lyricsSyncOffset = lyricsSyncOffset,
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .padding(horizontal = 24.dp)
-                                    .clipToBounds(),
+                                    .padding(horizontal = AppleMusicContentPadding),
                             )
                         }
                     }
