@@ -52,11 +52,14 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
@@ -409,7 +412,15 @@ fun AppleMusicPlayerContent(
         val snapshot = currentLyrics ?: return@LaunchedEffect
         val text = snapshot.lyrics ?: return@LaunchedEffect
         if (text.isBlank() || text == LyricsEntity.LYRICS_NOT_FOUND) return@LaunchedEffect
-        if (snapshot.source == LyricsEntity.Source.AI_TRANSLATION.value) return@LaunchedEffect
+        // Skip if these lyrics were already AI-translated AND actually contain
+        // translation content. The `hasTranslation` guard allows retrying when a
+        // previous attempt no-op'd (AI returned the same text — a common failure
+        // mode for CJK lyrics that were previously mangled by the span-joining
+        // bug in AiLyricsDocument.readTtmlLineText). Without this, those songs
+        // would be blocked from retrying forever.
+        if (snapshot.source == LyricsEntity.Source.AI_TRANSLATION.value &&
+            LyricsUtils.hasTranslation(text)
+        ) return@LaunchedEffect
         if (!LyricsUtils.shouldAutoTranslate(text, translatorTargetLang)) return@LaunchedEffect
         lyricsMenuViewModel.translateLyricsWithAi(
             mediaMetadata = mediaMetadata,
@@ -1029,12 +1040,25 @@ fun AppleMusicPlayerContent(
                     // The Column is sized to fill the area BELOW the mini header
                     // (maxHeight - miniHeaderHeight) and offset down by
                     // miniHeaderHeight so it doesn't cover the mini header.
+                    //
+                    // HORIZONTAL INSETS: the inline overlay must apply system-bar
+                    // horizontal padding (status bar on landscape, gesture-nav
+                    // pill / display cutout on portrait) AND a minimum horizontal
+                    // margin, mirroring the standalone LyricsScreen.kt which uses
+                    // windowInsetsPadding(systemBars) + 24dp horizontal padding.
+                    // Without this, the lyrics text extends to the absolute screen
+                    // edge and the rightmost characters are clipped on devices
+                    // with curved edges / side cutouts — particularly visible on
+                    // long Japanese CJK lines.
                     Box(
                         modifier =
                             Modifier
                                 .fillMaxWidth()
                                 .height(maxHeight - miniHeaderHeight)
                                 .offset(y = miniHeaderHeight)
+                                .windowInsetsPadding(
+                                    WindowInsets.systemBars.only(WindowInsetsSides.Horizontal),
+                                )
                                 .pointerInput(lyricsOpen) {
                                     if (!lyricsOpen) return@pointerInput
                                     awaitEachGesture {
@@ -1047,12 +1071,16 @@ fun AppleMusicPlayerContent(
                             LyricsMode.V2 -> LyricsV2(
                                 sliderPositionProvider = lyricsPosProvider,
                                 lyricsSyncOffset = lyricsSyncOffset,
-                                modifier = Modifier.fillMaxSize(),
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(horizontal = 16.dp),
                             )
                             LyricsMode.ENHANCED -> LyricsEnhanced(
                                 sliderPositionProvider = lyricsPosProvider,
                                 lyricsSyncOffset = lyricsSyncOffset,
-                                modifier = Modifier.fillMaxSize(),
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(horizontal = 16.dp),
                             )
                         }
                     }

@@ -354,7 +354,16 @@ fun LyricsScreen(
         val snapshot = currentLyrics ?: return@LaunchedEffect
         val text = snapshot.lyrics ?: return@LaunchedEffect
         if (text.isBlank() || text == LyricsEntity.LYRICS_NOT_FOUND) return@LaunchedEffect
-        if (snapshot.source == LyricsEntity.Source.AI_TRANSLATION.value) return@LaunchedEffect
+        // Skip if these lyrics were already AI-translated AND actually contain
+        // translation content. The `hasTranslation` guard is important: a previous
+        // translation attempt may have no-op'd (AI returned the same text — a
+        // common failure mode for CJK lyrics that were previously mangled by the
+        // span-joining bug in AiLyricsDocument.readTtmlLineText). Without this
+        // check, those songs would be blocked from retrying forever even after
+        // the parser is fixed.
+        if (snapshot.source == LyricsEntity.Source.AI_TRANSLATION.value &&
+            LyricsUtils.hasTranslation(text)
+        ) return@LaunchedEffect
 
         if (!LyricsUtils.shouldAutoTranslate(text, translatorTargetLang)) return@LaunchedEffect
 

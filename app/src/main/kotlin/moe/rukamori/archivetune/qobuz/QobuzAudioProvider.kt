@@ -488,15 +488,117 @@ object QobuzAudioProvider {
             if (cached.expiresAt > now) return cached.match
             searchCache.remove(key)
         }
-        val searchQuery =
-            listOf(query.artists.firstOrNull()?.searchArtist().orEmpty(), query.title.searchTitle())
-                .filter { it.isNotBlank() }
-                .joinToString(" ")
-                .ifBlank { query.title }
-        val match = bestMatch(backend, searchQuery, query)
+        val match = resolveTrackIdWithFallbacks(backend, query)
         searchCache[key] = CachedSearch(match, now + SEARCH_CACHE_MS)
         return match
     }
+
+    /**
+     * Tries a sequence of search queries against [backend] until one produces a
+     * match above [MIN_MATCH_SCORE].
+     *
+     * The primary query is `"{artist} {title}"` — same as before. When that
+     * returns nothing, we fall back to:
+     *
+     *  1. `"{title}"` alone — for songs whose YouTube-side artist name doesn't
+     *     match how Qobuz indexes the artist (e.g. YT has "Reira Ushio" but
+     *     Qobuz has "牛尾里的"). Forcing the artist into the query made Qobuz's
+     *     search return zero results, even though the track is on Qobuz.
+     *
+     *  2. `"{artist} {latin-only-title}"` — for bilingual YT titles like
+     *     "恋愛サーキュレーション - Renai Circulation", where Qobuz only has the
+     *     romaji side. The full bilingual search query confused Qobuz into
+     *     returning nothing.
+     *
+     *  3. `"{latin-only-title}"` alone — combination of 1 and 2 for the worst
+     *     case (bilingual title + artist name mismatch).
+     *
+     * Each fallback only runs when the previous one returned no match above
+     * threshold, so well-matched songs still resolve with a single search.
+     */
+    private fun resolveTrackIdWithFallbacks(backend: Backend, query: Query): Match? {
+        val artist = query.artists.firstOrNull()?.searchArtist().orEmpty()
+        val title = query.title.searchTitle()
+
+        // Primary: artist + full title.
+        val primaryQuery =
+            listOf(artist, title)
+                .filter { it.isNotBlank() }
+                .joinToString(" ")
+                .ifBlank { title }
+        bestMatch(backend, primaryQuery, query)?.let { return it }
+
+        // Fallback 1: title only (drop the artist).
+        if (artist.isNotBlank() && title.isNotBlank() && title != primaryQuery) {
+            bestMatch(backend, title, query)?.let { return it }
+        }
+
+        // Fallback 2: artist + Latin-only side of a bilingual title.
+        val latinTitle = title.latinOnlySubstring()
+        if (latinTitle.isNotBlank() && latinTitle != title) {
+            val latinWithArtist =
+                listOf(artist, latinTitle)
+                    .filter { it.isNotBlank() }
+                    .joinToString(" ")
+                    .ifBlank { latinTitle }
+            bestMatch(backend, latinWithArtist, query)?.let { return it }
+
+            // Fallback 3: Latin-only title alone.
+            if (artist.isNotBlank()) {
+                bestMatch(backend, latinTitle, query)?.let { return it }
+            }
+        }
+
+        return null
+    }
+
+    /**
+     * Extracts the Latin/ASCII portion of a bilingual title.
+     *
+     * YouTube Music commonly formats Japanese/Korean titles as
+     * `"原題 - Romaji Title"` or `"Romaji Title - 原題"`, separated by " - ".
+     * Qobuz typically indexes only ONE side (either the original script or the
+     * romaji), so searching with the full bilingual string often returns zero
+     * results. This helper returns just the Latin side when the title is
+     * bilingual, so we can retry the search with a Qobuz-friendly query.
+     *
+     * For titles that are entirely Latin or entirely CJK, this returns the
+     * Latin remainder after stripping CJK characters (possibly empty).
+     */
+    private fun String.latinOnlySubstring(): String {
+        // Try the " - " bilingual split first.
+        val dashSplit = split(" - ")
+        if (dashSplit.size == 2) {
+            val left = dashSplit[0].trim()
+            val right = dashSplit[1].trim()
+            val leftHasCJK = left.any { it.isCjk() }
+            val rightHasCJK = right.any { it.isCjk() }
+            if (leftHasCJK && !rightHasCJK && right.isNotEmpty()) return right
+            if (rightHasCJK && !leftHasCJK && left.isNotEmpty()) return left
+        }
+        // Fall back to stripping all CJK characters and returning the remainder.
+        return replace(CJK_STRIPPING_REGEX, " ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+    }
+
+    private fun Char.isCjk(): Boolean =
+        code in 0x3040..0x30ff || // Hiragana + Katakana
+            code in 0x3400..0x4dbf || // CJK Ext A
+            code in 0x4e00..0x9fff || // CJK Unified Ideographs
+            code in 0xf900..0xfaff || // CJK Compatibility Ideographs
+            code in 0xac00..0xd7af // Hangul Syllables
+
+    private val CJK_STRIPPING_REGEX =
+        Regex(
+            "[" +
+                "\\u3040-\\u30ff" +
+                "\\u3400-\\u4dbf" +
+                "\\u4e00-\\u9fff" +
+                "\\uf900-\\ufaff" +
+                "\\uac00-\\ud7af" +
+                "]+",
+        )
 
     /** Runs search and scores results against [query], returning the best match above threshold. */
     private fun bestMatch(
@@ -932,7 +1034,33 @@ object QobuzAudioProvider {
             ?.lowercase(Locale.US)
             ?.let { Normalizer.normalize(it, Normalizer.Form.NFD) }
             ?.replace(Regex("\\p{Mn}+"), "")
-            ?.replace(Regex("[^a-z0-9]+"), " ")
+            // Preserve CJK characters (Hiragana, Katakana, CJK Ideographs, Hangul,
+            // and fullwidth/halfwidth forms) instead of stripping them as noise.
+            //
+            // The previous pattern `[^a-z0-9]+` deleted every Japanese/Korean/
+            // Chinese character from the normalized form. When Qobuz returned a
+            // Japanese-only title (e.g. "恋愛サーキュレーション") for a song whose
+            // YouTube Music title was bilingual ("恋愛サーキュレーション - Renai Circulation"),
+            // the candidate title normalized to "" and `scoreMatch` returned
+            // `Int.MIN_VALUE` — so lossless matches silently failed for CJK songs
+            // that are actually available on Qobuz.
+            //
+            // Keeping CJK lets `significantTokens` produce real tokens for kana/kanji
+            // runs, so `tokenOverlap` can score Japanese-on-Japanese matches the same
+            // way it scores Latin-on-Latin.
+            ?.replace(
+                Regex(
+                    "[^a-z0-9" +
+                        "\\u3040-\\u30ff" + // Hiragana + Katakana (incl. extensions)
+                        "\\u3400-\\u4dbf" + // CJK Ext A
+                        "\\u4e00-\\u9fff" + // CJK Unified Ideographs
+                        "\\uf900-\\ufaff" + // CJK Compatibility Ideographs
+                        "\\uac00-\\ud7af" + // Hangul Syllables
+                        "\\uff00-\\uffef" + // Halfwidth/Fullwidth Forms (incl. fullwidth Latin)
+                        "]+",
+                ),
+                " ",
+            )
             ?.trim()
             .orEmpty()
 
