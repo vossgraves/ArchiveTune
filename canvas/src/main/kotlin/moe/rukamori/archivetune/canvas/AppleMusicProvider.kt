@@ -17,11 +17,14 @@ import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.parameter
+import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.KotlinxSerializationConverter
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
@@ -34,32 +37,223 @@ import java.util.concurrent.ConcurrentHashMap
 
 object AppleMusicProvider {
     // ── Logging ──────────────────────────────────────────────────────────────────────
+    //
+    // Routed through GlobalLog so the canvas diagnostic lines show up in the
+    // in-app logcat viewer with the proper tag. Previously this used
+    // `println(...)` which Android redirects to logcat as `I/System.out:` —
+    // losing the tag and the log level, and bypassing the host app's log
+    // pipeline (which is what allows the in-app log viewer to filter by tag).
+    //
+    // The logger callback is set by the host app (App.kt) on startup, mirroring
+    // how PaxsenixLyrics.logger is wired. When null we fall back to plain
+    // println so this module stays standalone-testable without the host app.
+
+    private const val LOG_TAG = "AppleMusicCanvas"
+
+    // Log levels mirroring android.util.Log so this pure-JVM module doesn't
+    // depend on the Android framework. The host app (App.kt) maps these to
+    // android.util.Log when routing through GlobalLog.
+    private const val LOG_LEVEL_VERBOSE = 2
+    private const val LOG_LEVEL_DEBUG = 3
+    private const val LOG_LEVEL_INFO = 4
+    private const val LOG_LEVEL_WARN = 5
+    private const val LOG_LEVEL_ERROR = 6
+
+    var logger: ((level: Int, tag: String, message: String) -> Unit)? = null
 
     private object Log {
-        fun d(msg: String) = println("AppleMusicCanvas: D: $msg")
+        fun d(msg: String) {
+            val logger = AppleMusicProvider.logger
+            if (logger != null) {
+                logger(AppleMusicProvider.LOG_LEVEL_DEBUG, AppleMusicProvider.LOG_TAG, msg)
+            } else {
+                println("${AppleMusicProvider.LOG_TAG}: D: $msg")
+            }
+        }
 
-        fun w(msg: String) = println("AppleMusicCanvas: W: $msg")
+        fun w(msg: String) {
+            val logger = AppleMusicProvider.logger
+            if (logger != null) {
+                logger(AppleMusicProvider.LOG_LEVEL_WARN, AppleMusicProvider.LOG_TAG, msg)
+            } else {
+                println("${AppleMusicProvider.LOG_TAG}: W: $msg")
+            }
+        }
 
         fun e(
             t: Throwable,
             msg: String,
         ) {
-            println("AppleMusicCanvas: E: $msg")
-            t.printStackTrace()
+            val logger = AppleMusicProvider.logger
+            if (logger != null) {
+                logger(AppleMusicProvider.LOG_LEVEL_ERROR, AppleMusicProvider.LOG_TAG, "$msg: ${t.message}")
+            } else {
+                println("${AppleMusicProvider.LOG_TAG}: E: $msg")
+                t.printStackTrace()
+            }
         }
     }
 
     // ── Constants ────────────────────────────────────────────────────────────────────
 
-    // Public read-only JWT used by the Apple Music web player for unauthenticated catalog reads.
-    private const val APPLE_MUSIC_TOKEN =
+    // Fallback Apple Music web player JWT — publicly distributed by Apple in
+    // their web player JavaScript bundle. Apple rotates it roughly every ~6
+    // months; the previous hardcoded value expired on 2026-06-17, which
+    // caused every AMP API request to silently 401 (and produced the
+    // `D/CanvasArtwork: No playable canvas resolved for <mediaId>` log lines).
+    //
+    // We now scrape a fresh token on first use (and on 401) from the Apple
+    // Music web player JS bundle via [ensureTokenFresh]. The hardcoded value
+    // is kept only as a last-resort fallback in case scraping fails (e.g.
+    // offline) so we don't NPE on the very first call.
+    private val fallbackAppleMusicToken: String =
         "eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6IldlYlBsYXlLaWQifQ" +
             ".eyJpc3MiOiJBTVBXZWJQbGF5IiwiaWF0IjoxNzc0NDU2MzgyLCJleHAiOjE3ODE3" +
             "MTM5ODIsInJvb3RfaHR0cHNfb3JpZ2luIjpbImFwcGxlLmNvbSJdfQ" +
             ".4n8qYF4qa18sL1E0G9A3qX35cD8wQ-IJcS9Bh8ZT8JV_yLBtVq46B-9-2ZS3EvWHuw3yK9BYFYAhAdTaDm38vQ"
 
+    @Volatile
+    private var appleMusicToken: String = fallbackAppleMusicToken
+
+    // JWT decoded `exp` epoch seconds, or 0 if unknown / unparseable.
+    @Volatile
+    private var appleMusicTokenExpAtSec: Long = 0L
+
+    // Last time we attempted to refresh the token, used to throttle retries
+    // when the Apple Music web player is unreachable.
+    @Volatile
+    private var appleMusicTokenLastRefreshAtMs: Long = 0L
+
+    private val tokenRefreshMutex = Mutex()
+
+    private const val APPLE_MUSIC_WEB_HOME = "https://music.apple.com/"
     private const val AMP_BASE_URL = "https://amp-api.music.apple.com"
     private const val CACHE_TTL_MS = 1000L * 60 * 60 * 24 // 24 hours
+    private const val APPLE_MUSIC_WEB_UA =
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36"
+
+    private val tokenClient by lazy {
+        HttpClient(OkHttp) {
+            install(HttpTimeout) {
+                requestTimeoutMillis = 10_000
+                connectTimeoutMillis = 8_000
+                socketTimeoutMillis = 10_000
+            }
+            defaultRequest {
+                header("User-Agent", APPLE_MUSIC_WEB_UA)
+                header("Accept", "text/html,application/xhtml+xml,application/javascript,*/*;q=0.8")
+                header("Accept-Language", "en-US,en;q=0.9")
+            }
+            expectSuccess = false
+        }
+    }
+
+    /**
+     * Forces a refresh of the cached Apple Music web player JWT by scraping it
+     * from the music.apple.com JavaScript bundle.
+     *
+     * Public so the host app can pre-warm the token on startup, but it's also
+     * called automatically by [ensureTokenFresh] when the cached token is
+     * missing or close to expiry.
+     */
+    suspend fun refreshToken(): String? =
+        tokenRefreshMutex.withLock {
+            appleMusicTokenLastRefreshAtMs = System.currentTimeMillis()
+            val fresh = scrapeTokenFromWeb()
+            if (fresh != null) {
+                appleMusicToken = fresh
+                appleMusicTokenExpAtSec = decodeJwtExpSec(fresh)
+                Log.d("Apple Music token refreshed from web player (exp=${appleMusicTokenExpAtSec}s)")
+            } else {
+                Log.w("Apple Music token refresh failed — falling back to hardcoded token")
+            }
+            fresh
+        }
+
+    /**
+     * Returns a usable Apple Music JWT, refreshing first if the cached one is
+     * missing or past its expiry. Refresh failures fall back to whatever we
+     * have on hand (including the hardcoded fallback).
+     */
+    private suspend fun ensureTokenFresh(): String {
+        val nowSec = System.currentTimeMillis() / 1000L
+        val needsRefresh =
+            appleMusicTokenExpAtSec == 0L || appleMusicTokenExpAtSec - nowSec < 60L * 60L * 24L
+        if (!needsRefresh) return appleMusicToken
+
+        // Throttle: don't hammer music.apple.com more than once a minute.
+        val sinceLast = System.currentTimeMillis() - appleMusicTokenLastRefreshAtMs
+        if (sinceLast in 1..60_000L) return appleMusicToken
+
+        // If the current token is still strictly valid, serve it and let the
+        // 401 handler in [searchAndFetchMotion] force a refresh on rejection.
+        if (appleMusicTokenExpAtSec == 0L || appleMusicTokenExpAtSec > nowSec) {
+            return appleMusicToken
+        }
+
+        return refreshToken() ?: appleMusicToken
+    }
+
+    private suspend fun scrapeTokenFromWeb(): String? =
+        try {
+            val homeResponse = tokenClient.get(APPLE_MUSIC_WEB_HOME)
+            if (homeResponse.status != HttpStatusCode.OK) {
+                Log.w("Apple Music home fetch failed: ${homeResponse.status}")
+                return null
+            }
+            val html = homeResponse.bodyAsText()
+
+            directJwtRegex.find(html)?.let { return it.value }
+
+            val jsBundleMatch = jsBundleRegex.find(html) ?: run {
+                Log.w("Apple Music token: no JS bundle URL found in home HTML")
+                return null
+            }
+            val rawJsUrl = jsBundleMatch.groupValues[1]
+            val jsBundleUrl =
+                when {
+                    rawJsUrl.startsWith("http") -> rawJsUrl
+                    rawJsUrl.startsWith("//") -> "https:$rawJsUrl"
+                    rawJsUrl.startsWith("/") -> "https://music.apple.com$rawJsUrl"
+                    else -> "https://music.apple.com/$rawJsUrl"
+                }
+
+            val jsResponse = tokenClient.get(jsBundleUrl)
+            if (jsResponse.status != HttpStatusCode.OK) {
+                Log.w("Apple Music token: JS bundle fetch failed: ${jsResponse.status}")
+                return null
+            }
+            val js = jsResponse.bodyAsText()
+            directJwtRegex.find(js)?.value.also {
+                if (it == null) Log.w("Apple Music token: no JWT found in JS bundle $jsBundleUrl")
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.e(e, "Apple Music token scrape error")
+            null
+        }
+
+    // Apple Music web player JWTs are ES256-signed with 3 base64url segments.
+    private val directJwtRegex: Regex =
+        Regex("""eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}""")
+
+    private val jsBundleRegex: Regex =
+        Regex("""(?:src|href)=["']([^"']*index-[A-Za-z0-9._-]+\.js)["']""")
+
+    /** Decodes the `exp` claim of a JWT without verifying the signature. */
+    private fun decodeJwtExpSec(jwt: String): Long {
+        val parts = jwt.split(".")
+        if (parts.size != 3) return 0L
+        val payload =
+            runCatching {
+                val normalized = parts[1].replace('-', '+').replace('_', '/')
+                val padded = normalized + "=".repeat((4 - normalized.length % 4) % 4)
+                String(java.util.Base64.getDecoder().decode(padded))
+            }.getOrNull() ?: return 0L
+        val expMatch = """"exp"\s*:\s*(\d+)"""".toRegex().find(payload) ?: return 0L
+        return expMatch.groupValues[1].toLongOrNull() ?: 0L
+    }
 
     // ── Networking ───────────────────────────────────────────────────────────────────
 
@@ -168,12 +362,13 @@ object AppleMusicProvider {
             if (!album.isNullOrBlank() && !query.contains(album, ignoreCase = true)) query = "$query $album"
 
             val searchUrl = "$AMP_BASE_URL/v1/catalog/$storefront/search"
-            val response =
+            var token = ensureTokenFresh()
+            var response =
                 client.get(searchUrl) {
-                    header("Authorization", "Bearer $APPLE_MUSIC_TOKEN")
+                    header("Authorization", "Bearer $token")
                     header("Origin", "https://music.apple.com")
                     header("Referer", "https://music.apple.com/")
-                    header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+                    header("User-Agent", APPLE_MUSIC_WEB_UA)
                     parameter("term", query)
                     parameter("types", type)
                     parameter("limit", "10")
@@ -181,6 +376,24 @@ object AppleMusicProvider {
                     parameter("include", "albums")
                     if (forceRefresh) header("Cache-Control", "no-cache")
                 }
+            if (response.status == HttpStatusCode.Unauthorized) {
+                // Token likely expired between refresh and use — force-refresh and retry once.
+                Log.w("AMP search returned 401 — force-refreshing token and retrying once")
+                token = refreshToken() ?: token
+                response =
+                    client.get(searchUrl) {
+                        header("Authorization", "Bearer $token")
+                        header("Origin", "https://music.apple.com")
+                        header("Referer", "https://music.apple.com/")
+                        header("User-Agent", APPLE_MUSIC_WEB_UA)
+                        parameter("term", query)
+                        parameter("types", type)
+                        parameter("limit", "10")
+                        parameter("extend", "editorialVideo")
+                        parameter("include", "albums")
+                        if (forceRefresh) header("Cache-Control", "no-cache")
+                    }
+            }
             if (response.status != HttpStatusCode.OK) {
                 Log.w("search failed with status ${response.status}")
                 return@runCatching null
@@ -275,15 +488,29 @@ object AppleMusicProvider {
         return runCatching {
             Log.d("fetching album $albumId")
             val albumUrl = "$AMP_BASE_URL/v1/catalog/$storefront/albums/$albumId"
-            val response =
+            var token = ensureTokenFresh()
+            var response =
                 client.get(albumUrl) {
-                    header("Authorization", "Bearer $APPLE_MUSIC_TOKEN")
+                    header("Authorization", "Bearer $token")
                     header("Origin", "https://music.apple.com")
                     header("Referer", "https://music.apple.com/")
-                    header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+                    header("User-Agent", APPLE_MUSIC_WEB_UA)
                     parameter("extend", "editorialVideo")
                     parameter("include", "tracks")
                 }
+            if (response.status == HttpStatusCode.Unauthorized) {
+                Log.w("album fetch returned 401 — force-refreshing token and retrying once")
+                token = refreshToken() ?: token
+                response =
+                    client.get(albumUrl) {
+                        header("Authorization", "Bearer $token")
+                        header("Origin", "https://music.apple.com")
+                        header("Referer", "https://music.apple.com/")
+                        header("User-Agent", APPLE_MUSIC_WEB_UA)
+                        parameter("extend", "editorialVideo")
+                        parameter("include", "tracks")
+                    }
+            }
             if (response.status != HttpStatusCode.OK) {
                 Log.w("album fetch failed for $albumId: ${response.status}")
                 return@runCatching null

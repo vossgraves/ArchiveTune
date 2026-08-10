@@ -138,18 +138,35 @@ private data class HomeContent(
     val remote: HomeRemoteContent,
     val selectedChip: HomePage.Chip?,
 ) {
+    /**
+     * `true` when there is at least one section [HomeContent] the composable
+     * will actually render on screen.
+     *
+     * IMPORTANT: this must stay in sync with the `if (...) item { ... }`
+     * guards in [HomeScreen.HomeContent]. The previous implementation counted
+     * `local.quickPicks`, `remote.similarRecommendations`,
+     * `remote.accountPlaylists`, and *every* `homePage.sections` entry as
+     * "content" — but [HomeContent] only renders `heroPicks`, `remoteQuickPicks`,
+     * `recentlyPlayed` (size > 1), `speedDialItems`, `keepListening`,
+     * "Live performance"-titled sections, and `forgottenFavorites`. When only
+     * the un-rendered sources had data, the state machine returned `Success`
+     * but the `LazyColumn` emitted zero items — producing the completely
+     * blank home screen the user reported (see IMG_20260810_225138_667.jpg).
+     *
+     * If you add a new section to the composable, mirror its visibility guard
+     * here. If you remove one, drop it from here too.
+     */
     val hasContent: Boolean
         get() =
-            local.quickPicks.isNotEmpty() ||
+            local.heroPicks.isNotEmpty() ||
                 local.speedDialItems.isNotEmpty() ||
                 local.forgottenFavorites.isNotEmpty() ||
                 local.keepListening.isNotEmpty() ||
-                local.recentlyPlayed.isNotEmpty() ||
-                local.heroPicks.isNotEmpty() ||
+                (local.recentlyPlayed?.size ?: 0) > 1 ||
                 remote.remoteQuickPicks?.items?.isNotEmpty() == true ||
-                remote.similarRecommendations.isNotEmpty() ||
-                remote.accountPlaylists.isNotEmpty() ||
-                remote.homePage?.sections?.any { it.items.isNotEmpty() } == true
+                remote.homePage?.sections?.any {
+                    it.title.contains("Live performance", ignoreCase = true)
+                } == true
 }
 
 private data class HomeStateInputs(

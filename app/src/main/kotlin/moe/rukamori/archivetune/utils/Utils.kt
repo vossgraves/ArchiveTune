@@ -10,9 +10,27 @@ package moe.rukamori.archivetune.utils
 import android.content.Context
 import android.content.res.Configuration
 import android.util.Log
+import kotlinx.coroutines.CancellationException
 import java.util.Locale
 
 fun reportException(throwable: Throwable) {
+    // CancellationException is the coroutine framework's signal that a job was
+    // cancelled (e.g. by `withTimeoutOrNull`). It is NOT an error — it's the
+    // normal way coroutines unwind when their parent scope is cancelled.
+    //
+    // Routing it through Log.w as if it were a real exception produces noisy
+    // logcat entries like `W/ArchiveTune: r8.fpb: Timed out waiting for 8000 ms`
+    // for every lyrics provider that exceeds its per-provider timeout, even
+    // though the timeout is the expected code path (the provider is simply
+    // dropped from ranking and the next provider takes over).
+    //
+    // Filter it out here as defense-in-depth: even if a downstream caller
+    // accidentally routes a CancellationException to reportException (which
+    // can happen when a stdlib `runCatching` block catches it — see the
+    // PaxsenixLyrics `runSuspendCatching` helper for the root-cause fix), we
+    // don't pollute logcat with framework-internal cancellation noise.
+    if (throwable is CancellationException) return
+
     // Use android.util.Log instead of throwable.printStackTrace().
     //
     // printStackTrace() writes to System.err, which Android redirects to logcat
