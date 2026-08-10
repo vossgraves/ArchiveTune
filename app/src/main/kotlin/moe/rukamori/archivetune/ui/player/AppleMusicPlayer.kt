@@ -87,6 +87,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
@@ -1067,20 +1068,49 @@ fun AppleMusicPlayerContent(
                                     }
                                 },
                     ) {
+                        // HORIZONTAL PADDING + CLIP:
+                        //
+                        // 24dp horizontal padding matches the standalone LyricsScreen's
+                        // AppleMusicLyricsPane (LyricsScreen.kt:1215). The previous 16dp
+                        // value was chosen to "maximize the lyrics area", but the
+                        // mocharealm KaraokeLyricsView library renders the active
+                        // (currently-sung) line with a ~1.6-1.8x font-size emphasis
+                        // AND lays out each syllable as a separate Text in a
+                        // non-wrapping Row. For word-synced Japanese lyrics, this
+                        // means the active line's rendered width can exceed the
+                        // parent's max width — and without an explicit clip, the
+                        // overflow extends PAST the parent's padded bounds all the
+                        // way to the screen edge, making the cutoff look catastrophic
+                        // (last character sliced at the physical screen edge).
+                        //
+                        // 24dp padding gives the active-line emphasis scaling more
+                        // headroom so most lines fit, and clipToBounds() ensures any
+                        // residual overflow is clipped at the padded bounds (24dp
+                        // from the screen edge) — so even in the worst case the user
+                        // sees a clean cut with visible right margin, not text
+                        // running off the screen.
+                        //
+                        // This specifically fixes word-synced Japanese lyrics in
+                        // Apple Music style. Line-by-line lyrics (SyncedLine) wrap
+                        // naturally via Text's softWrap, so they never had this
+                        // issue. The cut-off was exclusive to the word-synced
+                        // (KaraokeLine) path.
                         when (lyricsMode) {
                             LyricsMode.V2 -> LyricsV2(
                                 sliderPositionProvider = lyricsPosProvider,
                                 lyricsSyncOffset = lyricsSyncOffset,
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .padding(horizontal = 16.dp),
+                                    .padding(horizontal = 24.dp)
+                                    .clipToBounds(),
                             )
                             LyricsMode.ENHANCED -> LyricsEnhanced(
                                 sliderPositionProvider = lyricsPosProvider,
                                 lyricsSyncOffset = lyricsSyncOffset,
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .padding(horizontal = 16.dp),
+                                    .padding(horizontal = 24.dp)
+                                    .clipToBounds(),
                             )
                         }
                     }
