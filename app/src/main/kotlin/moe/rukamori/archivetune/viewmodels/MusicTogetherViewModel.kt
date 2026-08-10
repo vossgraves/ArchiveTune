@@ -639,9 +639,7 @@ class MusicTogetherViewModel
             val canJoin =
                 when (joinMode) {
                     MusicTogetherConnectionMode.LAN -> TogetherLink.decode(joinInput) != null
-                    MusicTogetherConnectionMode.ONLINE,
-                    MusicTogetherConnectionMode.PUBLIC,
-                    -> joinInput.trim().isNotBlank()
+                    MusicTogetherConnectionMode.PUBLIC -> joinInput.trim().isNotBlank()
                 }
             val join =
                 MusicTogetherJoinUiModel(
@@ -650,9 +648,7 @@ class MusicTogetherViewModel
                     hintResId =
                         when (joinMode) {
                             MusicTogetherConnectionMode.LAN -> R.string.together_join_link_hint
-                            MusicTogetherConnectionMode.ONLINE,
-                            MusicTogetherConnectionMode.PUBLIC,
-                            -> R.string.together_join_code_hint
+                            MusicTogetherConnectionMode.PUBLIC -> R.string.together_join_code_hint
                         },
                     canJoin = canJoin && !disableJoinUi && !isJoining && !isJoinedAsAcceptedGuest && !isWaitingApproval,
                     disabled = disableJoinUi,
