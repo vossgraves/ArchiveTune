@@ -38,6 +38,10 @@ object LyricsUtils {
     private val YRC_WORD_TIME_REGEX = Regex("""\(\d{1,8},\d{1,8}(?:,\d{1,8})?\)""")
     private val QrcTranslationLineRegex = Regex("""^\[(\d{1,8}),(\d{1,8})](.*)$""")
     private val QrcWordTimingDetectRegex = Regex("""\(\d{1,8},\d{1,8}(?:,\d{1,8})?\)""")
+    // Matches the leading timestamp prefix of any LRC/QRC/YRC line. Used by
+    // `hasTranslation()` to detect duplicate prefixes (which indicate the
+    // translator appended a translated line under the same timestamp).
+    private val SyncedLinePrefixRegex = Regex("""^(\s*(?:\[[^\]]+])+)(\s*)(.*?)(\s*)$""")
     private val TTML_SPAN_REGEX =
         Regex(
             pattern = """<span\b[^>]*>""",
@@ -385,6 +389,47 @@ object LyricsUtils {
 
         return trimmed.contains("<tt", ignoreCase = true) ||
             trimmed.contains("http://www.w3.org/ns/ttml", ignoreCase = true)
+    }
+
+    /**
+     * Returns true when [lyrics] contains at least one actual translation entry
+     * produced by [moe.rukamori.archivetune.ai.AiLyricsTranslator].
+     *
+     * The translator marks the lyrics' source as `AI_TRANSLATION` regardless of
+     * whether the AI returned anything useful — if every line came back identical
+     * to the source (a common failure mode for CJK lyrics that were previously
+     * mangled by the span-joining bug in `AiLyricsDocument.readTtmlLineText`),
+     * the rebuild produces no `<translation>` element / no duplicate-timestamp
+     * LRC lines, but the row is still stored with `source = AI_TRANSLATION`.
+     *
+     * Without this check, the auto-translate LaunchedEffect in LyricsScreen.kt
+     * and AppleMusicPlayer.kt would skip those songs forever (the
+     * `source == AI_TRANSLATION` guard returns early), so the user would never
+     * get a translation even after the underlying bug is fixed. By allowing a
+     * retry when `hasTranslation()` is false, previously no-op'd translations
+     * get a chance to re-run with the corrected parser.
+     *
+     * Detection rules:
+     *  - TTML: look for `<translation ... data-archivetune="translation"` (the
+     *    marker `TtmlLyricsDocument.rebuild` writes).
+     *  - LRC / QRC / plain: look for any timestamp prefix that appears more
+     *    than once — translators append translated lines under the same prefix
+     *    as the original, so a duplicate prefix means at least one translation
+     *    was added.
+     */
+    fun hasTranslation(lyrics: String): Boolean {
+        if (lyrics.isBlank()) return false
+        if (isTtml(lyrics)) {
+            return lyrics.contains("data-archivetune", ignoreCase = true) &&
+                lyrics.contains("translation", ignoreCase = true)
+        }
+        val seenPrefixes = HashSet<String>()
+        lyrics.lineSequence().forEach { line ->
+            val match = SyncedLinePrefixRegex.matchEntire(line) ?: return@forEach
+            val prefix = match.groupValues[1]
+            if (!seenPrefixes.add(prefix)) return true
+        }
+        return false
     }
 
     fun shouldAutoTranslate(lyrics: String, targetLanguage: String): Boolean {
