@@ -719,7 +719,6 @@ enum class PreferredLyricsProvider {
     PAXSENIX_MUSIXMATCH,
     PAXSENIX_YOUTUBE,
     TIDAL,
-    QOBUZ,
     DEEZER,
     MUSIXMATCH_EXPERIMENTAL,
 }
