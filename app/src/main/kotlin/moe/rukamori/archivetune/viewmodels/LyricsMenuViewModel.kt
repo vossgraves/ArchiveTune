@@ -8,6 +8,7 @@
 package moe.rukamori.archivetune.viewmodels
 
 import android.content.Context
+import android.util.Log
 import androidx.annotation.StringRes
 import androidx.compose.runtime.Immutable
 import androidx.datastore.preferences.core.edit
@@ -254,6 +255,11 @@ class LyricsMenuViewModel
                     try {
                         val prefs = context.dataStore.data.first()
                         isAutomatic = prefs[AutoTranslateLyricsKey] ?: false
+                        Log.d(
+                            TAG,
+                            "AI translate start: song=${mediaMetadata.title} automatic=$isAutomatic " +
+                                "provider=${prefs[AiProviderKey]} model=${prefs[AiSelectedModelKey]}",
+                        )
                         val translatedLyrics =
                             AiLyricsTranslator().translate(
                                 config =
@@ -278,6 +284,7 @@ class LyricsMenuViewModel
                                 source = LyricsEntity.Source.AI_TRANSLATION.value,
                             )
                         }
+                        Log.d(TAG, "AI translate success: song=${mediaMetadata.title} automatic=$isAutomatic")
                         if (!isAutomatic) {
                             val msg = context.getString(R.string.translation_success)
                             _aiTranslationEvents.emit(msg)
@@ -285,6 +292,18 @@ class LyricsMenuViewModel
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
+                        // Always log the failure — auto-translations are silent (no toast),
+                        // so without this log there's no way to diagnose why auto-translate
+                        // "just stops working" after a few songs. The most common causes are:
+                        //  - AiRateLimitException (hourly budget hit; now fixed to refund on failure)
+                        //  - IOException (stale OkHttp pool; now fixed to recreate client on failure)
+                        //  - HTTP 4xx (bad API key, quota exceeded, model deprecated)
+                        //  - HTTP 5xx (provider outage)
+                        Log.w(
+                            TAG,
+                            "AI translate failed: song=${mediaMetadata.title} automatic=$isAutomatic " +
+                                "error=${e.javaClass.simpleName}: ${e.message}",
+                        )
                         if (!isAutomatic) {
                             val msg = context.getString(R.string.translation_failed) + ": " + (e.localizedMessage ?: e.toString())
                             _aiTranslationEvents.emit(msg)
@@ -335,5 +354,9 @@ class LyricsMenuViewModel
                     },
                 isWordSynced = isWordSynced,
             )
+        }
+
+        companion object {
+            private const val TAG = "LyricsMenuViewModel"
         }
     }

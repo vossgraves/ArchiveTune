@@ -7,6 +7,7 @@
 
 package moe.rukamori.archivetune.ai
 
+import android.util.Log
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.request.get
@@ -16,11 +17,13 @@ import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
+import kotlinx.coroutines.CancellationException
 import moe.rukamori.archivetune.BuildConfig
 import moe.rukamori.archivetune.constants.AiProvider
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 
 open class AiServiceException(
     message: String,
@@ -28,11 +31,28 @@ open class AiServiceException(
 ) : Exception(message, cause)
 
 object AiTextService {
+    private const val TAG = "AiTextService"
     private const val OpenAiEndpoint = "https://api.openai.com/v1/chat/completions"
     private const val OpenAiModelsEndpoint = "https://api.openai.com/v1/models"
     private const val GeminiBaseEndpoint = "https://generativelanguage.googleapis.com/v1beta"
 
-    private val client =
+    /**
+     * OkHttp's connection pool can enter a bad state after sustained use (stale sockets,
+     * SSL session cache misses, half-closed connections from a server-side idle timeout).
+     * The singleton [client] below is reused for every call, so once the pool goes bad,
+     * EVERY subsequent request fails with a network exception — manifesting as
+     * "auto-translate works for a few songs then stops working until the user toggles
+     * it off/on + clicks Check API".
+     *
+     * The fix: hold the client in an AtomicReference and recreate it on demand when a
+     * connection-level failure is detected. The recreate path closes the old client's
+     * connection pool (evicting all stale sockets) and creates a fresh one. This is
+     * cheaper than creating a new client per call (which would defeat HTTP keep-alive),
+     * but resilient to the stale-pool failure mode.
+     */
+    private val clientHolder = AtomicReference<HttpClient>(createClient())
+
+    private fun createClient(): HttpClient =
         HttpClient(OkHttp) {
             engine {
                 config {
@@ -40,9 +60,54 @@ object AiTextService {
                     readTimeout(60, TimeUnit.SECONDS)
                     writeTimeout(60, TimeUnit.SECONDS)
                     retryOnConnectionFailure(true)
+                    // Aggressively evict idle connections so stale sockets don't accumulate
+                    // in the pool between translation batches. 30s is below typical
+                    // server-side idle timeouts (60-120s), so connections get reused
+                    // within a song but evicted before they go stale.
+                    keepAliveDuration(30, TimeUnit.SECONDS)
                 }
             }
         }
+
+    private val client: HttpClient get() = clientHolder.get()
+
+    /**
+     * Recreates the HttpClient. Called when a connection-level failure is detected
+     * (IOException that smells like a stale pool — SocketTimeoutException,
+     * ConnectException, SSLException, etc.). The old client is closed asynchronously
+     * to avoid blocking the caller.
+     */
+    private fun recreateClientOnFailure(t: Throwable) {
+        val oldClient = clientHolder.getAndSet(createClient())
+        Log.w(TAG, "Recreated HttpClient after connection failure: ${t.javaClass.simpleName}: ${t.message}")
+        // Close the old client asynchronously — close() is blocking because it evicts
+        // the connection pool. We don't want to stall the translation coroutine.
+        Thread {
+            runCatching { oldClient.close() }
+        }.start()
+    }
+
+    /**
+     * Returns true if the throwable indicates a connection-level failure that warrants
+     * recreating the HttpClient. HTTP 4xx/5xx responses do NOT count — those are
+     * application-level errors from a healthy connection.
+     */
+    private fun isConnectionLevelFailure(t: Throwable): Boolean =
+        when (t) {
+            is java.net.SocketTimeoutException -> true
+            is java.net.ConnectException -> true
+            is java.net.SocketException -> true
+            is javax.net.ssl.SSLException -> true
+            is java.net.UnknownHostException -> true
+            is java.io.IOException -> true
+            else -> {
+                // Ktor wraps IOException in HttpRequestTimeoutException and other
+                // engine-specific exceptions; check the cause chain.
+                val cause = t.cause
+                cause != null && cause !== t && isConnectionLevelFailure(cause)
+            }
+        }
+
 
     suspend fun test(config: AiServiceConfig) {
         val response =
@@ -68,22 +133,36 @@ object AiTextService {
         val payload = JSONArray()
         lines.forEach { payload.put(it) }
         val response =
-            AiRateLimiter.withLimit(AiRateLimiter.Feature.LYRICS_TRANSLATION) {
-                complete(
-                    config = config,
-                    systemPrompt =
-                        """
-                        You are an expert song lyrics translator.
-                        Translate each input string into $targetLanguage with natural, accurate lyric phrasing.
-                        Preserve meaning, tone, profanity level, names, repeated hooks, and line-level intent.
-                        Do not add timestamps, IDs, XML, markdown, explanations, or extra lines.
-                        Return only a JSON array of strings with exactly ${lines.size} items in the same order.
-                        The caller will reconstruct the $formatName lyrics container separately.
-                        """.trimIndent(),
-                    userPrompt = payload.toString(),
-                    temperature = 0.15,
-                    maxTokens = 8192,
-                )
+            try {
+                AiRateLimiter.withLimit(AiRateLimiter.Feature.LYRICS_TRANSLATION) {
+                    complete(
+                        config = config,
+                        systemPrompt =
+                            """
+                            You are an expert song lyrics translator.
+                            Translate each input string into $targetLanguage with natural, accurate lyric phrasing.
+                            Preserve meaning, tone, profanity level, names, repeated hooks, and line-level intent.
+                            Do not add timestamps, IDs, XML, markdown, explanations, or extra lines.
+                            Return only a JSON array of strings with exactly ${lines.size} items in the same order.
+                            The caller will reconstruct the $formatName lyrics container separately.
+                            """.trimIndent(),
+                        userPrompt = payload.toString(),
+                        temperature = 0.15,
+                        maxTokens = 8192,
+                    )
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (t: Throwable) {
+                // Connection-level failures (SocketTimeout, ConnectException, SSLException,
+                // IOException) suggest the OkHttp connection pool has gone stale. Recreate
+                // the client so the NEXT call starts fresh — this prevents the "auto-translate
+                // stops working after a few songs" cascade where every subsequent request
+                // fails on the same stale pool.
+                if (isConnectionLevelFailure(t)) {
+                    recreateClientOnFailure(t)
+                }
+                throw t
             }
         val array = extractJsonArray(response)
         require(array.length() == lines.size) { "AI response changed the lyric segment count" }
