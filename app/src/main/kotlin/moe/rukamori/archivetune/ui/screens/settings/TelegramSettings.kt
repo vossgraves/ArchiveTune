@@ -26,12 +26,12 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -66,7 +66,7 @@ fun TelegramSettings(navController: NavController) {
     val (accountPhone, onAccountPhoneChange) = rememberPreference(TelegramAccountPhoneKey, "")
     val (losslessOnly, onLosslessOnlyChange) = rememberPreference(TelegramLosslessOnlyKey, true)
 
-    val authState by TelegramClient.authState.collectAsState()
+    val authState by TelegramClient.authState.collectAsStateWithLifecycle()
     val isReady = authState is TelegramAuthState.Ready
 
     var showLogoutDialog by remember { mutableStateOf(false) }

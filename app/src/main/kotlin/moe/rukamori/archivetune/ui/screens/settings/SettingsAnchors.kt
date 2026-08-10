@@ -21,6 +21,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
@@ -216,7 +217,7 @@ class SettingsAnchorState internal constructor(
     private var anchorTop: Float? by mutableStateOf(null)
 
     /** Fade progress, read at draw time so a change repaints without recomposing. */
-    private var highlightAlpha: Float by mutableStateOf(0f)
+    private var highlightAlpha: Float by mutableFloatStateOf(0f)
 
     /**
      * Scroll offset of the target row inside the scrolling content, or null until both the

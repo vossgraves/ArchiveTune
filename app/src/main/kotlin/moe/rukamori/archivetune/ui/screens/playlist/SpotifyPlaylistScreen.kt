@@ -55,6 +55,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -146,8 +147,8 @@ fun SpotifyPlaylistScreen(
     // position is preserved across open/close search.
     // (The LaunchedEffect that uses these is declared further below, AFTER
     // isSearching is created — Kotlin requires vals to be declared before use.)
-    var savedScrollIndex by remember { mutableStateOf(0) }
-    var savedScrollOffset by remember { mutableStateOf(0) }
+    var savedScrollIndex by remember { mutableIntStateOf(0) }
+    var savedScrollOffset by remember { mutableIntStateOf(0) }
 
     val downloadState =
         remember(state.downloadItems, downloads) {

@@ -67,6 +67,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -138,7 +139,7 @@ fun TelegramBotChatScreen(
     var pendingPrompt by remember { mutableStateOf<TelegramBotPrompt?>(null) }
     // Track the highest message id we've ever seen in this chat so the next collector cycle
     // (e.g. after the user picks a quality) doesn't re-process old messages.
-    var highestSeenMessageId by remember { mutableStateOf(0L) }
+    var highestSeenMessageId by remember { mutableLongStateOf(0L) }
     // Which prompt button the user just tapped (for showing a spinner on that chip while the
     // bot processes the choice).
     var pendingChoiceText by remember { mutableStateOf<String?>(null) }
@@ -155,7 +156,7 @@ fun TelegramBotChatScreen(
     // without advertising them.
     var botCommands by remember { mutableStateOf<List<TelegramBotCommand>>(emptyList()) }
     var showCommandMenu by remember { mutableStateOf(false) }
-    var commandsFetchedForChatId by remember { mutableStateOf(0L) }
+    var commandsFetchedForChatId by remember { mutableLongStateOf(0L) }
 
     // Fetch the bot's advertised commands once the chat id is known. The fetch is best-effort —
     // if it fails (e.g. bot hasn't registered any commands), the common fallbacks still appear.

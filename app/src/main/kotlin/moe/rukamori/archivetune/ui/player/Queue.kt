@@ -71,6 +71,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.Snapshot
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -375,7 +376,7 @@ fun Queue(
         ) {
             playerConnection.service.sleepTimer.isActive
         }
-    var sleepTimerTimeLeft by remember { mutableStateOf(0L) }
+    var sleepTimerTimeLeft by remember { mutableLongStateOf(0L) }
 
     val (showCodecOnPlayer) =
         rememberPreference(

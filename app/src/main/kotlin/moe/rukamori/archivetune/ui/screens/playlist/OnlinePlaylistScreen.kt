@@ -66,6 +66,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.toMutableStateList
 import androidx.compose.runtime.withFrameNanos
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -246,8 +247,8 @@ fun OnlinePlaylistScreen(
     // shifts all items below it. By saving firstVisibleItemIndex + scrollOffset
     // BEFORE the collapse and restoring them AFTER the expand, the visible
     // position is preserved across open/close search.
-    var savedScrollIndex by remember { mutableStateOf(0) }
-    var savedScrollOffset by remember { mutableStateOf(0) }
+    var savedScrollIndex by remember { mutableIntStateOf(0) }
+    var savedScrollOffset by remember { mutableIntStateOf(0) }
     LaunchedEffect(isSearching) {
         if (isSearching) {
             savedScrollIndex = lazyListState.firstVisibleItemIndex

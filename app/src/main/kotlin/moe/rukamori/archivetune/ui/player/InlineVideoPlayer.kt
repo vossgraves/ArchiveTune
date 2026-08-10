@@ -59,7 +59,6 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
@@ -68,6 +67,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -280,7 +280,7 @@ fun InlineVideoPlayer(
     // fullscreen overlay reads the same preference and applies it.
     val playerConnection = LocalPlayerConnection.current
     val fallbackMetadataFlow = remember { kotlinx.coroutines.flow.MutableStateFlow<MediaMetadata?>(null) }
-    val mediaMetadata by (playerConnection?.mediaMetadata ?: fallbackMetadataFlow).collectAsState()
+    val mediaMetadata by (playerConnection?.mediaMetadata ?: fallbackMetadataFlow).collectAsStateWithLifecycle()
     val thumbnailUrl = mediaMetadata?.thumbnailUrl
 
     // ── Inline surface + controls (rendered only when NOT fullscreen) ──
@@ -628,7 +628,7 @@ fun FullscreenVideoOverlay(
     // flow when playerConnection is null so collectAsState has a stable
     // call site (Compose requires composables to be called unconditionally).
     val fallbackMetadataFlow = remember { kotlinx.coroutines.flow.MutableStateFlow<MediaMetadata?>(null) }
-    val headerMetadata by (playerConnection?.mediaMetadata ?: fallbackMetadataFlow).collectAsState()
+    val headerMetadata by (playerConnection?.mediaMetadata ?: fallbackMetadataFlow).collectAsStateWithLifecycle()
     val thumbnailUrl = headerMetadata?.thumbnailUrl
 
     Box(
@@ -1028,10 +1028,10 @@ fun FullscreenVideoOverlay(
                 // the normal (portrait) player so the icons match across
                 // layouts.
                 if (playerConnection != null) {
-                    val isPlaying by playerConnection.isPlaying.collectAsState()
-                    val canSkipNext by playerConnection.canSkipNext.collectAsState()
-                    val canSkipPrevious by playerConnection.canSkipPrevious.collectAsState()
-                    val playbackStateFs by playerConnection.playbackState.collectAsState()
+                    val isPlaying by playerConnection.isPlaying.collectAsStateWithLifecycle()
+                    val canSkipNext by playerConnection.canSkipNext.collectAsStateWithLifecycle()
+                    val canSkipPrevious by playerConnection.canSkipPrevious.collectAsStateWithLifecycle()
+                    val playbackStateFs by playerConnection.playbackState.collectAsStateWithLifecycle()
 
                     Row(
                         modifier =
@@ -1106,14 +1106,14 @@ fun FullscreenVideoOverlay(
                     // The slider uses [StyledPlaybackSlider] with the user's
                     // selected [sliderStyle] — same 5 styles (Standard / Wavy
                     // / Thick / Circular / Simple) as the main player.
-                    val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
+                    val mediaMetadata by playerConnection.mediaMetadata.collectAsStateWithLifecycle()
                     val currentPosition = remember(mediaMetadata?.id) {
                         mutableLongStateOf(playerConnection.player.currentPosition)
                     }
                     val totalDuration = remember(mediaMetadata?.id) {
                         mutableLongStateOf(playerConnection.player.duration)
                     }
-                    val playbackState by playerConnection.playbackState.collectAsState()
+                    val playbackState by playerConnection.playbackState.collectAsStateWithLifecycle()
                     LaunchedEffect(mediaMetadata?.id, playbackState) {
                         if (playbackState == Player.STATE_READY) {
                             while (isActive) {

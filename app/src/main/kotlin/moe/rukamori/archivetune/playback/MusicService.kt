@@ -339,6 +339,13 @@ import kotlin.math.pow
 import kotlin.math.roundToLong
 import kotlin.time.Duration.Companion.seconds
 
+// Hoisted file-level Regex: the JioSaavn candidate penalty loop below calls
+// "[^a-z0-9]".toRegex() 4 times per candidate (title, wanted title, artist,
+// wanted artist), and a JioSaavn search typically returns 5-20 candidates.
+// Compiling the Pattern once at class-load avoids ~20-80 Regex allocations
+// per stream resolution. Same pattern, same replacement semantics.
+private val JIO_SAAVN_NORMALIZE_REGEX = Regex("[^a-z0-9]")
+
 @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class, UnstableApi::class)
 @AndroidEntryPoint
 class MusicService :
@@ -9176,12 +9183,12 @@ class MusicService :
                         .minByOrNull { song ->
                             var penalty = 0
                             // Title similarity (simple normalized contains + length delta)
-                            val normTitle = song.name.lowercase().replace("[^a-z0-9]".toRegex(), "")
-                            val normWanted = query.title.lowercase().replace("[^a-z0-9]".toRegex(), "")
+                            val normTitle = song.name.lowercase().replace(JIO_SAAVN_NORMALIZE_REGEX, "")
+                            val normWanted = query.title.lowercase().replace(JIO_SAAVN_NORMALIZE_REGEX, "")
                             penalty += if (normTitle == normWanted) 0 else if (normTitle.contains(normWanted) || normWanted.contains(normTitle)) 1 else 5
                             // Artist match
-                            val candidateArtist = song.artists.primary.firstOrNull()?.name?.lowercase()?.replace("[^a-z0-9]".toRegex(), "") ?: ""
-                            val wantedArtist = artistHint.lowercase().replace("[^a-z0-9]".toRegex(), "")
+                            val candidateArtist = song.artists.primary.firstOrNull()?.name?.lowercase()?.replace(JIO_SAAVN_NORMALIZE_REGEX, "") ?: ""
+                            val wantedArtist = artistHint.lowercase().replace(JIO_SAAVN_NORMALIZE_REGEX, "")
                             if (wantedArtist.isNotBlank() && candidateArtist.isNotBlank()) {
                                 penalty += if (candidateArtist == wantedArtist) 0 else if (candidateArtist.contains(wantedArtist) || wantedArtist.contains(candidateArtist)) 1 else 3
                             }

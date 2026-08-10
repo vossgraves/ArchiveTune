@@ -45,7 +45,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -55,6 +54,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.datasource.cache.CacheSpan
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -134,11 +134,11 @@ fun SongMenu(
     val context = LocalContext.current
     val database = LocalDatabase.current
     val playerConnection = LocalPlayerConnection.current ?: return
-    val songState = database.song(originalSong.id).collectAsState(initial = originalSong)
+    val songState = database.song(originalSong.id).collectAsStateWithLifecycle(initialValue = originalSong)
     val song = songState.value ?: originalSong
     val download by LocalDownloadUtil.current
         .getDownload(originalSong.id)
-        .collectAsState(initial = null)
+        .collectAsStateWithLifecycle(initialValue = null)
     val coroutineScope = rememberCoroutineScope()
     val syncUtils = LocalSyncUtils.current
     var refetchIconDegree by remember { mutableFloatStateOf(0f) }
@@ -154,7 +154,7 @@ fun SongMenu(
     // audio/mpeg fallback. The file extension is always detected from
     // magic bytes to avoid exporting lossy data with a .flac extension
     // (and vice versa).
-    val songFormat by database.format(song.id).collectAsState(initial = null)
+    val songFormat by database.format(song.id).collectAsStateWithLifecycle(initialValue = null)
     val detectedExt by produceState(
         initialValue = songFormat?.fileExtension() ?: "mp3",
         song.id,

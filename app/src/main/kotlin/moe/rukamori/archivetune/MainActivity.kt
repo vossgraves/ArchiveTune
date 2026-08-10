@@ -109,7 +109,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -2079,7 +2079,7 @@ class MainActivity : ComponentActivity() {
                                             }
                                         val isLibraryRoute = navBackStackEntry?.destination?.route == Screens.Library.route
 
-                                        var headerHeightPx by remember { mutableStateOf(0) }
+                                        var headerHeightPx by remember { mutableIntStateOf(0) }
                                         LaunchedEffect(currentScrollBehavior, headerHeightPx) {
                                             if (headerHeightPx > 0 && !isLibraryRoute) {
                                                 val limit = -headerHeightPx.toFloat()
