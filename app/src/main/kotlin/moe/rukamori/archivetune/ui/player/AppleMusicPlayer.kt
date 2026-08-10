@@ -26,12 +26,10 @@ import androidx.compose.animation.SharedTransitionScope.OverlayClip
 import androidx.compose.animation.BoundsTransform
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -96,6 +94,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.GraphicsLayerScope
+import androidx.compose.ui.graphics.Outline
+import androidx.compose.ui.graphics.RoundRect
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
@@ -109,7 +110,9 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -171,6 +174,62 @@ private val AppleMusicPlayPauseIconSize = 62.dp
 private val AppleMusicBottomIconSize = 26.dp
 private val AppleMusicBottomButtonSize = 48.dp
 private val AppleMusicMiniArtworkSize = 56.dp
+
+/**
+ * A [Shape] that interpolates the corner radius based on the element's size.
+ * At [smallSize], the corner radius is [smallRadius]; at [largeSize], it's
+ * [largeRadius]. In between, it smoothly interpolates. This ensures
+ * consistent visual corner curvature during SharedTransition morphs where
+ * the element's size changes dramatically (e.g., from a large cover artwork
+ * to a small mini thumbnail).
+ *
+ * Without this, a fixed-Dp [RoundedCornerShape] (e.g., 16dp) looks "sharp"
+ * on a large element (16dp on 320dp = barely visible) but "very curved" on
+ * a small element (16dp on 56dp = 28% radius). This adaptive shape
+ * eliminates that discrepancy by scaling the radius with the element's
+ * size, so the corners look the SAME proportionally throughout the morph —
+ * no "sharp at start, curved at end" effect.
+ *
+ * The interpolation is clamped: below [smallSize] the radius stays at
+ * [smallRadius], and above [largeSize] it stays at [largeRadius]. This
+ * ensures the overlay's clip matches the source (COVER) and target (LYRICS)
+ * clips at the endpoints, with NO visible snap when the overlay is applied
+ * or removed.
+ */
+private class AdaptiveCornerShape(
+    private val smallRadius: Dp,
+    private val smallSize: Dp,
+    private val largeRadius: Dp,
+    private val largeSize: Dp,
+) : Shape {
+    override fun createOutline(
+        size: Size,
+        layoutDirection: LayoutDirection,
+        density: Density,
+    ): Outline {
+        val elementSize = minOf(size.width, size.height)
+        val smallSizePx = with(density) { smallSize.toPx() }
+        val largeSizePx = with(density) { largeSize.toPx() }
+        val t =
+            if (largeSizePx > smallSizePx) {
+                ((elementSize - smallSizePx) / (largeSizePx - smallSizePx)).coerceIn(0f, 1f)
+            } else {
+                1f
+            }
+        val smallRadiusPx = with(density) { smallRadius.toPx() }
+        val largeRadiusPx = with(density) { largeRadius.toPx() }
+        val radius = smallRadiusPx + (largeRadiusPx - smallRadiusPx) * t
+        return Outline.Rounded(
+            RoundRect(
+                left = 0f,
+                top = 0f,
+                right = size.width,
+                bottom = size.height,
+                cornerRadius = CornerRadius(radius, radius),
+            ),
+        )
+    }
+}
 
 /**
  * Internal visual state of the Apple Music player. Mirrors ViviMusic's
@@ -902,15 +961,29 @@ fun AppleMusicPlayerContent(
                     AnimatedContent(
                         targetState = morphState,
                         transitionSpec = {
-                            // Crossfade with shared-element morph. The COVER fades out
-                            // quickly (200ms) so the large square artwork disappears fast
-                            // and the rounded mini artwork becomes visible sooner. The
-                            // entering state (QUEUE/LYRICS) fades in over 600ms for a
-                            // smooth reveal. This fixes the "thumbnail stays square for
-                            // most of the transition" issue — the square COVER content
-                            // is gone in 200ms instead of lingering for 600ms.
+                            // Symmetric crossfade with shared-element morph. Both the
+                            // COVER (source) and QUEUE/LYRICS (target) fade over 600ms so
+                            // their opacities are always complementary — at any point in
+                            // the transition, the dark COVER masks the pink blurred
+                            // backdrop of the entering LYRICS/QUEUE state.
+                            //
+                            // PREVIOUS APPROACH: fadeOut was 200ms (fast) so the COVER
+                            // disappeared while the LYRICS state was still at ~33% opacity.
+                            // The sudden removal of the dark COVER revealed the LYRICS
+                            // state's pink blurred backdrop at low opacity, perceived as a
+                            // "pink flash at the end of the transition". Matching the
+                            // fadeOut duration to the fadeIn (both 600ms) eliminates this
+                            // flash because the COVER stays visible long enough to mask
+                            // the pink backdrop until both states are at ~50% opacity.
+                            //
+                            // The "thumbnail stays square" concern from the previous
+                            // fast-fadeOut approach is no longer relevant because the
+                            // AdaptiveCornerShape OverlayClip on the sharedBounds modifier
+                            // keeps the artwork's corners rounded throughout the morph —
+                            // the COVER's content never appears "square" even while it's
+                            // fading out.
                             fadeIn(tween(600, easing = FastOutSlowInEasing)) togetherWith
-                                fadeOut(tween(200, easing = FastOutSlowInEasing))
+                                fadeOut(tween(600, easing = FastOutSlowInEasing))
                         },
                         modifier = Modifier.fillMaxSize(),
                         label = "AppleMusicMorph",
@@ -963,25 +1036,51 @@ fun AppleMusicPlayerContent(
                                                 // for a few seconds then becomes
                                                 // rounded" bug.
                                                 clipInOverlayDuringTransition =
-                                                    OverlayClip(RoundedCornerShape(artworkCornerRadiusDp)),
-                                                // Use the default SharedTransition
-                                                // stiffness (StiffnessMediumLow, the
-                                                // same as the framework default) so
-                                                // the morph duration matches the
-                                                // original feel, but drop the bouncy
-                                                // overshoot (DampingRatioNoBouncy).
-                                                // The default LowBouncy damping makes
-                                                // the bounds oscillate past their
-                                                // target, and on each oscillation
-                                                // frame the rounded OverlayClip has
-                                                // to be re-rendered — that was the
-                                                // source of the millisecond stutter
-                                                // during the transition.
+                                                    OverlayClip(
+                                                        AdaptiveCornerShape(
+                                                            smallRadius = 8.dp,
+                                                            smallSize = AppleMusicMiniArtworkSize,
+                                                            largeRadius = artworkCornerRadiusDp,
+                                                            largeSize = 400.dp,
+                                                        ),
+                                                    ),
+                                                // Use a tween-based bounds transform
+                                                // matching the crossfade duration
+                                                // (600ms) so the morph completes
+                                                // simultaneously with the fade-in/out.
+                                                //
+                                                // PREVIOUS APPROACH: a spring with
+                                                // StiffnessMediumLow (~200ms) completed
+                                                // too fast, causing the overlay to
+                                                // reach its target bounds (mini size)
+                                                // while the LYRICS state was still at
+                                                // ~33% opacity. The dark COVER (also
+                                                // fading out at 200ms) was already gone,
+                                                // so the LYRICS state's pink blurred
+                                                // backdrop was visible at low opacity
+                                                // beside the overlay — perceived as a
+                                                // "pink flash at the end of the
+                                                // transition". Matching the crossfade
+                                                // duration (600ms tween) ensures the
+                                                // overlay stays present throughout the
+                                                // fade, and the COVER stays visible
+                                                // long enough to mask the pink backdrop.
+                                                //
+                                                // A tween is used instead of a spring
+                                                // because the spring's critically-damped
+                                                // duration is approximately
+                                                // 4/sqrt(stiffness) — getting ~600ms
+                                                // would require StiffnessVeryLow (50f),
+                                                // which feels sluggish on the
+                                                // reverse (LYRICS→COVER) direction.
+                                                // The tween gives precise duration
+                                                // control with FastOutSlowInEasing for
+                                                // a natural deceleration.
                                                 boundsTransform =
                                                     BoundsTransform { _, _ ->
-                                                        spring(
-                                                            dampingRatio = Spring.DampingRatioNoBouncy,
-                                                            stiffness = Spring.StiffnessMediumLow,
+                                                        tween(
+                                                            durationMillis = 600,
+                                                            easing = FastOutSlowInEasing,
                                                         )
                                                     },
                                             ),
@@ -1420,7 +1519,7 @@ private fun AppleMusicSharpArtwork(
                 // Previously this was read locally via rememberPreference,
                 // which meant the sharedBounds modifier couldn't access it —
                 // causing the overlay to use the default RectangleShape and
-                // flash sharp corners during the spring bounds animation.
+                // flash sharp corners during the bounds animation.
                 val artworkMinSize =
                     when {
                         veryCompactHeight -> 200.dp
@@ -1949,22 +2048,22 @@ private fun SharedTransitionScope.AppleMusicMiniHeader(
         // Mini artwork — shared element with the large COVER artwork.
         // Tapping it restores the COVER state (morphs back to the main player).
         //
-        // OVERLAY CLIP: uses the COVER artwork's corner radius
-        // (artworkCornerRadiusDp, typically 16dp) — NOT the mini header's own
-        // 8dp clip. During COVER→LYRICS, the SharedTransition overlay morphs
-        // from the large cover bounds to the small mini bounds. If the overlay
-        // used 8dp, the corners would look sharp on the large cover bounds at
-        // the START of the morph (8dp on a ~320dp element is barely visible)
-        // and only look properly rounded at the END (mini size) — the
-        // "corners gradually become rounded at the end" bug (issue 2). Using
-        // the larger cover radius ensures corners are properly rounded from
-        // the very first frame of the transition. The mini header's own 8dp
-        // clip (below) only takes effect once the transition completes and the
-        // overlay is removed — so the mini header's final visual is unchanged.
+        // OVERLAY CLIP: uses an AdaptiveCornerShape that interpolates the
+        // corner radius based on the element's current size. At the mini
+        // header size (56dp) the radius is 8dp (matching this Box's own
+        // 8dp clip); at the large cover size (~400dp) the radius is
+        // artworkCornerRadiusDp (typically 16dp, matching the COVER's clip).
+        // In between, it smoothly interpolates. This eliminates the
+        // "sharp at start, curved at end" bug caused by a fixed-Dp
+        // RoundedCornerShape looking disproportionate on different element
+        // sizes (16dp on 320dp looks sharp, 16dp on 56dp looks very curved).
+        // The mini header's own 8dp clip (below) only takes effect once the
+        // transition completes and the overlay is removed — so the mini
+        // header's final visual is unchanged.
         //
-        // boundsTransform: non-bouncy spring at default stiffness, matching
-        // the COVER state's so the morph duration and feel are identical in
-        // both directions.
+        // boundsTransform: 600ms tween matching the crossfade duration,
+        // identical to the COVER state's. See the COVER state's sharedBounds
+        // modifier for the full rationale.
         Box(
             modifier =
                 Modifier
@@ -1979,12 +2078,24 @@ private fun SharedTransitionScope.AppleMusicMiniHeader(
                         sharedContentState = rememberSharedContentState(key = "amCoverArt"),
                         animatedVisibilityScope = animatedVisibilityScope,
                         clipInOverlayDuringTransition =
-                            OverlayClip(RoundedCornerShape(artworkCornerRadiusDp)),
+                            OverlayClip(
+                                AdaptiveCornerShape(
+                                    smallRadius = 8.dp,
+                                    smallSize = AppleMusicMiniArtworkSize,
+                                    largeRadius = artworkCornerRadiusDp,
+                                    largeSize = 400.dp,
+                                ),
+                            ),
+                        // Tween-based bounds transform matching the crossfade
+                        // duration (600ms). See the COVER state's sharedBounds
+                        // modifier for the full rationale — the same timing is
+                        // used here so the morph feels identical in both
+                        // directions (COVER→LYRICS and LYRICS→COVER).
                         boundsTransform =
                             BoundsTransform { _, _ ->
-                                spring(
-                                    dampingRatio = Spring.DampingRatioNoBouncy,
-                                    stiffness = Spring.StiffnessMediumLow,
+                                tween(
+                                    durationMillis = 600,
+                                    easing = FastOutSlowInEasing,
                                 )
                             },
                     ),
