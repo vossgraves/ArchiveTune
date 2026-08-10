@@ -23,6 +23,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -160,11 +161,27 @@ private const val LYRIC_FOCUS_TOP_ANCHOR_RATIO = 0.08f
 private const val LYRIC_FOCUS_TOP_GUARD_RATIO = 0.04f
 private const val LYRIC_FOCUS_BOTTOM_GUARD_RATIO = 0.30f
 private const val LYRIC_FOCUS_MIN_SCROLL_PX = 6
-private const val LYRIC_FOCUS_ANIMATED_DISTANCE = 12
+// Auto-scroll deltas up to this fraction of the viewport height snap instantly
+// (no tween). A typical line-advance scroll moves the focus point from ~30%
+// (bottom guard) to ~8% (anchor) = 22% of viewport. Setting the threshold to
+// 40% covers all normal-playback line advances AND small-to-medium seeks,
+// while larger jumps (return from manual scroll, large seeks) still animate.
+// This eliminates the per-frame LazyColumn re-layout cost of the 280ms tween
+// for the common case — which was the single biggest source of "auto-scroll
+// lag" because the tween was competing with the 60Hz karaoke syllable sweep
+// for frame budget on every line change.
+private const val LYRIC_FOCUS_INSTANT_SCROLL_RATIO = 0.40f
+private const val LYRIC_FOCUS_ANIMATED_DISTANCE = 4
 private const val SMOOTH_PLAYBACK_MAX_FORWARD_DRIFT_MS = 80L
 private const val SMOOTH_PLAYBACK_MAX_BACKWARD_DRIFT_MS = 180L
 private const val SMOOTH_PLAYBACK_DRIFT_CORRECTION = 0.55f
-private const val LYRIC_FOCUS_SCROLL_DURATION_MS = 520
+// Reduced from 520ms to 280ms. The previous 520ms tween was long enough that
+// it was STILL running when the next line change fired (especially on tracks
+// with short lines), causing collectLatest to cancel + restart the animation
+// repeatedly — visible as stuttery, non-monotonic scroll motion. 280ms is
+// short enough to settle before the next line change in almost all songs,
+// while still looking smooth rather than instant.
+private const val LYRIC_FOCUS_SCROLL_DURATION_MS = 280
 private const val MIN_KARAOKE_SYLLABLE_DURATION_MS = 1
 
 @Composable
@@ -773,7 +790,17 @@ fun LyricsEnhanced(
                             showTranslation = showTranslations,
                             showPhonetic = romanizationPreferences.isEnabled,
                             offset = lyricsViewportOffset,
-                            keepAliveZone = 36.dp,
+                            // Reduced from 36.dp to 20.dp. The keepAliveZone
+                            // controls how many items outside the viewport are
+                            // kept composed (not disposed) — each kept-alive
+                            // item still participates in the per-frame measure
+                            // pass during auto-scroll. 36dp kept ~2 extra
+                            // lines alive on each side, which doubled the
+                            // measure cost during the 280ms scroll tween and
+                            // caused the karaoke syllable sweep to drop
+                            // frames. 20dp is enough to avoid pop-in when a
+                            // line scrolls into view.
+                            keepAliveZone = 20.dp,
                             modifier = Modifier.fillMaxSize(),
                         )
                     }
@@ -1184,14 +1211,28 @@ private suspend fun LazyListState.scrollLyricIntoFocus(
     val targetFocusPoint = viewportStart + (viewportHeight * LYRIC_FOCUS_TOP_ANCHOR_RATIO).roundToInt()
     val scrollDelta = itemFocusPoint - targetFocusPoint
     if (abs(scrollDelta) > LYRIC_FOCUS_MIN_SCROLL_PX) {
-        animateScrollBy(
-            value = scrollDelta.toFloat(),
-            animationSpec =
-                tween(
-                    durationMillis = LYRIC_FOCUS_SCROLL_DURATION_MS,
-                    easing = FastOutSlowInEasing,
-                ),
-        )
+        // For deltas up to 40% of the viewport (which covers ALL normal
+        // line-advance scrolls — they're typically ~22% of viewport), snap
+        // instantly instead of running a 280ms tween. The tween triggers a
+        // LazyColumn re-layout every frame for its entire duration, which
+        // steals frame budget from the 60Hz karaoke syllable sweep — the
+        // root cause of "auto-scroll lag". The snap is imperceptible because
+        // the karaoke fill animation already provides visual continuity.
+        // Larger deltas (return from manual scroll, large seeks) still
+        // animate so the motion stays smooth over long distances.
+        val instantThreshold = (viewportHeight * LYRIC_FOCUS_INSTANT_SCROLL_RATIO).roundToInt()
+        if (abs(scrollDelta) <= instantThreshold && !force) {
+            scrollBy(scrollDelta.toFloat())
+        } else {
+            animateScrollBy(
+                value = scrollDelta.toFloat(),
+                animationSpec =
+                    tween(
+                        durationMillis = LYRIC_FOCUS_SCROLL_DURATION_MS,
+                        easing = FastOutSlowInEasing,
+                    ),
+            )
+        }
     }
 }
 

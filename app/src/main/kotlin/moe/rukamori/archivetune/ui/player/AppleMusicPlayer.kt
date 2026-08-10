@@ -158,10 +158,12 @@ private val AppleMusicPlayPauseIconSize = 62.dp
 // Bottom action row (lyrics / cast / queue) — enlarged to match the visual
 // weight of the transport row above. Previously 24dp icons in 44dp boxes,
 // which looked noticeably smaller than the 52dp transport buttons and were
-// harder to tap. Now 30dp icons in 56dp boxes — closer to the transport row
-// and meeting the 48dp minimum touch target guideline.
-private val AppleMusicBottomIconSize = 30.dp
-private val AppleMusicBottomButtonSize = 56.dp
+// harder to tap. Now 28dp icons in 50dp boxes — closer to the transport row
+// and meeting the 48dp minimum touch target guideline. Reduced from 30/56
+// to 28/50 so the overall controls cluster is a bit shorter and doesn't
+// push the artwork into the notch when the system nav bar is visible.
+private val AppleMusicBottomIconSize = 28.dp
+private val AppleMusicBottomButtonSize = 50.dp
 private val AppleMusicMiniArtworkSize = 56.dp
 
 /**
@@ -1183,17 +1185,31 @@ private fun AppleMusicSharpArtwork(
                 val artworkCornerRadiusDp = thumbnailCornerRadius.coerceAtMost(32f).dp
                 val artworkMinSize =
                     when {
-                        veryCompactHeight -> 200.dp
-                        compactHeight -> 216.dp
-                        else -> 236.dp
+                        veryCompactHeight -> 176.dp
+                        compactHeight -> 196.dp
+                        else -> 212.dp
                     }
-                val artworkHeightLimit =
+                // Two-sided cap: the full-player-height cap keeps the artwork
+                // a constant size regardless of nav-bar visibility (so it
+                // doesn't visibly "shrink" when the nav bar appears), while
+                // the morph-area cap (maxHeight * 0.82f) guarantees the
+                // artwork ALWAYS fits inside the morph area — even when the
+                // nav bar eats into the bottom and shrinks the weight(1f)
+                // area. Without the morph-area cap, the centered artwork
+                // overflows upward into the notch/cutout on devices that have
+                // one. The multipliers were reduced from 0.40/0.35/0.32 to
+                // 0.34/0.30/0.27 so the artwork is also a bit smaller overall
+                // (the user explicitly asked for a smaller artwork).
+                val artworkHeightLimitFromFull =
                     effectiveFullHeight *
                         when {
-                            veryCompactHeight -> 0.32f
-                            compactHeight -> 0.35f
-                            else -> 0.40f
+                            veryCompactHeight -> 0.27f
+                            compactHeight -> 0.30f
+                            else -> 0.34f
                         }
+                val artworkHeightLimitFromMorph = maxHeight * 0.82f
+                val artworkHeightLimit =
+                    minOf(artworkHeightLimitFromFull, artworkHeightLimitFromMorph)
                 val artworkSize =
                     (maxWidth - horizontalPadding * 2)
                         .coerceAtMost(artworkHeightLimit)
@@ -1290,22 +1306,29 @@ private fun AppleMusicControlsColumn(
     }
     LaunchedEffect(Unit) { kotlinx.coroutines.delay(300); resetSwipeUp() }
 
-    // The controls cluster (title → bottom action row) is ~300dp tall and is
+    // The controls cluster (title → bottom action row) is ~260dp tall and is
     // bottom-anchored by the caller (it sits below the weight(1f) morph area,
     // so it must wrap its height — never fillMaxSize). Gaps tighten on short
     // screens so the rows never squeeze together or spill past the bottom
     // edge (SpaceEvenly did both once the transport icons grew to 52/62dp).
     //
     // Gap values are calibrated to match the Apple Music reference layout:
-    // generous ~32-40dp between rows on standard screens, compressed on
-    // shorter devices to prevent overflow.
+    // ~20-24dp between rows on standard screens, compressed on shorter
+    // devices to prevent overflow. Previously 28-32dp which pushed the
+    // artwork into the notch when the system nav bar was visible.
     val screenHeight = LocalConfiguration.current.screenHeightDp.dp
     val compactHeight = screenHeight < 720.dp
     val veryCompactHeight = screenHeight < 620.dp
-    val titleToScrubberGap = if (veryCompactHeight) 10.dp else if (compactHeight) 18.dp else 28.dp
-    val scrubberToTransportGap = if (veryCompactHeight) 12.dp else if (compactHeight) 20.dp else 32.dp
-    val transportToVolumeGap = if (veryCompactHeight) 10.dp else if (compactHeight) 18.dp else 28.dp
-    val volumeToActionsGap = if (veryCompactHeight) 12.dp else if (compactHeight) 18.dp else 28.dp
+    // Gaps tightened (~25-30% smaller) so the controls cluster is shorter
+    // overall — this prevents the cluster from pushing the artwork up into
+    // the notch/cutout when the system navigation bar is visible (the nav
+    // bar inset is consumed by contentBottomPadding, which shrinks the
+    // morph area above; a shorter controls cluster leaves more room for the
+    // artwork).
+    val titleToScrubberGap = if (veryCompactHeight) 6.dp else if (compactHeight) 12.dp else 20.dp
+    val scrubberToTransportGap = if (veryCompactHeight) 8.dp else if (compactHeight) 14.dp else 24.dp
+    val transportToVolumeGap = if (veryCompactHeight) 6.dp else if (compactHeight) 12.dp else 20.dp
+    val volumeToActionsGap = if (veryCompactHeight) 8.dp else if (compactHeight) 12.dp else 20.dp
 
     Column(
         modifier =
