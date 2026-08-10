@@ -933,9 +933,7 @@ fun AppleMusicPlayerContent(
                                                 // for a few seconds then becomes
                                                 // rounded" bug.
                                                 clipInOverlayDuringTransition =
-                                                    OverlayClip {
-                                                        RoundedCornerShape(artworkCornerRadiusDp)
-                                                    },
+                                                    OverlayClip(RoundedCornerShape(artworkCornerRadiusDp)),
                                                 // Use a non-bouncy spring so the bounds
                                                 // animation settles quickly (~300ms)
                                                 // instead of oscillating for 1-2s. The
@@ -1902,9 +1900,7 @@ private fun SharedTransitionScope.AppleMusicMiniHeader(
                         sharedContentState = rememberSharedContentState(key = "amCoverArt"),
                         animatedVisibilityScope = animatedVisibilityScope,
                         clipInOverlayDuringTransition =
-                            OverlayClip {
-                                RoundedCornerShape(8.dp)
-                            },
+                            OverlayClip(RoundedCornerShape(8.dp)),
                         boundsTransform =
                             BoundsTransform { _, _ ->
                                 spring(
