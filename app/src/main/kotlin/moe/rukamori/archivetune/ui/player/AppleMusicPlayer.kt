@@ -19,15 +19,19 @@ import android.os.Build
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.BoundsTransform
 import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.OverlayClip
 import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -368,6 +372,22 @@ fun AppleMusicPlayerContent(
     // Pre-compute dp→px once (graphicsLayer.translationX is in pixels). Density
     // doesn't change per-frame so this is a one-time composition-phase read.
     val driftDpToPx = with(LocalDensity.current) { 1.dp.toPx() }
+
+    // Hoist the thumbnail corner radius preference so it can be used both
+    // for the COVER state's artwork clip AND for the sharedBounds overlay
+    // clip during morph transitions. Previously this was read INSIDE
+    // AppleMusicSharpArtwork's immersiveExtendedCard branch, which meant
+    // the sharedBounds modifier (in this parent composable) could NOT
+    // access it — so the SharedTransition overlay used the default
+    // RectangleShape clip, causing the artwork to flash sharp corners
+    // for the duration of the spring bounds animation (1-2s) after
+    // expanding from the mini header. See clipInOverlayDuringTransition
+    // on the sharedBounds modifiers below.
+    val (thumbnailCornerRadius, _) = rememberPreference(
+        ThumbnailCornerRadiusKey,
+        defaultValue = 16f,
+    )
+    val artworkCornerRadiusDp = thumbnailCornerRadius.coerceAtMost(32f).dp
 
     val baseArtworkUrl = mediaMetadata.thumbnailUrl?.highRes()
     val thumbnailSwapState =
@@ -766,6 +786,7 @@ fun AppleMusicPlayerContent(
                     videoId = mediaMetadata.id.takeIf { !it.isLocalMediaId() },
                     isMusicVideo = mediaMetadata.isMusicVideo,
                     landscape = true,
+                    artworkCornerRadiusDp = artworkCornerRadiusDp,
                     modifier =
                         Modifier
                             .weight(1f)
@@ -886,12 +907,49 @@ fun AppleMusicPlayerContent(
                                     // size doesn't shrink when the system nav bar
                                     // eats into the morph area (weight 1f).
                                     fullPlayerHeight = fullPlayerHeightForArtwork,
+                                    // Pass the preference-derived corner radius so
+                                    // the artwork clip inside
+                                    // AppleMusicSharpArtwork matches the overlay
+                                    // clip on the sharedBounds modifier below.
+                                    artworkCornerRadiusDp = artworkCornerRadiusDp,
                                     modifier =
                                         Modifier
                                             .fillMaxSize()
                                             .sharedBounds(
-                                                rememberSharedContentState(key = "amCoverArt"),
+                                                sharedContentState =
+                                                    rememberSharedContentState(key = "amCoverArt"),
                                                 animatedVisibilityScope = this@AnimatedContent,
+                                                // CRITICAL: explicitly set the overlay
+                                                // clip to a RoundedCornerShape matching
+                                                // the COVER artwork's own clip. The
+                                                // default OverlayClip is RectangleShape,
+                                                // which causes the shared element to
+                                                // flash sharp corners for the entire
+                                                // duration of the spring bounds
+                                                // animation (1-2s) when morphing from
+                                                // the mini header (8dp rounded) to the
+                                                // large cover (preference-based radius).
+                                                // This was the root cause of the
+                                                // "sharp squared for a few seconds then
+                                                // becomes rounded" bug.
+                                                clipInOverlayDuringTransition =
+                                                    OverlayClip {
+                                                        RoundedCornerShape(artworkCornerRadiusDp)
+                                                    },
+                                                // Use a non-bouncy spring so the bounds
+                                                // animation settles quickly (~300ms)
+                                                // instead of oscillating for 1-2s. The
+                                                // default LowBouncy damping caused the
+                                                // morph to visibly overshoot and
+                                                // oscillate, extending the window during
+                                                // which the overlay clip was visible.
+                                                boundsTransform =
+                                                    BoundsTransform { _, _ ->
+                                                        spring(
+                                                            dampingRatio = Spring.DampingRatioNoBouncy,
+                                                            stiffness = Spring.StiffnessMedium,
+                                                        )
+                                                    },
                                             ),
                                 )
                             }
@@ -1231,6 +1289,13 @@ private fun AppleMusicSharpArtwork(
     // with it — this parameter decouples artwork size from morph area height.
     // Null = fall back to the local maxHeight (landscape or legacy callers).
     fullPlayerHeight: Dp? = null,
+    // The preference-derived corner radius for the immersiveExtendedCard
+    // artwork. Hoisted from the parent (AppleMusicPlayerContent) so the
+    // same value can be used for the sharedBounds overlay clip — keeping
+    // the overlay's clip in sync with the artwork's own clip during morph
+    // transitions. See clipInOverlayDuringTransition on the sharedBounds
+    // modifier in AppleMusicPlayerContent.
+    artworkCornerRadiusDp: Dp = 16.dp,
     modifier: Modifier = Modifier,
 ) {
     val playerConnection = LocalPlayerConnection.current
@@ -1304,17 +1369,13 @@ private fun AppleMusicSharpArtwork(
                 val effectiveFullHeight = fullPlayerHeight ?: if (landscape) maxHeight else maxHeight / 0.55f
                 val compactHeight = effectiveFullHeight < 760.dp
                 val veryCompactHeight = effectiveFullHeight < 700.dp
-                // Honor the global thumbnail corner-radius preference (the same
-                // one the "Adjust corner radius" dialog in Appearance settings
-                // controls). The slider's max is 45dp, but for a ~320dp artwork
-                // that would be over-round, so we cap at 32dp — matching V9's
-                // RoundedCornerShape(30.dp) default while still letting the
-                // user drop it to 0 for sharp corners.
-                val (thumbnailCornerRadius, _) = rememberPreference(
-                    ThumbnailCornerRadiusKey,
-                    defaultValue = 16f,
-                )
-                val artworkCornerRadiusDp = thumbnailCornerRadius.coerceAtMost(32f).dp
+                // artworkCornerRadiusDp is now hoisted from the parent
+                // (AppleMusicPlayerContent) so the same value can be used
+                // for the sharedBounds overlay clip during morph transitions.
+                // Previously this was read locally via rememberPreference,
+                // which meant the sharedBounds modifier couldn't access it —
+                // causing the overlay to use the default RectangleShape and
+                // flash sharp corners during the spring bounds animation.
                 val artworkMinSize =
                     when {
                         veryCompactHeight -> 200.dp
@@ -1822,6 +1883,11 @@ private fun SharedTransitionScope.AppleMusicMiniHeader(
     ) {
         // Mini artwork — shared element with the large COVER artwork.
         // Tapping it restores the COVER state (morphs back to the main player).
+        // The clipInOverlayDuringTransition matches the mini header's own 8dp
+        // rounded clip so the SharedTransition overlay doesn't flash sharp
+        // corners during the COVER→QUEUE morph. The boundsTransform matches
+        // the COVER state's (non-bouncy spring) so the morph duration is
+        // consistent in both directions.
         Box(
             modifier =
                 Modifier
@@ -1833,8 +1899,19 @@ private fun SharedTransitionScope.AppleMusicMiniHeader(
                         onClick = onArtworkClick,
                     )
                     .sharedBounds(
-                        rememberSharedContentState(key = "amCoverArt"),
+                        sharedContentState = rememberSharedContentState(key = "amCoverArt"),
                         animatedVisibilityScope = animatedVisibilityScope,
+                        clipInOverlayDuringTransition =
+                            OverlayClip {
+                                RoundedCornerShape(8.dp)
+                            },
+                        boundsTransform =
+                            BoundsTransform { _, _ ->
+                                spring(
+                                    dampingRatio = Spring.DampingRatioNoBouncy,
+                                    stiffness = Spring.StiffnessMedium,
+                                )
+                            },
                     ),
         ) {
             AsyncImage(
