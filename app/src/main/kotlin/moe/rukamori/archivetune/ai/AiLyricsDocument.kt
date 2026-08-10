@@ -253,19 +253,50 @@ object AiLyricsDocumentParser {
         }
 
     private fun readTtmlLineText(paragraphElement: Element): String {
-        val spanTexts = ArrayList<String>()
+        // Walk the paragraph's immediate children in document order and concatenate
+        // their text WITHOUT inserting artificial spaces between spans.
+        //
+        // The previous implementation joined span text with " " between every pair,
+        // which is correct for Latin-script word-synced lyrics (where each <span>
+        // is a separate word) but catastrophically wrong for CJK lyrics. Japanese
+        // word-synced TTML breaks "恋愛サーキュレーション" into per-mora spans
+        // ("恋", "愛", "サ", "ー", "キュ", "レ", "ー", "ション"), and joining those
+        // with spaces produces "恋 愛 サ ー キュ レ ー ション" — a string of broken
+        // Japanese that AI translators either refuse to translate or echo back
+        // unchanged, causing auto-translation to silently no-op for the entire song.
+        //
+        // The renderer's TTMLParser.parseSpanElements does the same direct-concat
+        // (lineText.append(wordText) with no separator), so this matches what the
+        // user actually sees on screen.
+        //
+        // Mixed-content <p> elements (direct text + nested spans, common in
+        // Musixmatch rich-sync TTML) are handled by including TEXT_NODE children
+        // in the walk — preserving any whitespace the source TTML puts between
+        // spans, instead of throwing it away and inserting our own.
+        val builder = StringBuilder()
         val children = paragraphElement.childNodes
         for (i in 0 until children.length) {
             val child = children.item(i) ?: continue
-            if (child.nodeType != Node.ELEMENT_NODE) continue
-            val childElement = child as? Element ?: continue
-            if (!childElement.tagName.endsWith("span", ignoreCase = true)) continue
-            val spanText = childElement.textContent?.trim().orEmpty()
-            if (spanText.isNotEmpty()) spanTexts.add(spanText)
+            when (child.nodeType) {
+                Node.ELEMENT_NODE -> {
+                    val childElement = child as? Element ?: continue
+                    if (!childElement.tagName.endsWith("span", ignoreCase = true)) continue
+                    val spanText = childElement.textContent.orEmpty()
+                    if (spanText.isNotEmpty()) builder.append(spanText)
+                }
+                Node.TEXT_NODE -> {
+                    val text = child.textContent.orEmpty()
+                    if (text.isNotEmpty()) builder.append(text)
+                }
+            }
         }
-        if (spanTexts.isNotEmpty()) {
-            return spanTexts.joinToString(" ").trim().replace(Regex("\\s+"), " ")
-        }
+        val joined = builder.toString()
+        // Collapse runs of whitespace (TTML is often pretty-printed with newlines
+        // and indentation between spans) but preserve all non-whitespace characters
+        // exactly — including CJK punctuation, kana, and kanji.
+        val collapsed = joined.replace(Regex("\\s+"), " ").trim()
+        if (collapsed.isNotEmpty()) return collapsed
+        // Fallback for paragraphs with no <span> children (e.g. plain timed text).
         return paragraphElement.textContent?.trim().orEmpty().replace(Regex("\\s+"), " ")
     }
 
