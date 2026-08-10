@@ -57,7 +57,6 @@ import moe.rukamori.archivetune.ui.screens.settings.NavigationBarSettings
 import moe.rukamori.archivetune.ui.screens.settings.AppearanceSettings
 import moe.rukamori.archivetune.ui.screens.settings.BackupAndRestore
 import moe.rukamori.archivetune.ui.screens.settings.ChangelogScreen
-import moe.rukamori.archivetune.ui.screens.settings.ChiperSettings
 import moe.rukamori.archivetune.ui.screens.settings.ContentSettings
 import moe.rukamori.archivetune.ui.screens.settings.CustomizeBackground
 import moe.rukamori.archivetune.ui.screens.settings.DebugSettings
@@ -469,9 +468,6 @@ fun NavGraphBuilder.navigationBuilder(
         arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
     ) {
         SourceSettings(navController, it.savedStateHandle["scrollTo"])
-    }
-    composable("settings/player/chiper") {
-        ChiperSettings(navController)
     }
     composable(
         route = "settings/storage?scrollTo={scrollTo}",

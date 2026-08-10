@@ -909,11 +909,24 @@ object LyricsUtils {
      * emit TTML with a `<span>` per word but the spans inherit the line's begin/end with
      * no actual per-word offsets — which previously made Lyrics.kt animate each word
      * in lockstep even though the lyric wasn't truly word-synced.
+     *
+     * Single-word lines (e.g. "Yeah", "Oh", "Hey") are accepted as long as the one
+     * span has a real, positive duration. The multi-word heuristics below are
+     * degenerate for N=1, so we short-circuit before reaching them. This matches the
+     * original app's behaviour where short interjections still animate per-letter.
      */
     fun hasTrueWordSync(entry: LyricsEntry): Boolean {
         val raw = entry.words ?: return false
         val words = raw.filter { it.text.isNotBlank() }
-        if (words.size < 2) return false
+        if (words.isEmpty()) return false
+        if (words.size == 1) {
+            // Single-word line: still counts as word-synced when the one span has a
+            // real, positive duration. The all-starts-identical / all-ends-identical
+            // / even-distribution heuristics below are meaningless for N=1, so just
+            // verify the word actually spans a non-zero interval.
+            val only = words.first()
+            return (only.endTime - only.startTime) > 0.0
+        }
 
         val startTimes = words.map { it.startTime }
         val endTimes = words.map { it.endTime }

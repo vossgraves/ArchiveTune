@@ -256,3 +256,14 @@ future sessions (or contributors) can pick up with full context.
   source files MUST be preserved (per GPL-3.0 Section 4 & 5).
 - The working checkout at `.forks/at-fork` is periodically reset; re-clone from
   `vossgraves/ArchiveTune` with `--recurse-submodules` when it goes missing.
+
+## 2026-08: koiverse phone-home removal
+
+Session 2026-08-10 removed the koiverse/archivetune phone-home surface:
+delete `Koiverse.jks`/`.base64`, `DataServer.txt`, `ArchiveTuneKoiverseServer.txt`,
+drop the `moriextractor` submodule, remove the inert cipher UI (keep
+`morideobfuscator`), repoint About/donate/support links to
+`github.com/4nx3b/ArchiveTune`, make News a local placeholder, and cut the
+koiverse Listen-Together REST/WS path so public rooms use vivimusic's WSS
+servers via `TogetherPublicClient`. The canvas proxy was replaced by
+Apple Music / Spotify providers. See `.jcode/PLAN_OPUS.md` for the full plan.
