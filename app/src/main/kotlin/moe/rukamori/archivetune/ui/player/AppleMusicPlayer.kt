@@ -54,6 +54,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -752,7 +753,13 @@ fun AppleMusicPlayerContent(
             Column(
                 modifier = Modifier.fillMaxSize(),
             ) {
-                Box(modifier = Modifier.weight(1f)) {
+                BoxWithConstraints(modifier = Modifier.weight(1f)) {
+                // Mini header height = artwork size + vertical padding (8.dp top + 8.dp bottom)
+                // + top system bar inset (status bar / notch). The overlay must start
+                // BELOW this height so it doesn't intercept taps on the mini header's
+                // artwork (restore cover) and favourite/overflow chips.
+                val topInset = LocalStableSystemBarsTopPadding.current
+                val miniHeaderHeight = AppleMusicMiniArtworkSize + 16.dp + topInset
                 SharedTransitionLayout(
                     modifier = Modifier.fillMaxSize(),
                 ) {
@@ -907,81 +914,69 @@ fun AppleMusicPlayerContent(
                 // That fixes the "behind of bottom controls are black" issue.
 
                 // Lyrics overlay — INSIDE the weighted Box, ON TOP of the
-                // SharedTransitionLayout but BOUNDED to this Box's area. This means
-                // the lyrics CANNOT extend over the controls below (which live in a
-                // separate AnimatedVisibility outside this Box). Touches on the
-                // controls area go directly to the controls, not to the lyrics.
-                // The mini header (inside SharedTransitionLayout) handles the artwork
-                // morph; this overlay only renders the lyrics content itself,
-                // positioned below where the mini header sits.
+                // SharedTransitionLayout but BOUNDED to the lyrics area (below
+                // the mini header). This means the overlay CANNOT extend over
+                // the mini header (so the mini header's artwork + favourite +
+                // overflow chips remain tappable) NOR over the controls below
+                // (which live in a separate AnimatedVisibility outside this Box).
+                //
+                // PREVIOUS APPROACH & BUG: the overlay used fillMaxSize with a
+                // clickable top Box (height = mini header height) that called
+                // restoreCover(). That top Box intercepted ALL taps on the mini
+                // header area — including taps on the favourite (star) and
+                // overflow (more) chips — so tapping those chips dismissed the
+                // lyrics instead of performing the chip's action.
+                //
+                // FIX: the overlay's Column is now sized to (maxHeight -
+                // miniHeaderHeight) and offset down by miniHeaderHeight. This
+                // leaves the mini header area (top of the weighted Box) EXPOSED
+                // — taps on the mini header fall through to the
+                // SharedTransitionLayout below, where the AppleMusicMiniHeader's
+                // artwork (restoreCover) and favourite/overflow chips receive
+                // the taps normally.
                 //
                 // NOTE: we use the standalone AnimatedVisibility (androidx.compose.
                 // animation.AnimatedVisibility) — NOT the ColumnScope extension —
-                // because this is inside a Box, not a Column. The ColumnScope variant
-                // would be a compile error here.
-                //
-                // THUMBNAIL CLICK FIX: the overlay Box previously used fillMaxSize
-                // with a pointerInput that observed (but didn't consume) touches.
-                // Touches on the mini header area (top of the overlay) hit the
-                // overlay's pointerInput — NOT the mini header's clickable — so
-                // tapping the thumbnail to restore the COVER state didn't work.
-                // A later attempt added a transparent full-width clickable Box in
-                // the mini-header area — that restored COVER taps but swallowed
-                // every other tap in the region, leaving the star and overflow
-                // chips in the mini header dead. The current code renders NO
-                // pointer handling in the mini-header area: the mini header's own
-                // clickables (artwork restores COVER, chips toggle like / open the
-                // menu) receive the touches directly, and the lyrics area below
-                // pokes the controls without consuming.
+                // because this is inside a BoxWithConstraints, not a Column.
                 androidx.compose.animation.AnimatedVisibility(
                     visible = lyricsOpen,
                     enter = fadeIn(tween(400, easing = FastOutSlowInEasing)),
                     exit = fadeOut(tween(300, easing = FastOutSlowInEasing)),
                 ) {
                     val lyricsMode by rememberEnumPreference(LyricsModeKey, LyricsMode.ENHANCED)
-                    Column(
+                    // Lyrics area — poke controls on touch, lyrics scroll.
+                    // The Column is sized to fill the area BELOW the mini header
+                    // (maxHeight - miniHeaderHeight) and offset down by
+                    // miniHeaderHeight so it doesn't cover the mini header.
+                    Box(
                         modifier =
                             Modifier
-                                .fillMaxSize()
-                                .windowInsetsPadding(WindowInsets(top = LocalStableSystemBarsTopPadding.current)),
+                                .fillMaxWidth()
+                                .height(maxHeight - miniHeaderHeight)
+                                .offset(y = miniHeaderHeight)
+                                .pointerInput(lyricsOpen) {
+                                    if (!lyricsOpen) return@pointerInput
+                                    awaitEachGesture {
+                                        awaitFirstDown(requireUnconsumed = false)
+                                        pokePlayerControlsVisibility()
+                                    }
+                                },
                     ) {
-                        // NOTE: no transparent clickable Box here anymore. The previous
-                        // full-width clickable Box (height AppleMusicMiniArtworkSize + 16.dp)
-                        // sat on top of the mini header and swallowed every tap in that
-                        // region — the star and overflow chips in the mini header were
-                        // dead. The mini header below handles its own touches: artwork
-                        // restores COVER, chips toggle like / open the menu. The lyrics
-                        // Box's pointerInput below only pokes the controls and never
-                        // consumes, so the mini header keeps working.
-                        // Lyrics area — poke controls on touch, lyrics scroll.
-                        Box(
-                            modifier =
-                                Modifier
-                                    .fillMaxSize()
-                                    .pointerInput(lyricsOpen) {
-                                        if (!lyricsOpen) return@pointerInput
-                                        awaitEachGesture {
-                                            awaitFirstDown(requireUnconsumed = false)
-                                            pokePlayerControlsVisibility()
-                                        }
-                                    },
-                        ) {
-                            when (lyricsMode) {
-                                LyricsMode.V2 -> LyricsV2(
-                                    sliderPositionProvider = lyricsPosProvider,
-                                    lyricsSyncOffset = lyricsSyncOffset,
-                                    modifier = Modifier.fillMaxSize(),
-                                )
-                                LyricsMode.ENHANCED -> LyricsEnhanced(
-                                    sliderPositionProvider = lyricsPosProvider,
-                                    lyricsSyncOffset = lyricsSyncOffset,
-                                    modifier = Modifier.fillMaxSize(),
-                                )
-                            }
+                        when (lyricsMode) {
+                            LyricsMode.V2 -> LyricsV2(
+                                sliderPositionProvider = lyricsPosProvider,
+                                lyricsSyncOffset = lyricsSyncOffset,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                            LyricsMode.ENHANCED -> LyricsEnhanced(
+                                sliderPositionProvider = lyricsPosProvider,
+                                lyricsSyncOffset = lyricsSyncOffset,
+                                modifier = Modifier.fillMaxSize(),
+                            )
                         }
                     }
                 }
-                } // end weighted Box (SharedTransitionLayout + lyrics overlay)
+                } // end weighted BoxWithConstraints (SharedTransitionLayout + lyrics overlay)
 
                 // Persistent playback controls — anchored at the bottom.
                 // When the queue or lyrics is open, the title row is hidden (it's in the
