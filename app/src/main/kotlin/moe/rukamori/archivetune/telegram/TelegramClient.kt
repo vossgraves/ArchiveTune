@@ -215,6 +215,17 @@ object TelegramClient {
 
     suspend fun getChat(chatId: Long): TdApi.Chat = chatCache[chatId] ?: send(TdApi.GetChat(chatId))
 
+    /**
+     * Opens a chat in TDLib. For private channels this loads the chat's
+     * metadata and recent message history, warming the message index so
+     * that a subsequent [fetchAudioPage] (SearchChatMessages) returns
+     * results instead of an empty page on the first call. Safe to call
+     * on an already-open chat.
+     */
+    suspend fun openChat(chatId: Long) {
+        send(TdApi.OpenChat(chatId))
+    }
+
     suspend fun channelInfo(chatId: Long): TelegramChannel? =
         runCatching { toChannel(getChat(chatId)) }.getOrNull()
 

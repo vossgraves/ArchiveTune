@@ -57,6 +57,17 @@ fun CanvasArtworkPlayer(
     isPlaying: Boolean,
     modifier: Modifier = Modifier,
     resizeMode: Int = AspectRatioFrameLayout.RESIZE_MODE_FIT,
+    // When false, the ExoPlayer is kept alive (paused) but the TextureView
+    // (ContentFrame) is NOT rendered. This is used by the Apple Music player's
+    // backdrop canvas when lyrics is open: the canvas's Modifier.blur(72.dp)
+    // on a live TextureView is a heavy per-frame GPU cost even when the video
+    // is paused, because the blur RenderEffect is re-applied every frame.
+    // Hiding the TextureView frees the entire GPU frame budget for the
+    // karaoke syllable sweep, eliminating the "lyrics lag when canvas is
+    // playing" issue. When `visible` flips back to true, the TextureView is
+    // re-created and the ExoPlayer attaches to it — no reload delay because
+    // the player instance was retained.
+    visible: Boolean = true,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -293,14 +304,22 @@ fun CanvasArtworkPlayer(
         label = "canvasAlpha",
     )
 
-    ContentFrame(
-        player = exoPlayer,
-        surfaceType = SURFACE_TYPE_TEXTURE_VIEW,
-        contentScale = resizeMode.toContentScale(),
-        keepContentOnReset = false,
-        shutter = {},
-        modifier = modifier.alpha(alpha),
-    )
+    // Only render the ContentFrame (TextureView) when `visible` is true.
+    // When false, the ExoPlayer stays alive (paused) but the TextureView is
+    // removed from the composition tree — eliminating the per-frame GPU cost
+    // of compositing + blurring a video surface that isn't changing. When
+    // `visible` flips back to true, a new TextureView is created and the
+    // ExoPlayer re-attaches to it, showing the current frame immediately.
+    if (visible) {
+        ContentFrame(
+            player = exoPlayer,
+            surfaceType = SURFACE_TYPE_TEXTURE_VIEW,
+            contentScale = resizeMode.toContentScale(),
+            keepContentOnReset = false,
+            shutter = {},
+            modifier = modifier.alpha(alpha),
+        )
+    }
 }
 
 private fun Int.toContentScale(): ContentScale =
