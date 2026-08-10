@@ -519,6 +519,15 @@ fun BottomSheetPlayer(
     var position by rememberSaveable(mediaMetadata?.id) {
         mutableLongStateOf(playerConnection.player.currentPosition)
     }
+    // Wrap `position` in a stable provider so AppleMusicPlayerContent does NOT
+    // recompose on every 100ms poll tick. The provider lambda is remembered
+    // (stable identity) and reads the latest position via the updated state.
+    // Only AppleMusicControlsColumn reads it — and only when it's actually
+    // composed (visible). When lyrics is open and controls auto-hide, no
+    // recomposition happens at all, freeing the frame budget for the karaoke
+    // syllable animation in the inline Enhanced lyrics view.
+    val positionUpdatedState = rememberUpdatedState(position)
+    val positionProvider = remember { { positionUpdatedState.value } }
     var duration by rememberSaveable(mediaMetadata?.id) {
         mutableLongStateOf(playerConnection.player.duration)
     }
@@ -1714,7 +1723,7 @@ fun BottomSheetPlayer(
                             canSkipPrevious = canSkipPrevious,
                             canSkipNext = canSkipNext,
                             sliderPosition = sliderPosition,
-                            position = position,
+                            positionProvider = positionProvider,
                             duration = duration,
                             playerConnection = playerConnection,
                             navController = navController,
@@ -2071,7 +2080,7 @@ fun BottomSheetPlayer(
                             canSkipPrevious = canSkipPrevious,
                             canSkipNext = canSkipNext,
                             sliderPosition = sliderPosition,
-                            position = position,
+                            positionProvider = positionProvider,
                             duration = duration,
                             playerConnection = playerConnection,
                             navController = navController,
