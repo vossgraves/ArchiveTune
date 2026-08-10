@@ -21,7 +21,6 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.BoundsTransform
 import androidx.compose.animation.ExperimentalSharedTransitionApi
-import androidx.compose.animation.OverlayClip
 import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.core.Spring
@@ -922,20 +921,18 @@ fun AppleMusicPlayerContent(
                                                 // CRITICAL: explicitly set the overlay
                                                 // clip to a RoundedCornerShape matching
                                                 // the COVER artwork's own clip. The
-                                                // default OverlayClip is RectangleShape,
-                                                // which causes the shared element to
-                                                // flash sharp corners for the entire
-                                                // duration of the spring bounds
-                                                // animation (1-2s) when morphing from
-                                                // the mini header (8dp rounded) to the
-                                                // large cover (preference-based radius).
-                                                // This was the root cause of the
-                                                // "sharp squared for a few seconds then
-                                                // becomes rounded" bug.
+                                                // default is RectangleShape, which
+                                                // causes the shared element to flash
+                                                // sharp corners for the entire duration
+                                                // of the spring bounds animation (1-2s)
+                                                // when morphing from the mini header
+                                                // (8dp rounded) to the large cover
+                                                // (preference-based radius). This was
+                                                // the root cause of the "sharp squared
+                                                // for a few seconds then becomes
+                                                // rounded" bug.
                                                 clipInOverlayDuringTransition =
-                                                    OverlayClip {
-                                                        RoundedCornerShape(artworkCornerRadiusDp)
-                                                    },
+                                                    RoundedCornerShape(artworkCornerRadiusDp),
                                                 // Use a non-bouncy spring so the bounds
                                                 // animation settles quickly (~300ms)
                                                 // instead of oscillating for 1-2s. The
@@ -1902,9 +1899,7 @@ private fun SharedTransitionScope.AppleMusicMiniHeader(
                         sharedContentState = rememberSharedContentState(key = "amCoverArt"),
                         animatedVisibilityScope = animatedVisibilityScope,
                         clipInOverlayDuringTransition =
-                            OverlayClip {
-                                RoundedCornerShape(8.dp)
-                            },
+                            RoundedCornerShape(8.dp),
                         boundsTransform =
                             BoundsTransform { _, _ ->
                                 spring(
