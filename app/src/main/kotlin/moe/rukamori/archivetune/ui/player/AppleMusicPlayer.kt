@@ -156,13 +156,11 @@ private val AppleMusicContentPadding = 28.dp
 private val AppleMusicChipSize = 34.dp
 private val AppleMusicTransportIconSize = 52.dp
 private val AppleMusicPlayPauseIconSize = 62.dp
-// Bottom action row (lyrics / cast / queue) — enlarged to match the visual
-// weight of the transport row above. Previously 24dp icons in 44dp boxes,
-// which looked noticeably smaller than the 52dp transport buttons and were
-// harder to tap. Now 30dp icons in 56dp boxes — closer to the transport row
-// and meeting the 48dp minimum touch target guideline.
-private val AppleMusicBottomIconSize = 30.dp
-private val AppleMusicBottomButtonSize = 56.dp
+// Bottom action row (lyrics / cast / queue) — reduced "just a bit" from the
+// previous 30dp/56dp per user request. 26dp icons in 48dp boxes are still
+// comfortably above the 48dp minimum touch target while looking less bulky.
+private val AppleMusicBottomIconSize = 26.dp
+private val AppleMusicBottomButtonSize = 48.dp
 private val AppleMusicMiniArtworkSize = 56.dp
 
 /**
@@ -1393,7 +1391,13 @@ private fun AppleMusicControlsColumn(
                         }
                         swipeUpAccumulated = 0f
                     }
-                },
+            },
+        // Bottom-aligned with tight fixed gaps between rows — matches the compact Apple
+        // Music layout. Previously used Arrangement.SpaceEvenly which stretched the rows
+        // across the entire slot, creating excessive empty space. spacedBy with
+        // Alignment.Bottom gives predictable, compact spacing that doesn't stretch
+        // when the slot is taller than the content needs.
+        verticalArrangement = Arrangement.spacedBy(14.dp, Alignment.Bottom),
     ) {
     // Title / artist row with star + more chips.
     // Hidden when showTitleRow = false (queue is open — the title lives in
