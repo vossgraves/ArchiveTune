@@ -25,6 +25,7 @@ import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
@@ -1224,6 +1225,19 @@ private fun AppleMusicSharpArtwork(
                     (maxWidth - horizontalPadding * 2)
                         .coerceAtMost(artworkHeightLimit)
                         .coerceAtLeast(artworkMinSize)
+                // Pause-scale animation (non-canvas songs only). When the
+                // music is paused, the artwork shrinks slightly (~8%) to
+                // mirror Apple Music's behavior. When playback resumes, it
+                // restores to full size. This only applies to the
+                // immersiveExtendedCard branch (static artwork — no Spotify
+                // Canvas, no music video). Canvas songs continue playing
+                // their loop regardless of audio play state, so shrinking
+                // them would look wrong.
+                val artworkPauseScale by animateFloatAsState(
+                    targetValue = if (isPlaying) 1f else 0.92f,
+                    animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing),
+                    label = "artworkPauseScale",
+                )
                 Box(
                     modifier = Modifier.matchParentSize(),
                     contentAlignment = Alignment.Center,
@@ -1235,6 +1249,10 @@ private fun AppleMusicSharpArtwork(
                         modifier =
                             Modifier
                                 .size(artworkSize)
+                                .graphicsLayer {
+                                    scaleX = artworkPauseScale
+                                    scaleY = artworkPauseScale
+                                }
                                 .shadow(8.dp, RoundedCornerShape(artworkCornerRadiusDp))
                                 .clip(RoundedCornerShape(artworkCornerRadiusDp)),
                     )
