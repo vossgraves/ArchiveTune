@@ -404,6 +404,23 @@ fun LyricsEnhanced(
         var wasSliderActive = false
         var anchorPlayerPositionMs = player.currentPosition.coerceAtLeast(0L)
         var anchorFrameNanos = 0L
+        // Cache the current line index + boundary timestamps to avoid calling
+        // findLastStartedLineIndex (binary search) every frame. In the common
+        // case the position stays within the current line for several seconds,
+        // so we only need to re-search when the position crosses a line
+        // boundary. This reduces per-frame work from O(log N) to O(1) and,
+        // more importantly, avoids the `playbackSyncPosition()` lambda call
+        // (3 State reads + arithmetic) on the vast majority of frames — we
+        // reuse the `effectivePositionMs` already computed for the playback
+        // interpolation instead of re-reading `playbackPositionMs.longValue`.
+        //
+        // The cache is invalidated when `syncedLyrics` changes (e.g. when
+        // romanization finishes) by tracking the identity of the last-seen
+        // SyncedLyrics object.
+        var lastLyricsRef: SyncedLyrics? = null
+        var cachedLineIdx = -1
+        var cachedCurrentLineStart = Int.MIN_VALUE
+        var cachedNextLineStart = Int.MAX_VALUE
         while (isActive) {
             val sliderPosition = latestSliderPositionProvider.value()
             val isSliderActive = sliderPosition != null
@@ -413,12 +430,22 @@ fun LyricsEnhanced(
             wasSliderActive = isSliderActive
 
             val rawPosition = (sliderPosition ?: player.currentPosition).coerceAtLeast(0L)
+            // effectivePositionMs is the synced position (offset + lead +
+            // tuning) that we'd otherwise compute via playbackSyncPosition().
+                       // Computing it here inline avoids a redundant State read of
+            // playbackPositionMs.longValue (we already have the value in
+            // `rawPosition` / `nextPosition`).
+            val effectivePositionMs: Long
             if (sliderPosition != null || !player.isPlaying || animationsDisabled) {
                 anchorPlayerPositionMs = rawPosition
                 anchorFrameNanos = 0L
                 if (playbackPositionMs.longValue != rawPosition) {
                     playbackPositionMs.longValue = rawPosition
                 }
+                effectivePositionMs =
+                    (rawPosition + latestLyricsSyncOffset.value.toLong() +
+                        latestLeadMs.value + LYRIC_VISUAL_TUNING_OFFSET_MS)
+                        .coerceIn(0L, Int.MAX_VALUE.toLong())
                 if (sliderPosition == null) {
                     delay(100L)
                 } else {
@@ -455,13 +482,41 @@ fun LyricsEnhanced(
                 if (playbackPositionMs.longValue != nextPosition) {
                     playbackPositionMs.longValue = nextPosition
                 }
+                effectivePositionMs =
+                    (nextPosition + latestLyricsSyncOffset.value.toLong() +
+                        latestLeadMs.value + LYRIC_VISUAL_TUNING_OFFSET_MS)
+                        .coerceIn(0L, Int.MAX_VALUE.toLong())
             }
 
+            // Line-index tracking: only re-search when the position crosses a
+            // line boundary OR the lyrics object identity changed (romanization
+            // finished). This is the key per-frame optimization — the binary
+            // search is skipped entirely on the vast majority of frames, and
+            // we reuse `effectivePositionMs` instead of calling the
+            // `playbackSyncPosition()` lambda (which would do 3 more State
+            // reads + arithmetic on every frame).
             val syncedLyricsNow = latestSyncedLyrics.value
             if (syncedLyricsNow.lines.isNotEmpty()) {
-                val newLineIdx = syncedLyricsNow.findLastStartedLineIndex(playbackSyncPosition())
-                if (newLineIdx != currentLineIndexState.intValue) {
-                    currentLineIndexState.intValue = newLineIdx
+                val lyricsChanged = syncedLyricsNow !== lastLyricsRef
+                if (lyricsChanged) {
+                    lastLyricsRef = syncedLyricsNow
+                    cachedLineIdx = -1
+                }
+                val pos = effectivePositionMs.toInt()
+                val needsResearch =
+                    cachedLineIdx == -1 ||
+                        pos >= cachedNextLineStart ||
+                        pos < cachedCurrentLineStart
+                if (needsResearch) {
+                    val newLineIdx = syncedLyricsNow.findLastStartedLineIndex(pos)
+                    cachedLineIdx = newLineIdx
+                    cachedCurrentLineStart =
+                        if (newLineIdx >= 0) syncedLyricsNow.lines[newLineIdx].start else Int.MIN_VALUE
+                    cachedNextLineStart =
+                        syncedLyricsNow.lines.getOrNull(newLineIdx + 1)?.start ?: Int.MAX_VALUE
+                    if (newLineIdx != currentLineIndexState.intValue) {
+                        currentLineIndexState.intValue = newLineIdx
+                    }
                 }
             }
         }
@@ -790,17 +845,20 @@ fun LyricsEnhanced(
                             showTranslation = showTranslations,
                             showPhonetic = romanizationPreferences.isEnabled,
                             offset = lyricsViewportOffset,
-                            // Reduced from 36.dp to 20.dp. The keepAliveZone
-                            // controls how many items outside the viewport are
-                            // kept composed (not disposed) — each kept-alive
-                            // item still participates in the per-frame measure
-                            // pass during auto-scroll. 36dp kept ~2 extra
-                            // lines alive on each side, which doubled the
-                            // measure cost during the 280ms scroll tween and
-                            // caused the karaoke syllable sweep to drop
-                            // frames. 20dp is enough to avoid pop-in when a
-                            // line scrolls into view.
-                            keepAliveZone = 20.dp,
+                            // Reduced from 36.dp → 20.dp → 8.dp. The keepAliveZone controls how
+                            // many items outside the viewport are kept composed (not
+                            // disposed) — each kept-alive item still participates in
+                            // the per-frame measure pass during auto-scroll. The
+                            // mocharealm KaraokeLyricsView library measures every
+                            // kept-alive karaoke line on every scroll event; each line
+                            // contains N syllables that each need a fill-ratio
+                            // computation. 8dp keeps at most ~1 line alive on each
+                            // side of the viewport, minimizing the measure cost
+                            // during the instant `scrollBy` snap on line changes.
+                            // This is the single biggest lever we have for reducing
+                            // the word-synced lyrics lag in Enhanced style (V2 uses
+                            // its own renderer and doesn't have this cost).
+                            keepAliveZone = 8.dp,
                             modifier = Modifier.fillMaxSize(),
                         )
                     }

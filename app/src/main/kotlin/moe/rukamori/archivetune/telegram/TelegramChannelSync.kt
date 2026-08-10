@@ -44,8 +44,18 @@ object TelegramChannelSync {
     // Retry config for individual page fetches. TDLib can transiently fail
     // on the first SearchChatMessages call for a private channel (chat history
     // not yet loaded), but succeed on a subsequent call a few hundred ms later.
-    private const val FETCH_RETRY_COUNT = 3
-    private const val FETCH_RETRY_DELAY_MS = 800L
+    // This applies BOTH to exception failures AND to "empty first page" results
+    // — TDLib frequently returns an empty page (no exception) for a private
+    // channel whose history hasn't been loaded yet, which is why the playlist
+    // showed "0 songs" until the user manually hit Refresh.
+    private const val FETCH_RETRY_COUNT = 5
+    private const val FETCH_RETRY_DELAY_MS = 600L
+
+    // Settling delay after openChat. For private channels, TDLib needs time to
+    // load the chat history into its local index before SearchChatMessages can
+    // return results. Waiting here BEFORE the first fetch dramatically reduces
+    // the chance of getting an empty first page.
+    private const val OPEN_CHAT_SETTLE_MS = 800L
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -133,6 +143,14 @@ object TelegramChannelSync {
         // the chat here ensures the message index is warm before we page.
         runCatching { TelegramClient.openChat(chatId) }
             .onFailure { Timber.tag(TAG).w(it, "openChat(%d) failed (non-fatal)", chatId) }
+        // Settle delay: give TDLib time to actually load the chat history into
+        // its local index after OpenChat returns. Without this wait, the first
+        // SearchChatMessages call for a private channel frequently returns an
+        // empty page (no exception) because the history isn't indexed yet —
+        // this was the root cause of "private channel shows empty until I tap
+        // Refresh". The manual Refresh worked because by then enough time had
+        // elapsed for TDLib to finish indexing.
+        delay(OPEN_CHAT_SETTLE_MS)
 
         val playlistId = playlistId(chatId)
         val filters = listOf(TdApi.SearchMessagesFilterAudio(), TdApi.SearchMessagesFilterDocument())
@@ -144,9 +162,10 @@ object TelegramChannelSync {
         // return, so this is bounded by the actual size of the channel.
         for (filter in filters) {
             var fromMessageId = 0L
+            var isFirstPage = true
             while (true) {
                 val page =
-                    fetchPageWithRetry(chatId, fromMessageId, filter)
+                    fetchPageWithRetry(chatId, fromMessageId, filter, isFirstPage)
 
                 if (page == null) {
                     // All retries exhausted — stop this filter and move on to
@@ -161,6 +180,7 @@ object TelegramChannelSync {
                     if (insertTrack(database, playlistId, track, title)) inserted++
                 }
 
+                isFirstPage = false
                 if (page.nextFromMessageId == 0L) break
                 fromMessageId = page.nextFromMessageId
             }
@@ -173,18 +193,51 @@ object TelegramChannelSync {
      * SearchChatMessages call for a private channel (chat history not yet
      * loaded), but succeed on a subsequent call a few hundred ms later.
      * Returns null only if ALL retries fail.
+     *
+     * CRITICAL: when [isFirstPage] is true, an EMPTY result (zero tracks AND
+     * zero nextFromMessageId) is ALSO treated as a transient failure and
+     * retried. TDLib frequently returns an empty first page for private
+     * channels whose history hasn't been fully indexed yet — this is NOT an
+     * error condition (no exception thrown), so the previous logic accepted
+     * the empty page as "channel has no audio" and stopped paging. That was
+     * the root cause of "private channel shows empty until I tap Refresh":
+     * the manual Refresh worked because by then TDLib had finished indexing.
+     *
+     * For non-first pages, an empty result with zero nextFromMessageId is the
+     * legitimate "no more messages" signal and is returned as-is.
      */
     private suspend fun fetchPageWithRetry(
         chatId: Long,
         fromMessageId: Long,
         filter: TdApi.SearchMessagesFilter,
+        isFirstPage: Boolean = false,
     ): TelegramAudioPage? {
         repeat(FETCH_RETRY_COUNT) { attempt ->
             val result =
                 runCatching {
                     TelegramClient.fetchAudioPage(chatId, fromMessageId, PAGE_FETCH_LIMIT, filter)
                 }
-            result.onSuccess { return it }
+            result.onSuccess { page ->
+                // On the first page, treat "empty + no next cursor" as a
+                // transient failure and retry — TDLib hasn't indexed the
+                // channel history yet. On subsequent pages, this is the
+                // legitimate end-of-channel signal.
+                val isEmptyFirstPage =
+                    isFirstPage &&
+                        page.tracks.isEmpty() &&
+                        page.nextFromMessageId == 0L
+                if (isEmptyFirstPage && attempt < FETCH_RETRY_COUNT - 1) {
+                    Timber.tag(TAG).w(
+                        "fetchAudioPage attempt %d/%d returned empty first page for chat %d filter %s (will retry — TDLib history not indexed yet)",
+                        attempt + 1,
+                        FETCH_RETRY_COUNT,
+                        chatId,
+                        filter::class.simpleName,
+                    )
+                } else {
+                    return page
+                }
+            }
             result.onFailure { e ->
                 Timber.tag(TAG).w(
                     e,
