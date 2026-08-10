@@ -1730,13 +1730,16 @@ fun CompactQueueHeader(
     val stableStatusBarTop = LocalStableSystemBarsTopPadding.current
     val displayCutoutTop = WindowInsets.displayCutout.only(WindowInsetsSides.Top).asPaddingValues().calculateTopPadding()
     val notchSafeTopPadding = maxOf(stableStatusBarTop, displayCutoutTop)
+    // NOTE: no `.bottomSheetDraggable(sheetState)` here — the outer `BottomSheet`
+    // Box already has it, and an inner drag detector on this Column was competing
+    // with the header IconButtons' click handlers (finger drift during a tap
+    // cancelled the tap and flung the sheet). Same fix as CurrentSongHeader.
     Column(
         modifier =
             modifier
                 .fillMaxWidth()
                 .windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal))
                 .padding(top = notchSafeTopPadding)
-                .bottomSheetDraggable(sheetState)
                 .padding(horizontal = CompactQueueHorizontalPadding)
                 .padding(top = 12.dp, bottom = 4.dp),
     ) {

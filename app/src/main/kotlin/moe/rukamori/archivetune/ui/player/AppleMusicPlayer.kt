@@ -922,14 +922,17 @@ fun AppleMusicPlayerContent(
                 //
                 // THUMBNAIL CLICK FIX: the overlay Box previously used fillMaxSize
                 // with a pointerInput that observed (but didn't consume) touches.
-                // Because the overlay was on top of the SharedTransitionLayout,
-                // touches on the mini header area (top of the overlay) hit the
+                // Touches on the mini header area (top of the overlay) hit the
                 // overlay's pointerInput — NOT the mini header's clickable — so
                 // tapping the thumbnail to restore the COVER state didn't work.
-                // Now the overlay's Column has a dedicated clickable Box in the
-                // mini-header area (top AppleMusicMiniArtworkSize + 16.dp) that
-                // calls restoreCover(). Touches below that area go to the lyrics
-                // composable (scroll + poke controls).
+                // A later attempt added a transparent full-width clickable Box in
+                // the mini-header area — that restored COVER taps but swallowed
+                // every other tap in the region, leaving the star and overflow
+                // chips in the mini header dead. The current code renders NO
+                // pointer handling in the mini-header area: the mini header's own
+                // clickables (artwork restores COVER, chips toggle like / open the
+                // menu) receive the touches directly, and the lyrics area below
+                // pokes the controls without consuming.
                 androidx.compose.animation.AnimatedVisibility(
                     visible = lyricsOpen,
                     enter = fadeIn(tween(400, easing = FastOutSlowInEasing)),
@@ -942,22 +945,14 @@ fun AppleMusicPlayerContent(
                                 .fillMaxSize()
                                 .windowInsetsPadding(WindowInsets(top = LocalStableSystemBarsTopPadding.current)),
                     ) {
-                        // Mini header area — tapping here restores the COVER state
-                        // (same as tapping the mini header artwork below). This is
-                        // necessary because the overlay is on top of the mini header
-                        // and intercepts its touches. We use a transparent clickable
-                        // Box sized to match the mini header height.
-                        Box(
-                            modifier =
-                                Modifier
-                                    .fillMaxWidth()
-                                    .height(AppleMusicMiniArtworkSize + 16.dp)
-                                    .clickable(
-                                        interactionSource = remember { MutableInteractionSource() },
-                                        indication = null,
-                                        onClick = restoreCover,
-                                    ),
-                        )
+                        // NOTE: no transparent clickable Box here anymore. The previous
+                        // full-width clickable Box (height AppleMusicMiniArtworkSize + 16.dp)
+                        // sat on top of the mini header and swallowed every tap in that
+                        // region — the star and overflow chips in the mini header were
+                        // dead. The mini header below handles its own touches: artwork
+                        // restores COVER, chips toggle like / open the menu. The lyrics
+                        // Box's pointerInput below only pokes the controls and never
+                        // consumes, so the mini header keeps working.
                         // Lyrics area — poke controls on touch, lyrics scroll.
                         Box(
                             modifier =
