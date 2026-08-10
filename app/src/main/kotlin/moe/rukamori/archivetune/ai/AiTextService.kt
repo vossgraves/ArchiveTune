@@ -64,7 +64,10 @@ object AiTextService {
                     // in the pool between translation batches. 30s is below typical
                     // server-side idle timeouts (60-120s), so connections get reused
                     // within a song but evicted before they go stale.
-                    keepAliveDuration(30, TimeUnit.SECONDS)
+                    // ConnectionPool(maxIdleConnections, keepAliveDuration, unit).
+                    connectionPool(
+                        okhttp3.ConnectionPool(5, 30, TimeUnit.SECONDS),
+                    )
                 }
             }
         }
