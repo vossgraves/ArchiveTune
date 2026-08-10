@@ -33,7 +33,6 @@ import javax.inject.Singleton
 
 enum class MusicTogetherConnectionMode {
     LAN,
-    ONLINE,
     PUBLIC,
 }
 
@@ -145,13 +144,6 @@ class MusicTogetherRepository
                     )
                 }
 
-                MusicTogetherConnectionMode.ONLINE -> {
-                    service.startTogetherOnlineHost(
-                        displayName = displayName,
-                        settings = settings,
-                    )
-                }
-
                 MusicTogetherConnectionMode.PUBLIC -> {
                     service.startTogetherPublicHost(
                         displayName = displayName,
@@ -169,7 +161,6 @@ class MusicTogetherRepository
             val service = serviceFlow.value ?: return
             when (mode) {
                 MusicTogetherConnectionMode.LAN -> service.joinTogether(rawInput, displayName)
-                MusicTogetherConnectionMode.ONLINE -> service.joinTogetherOnline(rawInput, displayName)
                 MusicTogetherConnectionMode.PUBLIC -> service.joinTogetherPublic(rawInput, displayName)
             }
         }

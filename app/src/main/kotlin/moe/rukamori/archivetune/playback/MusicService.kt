@@ -803,18 +803,20 @@ class MusicService :
             moe.rukamori.archivetune.together.TogetherSessionState.Idle,
         )
     private var togetherServer: moe.rukamori.archivetune.together.TogetherServer? = null
-    private var togetherOnlineHost: moe.rukamori.archivetune.together.TogetherOnlineHost? = null
     private var togetherPublicClient: moe.rukamori.archivetune.together.TogetherPublicClient? = null
     private var togetherPublicParticipants: List<moe.rukamori.archivetune.together.TogetherParticipant> = emptyList()
     private var togetherPublicLastState: moe.rukamori.archivetune.together.TogetherRoomState? = null
     private var togetherPublicLastAction: moe.rukamori.archivetune.together.TogetherPublicPlaybackActionPayload? = null
+    private var togetherPublicServerUrl: String? = null
+    private var togetherPublicForcedServerUrl: String? = null
+    private var togetherPublicHostDisplayName: String? = null
+    private var togetherPublicJoinCode: String? = null
+    private var togetherPublicJoinDisplayName: String? = null
     private var togetherClient: moe.rukamori.archivetune.together.TogetherClient? = null
     private var togetherBroadcastJob: Job? = null
-    private var togetherOnlineConnectJob: Job? = null
     private var togetherClientEventsJob: Job? = null
     private var togetherHeartbeatJob: Job? = null
     private var togetherHostInactivityJob: Job? = null
-    private var togetherHostInactivityEndSession: (suspend () -> Unit)? = null
     private var togetherClock: moe.rukamori.archivetune.together.TogetherClock? = null
     private var togetherSelfParticipantId: String? = null
     private var togetherAuthorityParticipantId: String? = null
@@ -948,12 +950,8 @@ class MusicService :
         togetherHostInactivityJob = null
     }
 
-    private fun scheduleTogetherHostInactivityTimeout(
-        sessionId: String,
-        endOnlineSession: (suspend () -> Unit)? = togetherHostInactivityEndSession,
-    ) {
+    private fun scheduleTogetherHostInactivityTimeout(sessionId: String) {
         cancelTogetherHostInactivityTimeout()
-        togetherHostInactivityEndSession = endOnlineSession
         togetherHostInactivityJob =
             ioScope.launch(SilentHandler) {
                 delay(TOGETHER_HOST_INACTIVITY_TIMEOUT_MS)
@@ -983,7 +981,7 @@ class MusicService :
                         togetherAuthorityParticipantId == togetherHostId
                 val participants =
                     togetherServer?.currentParticipants()
-                        ?: togetherOnlineHost?.currentParticipants()
+                        ?: togetherPublicParticipants.takeIf { togetherPublicClient != null }
                         ?: emptyList()
                 val hasConnectedGuest =
                     participants.any { participant ->
@@ -1001,10 +999,6 @@ class MusicService :
                 }
 
                 togetherHostInactivityJob = null
-                runCatching { endOnlineSession?.invoke() }
-                    .onFailure { error ->
-                        Timber.tag("Together").w(error, "Unable to end inactive online room")
-                    }
                 stopTogetherInternal()
                 togetherSessionState.value = moe.rukamori.archivetune.together.TogetherSessionState.Idle
                 showTogetherInactivityNotification()
@@ -4510,170 +4504,6 @@ class MusicService :
         }
     }
 
-    private fun togetherOnlineErrorMessage(t: Throwable): String {
-        if (t is moe.rukamori.archivetune.together.TogetherOnlineApiException) {
-            val code = t.statusCode
-            return when {
-                code == 404 -> getString(R.string.together_session_not_found)
-                code != null && code in 500..599 -> getString(R.string.together_server_error)
-                else -> t.message ?: getString(R.string.network_unavailable)
-            }
-        }
-        val root = generateSequence(t) { it.cause }.lastOrNull() ?: t
-        return when (root) {
-            is UnknownHostException -> getString(R.string.together_server_unreachable)
-            is ConnectException -> getString(R.string.together_server_unreachable)
-            is SocketTimeoutException -> getString(R.string.together_connection_timed_out)
-            is javax.net.ssl.SSLHandshakeException -> getString(R.string.together_server_unreachable)
-            else -> getString(R.string.network_unavailable)
-        }
-    }
-
-    fun startTogetherOnlineHost(
-        displayName: String,
-        settings: moe.rukamori.archivetune.together.TogetherRoomSettings,
-    ) {
-        ensureScopesActive()
-        scope.launch(SilentHandler) {
-            togetherSessionState.value = moe.rukamori.archivetune.together.TogetherSessionState.Idle
-        }
-
-        ioScope.launch(SilentHandler) {
-            stopTogetherInternal()
-            togetherIsOnlineSession = true
-
-            val baseUrl =
-                moe.rukamori.archivetune.together.TogetherOnlineEndpoint
-                    .baseUrlOrNull(dataStore)
-            if (baseUrl == null) {
-                scope.launch(SilentHandler) {
-                    togetherSessionState.value =
-                        moe.rukamori.archivetune.together.TogetherSessionState.Error(
-                            message = getString(R.string.together_online_not_configured),
-                            recoverable = true,
-                        )
-                }
-                return@launch
-            }
-
-            val api =
-                moe.rukamori.archivetune.together
-                    .TogetherOnlineApi(baseUrl = baseUrl)
-            val hostName = displayName.trim().ifBlank { getString(R.string.app_name) }
-
-            val created =
-                runCatching {
-                    api.createSession(
-                        hostDisplayName = hostName,
-                        settings = settings,
-                    )
-                }.getOrElse { t ->
-                    scope.launch(SilentHandler) {
-                        togetherSessionState.value =
-                            moe.rukamori.archivetune.together.TogetherSessionState.Error(
-                                message = togetherOnlineErrorMessage(t),
-                                recoverable = true,
-                            )
-                    }
-                    reportException(t)
-                    return@launch
-                }
-
-            val onlineHost =
-                moe.rukamori.archivetune.together.TogetherOnlineHost(
-                    externalScope = ioScope,
-                    sessionId = created.sessionId,
-                    sessionKey = created.hostKey,
-                    hostId = togetherHostId,
-                    hostDisplayName = hostName,
-                    initialSettings = created.settings,
-                    clientId = getOrCreateTogetherClientId(),
-                )
-
-            onlineHost.onEvent = { event ->
-                ioScope.launch(SilentHandler) {
-                    handleTogetherHostEvent(event) { onlineHost.currentSettings() }
-                }
-            }
-
-            togetherOnlineHost = onlineHost
-            scheduleTogetherHostInactivityTimeout(created.sessionId) {
-                api.endSession(
-                    sessionId = created.sessionId,
-                    hostKey = created.hostKey,
-                )
-            }
-
-            scope.launch(SilentHandler) {
-                togetherSessionState.value =
-                    moe.rukamori.archivetune.together.TogetherSessionState.HostingOnline(
-                        sessionId = created.sessionId,
-                        code = created.code,
-                        settings = created.settings,
-                        roomState = null,
-                    )
-            }
-
-            val wsUrl =
-                moe.rukamori.archivetune.together.TogetherOnlineEndpoint.onlineWebSocketUrlOrNull(
-                    rawWsUrl = created.wsUrl,
-                    baseUrl = baseUrl,
-                )
-            if (wsUrl == null) {
-                scope.launch(SilentHandler) {
-                    togetherSessionState.value =
-                        moe.rukamori.archivetune.together.TogetherSessionState.Error(
-                            message = "Connection failed: Invalid server websocket URL",
-                            recoverable = true,
-                        )
-                }
-                ioScope.launch(SilentHandler) { stopTogetherInternal() }
-                return@launch
-            }
-
-            togetherOnlineConnectJob?.cancel()
-            togetherOnlineConnectJob =
-                ioScope.launch(SilentHandler) {
-                    onlineHost.connect(wsUrl)
-                }
-
-            togetherBroadcastJob =
-                ioScope.launch(SilentHandler) {
-                    while (togetherOnlineHost === onlineHost) {
-                        val state =
-                            if (togetherAuthorityParticipantId == null || togetherAuthorityParticipantId == togetherHostId) {
-                                buildTogetherRoomState(
-                                    sessionId = created.sessionId,
-                                    hostId = togetherHostId,
-                                )
-                            } else {
-                                null
-                            }
-                        if (state != null) {
-                            onlineHost.broadcastRoomState(state)
-                            scope.launch(SilentHandler) {
-                                val hosting =
-                                    togetherSessionState.value as? moe.rukamori.archivetune.together.TogetherSessionState.HostingOnline
-                                if (hosting?.sessionId == created.sessionId) {
-                                    val currentSettings = onlineHost.currentSettings()
-                                    togetherSessionState.value =
-                                        hosting.copy(
-                                            settings = currentSettings,
-                                            roomState =
-                                                state.copy(
-                                                    participants = onlineHost.currentParticipants(),
-                                                    settings = currentSettings,
-                                                ),
-                                        )
-                                }
-                            }
-                        }
-                        kotlinx.coroutines.delay(TogetherPlaybackSync.BroadcastIntervalMs)
-                    }
-                }
-        }
-    }
-
     fun joinTogether(
         rawLink: String,
         displayName: String,
@@ -4885,267 +4715,9 @@ class MusicService :
         }
     }
 
-    fun joinTogetherOnline(
-        code: String,
-        displayName: String,
-    ) {
-        ensureScopesActive()
-        val trimmedCode = code.trim()
-        if (trimmedCode.isBlank()) {
-            scope.launch(SilentHandler) {
-                togetherSessionState.value =
-                    moe.rukamori.archivetune.together.TogetherSessionState.Error(
-                        message = getString(R.string.invalid_code),
-                        recoverable = true,
-                    )
-            }
-            return
-        }
-
-        scope.launch(SilentHandler) {
-            togetherSessionState.value =
-                moe.rukamori.archivetune.together.TogetherSessionState
-                    .JoiningOnline(trimmedCode)
-        }
-
-        ioScope.launch(SilentHandler) {
-            stopTogetherInternal()
-            togetherIsOnlineSession = true
-
-            val baseUrl =
-                moe.rukamori.archivetune.together.TogetherOnlineEndpoint
-                    .baseUrlOrNull(dataStore)
-            if (baseUrl == null) {
-                scope.launch(SilentHandler) {
-                    togetherSessionState.value =
-                        moe.rukamori.archivetune.together.TogetherSessionState.Error(
-                            message = getString(R.string.together_online_not_configured),
-                            recoverable = true,
-                        )
-                }
-                return@launch
-            }
-
-            val api =
-                moe.rukamori.archivetune.together
-                    .TogetherOnlineApi(baseUrl = baseUrl)
-            val resolved =
-                runCatching { api.resolveCode(trimmedCode) }
-                    .getOrElse { t ->
-                        scope.launch(SilentHandler) {
-                            togetherSessionState.value =
-                                moe.rukamori.archivetune.together.TogetherSessionState.Error(
-                                    message = togetherOnlineErrorMessage(t),
-                                    recoverable = true,
-                                )
-                        }
-                        reportException(t)
-                        return@launch
-                    }
-
-            val client =
-                moe.rukamori.archivetune.together.TogetherClient(
-                    ioScope,
-                    clientId = getOrCreateTogetherClientId(),
-                )
-            togetherClient = client
-            togetherClock =
-                moe.rukamori.archivetune.together
-                    .TogetherClock()
-            togetherSelfParticipantId = null
-            togetherLastAppliedQueueHash = null
-
-            togetherClientEventsJob?.cancel()
-            togetherClientEventsJob =
-                ioScope.launch(SilentHandler) {
-                    client.events.collect { event ->
-                        when (event) {
-                            is moe.rukamori.archivetune.together.TogetherClientEvent.Welcome -> {
-                                togetherSelfParticipantId = event.welcome.participantId
-                                scope.launch(SilentHandler) {
-                                    val state = togetherSessionState.value
-                                    if (state is moe.rukamori.archivetune.together.TogetherSessionState.JoiningOnline) {
-                                        val selfName = displayName.trim().ifBlank { getString(R.string.together_role_guest) }
-                                        val initial =
-                                            moe.rukamori.archivetune.together.TogetherRoomState(
-                                                sessionId = resolved.sessionId,
-                                                hostId = togetherHostId,
-                                                participants =
-                                                    listOf(
-                                                        moe.rukamori.archivetune.together.TogetherParticipant(
-                                                            id = event.welcome.participantId,
-                                                            name = selfName,
-                                                            isHost = false,
-                                                            isPending = event.welcome.isPending,
-                                                            isConnected = true,
-                                                        ),
-                                                    ),
-                                                settings = event.welcome.settings,
-                                                queue = emptyList(),
-                                                queueHash = "",
-                                                currentIndex = 0,
-                                                isPlaying = false,
-                                                positionMs = 0L,
-                                                repeatMode = 0,
-                                                shuffleEnabled = false,
-                                                sentAtElapsedRealtimeMs = android.os.SystemClock.elapsedRealtime(),
-                                            )
-                                        togetherSessionState.value =
-                                            moe.rukamori.archivetune.together.TogetherSessionState.Joined(
-                                                role = moe.rukamori.archivetune.together.TogetherRole.Guest,
-                                                sessionId = resolved.sessionId,
-                                                selfParticipantId = event.welcome.participantId,
-                                                roomState = initial,
-                                            )
-                                    }
-                                }
-                                startTogetherHeartbeat(resolved.sessionId, client)
-                            }
-
-                            is moe.rukamori.archivetune.together.TogetherClientEvent.RoomState -> {
-                                applyRemoteRoomState(event.state)
-                            }
-
-                            is moe.rukamori.archivetune.together.TogetherClientEvent.HostTransferred -> {
-                                handleTogetherClientHostTransferred(event.transfer)
-                            }
-
-                            is moe.rukamori.archivetune.together.TogetherClientEvent.ControlRequested -> {
-                                val joined =
-                                    togetherSessionState.value as? moe.rukamori.archivetune.together.TogetherSessionState.Joined
-                                if (togetherAuthorityParticipantId == togetherSelfParticipantId &&
-                                    joined?.roomState?.settings?.allowGuestsToControlPlayback == true
-                                ) {
-                                    applyHostControl(event.request.action)
-                                }
-                            }
-
-                            is moe.rukamori.archivetune.together.TogetherClientEvent.AddTrackRequested -> {
-                                val joined =
-                                    togetherSessionState.value as? moe.rukamori.archivetune.together.TogetherSessionState.Joined
-                                if (togetherAuthorityParticipantId == togetherSelfParticipantId &&
-                                    joined?.roomState?.settings?.allowGuestsToAddTracks == true
-                                ) {
-                                    applyHostAddTrack(event.request.track, event.request.mode)
-                                }
-                            }
-
-                            is moe.rukamori.archivetune.together.TogetherClientEvent.JoinDecision -> {
-                                if (!event.decision.approved) {
-                                    scope.launch(SilentHandler) {
-                                        togetherSessionState.value =
-                                            moe.rukamori.archivetune.together.TogetherSessionState.Error(
-                                                message = getString(R.string.not_allowed),
-                                                recoverable = true,
-                                            )
-                                    }
-                                    ioScope.launch(SilentHandler) { stopTogetherInternal() }
-                                }
-                            }
-
-                            is moe.rukamori.archivetune.together.TogetherClientEvent.ServerIssue -> {
-                                Timber.tag("Together").w("server issue (online) code=${event.code.orEmpty()} message=${event.message}")
-                                when (event.code) {
-                                    "GUEST_CONTROL_DISABLED" -> {
-                                        showTogetherNotice(event.message, key = "GUEST_CONTROL_DISABLED")
-                                        val joined =
-                                            togetherSessionState.value as? moe.rukamori.archivetune.together.TogetherSessionState.Joined
-                                        if (joined?.role is moe.rukamori.archivetune.together.TogetherRole.Guest) {
-                                            togetherPendingGuestControl = null
-                                            togetherLastSentControlAction = null
-                                            scope.launch(SilentHandler) { applyRemoteRoomState(joined.roomState, force = true) }
-                                        }
-                                    }
-
-                                    "GUEST_ADD_DISABLED" -> {
-                                        showTogetherNotice(event.message, key = "GUEST_ADD_DISABLED")
-                                    }
-
-                                    "HOST_OFFLINE" -> {
-                                        showTogetherNotice(event.message, key = "HOST_OFFLINE")
-                                    }
-
-                                    else -> {
-                                        scope.launch(SilentHandler) {
-                                            togetherSessionState.value =
-                                                moe.rukamori.archivetune.together.TogetherSessionState.Error(
-                                                    message = event.message,
-                                                    recoverable = true,
-                                                )
-                                        }
-                                        ioScope.launch(SilentHandler) { stopTogetherInternal() }
-                                    }
-                                }
-                            }
-
-                            is moe.rukamori.archivetune.together.TogetherClientEvent.HeartbeatPong -> {
-                                val clock = togetherClock ?: return@collect
-                                clock.onPong(
-                                    sentAtElapsedMs = event.pong.clientElapsedRealtimeMs,
-                                    receivedAtElapsedMs = event.receivedAtElapsedRealtimeMs,
-                                    serverElapsedMs = event.pong.serverElapsedRealtimeMs,
-                                )
-                            }
-
-                            is moe.rukamori.archivetune.together.TogetherClientEvent.Error -> {
-                                scope.launch(SilentHandler) {
-                                    togetherSessionState.value =
-                                        moe.rukamori.archivetune.together.TogetherSessionState.Error(
-                                            message = event.message,
-                                            recoverable = true,
-                                        )
-                                }
-                                ioScope.launch(SilentHandler) { stopTogetherInternal() }
-                            }
-
-                            moe.rukamori.archivetune.together.TogetherClientEvent.Disconnected -> {
-                                val current = togetherSessionState.value
-                                if (current is moe.rukamori.archivetune.together.TogetherSessionState.Idle) return@collect
-                                scope.launch(SilentHandler) {
-                                    val currentState = togetherSessionState.value
-                                    togetherSessionState.value =
-                                        moe.rukamori.archivetune.together.TogetherSessionState.Error(
-                                            message =
-                                                if (currentState is moe.rukamori.archivetune.together.TogetherSessionState.Joined &&
-                                                    currentState.role is moe.rukamori.archivetune.together.TogetherRole.Guest
-                                                ) {
-                                                    getString(R.string.together_host_left_session)
-                                                } else {
-                                                    getString(R.string.network_unavailable)
-                                                },
-                                            recoverable = true,
-                                        )
-                                }
-                                ioScope.launch(SilentHandler) { stopTogetherInternal() }
-                            }
-                        }
-                    }
-                }
-
-            val wsUrl =
-                moe.rukamori.archivetune.together.TogetherOnlineEndpoint.onlineWebSocketUrlOrNull(
-                    rawWsUrl = resolved.wsUrl,
-                    baseUrl = baseUrl,
-                )
-            if (wsUrl == null) {
-                scope.launch(SilentHandler) {
-                    togetherSessionState.value =
-                        moe.rukamori.archivetune.together.TogetherSessionState.Error(
-                            message = "Connection failed: Invalid server websocket URL",
-                            recoverable = true,
-                        )
-                }
-                ioScope.launch(SilentHandler) { stopTogetherInternal() }
-                return@launch
-            }
-
-            client.connect(
-                wsUrl = wsUrl,
-                sessionId = resolved.sessionId,
-                sessionKey = resolved.guestKey,
-                displayName = displayName.trim().ifBlank { getString(R.string.together_role_guest) },
-            )
-        }
+    private fun togetherPublicErrorMessage(message: String): String {
+        val trimmed = message.trim()
+        return trimmed.ifBlank { getString(R.string.together_server_unreachable) }
     }
 
     fun startTogetherPublicHost(
@@ -5175,11 +4747,17 @@ class MusicService :
                 return@launch
             }
 
+            val forcedUrl = togetherPublicForcedServerUrl
+            togetherPublicForcedServerUrl = null
+            val effectiveServerUrl = forcedUrl ?: serverUrl
+            togetherPublicServerUrl = effectiveServerUrl
+            togetherPublicHostDisplayName = displayName
+
             val hostName = displayName.trim().ifBlank { getString(R.string.app_name) }
             val client =
                 moe.rukamori.archivetune.together.TogetherPublicClient(
                     externalScope = ioScope,
-                    serverUrl = serverUrl,
+                    serverUrl = effectiveServerUrl,
                     dataStore = dataStore,
                     username = hostName,
                 )
@@ -5200,6 +4778,20 @@ class MusicService :
                     moe.rukamori.archivetune.together.TogetherSessionState.JoiningOnline(
                         code = "",
                     )
+            }
+
+            ioScope.launch(SilentHandler) {
+                delay(TOGETHER_PUBLIC_CONNECT_TIMEOUT_MS)
+                if (togetherPublicClient === client &&
+                    togetherSessionState.value is moe.rukamori.archivetune.together.TogetherSessionState.JoiningOnline
+                ) {
+                    togetherSessionState.value =
+                        moe.rukamori.archivetune.together.TogetherSessionState.Error(
+                            message = togetherPublicErrorMessage(""),
+                            recoverable = true,
+                        )
+                    stopTogetherInternal()
+                }
             }
 
             togetherBroadcastJob =
@@ -5258,6 +4850,9 @@ class MusicService :
                     .JoiningOnline(trimmedCode)
         }
 
+        togetherPublicJoinCode = trimmedCode
+        togetherPublicJoinDisplayName = displayName
+
         ioScope.launch(SilentHandler) {
             stopTogetherInternal()
             togetherIsOnlineSession = true
@@ -5276,10 +4871,15 @@ class MusicService :
                 return@launch
             }
 
+            val forcedUrl = togetherPublicForcedServerUrl
+            togetherPublicForcedServerUrl = null
+            val effectiveServerUrl = forcedUrl ?: serverUrl
+            togetherPublicServerUrl = effectiveServerUrl
+
             val client =
                 moe.rukamori.archivetune.together.TogetherPublicClient(
                     externalScope = ioScope,
-                    serverUrl = serverUrl,
+                    serverUrl = effectiveServerUrl,
                     dataStore = dataStore,
                     username = displayName.trim().ifBlank { getString(R.string.together_role_guest) },
                 )
@@ -5296,6 +4896,20 @@ class MusicService :
             }
 
             client.joinRoom(trimmedCode)
+
+            ioScope.launch(SilentHandler) {
+                delay(TOGETHER_PUBLIC_CONNECT_TIMEOUT_MS)
+                if (togetherPublicClient === client &&
+                    togetherSessionState.value is moe.rukamori.archivetune.together.TogetherSessionState.JoiningOnline
+                ) {
+                    togetherSessionState.value =
+                        moe.rukamori.archivetune.together.TogetherSessionState.Error(
+                            message = togetherPublicErrorMessage(""),
+                            recoverable = true,
+                        )
+                    stopTogetherInternal()
+                }
+            }
         }
     }
 
@@ -5387,6 +5001,7 @@ class MusicService :
                             roomState = null,
                         )
                 }
+                scheduleTogetherHostInactivityTimeout(event.roomCode)
                 client.requestSync()
             }
 
@@ -5444,6 +5059,13 @@ class MusicService :
                     togetherPublicParticipants.filterNot { it.id == userId }
                 togetherParticipantNames.remove(userId)?.let {
                     showTogetherParticipantNotification(it, joined = false)
+                }
+                val roomCode =
+                    (togetherSessionState.value as? moe.rukamori.archivetune.together.TogetherSessionState.HostingOnline)?.code
+                if (togetherPublicParticipants.isEmpty()) {
+                    if (roomCode != null) scheduleTogetherHostInactivityTimeout(roomCode)
+                } else {
+                    cancelTogetherHostInactivityTimeout()
                 }
             }
 
@@ -5596,10 +5218,26 @@ class MusicService :
 
             is moe.rukamori.archivetune.together.TogetherPublicEvent.Error -> {
                 if (event.recoverable) {
+                    val fallback =
+                        moe.rukamori.archivetune.together.TogetherPublicServers.Defaults.getOrNull(1)?.url
+                    val canFailover =
+                        togetherPublicClient === client &&
+                            !moe.rukamori.archivetune.together.TogetherPublicServers.isCustomSelected(dataStore) &&
+                            togetherPublicServerUrl == moe.rukamori.archivetune.together.TogetherPublicServers.Defaults.first().url &&
+                            fallback != null
+                    if (canFailover) {
+                        togetherPublicForcedServerUrl = fallback
+                        stopTogetherInternal()
+                        startTogetherPublicHost(
+                            displayName = togetherPublicHostDisplayName ?: getString(R.string.app_name),
+                            settings = initialSettings,
+                        )
+                        return@launch
+                    }
                     scope.launch(SilentHandler) {
                         togetherSessionState.value =
                             moe.rukamori.archivetune.together.TogetherSessionState.Error(
-                                message = event.message,
+                                message = togetherPublicErrorMessage(event.message),
                                 recoverable = true,
                             )
                     }
@@ -5769,10 +5407,39 @@ class MusicService :
             is moe.rukamori.archivetune.together.TogetherPublicEvent.JoinRequested,
             is moe.rukamori.archivetune.together.TogetherPublicEvent.RoomCreated,
             is moe.rukamori.archivetune.together.TogetherPublicEvent.SyncRequested,
-            is moe.rukamori.archivetune.together.TogetherPublicEvent.Error,
             moe.rukamori.archivetune.together.TogetherPublicEvent.Disconnected,
             -> {
                 Unit
+            }
+
+            is moe.rukamori.archivetune.together.TogetherPublicEvent.Error -> {
+                if (event.recoverable) {
+                    val joinCode = togetherPublicJoinCode
+                    val fallback =
+                        moe.rukamori.archivetune.together.TogetherPublicServers.Defaults.getOrNull(1)?.url
+                    val canFailover =
+                        togetherPublicClient === client &&
+                            joinCode != null &&
+                            !moe.rukamori.archivetune.together.TogetherPublicServers.isCustomSelected(dataStore) &&
+                            togetherPublicServerUrl == moe.rukamori.archivetune.together.TogetherPublicServers.Defaults.first().url &&
+                            fallback != null
+                    if (canFailover) {
+                        togetherPublicForcedServerUrl = fallback
+                        stopTogetherInternal()
+                        joinTogetherPublic(
+                            code = joinCode,
+                            displayName = togetherPublicJoinDisplayName ?: getString(R.string.together_role_guest),
+                        )
+                        return@launch
+                    }
+                    scope.launch(SilentHandler) {
+                        togetherSessionState.value =
+                            moe.rukamori.archivetune.together.TogetherSessionState.Error(
+                                message = togetherPublicErrorMessage(event.message),
+                                recoverable = true,
+                            )
+                    }
+                }
             }
         }
     }
@@ -5873,11 +5540,9 @@ class MusicService :
 
     fun updateTogetherSettings(settings: moe.rukamori.archivetune.together.TogetherRoomSettings) {
         val server = togetherServer
-        val onlineHost = togetherOnlineHost
-        if (server == null && onlineHost == null && togetherPublicClient == null) return
+        if (server == null && togetherPublicClient == null) return
         ioScope.launch(SilentHandler) {
             server?.updateSettings(settings)
-            onlineHost?.updateSettings(settings)
             if (togetherPublicClient != null) {
                 val current =
                     togetherSessionState.value as? moe.rukamori.archivetune.together.TogetherSessionState.HostingOnline
@@ -5895,12 +5560,10 @@ class MusicService :
         approved: Boolean,
     ) {
         val server = togetherServer
-        val onlineHost = togetherOnlineHost
         val publicClient = togetherPublicClient
-        if (server == null && onlineHost == null && publicClient == null) return
+        if (server == null && publicClient == null) return
         ioScope.launch(SilentHandler) {
             server?.approveParticipant(participantId, approved)
-            onlineHost?.approveParticipant(participantId, approved)
             publicClient?.let { client ->
                 if (approved) {
                     client.approveJoin(participantId)
@@ -5919,10 +5582,8 @@ class MusicService :
         participantId: String,
         reason: String? = null,
     ) {
-        val onlineHost = togetherOnlineHost
         val publicClient = togetherPublicClient
         ioScope.launch(SilentHandler) {
-            onlineHost?.kickParticipant(participantId, reason)
             publicClient?.kickUser(participantId, reason)
         }
     }
@@ -5931,10 +5592,8 @@ class MusicService :
         participantId: String,
         reason: String? = null,
     ) {
-        val onlineHost = togetherOnlineHost
         val publicClient = togetherPublicClient
         ioScope.launch(SilentHandler) {
-            onlineHost?.banParticipant(participantId, reason)
             publicClient?.kickUser(participantId, reason)
         }
     }
@@ -5943,7 +5602,6 @@ class MusicService :
         val targetId = participantId.trim()
         if (targetId.isBlank() || targetId == togetherHostId || targetId == togetherSelfParticipantId) return
         val server = togetherServer
-        val onlineHost = togetherOnlineHost
         val client = togetherClient
         val publicClient = togetherPublicClient
         val joined = togetherSessionState.value as? moe.rukamori.archivetune.together.TogetherSessionState.Joined
@@ -5951,10 +5609,6 @@ class MusicService :
             when {
                 server != null -> {
                     server.transferHostOwnership(targetId)
-                }
-
-                onlineHost != null -> {
-                    onlineHost.transferHostOwnership(targetId)
                 }
 
                 publicClient != null -> {
@@ -6208,7 +5862,6 @@ class MusicService :
                     scheduleTogetherHostInactivityTimeout(sessionId)
                 } else {
                     cancelTogetherHostInactivityTimeout()
-                    togetherHostInactivityEndSession = null
                 }
                 handleTogetherHostTransferred(event.participantId)
             }
@@ -6658,13 +6311,9 @@ class MusicService :
 
     private suspend fun stopTogetherInternal() {
         cancelTogetherHostInactivityTimeout()
-        togetherHostInactivityEndSession = null
 
         togetherBroadcastJob?.cancel()
         togetherBroadcastJob = null
-
-        togetherOnlineConnectJob?.cancel()
-        togetherOnlineConnectJob = null
 
         togetherClientEventsJob?.cancel()
         togetherClientEventsJob = null
@@ -6692,12 +6341,6 @@ class MusicService :
         } catch (_: Exception) {
         }
         togetherClient = null
-
-        try {
-            togetherOnlineHost?.disconnect()
-        } catch (_: Exception) {
-        }
-        togetherOnlineHost = null
 
         try {
             togetherPublicClient?.disconnect()
@@ -11003,6 +10646,7 @@ class MusicService :
         private const val TOGETHER_PARTICIPANT_NOTIFICATION_ID = 891
         private const val TOGETHER_INACTIVITY_NOTIFICATION_ID = 892
         private const val TOGETHER_HOST_INACTIVITY_TIMEOUT_MS = 10 * 60 * 1000L
+        private const val TOGETHER_PUBLIC_CONNECT_TIMEOUT_MS = 20_000L
         const val ERROR_CODE_NO_STREAM = 1000001
         const val CHUNK_LENGTH = 8 * 1024 * 1024L
         val RETRYABLE_STREAM_RESPONSE_CODES = setOf(403, 404, 410, 416)

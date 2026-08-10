@@ -783,8 +783,8 @@ fun deserializeLyricsProviderOrder(orderStr: String?): List<PreferredLyricsProvi
  * - [TIDAL]: artwork fetched from Tidal as a fallback when no original artwork exists.
  * - [SPOTIFY_CANVAS]: Spotify Canvas video artwork (looping video, fetched via the
  *   `mlc.kouzu.in` canvas API).
- * - [ARCHIVETUNE_CANVAS]: ArchiveTune Canvas artwork (BetterLyrics / koiverse-mirror,
- *   includes Apple Music motion artwork internally).
+ * - [ARCHIVETUNE_CANVAS]: Apple Music motion artwork (animated cover art fetched
+ *   from Apple's MusicKit/AMP API).
  */
 enum class PreferredArtworkProvider {
     LOCAL_EMBEDDED,
@@ -1353,7 +1353,6 @@ val RemindAfterKey = intPreferencesKey("remind_after")
 val EnableUpdateNotificationKey = booleanPreferencesKey("enableUpdateNotification")
 val UpdateChannelKey = stringPreferencesKey("updateChannel")
 val LastUpdateCheckKey = longPreferencesKey("lastUpdateCheck")
-val MoriCipherManualRefreshHistoryKey = stringSetPreferencesKey("moriCipherManualRefreshHistory")
 val LastNotifiedVersionKey = stringPreferencesKey("lastNotifiedVersion")
 
 val GitHubContributorsEtagKey = stringPreferencesKey("github_contributors_etag")
@@ -1372,8 +1371,6 @@ val CanaryReleasesJsonKey = stringPreferencesKey("daily_nightly_releases_json")
 val CanaryReleasesLastCheckedAtKey = longPreferencesKey("daily_nightly_releases_last_checked_at")
 val CanaryReleasesFingerprintKey = stringPreferencesKey("daily_nightly_releases_fingerprint")
 
-val TogetherOnlineEndpointCacheKey = stringPreferencesKey("together_online_endpoint_cache")
-val TogetherOnlineEndpointLastCheckedAtKey = longPreferencesKey("together_online_endpoint_last_checked_at")
 val TogetherPublicServerUrlKey = stringPreferencesKey("together_public_server_url")
 val TogetherPublicSessionTokenKey = stringPreferencesKey("together_public_session_token")
 val TogetherPublicRoomCodeKey = stringPreferencesKey("together_public_room_code")
