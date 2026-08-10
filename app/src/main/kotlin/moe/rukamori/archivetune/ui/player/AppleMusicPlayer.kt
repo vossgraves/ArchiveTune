@@ -188,7 +188,14 @@ fun AppleMusicPlayerContent(
     canSkipPrevious: Boolean,
     canSkipNext: Boolean,
     sliderPosition: Long?,
-    position: Long,
+    // Deferred position provider — reads the 100ms-polled playback position
+    // via a stable lambda so this composable does NOT recompose on every poll
+    // tick. Only AppleMusicControlsColumn reads it, and only when it's actually
+    // composed (visible). When lyrics is open and controls auto-hide after 3s,
+    // no recomposition happens at all — eliminating the wasted frame budget
+    // that caused the "smooth for first few seconds, then laggy" auto-scroll
+    // symptom in the inline Enhanced lyrics view.
+    positionProvider: () -> Long,
     duration: Long,
     playerConnection: PlayerConnection,
     navController: NavController,
@@ -763,7 +770,7 @@ fun AppleMusicPlayerContent(
                     canSkipPrevious = canSkipPrevious,
                     canSkipNext = canSkipNext,
                     sliderPosition = sliderPosition,
-                    position = position,
+                    positionProvider = positionProvider,
                     duration = duration,
                     playerConnection = playerConnection,
                     currentSongLiked = currentSongLiked,
@@ -1083,7 +1090,7 @@ fun AppleMusicPlayerContent(
                         canSkipPrevious = canSkipPrevious,
                         canSkipNext = canSkipNext,
                         sliderPosition = sliderPosition,
-                        position = position,
+                        positionProvider = positionProvider,
                         duration = duration,
                         playerConnection = playerConnection,
                         currentSongLiked = currentSongLiked,
@@ -1330,7 +1337,7 @@ private fun AppleMusicControlsColumn(
     canSkipPrevious: Boolean,
     canSkipNext: Boolean,
     sliderPosition: Long?,
-    position: Long,
+    positionProvider: () -> Long,
     duration: Long,
     playerConnection: PlayerConnection,
     currentSongLiked: Boolean,
@@ -1493,10 +1500,19 @@ private fun AppleMusicControlsColumn(
 
     Spacer(Modifier.height(titleToScrubberGap))
 
+    // Read the polled playback position through the deferred provider. This is
+    // the ONLY place in AppleMusicControlsColumn that reads the 100ms-polled
+    // position — by reading it here (inside the controls column that is only
+    // composed when visible), we ensure the parent AppleMusicPlayerContent
+    // does not recompose on every poll tick. When lyrics is open and controls
+    // are auto-hidden, this composable is not composed at all, so the state
+    // read never fires and no recomposition happens.
+    val currentPosition = positionProvider()
+
     // Thin scrubber + elapsed / -remaining.
     Column {
         AppleMusicSeekBar(
-            position = sliderPosition ?: position,
+            position = sliderPosition ?: currentPosition,
             duration = duration,
             onScrub = onSliderValueChange,
             onScrubFinished = onSliderValueChangeFinished,
@@ -1507,7 +1523,7 @@ private fun AppleMusicControlsColumn(
         // The chip is tappable and opens the song-detail bottom sheet.
         Box(Modifier.fillMaxWidth()) {
             Text(
-                text = makeTimeString(sliderPosition ?: position),
+                text = makeTimeString(sliderPosition ?: currentPosition),
                 style = MaterialTheme.typography.labelMedium,
                 color = Color.White.copy(alpha = 0.55f),
                 modifier = Modifier.align(Alignment.CenterStart),
@@ -1520,7 +1536,7 @@ private fun AppleMusicControlsColumn(
                 )
             }
             Text(
-                text = "-" + makeTimeString((duration - (sliderPosition ?: position)).coerceAtLeast(0L)),
+                text = "-" + makeTimeString((duration - (sliderPosition ?: currentPosition)).coerceAtLeast(0L)),
                 style = MaterialTheme.typography.labelMedium,
                 color = Color.White.copy(alpha = 0.55f),
                 modifier = Modifier.align(Alignment.CenterEnd),
