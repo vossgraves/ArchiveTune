@@ -214,7 +214,6 @@ val EnablePaxsenixMusixmatchLyricsKey = booleanPreferencesKey("enablePaxsenixMus
 val EnablePaxsenixYouTubeLyricsKey = booleanPreferencesKey("enablePaxsenixYouTubeLyrics")
 val EnableUnisonLyricsKey = booleanPreferencesKey("enableUnisonLyrics")
 val EnableTidalLyricsKey = booleanPreferencesKey("enableTidalLyrics")
-val EnableQobuzLyricsKey = booleanPreferencesKey("enableQobuzLyrics")
 val EnableDeezerLyricsKey = booleanPreferencesKey("enableDeezerLyrics")
 // When ON, lyrics lookup first queries the four word-sync-capable providers
 // (BetterLyrics, BetterLyrics Portato, YouLyPlus, Unison) in parallel and uses
@@ -741,7 +740,6 @@ val DefaultLyricsProviderOrder =
         PreferredLyricsProvider.PAXSENIX_MUSIXMATCH,
         PreferredLyricsProvider.PAXSENIX_YOUTUBE,
         PreferredLyricsProvider.TIDAL,
-        PreferredLyricsProvider.QOBUZ,
         PreferredLyricsProvider.DEEZER,
         PreferredLyricsProvider.MUSIXMATCH_EXPERIMENTAL,
     )

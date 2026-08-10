@@ -563,7 +563,6 @@ internal fun PreferredLyricsProvider.displayName(): String =
         PreferredLyricsProvider.PAXSENIX_YOUTUBE -> "Paxsenix: YouTube"
         PreferredLyricsProvider.UNISON -> "Unison"
         PreferredLyricsProvider.TIDAL -> "Tidal"
-        PreferredLyricsProvider.QOBUZ -> "Qobuz"
         PreferredLyricsProvider.DEEZER -> "Deezer"
         PreferredLyricsProvider.MUSIXMATCH_EXPERIMENTAL -> "Musixmatch (experimental)"
     }

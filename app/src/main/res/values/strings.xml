@@ -641,7 +641,6 @@
     <string name="enable_youlyplus_lyrics">Enable YouLyPlus lyrics</string>
     <string name="enable_unison_lyrics">Enable Unison lyrics</string>
     <string name="enable_tidal_lyrics">Enable Tidal lyrics</string>
-    <string name="enable_qobuz_lyrics">Enable Qobuz lyrics</string>
     <string name="enable_deezer_lyrics">Enable Deezer lyrics</string>
     <string name="prioritize_word_synced_lyrics">Prioritize Word Synced Lyrics</string>
     <string name="prioritize_word_synced_lyrics_desc">When on, lyrics are fetched ONLY from BetterLyrics, BetterLyrics Portato, YouLyPlus, and Unison — and only word-synced lyrics (QRC/YRC/TTML) are accepted from these four. All other provider toggles and the Lyrics Priority order below are ignored while this is on. If none of the four return word-synced lyrics, the app falls back to your normal provider priority.</string>
