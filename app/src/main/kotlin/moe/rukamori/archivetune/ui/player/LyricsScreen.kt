@@ -100,6 +100,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.runtime.collectAsState
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.media3.common.C
 import androidx.media3.common.Player.STATE_BUFFERING
@@ -197,6 +198,8 @@ fun LyricsScreen(
             }
         }
     val currentLyrics by playerConnection.currentLyrics.collectAsStateWithLifecycle(initialValue = null)
+    val currentSong by playerConnection.currentSong.collectAsState(initial = null)
+    val currentSongLiked = currentSong?.song?.liked == true
 
     val (enableHapticFeedback) = rememberPreference(EnableHapticFeedbackKey, true)
     val lyricsMode by rememberEnumPreference(LyricsModeKey, LyricsMode.ENHANCED)
@@ -568,11 +571,12 @@ fun LyricsScreen(
                 mediaMetadata = mediaMetadata,
                 foregroundColor = foregroundColor,
                 onMoreClick = showLyricsMenu,
-                onDismissClick = onBackClick,
+                isLiked = currentSongLiked,
+                onToggleLike = playerConnection::toggleLike,
                 modifier =
                     Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 24.dp),
+                        .padding(horizontal = 28.dp),
             )
 
             if (orientation == Configuration.ORIENTATION_LANDSCAPE) {
@@ -688,7 +692,7 @@ fun LyricsScreen(
                         modifier =
                             Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 40.dp),
+                                .padding(horizontal = 28.dp),
                     )
                 }
             }
@@ -1047,7 +1051,7 @@ private fun AppleMusicGrabber(
         modifier =
             modifier
                 .fillMaxWidth()
-                .height(44.dp)
+                .height(28.dp)
                 .semantics { contentDescription = closeDescription }
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
@@ -1063,8 +1067,9 @@ private fun AppleMusicTrackHeader(
     mediaMetadata: MediaMetadata,
     foregroundColor: Color,
     onMoreClick: () -> Unit,
-    onDismissClick: () -> Unit,
     modifier: Modifier = Modifier,
+    isLiked: Boolean = false,
+    onToggleLike: () -> Unit = {},
 ) {
     val artistText =
         remember(mediaMetadata.id, mediaMetadata.artists) {
@@ -1072,14 +1077,14 @@ private fun AppleMusicTrackHeader(
         }
 
     Row(
-        modifier = modifier.heightIn(min = 64.dp),
+        modifier = modifier.heightIn(min = 72.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
             modifier =
                 Modifier
-                    .size(58.dp)
-                    .clip(RoundedCornerShape(7.dp))
+                    .size(72.dp)
+                    .clip(RoundedCornerShape(8.dp))
                     .background(foregroundColor.copy(alpha = 0.18f)),
             contentAlignment = Alignment.Center,
         ) {
@@ -1094,7 +1099,7 @@ private fun AppleMusicTrackHeader(
                     painter = painterResource(R.drawable.player_music_note),
                     contentDescription = null,
                     tint = foregroundColor.copy(alpha = 0.72f),
-                    modifier = Modifier.size(26.dp),
+                    modifier = Modifier.size(30.dp),
                 )
             }
         }
@@ -1121,13 +1126,18 @@ private fun AppleMusicTrackHeader(
             )
         }
 
-        Spacer(modifier = Modifier.width(12.dp))
+        Spacer(modifier = Modifier.width(8.dp))
 
+        // Favourite (heart) button — matches Apple Music's lyrics page where the
+        // heart icon sits to the right of the song title/artist. Tapping toggles
+        // the like state on the current song.
         AppleMusicHeaderIconButton(
-            iconRes = R.drawable.player_close,
-            contentDescription = stringResource(R.string.close),
+            iconRes = if (isLiked) R.drawable.player_favorite else R.drawable.player_favorite_border,
+            contentDescription = stringResource(
+                if (isLiked) R.string.action_remove_like else R.string.action_like,
+            ),
             foregroundColor = foregroundColor,
-            onClick = onDismissClick,
+            onClick = onToggleLike,
         )
 
         Spacer(modifier = Modifier.width(4.dp))
