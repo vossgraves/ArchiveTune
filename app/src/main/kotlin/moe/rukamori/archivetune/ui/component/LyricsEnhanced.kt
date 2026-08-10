@@ -61,7 +61,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
@@ -92,6 +91,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mocharealm.accompanist.lyrics.core.model.ISyncedLine
 import com.mocharealm.accompanist.lyrics.core.model.SyncedLyrics
 import com.mocharealm.accompanist.lyrics.core.model.karaoke.KaraokeAlignment
@@ -197,8 +197,16 @@ fun LyricsEnhanced(
     val context = LocalContext.current
     val animationsDisabled = LocalAnimationsDisabled.current
 
-    val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
-    val playbackParameters by playerConnection.playbackParameters.collectAsState()
+    // collectAsStateWithLifecycle: pauses StateFlow collection when the
+    // composable's lifecycle drops below STARTED (e.g. user navigates away
+    // from the player, or the app goes to background). Without this, these
+    // flows continue pushing values into state during background playback,
+    // causing recompositions that compete with the karaoke frame loop for
+    // main-thread time when the user returns. This is especially important
+    // for `currentLyrics` below, which can emit during background lyrics
+    // prefetch / AI translation completion.
+    val mediaMetadata by playerConnection.mediaMetadata.collectAsStateWithLifecycle()
+    val playbackParameters by playerConnection.playbackParameters.collectAsStateWithLifecycle()
 
     val (lyricsClick) = rememberPreference(LyricsClickKey, defaultValue = true)
     val (lyricsTextSize) = rememberPreference(LyricsTextSizeKey, defaultValue = 26f)
@@ -249,7 +257,7 @@ fun LyricsEnhanced(
     var shareDialogData by remember { mutableStateOf<Triple<String, String, String>?>(null) }
     var showShareImageDialog by remember { mutableStateOf(false) }
 
-    val currentLyrics by playerConnection.currentLyrics.collectAsState(initial = null)
+    val currentLyrics by playerConnection.currentLyrics.collectAsStateWithLifecycle(initialValue = null)
     val lyrics =
         remember(currentLyrics, mediaMetadata?.id) {
             currentLyrics
@@ -564,8 +572,31 @@ fun LyricsEnhanced(
         }
     }
 
-    LaunchedEffect(lyricsSessionKey, syncedLyrics, isSynced) {
-        if (!isSynced || syncedLyrics.lines.isEmpty()) return@LaunchedEffect
+    // NOTE: this LaunchedEffect used to key on `syncedLyrics` as well. That
+    // was wrong: every time `syncedLyrics` was reassigned (which happens up to
+    // 3× per track — initial build, empty-romanization placeholder, final
+    // romanization map; plus once more if AI translation completes mid-playback),
+    // the entire snapshotFlow + collectLatest was torn down and re-created,
+    // forcing `forceNextScroll = true` and triggering a visible instant-jump
+    // `scrollToItem` to the current line. Each re-launch also re-awaited the
+    // viewport-ready snapshotFlow, adding a 1-2 frame gap where auto-scroll
+    // was inactive. With AI translation completing ~30-60s after the user
+    // opens lyrics (typical LLM response time), this produced a visible
+    // "lyrics jump + brief stutter" right around the 1-minute mark — exactly
+    // the symptom the user reported as "lags after a minute or so".
+    //
+    // Fix: hoist `syncedLyrics` into a rememberUpdatedState so the LaunchedEffect
+    // does NOT re-launch on content changes. The snapshotFlow block reads the
+    // latest value through the State, and `distinctUntilChanged` on the emitted
+    // index naturally filters out content-only updates (the line index doesn't
+    // change just because phonetic/translation text was added). If the line
+    // index DOES change (e.g. the new lyrics have different line timings), the
+    // playback loop's `lyricsChanged` branch already invalidates `cachedLineIdx`
+    // and updates `currentLineIndexState`, which flows through the snapshotFlow
+    // and triggers a normal (non-forced) scroll.
+    val latestSyncedLyricsForScroll = rememberUpdatedState(syncedLyrics)
+    LaunchedEffect(lyricsSessionKey, isSynced) {
+        if (!isSynced || latestSyncedLyricsForScroll.value.lines.isEmpty()) return@LaunchedEffect
         snapshotFlow {
             listState.layoutInfo.viewportEndOffset > listState.layoutInfo.viewportStartOffset
         }.first { it }
@@ -576,7 +607,7 @@ fun LyricsEnhanced(
                 null
             } else {
                 currentLineIndexState.intValue
-                    .takeIf { index -> index in syncedLyrics.lines.indices }
+                    .takeIf { index -> index in latestSyncedLyricsForScroll.value.lines.indices }
             }
         }.distinctUntilChanged()
             .collectLatest { index ->

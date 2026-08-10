@@ -43,6 +43,7 @@ import moe.rukamori.archivetune.innertube.models.YouTubeLocale
 import moe.rukamori.archivetune.kugou.KuGou
 import moe.rukamori.archivetune.lastfm.LastFM
 import moe.rukamori.archivetune.lyrics.JapaneseLanguagePackManager
+import moe.rukamori.archivetune.canvas.AppleMusicProvider
 import moe.rukamori.archivetune.paxsenix.PaxsenixLyrics
 import moe.rukamori.archivetune.scrobbling.LastFmServiceConfig
 import moe.rukamori.archivetune.storage.StorageFolderKind
@@ -137,6 +138,37 @@ class App :
         }
         CanvasArtworkPlaybackCache.init(this)
         PaxsenixLyrics.setUserAgent("ArchiveTune", BuildConfig.VERSION_NAME)
+        // Route PaxsenixLyrics diagnostic logs through GlobalLog so they show up
+        // in the in-app logcat viewer with the proper tag, instead of going to
+        // System.err (which Android redirects to logcat one line at a time as
+        // `W/System.err`, with synchronized I/O that causes contention during
+        // parallel lyrics prefetch).
+        PaxsenixLyrics.logger = { message ->
+            moe.rukamori.archivetune.utils.GlobalLog.append(
+                android.util.Log.INFO,
+                "PaxsenixLyrics",
+                message,
+            )
+        }
+
+        // Route AppleMusicProvider (canvas) diagnostic logs through GlobalLog
+        // too — same rationale as PaxsenixLyrics.logger above. Previously the
+        // canvas module used `println(...)` which Android redirects to logcat
+        // as `I/System.out:` with no tag/level, bypassing the in-app log viewer.
+        AppleMusicProvider.logger = { level, tag, message ->
+            moe.rukamori.archivetune.utils.GlobalLog.append(level, tag, message)
+        }
+
+        // Pre-warm the Apple Music web player JWT on startup so the first
+        // lyrics lookup and canvas resolution don't pay the extra ~300ms scrape
+        // latency. The refresh is throttled and mutex-guarded inside the
+        // provider, so this is safe to call fire-and-forget.
+        applicationScope.launch(Dispatchers.IO) {
+            runCatching {
+                AppleMusicProvider.refreshToken()
+                PaxsenixLyrics.refreshAmpToken()
+            }
+        }
 
         runCatching { moe.rukamori.archivetune.telegram.TelegramClient.ensureStarted(this) }
 

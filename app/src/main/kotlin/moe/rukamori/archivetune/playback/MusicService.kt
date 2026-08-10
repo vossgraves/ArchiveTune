@@ -3240,7 +3240,16 @@ class MusicService :
 
         val loudnessDb = format?.normalizationLoudnessDb()
         if (loudnessDb == null || !loudnessDb.isFinite()) {
-            Timber.tag("AudioNormalization").w("Normalization enabled but no valid loudness data available - no normalization applied")
+            // Downgraded from WARN to DEBUG: this is the expected code path for
+            // any non-YouTube source (Tidal, Qobuz, Deezer, JioSaavn, Telegram,
+            // local files) because FormatEntity only carries loudness metadata
+            // for YouTube streams — for everything else the field is hardcoded
+            // to null at the FormatEntity creation site (see the comment at
+            // `resolveAudioNormalizationFactor` for the rationale). Logging this
+            // at WARN produced 5+ noisy entries per playback session in
+            // production logs for every Qobuz track, making it harder to spot
+            // real warnings.
+            Timber.tag("AudioNormalization").d("Normalization enabled but no valid loudness data available - no normalization applied")
             return 1f
         }
 
@@ -9394,7 +9403,7 @@ class MusicService :
                 database.format(mediaId).first()
             }
         storedFormat?.let { format ->
-            audioNormalizationFactorCache[mediaId] = calculateAudioNormalizationFactor(format, normalizeAudio = true)
+            audioNormalizationFactorCache[mediaId] = resolveAudioNormalizationFactor(mediaId, storedFormat, normalizeAudio = true)
         }
         val knownContentLength =
             contentLengthCache[mediaId] ?: storedFormat?.contentLength?.takeIf { it > 0L } ?: runCatching {

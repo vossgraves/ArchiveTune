@@ -420,7 +420,12 @@ class SyncUtils
                         if (!isSyncStillEnabled(gen)) return@onSuccess
                         val remoteAlbums = page.items.filterIsInstance<AlbumItem>().reversed()
                         if (remoteAlbums.isEmpty() && !authoritative) {
-                            Timber.w("syncLikedAlbums: No liked albums found")
+                            // Downgraded from WARN to DEBUG: a user with no liked
+                            // albums is a normal state, not an error condition. The
+                            // previous WARN level polluted logcat with `W/...: No
+                            // liked albums found` on every sync cycle for users who
+                            // simply don't use the like-albums feature.
+                            Timber.d("syncLikedAlbums: No liked albums found")
                             return@onSuccess
                         }
                         val remoteIds = remoteAlbums.map { it.id }.toSet()

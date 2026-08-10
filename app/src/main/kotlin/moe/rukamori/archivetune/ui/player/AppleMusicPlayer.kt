@@ -22,6 +22,7 @@ import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.animation.SharedTransitionScope.OverlayClip
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -52,14 +53,11 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
@@ -81,7 +79,6 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.collectAsState
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -113,6 +110,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.Player.STATE_ENDED
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.navigation.NavController
@@ -372,6 +370,22 @@ fun AppleMusicPlayerContent(
     // doesn't change per-frame so this is a one-time composition-phase read.
     val driftDpToPx = with(LocalDensity.current) { 1.dp.toPx() }
 
+    // Hoist the thumbnail corner radius preference so it can be used both
+    // for the COVER state's artwork clip AND for the sharedBounds overlay
+    // clip during morph transitions. Previously this was read INSIDE
+    // AppleMusicSharpArtwork's immersiveExtendedCard branch, which meant
+    // the sharedBounds modifier (in this parent composable) could NOT
+    // access it — so the SharedTransition overlay used the default
+    // RectangleShape clip, causing the artwork to flash sharp corners
+    // for the duration of the spring bounds animation (1-2s) after
+    // expanding from the mini header. See clipInOverlayDuringTransition
+    // on the sharedBounds modifiers below.
+    val (thumbnailCornerRadius, _) = rememberPreference(
+        ThumbnailCornerRadiusKey,
+        defaultValue = 16f,
+    )
+    val artworkCornerRadiusDp = thumbnailCornerRadius.coerceAtMost(32f).dp
+
     val baseArtworkUrl = mediaMetadata.thumbnailUrl?.highRes()
     val thumbnailSwapState =
         rememberThumbnailSwapState(
@@ -388,7 +402,7 @@ fun AppleMusicPlayerContent(
 
     // Current lyrics for the LyricsMenu (shown when lyrics is open and the
     // user taps the overflow "more" button).
-    val currentLyrics by playerConnection.currentLyrics.collectAsState(initial = null)
+    val currentLyrics by playerConnection.currentLyrics.collectAsStateWithLifecycle(initialValue = null)
 
     // ─── Automatic AI translation ───────────────────────────────────────
     // Mirrors the same LaunchedEffect in LyricsScreen.kt. The Apple Music
@@ -769,6 +783,7 @@ fun AppleMusicPlayerContent(
                     videoId = mediaMetadata.id.takeIf { !it.isLocalMediaId() },
                     isMusicVideo = mediaMetadata.isMusicVideo,
                     landscape = true,
+                    artworkCornerRadiusDp = artworkCornerRadiusDp,
                     modifier =
                         Modifier
                             .weight(1f)
@@ -889,12 +904,42 @@ fun AppleMusicPlayerContent(
                                     // size doesn't shrink when the system nav bar
                                     // eats into the morph area (weight 1f).
                                     fullPlayerHeight = fullPlayerHeightForArtwork,
+                                    // Pass the preference-derived corner radius so
+                                    // the artwork clip inside
+                                    // AppleMusicSharpArtwork matches the overlay
+                                    // clip on the sharedBounds modifier below.
+                                    artworkCornerRadiusDp = artworkCornerRadiusDp,
                                     modifier =
                                         Modifier
                                             .fillMaxSize()
                                             .sharedBounds(
-                                                rememberSharedContentState(key = "amCoverArt"),
+                                                sharedContentState =
+                                                    rememberSharedContentState(key = "amCoverArt"),
                                                 animatedVisibilityScope = this@AnimatedContent,
+                                                // CRITICAL: explicitly set the overlay
+                                                // clip to a RoundedCornerShape matching
+                                                // the COVER artwork's own clip. The
+                                                // default is RectangleShape, which
+                                                // causes the shared element to flash
+                                                // sharp corners for the entire duration
+                                                // of the spring bounds animation (1-2s)
+                                                // when morphing from the mini header
+                                                // (8dp rounded) to the large cover
+                                                // (preference-based radius). This was
+                                                // the root cause of the "sharp squared
+                                                // for a few seconds then becomes
+                                                // rounded" bug.
+                                                clipInOverlayDuringTransition =
+                                                    OverlayClip(RoundedCornerShape(artworkCornerRadiusDp)),
+                                                // boundsTransform intentionally omitted:
+                                                // fall back to the SharedTransition
+                                                // default spring (LowBouncy). The
+                                                // rounded OverlayClip above keeps the
+                                                // corners rounded for the entire
+                                                // duration of the morph, so the default
+                                                // 1-2s spring no longer risks a
+                                                // sharp-corner flash — restoring the
+                                                // original, slower morph feel.
                                             ),
                                 )
                             }
@@ -1041,24 +1086,32 @@ fun AppleMusicPlayerContent(
                     // (maxHeight - miniHeaderHeight) and offset down by
                     // miniHeaderHeight so it doesn't cover the mini header.
                     //
-                    // HORIZONTAL INSETS: the inline overlay must apply system-bar
-                    // horizontal padding (status bar on landscape, gesture-nav
-                    // pill / display cutout on portrait) AND a minimum horizontal
-                    // margin, mirroring the standalone LyricsScreen.kt which uses
-                    // windowInsetsPadding(systemBars) + 24dp horizontal padding.
-                    // Without this, the lyrics text extends to the absolute screen
-                    // edge and the rightmost characters are clipped on devices
-                    // with curved edges / side cutouts — particularly visible on
-                    // long Japanese CJK lines.
+                    // HORIZONTAL INSETS: deliberately NOT applying
+                    // `windowInsetsPadding(systemBars.only(Horizontal))` here.
+                    // The mini header above (AppleMusicMiniHeader's Row, line ~1798)
+                    // has NO horizontal systemBars padding — its parent Box only
+                    // applies `windowInsetsPadding(WindowInsets(top = ...))` for the
+                    // notch/status bar TOP inset. So the album art's LEFT edge sits
+                    // at exactly AppleMusicContentPadding (28dp) from the screen edge.
+                    //
+                    // If we added systemBars horizontal padding to this lyrics overlay
+                    // Box, the lyrics' left edge would be pushed further right than
+                    // the album art (by systemBars.left), breaking alignment. Skipping
+                    // the horizontal inset keeps the lyrics overlay's bounds identical
+                    // to the mini header's bounds — both at 0..screenWidth with no
+                    // system-bar horizontal inset — so the inner 28dp-based padding
+                    // calculations align perfectly.
+                    //
+                    // (Vertical inset is also intentionally skipped: the overlay is
+                    // explicitly positioned via .offset(y = miniHeaderHeight) below
+                    // the mini header, and the bottom inset is handled by the parent
+                    // weighted Box / navigationBarsPadding on the controls below.)
                     Box(
                         modifier =
                             Modifier
                                 .fillMaxWidth()
                                 .height(maxHeight - miniHeaderHeight)
                                 .offset(y = miniHeaderHeight)
-                                .windowInsetsPadding(
-                                    WindowInsets.systemBars.only(WindowInsetsSides.Horizontal),
-                                )
                                 .pointerInput(lyricsOpen) {
                                     if (!lyricsOpen) return@pointerInput
                                     awaitEachGesture {
@@ -1067,20 +1120,67 @@ fun AppleMusicPlayerContent(
                                     }
                                 },
                     ) {
+                        // HORIZONTAL PADDING — compensate for the mocharealm
+                        // KaraokeLineText library's INTERNAL 16dp horizontal padding
+                        // (see lyrics-ui-android sources: KaraokeLineText.kt line ~514
+                        // applies `padding(vertical = 8.dp, horizontal = 16.dp)` to its
+                        // Column for non-accompaniment lines).
+                        //
+                        // The album art's left edge sits at AppleMusicContentPadding
+                        // (28dp) from the screen edge (via AppleMusicMiniHeader's Row
+                        // padding). For the lyrics TEXT left edge to align EXACTLY with
+                        // the album art's left edge, we need:
+                        //
+                        //   our_padding + library_padding(16dp) = AppleMusicContentPadding(28dp)
+                        //   our_padding = 12dp
+                        //
+                        // Previous fix (commit 7e8503806) used AppleMusicContentPadding
+                        // (28dp) directly, which left the lyrics text at 28 + 16 = 44dp
+                        // from the screen edge — 16dp to the RIGHT of the album art.
+                        // The user reported this as "still shifted towards right a bit
+                        // and not aligned".
+                        //
+                        // Using AppleMusicContentPadding - 16.dp (= 12dp) as our padding
+                        // makes the lyrics text left edge land at 12 + 16 = 28dp from
+                        // the screen edge, EXACTLY aligned with the album art.
+                        //
+                        // LIBRARY WRAP BEHAVIOUR: the mocharealm library DOES wrap long
+                        // lines — `calculateBalancedLines` (LyricsLayoutCalculator.kt
+                        // line ~273) uses Knuth's optimal line-breaking algorithm with
+                        // the availableWidthPx from BoxWithConstraints inside
+                        // KaraokeLineText. Long word-synced lines that exceed the
+                        // available width are automatically broken into multiple visual
+                        // rows. By reducing our padding from 28dp to 12dp, we give the
+                        // library MORE width to work with (screen_width - 24dp instead
+                        // of screen_width - 56dp), so wrap triggers later for
+                        // medium-length lines (fewer awkward wraps) but still triggers
+                        // for genuinely long lines (matching the user's request:
+                        // "whenever a song with enhanced style word synced lyrics have
+                        // long enough lines that cross the display area, shift the
+                        // words into another line").
+                        //
+                        // NO clipToBounds(): mirrors the standalone LyricsScreen's
+                        // AppleMusicLyricsPane (LyricsScreen.kt:1208-1217), which uses
+                        // fillMaxSize() + padding(horizontal = ...) with NO clip. Any
+                        // residual draw-phase overflow (e.g., the swell animation
+                        // scaling a syllable by ~10% beyond its layout width) is
+                        // allowed to extend into the empty padded area and only gets
+                        // clipped by the physical screen edge if truly necessary.
+                        val lyricsHorizontalPadding = AppleMusicContentPadding - 16.dp
                         when (lyricsMode) {
                             LyricsMode.V2 -> LyricsV2(
                                 sliderPositionProvider = lyricsPosProvider,
                                 lyricsSyncOffset = lyricsSyncOffset,
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .padding(horizontal = 16.dp),
+                                    .padding(horizontal = lyricsHorizontalPadding),
                             )
                             LyricsMode.ENHANCED -> LyricsEnhanced(
                                 sliderPositionProvider = lyricsPosProvider,
                                 lyricsSyncOffset = lyricsSyncOffset,
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .padding(horizontal = 16.dp),
+                                    .padding(horizontal = lyricsHorizontalPadding),
                             )
                         }
                     }
@@ -1179,6 +1279,13 @@ private fun AppleMusicSharpArtwork(
     // with it — this parameter decouples artwork size from morph area height.
     // Null = fall back to the local maxHeight (landscape or legacy callers).
     fullPlayerHeight: Dp? = null,
+    // The preference-derived corner radius for the immersiveExtendedCard
+    // artwork. Hoisted from the parent (AppleMusicPlayerContent) so the
+    // same value can be used for the sharedBounds overlay clip — keeping
+    // the overlay's clip in sync with the artwork's own clip during morph
+    // transitions. See clipInOverlayDuringTransition on the sharedBounds
+    // modifier in AppleMusicPlayerContent.
+    artworkCornerRadiusDp: Dp = 16.dp,
     modifier: Modifier = Modifier,
 ) {
     val playerConnection = LocalPlayerConnection.current
@@ -1252,17 +1359,13 @@ private fun AppleMusicSharpArtwork(
                 val effectiveFullHeight = fullPlayerHeight ?: if (landscape) maxHeight else maxHeight / 0.55f
                 val compactHeight = effectiveFullHeight < 760.dp
                 val veryCompactHeight = effectiveFullHeight < 700.dp
-                // Honor the global thumbnail corner-radius preference (the same
-                // one the "Adjust corner radius" dialog in Appearance settings
-                // controls). The slider's max is 45dp, but for a ~320dp artwork
-                // that would be over-round, so we cap at 32dp — matching V9's
-                // RoundedCornerShape(30.dp) default while still letting the
-                // user drop it to 0 for sharp corners.
-                val (thumbnailCornerRadius, _) = rememberPreference(
-                    ThumbnailCornerRadiusKey,
-                    defaultValue = 16f,
-                )
-                val artworkCornerRadiusDp = thumbnailCornerRadius.coerceAtMost(32f).dp
+                // artworkCornerRadiusDp is now hoisted from the parent
+                // (AppleMusicPlayerContent) so the same value can be used
+                // for the sharedBounds overlay clip during morph transitions.
+                // Previously this was read locally via rememberPreference,
+                // which meant the sharedBounds modifier couldn't access it —
+                // causing the overlay to use the default RectangleShape and
+                // flash sharp corners during the spring bounds animation.
                 val artworkMinSize =
                     when {
                         veryCompactHeight -> 200.dp
@@ -1770,6 +1873,11 @@ private fun SharedTransitionScope.AppleMusicMiniHeader(
     ) {
         // Mini artwork — shared element with the large COVER artwork.
         // Tapping it restores the COVER state (morphs back to the main player).
+        // The clipInOverlayDuringTransition matches the mini header's own 8dp
+        // rounded clip so the SharedTransition overlay doesn't flash sharp
+        // corners during the COVER→QUEUE morph. The boundsTransform matches
+        // the COVER state's (non-bouncy spring) so the morph duration is
+        // consistent in both directions.
         Box(
             modifier =
                 Modifier
@@ -1781,8 +1889,13 @@ private fun SharedTransitionScope.AppleMusicMiniHeader(
                         onClick = onArtworkClick,
                     )
                     .sharedBounds(
-                        rememberSharedContentState(key = "amCoverArt"),
+                        sharedContentState = rememberSharedContentState(key = "amCoverArt"),
                         animatedVisibilityScope = animatedVisibilityScope,
+                        clipInOverlayDuringTransition =
+                            OverlayClip(RoundedCornerShape(8.dp)),
+                        // boundsTransform intentionally omitted: fall back to the
+                        // SharedTransition default spring (LowBouncy) so the
+                        // mini↔cover morph duration matches the COVER state.
                     ),
         ) {
             AsyncImage(
