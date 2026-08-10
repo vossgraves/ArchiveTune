@@ -97,7 +97,9 @@ import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
+import android.os.Build
 import moe.rukamori.archivetune.constants.HideExplicitKey
+import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
 import moe.rukamori.archivetune.db.entities.PlaylistEntity
 import moe.rukamori.archivetune.db.entities.PlaylistSongMap
 import moe.rukamori.archivetune.extensions.metadata
@@ -137,6 +139,7 @@ import moe.rukamori.archivetune.ui.utils.sendAddMissingDownloads
 import moe.rukamori.archivetune.ui.utils.sendRemoveDownloads
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.OnlinePlaylistViewModel
+import moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -195,6 +198,20 @@ fun OnlinePlaylistScreen(
 
     var selection by remember { mutableStateOf(false) }
     val hideExplicit by rememberPreference(key = HideExplicitKey, defaultValue = false)
+
+    // Liquid Glass master toggle + lyrics-overlay gate. OnlinePlaylistScreen
+    // previously applied layerBackdrop + LiquidGlass header pills UNCONDITIONALLY
+    // — even when the user had LiquidGlass turned off in settings, and even when
+    // the full-screen lyrics overlay was open on top. The unconditional recording
+    // + RuntimeShader sampling starves the 60 Hz karaoke lyrics sweep of GPU
+    // budget, causing the 'enhanced word-synced lyrics lag when launched from a
+    // playlist page' bug. HomeScreen has no LiquidGlass, which is why the same
+    // lyrics path doesn't lag from home.
+    val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = false)
+    val liquidGlassHeaderActive =
+        liquidGlassEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+    val lyricsFullScreen = LocalPlayerLyricsFullScreen.current
+    val layerBackdropActive = liquidGlassHeaderActive && !lyricsFullScreen
 
     // Stable top inset: does not collapse to 0 when the status bar is transiently hidden,
     // so the search bar offset and the playlist header always stay anchored below the TopAppBar.
@@ -323,7 +340,13 @@ fun OnlinePlaylistScreen(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .layerBackdrop(artworkBackdrop),
+                    .then(
+                        if (layerBackdropActive) {
+                            Modifier.layerBackdrop(artworkBackdrop)
+                        } else {
+                            Modifier
+                        },
+                    ),
             contentPadding =
                 PaddingValues(
                     // When searching, the header item collapses to zero height and the
@@ -776,7 +799,7 @@ fun OnlinePlaylistScreen(
         //  - Not searching
         //  - Playlist is loaded
         val currentPlaylistForGlass = playlist
-        if (!selection && !isSearching && currentPlaylistForGlass != null) {
+        if (layerBackdropActive && !selection && !isSearching && currentPlaylistForGlass != null) {
             LiquidGlassIconButton(
                 backdrop = artworkBackdrop,
                 painter = painterResource(R.drawable.arrow_back),

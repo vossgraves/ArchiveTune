@@ -99,6 +99,10 @@ import moe.rukamori.archivetune.ui.component.MediaDetailHero
 import moe.rukamori.archivetune.ui.component.MediaDetailIconAction
 import moe.rukamori.archivetune.ui.component.SpotifyTrackListItem
 import moe.rukamori.archivetune.ui.component.layerBackdrop
+import android.os.Build
+import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
+import moe.rukamori.archivetune.utils.rememberPreference
+import moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen
 import moe.rukamori.archivetune.ui.component.rememberBackdrop
 import moe.rukamori.archivetune.ui.utils.HeaderDownloadItem
 import moe.rukamori.archivetune.ui.utils.HeaderDownloadProgressIndicator
@@ -351,6 +355,20 @@ fun SpotifyPlaylistScreen(
     // the LazyColumn (not nested inside its first item) so they sample the backdrop
     // without being recorded into it — and, critically, their click handlers are not
     // competing with any LazyColumn-item pointer-input stack.
+    //
+    // Gating: layerBackdrop recording + LiquidGlass header pills are suspended when
+    // (a) the LiquidGlass master toggle is off, or (b) the full-screen lyrics
+    // overlay is open on top of this screen. The overlay is opaque, so this
+    // screen's pixels are never visible — but the kyant layerBackdrop would keep
+    // recording every frame and the LiquidGlass pills would keep sampling it via
+    // RuntimeShader, starving the 60 Hz karaoke lyrics sweep of GPU budget.
+    // HomeScreen has no LiquidGlass, which is why the same lyrics path doesn't
+    // lag from home.
+    val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = false)
+    val liquidGlassHeaderActive =
+        liquidGlassEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+    val lyricsFullScreen = LocalPlayerLyricsFullScreen.current
+    val layerBackdropActive = liquidGlassHeaderActive && !lyricsFullScreen
     val artworkBackdrop = rememberBackdrop(Color.Black)
 
     ExpressivePullToRefreshBox(
@@ -379,7 +397,13 @@ fun SpotifyPlaylistScreen(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .layerBackdrop(artworkBackdrop),
+                    .then(
+                        if (layerBackdropActive) {
+                            Modifier.layerBackdrop(artworkBackdrop)
+                        } else {
+                            Modifier
+                        },
+                    ),
         ) {
             playlist?.let { currentPlaylist ->
                 item(key = "header") {
@@ -599,7 +623,7 @@ fun SpotifyPlaylistScreen(
         // Shown only when:
         //  - Not searching
         //  - Playlist is loaded
-        if (!isSearching && playlist != null) {
+        if (layerBackdropActive && !isSearching && playlist != null) {
             LiquidGlassIconButton(
                 backdrop = artworkBackdrop,
                 painter = painterResource(R.drawable.arrow_back),

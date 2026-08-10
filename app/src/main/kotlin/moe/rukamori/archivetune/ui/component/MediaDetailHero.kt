@@ -91,6 +91,13 @@ public fun MediaDetailHero(
     canvasPrimaryUrl: String? = null,
     canvasFallbackUrl: String? = null,
     canvasIsPlaying: Boolean = false,
+    // When false, the canvas TextureView is not rendered (the ExoPlayer is
+    // kept alive but paused). Forwarded to CanvasArtworkPlayer.visible.
+    // AlbumScreen passes `!lyricsFullScreen` so the canvas's Modifier.blur(72.dp)
+    // RenderEffect doesn't keep re-applying every frame while the full-screen
+    // lyrics overlay is open on top — freeing the GPU frame budget for the
+    // 60 Hz karaoke lyrics sweep.
+    canvasVisible: Boolean = true,
     useBlurredPlayButton: Boolean = false,
 ) {
     val surfaceColor = MaterialTheme.colorScheme.surface
@@ -145,6 +152,7 @@ public fun MediaDetailHero(
                 primaryUrl = canvasPrimaryUrl,
                 fallbackUrl = canvasFallbackUrl,
                 isPlaying = canvasIsPlaying,
+                visible = canvasVisible,
                 resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
                 modifier = Modifier.matchParentSize(),
             )

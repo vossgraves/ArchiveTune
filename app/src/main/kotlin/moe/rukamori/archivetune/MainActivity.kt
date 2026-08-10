@@ -1876,6 +1876,7 @@ class MainActivity : ComponentActivity() {
                         LocalNavigationBarBackdrop provides navBarFrostedBackdrop,
                         LocalLiquidGlassBackdrop provides liquidGlassBackdrop,
                         moe.rukamori.archivetune.ui.player.LocalIsInPipMode provides isInPictureInPictureModeState,
+                        moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen provides isPlayerLyricsFullScreen,
                     ) {
                         Row {
                             AnimatedVisibility(
@@ -2733,7 +2734,14 @@ class MainActivity : ComponentActivity() {
                                                     Modifier
                                                 },
                                             ).then(
-                                                if (liquidGlassBackdrop != null) {
+                                                if (liquidGlassBackdrop != null && !isPlayerLyricsFullScreen) {
+                                                    // Suspend the outer app-wide layerBackdrop while the
+                                                    // full-screen lyrics overlay is open. The overlay is
+                                                    // opaque, so nothing visible samples this backdrop
+                                                    // (the nav bar + mini player are hidden when the
+                                                    // player is expanded). Recording the entire NavHost
+                                                    // into a GraphicsLayer every frame steals GPU budget
+                                                    // from the 60 Hz karaoke sweep on top.
                                                     Modifier.layerBackdrop(liquidGlassBackdrop)
                                                 } else {
                                                     Modifier
