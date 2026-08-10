@@ -1378,15 +1378,16 @@ private fun AppleMusicControlsColumn(
     // source of truth for spacing.
     //
     // Gap values are calibrated to match the Apple Music reference layout:
-    // tight ~12-16dp between rows on standard screens, compressed on
-    // shorter devices to prevent overflow.
+    // ~20-22dp between rows on standard screens for comfortable breathing
+    // room without being loose, compressed on shorter devices to prevent
+    // overflow.
     val screenHeight = LocalConfiguration.current.screenHeightDp.dp
     val compactHeight = screenHeight < 720.dp
     val veryCompactHeight = screenHeight < 620.dp
-    val titleToScrubberGap = if (veryCompactHeight) 6.dp else if (compactHeight) 10.dp else 14.dp
-    val scrubberToTransportGap = if (veryCompactHeight) 8.dp else if (compactHeight) 12.dp else 16.dp
-    val transportToVolumeGap = if (veryCompactHeight) 6.dp else if (compactHeight) 10.dp else 14.dp
-    val volumeToActionsGap = if (veryCompactHeight) 8.dp else if (compactHeight) 12.dp else 16.dp
+    val titleToScrubberGap = if (veryCompactHeight) 8.dp else if (compactHeight) 14.dp else 20.dp
+    val scrubberToTransportGap = if (veryCompactHeight) 12.dp else if (compactHeight) 16.dp else 22.dp
+    val transportToVolumeGap = if (veryCompactHeight) 8.dp else if (compactHeight) 14.dp else 20.dp
+    val volumeToActionsGap = if (veryCompactHeight) 12.dp else if (compactHeight) 16.dp else 22.dp
 
     Column(
         modifier =
