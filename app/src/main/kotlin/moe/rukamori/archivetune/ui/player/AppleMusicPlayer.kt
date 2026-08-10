@@ -51,7 +51,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
@@ -434,6 +433,14 @@ fun AppleMusicPlayerContent(
 
     BoxWithConstraints(modifier = modifier) {
         val sharpArtworkHeight = if (landscape) maxHeight else maxHeight * 0.55f
+        // The FULL player height — used as the artwork sizing reference so the
+        // artwork stays a constant size whether the system navigation bar is
+        // visible or hidden. In portrait the morph area is weight(1f), so its
+        // height shrinks when the nav bar inset is consumed by the controls'
+        // `navigationBarsPadding()`. Using the outer maxHeight here (which is
+        // fillMaxSize — the entire player area) decouples artwork sizing from
+        // that inset. See `fullPlayerHeight` parameter in AppleMusicSharpArtwork.
+        val fullPlayerHeightForArtwork: Dp? = if (landscape) null else maxHeight
 
         Box(
             modifier =
@@ -546,15 +553,26 @@ fun AppleMusicPlayerContent(
                                 scaleY = 1.2f
                             },
                 )
-                // Canvas backdrop — ALWAYS rendered (not conditionally on
-                // !lyricsOpen) so the ExoPlayer survives the lyrics open/close
-                // cycle. Paused during lyrics to save GPU; the static image
-                // overlay below visually replaces it.
+                // Canvas backdrop — the ExoPlayer is ALWAYS retained (never
+                // disposed across lyrics open/close) so the canvas resumes
+                // instantly when lyrics closes — no multi-second reload delay.
+                //
+                // PERFORMANCE (lyrics lag fix): the TextureView is HIDDEN
+                // (`visible = !lyricsOpen`) when lyrics is open. A paused
+                // TextureView with Modifier.blur(72.dp) still costs a full
+                // per-frame GPU composite + blur pass because the RenderEffect
+                // is re-applied every frame even when the surface content
+                // hasn't changed. This steals the frame budget from the
+                // karaoke syllable sweep, causing the "lyrics lag after ~20s"
+                // symptom. Hiding the TextureView entirely frees that budget.
+                // The static image overlay below visually replaces the canvas
+                // so the user still sees the moving-blur aesthetic.
                 CanvasArtworkPlayer(
                     primaryUrl = canvasPrimaryUrl,
                     fallbackUrl = canvasFallbackUrl,
                     isPlaying = isPlaying && !lyricsOpen,
                     resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
+                    visible = !lyricsOpen,
                     modifier =
                         Modifier
                             .matchParentSize()
@@ -720,7 +738,12 @@ fun AppleMusicPlayerContent(
                         Modifier
                             .weight(1f)
                             .fillMaxHeight()
-                            .navigationBarsPadding()
+                            // NOTE: no navigationBarsPadding() here — contentBottomPadding
+                            // already includes the system-bars bottom inset via
+                            // collapsedBound (= dynamicQueuePeekHeight + systemBarsBottom).
+                            // Adding navigationBarsPadding() on top double-counts the
+                            // inset and makes the controls jump up when the nav bar
+                            // appears.
                             .padding(bottom = contentBottomPadding),
                 )
             }
@@ -797,6 +820,10 @@ fun AppleMusicPlayerContent(
                                     videoId = mediaMetadata.id.takeIf { !it.isLocalMediaId() },
                                     isMusicVideo = mediaMetadata.isMusicVideo,
                                     landscape = false,
+                                    // Pass the FULL player height so the artwork
+                                    // size doesn't shrink when the system nav bar
+                                    // eats into the morph area (weight 1f).
+                                    fullPlayerHeight = fullPlayerHeightForArtwork,
                                     modifier =
                                         Modifier
                                             .fillMaxSize()
@@ -1033,7 +1060,12 @@ fun AppleMusicPlayerContent(
                         modifier =
                             Modifier
                                 .fillMaxWidth()
-                                .navigationBarsPadding()
+                                // NOTE: no navigationBarsPadding() here — contentBottomPadding
+                                // already includes the system-bars bottom inset via
+                                // collapsedBound (= dynamicQueuePeekHeight + systemBarsBottom).
+                                // Adding navigationBarsPadding() on top double-counts the
+                                // inset and makes the controls jump up when the nav bar
+                                // appears.
                                 .padding(bottom = contentBottomPadding),
                     )
                 }
@@ -1058,6 +1090,13 @@ private fun AppleMusicSharpArtwork(
     // outside the AnimatedContent) to keep the ExoPlayer alive across morph
     // state transitions. Used by the portrait Apple Music layout.
     showCanvas: Boolean = true,
+    // The FULL player height (from the outer BoxWithConstraints), used for
+    // artwork sizing so the artwork stays a consistent size regardless of
+    // the system navigation bar inset. When the nav bar is visible, the
+    // morph area (weight 1f) shrinks, but the artwork should NOT shrink
+    // with it — this parameter decouples artwork size from morph area height.
+    // Null = fall back to the local maxHeight (landscape or legacy callers).
+    fullPlayerHeight: Dp? = null,
     modifier: Modifier = Modifier,
 ) {
     val playerConnection = LocalPlayerConnection.current
@@ -1117,9 +1156,18 @@ private fun AppleMusicSharpArtwork(
             // Without this, a typical 800dp-tall player would see its 440dp
             // stage trip the "veryCompact" branch and shrink the artwork from
             // 0.40 * H to 0.32 * H, making it noticeably smaller than V9.
+            //
+            // CRITICAL (nav-bar fix): when fullPlayerHeight is provided (portrait
+            // Apple Music layout), we use it DIRECTLY instead of dividing
+            // maxHeight by 0.55f. The 0.55f heuristic was only correct when the
+            // morph area was exactly 55% of the player — but with a weight(1f)
+            // morph area, the actual ratio changes when the system nav bar
+            // appears (the controls eat the nav-bar inset, shrinking the morph
+            // area). Using the real full height keeps the artwork at a constant
+            // size whether the nav bar is visible or hidden.
             BoxWithConstraints(modifier = Modifier.matchParentSize()) {
                 val horizontalPadding = if (maxWidth < 380.dp) 16.dp else 20.dp
-                val effectiveFullHeight = if (landscape) maxHeight else maxHeight / 0.55f
+                val effectiveFullHeight = fullPlayerHeight ?: if (landscape) maxHeight else maxHeight / 0.55f
                 val compactHeight = effectiveFullHeight < 760.dp
                 val veryCompactHeight = effectiveFullHeight < 700.dp
                 // Honor the global thumbnail corner-radius preference (the same
