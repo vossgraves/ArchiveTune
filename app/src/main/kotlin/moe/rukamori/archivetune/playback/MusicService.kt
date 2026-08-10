@@ -5232,7 +5232,7 @@ class MusicService :
                             displayName = togetherPublicHostDisplayName ?: getString(R.string.app_name),
                             settings = initialSettings,
                         )
-                        return@launch
+                        return
                     }
                     scope.launch(SilentHandler) {
                         togetherSessionState.value =
@@ -5430,7 +5430,7 @@ class MusicService :
                             code = joinCode,
                             displayName = togetherPublicJoinDisplayName ?: getString(R.string.together_role_guest),
                         )
-                        return@launch
+                        return
                     }
                     scope.launch(SilentHandler) {
                         togetherSessionState.value =
