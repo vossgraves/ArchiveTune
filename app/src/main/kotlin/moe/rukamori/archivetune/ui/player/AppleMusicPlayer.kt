@@ -79,6 +79,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.collectAsState
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
@@ -126,11 +127,15 @@ import moe.rukamori.archivetune.LocalAnimationsDisabled
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.constants.AutoTranslateLyricsKey
 import moe.rukamori.archivetune.constants.ThumbnailCornerRadiusKey
+import moe.rukamori.archivetune.constants.TranslatorTargetLangKey
 import moe.rukamori.archivetune.db.entities.FormatEntity
+import moe.rukamori.archivetune.db.entities.LyricsEntity
 import moe.rukamori.archivetune.db.entities.codecLabel
 import moe.rukamori.archivetune.db.entities.isLossless
 import moe.rukamori.archivetune.extensions.togglePlayPause
+import moe.rukamori.archivetune.lyrics.LyricsUtils
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.playback.PlayerConnection
 import moe.rukamori.archivetune.ui.component.BottomSheetPageState
@@ -151,6 +156,7 @@ import moe.rukamori.archivetune.utils.isLocalMediaId
 import moe.rukamori.archivetune.utils.makeTimeString
 import moe.rukamori.archivetune.utils.rememberLowDataModeActive
 import moe.rukamori.archivetune.utils.rememberPreference
+import moe.rukamori.archivetune.viewmodels.LyricsMenuViewModel
 
 private val AppleMusicContentPadding = 28.dp
 private val AppleMusicChipSize = 34.dp
@@ -373,6 +379,37 @@ fun AppleMusicPlayerContent(
     // Current lyrics for the LyricsMenu (shown when lyrics is open and the
     // user taps the overflow "more" button).
     val currentLyrics by playerConnection.currentLyrics.collectAsState(initial = null)
+
+    // ─── Automatic AI translation ───────────────────────────────────────
+    // Mirrors the same LaunchedEffect in LyricsScreen.kt. The Apple Music
+    // player uses an inline LyricsV2/LyricsEnhanced view (not LyricsScreen),
+    // so without this effect, auto-translate only fires from the background
+    // MusicService.onLyricsFetched() path — which is skipped if lyrics were
+    // already cached before the user enabled auto-translate. This foreground
+    // trigger ensures translation fires when the user opens the inline lyrics
+    // view, matching the behavior of every other player style.
+    val (autoTranslateLyrics) = rememberPreference(AutoTranslateLyricsKey, defaultValue = false)
+    val (translatorTargetLang) = rememberPreference(TranslatorTargetLangKey, defaultValue = "")
+    val lyricsMenuViewModel: LyricsMenuViewModel = hiltViewModel()
+    LaunchedEffect(
+        mediaMetadata.id,
+        currentLyrics?.lyrics,
+        currentLyrics?.source,
+        autoTranslateLyrics,
+        translatorTargetLang,
+    ) {
+        if (!autoTranslateLyrics) return@LaunchedEffect
+        val snapshot = currentLyrics ?: return@LaunchedEffect
+        val text = snapshot.lyrics ?: return@LaunchedEffect
+        if (text.isBlank() || text == LyricsEntity.LYRICS_NOT_FOUND) return@LaunchedEffect
+        if (snapshot.source == LyricsEntity.Source.AI_TRANSLATION.value) return@LaunchedEffect
+        if (!LyricsUtils.shouldAutoTranslate(text, translatorTargetLang)) return@LaunchedEffect
+        lyricsMenuViewModel.translateLyricsWithAi(
+            mediaMetadata = mediaMetadata,
+            lyrics = text,
+            targetLanguage = translatorTargetLang,
+        )
+    }
 
     val onPlayPauseClick = {
         if (playbackState == STATE_ENDED) {
@@ -1332,22 +1369,24 @@ private fun AppleMusicControlsColumn(
     }
     LaunchedEffect(Unit) { kotlinx.coroutines.delay(300); resetSwipeUp() }
 
-    // The controls cluster (title → bottom action row) is ~300dp tall and is
-    // bottom-anchored by the caller (it sits below the weight(1f) morph area,
-    // so it must wrap its height — never fillMaxSize). Gaps tighten on short
-    // screens so the rows never squeeze together or spill past the bottom
-    // edge (SpaceEvenly did both once the transport icons grew to 52/62dp).
+    // The controls cluster (title → bottom action row) is bottom-anchored by
+    // the caller. Gaps between rows are controlled by explicit Spacers below
+    // (not by verticalArrangement) so they stay predictable and compact.
+    // Previously Arrangement.SpaceEvenly stretched the rows across the entire
+    // slot — and Arrangement.spacedBy() stacked on top of the explicit Spacers
+    // doubling the gaps. Arrangement.Bottom lets the Spacers be the single
+    // source of truth for spacing.
     //
     // Gap values are calibrated to match the Apple Music reference layout:
-    // generous ~28-32dp between rows on standard screens, compressed on
+    // tight ~12-16dp between rows on standard screens, compressed on
     // shorter devices to prevent overflow.
     val screenHeight = LocalConfiguration.current.screenHeightDp.dp
     val compactHeight = screenHeight < 720.dp
     val veryCompactHeight = screenHeight < 620.dp
-    val titleToScrubberGap = if (veryCompactHeight) 10.dp else if (compactHeight) 18.dp else 28.dp
-    val scrubberToTransportGap = if (veryCompactHeight) 12.dp else if (compactHeight) 20.dp else 32.dp
-    val transportToVolumeGap = if (veryCompactHeight) 10.dp else if (compactHeight) 18.dp else 28.dp
-    val volumeToActionsGap = if (veryCompactHeight) 12.dp else if (compactHeight) 18.dp else 28.dp
+    val titleToScrubberGap = if (veryCompactHeight) 6.dp else if (compactHeight) 10.dp else 14.dp
+    val scrubberToTransportGap = if (veryCompactHeight) 8.dp else if (compactHeight) 12.dp else 16.dp
+    val transportToVolumeGap = if (veryCompactHeight) 6.dp else if (compactHeight) 10.dp else 14.dp
+    val volumeToActionsGap = if (veryCompactHeight) 8.dp else if (compactHeight) 12.dp else 16.dp
 
     Column(
         modifier =
@@ -1392,12 +1431,12 @@ private fun AppleMusicControlsColumn(
                         swipeUpAccumulated = 0f
                     }
             },
-        // Bottom-aligned with tight fixed gaps between rows — matches the compact Apple
-        // Music layout. Previously used Arrangement.SpaceEvenly which stretched the rows
-        // across the entire slot, creating excessive empty space. spacedBy with
-        // Alignment.Bottom gives predictable, compact spacing that doesn't stretch
-        // when the slot is taller than the content needs.
-        verticalArrangement = Arrangement.spacedBy(14.dp, Alignment.Bottom),
+        // Bottom-aligned — gaps between rows are controlled by explicit
+        // Spacers below (titleToScrubberGap, scrubberToTransportGap, etc.).
+        // Do NOT use spacedBy here — it would stack on top of the Spacers and
+        // double the gaps (previous regression: spacedBy(14.dp) + 28dp Spacer
+        // = 42dp total gap, way too much).
+        verticalArrangement = Arrangement.Bottom,
     ) {
     // Title / artist row with star + more chips.
     // Hidden when showTitleRow = false (queue is open — the title lives in
