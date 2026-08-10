@@ -112,6 +112,7 @@ import moe.rukamori.archivetune.constants.CONTENT_TYPE_PLAYLIST
 import moe.rukamori.archivetune.constants.CONTENT_TYPE_SONG
 import moe.rukamori.archivetune.constants.HideExplicitKey
 import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
+import moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen
 import moe.rukamori.archivetune.db.entities.ArtistEntity
 import moe.rukamori.archivetune.extensions.toMediaItem
 import moe.rukamori.archivetune.extensions.togglePlayPause
@@ -189,6 +190,19 @@ fun ArtistScreen(
     val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = false)
     val liquidGlassHeaderActive =
         liquidGlassEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+    // Suspend the LiquidGlass layerBackdrop recording + header pills while the
+    // full-screen lyrics overlay is open on top. The overlay is opaque, so this
+    // screen's pixels are never visible — but without this gate the kyant
+    // layerBackdrop keeps recording the LazyColumn into a GraphicsLayer every
+    // frame and the LiquidGlass header pills keep sampling it via RuntimeShader
+    // (vibrancy + blur + lens). That per-frame GPU work starves the 60 Hz
+    // karaoke lyrics sweep running on top, causing the 'enhanced word-synced
+    // lyrics lag when launched from an artist page' bug. The TopAppBar
+    // fallback below stays gated on `liquidGlassHeaderActive` (not
+    // `layerBackdropActive`) so the visual structure is preserved when lyrics
+    // closes — the pills simply re-appear.
+    val lyricsFullScreen = LocalPlayerLyricsFullScreen.current
+    val layerBackdropActive = liquidGlassHeaderActive && !lyricsFullScreen
     val isArtistBlocked = (blockState as? ArtistBlockState.Success)?.isBlocked == true
     val artistPage =
         remember(loadedArtistPage, isArtistBlocked) {
@@ -340,7 +354,7 @@ fun ArtistScreen(
     ) {
         LazyColumn(
             modifier =
-                if (liquidGlassHeaderActive) {
+                if (layerBackdropActive) {
                     Modifier.layerBackdrop(artworkBackdrop)
                 } else {
                     Modifier
@@ -1072,7 +1086,7 @@ fun ArtistScreen(
         // Shown only when:
         //  - Liquid Glass master toggle is on (liquidGlassHeaderActive)
         //  - The artist page is loaded (artistPage != null OR showLocal)
-        if (liquidGlassHeaderActive && (artistPage != null || showLocal)) {
+        if (layerBackdropActive && (artistPage != null || showLocal)) {
             LiquidGlassIconButton(
                 backdrop = artworkBackdrop,
                 painter = painterResource(R.drawable.arrow_back),

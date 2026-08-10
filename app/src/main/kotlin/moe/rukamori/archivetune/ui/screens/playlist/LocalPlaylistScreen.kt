@@ -145,6 +145,7 @@ import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.LocalPlaylistViewModel
 import moe.rukamori.archivetune.viewmodels.PlaylistCoverEvent
 import moe.rukamori.archivetune.viewmodels.PlaylistCoverState
+import moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
 import java.time.LocalDateTime
@@ -187,6 +188,18 @@ fun LocalPlaylistScreen(
     val liquidGlassEnabled by rememberPreference(LiquidGlassEnabledKey, defaultValue = false)
     val liquidGlassHeaderActive =
         liquidGlassEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+    // Suspend the LiquidGlass header + layerBackdrop while the full-screen
+    // lyrics overlay is open on top of this screen. The overlay is opaque,
+    // so this screen's pixels are never visible — but without this gate the
+    // kyant layerBackdrop keeps recording the entire LazyColumn into a
+    // GraphicsLayer every frame, and the LiquidGlass header pills keep
+    // sampling that backdrop through a RuntimeShader (vibrancy + blur +
+    // lens). That per-frame GPU work starves the 60 Hz karaoke lyrics
+    // sweep running on top, causing the "enhanced word-synced lyrics lag
+    // when launched from a playlist page" bug. HomeScreen doesn't have
+    // LiquidGlass, which is why the same lyrics path doesn't lag from home.
+    val lyricsFullScreen = LocalPlayerLyricsFullScreen.current
+    val layerBackdropActive = liquidGlassHeaderActive && !lyricsFullScreen
     var showAssignTagsDialog by remember { mutableStateOf(false) }
 
     if (showAssignTagsDialog && playlist != null) {
@@ -572,7 +585,7 @@ fun LocalPlaylistScreen(
                 Modifier
                     .fillMaxSize()
                     .then(
-                        if (liquidGlassHeaderActive) {
+                        if (layerBackdropActive) {
                             Modifier.layerBackdrop(artworkBackdrop)
                         } else {
                             Modifier
@@ -1072,7 +1085,7 @@ fun LocalPlaylistScreen(
         // to non-null inside the block (playlist is a delegate, so the
         // compiler can't smart-cast the property directly).
         val currentPlaylist = playlist
-        if (liquidGlassHeaderActive && !selection && !isSearching && currentPlaylist != null) {
+        if (layerBackdropActive && !selection && !isSearching && currentPlaylist != null) {
             LiquidGlassIconButton(
                 backdrop = artworkBackdrop,
                 painter = painterResource(R.drawable.arrow_back),

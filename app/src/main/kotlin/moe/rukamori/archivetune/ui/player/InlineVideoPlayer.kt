@@ -195,6 +195,23 @@ val LocalVideoAvailableHeights = compositionLocalOf<List<Int>> { emptyList() }
 val LocalIsInPipMode = compositionLocalOf { false }
 
 /**
+ * Tracks whether the full-screen lyrics overlay (MikoLyricsTransition) is
+ * currently visible on top of the player.
+ *
+ * Provided by MainActivity (which receives the state from BottomSheetPlayer
+ * via onLyricsVisibilityChange). Read by back-stack screens (playlist, album,
+ * artist) to suspend their per-frame GPU work — LiquidGlass layerBackdrop
+ * recording, RuntimeShader backdrop sampling, and CanvasArtworkPlayer —
+ * while the karaoke lyrics sweep is running on top. The lyrics overlay is
+ * opaque, so the underlying screen's pixels are never visible; continuing
+ * to draw them wastes the entire GPU frame budget and starves the 60 Hz
+ * lyrics animation.
+ *
+ * Default: false (no provider — e.g. in previews or non-Activity hosts).
+ */
+val LocalPlayerLyricsFullScreen = compositionLocalOf { false }
+
+/**
  * Provides a [VideoFullscreenStateHolder] to the content subtree.
  *
  * The holder is created with `remember` (not `rememberSaveable`) because

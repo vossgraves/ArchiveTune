@@ -92,6 +92,7 @@ import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.AppBarHeight
 import moe.rukamori.archivetune.constants.HideExplicitKey
 import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
+import moe.rukamori.archivetune.ui.player.LocalPlayerLyricsFullScreen
 import moe.rukamori.archivetune.db.entities.Album
 import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.playback.queues.LocalAlbumRadio
@@ -159,6 +160,18 @@ fun AlbumScreen(
     )
     val liquidGlassHeaderActive =
         liquidGlassEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+    // Suspend LiquidGlass + CanvasArtworkPlayer while the full-screen lyrics
+    // overlay is open on top. The overlay is opaque, so this screen's pixels
+    // are never visible — but without this gate the kyant layerBackdrop keeps
+    // recording the LazyColumn into a GraphicsLayer every frame, the LiquidGlass
+    // header pills keep sampling it via RuntimeShader, AND the CanvasArtworkPlayer's
+    // Modifier.blur(72.dp) RenderEffect keeps re-applying on every frame. That
+    // triple per-frame GPU cost starves the 60 Hz karaoke lyrics sweep running
+    // on top, causing the 'enhanced word-synced lyrics lag when launched from
+    // an album page' bug. HomeScreen has none of these, which is why the same
+    // lyrics path doesn't lag from home.
+    val lyricsFullScreen = LocalPlayerLyricsFullScreen.current
+    val layerBackdropActive = liquidGlassHeaderActive && !lyricsFullScreen
 
     // Stable top inset: does not collapse to 0 when the status bar is transiently hidden,
     // so the album hero's top padding stays anchored below the TopAppBar.
@@ -261,7 +274,7 @@ fun AlbumScreen(
     ) {
         LazyColumn(
             modifier =
-                if (liquidGlassHeaderActive) {
+                if (layerBackdropActive) {
                     Modifier.layerBackdrop(artworkBackdrop)
                 } else {
                     Modifier
@@ -364,6 +377,9 @@ fun AlbumScreen(
                         canvasPrimaryUrl = canvasArtwork?.animated ?: canvasArtwork?.videoUrl,
                         canvasFallbackUrl = canvasArtwork?.videoUrl,
                         canvasIsPlaying = true,
+                        // Hide the canvas TextureView (and skip its per-frame
+                        // blur RenderEffect) while the lyrics overlay is open.
+                        canvasVisible = !lyricsFullScreen,
                         onShuffle =
                             if (albumWithSongs.songs.isEmpty()) {
                                 null
@@ -729,7 +745,7 @@ fun AlbumScreen(
         //  - The album has songs (so there's a hero to show)
         //  - The albumWithSongs is loaded (for the heart toggle state)
         val currentAlbumWithSongs = albumWithSongs
-        if (liquidGlassHeaderActive && !selection && currentAlbumWithSongs != null &&
+        if (layerBackdropActive && !selection && currentAlbumWithSongs != null &&
             currentAlbumWithSongs.songs.isNotEmpty()
         ) {
             LiquidGlassIconButton(
