@@ -88,7 +88,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -297,6 +296,30 @@ fun AppleMusicPlayerContent(
         playerControlsExpanded = true
         delay(autoHideDelayMs)
         playerControlsExpanded = false
+    }
+
+    // Deferred canvas-visible state: when lyrics opens, the canvas
+    // TextureView teardown (visible = false) + ExoPlayer pause are delayed by
+    // 250ms so they don't compete with the COVER→LYRICS sharedBounds morph
+    // for the main thread on the same frame. Without this deferral, the
+    // TextureView teardown + static image overlay composition + lyrics
+    // composable initialization + morph animation all fire simultaneously,
+    // causing a visible stutter in the thumbnail transition (issue 3).
+    // 250ms is enough for the morph spring to get past its initial phase
+    // (the non-bouncy StiffnessMediumLow spring reaches ~70% of target in
+    // ~250ms); the canvas teardown then happens smoothly behind the
+    // already-moving overlay. When lyrics closes, the canvas restores
+    // immediately (no delay) so there's no visible gap.
+    var canvasVisibleForLyrics by remember { mutableStateOf(true) }
+    LaunchedEffect(lyricsOpen) {
+        if (lyricsOpen) {
+            // Keep canvas visible briefly while the morph starts
+            canvasVisibleForLyrics = true
+            delay(250)
+            canvasVisibleForLyrics = false
+        } else {
+            canvasVisibleForLyrics = true
+        }
     }
     val pokePlayerControlsVisibility = remember {
         {
@@ -640,21 +663,28 @@ fun AppleMusicPlayerContent(
                 // instantly when lyrics closes — no multi-second reload delay.
                 //
                 // PERFORMANCE (lyrics lag fix): the TextureView is HIDDEN
-                // (`visible = !lyricsOpen`) when lyrics is open. A paused
-                // TextureView with Modifier.blur(72.dp) still costs a full
-                // per-frame GPU composite + blur pass because the RenderEffect
-                // is re-applied every frame even when the surface content
-                // hasn't changed. This steals the frame budget from the
-                // karaoke syllable sweep, causing the "lyrics lag after ~20s"
-                // symptom. Hiding the TextureView entirely frees that budget.
-                // The static image overlay below visually replaces the canvas
-                // so the user still sees the moving-blur aesthetic.
+                // (`visible = canvasVisibleForLyrics`) when lyrics is open. A
+                // paused TextureView with Modifier.blur(72.dp) still costs a
+                // full per-frame GPU composite + blur pass because the
+                // RenderEffect is re-applied every frame even when the surface
+                // content hasn't changed. This steals the frame budget from
+                // the karaoke syllable sweep, causing the "lyrics lag after
+                // ~20s" symptom. Hiding the TextureView entirely frees that
+                // budget. The static image overlay below visually replaces the
+                // canvas so the user still sees the moving-blur aesthetic.
+                //
+                // STUTTER FIX (issue 3): canvasVisibleForLyrics is deferred
+                // by 250ms when lyrics opens (see the LaunchedEffect above).
+                // This prevents the TextureView teardown, ExoPlayer pause,
+                // static image composition, lyrics init, AND the sharedBounds
+                // morph from all firing on the same frame — which was causing
+                // a visible stutter in the thumbnail transition.
                 CanvasArtworkPlayer(
                     primaryUrl = canvasPrimaryUrl,
                     fallbackUrl = canvasFallbackUrl,
-                    isPlaying = isPlaying && !lyricsOpen,
+                    isPlaying = isPlaying && canvasVisibleForLyrics,
                     resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
-                    visible = !lyricsOpen,
+                    visible = canvasVisibleForLyrics,
                     modifier =
                         Modifier
                             .matchParentSize()
@@ -1003,6 +1033,17 @@ fun AppleMusicPlayerContent(
                                         onMoreClick = onMoreClick,
                                         onArtworkClick = restoreCover,
                                         animatedVisibilityScope = this@AnimatedContent,
+                                        // Pass the COVER artwork's corner radius so
+                                        // the mini header's OverlayClip can use it
+                                        // during COVER→LYRICS transitions. Without
+                                        // this, the overlay uses the mini's own 8dp
+                                        // radius, which looks sharp on the large
+                                        // cover bounds at the start of the morph —
+                                        // causing "corners gradually become rounded
+                                        // at the end" (issue 2). Using the larger
+                                        // cover radius ensures corners are properly
+                                        // rounded from the very first frame.
+                                        artworkCornerRadiusDp = artworkCornerRadiusDp,
                                         modifier = Modifier.fillMaxWidth(),
                                     )
                                     if (targetState == AppleMusicPlayerState.QUEUE) {
@@ -1439,9 +1480,23 @@ private fun AppleMusicSharpArtwork(
                                 .graphicsLayer {
                                     scaleX = artworkPauseScale
                                     scaleY = artworkPauseScale
-                                }
-                                .shadow(8.dp, RoundedCornerShape(artworkCornerRadiusDp))
-                                .clip(RoundedCornerShape(artworkCornerRadiusDp)),
+                                    // Apply shadow elevation + clip in a single
+                                    // graphicsLayer instead of separate .shadow()
+                                    // + .clip() modifiers. During SharedTransition
+                                    // the overlay renders the shared element in its
+                                    // own layer; separate .shadow() creates an
+                                    // additional shadow layer that can flash as a
+                                    // dark rectangle during the 200ms crossfade
+                                    // (issue: "flash animation for a split second
+                                    // during thumbnail transition"). Combining
+                                    // shadowElevation + clip + shape into one
+                                    // graphicsLayer ensures the shadow is clipped
+                                    // to the rounded shape and rendered as part of
+                                    // the same layer the overlay manages.
+                                    shadowElevation = 8f
+                                    clip = true
+                                    shape = RoundedCornerShape(artworkCornerRadiusDp)
+                                },
                     )
                 }
             }
@@ -1877,6 +1932,12 @@ private fun SharedTransitionScope.AppleMusicMiniHeader(
     onMoreClick: () -> Unit,
     animatedVisibilityScope: AnimatedVisibilityScope,
     onArtworkClick: () -> Unit = {},
+    // The COVER artwork's corner radius, used for the OverlayClip during
+    // COVER→LYRICS transitions. The mini header's own clip stays at 8dp
+    // (its visual style), but the SharedTransition overlay uses this larger
+    // radius so corners look properly rounded on the large cover bounds at
+    // the start of the morph. See the call site for the full rationale.
+    artworkCornerRadiusDp: Dp = 16.dp,
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -1887,11 +1948,23 @@ private fun SharedTransitionScope.AppleMusicMiniHeader(
     ) {
         // Mini artwork — shared element with the large COVER artwork.
         // Tapping it restores the COVER state (morphs back to the main player).
-        // The clipInOverlayDuringTransition matches the mini header's own 8dp
-        // rounded clip so the SharedTransition overlay doesn't flash sharp
-        // corners during the COVER→QUEUE morph. The boundsTransform matches
-        // the COVER state's (non-bouncy spring) so the morph duration is
-        // consistent in both directions.
+        //
+        // OVERLAY CLIP: uses the COVER artwork's corner radius
+        // (artworkCornerRadiusDp, typically 16dp) — NOT the mini header's own
+        // 8dp clip. During COVER→LYRICS, the SharedTransition overlay morphs
+        // from the large cover bounds to the small mini bounds. If the overlay
+        // used 8dp, the corners would look sharp on the large cover bounds at
+        // the START of the morph (8dp on a ~320dp element is barely visible)
+        // and only look properly rounded at the END (mini size) — the
+        // "corners gradually become rounded at the end" bug (issue 2). Using
+        // the larger cover radius ensures corners are properly rounded from
+        // the very first frame of the transition. The mini header's own 8dp
+        // clip (below) only takes effect once the transition completes and the
+        // overlay is removed — so the mini header's final visual is unchanged.
+        //
+        // boundsTransform: non-bouncy spring at default stiffness, matching
+        // the COVER state's so the morph duration and feel are identical in
+        // both directions.
         Box(
             modifier =
                 Modifier
@@ -1906,11 +1979,7 @@ private fun SharedTransitionScope.AppleMusicMiniHeader(
                         sharedContentState = rememberSharedContentState(key = "amCoverArt"),
                         animatedVisibilityScope = animatedVisibilityScope,
                         clipInOverlayDuringTransition =
-                            OverlayClip(RoundedCornerShape(8.dp)),
-                        // Match the COVER state's boundsTransform (non-bouncy
-                        // spring at default stiffness) so the morph duration
-                        // and feel are identical in both directions and the
-                        // overlay clip doesn't stutter on oscillation.
+                            OverlayClip(RoundedCornerShape(artworkCornerRadiusDp)),
                         boundsTransform =
                             BoundsTransform { _, _ ->
                                 spring(
