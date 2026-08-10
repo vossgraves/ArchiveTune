@@ -22,6 +22,13 @@ data class LogEntry(
 
 object GlobalLog {
     private const val MAX_ENTRIES = 500
+    // Coalesce log emissions: even when the LogcatScreen IS visible, we cap
+    // StateFlow emissions at ~10/sec. A 500-element toList() allocation on
+    // every log call (lyrics prefetch can emit 100+ lines/sec) was still a
+    // measurable source of GC pressure even after the ring-buffer fix.
+    // 100ms is fast enough that the LogcatScreen feels live, while cutting
+    // allocation rate by ~10×.
+    private const val FLUSH_INTERVAL_MS = 100L
 
     // Backing store: ArrayDeque gives O(1) add/remove at both ends, vs the
     // previous `(_logs.value + entry).takeLast(MAX_ENTRIES)` which allocated
@@ -35,6 +42,15 @@ object GlobalLog {
 
     private val timeFormat = SimpleDateFormat("HH:mm:ss.SSS", Locale.getDefault())
 
+    // Set to true whenever append() writes to the buffer. Cleared when we
+    // actually emit a snapshot to _logs. This lets us coalesce bursts of
+    // log calls into a single StateFlow emission.
+    @Volatile
+    private var dirty = false
+
+    @Volatile
+    private var lastFlushMs = 0L
+
     @Synchronized
     fun append(
         level: Int,
@@ -46,17 +62,45 @@ object GlobalLog {
             buffer.removeFirst()
         }
         buffer.addLast(entry)
-        // Emit a snapshot list. `toList()` allocates one new list of size <=500,
-        // which is unavoidable for an immutable StateFlow value — but this is
-        // still O(N) with a small constant and no longer the O(2N) double-copy
-        // of the previous `+`/`takeLast` chain.
-        _logs.value = buffer.toList()
+        dirty = true
+        // CRITICAL PERF: only allocate the snapshot list + emit the StateFlow
+        // value when (a) someone is actively collecting _logs AND (b) at least
+        // FLUSH_INTERVAL_MS has passed since the last emission. The LogcatScreen
+        // is the only consumer and is almost never visible — during normal
+        // playback this skips ~100 toList() allocations/sec (each copying up
+        // to 500 LogEntry refs) and ~100 StateFlow emissions/sec that the
+        // karaoke syllable fill would otherwise compete with for frame budget.
+        // Even with LogcatScreen open, the 100ms coalescing window cuts the
+        // allocation rate by ~10× without perceptible lag in the log view.
+        if (_logs.subscriptionCount.value > 0) {
+            val now = System.currentTimeMillis()
+            if (now - lastFlushMs >= FLUSH_INTERVAL_MS) {
+                lastFlushMs = now
+                _logs.value = buffer.toList()
+                dirty = false
+            }
+        }
     }
 
     @Synchronized
     fun clear() {
         buffer.clear()
+        dirty = false
         _logs.value = emptyList()
+    }
+
+    /**
+     * Force-flush any pending buffer changes to the StateFlow. Called by the
+     * LogcatScreen when it becomes visible so the user sees the latest logs
+     * immediately instead of waiting up to [FLUSH_INTERVAL_MS].
+     */
+    @Synchronized
+    fun flush() {
+        if (dirty) {
+            _logs.value = buffer.toList()
+            dirty = false
+            lastFlushMs = System.currentTimeMillis()
+        }
     }
 
     fun format(entry: LogEntry): String {

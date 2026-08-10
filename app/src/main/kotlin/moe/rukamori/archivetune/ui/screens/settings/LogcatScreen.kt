@@ -101,6 +101,14 @@ fun LogcatScreen(
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
 
+    // Force-flush any pending GlobalLog buffer the moment the LogcatScreen
+    // enters composition. GlobalLog coalesces emissions to ~10/sec (and skips
+    // them entirely when no collector is active), so without this flush the
+    // user would see stale logs for up to 100ms after opening the screen.
+    LaunchedEffect(Unit) {
+        moe.rukamori.archivetune.utils.GlobalLog.flush()
+    }
+
     LaunchedEffect(viewModel, context, snackbarHostState) {
         viewModel.effects.collectLatest { effect ->
             when (effect) {
