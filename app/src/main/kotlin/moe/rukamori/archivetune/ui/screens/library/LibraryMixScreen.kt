@@ -684,7 +684,7 @@ fun LibraryMixScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.fillMaxWidth(),
                             ) {
-                                items(artists.take(10), key = { item.artist.id }) { item ->
+                                items(artists.take(10), key = { it.artist.id }) { item ->
                                     val artist = item.artist
                                     Column(
                                         modifier =
