@@ -88,11 +88,11 @@ data class ArtworkSettings(
      * provider has no artwork, it falls back to the next one. Defaults to
      * [moe.rukamori.archivetune.constants.DefaultArtworkProviderOrder] when not explicitly set.
      *
-     * Note: [PreferredArtworkProvider.SPOTIFY_CANVAS] and [PreferredArtworkProvider.ARCHIVETUNE_CANVAS]
-     * are video-based canvas providers handled separately by the Player UI (not by this
-     * resolver). They appear in the priority list for user discoverability and to control
-     * the canvas-source priority in [moe.rukamori.archivetune.ui.player.CanvasArtworkResolver],
-     * but this still-image resolver skips them.
+     * Note: [PreferredArtworkProvider.SPOTIFY_CANVAS] is a video-based canvas provider
+     * handled separately by the Player UI (not by this resolver). It appears in the
+     * priority list for user discoverability and to control the canvas-source priority
+     * in [moe.rukamori.archivetune.ui.player.CanvasArtworkResolver], but this still-image
+     * resolver skips it.
      */
     val providerOrder: List<PreferredArtworkProvider> = emptyList(),
 )
@@ -133,6 +133,5 @@ fun guessArtworkProvider(url: String?): ArtworkProvider =
         url.isNullOrBlank() -> ArtworkProvider.ORIGINAL_METADATA
         url.isLocalArtworkUri() -> ArtworkProvider.LOCAL_EMBEDDED
         url.contains("resources.tidal.com") -> ArtworkProvider.TIDAL
-        url.contains("koiiverse.cloud") || url.contains("boidu.dev") -> ArtworkProvider.ARCHIVETUNE_CANVAS
         else -> ArtworkProvider.ORIGINAL_METADATA
     }

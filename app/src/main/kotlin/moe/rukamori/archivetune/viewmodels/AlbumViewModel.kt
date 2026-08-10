@@ -24,7 +24,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.canvas.AppleMusicProvider
-import moe.rukamori.archivetune.canvas.ArchiveTuneCanvas
+import moe.rukamori.archivetune.canvas.AppleMusicProvider
 import moe.rukamori.archivetune.canvas.models.CanvasArtwork
 import moe.rukamori.archivetune.constants.HideVideoKey
 import moe.rukamori.archivetune.db.MusicDatabase
@@ -92,8 +92,8 @@ class AlbumViewModel
 
         // Looping animated canvas (Apple Music-style animated cover art) for
         // the album thumbnail. Fetched once per albumId via
-        // `ArchiveTuneCanvas.getByAlbumId` (which delegates to Apple Music's
-        // animated-art API) with a fallback to `getByAlbumArtist` when the
+        // `AppleMusicProvider.getByAlbumId` (Apple Music's animated-art API)
+        // with a fallback to `getByAlbumArtist` when the
         // album id isn't an Apple Music id (e.g. a YouTube `MPRE…` id).
         // Gated on the same `ArchiveTuneCanvasKey` preference the song
         // player uses, plus LowDataMode (skip the network fetch on metered
@@ -164,7 +164,7 @@ class AlbumViewModel
          * the album hero to render only the static thumbnail — no canvas
          * overlay.
          *
-         * We try `ArchiveTuneCanvas.getByAlbumId` first (direct id lookup,
+         * We try `AppleMusicProvider.getByAlbumId` first (direct id lookup,
          * fast for Apple Music ids), then fall back to
          * `getByAlbumArtist` (title + artist name lookup) for YouTube
          * `MPRE…` ids that aren't Apple Music ids. The fetch runs on
@@ -194,7 +194,7 @@ class AlbumViewModel
                 val firstArtist = loaded.artists.firstOrNull()?.name
 
                 val artwork = runCatching {
-                    ArchiveTuneCanvas.getByAlbumId(album.id)
+                    AppleMusicProvider.getByAlbumId(album.id)
                 }.getOrNull()
                     ?: runCatching {
                         if (!firstArtist.isNullOrBlank()) {

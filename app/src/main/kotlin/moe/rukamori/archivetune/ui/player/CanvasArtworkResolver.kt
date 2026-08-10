@@ -9,7 +9,7 @@ package moe.rukamori.archivetune.ui.player
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import moe.rukamori.archivetune.canvas.ArchiveTuneCanvas
+import moe.rukamori.archivetune.canvas.AppleMusicProvider
 import moe.rukamori.archivetune.canvas.SpotifyCanvasProvider
 import moe.rukamori.archivetune.canvas.models.CanvasArtwork
 import moe.rukamori.archivetune.canvas.models.looselyMatchesSongIdentity
@@ -118,13 +118,12 @@ internal suspend fun fetchCanvasArtworkForPlayback(
         }
 
     return candidates.firstNotNullOfOrNull { (song, artist) ->
-        ArchiveTuneCanvas
+        AppleMusicProvider
             .getBySongArtist(
                 song = song,
                 artist = artist,
                 storefront = storefront,
                 forceRefresh = forceRefresh,
-                strict = strictIdentity,
                 album = albumTitle,
             )?.takeIf { artwork ->
                 artwork.matchesIdentity(songTitleRaw, artistNameRaw, strictIdentity) &&
