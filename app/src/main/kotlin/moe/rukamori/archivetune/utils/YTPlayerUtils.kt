@@ -34,6 +34,7 @@ import moe.rukamori.archivetune.innertube.models.YouTubeClient.Companion.TVHTML5
 import moe.rukamori.archivetune.innertube.models.YouTubeClient.Companion.VISIONOS
 import moe.rukamori.archivetune.innertube.models.YouTubeClient.Companion.WEB
 import moe.rukamori.archivetune.innertube.models.YouTubeClient.Companion.WEB_CREATOR
+import moe.rukamori.archivetune.innertube.models.YouTubeClient.Companion.WEB_PRIMARY
 import moe.rukamori.archivetune.innertube.models.YouTubeClient.Companion.WEB_REMIX
 import moe.rukamori.archivetune.innertube.models.response.PlayerResponse
 import moe.rukamori.archivetune.utils.potoken.BotGuardTokenGenerator
@@ -426,7 +427,11 @@ object YTPlayerUtils {
             }
 
             PlayerStreamClient.WEB_REMIX -> {
-                WEB_REMIX
+                if (authState.hasPlaybackLoginContext && !hasCompleteWebPlaybackPoToken(authState)) {
+                    WEB_PRIMARY
+                } else {
+                    WEB_REMIX
+                }
             }
 
             PlayerStreamClient.IOS -> {
@@ -784,7 +789,12 @@ object YTPlayerUtils {
         var didRepairAuthAfterBotDetection = false
         var didRetryWithoutRejectedLoginContext = false
 
-        var metadataClient = MAIN_CLIENT
+        var metadataClient =
+            if (authState.hasPlaybackLoginContext && !hasCompleteWebPlaybackPoToken(authState)) {
+                WEB_PRIMARY
+            } else {
+                MAIN_CLIENT
+            }
 
         Timber.tag(logTag).i("Fetching metadata response using client: ${metadataClient.clientName}")
 
@@ -806,7 +816,7 @@ object YTPlayerUtils {
                 client = metadataClient,
                 signatureTimestamp = signatureTimestamp,
                 poToken = metadataPoToken,
-                setLogin = true,
+                setLogin = canUseLoggedInPlayback && metadataClient.supportsCookieAuthentication,
                 authState = authState,
             )
         val metadataFailure = metadataResult.exceptionOrNull()
@@ -845,7 +855,7 @@ object YTPlayerUtils {
                     client = metadataClient,
                     signatureTimestamp = signatureTimestamp,
                     poToken = metadataPoToken,
-                    setLogin = true,
+                    setLogin = canUseLoggedInPlayback && metadataClient.supportsCookieAuthentication,
                     authState = authState,
                 )
         }

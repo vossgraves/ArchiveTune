@@ -193,7 +193,7 @@ fun LyricsSettings(
         remember(providerOrderStr) {
             deserializeLyricsProviderOrder(providerOrderStr)
         }
-    val (lyricsLineBlur, onLyricsLineBlurChange) = rememberPreference(LyricsLineBlurKey, defaultValue = true)
+    val (lyricsLineBlur, onLyricsLineBlurChange) = rememberPreference(LyricsLineBlurKey, defaultValue = false)
     val (lyricsRomanizeJapanese, onLyricsRomanizeJapaneseChange) = rememberPreference(LyricsRomanizeJapaneseKey, defaultValue = false)
     val (lyricsRomanizeKorean, onLyricsRomanizeKoreanChange) = rememberPreference(LyricsRomanizeKoreanKey, defaultValue = true)
     val (lyricsRomanizeChinese, onLyricsRomanizeChineseChange) = rememberPreference(LyricsRomanizeChineseKey, defaultValue = true)
@@ -562,6 +562,9 @@ internal fun PreferredLyricsProvider.displayName(): String =
         PreferredLyricsProvider.PAXSENIX_MUSIXMATCH -> "Paxsenix: Musixmatch"
         PreferredLyricsProvider.PAXSENIX_YOUTUBE -> "Paxsenix: YouTube"
         PreferredLyricsProvider.UNISON -> "Unison"
+        PreferredLyricsProvider.TIDAL -> "Tidal"
+        PreferredLyricsProvider.QOBUZ -> "Qobuz"
+        PreferredLyricsProvider.DEEZER -> "Deezer"
         PreferredLyricsProvider.MUSIXMATCH_EXPERIMENTAL -> "Musixmatch (experimental)"
     }
 
@@ -581,6 +584,7 @@ internal fun LyricsProviderOrderDialog(
 
     DefaultDialog(
         onDismiss = onDismiss,
+        constrainContentHeight = true,
         buttons = {
             TextButton(
                 onClick = onDismiss,

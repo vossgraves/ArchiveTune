@@ -918,15 +918,17 @@ fun BottomSheetPlayer(
             }
         }
 
-    BackHandler(
-        enabled =
-            queueSheetState.isExpandedOrExpanding ||
-                state.isExpandedOrExpanding,
-    ) {
-        when {
-            isLyricsScreenVisible && state.isExpandedOrExpanding -> isLyricsScreenVisible = false
-            queueSheetState.isExpandedOrExpanding -> queueSheetState.collapseSoft()
-            state.isExpandedOrExpanding -> state.collapseSoft()
+    if (!aodModeEnabled) {
+        BackHandler(
+            enabled =
+                queueSheetState.isExpandedOrExpanding ||
+                    state.isExpandedOrExpanding,
+        ) {
+            when {
+                isLyricsScreenVisible && state.isExpandedOrExpanding -> isLyricsScreenVisible = false
+                queueSheetState.isExpandedOrExpanding -> queueSheetState.collapseSoft()
+                state.isExpandedOrExpanding -> state.collapseSoft()
+            }
         }
     }
 
@@ -1121,6 +1123,7 @@ fun BottomSheetPlayer(
         onDismiss = {
             playerConnection.service.stopAndClearPlayback(clearPersistentState = true)
         },
+        backHandlerEnabled = !aodModeEnabled,
         keepContentAlive = true,
         collapsedContent = {
             MiniPlayer(
@@ -1244,15 +1247,15 @@ fun BottomSheetPlayer(
             }
         }
 
-        LaunchedEffect(playerConnection, mediaMetadata?.id, shouldUseV7Canvas, shouldUseArtworkCanvas) {
+        LaunchedEffect(playerConnection, mediaMetadata?.id) {
             playerConnection.canvasArtworkUpdates.collect { update ->
                 if (update.mediaId != mediaMetadata?.id) return@collect
 
                 canvasArtworkRevision += 1
-                if (shouldUseV7Canvas && !update.artwork.preferredVerticalAnimationUrl.isNullOrBlank()) {
+                if (!update.artwork.preferredVerticalAnimationUrl.isNullOrBlank()) {
                     v7CanvasArtwork = update.artwork
                 }
-                if (shouldUseArtworkCanvas && !update.artwork.preferredAnimationUrl.isNullOrBlank()) {
+                if (!update.artwork.preferredAnimationUrl.isNullOrBlank()) {
                     artworkCanvas = update.artwork
                 }
             }
@@ -1722,11 +1725,14 @@ fun BottomSheetPlayer(
                             onVolumeChange = onPlayerVolumeChange,
                             canvasPrimaryUrl = artworkCanvas?.animated,
                             canvasFallbackUrl = artworkCanvas?.videoUrl,
-                            contentBottomPadding = queueSheetState.collapsedBound,
+                            currentFormat = currentFormat,
+                            contentBottomPadding = queueSheetState.collapsedBound + 20.dp,
                             onQueueClick = openQueue,
                             onLyricsClick = { isLyricsScreenVisible = true },
                             onSliderValueChange = onSliderValueChange,
                             onSliderValueChangeFinished = onSliderValueChangeFinished,
+                            lyricsSyncOffset = lyricsSyncOffset,
+                            onLyricsSyncOffsetChange = { lyricsSyncOffset = it },
                             landscape = true,
                             modifier =
                                 Modifier
@@ -2076,11 +2082,14 @@ fun BottomSheetPlayer(
                             onVolumeChange = onPlayerVolumeChange,
                             canvasPrimaryUrl = artworkCanvas?.animated,
                             canvasFallbackUrl = artworkCanvas?.videoUrl,
-                            contentBottomPadding = queueSheetState.collapsedBound,
+                            currentFormat = currentFormat,
+                            contentBottomPadding = queueSheetState.collapsedBound + 20.dp,
                             onQueueClick = openQueue,
                             onLyricsClick = { isLyricsScreenVisible = true },
                             onSliderValueChange = onSliderValueChange,
                             onSliderValueChangeFinished = onSliderValueChangeFinished,
+                            lyricsSyncOffset = lyricsSyncOffset,
+                            onLyricsSyncOffsetChange = { lyricsSyncOffset = it },
                             // Full-bleed: the artwork runs under the status bar by design, so no
                             // top inset here (mirrors the reference layout).
                             modifier =
@@ -2460,8 +2469,7 @@ private fun V8PlayerBackdrop(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.30f)),
-        )
+                    .background(Color.Black.copy(alpha = 0.30f)),        )
     }
 }
 
@@ -2711,11 +2719,20 @@ private fun V7PlayerBackdrop(
         }
     val backdropFloor =
         remember(backdropPalette) {
+            // Gradient floor: transparent at the top so the blurred backdrop
+            // artwork shows through, fading to the thumbnail-derived palette
+            // color at the bottom. This creates the "gradient behind the
+            // bottom controls that blends with the thumbnail" effect — the
+            // controls sit over a smooth transition from blurred artwork to
+            // the dominant thumbnail color, improving both aesthetics and
+            // text legibility. Previously all three stops were the same
+            // color, making it a flat solid block that hid the backdrop.
             Brush.verticalGradient(
                 colorStops =
                     arrayOf(
-                        0f to backdropPalette.bottom,
-                        V7BackdropFloorBlackStartFraction to backdropPalette.bottom,
+                        0f to Color.Transparent,
+                        0.45f to Color.Transparent,
+                        V7BackdropFloorBlackStartFraction to backdropPalette.bottom.copy(alpha = 0.85f),
                         1f to backdropPalette.bottom,
                     ),
             )

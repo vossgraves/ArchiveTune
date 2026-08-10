@@ -43,6 +43,25 @@ annotation class PlayerCache
 @Retention(AnnotationRetention.BINARY)
 annotation class DownloadCache
 
+/**
+ * EntryPoint for accessing the [PlayerCache]-qualified [Cache] from
+ * non-Hilt-injected call sites (e.g. Compose composables like
+ * [moe.rukamori.archivetune.ui.player.CanvasArtworkPlayer]).
+ *
+ * Used to wrap the canvas ExoPlayer's [androidx.media3.datasource.DataSource]
+ * factory with a [androidx.media3.datasource.cache.CacheDataSource] so that
+ * canvas video segments are cached across ExoPlayer re-creations (morph
+ * transitions in the Apple Music player). This eliminates the multi-second
+ * "static artwork flash" while a brand-new ExoPlayer re-fetches the canvas
+ * after the COVER branch is re-entered.
+ */
+@dagger.hilt.EntryPoint
+@InstallIn(SingletonComponent::class)
+interface CanvasCacheEntryPoint {
+    @PlayerCache
+    fun playerCache(): Cache
+}
+
 private class LazyCache(
     private val create: () -> SimpleCache,
 ) : Cache {

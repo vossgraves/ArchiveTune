@@ -955,4 +955,57 @@ object QobuzAudioProvider {
             .substringBefore(',')
             .replace(Regex("\\s+"), " ")
             .trim()
+
+    // -------------------------------------------------------------------------
+    // Lyrics (direct API, needs a token)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Fetches Qobuz lyrics for a track via the direct API `track/getTrackLyrics` using [token].
+     * Returns the lyrics text, or failure when no match or no lyrics are available. Requires a
+     * configured token — proxies do not serve lyrics.
+     */
+    suspend fun getLyrics(
+        token: QobuzToken,
+        title: String,
+        artist: String,
+        album: String?,
+        durationMs: Long?,
+    ): Result<String> =
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching {
+                val query =
+                    Query(
+                        mediaId = "lyrics",
+                        title = title,
+                        artists = listOfNotNull(artist),
+                        album = album,
+                        durationMs = durationMs,
+                    )
+                val backend =
+                    Backend(
+                        id = "token:${token.id}",
+                        label = "Qobuz lyrics",
+                        isToken = true,
+                        search = { q -> searchItemsDirect(token, q) },
+                        download = { _, _ -> null },
+                    )
+                val match =
+                    bestMatch(backend, query.title.searchTitle(), query)
+                        ?: throw java.io.IOException("no Qobuz match for lyrics")
+                val url =
+                    "$QOBUZ_API_BASE/track/getTrackLyrics"
+                        .toHttpUrl()
+                        .newBuilder()
+                        .addQueryParameter("track_id", match.id)
+                        .addQueryParameter("app_id", token.appId)
+                        .build()
+                val response = client.newCall(directRequest(url.toString(), token)).execute()
+                if (!response.isSuccessful) throw java.io.IOException("Qobuz lyrics HTTP ${response.code}")
+                val root = runCatching { JSONObject(response.body?.string().orEmpty()) }.getOrNull()
+                    ?: throw java.io.IOException("bad Qobuz lyrics payload")
+                root.optString("lyrics").takeIf { it.isNotBlank() }
+                    ?: throw java.io.IOException("empty Qobuz lyrics")
+            }
+        }
 }

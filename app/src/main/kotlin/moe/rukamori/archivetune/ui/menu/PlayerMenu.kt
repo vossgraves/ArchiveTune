@@ -1060,23 +1060,30 @@ fun PlayerMenu(
                         // Sleep timer row — appears in the secondary list section alongside
                         // Equalizer and Tempo & Pitch. Tapping it opens the inline Apple
                         // Music–style sheet at the bottom of the menu.
-                        ListItem(
-                            headlineContent = { Text(text = stringResource(R.string.sleep_timer)) },
-                            leadingContent = {
-                                Icon(
-                                    painter = painterResource(R.drawable.bedtime),
-                                    contentDescription = null,
-                                )
-                            },
-                            modifier =
-                                Modifier.clickable { showSleepTimerSheet = true },
-                            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                        )
+                        //
+                        // Hidden in Apple Music player style because the sleep timer is
+                        // already available as a dedicated pill in the in-place queue sheet
+                        // (AppleMusicQueueSheet's top pill row). Showing it here too is
+                        // redundant and clutters the menu.
+                        if (playerDesignStyle != PlayerDesignStyle.APPLE_MUSIC) {
+                            ListItem(
+                                headlineContent = { Text(text = stringResource(R.string.sleep_timer)) },
+                                leadingContent = {
+                                    Icon(
+                                        painter = painterResource(R.drawable.bedtime),
+                                        contentDescription = null,
+                                    )
+                                },
+                                modifier =
+                                    Modifier.clickable { showSleepTimerSheet = true },
+                                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                            )
 
-                        HorizontalDivider(
-                            modifier = Modifier.padding(start = 56.dp),
-                            color = MaterialTheme.colorScheme.outlineVariant,
-                        )
+                            HorizontalDivider(
+                                modifier = Modifier.padding(start = 56.dp),
+                                color = MaterialTheme.colorScheme.outlineVariant,
+                            )
+                        }
 
                         ListItem(
                             headlineContent = { Text(text = stringResource(R.string.equalizer)) },

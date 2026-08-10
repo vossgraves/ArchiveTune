@@ -31,7 +31,9 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
 import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
@@ -39,8 +41,10 @@ import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.compose.ContentFrame
 import androidx.media3.ui.compose.SURFACE_TYPE_TEXTURE_VIEW
+import dagger.hilt.android.EntryPointAccessors
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import moe.rukamori.archivetune.di.CanvasCacheEntryPoint
 import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.utils.StreamClientUtils
 import okhttp3.OkHttpClient
@@ -57,6 +61,17 @@ fun CanvasArtworkPlayer(
     isPlaying: Boolean,
     modifier: Modifier = Modifier,
     resizeMode: Int = AspectRatioFrameLayout.RESIZE_MODE_FIT,
+    // When false, the ExoPlayer is kept alive (paused) but the TextureView
+    // (ContentFrame) is NOT rendered. This is used by the Apple Music player's
+    // backdrop canvas when lyrics is open: the canvas's Modifier.blur(72.dp)
+    // on a live TextureView is a heavy per-frame GPU cost even when the video
+    // is paused, because the blur RenderEffect is re-applied every frame.
+    // Hiding the TextureView frees the entire GPU frame budget for the
+    // karaoke syllable sweep, eliminating the "lyrics lag when canvas is
+    // playing" issue. When `visible` flips back to true, the TextureView is
+    // re-created and the ExoPlayer attaches to it — no reload delay because
+    // the player instance was retained.
+    visible: Boolean = true,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -106,14 +121,36 @@ fun CanvasArtworkPlayer(
                     )
                 }.build()
         }
+    // Player cache — wraps the OkHttp DataSource with a CacheDataSource so
+    // canvas video segments are cached across ExoPlayer re-creations. This
+    // is critical for the Apple Music player: when the user closes the
+    // lyrics/queue panel, the COVER branch is re-entered and a brand-new
+    // ExoPlayer is created. Without caching, the new ExoPlayer re-fetches
+    // the canvas from the network (multi-second delay during which the
+    // user sees a static artwork flash). With caching, the segments are
+    // served from the player cache (sub-second load).
+    val playerCache =
+        remember {
+            val entryPoint =
+                EntryPointAccessors.fromApplication(
+                    context,
+                    CanvasCacheEntryPoint::class.java,
+                )
+            entryPoint.playerCache()
+        }
     val mediaSourceFactory =
-        remember(okHttpClient) {
-            DefaultMediaSourceFactory(
+        remember(okHttpClient, playerCache) {
+            val upstreamFactory =
                 DefaultDataSource.Factory(
                     context,
                     OkHttpDataSource.Factory(okHttpClient),
-                ),
-            )
+                )
+            val cacheFactory =
+                CacheDataSource.Factory()
+                    .setCache(playerCache)
+                    .setUpstreamDataSourceFactory(upstreamFactory)
+                    .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+            DefaultMediaSourceFactory(cacheFactory)
         }
     val renderersFactory =
         remember(context) {
@@ -130,13 +167,31 @@ fun CanvasArtworkPlayer(
                 )
             }
         }
+    // LoadControl tuned for short looping canvas videos. The default
+    // DefaultLoadControl has bufferForPlayback = 2.5s which delays the
+    // first frame render after a re-creation. A 500ms buffer is plenty
+    // for a 5-10s looping clip and lets the first frame render as soon
+    // as the initial segment is read (often from cache, so near-instant).
+    val loadControl =
+        remember {
+            DefaultLoadControl.Builder()
+                .setBufferDurationsMs(
+                    /* minBufferMs = */ 15_000,
+                    /* maxBufferMs = */ 30_000,
+                    /* bufferForPlaybackMs = */ 500,
+                    /* bufferForPlaybackAfterRebufferMs = */ 1_000,
+                )
+                .setPrioritizeTimeOverSizeThresholds(true)
+                .build()
+        }
     val exoPlayer =
-        remember(initial, mediaSourceFactory, renderersFactory, trackSelector) {
+        remember(initial, mediaSourceFactory, renderersFactory, trackSelector, loadControl) {
             ExoPlayer
                 .Builder(context)
                 .setMediaSourceFactory(mediaSourceFactory)
                 .setRenderersFactory(renderersFactory)
                 .setTrackSelector(trackSelector)
+                .setLoadControl(loadControl)
                 .build()
                 .apply {
                     volume = 0f
@@ -150,6 +205,21 @@ fun CanvasArtworkPlayer(
             exoPlayer.pause()
         } else {
             exoPlayer.setCanvasPlayback(isPlaying)
+        }
+    }
+
+    // When `visible` flips from false → true (e.g. lyrics closing in the
+    // Apple Music player), a NEW TextureView is created and the retained
+    // ExoPlayer re-attaches to it. The `isVideoReady` state is stale
+    // (still true from before the TextureView was removed), which would
+    // make the alpha animate to 1 immediately — showing a black
+    // TextureView surface (no frame yet) over the blurred AsyncImage
+    // fallback below. Resetting isVideoReady to false keeps the new
+    // TextureView invisible until `onRenderedFirstFrame` fires again,
+    // letting the fallback show through during the brief re-attach gap.
+    LaunchedEffect(visible) {
+        if (visible) {
+            isVideoReady = false
         }
     }
 
@@ -293,14 +363,22 @@ fun CanvasArtworkPlayer(
         label = "canvasAlpha",
     )
 
-    ContentFrame(
-        player = exoPlayer,
-        surfaceType = SURFACE_TYPE_TEXTURE_VIEW,
-        contentScale = resizeMode.toContentScale(),
-        keepContentOnReset = false,
-        shutter = {},
-        modifier = modifier.alpha(alpha),
-    )
+    // Only render the ContentFrame (TextureView) when `visible` is true.
+    // When false, the ExoPlayer stays alive (paused) but the TextureView is
+    // removed from the composition tree — eliminating the per-frame GPU cost
+    // of compositing + blurring a video surface that isn't changing. When
+    // `visible` flips back to true, a new TextureView is created and the
+    // ExoPlayer re-attaches to it, showing the current frame immediately.
+    if (visible) {
+        ContentFrame(
+            player = exoPlayer,
+            surfaceType = SURFACE_TYPE_TEXTURE_VIEW,
+            contentScale = resizeMode.toContentScale(),
+            keepContentOnReset = false,
+            shutter = {},
+            modifier = modifier.alpha(alpha),
+        )
+    }
 }
 
 private fun Int.toContentScale(): ContentScale =

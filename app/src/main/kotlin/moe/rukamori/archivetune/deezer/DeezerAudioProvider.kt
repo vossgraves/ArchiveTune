@@ -667,4 +667,38 @@ object DeezerAudioProvider {
         val union = sa.union(sb).size.toDouble()
         return if (union == 0.0) 0.0 else inter / union
     }
+
+    // ---------------------------------------------------------------------------------------------
+    // Lyrics
+    // ---------------------------------------------------------------------------------------------
+
+    /**
+     * Fetches Deezer lyrics for a track via the gateway `song.getLyrics` method, using an available
+     * account session. Returns the time-synced LRC when present, falling back to plain text.
+     * Returns failure when no account, no match, or no lyrics are available.
+     */
+    suspend fun getLyrics(
+        title: String,
+        artist: String,
+        album: String?,
+        durationMs: Long?,
+    ): Result<String> =
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching {
+                val account = accounts().firstOrNull()
+                    ?: throw java.io.IOException("no Deezer account for lyrics")
+                val session = session(account)
+
+                val query = Query(mediaId = "lyrics", title = title, artists = listOfNotNull(artist), album = album, durationMs = durationMs)
+                val match = lookup(query) ?: throw java.io.IOException("no Deezer match for lyrics")
+
+                val payload = JSONObject().put("song_id", match.trackId.toLong())
+                val json = gateway(session.arl, session.apiToken, method = "song.getLyrics", payload = payload)
+                val lyricsObj = json.optJSONObject("results")?.optJSONObject("lyrics")
+                    ?: throw java.io.IOException("no lyrics in gateway response")
+                val synced = lyricsObj.optString("text_time_synced").takeIf { it.isNotBlank() }
+                val plain = lyricsObj.optString("text").takeIf { it.isNotBlank() }
+                synced ?: plain ?: throw java.io.IOException("empty lyrics")
+            }
+        }
 }

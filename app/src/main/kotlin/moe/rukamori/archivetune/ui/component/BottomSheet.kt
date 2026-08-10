@@ -70,6 +70,12 @@ import moe.rukamori.archivetune.constants.BottomSheetSoftAnimationSpec
  *   the stream URL and re-buffering (causing the "video pauses, audio keeps
  *   playing" bug). Default is false to preserve the original behavior for
  *   other sheets (queue, etc.) that don't need this.
+ * @param morphMode When true, the sheet fades + scales in place (0.94 → 1.0) over
+ *   450ms with FastOutSlowInEasing instead of a plain slide on open. The sheet
+ *   still slides vertically with the finger while dragging. This is used by the
+ *   queue to add an in-place morph open transition on top of the normal
+ *   bottom-sheet behavior. Default is false to preserve the original slide
+ *   behavior for other sheets.
  */
 @Composable
 fun BottomSheet(
@@ -78,6 +84,8 @@ fun BottomSheet(
     backgroundColor: Color,
     onDismiss: (() -> Unit)? = null,
     keepContentAlive: Boolean = false,
+    morphMode: Boolean = false,
+    backHandlerEnabled: Boolean = true,
     collapsedContent: @Composable BoxScope.() -> Unit,
     content: @Composable BoxScope.() -> Unit,
 ) {
@@ -103,7 +111,7 @@ fun BottomSheet(
                     ),
                 ),
     ) {
-        if (state.isExpandedOrExpanding) {
+        if (state.isExpandedOrExpanding && backHandlerEnabled) {
             BackHandler(onBack = state::collapseSoft)
         }
 
@@ -116,7 +124,19 @@ fun BottomSheet(
                     Modifier
                         .fillMaxSize()
                         .graphicsLayer {
-                            alpha = if (state.isCollapsed) 0f else ((state.progress - 0.25f) * 4).coerceIn(0f, 1f)
+                            if (morphMode) {
+                                // Morph: fade + scale (0.94 → 1.0) based on
+                                // expand progress, with a 25% dead-band so the
+                                // content stays opaque for the first part of a
+                                // drag. No offset — the offset is applied on
+                                // the sheet root so the whole sheet slides.
+                                val p = state.progress.coerceIn(0f, 1f)
+                                alpha = ((p - 0.25f) * 4).coerceIn(0f, 1f)
+                                scaleX = 0.94f + 0.06f * p
+                                scaleY = 0.94f + 0.06f * p
+                            } else {
+                                alpha = if (state.isCollapsed) 0f else ((state.progress - 0.25f) * 4).coerceIn(0f, 1f)
+                            }
                         },
                 content = content,
             )
@@ -126,7 +146,14 @@ fun BottomSheet(
                     Modifier
                         .fillMaxSize()
                         .graphicsLayer {
-                            alpha = ((state.progress - 0.25f) * 4).coerceIn(0f, 1f)
+                            if (morphMode) {
+                                val p = state.progress.coerceIn(0f, 1f)
+                                alpha = ((p - 0.25f) * 4).coerceIn(0f, 1f)
+                                scaleX = 0.94f + 0.06f * p
+                                scaleY = 0.94f + 0.06f * p
+                            } else {
+                                alpha = ((state.progress - 0.25f) * 4).coerceIn(0f, 1f)
+                            }
                         },
                 content = content,
             )

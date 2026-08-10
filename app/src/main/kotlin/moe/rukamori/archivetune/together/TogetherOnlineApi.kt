@@ -145,7 +145,7 @@ class TogetherOnlineApi(
         settings: TogetherRoomSettings,
     ): TogetherOnlineCreateSessionResponse =
         withRetry {
-            val token = normalizedBearerTokenOrNull() ?: throw TogetherOnlineApiException("Together token is missing")
+            val token = normalizedBearerTokenOrNull()
             val payload =
                 json.encodeToString(
                     TogetherOnlineCreateSessionRequest.serializer(),
@@ -156,7 +156,7 @@ class TogetherOnlineApi(
                 )
             val resp =
                 client.post("$v1BaseUrl/together/sessions") {
-                    header("Authorization", "Bearer $token")
+                    if (token != null) header("Authorization", "Bearer $token")
                     contentType(ContentType.Application.Json)
                     setBody(payload)
                 }
@@ -168,7 +168,7 @@ class TogetherOnlineApi(
 
     suspend fun resolveCode(code: String): TogetherOnlineResolveResponse =
         withRetry {
-            val token = normalizedBearerTokenOrNull() ?: throw TogetherOnlineApiException("Together token is missing")
+            val token = normalizedBearerTokenOrNull()
             val payload =
                 json.encodeToString(
                     TogetherOnlineResolveRequest.serializer(),
@@ -176,7 +176,7 @@ class TogetherOnlineApi(
                 )
             val resp =
                 client.post("$v1BaseUrl/together/sessions/resolve") {
-                    header("Authorization", "Bearer $token")
+                    if (token != null) header("Authorization", "Bearer $token")
                     contentType(ContentType.Application.Json)
                     setBody(payload)
                 }

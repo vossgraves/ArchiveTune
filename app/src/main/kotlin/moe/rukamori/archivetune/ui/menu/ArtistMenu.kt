@@ -36,6 +36,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.datastore.preferences.core.edit
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -45,6 +46,7 @@ import moe.rukamori.archivetune.LocalDatabase
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.ArtistSongSortType
+import moe.rukamori.archivetune.constants.HiddenHomeItemsKey
 import moe.rukamori.archivetune.constants.SpeedDialSongIdsKey
 import moe.rukamori.archivetune.db.entities.Artist
 import moe.rukamori.archivetune.extensions.toMediaItem
@@ -55,6 +57,7 @@ import moe.rukamori.archivetune.ui.component.NewAction
 import moe.rukamori.archivetune.ui.component.NewActionGrid
 import moe.rukamori.archivetune.utils.SpeedDialPin
 import moe.rukamori.archivetune.utils.SpeedDialPinType
+import moe.rukamori.archivetune.utils.dataStore
 import moe.rukamori.archivetune.utils.parseSpeedDialPins
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.utils.serializeSpeedDialPins
@@ -282,6 +285,37 @@ fun ArtistMenu(
                                 val updatedPins = toggleSpeedDialPin(speedDialPins, artistPin)
                                 onSpeedDialSongIdsChange(serializeSpeedDialPins(updatedPins))
                                 onDismiss()
+                            },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    )
+
+                    HorizontalDivider(
+                        modifier = dividerModifier,
+                        color = MaterialTheme.colorScheme.outlineVariant,
+                    )
+
+                    // Hide from "Keep Listening" on home — adds the artist's ID
+                    // to the HiddenHomeItemsKey preference set. The
+                    // HomeViewModel filters out hidden items from the
+                    // keepListening flow so the artist no longer appears on
+                    // the home page.
+                    ListItem(
+                        headlineContent = { Text(text = stringResource(R.string.hide_from_home)) },
+                        leadingContent = {
+                            Icon(
+                                painter = painterResource(R.drawable.visibility_off),
+                                contentDescription = null,
+                            )
+                        },
+                        modifier =
+                            Modifier.clickable {
+                                coroutineScope.launch {
+                                    context.dataStore.edit { preferences ->
+                                        val current = preferences[HiddenHomeItemsKey] ?: emptySet()
+                                        preferences[HiddenHomeItemsKey] = current + artist.id
+                                    }
+                                    onDismiss()
+                                }
                             },
                         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                     )

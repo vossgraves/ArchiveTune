@@ -34,6 +34,7 @@ import javax.inject.Singleton
 enum class MusicTogetherConnectionMode {
     LAN,
     ONLINE,
+    PUBLIC,
 }
 
 data class MusicTogetherPreferences(
@@ -150,6 +151,13 @@ class MusicTogetherRepository
                         settings = settings,
                     )
                 }
+
+                MusicTogetherConnectionMode.PUBLIC -> {
+                    service.startTogetherPublicHost(
+                        displayName = displayName,
+                        settings = settings,
+                    )
+                }
             }
         }
 
@@ -162,6 +170,7 @@ class MusicTogetherRepository
             when (mode) {
                 MusicTogetherConnectionMode.LAN -> service.joinTogether(rawInput, displayName)
                 MusicTogetherConnectionMode.ONLINE -> service.joinTogetherOnline(rawInput, displayName)
+                MusicTogetherConnectionMode.PUBLIC -> service.joinTogetherPublic(rawInput, displayName)
             }
         }
 

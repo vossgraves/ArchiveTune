@@ -23,6 +23,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -160,11 +161,27 @@ private const val LYRIC_FOCUS_TOP_ANCHOR_RATIO = 0.08f
 private const val LYRIC_FOCUS_TOP_GUARD_RATIO = 0.04f
 private const val LYRIC_FOCUS_BOTTOM_GUARD_RATIO = 0.30f
 private const val LYRIC_FOCUS_MIN_SCROLL_PX = 6
-private const val LYRIC_FOCUS_ANIMATED_DISTANCE = 12
+// Auto-scroll deltas up to this fraction of the viewport height snap instantly
+// (no tween). A typical line-advance scroll moves the focus point from ~30%
+// (bottom guard) to ~8% (anchor) = 22% of viewport. Setting the threshold to
+// 40% covers all normal-playback line advances AND small-to-medium seeks,
+// while larger jumps (return from manual scroll, large seeks) still animate.
+// This eliminates the per-frame LazyColumn re-layout cost of the 280ms tween
+// for the common case — which was the single biggest source of "auto-scroll
+// lag" because the tween was competing with the 60Hz karaoke syllable sweep
+// for frame budget on every line change.
+private const val LYRIC_FOCUS_INSTANT_SCROLL_RATIO = 0.40f
+private const val LYRIC_FOCUS_ANIMATED_DISTANCE = 4
 private const val SMOOTH_PLAYBACK_MAX_FORWARD_DRIFT_MS = 80L
 private const val SMOOTH_PLAYBACK_MAX_BACKWARD_DRIFT_MS = 180L
 private const val SMOOTH_PLAYBACK_DRIFT_CORRECTION = 0.55f
-private const val LYRIC_FOCUS_SCROLL_DURATION_MS = 520
+// Reduced from 520ms to 280ms. The previous 520ms tween was long enough that
+// it was STILL running when the next line change fired (especially on tracks
+// with short lines), causing collectLatest to cancel + restart the animation
+// repeatedly — visible as stuttery, non-monotonic scroll motion. 280ms is
+// short enough to settle before the next line change in almost all songs,
+// while still looking smooth rather than instant.
+private const val LYRIC_FOCUS_SCROLL_DURATION_MS = 280
 private const val MIN_KARAOKE_SYLLABLE_DURATION_MS = 1
 
 @Composable
@@ -185,7 +202,11 @@ fun LyricsEnhanced(
 
     val (lyricsClick) = rememberPreference(LyricsClickKey, defaultValue = true)
     val (lyricsTextSize) = rememberPreference(LyricsTextSizeKey, defaultValue = 26f)
-    val (lyricsLineBlurPreference) = rememberPreference(LyricsLineBlurKey, defaultValue = true)
+    // Per-line RenderEffect blur (see useBlurEffect below) is the single heaviest
+    // per-frame cost in the karaoke view -- default it OFF so word-synced lyrics
+    // are smooth out of the box; users who want the effect can re-enable it in
+    // Settings > Lyrics.
+    val (lyricsLineBlurPreference) = rememberPreference(LyricsLineBlurKey, defaultValue = false)
     val (romanizeChinese) = rememberPreference(LyricsRomanizeChineseKey, defaultValue = true)
     val (romanizeHindi) = rememberPreference(LyricsRomanizeHindiKey, defaultValue = true)
     val (romanizeJapanese) = rememberPreference(LyricsRomanizeJapaneseKey, defaultValue = true)
@@ -383,6 +404,23 @@ fun LyricsEnhanced(
         var wasSliderActive = false
         var anchorPlayerPositionMs = player.currentPosition.coerceAtLeast(0L)
         var anchorFrameNanos = 0L
+        // Cache the current line index + boundary timestamps to avoid calling
+        // findLastStartedLineIndex (binary search) every frame. In the common
+        // case the position stays within the current line for several seconds,
+        // so we only need to re-search when the position crosses a line
+        // boundary. This reduces per-frame work from O(log N) to O(1) and,
+        // more importantly, avoids the `playbackSyncPosition()` lambda call
+        // (3 State reads + arithmetic) on the vast majority of frames — we
+        // reuse the `effectivePositionMs` already computed for the playback
+        // interpolation instead of re-reading `playbackPositionMs.longValue`.
+        //
+        // The cache is invalidated when `syncedLyrics` changes (e.g. when
+        // romanization finishes) by tracking the identity of the last-seen
+        // SyncedLyrics object.
+        var lastLyricsRef: SyncedLyrics? = null
+        var cachedLineIdx = -1
+        var cachedCurrentLineStart = Int.MIN_VALUE
+        var cachedNextLineStart = Int.MAX_VALUE
         while (isActive) {
             val sliderPosition = latestSliderPositionProvider.value()
             val isSliderActive = sliderPosition != null
@@ -392,12 +430,22 @@ fun LyricsEnhanced(
             wasSliderActive = isSliderActive
 
             val rawPosition = (sliderPosition ?: player.currentPosition).coerceAtLeast(0L)
+            // effectivePositionMs is the synced position (offset + lead +
+            // tuning) that we'd otherwise compute via playbackSyncPosition().
+                       // Computing it here inline avoids a redundant State read of
+            // playbackPositionMs.longValue (we already have the value in
+            // `rawPosition` / `nextPosition`).
+            val effectivePositionMs: Long
             if (sliderPosition != null || !player.isPlaying || animationsDisabled) {
                 anchorPlayerPositionMs = rawPosition
                 anchorFrameNanos = 0L
                 if (playbackPositionMs.longValue != rawPosition) {
                     playbackPositionMs.longValue = rawPosition
                 }
+                effectivePositionMs =
+                    (rawPosition + latestLyricsSyncOffset.value.toLong() +
+                        latestLeadMs.value + LYRIC_VISUAL_TUNING_OFFSET_MS)
+                        .coerceIn(0L, Int.MAX_VALUE.toLong())
                 if (sliderPosition == null) {
                     delay(100L)
                 } else {
@@ -434,13 +482,41 @@ fun LyricsEnhanced(
                 if (playbackPositionMs.longValue != nextPosition) {
                     playbackPositionMs.longValue = nextPosition
                 }
+                effectivePositionMs =
+                    (nextPosition + latestLyricsSyncOffset.value.toLong() +
+                        latestLeadMs.value + LYRIC_VISUAL_TUNING_OFFSET_MS)
+                        .coerceIn(0L, Int.MAX_VALUE.toLong())
             }
 
+            // Line-index tracking: only re-search when the position crosses a
+            // line boundary OR the lyrics object identity changed (romanization
+            // finished). This is the key per-frame optimization — the binary
+            // search is skipped entirely on the vast majority of frames, and
+            // we reuse `effectivePositionMs` instead of calling the
+            // `playbackSyncPosition()` lambda (which would do 3 more State
+            // reads + arithmetic on every frame).
             val syncedLyricsNow = latestSyncedLyrics.value
             if (syncedLyricsNow.lines.isNotEmpty()) {
-                val newLineIdx = syncedLyricsNow.findLastStartedLineIndex(playbackSyncPosition())
-                if (newLineIdx != currentLineIndexState.intValue) {
-                    currentLineIndexState.intValue = newLineIdx
+                val lyricsChanged = syncedLyricsNow !== lastLyricsRef
+                if (lyricsChanged) {
+                    lastLyricsRef = syncedLyricsNow
+                    cachedLineIdx = -1
+                }
+                val pos = effectivePositionMs.toInt()
+                val needsResearch =
+                    cachedLineIdx == -1 ||
+                        pos >= cachedNextLineStart ||
+                        pos < cachedCurrentLineStart
+                if (needsResearch) {
+                    val newLineIdx = syncedLyricsNow.findLastStartedLineIndex(pos)
+                    cachedLineIdx = newLineIdx
+                    cachedCurrentLineStart =
+                        if (newLineIdx >= 0) syncedLyricsNow.lines[newLineIdx].start else Int.MIN_VALUE
+                    cachedNextLineStart =
+                        syncedLyricsNow.lines.getOrNull(newLineIdx + 1)?.start ?: Int.MAX_VALUE
+                    if (newLineIdx != currentLineIndexState.intValue) {
+                        currentLineIndexState.intValue = newLineIdx
+                    }
                 }
             }
         }
@@ -769,7 +845,20 @@ fun LyricsEnhanced(
                             showTranslation = showTranslations,
                             showPhonetic = romanizationPreferences.isEnabled,
                             offset = lyricsViewportOffset,
-                            keepAliveZone = 36.dp,
+                            // Reduced from 36.dp → 20.dp → 8.dp. The keepAliveZone controls how
+                            // many items outside the viewport are kept composed (not
+                            // disposed) — each kept-alive item still participates in
+                            // the per-frame measure pass during auto-scroll. The
+                            // mocharealm KaraokeLyricsView library measures every
+                            // kept-alive karaoke line on every scroll event; each line
+                            // contains N syllables that each need a fill-ratio
+                            // computation. 8dp keeps at most ~1 line alive on each
+                            // side of the viewport, minimizing the measure cost
+                            // during the instant `scrollBy` snap on line changes.
+                            // This is the single biggest lever we have for reducing
+                            // the word-synced lyrics lag in Enhanced style (V2 uses
+                            // its own renderer and doesn't have this cost).
+                            keepAliveZone = 8.dp,
                             modifier = Modifier.fillMaxSize(),
                         )
                     }
@@ -1180,14 +1269,28 @@ private suspend fun LazyListState.scrollLyricIntoFocus(
     val targetFocusPoint = viewportStart + (viewportHeight * LYRIC_FOCUS_TOP_ANCHOR_RATIO).roundToInt()
     val scrollDelta = itemFocusPoint - targetFocusPoint
     if (abs(scrollDelta) > LYRIC_FOCUS_MIN_SCROLL_PX) {
-        animateScrollBy(
-            value = scrollDelta.toFloat(),
-            animationSpec =
-                tween(
-                    durationMillis = LYRIC_FOCUS_SCROLL_DURATION_MS,
-                    easing = FastOutSlowInEasing,
-                ),
-        )
+        // For deltas up to 40% of the viewport (which covers ALL normal
+        // line-advance scrolls — they're typically ~22% of viewport), snap
+        // instantly instead of running a 280ms tween. The tween triggers a
+        // LazyColumn re-layout every frame for its entire duration, which
+        // steals frame budget from the 60Hz karaoke syllable sweep — the
+        // root cause of "auto-scroll lag". The snap is imperceptible because
+        // the karaoke fill animation already provides visual continuity.
+        // Larger deltas (return from manual scroll, large seeks) still
+        // animate so the motion stays smooth over long distances.
+        val instantThreshold = (viewportHeight * LYRIC_FOCUS_INSTANT_SCROLL_RATIO).roundToInt()
+        if (abs(scrollDelta) <= instantThreshold && !force) {
+            scrollBy(scrollDelta.toFloat())
+        } else {
+            animateScrollBy(
+                value = scrollDelta.toFloat(),
+                animationSpec =
+                    tween(
+                        durationMillis = LYRIC_FOCUS_SCROLL_DURATION_MS,
+                        easing = FastOutSlowInEasing,
+                    ),
+            )
+        }
     }
 }
 

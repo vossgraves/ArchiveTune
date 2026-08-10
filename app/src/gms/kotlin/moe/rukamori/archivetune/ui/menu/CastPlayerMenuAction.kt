@@ -9,6 +9,11 @@
 
 package moe.rukamori.archivetune.ui.menu
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -43,11 +48,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import moe.rukamori.archivetune.R
@@ -58,11 +65,18 @@ import moe.rukamori.archivetune.ui.component.NewAction
 
 @Composable
 fun rememberCastPlayerMenuAction(): NewAction? {
+    val context = LocalContext.current
     val viewModel: CastViewModel = viewModel()
     val routePickerViewModel: CastRoutePickerViewModel = viewModel()
     val screenState by viewModel.screenState.collectAsStateWithLifecycle()
     val isRoutePickerVisible by viewModel.isRoutePickerVisible.collectAsStateWithLifecycle()
     val routePickerState by routePickerViewModel.screenState.collectAsStateWithLifecycle()
+    val permissionLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (granted) {
+                viewModel.showRoutePicker()
+            }
+        }
     val castState = (screenState as? CastScreenState.Success)?.uiState ?: return null
     if (!castState.isAvailable) return null
 
@@ -93,6 +107,21 @@ fun rememberCastPlayerMenuAction(): NewAction? {
 
     val text = stringResource(R.string.cast)
     val castIconRes = if (castState.isConnected) R.drawable.cast_connected else R.drawable.cast
+    val onCastClick =
+        remember(context, permissionLauncher, viewModel) {
+            {
+                val permission = castDiscoveryPermission()
+                if (
+                    permission == null ||
+                    ContextCompat.checkSelfPermission(context, permission) ==
+                        PackageManager.PERMISSION_GRANTED
+                ) {
+                    viewModel.showRoutePicker()
+                } else {
+                    permissionLauncher.launch(permission)
+                }
+            }
+        }
     return NewAction(
         icon = {
             Icon(
@@ -102,9 +131,18 @@ fun rememberCastPlayerMenuAction(): NewAction? {
             )
         },
         text = text,
-        onClick = viewModel::showRoutePicker,
+        onClick = onCastClick,
     )
 }
+
+private const val ACCESS_LOCAL_NETWORK_PERMISSION = "android.permission.ACCESS_LOCAL_NETWORK"
+
+private fun castDiscoveryPermission(): String? =
+    when {
+        Build.VERSION.SDK_INT >= 37 -> ACCESS_LOCAL_NETWORK_PERMISSION
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> Manifest.permission.NEARBY_WIFI_DEVICES
+        else -> null
+    }
 
 @Composable
 private fun CastRoutePickerBottomSheet(

@@ -62,6 +62,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.add
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -1399,10 +1400,6 @@ class MainActivity : ComponentActivity() {
                                 menuState.isVisible &&
                                     playerBottomSheetState.isExpandedOrExpanding
                             ) ||
-                            (
-                                playerBottomSheetState.isExpandedOrExpanding &&
-                                    (playerDesignStyle == PlayerDesignStyle.V7 || playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC)
-                            ) ||
                             (playerBottomSheetState.isExpandedOrExpanding && isPlayerLyricsFullScreen)
 
                     LaunchedEffect(shouldHideStatusBars, menuState.isVisible, aodModeEnabled) {
@@ -1426,22 +1423,45 @@ class MainActivity : ComponentActivity() {
                     // systemBars when the status bar is hidden, both the TopAppBar and the
                     // content use a consistent inset source and stay aligned.
                     //
-                    // WindowInsets.statusBars is a @Composable property, so we read it in
-                    // the composable scope (not inside snapshotFlow) and update the cached
-                    // value via a simple LaunchedEffect keyed on the observed px value.
+                    // In addition to the status-bar cache, we also floor the effective top
+                    // with WindowInsets.displayCutout's top inset. The displayCutout inset
+                    // is reported independently of status-bar visibility (it tracks the
+                    // physical notch / punch-hole / camera cutout), so it remains non-zero
+                    // even when the user enables "Hide status bar" app-wide from launch —
+                    // precisely the case where the status-bar cache never gets seeded.
+                    // Taking the max guarantees content always sits below every phone's
+                    // notch, mirroring the proven pattern in QueueComponents.kt:1720-1722.
+                    //
+                    // WindowInsets.statusBars / displayCutout are @Composable properties,
+                    // so we read them in the composable scope (not inside snapshotFlow)
+                    // and update the cached values via a simple LaunchedEffect keyed on
+                    // the observed px values.
                     val currentStatusBarTopPx = WindowInsets.statusBars.getTop(density)
+                    val currentDisplayCutoutTopPx = WindowInsets.displayCutout.getTop(density)
                     var cachedStatusBarTop by remember { mutableStateOf(0.dp) }
+                    var cachedDisplayCutoutTop by remember { mutableStateOf(0.dp) }
                     LaunchedEffect(currentStatusBarTopPx) {
                         if (currentStatusBarTopPx > 0) {
                             cachedStatusBarTop = with(density) { currentStatusBarTopPx.toDp() }
                         }
                     }
-                    val effectiveStatusBarTop =
-                        if (shouldHideStatusBars && cachedStatusBarTop > 0.dp) {
-                            cachedStatusBarTop
-                        } else {
-                            with(density) { WindowInsets.statusBars.getTop(density).toDp() }
+                    LaunchedEffect(currentDisplayCutoutTopPx) {
+                        if (currentDisplayCutoutTopPx > 0) {
+                            cachedDisplayCutoutTop = with(density) { currentDisplayCutoutTopPx.toDp() }
                         }
+                    }
+                    val liveStatusBarTop = with(density) { WindowInsets.statusBars.getTop(density).toDp() }
+                    val liveDisplayCutoutTop = with(density) { WindowInsets.displayCutout.getTop(density).toDp() }
+                    // Effective top inset = max of (cached-or-live status bar, cached-or-live
+                    // display cutout). When the status bar is hidden, the live status-bar
+                    // value drops to 0 but the cached value (or the live display-cutout
+                    // value, which always tracks the physical notch) keeps the floor > 0.
+                    val effectiveStatusBarTop =
+                        maxOf(
+                            if (shouldHideStatusBars) cachedStatusBarTop else liveStatusBarTop,
+                            if (shouldHideStatusBars) cachedDisplayCutoutTop else liveDisplayCutoutTop,
+                            liveDisplayCutoutTop, // displayCutout is always reported regardless of status bar hide
+                        )
                     val effectiveWindowsInsets =
                         WindowInsets(
                             top = effectiveStatusBarTop,
@@ -2112,10 +2132,7 @@ class MainActivity : ComponentActivity() {
                                                                 }
                                                             }.fillMaxWidth()
                                                             .height(
-                                                                AppBarHeight +
-                                                                    with(LocalDensity.current) {
-                                                                        WindowInsets.systemBars.getTop(LocalDensity.current).toDp()
-                                                                    },
+                                                                AppBarHeight + effectiveStatusBarTop,
                                                             ).background(
                                                                 Brush.verticalGradient(
                                                                     colors =

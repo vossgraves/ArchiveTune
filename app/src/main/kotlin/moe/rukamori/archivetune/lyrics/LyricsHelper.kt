@@ -54,6 +54,9 @@ class LyricsHelper
                 PaxsenixSpotifyLyricsProvider,
                 PaxsenixMusixmatchLyricsProvider,
                 PaxsenixYouTubeLyricsProvider,
+                TidalLyricsProvider,
+                QobuzLyricsProvider,
+                DeezerLyricsProvider,
                 YouTubeSubtitleLyricsProvider,
                 YouTubeLyricsProvider,
 
@@ -432,6 +435,9 @@ class LyricsHelper
                     PreferredLyricsProvider.PAXSENIX_SPOTIFY to PaxsenixSpotifyLyricsProvider,
                     PreferredLyricsProvider.PAXSENIX_MUSIXMATCH to PaxsenixMusixmatchLyricsProvider,
                     PreferredLyricsProvider.PAXSENIX_YOUTUBE to PaxsenixYouTubeLyricsProvider,
+                    PreferredLyricsProvider.TIDAL to TidalLyricsProvider,
+                    PreferredLyricsProvider.QOBUZ to QobuzLyricsProvider,
+                    PreferredLyricsProvider.DEEZER to DeezerLyricsProvider,
                     PreferredLyricsProvider.UNISON to UnisonLyricsProvider,
                     PreferredLyricsProvider.MUSIXMATCH_EXPERIMENTAL to MusixmatchExperimentalLyricsProvider,
                 )

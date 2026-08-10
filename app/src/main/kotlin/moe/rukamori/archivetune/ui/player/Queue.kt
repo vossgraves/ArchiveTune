@@ -412,6 +412,18 @@ fun Queue(
         state = state,
         backgroundColor = Color.Unspecified,
         modifier = modifier,
+        morphMode = true,
+        // Keep the queue list composed while the sheet is collapsed at the peek
+        // height — otherwise the `!state.isCollapsed` gate unmounts the whole
+        // LazyColumn (and its scroll/selection state) the moment a drag reaches
+        // the peek, which combined with the old no-slide morph made the queue
+        // vanish while dragging it down.
+        //
+        // Apple Music is excluded: it renders its queue via the in-place
+        // SharedTransitionLayout morph in AppleMusicPlayer (peek height is 0dp,
+        // so this sheet never shows). Keeping it alive there would compose a
+        // second, invisible reorderable queue list behind the morph.
+        keepContentAlive = playerDesignStyle != PlayerDesignStyle.APPLE_MUSIC,
         collapsedContent = {
             when (playerDesignStyle) {
                 PlayerDesignStyle.V2 -> {

@@ -74,7 +74,6 @@ import moe.rukamori.archivetune.innertube.models.AlbumItem
 import moe.rukamori.archivetune.innertube.models.ArtistItem
 import moe.rukamori.archivetune.innertube.models.PlaylistItem
 import moe.rukamori.archivetune.innertube.models.SongItem
-import moe.rukamori.archivetune.innertube.models.WatchEndpoint
 import moe.rukamori.archivetune.innertube.models.YTItem
 import moe.rukamori.archivetune.innertube.pages.SearchSummary
 import moe.rukamori.archivetune.models.toMediaMetadata
@@ -228,11 +227,15 @@ fun OnlineSearchResult(
                                     if (item.id == mediaMetadata?.id) {
                                         playerConnection.player.togglePlayPause()
                                     } else {
+                                        // Use radio (followAutomixPreview = true) so the
+                                        // queue auto-populates with related songs —
+                                        // matching the suggestions dropdown behavior in
+                                        // OnlineSearchScreen.kt. The plain YouTubeQueue
+                                        // constructor (followAutomixPreview = false) only
+                                        // returned the tapped song with no upcoming items,
+                                        // leaving the queue empty after search.
                                         playerConnection.playQueue(
-                                            YouTubeQueue(
-                                                WatchEndpoint(videoId = item.id),
-                                                item.toMediaMetadata(),
-                                            ),
+                                            YouTubeQueue.radio(item.toMediaMetadata()),
                                         )
                                     }
                                 }

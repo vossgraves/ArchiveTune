@@ -10,6 +10,7 @@ package moe.rukamori.archivetune.home
 import androidx.annotation.StringRes
 import androidx.compose.runtime.Immutable
 import com.google.common.collect.ImmutableList
+import moe.rukamori.archivetune.constants.QuickPicks
 import moe.rukamori.archivetune.constants.QuickPicksDisplayMode
 import moe.rukamori.archivetune.db.entities.LocalItem
 import moe.rukamori.archivetune.db.entities.Song
@@ -48,9 +49,11 @@ data class HomeUiState(
     val similarRecommendations: ImmutableList<SimilarRecommendation>,
     val accountPlaylists: ImmutableList<PlaylistItem>,
     val homePage: HomePage?,
+    val remoteQuickPicks: HomePage.Section?,
     val selectedChip: HomePage.Chip?,
     val accountName: String,
     val accountImageUrl: String?,
+    val quickPicksMode: QuickPicks,
     val quickPicksDisplayMode: QuickPicksDisplayMode,
     val showCategoryChips: Boolean,
     val showTonalBackdrop: Boolean,

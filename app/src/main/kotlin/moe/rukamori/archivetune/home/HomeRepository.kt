@@ -13,6 +13,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import moe.rukamori.archivetune.constants.DisableBlurKey
+import moe.rukamori.archivetune.constants.QuickPicks
+import moe.rukamori.archivetune.constants.QuickPicksKey
 import moe.rukamori.archivetune.constants.QuickPicksDisplayMode
 import moe.rukamori.archivetune.constants.QuickPicksDisplayModeKey
 import moe.rukamori.archivetune.constants.ShowHomeCategoryChipsKey
@@ -35,6 +37,11 @@ class HomeRepository
                 .map { preferences ->
                     preferences[QuickPicksDisplayModeKey].toEnum(QuickPicksDisplayMode.CARD)
                 }.distinctUntilChanged()
+
+        val quickPicksMode: Flow<QuickPicks> =
+            context.dataStore.data
+                .map { preferences -> preferences[QuickPicksKey].toEnum(QuickPicks.QUICK_PICKS) }
+                .distinctUntilChanged()
 
         val showTonalBackdrop: Flow<Boolean> =
             context.dataStore.data
