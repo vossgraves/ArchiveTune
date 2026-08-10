@@ -137,6 +137,18 @@ class App :
         }
         CanvasArtworkPlaybackCache.init(this)
         PaxsenixLyrics.setUserAgent("ArchiveTune", BuildConfig.VERSION_NAME)
+        // Route PaxsenixLyrics diagnostic logs through GlobalLog so they show up
+        // in the in-app logcat viewer with the proper tag, instead of going to
+        // System.err (which Android redirects to logcat one line at a time as
+        // `W/System.err`, with synchronized I/O that causes contention during
+        // parallel lyrics prefetch).
+        PaxsenixLyrics.logger = { message ->
+            moe.rukamori.archivetune.utils.GlobalLog.append(
+                android.util.Log.INFO,
+                "PaxsenixLyrics",
+                message,
+            )
+        }
 
         runCatching { moe.rukamori.archivetune.telegram.TelegramClient.ensureStarted(this) }
 
