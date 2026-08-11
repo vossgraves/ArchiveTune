@@ -96,7 +96,6 @@ import moe.rukamori.archivetune.constants.LyricsRomanizeOtherLanguagesKey
 import moe.rukamori.archivetune.constants.LyricsScrollKey
 import moe.rukamori.archivetune.constants.LyricsTextSizeKey
 import moe.rukamori.archivetune.constants.PreferredLyricsProvider
-import moe.rukamori.archivetune.constants.PreloadQueueLyricsEnabledKey
 import moe.rukamori.archivetune.constants.QueueLyricsPreloadCountKey
 import moe.rukamori.archivetune.constants.deserializeLyricsProviderOrder
 import moe.rukamori.archivetune.lyrics.JapaneseLanguagePackManager
@@ -201,11 +200,6 @@ fun LyricsSettings(
     val (lyricsRomanizeOtherLanguages, onLyricsRomanizeOtherLanguagesChange) =
         rememberPreference(
             LyricsRomanizeOtherLanguagesKey,
-            defaultValue = true,
-        )
-    val (preloadQueueLyricsEnabled, onPreloadQueueLyricsEnabledChange) =
-        rememberPreference(
-            PreloadQueueLyricsEnabledKey,
             defaultValue = true,
         )
     val (queueLyricsPreloadCount, onQueueLyricsPreloadCountChange) = rememberPreference(QueueLyricsPreloadCountKey, defaultValue = 3)
@@ -505,18 +499,14 @@ fun LyricsSettings(
             modifier = positions.modifierFor("lyrics_preload"),
             title = stringResource(R.string.queue),
         ) {
+            // The count value is the SOLE control: 0 = off, >0 = pre-load that
+            // many songs. The old master switch was removed because it was
+            // confusing — users would set the count but the switch was off,
+            // so nothing happened. Now the count picker is always visible and
+            // shows "Off" when 0.
             item {
-                SwitchPreference(
-                    title = { Text(stringResource(R.string.preload_queue_lyrics)) },
-                    icon = { Icon(painterResource(R.drawable.lyrics), null) },
-                    checked = preloadQueueLyricsEnabled,
-                    onCheckedChange = onPreloadQueueLyricsEnabledChange,
-                )
-            }
-
-            item(visible = preloadQueueLyricsEnabled) {
                 NumberPickerPreference(
-                    title = { Text(stringResource(R.string.queue_lyrics_preload_count)) },
+                    title = { Text(stringResource(R.string.preload_queue_lyrics)) },
                     icon = { Icon(painterResource(R.drawable.lyrics), null) },
                     value = queueLyricsPreloadCount,
                     onValueChange = onQueueLyricsPreloadCountChange,

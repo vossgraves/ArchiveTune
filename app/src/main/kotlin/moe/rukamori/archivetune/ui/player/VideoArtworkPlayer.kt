@@ -37,6 +37,7 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -373,7 +374,7 @@ class VideoArtworkState internal constructor(
         internal set
     var isResolvingUrl: Boolean by mutableStateOf(true)
         internal set
-    var bufferingStartedAtMs: Long by mutableStateOf(0L)
+    var bufferingStartedAtMs: Long by mutableLongStateOf(0L)
         internal set
 
     /**
@@ -412,7 +413,7 @@ class VideoArtworkState internal constructor(
      * Reset to 0 when the video id changes (the new video gets a fresh
      * settling window from its own initial-load snap).
      */
-    var lastSeekAtMs: Long by mutableStateOf(0L)
+    var lastSeekAtMs: Long by mutableLongStateOf(0L)
         internal set
 
     /**
@@ -434,7 +435,7 @@ class VideoArtworkState internal constructor(
      * Reset to 0 when the video id changes (the new video's own first-frame
      * flow handles its initial sync).
      */
-    var lastSurfaceReanchorAtMs: Long by mutableStateOf(0L)
+    var lastSurfaceReanchorAtMs: Long by mutableLongStateOf(0L)
         internal set
 
     /**
@@ -457,7 +458,7 @@ class VideoArtworkState internal constructor(
      * Reset to 0 when the video id changes (no resume should fire for
      * the previous video).
      */
-    var pendingResumeAtMs: Long by mutableStateOf(0L)
+    var pendingResumeAtMs: Long by mutableLongStateOf(0L)
         internal set
 
     /**
@@ -527,7 +528,7 @@ class VideoArtworkState internal constructor(
      * resync. Used together with [VideoHardResyncCooldownMs] to suppress
      * runaway resync loops. Reset to 0 when the video id changes.
      */
-    internal var lastAutoResyncAtMs: Long by mutableStateOf(0L)
+    internal var lastAutoResyncAtMs: Long by mutableLongStateOf(0L)
 
     /**
      * Sticky flag set when two automatic hard resyncs fire within

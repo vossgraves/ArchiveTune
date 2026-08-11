@@ -22,15 +22,12 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
-import moe.rukamori.archivetune.constants.LowDataModeKey
-import moe.rukamori.archivetune.constants.PreloadQueueLyricsEnabledKey
 import moe.rukamori.archivetune.constants.QueueLyricsPreloadCountKey
 import moe.rukamori.archivetune.db.MusicDatabase
 import moe.rukamori.archivetune.db.entities.LyricsEntity
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.utils.NetworkConnectivityObserver
 import moe.rukamori.archivetune.utils.dataStore
-import moe.rukamori.archivetune.utils.isLowDataModeActive
 import moe.rukamori.archivetune.utils.reportException
 import javax.inject.Inject
 
@@ -67,10 +64,17 @@ class LyricsPreloadManager
                 scope.launch {
                     try {
                         val preferences = context.dataStore.data.first()
-                        val isEnabled = preferences[PreloadQueueLyricsEnabledKey] ?: true
 
-                        if (!isEnabled) {
-                            Log.d(TAG, "Queue lyrics pre-load is disabled")
+                        // The count value is the SOLE control for pre-loading.
+                        // count = 0 means off; count > 0 means pre-load that many
+                        // songs. The old PreloadQueueLyricsEnabledKey master switch
+                        // was removed because it was confusing — users would set
+                        // the count but the switch was off, so nothing happened.
+                        // The count picker in Settings now shows "Off" when 0.
+                        val preloadCount = preferences[QueueLyricsPreloadCountKey] ?: DEFAULT_PRELOAD_COUNT
+
+                        if (preloadCount <= 0) {
+                            Log.d(TAG, "Queue lyrics pre-load is off (count = 0)")
                             return@launch
                         }
 
@@ -86,12 +90,15 @@ class LyricsPreloadManager
                             return@launch
                         }
 
-                        if (context.isLowDataModeActive(preferences[LowDataModeKey] ?: true)) {
-                            Log.d(TAG, "Low Data Mode active, skipping lyrics pre-load")
-                            return@launch
-                        }
+                        // Low Data Mode check removed: lyrics are plain text (~5KB
+                        // per song). Pre-loading 5 songs costs ~25KB — negligible
+                        // compared to streaming audio (1-3 MB/minute). The user
+                        // has explicitly set a preload count, so honoring that
+                        // intent is more important than saving a few KB on
+                        // metered networks. This was the root cause of "preload
+                        // doesn't work" — Low Data Mode defaults to ON, and on
+                        // cellular it silently skipped every preload.
 
-                        val preloadCount = preferences[QueueLyricsPreloadCountKey] ?: DEFAULT_PRELOAD_COUNT
                         val nextSongs = getNextSongs(queue, currentIndex, preloadCount)
 
                         if (nextSongs.isEmpty()) {
@@ -99,7 +106,7 @@ class LyricsPreloadManager
                             return@launch
                         }
 
-                        Log.d(TAG, "Starting pre-load for ${nextSongs.size} songs")
+                        Log.d(TAG, "Starting pre-load for ${nextSongs.size} songs (count=$preloadCount)")
                         preloadLyrics(nextSongs)
                     } catch (e: CancellationException) {
                         throw e

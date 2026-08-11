@@ -22,6 +22,13 @@ import moe.rukamori.archivetune.utils.get
 object MegalobizLyricsProvider : LyricsProvider {
     override val name: String = "Megalobiz"
 
+    // Hoisted file-level Regex patterns: previously allocated per lyrics
+    // fetch call. Compiling once at class-load avoids per-call allocation.
+    // Same patterns, same matching semantics.
+    private val LRC_PATH_REGEX = Regex("""href=["'](/lrc/maker/download/[^"']+)["']""")
+    private val LRC_SPAN_REGEX = Regex("""id=["']lrc_[^"']*_details["'][^>]*>(.*?)</span>""", RegexOption.DOT_MATCHES_ALL)
+    private val HTML_TAG_REGEX = Regex("""<[^>]+>""")
+
     private val client by lazy {
         OkHttpClient.Builder()
             .connectTimeout(10, TimeUnit.SECONDS)
@@ -57,8 +64,7 @@ object MegalobizLyricsProvider : LyricsProvider {
                         response.body?.string()
                     } ?: return@runCatching null
 
-                val lrcPathRegex = Regex("""href=["'](/lrc/maker/download/[^"']+)["']""")
-                val match = lrcPathRegex.find(searchHtml) ?: return@runCatching null
+                val match = LRC_PATH_REGEX.find(searchHtml) ?: return@runCatching null
                 val lrcUrl = "https://www.megalobiz.com" + match.groupValues[1]
 
                 val lrcRequest =
@@ -73,8 +79,7 @@ object MegalobizLyricsProvider : LyricsProvider {
                         response.body?.string()
                     } ?: return@runCatching null
 
-                val lrcSpanRegex = Regex("""id=["']lrc_[^"']*_details["'][^>]*>(.*?)</span>""", RegexOption.DOT_MATCHES_ALL)
-                val rawLrcText = lrcSpanRegex.find(detailHtml)?.groupValues?.get(1) ?: detailHtml
+                val rawLrcText = LRC_SPAN_REGEX.find(detailHtml)?.groupValues?.get(1) ?: detailHtml
 
                 val cleanedText =
                     rawLrcText
@@ -84,7 +89,7 @@ object MegalobizLyricsProvider : LyricsProvider {
                         .replace("<br>", "\n")
                         .replace("<br/>", "\n")
                         .replace("<br />", "\n")
-                        .replace(Regex("""<[^>]+>"""), "")
+                        .replace(HTML_TAG_REGEX, "")
                         .trim()
 
                 if (LyricsUtils.isLineSyncedLrc(cleanedText)) {

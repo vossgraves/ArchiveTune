@@ -52,7 +52,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -64,6 +63,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.BlurredEdgeTreatment
@@ -234,7 +234,7 @@ fun LyricsV2(
     val density = LocalDensity.current
     val scope = rememberCoroutineScope()
 
-    val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
+    val mediaMetadata by playerConnection.mediaMetadata.collectAsStateWithLifecycle()
 
     // ── Preferences ──
     val (lyricsClick) = rememberPreference(LyricsClickKey, defaultValue = true)
@@ -301,7 +301,7 @@ fun LyricsV2(
     var showShareImageDialog by remember { mutableStateOf(false) }
 
     // ── Lyrics data ──
-    val currentLyrics by playerConnection.currentLyrics.collectAsState(initial = null)
+    val currentLyrics by playerConnection.currentLyrics.collectAsStateWithLifecycle(initialValue = null)
     val lyrics = currentLyrics?.lyrics
     val showTranslations =
         remember(currentLyrics?.source) {
@@ -825,7 +825,7 @@ fun LyricsV2(
                     ) {
                         val romanizedText =
                             if (romanizationPreferences.isEnabled) {
-                                val value by item.romanizedTextFlow.collectAsState()
+                                val value by item.romanizedTextFlow.collectAsStateWithLifecycle()
                                 value
                             } else {
                                 null

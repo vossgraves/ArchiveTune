@@ -76,6 +76,17 @@ import moe.rukamori.archivetune.constants.BottomSheetSoftAnimationSpec
  *   queue to add an in-place morph open transition on top of the normal
  *   bottom-sheet behavior. Default is false to preserve the original slide
  *   behavior for other sheets.
+ * @param opaqueBackground When true, the sheet's outer background is rendered
+ *   fully opaque (alpha = [backgroundColor].alpha) as soon as the sheet is
+ *   visible, instead of fading in proportionally to [BottomSheetState.progress].
+ *   This is needed by the queue sheet: non-Apple-Music player styles render a
+ *   zoomed/gradient/blur artwork backdrop behind the player, and the default
+ *   progress-based alpha fade let that artwork bleed through the queue sheet
+ *   while dragging. With this flag set, the outer background is opaque from
+ *   the very first pixel of drag, fully covering the player artwork, while
+ *   the inner content (queue rows) still fades in via its own graphicsLayer
+ *   alpha. Default is false to preserve the original behavior for the player
+ *   sheet and any other callers.
  */
 @Composable
 fun BottomSheet(
@@ -86,6 +97,7 @@ fun BottomSheet(
     keepContentAlive: Boolean = false,
     morphMode: Boolean = false,
     backHandlerEnabled: Boolean = true,
+    opaqueBackground: Boolean = false,
     collapsedContent: @Composable BoxScope.() -> Unit,
     content: @Composable BoxScope.() -> Unit,
 ) {
@@ -106,9 +118,23 @@ fun BottomSheet(
                         topEnd = if (!state.isExpanded) 16.dp else 0.dp,
                     ),
                 ).background(
-                    backgroundColor.copy(
-                        alpha = backgroundColor.alpha * state.progress.coerceIn(0f, 1f),
-                    ),
+                    if (opaqueBackground) {
+                        // Render the outer background fully opaque as soon as
+                        // the sheet is visible. The sheet is offset off-screen
+                        // when collapsed (so the opaque background is not
+                        // visible until the user starts dragging), and once
+                        // the sheet starts sliding up the opaque background
+                        // immediately covers whatever is behind the sheet
+                        // (e.g. the player's zoomed artwork backdrop). The
+                        // inner content still fades in via its own
+                        // graphicsLayer alpha, so the queue rows appear
+                        // smoothly on top of the now-opaque background.
+                        backgroundColor
+                    } else {
+                        backgroundColor.copy(
+                            alpha = backgroundColor.alpha * state.progress.coerceIn(0f, 1f),
+                        )
+                    },
                 ),
     ) {
         if (state.isExpandedOrExpanding && backHandlerEnabled) {

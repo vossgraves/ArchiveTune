@@ -52,11 +52,13 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -280,8 +282,8 @@ fun DebugSettings(navController: NavController) {
 
 @Composable
 private fun DiscordDebugSection() {
-    val lastStartTs: Long? by DiscordPresenceManager.lastRpcStartTimeFlow.collectAsState(initial = null)
-    val lastEndTs: Long? by DiscordPresenceManager.lastRpcEndTimeFlow.collectAsState(initial = null)
+    val lastStartTs: Long? by DiscordPresenceManager.lastRpcStartTimeFlow.collectAsStateWithLifecycle(initialValue = null)
+    val lastEndTs: Long? by DiscordPresenceManager.lastRpcEndTimeFlow.collectAsStateWithLifecycle(initialValue = null)
     val lastStart: String = lastStartTs?.let { makeTimeString(it) } ?: "—"
     val lastEnd: String = lastEndTs?.let { makeTimeString(it) } ?: "—"
     val isRunning = DiscordPresenceManager.isRunning()
@@ -455,14 +457,14 @@ private fun DebugTimestampItem(
 private fun NerdStatsSection(playerConnection: moe.rukamori.archivetune.playback.PlayerConnection?) {
     if (playerConnection == null) return
 
-    val currentFormat by playerConnection.currentFormat.collectAsState(initial = null)
-    val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
+    val currentFormat by playerConnection.currentFormat.collectAsStateWithLifecycle(initialValue = null)
+    val mediaMetadata by playerConnection.mediaMetadata.collectAsStateWithLifecycle()
     val player = playerConnection.player
     val downloadUtil = LocalDownloadUtil.current
 
-    var bufferPercentage by remember { mutableStateOf(0) }
-    var bufferedPosition by remember { mutableStateOf(0L) }
-    var currentPosition by remember { mutableStateOf(0L) }
+    var bufferPercentage by remember { mutableIntStateOf(0) }
+    var bufferedPosition by remember { mutableLongStateOf(0L) }
+    var currentPosition by remember { mutableLongStateOf(0L) }
     var playbackSpeed by remember { mutableStateOf(1.0f) }
     // Best-effort fallback size when the persisted FormatEntity has
     // contentLength == 0 (common for FLAC streams where the upstream

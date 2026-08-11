@@ -373,7 +373,7 @@ fun FloatingNavigationToolbar(
     var containerPos by remember { mutableStateOf(Offset.Zero) }
 
     val indicatorX = remember { Animatable(0f) }
-    var indicatorY by remember { mutableStateOf(0f) }
+    var indicatorY by remember { mutableFloatStateOf(0f) }
     var indicatorPlaced by remember { mutableStateOf(false) }
     // Liquid Glass pill size, computed from the selected item's full bounds
     // (icon + label). Zero until the first item is measured.

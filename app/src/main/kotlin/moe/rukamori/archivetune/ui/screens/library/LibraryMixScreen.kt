@@ -52,7 +52,6 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -128,8 +127,8 @@ fun LibraryMixScreen(
         }
     val database = LocalDatabase.current
 
-    val likedSongsCount by database.likedSongsCount().collectAsState(initial = 0)
-    val recentSongs by database.recentSongs(15).collectAsState(initial = emptyList())
+    val likedSongsCount by database.likedSongsCount().collectAsStateWithLifecycle(initialValue = 0)
+    val recentSongs by database.recentSongs(15).collectAsStateWithLifecycle(initialValue = emptyList())
     val topSize by viewModel.topValue.collectAsStateWithLifecycle(initialValue = "50")
     val myTopTitle = stringResource(R.string.my_top)
     val topPlaylistTitle = remember(myTopTitle, topSize) { "$myTopTitle $topSize" }
@@ -152,7 +151,7 @@ fun LibraryMixScreen(
     val filteredPlaylistIds by database
         .playlistIdsByTags(
             if (selectedTagIds.isEmpty()) emptyList() else selectedTagIds.toList(),
-        ).collectAsState(initial = emptyList())
+        ).collectAsStateWithLifecycle(initialValue = emptyList())
 
     val visiblePlaylists =
         remember(playlists, selectedTagIds, filteredPlaylistIds) {
@@ -360,7 +359,7 @@ fun LibraryMixScreen(
                                 horizontalArrangement = Arrangement.spacedBy(16.dp),
                                 modifier = Modifier.fillMaxWidth(),
                             ) {
-                                items(recentSongs) { song ->
+                                items(recentSongs, key = { it.id }) { song ->
                                     Column(
                                         modifier =
                                             Modifier
@@ -685,7 +684,7 @@ fun LibraryMixScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.fillMaxWidth(),
                             ) {
-                                items(artists.take(10)) { item ->
+                                items(artists.take(10), key = { it.artist.id }) { item ->
                                     val artist = item.artist
                                     Column(
                                         modifier =

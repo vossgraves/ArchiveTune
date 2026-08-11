@@ -339,6 +339,13 @@ import kotlin.math.pow
 import kotlin.math.roundToLong
 import kotlin.time.Duration.Companion.seconds
 
+// Hoisted file-level Regex: the JioSaavn candidate penalty loop below calls
+// "[^a-z0-9]".toRegex() 4 times per candidate (title, wanted title, artist,
+// wanted artist), and a JioSaavn search typically returns 5-20 candidates.
+// Compiling the Pattern once at class-load avoids ~20-80 Regex allocations
+// per stream resolution. Same pattern, same replacement semantics.
+private val JIO_SAAVN_NORMALIZE_REGEX = Regex("[^a-z0-9]")
+
 @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class, UnstableApi::class)
 @AndroidEntryPoint
 class MusicService :
@@ -7385,7 +7392,7 @@ class MusicService :
                             .setUri("placeholder:$mediaId".toUri())
                             .setKey(mediaId)
                             .build()
-                        val resolved = resolveMultiSourceDataSpec(dataSpec, mediaId, lowData)
+                        val resolved = resolveMultiSourceDataSpec(dataSpec, mediaId, lowData, isPrefetch = true)
                         if (resolved != null) {
                             // resolveMultiSourceDataSpec already cached the
                             // stream URL via applyDirectStream; we just need
@@ -8337,6 +8344,22 @@ class MusicService :
             ).takeWhile { it != AudioSourceType.YOUTUBE }
     }
 
+    /**
+     * Returns true if [source] is currently enabled in the user's preferences. YouTube is always
+     * enabled. Used by [resolveMultiSourceDataSpec] to:
+     *   1. Decide whether to honor a per-song override whose source has since been disabled
+     *      (fall through to the chain instead of trying only the disabled source).
+     *   2. Guard the auto-pin write so we never pin to a source the user just turned off.
+     */
+    private fun isSourceEnabled(source: AudioSourceType): Boolean =
+        when (source) {
+            AudioSourceType.YOUTUBE -> true
+            AudioSourceType.TIDAL -> dataStore.get(TidalEnabledKey, true)
+            AudioSourceType.QOBUZ -> dataStore.get(QobuzEnabledKey, false)
+            AudioSourceType.DEEZER -> dataStore.get(DeezerEnabledKey, false)
+            AudioSourceType.JIOSAAVN -> dataStore.get(JioSaavnEnabledKey, false)
+        }
+
     /** Builds the shared lookup metadata for [mediaId] from the database / queue metadata. */
     private fun buildSourceQuery(mediaId: String): SourceQuery? {
         val song =
@@ -8571,6 +8594,7 @@ class MusicService :
         dataSpec: DataSpec,
         mediaId: String,
         lowDataModeActive: Boolean,
+        isPrefetch: Boolean = false,
     ): DataSpec? {
         if (mediaId.isLocalMediaId() || mediaId.isTelegramMediaId()) {
             Timber.tag("MusicService").d("Multi-source skip: %s is a local/telegram media id", mediaId)
@@ -8609,10 +8633,23 @@ class MusicService :
             // Expired entry — evict.
             directStreamCache.remove(mediaId, cached)
         }
-        // A per-song "play from" override (set via the player's Source chooser) takes precedence over
-        // the global order. YOUTUBE means "always use YouTube for this song" (skip lossless entirely);
-        // a lossless override forces just that source (still subject to the metadata match gate).
+        // A per-song "play from" override (set via the player's Source chooser, or auto-pinned
+        // by a previous successful lossless resolution — see the Source WIN block below) takes
+        // precedence over the global order. YOUTUBE means "always use YouTube for this song"
+        // (skip lossless entirely); a lossless override forces just that source (still subject
+        // to the metadata match gate).
+        //
+        // DISABLED-SOURCE FALLTHROUGH: if the pinned source has since been disabled by the
+        // user (e.g. they turned off the Qobuz toggle in Settings), we do NOT try only that
+        // source — that would always fail and force a YouTube fallback even when other
+        // lossless sources are still enabled. Instead we fall through to the full enabled
+        // chain so a different lossless source can still win. The stale pin remains in
+        // storage and will become effective again if the user re-enables the source.
         val override = SongSourceOverride.get(dataStore.get(SongSourceOverrideKey, ""), mediaId)
+        val overrideStillEnabled =
+            override == null ||
+                override == AudioSourceType.YOUTUBE ||
+                isSourceEnabled(override)
         val chain =
             when (override) {
                 null -> sourceResolutionChain()
@@ -8620,9 +8657,16 @@ class MusicService :
                     Timber.tag("MusicService").d("Per-song override: %s pinned to YouTube; skipping lossless", mediaId)
                     emptyList()
                 }
-                else -> {
+                else -> if (overrideStillEnabled) {
                     Timber.tag("MusicService").d("Per-song override: %s pinned to %s", mediaId, override.name)
                     listOf(override)
+                } else {
+                    Timber.tag("MusicService").w(
+                        "Per-song override: %s pinned to %s but that source is now disabled; falling through to chain",
+                        mediaId,
+                        override.name,
+                    )
+                    sourceResolutionChain()
                 }
             }
         Timber.tag("MusicService").d("Multi-source resolve for %s | chain=%s", mediaId, chain.joinToString(",") { it.name })
@@ -8724,6 +8768,55 @@ class MusicService :
                         runBlocking { dataStore.edit { prefs -> prefs[QobuzLastProbeTrackKey] = probe } }
                     }
                 }
+            }
+            // AUTO-PIN the winning lossless source as a per-song override so that on app
+            // restart (or any future re-resolution of this same media id) the resolver
+            // short-circuits to the same source the user was listening to, instead of
+            // re-running the whole chain and possibly landing on a different (or
+            // lower-quality) source.
+            //
+            // Conditions:
+            //   1. Not a prefetch call — we only pin the source for the song the user is
+            //      actually about to hear, not the next song whose resolution might be
+            //      discarded if the user skips manually.
+            //   2. Winning source is not YOUTUBE — YouTube is the implicit fallback and
+            //      pinning it would prevent a future lossless source from taking over.
+            //   3. No existing override — we don't overwrite a user's manual "Play from"
+            //      choice. (A null existing pin means either never pinned, or the user
+            //      cleared it; both are safe to auto-pin.)
+            //   4. The winning source is currently enabled — belt-and-suspenders; the
+            //      chain already filters by enabled-ness, but this guards against a
+            //      race where the user disabled the source between chain build and now.
+            //
+            // The pin is durable (DataStore preferences, included in Settings backups)
+            // and is consulted at the top of this same function on the next call, so the
+            // very next DataSpec request for this media id will route directly to the
+            // pinned source (skipping the full chain search). The per-source byte cache
+            // (e.g. "qobuz:$mediaId") is already namespaced by source, so cached bytes
+            // from the first play remain reachable on restart as long as the resolver
+            // routes to the same source — which the pin now guarantees.
+            if (!isPrefetch &&
+                winningSource != AudioSourceType.YOUTUBE &&
+                isSourceEnabled(winningSource) &&
+                override == null
+            ) {
+                runCatching {
+                    runBlocking {
+                        dataStore.edit { prefs ->
+                            prefs[SongSourceOverrideKey] =
+                                SongSourceOverride.withOverride(
+                                    prefs[SongSourceOverrideKey],
+                                    mediaId,
+                                    winningSource,
+                                )
+                        }
+                    }
+                }
+                Timber.tag("MusicService").i(
+                    "Auto-pinned %s to %s (will be reused on app restart)",
+                    mediaId,
+                    winningSource.name,
+                )
             }
             return applyDirectStream(dataSpec, mediaId, winningStream)
         }
@@ -9176,12 +9269,12 @@ class MusicService :
                         .minByOrNull { song ->
                             var penalty = 0
                             // Title similarity (simple normalized contains + length delta)
-                            val normTitle = song.name.lowercase().replace("[^a-z0-9]".toRegex(), "")
-                            val normWanted = query.title.lowercase().replace("[^a-z0-9]".toRegex(), "")
+                            val normTitle = song.name.lowercase().replace(JIO_SAAVN_NORMALIZE_REGEX, "")
+                            val normWanted = query.title.lowercase().replace(JIO_SAAVN_NORMALIZE_REGEX, "")
                             penalty += if (normTitle == normWanted) 0 else if (normTitle.contains(normWanted) || normWanted.contains(normTitle)) 1 else 5
                             // Artist match
-                            val candidateArtist = song.artists.primary.firstOrNull()?.name?.lowercase()?.replace("[^a-z0-9]".toRegex(), "") ?: ""
-                            val wantedArtist = artistHint.lowercase().replace("[^a-z0-9]".toRegex(), "")
+                            val candidateArtist = song.artists.primary.firstOrNull()?.name?.lowercase()?.replace(JIO_SAAVN_NORMALIZE_REGEX, "") ?: ""
+                            val wantedArtist = artistHint.lowercase().replace(JIO_SAAVN_NORMALIZE_REGEX, "")
                             if (wantedArtist.isNotBlank() && candidateArtist.isNotBlank()) {
                                 penalty += if (candidateArtist == wantedArtist) 0 else if (candidateArtist.contains(wantedArtist) || wantedArtist.contains(candidateArtist)) 1 else 3
                             }

@@ -255,7 +255,7 @@ fun AddToPlaylistDialogOnline(
                 )
             }
 
-            items(playlists) { playlist ->
+            items(playlists, key = { it.id }) { playlist ->
                 PlaylistListItem(
                     playlist = playlist,
                     modifier =
@@ -328,7 +328,7 @@ fun AddToPlaylistDialogOnline(
                                 .fillMaxWidth()
                                 .height(150.dp),
                     ) {
-                        items(summary.failedItems) { title ->
+                        items(summary.failedItems, key = { it }) { title ->
                             Text(
                                 text = "• $title",
                                 style = MaterialTheme.typography.bodySmall,

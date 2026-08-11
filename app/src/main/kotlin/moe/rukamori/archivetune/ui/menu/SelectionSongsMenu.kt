@@ -137,10 +137,6 @@ fun SelectionSongMenu(
         mutableStateOf(false)
     }
 
-    val notAddedList by remember {
-        mutableStateOf(mutableListOf<Song>())
-    }
-
     AddToPlaylistDialog(
         isVisible = showChoosePlaylistDialog,
         onGetSong = {
@@ -664,10 +660,6 @@ fun SelectionMediaMetadataMenu(
 
     var showChoosePlaylistDialog by rememberSaveable {
         mutableStateOf(false)
-    }
-
-    val notAddedList by remember {
-        mutableStateOf(mutableListOf<Song>())
     }
 
     AddToPlaylistDialog(

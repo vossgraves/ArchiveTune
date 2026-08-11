@@ -55,6 +55,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateList
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -106,9 +107,9 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
     var isExporting by remember { mutableStateOf(false) }
     var isDeleting by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
-    var exportedCount by remember { mutableStateOf(0) }
-    var deletedCount by remember { mutableStateOf(0) }
-    var totalCount by remember { mutableStateOf(0) }
+    var exportedCount by remember { mutableIntStateOf(0) }
+    var deletedCount by remember { mutableIntStateOf(0) }
+    var totalCount by remember { mutableIntStateOf(0) }
     var searchQuery by remember { mutableStateOf("") }
     var isSearchActive by remember { mutableStateOf(false) }
     val selectedIds: SnapshotStateList<String> = remember { mutableStateListOf() }

@@ -60,12 +60,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -366,7 +367,7 @@ fun SongListItem(
         if (showDownloadIcon) {
             val download by LocalDownloadUtil.current
                 .getDownload(song.id)
-                .collectAsState(initial = null)
+                .collectAsStateWithLifecycle(initialValue = null)
             Icon.Download(download?.state, percent = download?.percentDownloaded ?: -1f)
         }
     },
@@ -439,7 +440,7 @@ fun SongGridItem(
             Icon.Library()
         }
         if (showDownloadIcon) {
-            val download by LocalDownloadUtil.current.getDownload(song.id).collectAsState(initial = null)
+            val download by LocalDownloadUtil.current.getDownload(song.id).collectAsStateWithLifecycle(initialValue = null)
             Icon.Download(download?.state, percent = download?.percentDownloaded ?: -1f)
         }
     },
@@ -1345,8 +1346,8 @@ fun YouTubeListItem(
     trailingContent: @Composable RowScope.() -> Unit = {},
     badges: @Composable RowScope.() -> Unit = {
         val database = LocalDatabase.current
-        val song by database.song(item.id).collectAsState(initial = null)
-        val album by database.album(item.id).collectAsState(initial = null)
+        val song by database.song(item.id).collectAsStateWithLifecycle(initialValue = null)
+        val album by database.album(item.id).collectAsStateWithLifecycle(initialValue = null)
 
         if ((item is SongItem && song?.song?.liked == true) ||
             (item is AlbumItem && album?.album?.bookmarkedAt != null)
@@ -1358,7 +1359,7 @@ fun YouTubeListItem(
             Icon.Library()
         }
         if (item is SongItem) {
-            val downloads by LocalDownloadUtil.current.downloads.collectAsState()
+            val downloads by LocalDownloadUtil.current.downloads.collectAsStateWithLifecycle()
             val download = downloads[item.id]
             Icon.Download(download?.state, percent = download?.percentDownloaded ?: -1f)
         }
@@ -1441,8 +1442,8 @@ fun YouTubeGridItem(
     coroutineScope: CoroutineScope? = null,
     badges: @Composable RowScope.() -> Unit = {
         val database = LocalDatabase.current
-        val song by database.song(item.id).collectAsState(initial = null)
-        val album by database.album(item.id).collectAsState(initial = null)
+        val song by database.song(item.id).collectAsStateWithLifecycle(initialValue = null)
+        val album by database.album(item.id).collectAsStateWithLifecycle(initialValue = null)
 
         if (item is SongItem && song?.song?.liked == true ||
             item is AlbumItem && album?.album?.bookmarkedAt != null
@@ -1452,7 +1453,7 @@ fun YouTubeGridItem(
         if (item.explicit) Icon.Explicit()
         if (item is SongItem && song?.song?.inLibrary != null) Icon.Library()
         if (item is SongItem) {
-            val downloads by LocalDownloadUtil.current.downloads.collectAsState()
+            val downloads by LocalDownloadUtil.current.downloads.collectAsStateWithLifecycle()
             val download = downloads[item.id]
             Icon.Download(download?.state, percent = download?.percentDownloaded ?: -1f)
         }
@@ -2097,7 +2098,7 @@ fun SwipeToSongBox(
     val ctx = LocalContext.current
     val player = LocalPlayerConnection.current
     val scope = rememberCoroutineScope()
-    val offset = remember { mutableStateOf(0f) }
+    val offset = remember { mutableFloatStateOf(0f) }
     val threshold = 300f
     val resolvedContentBackgroundColor = contentBackgroundColor ?: MaterialTheme.colorScheme.surface
 
