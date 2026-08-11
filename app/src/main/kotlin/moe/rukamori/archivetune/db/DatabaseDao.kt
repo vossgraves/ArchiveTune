@@ -1733,7 +1733,7 @@ interface DatabaseDao {
     ) {
         update(
             song.song.copy(
-                title = mediaMetadata.title,
+                title = if (song.song.titleOverride) song.song.title else mediaMetadata.title,
                 duration = mediaMetadata.duration,
                 thumbnailUrl = mediaMetadata.thumbnailUrl,
                 albumId = mediaMetadata.album?.id,

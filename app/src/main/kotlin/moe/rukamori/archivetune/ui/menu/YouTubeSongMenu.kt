@@ -487,7 +487,10 @@ fun YouTubeSongMenu(
 
                                 val now = LocalDateTime.now()
                                 database.withTransaction {
-                                    val base = librarySong?.song ?: song.toMediaMetadata().toSongEntity()
+                                    val base =
+                                        librarySong?.song
+                                            ?: database.getSongByIdBlocking(song.id)
+                                            ?: song.toMediaMetadata().toSongEntity()
                                     if (librarySong == null) {
                                         insert(song.toMediaMetadata())
                                     }
