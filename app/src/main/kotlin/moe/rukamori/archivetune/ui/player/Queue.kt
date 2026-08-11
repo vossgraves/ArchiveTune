@@ -411,7 +411,23 @@ fun Queue(
 
     BottomSheet(
         state = state,
-        backgroundColor = Color.Unspecified,
+        // Pass the actual background color (surfaceContainer / Black) instead of
+        // Color.Unspecified, AND set opaqueBackground = true so the outer sheet
+        // background is fully opaque as soon as the sheet starts sliding up.
+        //
+        // Why: non-Apple-Music player styles render a zoomed/gradient/blur
+        // artwork backdrop behind the player (PlayerBackground composable).
+        // The previous Color.Unspecified made the outer sheet transparent, and
+        // the inner content's graphicsLayer alpha fade (which only reaches 1.0
+        // at progress = 0.5) let that artwork bleed through during the slide-up
+        // drag. With opaqueBackground = true, the outer background is opaque
+        // from the very first pixel of drag, fully covering the player artwork,
+        // while the inner queue rows still fade in smoothly via their own
+        // graphicsLayer alpha. Apple-Music style was unaffected because it
+        // doesn't render PlayerBackground — its player backdrop is already a
+        // solid surface color.
+        backgroundColor = backgroundColor,
+        opaqueBackground = true,
         modifier = modifier,
         morphMode = true,
         // Keep the queue list composed while the sheet is collapsed at the peek
