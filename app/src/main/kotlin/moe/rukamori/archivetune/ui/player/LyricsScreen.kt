@@ -83,6 +83,7 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
@@ -820,19 +821,19 @@ private fun MovingBlurBackground(
     // no-op and the bitmap stays pinned.
     val transition = rememberInfiniteTransition(label = "moving-blur-drift")
     val animatedDriftX by transition.animateFloat(
-        initialValue = -120f,
-        targetValue = 120f,
+        initialValue = -60f,
+        targetValue = 60f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 19_000, easing = FastOutSlowInEasing),
+            animation = tween(durationMillis = 14_000, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse,
         ),
         label = "moving-blur-x",
     )
     val animatedDriftY by transition.animateFloat(
-        initialValue = -90f,
-        targetValue = 90f,
+        initialValue = -45f,
+        targetValue = 45f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 27_000, easing = FastOutSlowInEasing),
+            animation = tween(durationMillis = 20_000, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse,
         ),
         label = "moving-blur-y",
@@ -848,14 +849,12 @@ private fun MovingBlurBackground(
     ) {
         val preSDriftScale =
             if (isPreS) {
-                val driftMaxX = 120.dp
-                val driftMaxY = 90.dp
-                val safetyMargin = 48.dp
-                val requiredScaleX = 1f + 2f * (driftMaxX.value + safetyMargin.value) / maxWidth.value
-                val requiredScaleY = 1f + 2f * (driftMaxY.value + safetyMargin.value) / maxHeight.value
-                maxOf(requiredScaleX, requiredScaleY, 1.4f)
+                // Pre-S doesn't drift (driftX/Y are forced to 0 above), so this
+                // scale only needs to fill the screen. Using 1.9f to match the
+                // S+ scale for visual consistency between pre-S and S+ devices.
+                1.9f
             } else {
-                1.4f
+                1.9f
             }
 
         AnimatedContent(
@@ -880,7 +879,7 @@ private fun MovingBlurBackground(
                                     val bitmap = result.image.toBitmap()
                                         .copy(Bitmap.Config.ARGB_8888, true)
                                     val density = context.resources.displayMetrics.density
-                                    ImageBlurUtils.blur(bitmap, 64f * density)
+                                    ImageBlurUtils.blur(bitmap, 96f * density)
                                 } else null
                             } catch (_: Exception) {
                                 null
@@ -909,12 +908,23 @@ private fun MovingBlurBackground(
                         contentScale = ContentScale.Crop,
                         modifier = Modifier
                             .fillMaxSize()
+                            // graphicsLayer OUTSIDE blur: the blur is applied to the
+                            // centered image (inside graphicsLayer), then the scale +
+                            // translation is applied to the blurred result. This prevents
+                            // the blur from sampling transparent areas at the translated
+                            // image's trailing edge — the root cause of the corner flicker.
+                            //
+                            // Scale 1.9 extends the image 0.45*W beyond each edge
+                            // (162dp for W=360), which covers drift(±60) + blur(96)
+                            // = 156dp with a 6dp safety margin.
                             .graphicsLayer {
-                                scaleX = 1.4f
-                                scaleY = 1.4f
+                                scaleX = 1.9f
+                                scaleY = 1.9f
+                                translationX = driftX.dp.toPx()
+                                translationY = driftY.dp.toPx()
+                                compositingStrategy = CompositingStrategy.Offscreen
                             }
-                            .blur(64.dp)
-                            .offset(x = driftX.dp, y = driftY.dp)
+                            .blur(96.dp)
                             .alpha(0.86f),
                     )
                 }

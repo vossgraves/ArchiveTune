@@ -424,6 +424,18 @@ fun AppleMusicPlayerContent(
     // slowly drifts horizontally and vertically, creating an ambient motion
     // behind the lyrics. Only active when lyricsOpen = true.
     //
+    // FLICKER FIX: the previous scale (1.4f) was too small for the drift range
+    // (±80dp X / ±60dp Y) + blur radius (64dp). At max drift, the image's
+    // trailing edge was INSIDE the parent's bounds (0.2*W - 80 < 0 for W=360),
+    // so the blur sampled transparent areas at the trailing edge — appearing
+    // as a flickering dark band at the screen corners/edges. Now using scale
+    // 1.9 with drift ±60/±45 and blur 96dp: the image extends 0.45*W beyond
+    // each edge (162dp for W=360), which is > drift(60) + blur(96) = 156dp,
+    // so the image always covers the parent with a small safety margin.
+    //
+    // SPEED: increased ~30% faster per user request (19s/27s → 14s/20s).
+    // BLUR: increased 50% per user request (64dp → 96dp).
+    //
     // CRITICAL PERF: we keep the State<Float> objects (NOT `by` delegation) so
     // the animation values are read ONLY inside Modifier.graphicsLayer { }
     // lambdas (draw-phase deferred reads). Reading them during composition —
@@ -436,19 +448,19 @@ fun AppleMusicPlayerContent(
     // drift lives in a separate MovingBlurBackground composable.
     val blurTransition = rememberInfiniteTransition(label = "am-lyrics-blur-drift")
     val blurDriftXState = blurTransition.animateFloat(
-        initialValue = -80f,
-        targetValue = 80f,
+        initialValue = -60f,
+        targetValue = 60f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 19_000, easing = FastOutSlowInEasing),
+            animation = tween(durationMillis = 14_000, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse,
         ),
         label = "am-lyrics-drift-x",
     )
     val blurDriftYState = blurTransition.animateFloat(
-        initialValue = -60f,
-        targetValue = 60f,
+        initialValue = -45f,
+        targetValue = 45f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 27_000, easing = FastOutSlowInEasing),
+            animation = tween(durationMillis = 20_000, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse,
         ),
         label = "am-lyrics-drift-y",
@@ -674,7 +686,13 @@ fun AppleMusicPlayerContent(
                 // lyricsOpen is a stable Boolean state — reading it here is a
                 // deferred read that only triggers a layer update on toggle.
                 val active = lyricsOpen
-                val scale = if (active) 1.4f else 1.2f
+                // Scale 1.9 (lyricsOpen) ensures the image extends 0.45*W beyond
+                // each edge — enough to cover drift(±60) + blur(96dp) = 156dp
+                // even on a 360dp-wide screen (162dp > 156dp). The old 1.4f scale
+                // only extended 72dp, which was less than drift(80) alone —
+                // causing the trailing edge to expose transparent areas at max
+                // drift, which the blur then sampled as a flickering dark band.
+                val scale = if (active) 1.9f else 1.2f
                 scaleX = scale
                 scaleY = scale
                 if (active) {
@@ -687,7 +705,7 @@ fun AppleMusicPlayerContent(
                 // rasterized ONCE into an offscreen buffer and only the
                 // cheap translation/scale transform re-runs every frame as
                 // the drift values change. Without this, some GPU drivers
-                // re-compute the 64dp blur on every frame because the
+                // re-compute the 96dp blur on every frame because the
                 // layer's transform changed — stealing GPU frame budget
                 // from the 60Hz karaoke syllable fill animation in the
                 // lyrics overlay (Enhanced style only, since V2 renders
@@ -779,13 +797,19 @@ fun AppleMusicPlayerContent(
                             modifier =
                                 Modifier
                                     .matchParentSize()
+                                    // graphicsLayer OUTSIDE blur: the blur is applied
+                                    // to the centered image (inside graphicsLayer), then
+                                    // the scale + translation is applied to the blurred
+                                    // result. This prevents the blur from sampling
+                                    // transparent areas at the translated image's edges.
+                                    .graphicsLayer(driftGraphicsLayer)
                                     .then(
                                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                                            Modifier.blur(64.dp)
+                                            Modifier.blur(96.dp)
                                         } else {
                                             Modifier
                                         },
-                                    ).graphicsLayer(driftGraphicsLayer),
+                                    ),
                         )
                     }
                 }
@@ -809,13 +833,16 @@ fun AppleMusicPlayerContent(
                         modifier =
                             Modifier
                                 .matchParentSize()
+                                // graphicsLayer OUTSIDE blur: see canvas+lyrics path
+                                // above for the full rationale.
+                                .graphicsLayer(driftGraphicsLayer)
                                 .then(
                                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                                        Modifier.blur(64.dp)
+                                        Modifier.blur(96.dp)
                                     } else {
                                         Modifier
                                     },
-                                ).graphicsLayer(driftGraphicsLayer),
+                                ),
                     )
                 }
             } else if (isPreS && preBlurredBitmap != null) {
