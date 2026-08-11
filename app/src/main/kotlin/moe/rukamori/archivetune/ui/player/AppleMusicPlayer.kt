@@ -448,12 +448,13 @@ fun AppleMusicPlayerContent(
     // trailing edge was INSIDE the parent's bounds (0.2*W - 80 < 0 for W=360),
     // so the blur sampled transparent areas at the trailing edge — appearing
     // as a flickering dark band at the screen corners/edges. Now using scale
-    // 1.9 with drift ±60/±45 and blur 96dp: the image extends 0.45*W beyond
-    // each edge (162dp for W=360), which is > drift(60) + blur(96) = 156dp,
-    // so the image always covers the parent with a small safety margin.
+    // 1.9 with drift ±60/±45 and blur 64dp: the image extends 0.45*W beyond
+    // each edge (162dp for W=360), which is > drift(60) + blur(64) = 124dp,
+    // so the image always covers the parent with a comfortable safety margin.
     //
     // SPEED: increased ~30% faster per user request (19s/27s → 14s/20s).
-    // BLUR: increased 50% per user request (64dp → 96dp).
+    // BLUR: 64dp (reverted from a temporary 96dp experiment back to 64dp
+    // per user request — the 50% increase was too heavy on the visual).
     //
     // CRITICAL PERF: we keep the State<Float> objects (NOT `by` delegation) so
     // the animation values are read ONLY inside Modifier.graphicsLayer { }
@@ -706,8 +707,8 @@ fun AppleMusicPlayerContent(
                 // deferred read that only triggers a layer update on toggle.
                 val active = lyricsOpen
                 // Scale 1.9 (lyricsOpen) ensures the image extends 0.45*W beyond
-                // each edge — enough to cover drift(±60) + blur(96dp) = 156dp
-                // even on a 360dp-wide screen (162dp > 156dp). The old 1.4f scale
+                // each edge — enough to cover drift(±60) + blur(64dp) = 124dp
+                // even on a 360dp-wide screen (162dp > 124dp). The old 1.4f scale
                 // only extended 72dp, which was less than drift(80) alone —
                 // causing the trailing edge to expose transparent areas at max
                 // drift, which the blur then sampled as a flickering dark band.
@@ -724,7 +725,7 @@ fun AppleMusicPlayerContent(
                 // rasterized ONCE into an offscreen buffer and only the
                 // cheap translation/scale transform re-runs every frame as
                 // the drift values change. Without this, some GPU drivers
-                // re-compute the 96dp blur on every frame because the
+                // re-compute the 64dp blur on every frame because the
                 // layer's transform changed — stealing GPU frame budget
                 // from the 60Hz karaoke syllable fill animation in the
                 // lyrics overlay (Enhanced style only, since V2 renders
@@ -824,7 +825,7 @@ fun AppleMusicPlayerContent(
                                     .graphicsLayer(driftGraphicsLayer)
                                     .then(
                                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                                            Modifier.blur(96.dp)
+                                            Modifier.blur(64.dp)
                                         } else {
                                             Modifier
                                         },
@@ -857,7 +858,7 @@ fun AppleMusicPlayerContent(
                                 .graphicsLayer(driftGraphicsLayer)
                                 .then(
                                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                                        Modifier.blur(96.dp)
+                                        Modifier.blur(64.dp)
                                     } else {
                                         Modifier
                                     },

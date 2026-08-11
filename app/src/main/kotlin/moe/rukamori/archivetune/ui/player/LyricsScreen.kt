@@ -879,7 +879,7 @@ private fun MovingBlurBackground(
                                     val bitmap = result.image.toBitmap()
                                         .copy(Bitmap.Config.ARGB_8888, true)
                                     val density = context.resources.displayMetrics.density
-                                    ImageBlurUtils.blur(bitmap, 96f * density)
+                                    ImageBlurUtils.blur(bitmap, 64f * density)
                                 } else null
                             } catch (_: Exception) {
                                 null
@@ -915,8 +915,8 @@ private fun MovingBlurBackground(
                             // image's trailing edge — the root cause of the corner flicker.
                             //
                             // Scale 1.9 extends the image 0.45*W beyond each edge
-                            // (162dp for W=360), which covers drift(±60) + blur(96)
-                            // = 156dp with a 6dp safety margin.
+                            // (162dp for W=360), which covers drift(±60) + blur(64)
+                            // = 124dp with a 38dp safety margin.
                             .graphicsLayer {
                                 scaleX = 1.9f
                                 scaleY = 1.9f
@@ -924,7 +924,7 @@ private fun MovingBlurBackground(
                                 translationY = driftY.dp.toPx()
                                 compositingStrategy = CompositingStrategy.Offscreen
                             }
-                            .blur(96.dp)
+                            .blur(64.dp)
                             .alpha(0.86f),
                     )
                 }
