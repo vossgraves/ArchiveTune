@@ -740,6 +740,10 @@ fun Queue(
             remember(currentWindowIndex, queueWindows) {
                 queueWindows.getOrNull(currentWindowIndex + 1)?.uid
             }
+        val nextPlayingUid =
+            remember(currentWindowIndex, queueWindows) {
+                queueWindows.getOrNull(currentWindowIndex + 1)?.uid
+            }
 
         val reorderableState =
             rememberReorderableLazyListState(
