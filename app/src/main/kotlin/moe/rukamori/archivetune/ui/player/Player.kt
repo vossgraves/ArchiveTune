@@ -1422,8 +1422,14 @@ fun BottomSheetPlayer(
         // hazeSource (queueArtHazeState) that always contains a real high-frequency
         // image, so the queue's hazeEffect always has something meaningful to
         // sample regardless of playerBackground style.
-        val queueHazeAlpha =
-            if (isLyricsScreenVisible) 0f else queueSheetState.progress
+        // The queue sheet is now opaque (queueSurfaceColor passed as its
+        // backgroundColor with opaqueBackground = true in Queue.kt), so the
+        // dedicated frosted-glass haze overlay that used to sit behind the
+        // transparent queue sheet is no longer needed. Setting this to 0f
+        // disables both the haze-source Box and the haze-effect overlay
+        // (they're gated on queueHazeAlpha > 0f), which also saves the GPU
+        // blur work during queue drag.
+        val queueHazeAlpha = 0f
 
         val queueArtHazeState = remember { HazeState() }
         val queueArtContext = LocalContext.current
@@ -2251,13 +2257,48 @@ fun BottomSheetPlayer(
                 }
             }
 
+        // Opaque backdrop that fades in with queueSheetState.progress.
+        //
+        // Why: non-Apple-Music player styles render a zoomed/gradient/blur
+        // artwork backdrop (PlayerBackground) at the back of the player, and
+        // the queue BottomSheet slides up from the bottom — so during the
+        // slide-up drag the queue sheet only covers the bottom portion of the
+        // screen, leaving the player's zoomed artwork exposed in the area
+        // above the queue sheet's top edge. The user expects NO artwork to be
+        // visible at all while sliding the queue up.
+        //
+        // This Box is rendered AFTER PlayerBackground and the (now-disabled)
+        // haze overlay but BEFORE the Queue sheet, so it covers the artwork
+        // in the exposed area above the queue sheet. It fades in proportionally
+        // to queueSheetState.progress — fully transparent when the queue is
+        // collapsed (so the player's artwork is visible normally), fully
+        // opaque by the time the queue is expanded (so no artwork bleeds
+        // through during the slide-up). The queue sheet itself is also opaque
+        // (queueSurfaceColor passed as its backgroundColor with
+        // opaqueBackground = true in Queue.kt), so the queue sheet area is
+        // solid too.
+        //
+        // Apple-Music style is unaffected: it doesn't render PlayerBackground,
+        // and its queue morphs in-place via SharedTransitionLayout (the queue
+        // sheet's peek height is 0dp so it never slides). queueSheetState.progress
+        // stays 0 in Apple-Music style, so this Box stays invisible there.
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .background(queueSurfaceColor)
+                    .graphicsLayer { alpha = queueSheetState.progress.coerceIn(0f, 1f) },
+        )
+
         // Queue sheet — wrapped in AnimatedVisibility with slide+fade so it
         // slides in from below. Hidden while the lyrics screen is on top.
         //
-        // The Queue's background is transparent (Color.Unspecified) so the player's
-        // brightened blurred artwork shows through unimpeded — matching vivi-music's
-        // queue which paints Color.Unspecified behind its list and relies entirely
-        // on the player's own background for the frosted-glass effect.
+        // The Queue's backgroundColor is queueSurfaceColor (opaque) so the
+        // sheet itself is solid — combined with opaqueBackground = true in
+        // Queue.kt, this fully covers the player's zoomed artwork behind the
+        // queue list during the slide-up drag. The opaque backdrop above
+        // covers the artwork in the exposed area above the queue sheet's top
+        // edge.
         AnimatedVisibility(
             visible = !isLyricsScreenVisible,
             enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
@@ -2269,7 +2310,7 @@ fun BottomSheetPlayer(
                 state = queueSheetState,
                 playerBottomSheetState = state,
                 navController = navController,
-                backgroundColor = Color.Unspecified,
+                backgroundColor = queueSurfaceColor,
                 onBackgroundColor = queueOnBackgroundColor,
                 TextBackgroundColor = TextBackgroundColor,
                 textButtonColor = textButtonColor,
