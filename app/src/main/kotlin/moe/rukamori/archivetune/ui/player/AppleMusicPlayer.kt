@@ -72,6 +72,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
@@ -278,6 +279,14 @@ fun AppleMusicPlayerContent(
     onSliderValueChangeFinished: () -> Unit,
     lyricsSyncOffset: Int = 0,
     onLyricsSyncOffsetChange: (Int) -> Unit = {},
+    // ISSUE 1 FIX: report inline-lyrics visibility upward so back-stack screens
+    // (playlist/album/artist) can suspend their LiquidGlass layerBackdrop +
+    // CanvasArtworkPlayer GPU work during the COVER→LYRICS morph. Without this,
+    // those screens keep spending GPU frame budget behind the player sheet,
+    // competing with the sharedBounds morph and causing the reported "sometimes
+    // lags" stutter. The standalone MikoLyricsTransition overlay already reports
+    // via this same callback — we're extending it to Apple Music's INLINE lyrics.
+    onLyricsVisibilityChange: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier,
     landscape: Boolean = false,
 ) {
@@ -351,6 +360,16 @@ fun AppleMusicPlayerContent(
         } else {
             playerControlsExpanded = true
         }
+    }
+
+    // ISSUE 1 FIX: propagate inline-lyrics visibility to the parent so back-stack
+    // screens suspend their GPU work during the morph. See the parameter docstring
+    // for the full rationale.
+    LaunchedEffect(lyricsOpen) {
+        onLyricsVisibilityChange(lyricsOpen)
+    }
+    DisposableEffect(Unit) {
+        onDispose { onLyricsVisibilityChange(false) }
     }
     LaunchedEffect(lyricsOpen, playerControlsVisibilityTick) {
         if (!lyricsOpen) return@LaunchedEffect
@@ -1882,7 +1901,17 @@ private fun AppleMusicControlsColumn(
             iconSize = AppleMusicTransportIconSize,
             onClick = playerConnection::seekToPrevious,
         )
-        Box(contentAlignment = Alignment.Center) {
+        // Center slot MUST keep the same outer Box size (iconSize + 20.dp) in both
+        // the loading and playing states — otherwise SpaceEvenly redistributes the
+        // 20dp gap across the row and prev/next visually slide outward when the
+        // spinner replaces the play button (user-reported "compact during loading").
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier =
+                Modifier
+                    .size(AppleMusicPlayPauseIconSize + 20.dp)
+                    .clip(CircleShape),
+        ) {
             if (isLoading) {
                 CircularProgressIndicator(
                     color = Color.White,

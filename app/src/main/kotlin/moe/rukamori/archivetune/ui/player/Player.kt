@@ -248,7 +248,11 @@ private const val V7SharpStagePortraitFraction = 0.62f
 private const val V7SharpStageLandscapeFraction = 0.58f
 private const val V7BackdropOverlapDp = 72
 private const val V7SharpStageBottomScrimStartFraction = 0.40f
-private const val V7BackdropFloorBlackStartFraction = 0.88f
+// ISSUE 4 FIX: lowered from 0.88 → 0.55 so the palette-color gradient dominates
+// the bottom ~45% of the backdrop (matching the reference image where the bottom
+// 35-40% is a smooth gradient, not a blur). Previously the gradient only kicked
+// in at 0.88, leaving positions 0.45→0.88 as blur-dominated.
+private const val V7BackdropFloorBlackStartFraction = 0.55f
 private const val V8BackdropArtworkSizePx = 1_024
 
 @Stable
@@ -894,7 +898,10 @@ fun BottomSheetPlayer(
     // (Color.Unspecified) so the Haze shows through. This replaces the previous
     // Compose BlurEffect(radius=32f) approach which was less blurred than
     // vivi-music and only worked on Android 12+.
-    val playerHazeState = remember { HazeState() }
+    //
+    // NOTE: playerHazeState was removed in favor of queueArtHazeState (declared
+    // inline below), which always contains a real album-art image so the queue's
+    // blur is visible regardless of playerBackground style.
 
     LaunchedEffect(state.isExpandedOrExpanding) {
         if (state.isExpandedOrExpanding && !queueSheetState.isCollapsed) {
@@ -906,9 +913,19 @@ fun BottomSheetPlayer(
         mutableStateOf(false)
     }
 
+    // ISSUE 1 FIX: track Apple Music's INLINE lyrics open state separately from
+    // the standalone lyrics overlay (isLyricsScreenVisible). Both feed into
+    // lyricsFullScreenActive so back-stack screens suspend GPU work during ANY
+    // lyrics morph — but only isLyricsScreenVisible triggers the standalone
+    // MikoLyricsTransition overlay. Previously, Apple Music's inline lyrics morph
+    // didn't propagate, causing back-stack LiquidGlass/Canvas GPU work to compete
+    // with the sharedBounds morph and produce the reported "sometimes lags" stutter.
+    var isAppleMusicInlineLyricsOpen by rememberSaveable { mutableStateOf(false) }
+
     // Report full-screen lyrics visibility upward so the status bar can be hidden for every player
     // style while the lyrics overlay is showing (previously only the Immersive style went edge-to-edge).
-    val lyricsFullScreenActive = isLyricsScreenVisible && state.isExpandedOrExpanding
+    val lyricsFullScreenActive =
+        (isLyricsScreenVisible || isAppleMusicInlineLyricsOpen) && state.isExpandedOrExpanding
     LaunchedEffect(lyricsFullScreenActive) {
         onLyricsVisibilityChange(lyricsFullScreenActive)
     }
@@ -1389,21 +1406,43 @@ fun BottomSheetPlayer(
         // vivi-music and only worked on Android 12+ (Haze handles the API
         // level gate internally and falls back to a software blur on older
         // devices).
-        val queueBlurEnabled =
-            queueSheetState.isExpandedOrExpanding &&
-                !isLyricsScreenVisible
+        //
+        // ISSUE 3 FIX: drive the blur alpha directly from `queueSheetState.progress`
+        // instead of `isExpandedOrExpanding`. The old gate only flipped true on drag
+        // END (when performFling calls expand()), so the blur appeared to "snap in"
+        // only after the user lifted their finger. Reading `progress` (a
+        // derivedStateOf over the sheet's animatable value) updates continuously
+        // during the drag, so the blur now tracks the finger in real time.
+        //
+        // ISSUE 5 FIX: for non-BLUR player backgrounds (GRADIENT, COLORING, GLOW,
+        // DEFAULT), the player-content Box contains only flat/slowly-varying colors.
+        // Blurring a flat color produces a flat color — visually indistinguishable
+        // from no blur — so the queue sheet appeared to have no blur unless the user
+        // manually set playerBackground = BLUR. We now render a DEDICATED album-art
+        // hazeSource (queueArtHazeState) that always contains a real high-frequency
+        // image, so the queue's hazeEffect always has something meaningful to
+        // sample regardless of playerBackground style.
+        val queueHazeAlpha =
+            if (isLyricsScreenVisible) 0f else queueSheetState.progress
 
-        val queueHazeAlpha by animateFloatAsState(
-            targetValue = if (queueBlurEnabled) 1f else 0f,
-            animationSpec = tween(durationMillis = 300),
-            label = "queueHazeAlpha",
-        )
+        val queueArtHazeState = remember { HazeState() }
+        val queueArtContext = LocalContext.current
+        // Use the same swap-state logic as PlayerBackground so the queue's blur
+        // source matches the artwork the user actually sees (e.g., music-video
+        // thumbnail when isMusicVideo is true).
+        val queueArtSwapState =
+            rememberThumbnailSwapState(
+                videoId = mediaMetadata?.id,
+                ytmUrl = mediaMetadata?.thumbnailUrl,
+                lowDataMode = rememberLowDataModeActive(),
+                isMusicVideo = mediaMetadata?.isMusicVideo ?: false,
+            )
+        val queueArtUrl = queueArtSwapState.displayUrl
 
         Box(
             modifier =
                 Modifier
-                    .fillMaxSize()
-                    .hazeSource(state = playerHazeState),
+                    .fillMaxSize(),
         ) {
         if (!state.isCollapsed &&
             !aodModeEnabled &&
@@ -1742,6 +1781,7 @@ fun BottomSheetPlayer(
                             onSliderValueChangeFinished = onSliderValueChangeFinished,
                             lyricsSyncOffset = lyricsSyncOffset,
                             onLyricsSyncOffsetChange = { lyricsSyncOffset = it },
+                            onLyricsVisibilityChange = { isAppleMusicInlineLyricsOpen = it },
                             landscape = true,
                             modifier =
                                 Modifier
@@ -2099,6 +2139,7 @@ fun BottomSheetPlayer(
                             onSliderValueChangeFinished = onSliderValueChangeFinished,
                             lyricsSyncOffset = lyricsSyncOffset,
                             onLyricsSyncOffsetChange = { lyricsSyncOffset = it },
+                            onLyricsVisibilityChange = { isAppleMusicInlineLyricsOpen = it },
                             // Full-bleed: the artwork runs under the status bar by design, so no
                             // top inset here (mirrors the reference layout).
                             modifier =
@@ -2140,13 +2181,41 @@ fun BottomSheetPlayer(
         }
         } // close player-content haze-source Box
 
-        // Haze-effect overlay — renders the blurred player content (the
-        // hazeSource Box above) as a frosted-glass layer that fades in while
-        // the queue is expanded. Exact vivi-music parameters: blurRadius =
-        // 80.dp, tint = HazeTint(Black 0.30), noiseFactor = 0.15. The queue
-        // sheet (rendered next, with a transparent background) sits on top of
-        // this overlay so the frosted-glass effect shows through behind the
-        // queue list.
+        // Dedicated album-art hazeSource for the queue sheet (Issue 5 fix).
+        // Rendered as a sibling Box BEHIND the player-content Box (drawn first,
+        // so the user never sees it directly — player-content draws on top).
+        // Haze samples this Box's OWN drawing (the album-art image), not the
+        // composited result, so it always has high-frequency content to blur
+        // regardless of playerBackground style. Only rendered while the queue
+        // is visible (progress > 0) to save GPU on idle frames.
+        if (queueHazeAlpha > 0f && queueArtUrl != null) {
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .hazeSource(state = queueArtHazeState),
+            ) {
+                AsyncImage(
+                    model =
+                        ImageRequest
+                            .Builder(queueArtContext)
+                            .data(queueArtUrl)
+                            .size(256, 256)
+                            .allowHardware(false)
+                            .build(),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+        }
+
+        // Haze-effect overlay — renders the blurred album-art source (queueArtHazeState)
+        // as a frosted-glass layer that tracks the queue sheet's drag progress.
+        // Exact vivi-music parameters: blurRadius = 80.dp, tint = HazeTint(Black 0.30),
+        // noiseFactor = 0.15. The queue sheet (rendered next, with a transparent
+        // background) sits on top of this overlay so the frosted-glass effect shows
+        // through behind the queue list.
         if (queueHazeAlpha > 0f) {
             Box(
                 modifier =
@@ -2154,7 +2223,7 @@ fun BottomSheetPlayer(
                         .fillMaxSize()
                         .graphicsLayer { alpha = queueHazeAlpha }
                         .hazeEffect(
-                            state = playerHazeState,
+                            state = queueArtHazeState,
                             style =
                                 HazeStyle(
                                     blurRadius = 80.dp,
@@ -2728,20 +2797,21 @@ private fun V7PlayerBackdrop(
         }
     val backdropFloor =
         remember(backdropPalette) {
-            // Gradient floor: transparent at the top so the blurred backdrop
-            // artwork shows through, fading to the thumbnail-derived palette
-            // color at the bottom. This creates the "gradient behind the
-            // bottom controls that blends with the thumbnail" effect — the
-            // controls sit over a smooth transition from blurred artwork to
-            // the dominant thumbnail color, improving both aesthetics and
-            // text legibility. Previously all three stops were the same
-            // color, making it a flat solid block that hid the backdrop.
+            // ISSUE 4 FIX: gradient now dominates the bottom ~55% of the backdrop
+            // (matching the reference image where the bottom 35-40% is a smooth
+            // palette-color gradient, not a blur). Previously the gradient only
+            // started at 0.45 and ramped to 0.85 alpha at 0.88, leaving the upper
+            // half of the controls area blur-dominated. Now the gradient starts
+            // at 0.30, ramps to 0.75 alpha at 0.55 (V7BackdropFloorBlackStartFraction),
+            // and reaches full opacity at 0.85 — so the bottom ~55% is gradient-
+            // dominated with the blur subtly visible at the top ~30%.
             Brush.verticalGradient(
                 colorStops =
                     arrayOf(
                         0f to Color.Transparent,
-                        0.45f to Color.Transparent,
-                        V7BackdropFloorBlackStartFraction to backdropPalette.bottom.copy(alpha = 0.85f),
+                        0.30f to Color.Transparent,
+                        V7BackdropFloorBlackStartFraction to backdropPalette.bottom.copy(alpha = 0.75f),
+                        0.85f to backdropPalette.bottom.copy(alpha = 0.96f),
                         1f to backdropPalette.bottom,
                     ),
             )
@@ -2755,14 +2825,14 @@ private fun V7PlayerBackdrop(
                 .graphicsLayer {
                     scaleX = V7BackdropBlurScale
                     scaleY = V7BackdropBlurScale
-                    // Raised from 0.58 → 0.92 (and 0.20 → 0.50 for the
-                    // no-blur branch) so the artwork's actual colours shine
-                    // through. The previous 0.58 alpha combined with the
-                    // valueMax=0.32 palette floor below was crushing the
-                    // backdrop into a dark, desaturated sludge — the opposite
-                    // of ViviMusic's bright, vibrant blur. 0.92 keeps a tiny
-                    // headroom for the sharp stage to dominate visually.
-                    alpha = if (disableBlur || !needsBlur) 0.50f else 0.92f
+                    // ISSUE 4 FIX: lowered from 0.92 → 0.50 (and 0.50 → 0.30 for the
+                    // no-blur branch) so the gradient floor (backdropFloor) is the
+                    // dominant visual behind the controls, not the blur. The blur is
+                    // now a subtle texture at the top of the backdrop that fades into
+                    // the palette-color gradient — matching the reference image's
+                    // "frosted glass with gradient overlay" look. Previously 0.92
+                    // alpha made the blur dominate and the gradient was barely visible.
+                    alpha = if (disableBlur || !needsBlur) 0.30f else 0.50f
                 }
         }
     val canvasStageModifier =
@@ -2821,7 +2891,10 @@ private fun V7PlayerBackdrop(
                                 .graphicsLayer {
                                     scaleX = V7BackdropBlurScale
                                     scaleY = V7BackdropBlurScale
-                                    alpha = 0.58f
+                                    // ISSUE 4 FIX: lowered from 0.58 → 0.50 to match
+                                    // the S+ branch's 0.50 alpha so the gradient floor
+                                    // dominates on pre-S devices too.
+                                    alpha = 0.50f
                                 },
                         onError = { failedUrl ->
                             getNextFallbackUrl(failedUrl)?.let { backdropArtworkModel = it }
