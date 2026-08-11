@@ -2267,27 +2267,38 @@ fun BottomSheetPlayer(
         // above the queue sheet's top edge. The user expects NO artwork to be
         // visible at all while sliding the queue up.
         //
-        // This Box is rendered AFTER PlayerBackground and the (now-disabled)
-        // haze overlay but BEFORE the Queue sheet, so it covers the artwork
-        // in the exposed area above the queue sheet. It fades in proportionally
-        // to queueSheetState.progress — fully transparent when the queue is
-        // collapsed (so the player's artwork is visible normally), fully
-        // opaque by the time the queue is expanded (so no artwork bleeds
-        // through during the slide-up). The queue sheet itself is also opaque
-        // (queueSurfaceColor passed as its backgroundColor with
-        // opaqueBackground = true in Queue.kt), so the queue sheet area is
-        // solid too.
+        // IMPORTANT: we cannot use Modifier.background(color).graphicsLayer {
+        // alpha = ... } here — in Compose, `background` draws OUTSIDE the
+        // graphicsLayer (the layer only wraps the content INSIDE it, not the
+        // background modifier to its left), so the background would stay at
+        // full opacity regardless of the graphicsLayer alpha. That bug made
+        // the entire player invisible because the opaque backdrop covered
+        // everything (Thumbnail, controls, etc.) even when the queue was
+        // collapsed (alpha = 0 had no effect on the background color).
+        //
+        // Instead, we use queueSurfaceColor.copy(alpha = ...) so the alpha is
+        // baked into the color itself. When the queue is collapsed
+        // (progress = 0), the color is fully transparent and the backdrop is
+        // invisible — the player's Thumbnail/controls/PlayerBackground are all
+        // visible normally. As the queue slides up (progress → 1), the
+        // backdrop fades in to fully opaque, covering the zoomed artwork in
+        // the exposed area above the queue sheet's top edge. The queue sheet
+        // itself is also opaque (queueSurfaceColor passed as its
+        // backgroundColor with opaqueBackground = true in Queue.kt).
         //
         // Apple-Music style is unaffected: it doesn't render PlayerBackground,
-        // and its queue morphs in-place via SharedTransitionLayout (the queue
-        // sheet's peek height is 0dp so it never slides). queueSheetState.progress
-        // stays 0 in Apple-Music style, so this Box stays invisible there.
+        // and its queue morphs in-place via SharedTransitionLayout (peek
+        // height = 0dp, so queueSheetState.progress stays 0 and this backdrop
+        // stays invisible).
         Box(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .background(queueSurfaceColor)
-                    .graphicsLayer { alpha = queueSheetState.progress.coerceIn(0f, 1f) },
+                    .background(
+                        queueSurfaceColor.copy(
+                            alpha = queueSurfaceColor.alpha * queueSheetState.progress.coerceIn(0f, 1f),
+                        ),
+                    ),
         )
 
         // Queue sheet — wrapped in AnimatedVisibility with slide+fade so it
