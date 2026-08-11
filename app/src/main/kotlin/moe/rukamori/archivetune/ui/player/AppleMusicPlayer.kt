@@ -26,10 +26,12 @@ import androidx.compose.animation.SharedTransitionScope.OverlayClip
 import androidx.compose.animation.BoundsTransform
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -1044,43 +1046,38 @@ fun AppleMusicPlayerContent(
                                                             largeSize = 400.dp,
                                                         ),
                                                     ),
-                                                // Use a tween-based bounds transform
-                                                // matching the crossfade duration
-                                                // (600ms) so the morph completes
-                                                // simultaneously with the fade-in/out.
+                                                // Snappy non-bouncy spring — restores
+                                                // the original morph feel that the
+                                                // 600ms tween replaced. StiffnessMediumLow
+                                                // is the SharedTransition framework
+                                                // default stiffness, so the duration
+                                                // matches the original out-of-the-box
+                                                // morph; DampingRatioNoBouncy eliminates
+                                                // the default LowBouncy overshoot that
+                                                // was causing per-frame OverlayClip
+                                                // re-renders (visible as a millisecond
+                                                // stutter during the bounds animation).
                                                 //
-                                                // PREVIOUS APPROACH: a spring with
-                                                // StiffnessMediumLow (~200ms) completed
-                                                // too fast, causing the overlay to
-                                                // reach its target bounds (mini size)
-                                                // while the LYRICS state was still at
-                                                // ~33% opacity. The dark COVER (also
-                                                // fading out at 200ms) was already gone,
-                                                // so the LYRICS state's pink blurred
-                                                // backdrop was visible at low opacity
-                                                // beside the overlay — perceived as a
-                                                // "pink flash at the end of the
-                                                // transition". Matching the crossfade
-                                                // duration (600ms tween) ensures the
-                                                // overlay stays present throughout the
-                                                // fade, and the COVER stays visible
-                                                // long enough to mask the pink backdrop.
-                                                //
-                                                // A tween is used instead of a spring
-                                                // because the spring's critically-damped
-                                                // duration is approximately
-                                                // 4/sqrt(stiffness) — getting ~600ms
-                                                // would require StiffnessVeryLow (50f),
-                                                // which feels sluggish on the
-                                                // reverse (LYRICS→COVER) direction.
-                                                // The tween gives precise duration
-                                                // control with FastOutSlowInEasing for
-                                                // a natural deceleration.
+                                                // PINK-FLASH SAFETY: the pink flash
+                                                // root cause was the ASYMMETRIC fade
+                                                // (fadeOut 200ms vs fadeIn 600ms) — the
+                                                // COVER disappeared at 200ms while the
+                                                // LYRICS state (with its pink backdrop)
+                                                // was still at ~33% opacity. That is
+                                                // fixed by the symmetric 600ms fades
+                                                // above (fadeIn + fadeOut both 600ms),
+                                                // which keep the dark COVER visible
+                                                // throughout the entire crossfade to
+                                                // mask the pink backdrop. The
+                                                // boundsTransform duration does NOT
+                                                // affect the pink flash — only the
+                                                // fade symmetry does — so reverting it
+                                                // to the fast spring is safe.
                                                 boundsTransform =
                                                     BoundsTransform { _, _ ->
-                                                        tween(
-                                                            durationMillis = 600,
-                                                            easing = FastOutSlowInEasing,
+                                                        spring(
+                                                            dampingRatio = Spring.DampingRatioNoBouncy,
+                                                            stiffness = Spring.StiffnessMediumLow,
                                                         )
                                                     },
                                             ),
@@ -2086,16 +2083,17 @@ private fun SharedTransitionScope.AppleMusicMiniHeader(
                                     largeSize = 400.dp,
                                 ),
                             ),
-                        // Tween-based bounds transform matching the crossfade
-                        // duration (600ms). See the COVER state's sharedBounds
-                        // modifier for the full rationale — the same timing is
-                        // used here so the morph feels identical in both
-                        // directions (COVER→LYRICS and LYRICS→COVER).
+                        // Match the COVER state's boundsTransform (non-bouncy
+                        // spring at default StiffnessMediumLow) so the morph
+                        // duration and feel are identical in both directions
+                        // and the overlay clip doesn't stutter on oscillation.
+                        // See the COVER state's sharedBounds modifier for the
+                        // full rationale (including pink-flash safety).
                         boundsTransform =
                             BoundsTransform { _, _ ->
-                                tween(
-                                    durationMillis = 600,
-                                    easing = FastOutSlowInEasing,
+                                spring(
+                                    dampingRatio = Spring.DampingRatioNoBouncy,
+                                    stiffness = Spring.StiffnessMediumLow,
                                 )
                             },
                     ),
