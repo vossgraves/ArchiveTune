@@ -281,6 +281,8 @@ import moe.rukamori.archivetune.playback.PlayerConnection
 import moe.rukamori.archivetune.playback.queues.ListQueue
 import moe.rukamori.archivetune.playback.queues.Queue
 import moe.rukamori.archivetune.playback.queues.YouTubeQueue
+import moe.rukamori.archivetune.qobuz.QobuzAudioProvider
+import moe.rukamori.archivetune.utils.PoolAccountManager
 import moe.rukamori.archivetune.ui.component.BottomSheetMenu
 import moe.rukamori.archivetune.ui.component.BottomSheetPage
 import moe.rukamori.archivetune.ui.component.COLLAPSED_ANCHOR
@@ -492,6 +494,32 @@ class MainActivity : ComponentActivity() {
             )
         playPendingDeepLinkQueueIfReady()
         openPendingAodModeIfReady()
+
+        // Qobuz cache staleness fix: clear the transient failure cache and
+        // instance cooldowns on app foreground so Qobuz is retried without
+        // requiring a force-stop. Also clear the resolved-sources record
+        // for the currently-playing song so the "Play from" source picker
+        // reflects fresh availability.
+        //
+        // Root cause: QobuzAudioProvider.failureCache (10-min TTL) and
+        // instanceCooldownUntilMs (up to 10-min) are process-lived. When
+        // the user backgrounded the app and came back, these caches were
+        // still live, so Qobuz resolution returned null immediately
+        // without retrying. Force-stop cleared the process (and all
+        // in-memory caches), which is why re-opening the app fixed it.
+        // This provides the same cache-clearing effect without force-stop.
+        QobuzAudioProvider.clearTransientCaches()
+        playerConnection?.service?.let { service ->
+            val currentMediaId = playerConnection?.mediaMetadata?.value?.id
+            service.clearResolvedSources(currentMediaId)
+        }
+
+        // Refresh pool accounts in the background (non-forced — respects
+        // the 30-min throttle). This ensures Qobuz tokens are fresh when
+        // the user returns to the app, without hammering the pool API.
+        lifecycleScope.launch(Dispatchers.IO) {
+            runCatching { PoolAccountManager.refresh(this@MainActivity, force = false) }
+        }
     }
 
     private fun safeUnbindMusicService() {

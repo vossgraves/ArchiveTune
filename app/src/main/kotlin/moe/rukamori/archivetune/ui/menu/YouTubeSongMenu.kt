@@ -388,18 +388,10 @@ fun YouTubeSongMenu(
                         playerConnection.addToQueue(song.toMediaItem())
                     },
                 ),
-                NewAction(
-                    icon = {
-                        Icon(
-                            painter = painterResource(R.drawable.playlist_add),
-                            contentDescription = null,
-                            modifier = Modifier.size(28.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    },
-                    text = addToPlaylistText,
-                    onClick = { showChoosePlaylistDialog = true },
-                ),
+                // "Add to playlist" used to be a box-pill chip here.
+                // Moved to list-item form below — it now appears as a
+                // ListItem in the same MenuSurfaceSection as
+                // "Pin to speed dial", per user request.
                 NewAction(
                     icon = {
                         Icon(
@@ -520,43 +512,65 @@ fun YouTubeSongMenu(
 
         item {
             MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
-                ListItem(
-                    headlineContent = {
-                        Text(
-                            text =
-                                stringResource(
-                                    if (isInSpeedDial) {
-                                        R.string.remove_from_speed_dial
-                                    } else {
-                                        R.string.pin_to_speed_dial
-                                    },
-                                ),
-                        )
-                    },
-                    leadingContent = {
-                        Icon(
-                            painter = painterResource(if (isInSpeedDial) R.drawable.bookmark_filled else R.drawable.bookmark),
-                            contentDescription = null,
-                        )
-                    },
-                    modifier =
-                        Modifier.clickable {
-                            coroutineScope.launch {
-                                if (!isInSpeedDial) {
-                                    withContext(Dispatchers.IO) {
-                                        database.transaction {
-                                            insert(song.toMediaMetadata())
+                Column {
+                    ListItem(
+                        headlineContent = { Text(text = stringResource(R.string.add_to_playlist)) },
+                        leadingContent = {
+                            Icon(
+                                painter = painterResource(R.drawable.playlist_add),
+                                contentDescription = null,
+                            )
+                        },
+                        modifier =
+                            Modifier.clickable {
+                                showChoosePlaylistDialog = true
+                            },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    )
+
+                    HorizontalDivider(
+                        modifier = Modifier.padding(start = 56.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant,
+                    )
+
+                    ListItem(
+                        headlineContent = {
+                            Text(
+                                text =
+                                    stringResource(
+                                        if (isInSpeedDial) {
+                                            R.string.remove_from_speed_dial
+                                        } else {
+                                            R.string.pin_to_speed_dial
+                                        },
+                                    ),
+                            )
+                        },
+                        leadingContent = {
+                            Icon(
+                                painter = painterResource(if (isInSpeedDial) R.drawable.bookmark_filled else R.drawable.bookmark),
+                                contentDescription = null,
+                            )
+                        },
+                        modifier =
+                            Modifier.clickable {
+                                coroutineScope.launch {
+                                    if (!isInSpeedDial) {
+                                        withContext(Dispatchers.IO) {
+                                            database.transaction {
+                                                insert(song.toMediaMetadata())
+                                            }
                                         }
                                     }
-                                }
 
-                                val updatedPins = toggleSpeedDialPin(speedDialPins, songPin)
-                                onSpeedDialSongIdsChange(serializeSpeedDialPins(updatedPins))
-                                onDismiss()
-                            }
-                        },
-                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                )
+                                    val updatedPins = toggleSpeedDialPin(speedDialPins, songPin)
+                                    onSpeedDialSongIdsChange(serializeSpeedDialPins(updatedPins))
+                                    onDismiss()
+                                }
+                            },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    )
+                }
             }
         }
 

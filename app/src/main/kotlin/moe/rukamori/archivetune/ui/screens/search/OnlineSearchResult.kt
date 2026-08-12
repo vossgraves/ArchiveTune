@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -74,6 +75,7 @@ import moe.rukamori.archivetune.innertube.models.AlbumItem
 import moe.rukamori.archivetune.innertube.models.ArtistItem
 import moe.rukamori.archivetune.innertube.models.PlaylistItem
 import moe.rukamori.archivetune.innertube.models.SongItem
+import moe.rukamori.archivetune.innertube.models.WatchEndpoint
 import moe.rukamori.archivetune.innertube.models.YTItem
 import moe.rukamori.archivetune.innertube.pages.SearchSummary
 import moe.rukamori.archivetune.models.toMediaMetadata
@@ -227,15 +229,11 @@ fun OnlineSearchResult(
                                     if (item.id == mediaMetadata?.id) {
                                         playerConnection.player.togglePlayPause()
                                     } else {
-                                        // Use radio (followAutomixPreview = true) so the
-                                        // queue auto-populates with related songs —
-                                        // matching the suggestions dropdown behavior in
-                                        // OnlineSearchScreen.kt. The plain YouTubeQueue
-                                        // constructor (followAutomixPreview = false) only
-                                        // returned the tapped song with no upcoming items,
-                                        // leaving the queue empty after search.
                                         playerConnection.playQueue(
-                                            YouTubeQueue.radio(item.toMediaMetadata()),
+                                            YouTubeQueue(
+                                                WatchEndpoint(videoId = item.id),
+                                                item.toMediaMetadata(),
+                                            ),
                                         )
                                     }
                                 }
@@ -270,7 +268,14 @@ fun OnlineSearchResult(
             shadowElevation = 1.dp,
             modifier =
                 Modifier
-                    .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Top).add(WindowInsets(top = AppBarHeight)))
+                    // Use safeDrawing (not systemBars) so the chips row stays
+                    // below the notch/cutout even when the status bar is hidden
+                    // (e.g., an item overflow menu is open on the search results
+                    // page, which flips shouldHideStatusBars to true). When the
+                    // status bar is hidden, systemBars reports 0 top inset and
+                    // the chips row would float into the cutout. safeDrawing
+                    // always reports the cutout-safe area.
+                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top).add(WindowInsets(top = AppBarHeight)))
                     .fillMaxWidth(),
         ) {
             ChipsRow(

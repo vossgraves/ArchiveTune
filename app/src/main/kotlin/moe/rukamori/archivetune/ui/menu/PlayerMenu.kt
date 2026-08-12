@@ -477,6 +477,22 @@ fun PlayerMenu(
         )
     }
 
+    var showSaveCanvasDialog by rememberSaveable { mutableStateOf(false) }
+
+    if (showSaveCanvasDialog) {
+        SaveCanvasDialog(
+            mediaId = mediaMetadata.id,
+            songTitle = mediaMetadata.title,
+            artistName = mediaMetadata.artists.joinToString(separator = ", ") { it.name },
+            albumTitle = mediaMetadata.album?.title,
+            storefront = remember {
+                val country = java.util.Locale.getDefault().country
+                if (country.length == 2) country.lowercase(java.util.Locale.ROOT) else "us"
+            },
+            onDismiss = { showSaveCanvasDialog = false },
+        )
+    }
+
     val nowPlayingTitle =
         remember(mediaMetadata.title) {
             mediaMetadata.title.ifBlank { context.getString(R.string.no_title) }
@@ -663,48 +679,13 @@ fun PlayerMenu(
                                     ),
                                 )
                             }
-                            add(
-                                NewAction(
-                                    icon = {
-                                        Icon(
-                                            painter = painterResource(R.drawable.playlist_add),
-                                            contentDescription = null,
-                                            modifier = Modifier.size(28.dp),
-                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        )
-                                    },
-                                    text = stringResource(R.string.add_to_playlist),
-                                    onClick = { showChoosePlaylistDialog = true },
-                                ),
-                            )
-                            add(
-                                NewAction(
-                                    icon = {
-                                        Icon(
-                                            painter =
-                                                painterResource(
-                                                    if (isInSpeedDial) R.drawable.bookmark_filled else R.drawable.bookmark,
-                                                ),
-                                            contentDescription = null,
-                                            modifier = Modifier.size(28.dp),
-                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        )
-                                    },
-                                    text =
-                                        stringResource(
-                                            if (isInSpeedDial) {
-                                                R.string.remove_from_speed_dial
-                                            } else {
-                                                R.string.pin_to_speed_dial
-                                            },
-                                        ),
-                                    onClick = {
-                                        val updatedPins = toggleSpeedDialPin(speedDialPins, songPin)
-                                        onSpeedDialSongIdsChange(serializeSpeedDialPins(updatedPins))
-                                        onDismiss()
-                                    },
-                                ),
-                            )
+                            // "Add to playlist" and "Pin to speed dial" used to be
+                            // box-pill chips here in the NewActionGrid. Moved to
+                            // list-item form below per user request — they now
+                            // appear as ListItems in their own MenuSurfaceSection
+                            // right after the chips section, matching the visual
+                            // style of "View artist" / "View album" / "Download"
+                            // / "Details" / etc.
                             add(
                                 if (isLocalMedia) {
                                     NewAction(
@@ -797,6 +778,104 @@ fun PlayerMenu(
                         },
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
                 )
+            }
+        }
+        item {
+            Spacer(modifier = Modifier.height(12.dp))
+        }
+        // "Save Canvas" — list-item form. Shown only when canvas artwork is
+        // available for the current song. Tapping opens the SaveCanvasDialog
+        // which lets the user pick from all available canvas sources (Spotify
+        // Canvas / Apple Music) and saves the chosen video to
+        // Movies/ArchiveTune Canvas/ via MediaStore.
+        if (
+            !isLocalMedia &&
+            isQueueTrigger != true &&
+            archiveTuneCanvasEnabled &&
+            !lowDataModeActive &&
+            playerDesignStyle != PlayerDesignStyle.V5 &&
+            hasCanvasArtwork
+        ) {
+            item {
+                MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+                    ListItem(
+                        headlineContent = { Text(text = stringResource(R.string.save_canvas)) },
+                        leadingContent = {
+                            Icon(
+                                painter = painterResource(R.drawable.motion_photos_on),
+                                contentDescription = null,
+                            )
+                        },
+                        modifier =
+                            Modifier.clickable {
+                                showSaveCanvasDialog = true
+                            },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    )
+                }
+            }
+            item {
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+        }
+        // "Add to playlist" and "Pin to speed dial" — converted from
+        // box-pill chips (in the NewActionGrid above) to ListItem form
+        // per user request. They now appear in their own MenuSurfaceSection
+        // with the same visual style as the other list items below.
+        item {
+            MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+                Column {
+                    ListItem(
+                        headlineContent = { Text(text = stringResource(R.string.add_to_playlist)) },
+                        leadingContent = {
+                            Icon(
+                                painter = painterResource(R.drawable.playlist_add),
+                                contentDescription = null,
+                            )
+                        },
+                        modifier =
+                            Modifier.clickable {
+                                showChoosePlaylistDialog = true
+                            },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    )
+
+                    HorizontalDivider(
+                        modifier = Modifier.padding(start = 56.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant,
+                    )
+
+                    ListItem(
+                        headlineContent = {
+                            Text(
+                                text =
+                                    stringResource(
+                                        if (isInSpeedDial) {
+                                            R.string.remove_from_speed_dial
+                                        } else {
+                                            R.string.pin_to_speed_dial
+                                        },
+                                    ),
+                            )
+                        },
+                        leadingContent = {
+                            Icon(
+                                painter =
+                                    painterResource(
+                                        if (isInSpeedDial) R.drawable.bookmark_filled else R.drawable.bookmark,
+                                    ),
+                                contentDescription = null,
+                            )
+                        },
+                        modifier =
+                            Modifier.clickable {
+                                val updatedPins = toggleSpeedDialPin(speedDialPins, songPin)
+                                onSpeedDialSongIdsChange(serializeSpeedDialPins(updatedPins))
+                                onDismiss()
+                            },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    )
+                }
             }
         }
         item {

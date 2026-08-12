@@ -46,8 +46,7 @@ object QobuzAudioProvider {
     private const val MIN_MATCH_SCORE = 60
     private const val SEARCH_CACHE_MS = 10 * 60 * 1000L
     private const val STREAM_CACHE_MS = 30 * 60 * 1000L
-    // A transient source-pool or proxy failure must not make Qobuz appear unavailable for ten minutes.
-    private const val FAILURE_CACHE_MS = 30_000L
+    private const val FAILURE_CACHE_MS = 10 * 60 * 1000L
     private const val INSTANCE_SOFT_COOLDOWN_MS = 60_000L
     private const val INSTANCE_HARD_COOLDOWN_MS = 600_000L
     private const val AUDIO_FLAC_MIME_TYPE = "audio/flac"
@@ -82,21 +81,7 @@ object QobuzAudioProvider {
     /** Replaces the active direct-API token list. Duplicates (by token string) are dropped. */
     fun setTokens(newTokens: List<QobuzToken>) {
         val seen = LinkedHashSet<String>()
-        val normalized = newTokens.filter { it.token.isNotBlank() && seen.add(it.token) }
-        if (tokens != normalized) {
-            tokens = normalized
-            invalidateResolutionCache()
-        }
-    }
-
-    /**
-     * Clears per-track resolution results after runtime source configuration changes. This prevents
-     * an early failed lookup, made before Source Pool data finished loading, from masking a now
-     * available lossless Qobuz stream until the process is restarted.
-     */
-    fun invalidateResolutionCache() {
-        streamCache.clear()
-        failureCache.clear()
+        tokens = newTokens.filter { it.token.isNotBlank() && seen.add(it.token) }
     }
 
     /**
@@ -159,16 +144,12 @@ object QobuzAudioProvider {
     /** Replaces the active instance list. Invalid/duplicate URLs are dropped. Empty stays empty. */
     fun setInstances(baseUrls: List<String>) {
         val seen = LinkedHashSet<String>()
-        val updated =
+        instances =
             baseUrls.mapNotNull { raw ->
                 val normalized = normalizeInstanceUrl(raw) ?: return@mapNotNull null
                 if (!seen.add(normalized)) return@mapNotNull null
                 Instance(instanceLabel(normalized), normalized)
             }
-        if (instances != updated) {
-            instances = updated
-            invalidateResolutionCache()
-        }
     }
 
     // Community Source Pool discovery feed ({ streaming, api } shape) for Qobuz, derived from the
@@ -212,21 +193,7 @@ object QobuzAudioProvider {
                 }
                 val request = builder.get().build()
                 healthClient.newCall(request).execute().use { response ->
-                    if (!response.isSuccessful) {
-                        // Make 401 visible: the pool rejects unauthenticated reads with HTTP 401
-                        // and an empty body, which otherwise looks identical to a healthy pool
-                        // with no instances contributed.
-                        if (response.code == 401) {
-                            Timber
-                                .tag("QobuzHealth")
-                                .w(
-                                    "Pool discovery %s rejected as unauthorized (HTTP 401); " +
-                                        "SOURCE_PROVIDER_KEY is missing or invalid for this build.",
-                                    source,
-                                )
-                        }
-                        return@use
-                    }
+                    if (!response.isSuccessful) return@use
                     val body = response.body?.string().orEmpty()
                     if (body.isBlank()) return@use
                     val obj = JSONObject(body)
@@ -492,6 +459,30 @@ object QobuzAudioProvider {
         failureCache.remove(key)
     }
 
+    /**
+     * Clears the transient (process-lived) failure cache and per-instance
+     * cooldowns. Called on app foreground (MainActivity.onStart) so that
+     * stale failure entries from a previous session don't prevent Qobuz
+     * from being retried.
+     *
+     * Root cause of the "Qobuz not available until force-stop" bug:
+     * [failureCache] has a 10-minute TTL, and [instanceCooldownUntilMs]
+     * can last up to 10 minutes for hard cooldowns. When the user
+     * backgrounded the app and came back, these caches were still live,
+     * so Qobuz resolution returned null immediately without retrying.
+     * Force-stop cleared the process and all in-memory caches, which is
+     * why re-opening the app fixed it. This function provides the same
+     * cache-clearing effect without requiring a force-stop.
+     *
+     * Does NOT clear [streamCache] (successful stream resolutions) or
+     * [searchCache] (successful search results) — those are positive
+     * caches and clearing them would just cause unnecessary re-fetches.
+     */
+    fun clearTransientCaches() {
+        failureCache.clear()
+        instanceCooldownUntilMs.clear()
+    }
+
     // -------------------------------------------------------------------------
     // Search + download
     // -------------------------------------------------------------------------
@@ -507,117 +498,15 @@ object QobuzAudioProvider {
             if (cached.expiresAt > now) return cached.match
             searchCache.remove(key)
         }
-        val match = resolveTrackIdWithFallbacks(backend, query)
+        val searchQuery =
+            listOf(query.artists.firstOrNull()?.searchArtist().orEmpty(), query.title.searchTitle())
+                .filter { it.isNotBlank() }
+                .joinToString(" ")
+                .ifBlank { query.title }
+        val match = bestMatch(backend, searchQuery, query)
         searchCache[key] = CachedSearch(match, now + SEARCH_CACHE_MS)
         return match
     }
-
-    /**
-     * Tries a sequence of search queries against [backend] until one produces a
-     * match above [MIN_MATCH_SCORE].
-     *
-     * The primary query is `"{artist} {title}"` — same as before. When that
-     * returns nothing, we fall back to:
-     *
-     *  1. `"{title}"` alone — for songs whose YouTube-side artist name doesn't
-     *     match how Qobuz indexes the artist (e.g. YT has "Reira Ushio" but
-     *     Qobuz has "牛尾里的"). Forcing the artist into the query made Qobuz's
-     *     search return zero results, even though the track is on Qobuz.
-     *
-     *  2. `"{artist} {latin-only-title}"` — for bilingual YT titles like
-     *     "恋愛サーキュレーション - Renai Circulation", where Qobuz only has the
-     *     romaji side. The full bilingual search query confused Qobuz into
-     *     returning nothing.
-     *
-     *  3. `"{latin-only-title}"` alone — combination of 1 and 2 for the worst
-     *     case (bilingual title + artist name mismatch).
-     *
-     * Each fallback only runs when the previous one returned no match above
-     * threshold, so well-matched songs still resolve with a single search.
-     */
-    private fun resolveTrackIdWithFallbacks(backend: Backend, query: Query): Match? {
-        val artist = query.artists.firstOrNull()?.searchArtist().orEmpty()
-        val title = query.title.searchTitle()
-
-        // Primary: artist + full title.
-        val primaryQuery =
-            listOf(artist, title)
-                .filter { it.isNotBlank() }
-                .joinToString(" ")
-                .ifBlank { title }
-        bestMatch(backend, primaryQuery, query)?.let { return it }
-
-        // Fallback 1: title only (drop the artist).
-        if (artist.isNotBlank() && title.isNotBlank() && title != primaryQuery) {
-            bestMatch(backend, title, query)?.let { return it }
-        }
-
-        // Fallback 2: artist + Latin-only side of a bilingual title.
-        val latinTitle = title.latinOnlySubstring()
-        if (latinTitle.isNotBlank() && latinTitle != title) {
-            val latinWithArtist =
-                listOf(artist, latinTitle)
-                    .filter { it.isNotBlank() }
-                    .joinToString(" ")
-                    .ifBlank { latinTitle }
-            bestMatch(backend, latinWithArtist, query)?.let { return it }
-
-            // Fallback 3: Latin-only title alone.
-            if (artist.isNotBlank()) {
-                bestMatch(backend, latinTitle, query)?.let { return it }
-            }
-        }
-
-        return null
-    }
-
-    /**
-     * Extracts the Latin/ASCII portion of a bilingual title.
-     *
-     * YouTube Music commonly formats Japanese/Korean titles as
-     * `"原題 - Romaji Title"` or `"Romaji Title - 原題"`, separated by " - ".
-     * Qobuz typically indexes only ONE side (either the original script or the
-     * romaji), so searching with the full bilingual string often returns zero
-     * results. This helper returns just the Latin side when the title is
-     * bilingual, so we can retry the search with a Qobuz-friendly query.
-     *
-     * For titles that are entirely Latin or entirely CJK, this returns the
-     * Latin remainder after stripping CJK characters (possibly empty).
-     */
-    private fun String.latinOnlySubstring(): String {
-        // Try the " - " bilingual split first.
-        val dashSplit = split(" - ")
-        if (dashSplit.size == 2) {
-            val left = dashSplit[0].trim()
-            val right = dashSplit[1].trim()
-            val leftHasCJK = left.any { it.isCjk() }
-            val rightHasCJK = right.any { it.isCjk() }
-            if (leftHasCJK && !rightHasCJK && right.isNotEmpty()) return right
-            if (rightHasCJK && !leftHasCJK && left.isNotEmpty()) return left
-        }
-        // Fall back to stripping all CJK characters and returning the remainder.
-        return replace(CJK_STRIPPING_REGEX, " ")
-            .replace(Regex("\\s+"), " ")
-            .trim()
-    }
-
-    private fun Char.isCjk(): Boolean =
-        code in 0x3040..0x30ff || // Hiragana + Katakana
-            code in 0x3400..0x4dbf || // CJK Ext A
-            code in 0x4e00..0x9fff || // CJK Unified Ideographs
-            code in 0xf900..0xfaff || // CJK Compatibility Ideographs
-            code in 0xac00..0xd7af // Hangul Syllables
-
-    private val CJK_STRIPPING_REGEX =
-        Regex(
-            "[" +
-                "\\u3040-\\u30ff" +
-                "\\u3400-\\u4dbf" +
-                "\\u4e00-\\u9fff" +
-                "\\uf900-\\ufaff" +
-                "\\uac00-\\ud7af" +
-                "]+",
-        )
 
     /** Runs search and scores results against [query], returning the best match above threshold. */
     private fun bestMatch(
@@ -1053,33 +942,7 @@ object QobuzAudioProvider {
             ?.lowercase(Locale.US)
             ?.let { Normalizer.normalize(it, Normalizer.Form.NFD) }
             ?.replace(Regex("\\p{Mn}+"), "")
-            // Preserve CJK characters (Hiragana, Katakana, CJK Ideographs, Hangul,
-            // and fullwidth/halfwidth forms) instead of stripping them as noise.
-            //
-            // The previous pattern `[^a-z0-9]+` deleted every Japanese/Korean/
-            // Chinese character from the normalized form. When Qobuz returned a
-            // Japanese-only title (e.g. "恋愛サーキュレーション") for a song whose
-            // YouTube Music title was bilingual ("恋愛サーキュレーション - Renai Circulation"),
-            // the candidate title normalized to "" and `scoreMatch` returned
-            // `Int.MIN_VALUE` — so lossless matches silently failed for CJK songs
-            // that are actually available on Qobuz.
-            //
-            // Keeping CJK lets `significantTokens` produce real tokens for kana/kanji
-            // runs, so `tokenOverlap` can score Japanese-on-Japanese matches the same
-            // way it scores Latin-on-Latin.
-            ?.replace(
-                Regex(
-                    "[^a-z0-9" +
-                        "\\u3040-\\u30ff" + // Hiragana + Katakana (incl. extensions)
-                        "\\u3400-\\u4dbf" + // CJK Ext A
-                        "\\u4e00-\\u9fff" + // CJK Unified Ideographs
-                        "\\uf900-\\ufaff" + // CJK Compatibility Ideographs
-                        "\\uac00-\\ud7af" + // Hangul Syllables
-                        "\\uff00-\\uffef" + // Halfwidth/Fullwidth Forms (incl. fullwidth Latin)
-                        "]+",
-                ),
-                " ",
-            )
+            ?.replace(Regex("[^a-z0-9]+"), " ")
             ?.trim()
             .orEmpty()
 

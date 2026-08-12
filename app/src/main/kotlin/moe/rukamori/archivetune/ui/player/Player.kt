@@ -2457,7 +2457,7 @@ private fun MikoLyricsTransition(
         }
     }
     val progressState = progress.asState()
-    val showContent by remember {
+    val showContent by remember(visible) {
         derivedStateOf { visible || progressState.value > 0f }
     }
 
@@ -2468,7 +2468,13 @@ private fun MikoLyricsTransition(
                 modifier
                     .fillMaxSize()
                     .drawBehind {
-                        drawRect(Color.Black.copy(alpha = 0.32f * progressState.value.coerceIn(0f, 1f)))
+                        // Use drawRect's built-in alpha parameter instead of
+                        // Color.Black.copy(alpha = ...) — avoids allocating a
+                        // new Color object on every frame of the slide animation.
+                        drawRect(
+                            color = Color.Black,
+                            alpha = 0.32f * progressState.value.coerceIn(0f, 1f),
+                        )
                     },
         ) {
             Box(
