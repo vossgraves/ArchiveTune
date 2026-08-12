@@ -34,6 +34,8 @@
     <string name="most_played_songs">Most played songs</string>
     <string name="search">Search</string>
     <string name="voice_search">Voice search</string>
+    <string name="voice_search_unavailable">Voice search is not available on this device</string>
+    <string name="voice_search_permission_denied">Microphone permission is required for voice search</string>
     <string name="search_settings">Search settings</string>
     <string name="search_settings_empty">No settings match \u201c%1$s\u201d</string>
     <string name="clear_search">Clear search</string>
@@ -1595,4 +1597,11 @@
     <string name="export_format_unavailable_lossy_source">Source is lossy — exporting as FLAC would not add quality</string>
     <string name="export_format_redownload_lossless">Re-download as lossless, then export</string>
     <string name="export_format_redownload_lossless_description">Fetches a real lossless file from Qobuz or Tidal first</string>
+    <string name="save_canvas">Save Canvas</string>
+    <string name="canvas_source_title">Choose Canvas source</string>
+    <string name="canvas_saving">Saving Canvas…</string>
+    <string name="canvas_saved">Canvas saved to internal storage</string>
+    <string name="canvas_save_failed">Couldn’t save Canvas</string>
+    <string name="canvas_unavailable">No Canvas sources are available for this song</string>
+    <string name="undo_translation">Undo translation</string>
 </resources>

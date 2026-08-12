@@ -46,7 +46,8 @@ object QobuzAudioProvider {
     private const val MIN_MATCH_SCORE = 60
     private const val SEARCH_CACHE_MS = 10 * 60 * 1000L
     private const val STREAM_CACHE_MS = 30 * 60 * 1000L
-    private const val FAILURE_CACHE_MS = 10 * 60 * 1000L
+    // A transient source-pool or proxy failure must not make Qobuz appear unavailable for ten minutes.
+    private const val FAILURE_CACHE_MS = 30_000L
     private const val INSTANCE_SOFT_COOLDOWN_MS = 60_000L
     private const val INSTANCE_HARD_COOLDOWN_MS = 600_000L
     private const val AUDIO_FLAC_MIME_TYPE = "audio/flac"
@@ -81,7 +82,21 @@ object QobuzAudioProvider {
     /** Replaces the active direct-API token list. Duplicates (by token string) are dropped. */
     fun setTokens(newTokens: List<QobuzToken>) {
         val seen = LinkedHashSet<String>()
-        tokens = newTokens.filter { it.token.isNotBlank() && seen.add(it.token) }
+        val normalized = newTokens.filter { it.token.isNotBlank() && seen.add(it.token) }
+        if (tokens != normalized) {
+            tokens = normalized
+            invalidateResolutionCache()
+        }
+    }
+
+    /**
+     * Clears per-track resolution results after runtime source configuration changes. This prevents
+     * an early failed lookup, made before Source Pool data finished loading, from masking a now
+     * available lossless Qobuz stream until the process is restarted.
+     */
+    fun invalidateResolutionCache() {
+        streamCache.clear()
+        failureCache.clear()
     }
 
     /**
@@ -144,12 +159,16 @@ object QobuzAudioProvider {
     /** Replaces the active instance list. Invalid/duplicate URLs are dropped. Empty stays empty. */
     fun setInstances(baseUrls: List<String>) {
         val seen = LinkedHashSet<String>()
-        instances =
+        val updated =
             baseUrls.mapNotNull { raw ->
                 val normalized = normalizeInstanceUrl(raw) ?: return@mapNotNull null
                 if (!seen.add(normalized)) return@mapNotNull null
                 Instance(instanceLabel(normalized), normalized)
             }
+        if (instances != updated) {
+            instances = updated
+            invalidateResolutionCache()
+        }
     }
 
     // Community Source Pool discovery feed ({ streaming, api } shape) for Qobuz, derived from the

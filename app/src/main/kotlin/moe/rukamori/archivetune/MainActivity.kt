@@ -1187,14 +1187,40 @@ class MainActivity : ComponentActivity() {
                                 onSearch(voiceQuery)
                             }
                         }
+                    val launchSpeechRecognition: () -> Unit = {
+                        val speechIntent = createVoiceSearchIntent()
+                        if (speechIntent.resolveActivity(packageManager) == null) {
+                            android.widget.Toast
+                                .makeText(
+                                    this@MainActivity,
+                                    R.string.voice_search_unavailable,
+                                    android.widget.Toast.LENGTH_SHORT,
+                                ).show()
+                        } else {
+                            try {
+                                voiceSearchLauncher.launch(speechIntent)
+                            } catch (exception: ActivityNotFoundException) {
+                                reportException(exception)
+                                android.widget.Toast
+                                    .makeText(
+                                        this@MainActivity,
+                                        R.string.voice_search_unavailable,
+                                        android.widget.Toast.LENGTH_SHORT,
+                                    ).show()
+                            }
+                        }
+                    }
                     val microphonePermissionLauncher =
                         rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
                             if (granted) {
-                                try {
-                                    voiceSearchLauncher.launch(createVoiceSearchIntent())
-                                } catch (exception: ActivityNotFoundException) {
-                                    reportException(exception)
-                                }
+                                launchSpeechRecognition()
+                            } else {
+                                android.widget.Toast
+                                    .makeText(
+                                        this@MainActivity,
+                                        R.string.voice_search_permission_denied,
+                                        android.widget.Toast.LENGTH_SHORT,
+                                    ).show()
                             }
                         }
                     val launchVoiceSearch: () -> Unit = {
@@ -1204,11 +1230,7 @@ class MainActivity : ComponentActivity() {
                                 Manifest.permission.RECORD_AUDIO,
                             ) == PackageManager.PERMISSION_GRANTED
                         ) {
-                            try {
-                                voiceSearchLauncher.launch(createVoiceSearchIntent())
-                            } catch (exception: ActivityNotFoundException) {
-                                reportException(exception)
-                            }
+                            launchSpeechRecognition()
                         } else {
                             microphonePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                         }
@@ -2377,6 +2399,7 @@ class MainActivity : ComponentActivity() {
                                     AnimatedVisibility(
                                         visible =
                                             active ||
+                                                navBackStackEntry?.destination?.route == Screens.Home.route ||
                                                 navBackStackEntry?.destination?.route?.startsWith(OnlineSearchResultRoutePrefix) == true,
                                         enter = fadeIn(animationSpec = tween(durationMillis = if (disableAnimations) 0 else 300)),
                                         exit = fadeOut(animationSpec = tween(durationMillis = if (disableAnimations) 0 else 200)),
@@ -2494,6 +2517,21 @@ class MainActivity : ComponentActivity() {
                                                                     ),
                                                                 contentDescription = null,
                                                             )
+                                                        }
+                                                    } else if (currentRoute == Screens.Home.route && searchSource == SearchSource.ONLINE) {
+                                                        Row {
+                                                            IconButton(onClick = launchVoiceSearch) {
+                                                                Icon(
+                                                                    painter = painterResource(R.drawable.mic),
+                                                                    contentDescription = stringResource(R.string.voice_search),
+                                                                )
+                                                            }
+                                                            IconButton(onClick = { onActiveChange(true) }) {
+                                                                Icon(
+                                                                    painter = painterResource(R.drawable.language),
+                                                                    contentDescription = stringResource(R.string.search_yt_music),
+                                                                )
+                                                            }
                                                         }
                                                     } else if (currentRoute?.startsWith(OnlineSearchResultRoutePrefix) == true) {
                                                         OnlineSearchSortMenu(
@@ -2818,6 +2856,7 @@ class MainActivity : ComponentActivity() {
                                         disableAnimations,
                                         onClearUpdateBadge = { latestVersionName = BuildConfig.VERSION_NAME },
                                         onSearchQuery = onSearch,
+                                        onVoiceSearch = launchVoiceSearch,
                                         homeScrollConnection = homeScrollBehavior.nestedScrollConnection,
                                         searchScrollConnection = searchScrollBehavior.nestedScrollConnection,
                                         onlineSearchSort = onlineSearchSort,

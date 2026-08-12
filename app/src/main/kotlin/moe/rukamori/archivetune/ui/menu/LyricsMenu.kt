@@ -214,6 +214,7 @@ fun LyricsMenu(
     val isNetworkAvailable by viewModel.isNetworkAvailable.collectAsStateWithLifecycle()
     val lyricsSearchState by viewModel.lyricsSearchState.collectAsStateWithLifecycle()
     val isAiTranslating by viewModel.isAiTranslating.collectAsStateWithLifecycle()
+    val translationUndo by viewModel.translationUndo.collectAsStateWithLifecycle()
     val (aiProvider) = rememberEnumPreference(AiProviderKey, AiProvider.NONE)
     val (aiApiKey) = rememberPreference(AiApiKeyKey, "")
     val (aiCustomEndpoint) = rememberPreference(AiCustomEndpointKey, "")
@@ -223,6 +224,7 @@ fun LyricsMenu(
     val isTranslateEnabled =
         currentLyrics.isNotBlank() &&
             currentLyrics != LyricsEntity.LYRICS_NOT_FOUND
+    val canUndoTranslation = translationUndo?.mediaId == mediaMetadataProvider().id
     val isAiProviderConfigured = aiProvider != AiProvider.NONE
     val isAiTranslationEnabled =
         currentLyrics.isNotBlank() &&
@@ -756,6 +758,19 @@ fun LyricsMenu(
                                 text = stringResource(R.string.translate),
                                 onClick = { showTranslateDialog = true },
                                 enabled = isTranslateEnabled,
+                            ),
+                            NewAction(
+                                icon = {
+                                    Icon(
+                                        painter = painterResource(R.drawable.undo),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(28.dp),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                },
+                                text = stringResource(R.string.undo_translation),
+                                onClick = { viewModel.undoTranslation(mediaMetadataProvider().id) },
+                                enabled = canUndoTranslation,
                             ),
                             NewAction(
                                 icon = {

@@ -84,6 +84,13 @@ data class LyricsSearchResultUiModel(
     val isWordSynced: Boolean,
 )
 
+data class LyricsTranslationUndoSnapshot(
+    val mediaId: String,
+    val lyrics: String,
+    val source: String,
+    val providerName: String,
+)
+
 @HiltViewModel
 class LyricsMenuViewModel
     @Inject
@@ -103,6 +110,8 @@ class LyricsMenuViewModel
         private val _refetchCompletionEvents = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
         val refetchCompletionEvents: SharedFlow<Unit> = _refetchCompletionEvents.asSharedFlow()
         val isAiTranslating = MutableStateFlow(false)
+        private val _translationUndo = MutableStateFlow<LyricsTranslationUndoSnapshot?>(null)
+        val translationUndo: StateFlow<LyricsTranslationUndoSnapshot?> = _translationUndo.asStateFlow()
 
         private val _aiTranslationEvents = MutableSharedFlow<String>()
         val aiTranslationEvents: SharedFlow<String> = _aiTranslationEvents.asSharedFlow()
@@ -220,6 +229,9 @@ class LyricsMenuViewModel
             providerName: String = "",
         ) {
             viewModelScope.launch(Dispatchers.IO) {
+                if (source == LyricsEntity.Source.AI_TRANSLATION) {
+                    captureLyricsBeforeTranslation(mediaMetadata.id)
+                }
                 val lyricsToSave =
                     when (source) {
                         LyricsEntity.Source.REMOTE,
@@ -277,13 +289,10 @@ class LyricsMenuViewModel
                                 lyrics = lyrics,
                                 targetLanguage = targetLanguage.ifBlank { "ENGLISH" },
                             )
-                        database.query {
-                            replaceLyrics(
-                                id = mediaMetadata.id,
-                                lyrics = translatedLyrics,
-                                source = LyricsEntity.Source.AI_TRANSLATION.value,
-                            )
-                        }
+                        saveTranslatedLyrics(
+                            mediaId = mediaMetadata.id,
+                            lyrics = translatedLyrics,
+                        )
                         Log.d(TAG, "AI translate success: song=${mediaMetadata.title} automatic=$isAutomatic")
                         if (!isAutomatic) {
                             val msg = context.getString(R.string.translation_success)
@@ -319,6 +328,45 @@ class LyricsMenuViewModel
             aiTranslationJob?.cancel()
             aiTranslationJob = null
             isAiTranslating.value = false
+        }
+
+        fun undoTranslation(mediaId: String) {
+            viewModelScope.launch(Dispatchers.IO) {
+                val snapshot = _translationUndo.value?.takeIf { it.mediaId == mediaId } ?: return@launch
+                database.query {
+                    replaceLyrics(
+                        id = snapshot.mediaId,
+                        lyrics = snapshot.lyrics,
+                        source = snapshot.source,
+                        providerName = snapshot.providerName,
+                    )
+                }
+                _translationUndo.value = null
+            }
+        }
+
+        private suspend fun captureLyricsBeforeTranslation(mediaId: String) {
+            if (_translationUndo.value?.mediaId == mediaId) return
+            val existing = database.query { getLyricsById(mediaId) } ?: return
+            if (existing.source == LyricsEntity.Source.AI_TRANSLATION.value) return
+            _translationUndo.value =
+                LyricsTranslationUndoSnapshot(
+                    mediaId = existing.id,
+                    lyrics = existing.lyrics,
+                    source = existing.source,
+                    providerName = existing.providerName,
+                )
+        }
+
+        private suspend fun saveTranslatedLyrics(mediaId: String, lyrics: String) {
+            captureLyricsBeforeTranslation(mediaId)
+            database.query {
+                replaceLyrics(
+                    id = mediaId,
+                    lyrics = lyrics,
+                    source = LyricsEntity.Source.AI_TRANSLATION.value,
+                )
+            }
         }
 
         private fun LyricsResult.toUiModel(index: Int): LyricsSearchResultUiModel {

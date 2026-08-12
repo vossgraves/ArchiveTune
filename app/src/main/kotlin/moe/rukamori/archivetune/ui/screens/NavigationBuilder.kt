@@ -109,6 +109,7 @@ fun NavGraphBuilder.navigationBuilder(
     disableAnimations: Boolean = false,
     onClearUpdateBadge: () -> Unit = {},
     onSearchQuery: (String) -> Unit = {},
+    onVoiceSearch: () -> Unit = {},
     homeScrollConnection: NestedScrollConnection? = null,
     searchScrollConnection: NestedScrollConnection? = null,
     onlineSearchSort: OnlineSearchSort = OnlineSearchSort.DEFAULT,
@@ -125,6 +126,7 @@ fun NavGraphBuilder.navigationBuilder(
         SearchScreen(
             navController = navController,
             onSearchQuery = onSearchQuery,
+            onVoiceSearch = onVoiceSearch,
             headerScrollConnection = searchScrollConnection,
         )
     }
