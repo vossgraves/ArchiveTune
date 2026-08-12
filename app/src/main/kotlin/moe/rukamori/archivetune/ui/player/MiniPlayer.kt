@@ -64,11 +64,14 @@ import moe.rukamori.archivetune.constants.SwipeSensitivityKey
 import moe.rukamori.archivetune.playback.artwork.PlayerPaletteCacheKey
 import moe.rukamori.archivetune.playback.artwork.guessArtworkProvider
 import moe.rukamori.archivetune.ui.component.LocalNavigationBarBackdrop
+import moe.rukamori.archivetune.ui.component.LocalLiquidGlassBackdrop
+import moe.rukamori.archivetune.ui.component.liquidGlass
 import moe.rukamori.archivetune.ui.component.rememberPreSFrostedBitmap
 import moe.rukamori.archivetune.ui.theme.PlayerColorExtractor
 import moe.rukamori.archivetune.ui.theme.PlayerPaletteCache
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
+import moe.rukamori.archivetune.utils.isLowEndDevice
 import kotlin.math.roundToInt
 
 @Composable
@@ -113,7 +116,8 @@ private fun NewMiniPlayer(
     }
     var hasValidPalette by remember { mutableStateOf(false) }
     val fallbackColor = MaterialTheme.colorScheme.surface.toArgb()
-    // Only the artwork-derived styles need palette extraction; THEME and FROSTED don't.
+    // Only the artwork-derived styles need palette extraction; THEME, FROSTED and
+    // LIQUID_GLASS don't.
     val shouldUseArtworkBackground =
         miniPlayerBackgroundStyle == MiniPlayerBackgroundStyle.GRADIENT ||
             miniPlayerBackgroundStyle == MiniPlayerBackgroundStyle.GLOW
@@ -213,8 +217,18 @@ private fun NewMiniPlayer(
         remember(gradientColors) {
             MiniPlayerBackgroundPalette.from(gradientColors)
         }
+    val liquidGlassMaster by rememberPreference(
+        moe.rukamori.archivetune.constants.LiquidGlassEnabledKey,
+        defaultValue = false,
+    )
     val effectiveBackgroundStyle =
         when {
+            miniPlayerBackgroundStyle == MiniPlayerBackgroundStyle.LIQUID_GLASS && !liquidGlassMaster ->
+                MiniPlayerBackgroundStyle.THEME
+            miniPlayerBackgroundStyle == MiniPlayerBackgroundStyle.LIQUID_GLASS &&
+                Build.VERSION.SDK_INT < Build.VERSION_CODES.S -> MiniPlayerBackgroundStyle.THEME
+            miniPlayerBackgroundStyle == MiniPlayerBackgroundStyle.LIQUID_GLASS ->
+                MiniPlayerBackgroundStyle.LIQUID_GLASS
             miniPlayerBackgroundStyle == MiniPlayerBackgroundStyle.FROSTED -> MiniPlayerBackgroundStyle.FROSTED
             shouldUseArtworkBackground && backgroundPalette != null -> miniPlayerBackgroundStyle
             else -> MiniPlayerBackgroundStyle.THEME
@@ -224,7 +238,8 @@ private fun NewMiniPlayer(
         rememberMiniPlayerContentColors(
             useArtworkBackground =
                 effectiveBackgroundStyle == MiniPlayerBackgroundStyle.GRADIENT ||
-                    effectiveBackgroundStyle == MiniPlayerBackgroundStyle.GLOW,
+                    effectiveBackgroundStyle == MiniPlayerBackgroundStyle.GLOW ||
+                    effectiveBackgroundStyle == MiniPlayerBackgroundStyle.LIQUID_GLASS,
         )
     val miniPlayerShape =
         remember(isPairedWithNavigation) {
@@ -331,18 +346,6 @@ private fun rememberMiniPlayerContentColors(useArtworkBackground: Boolean): Mini
 private const val FrostedMiniPlayerBlurRadiusPx = 60f
 private const val FrostedMiniPlayerOverlayAlpha = 0.30f
 
-// Hoisted to file level — BlurEffect is a constant (same radius + edge
-// treatment every frame), so we avoid allocating a new BlurEffect on every
-// recomposition of the mini-player. The mini-player recomposes frequently
-// (playback state changes, position updates, scrolling), so this was a
-// steady source of RenderEffect allocations.
-private val FrostedMiniPlayerBlurEffect =
-    BlurEffect(
-        radiusX = FrostedMiniPlayerBlurRadiusPx,
-        radiusY = FrostedMiniPlayerBlurRadiusPx,
-        edgeTreatment = TileMode.Clamp,
-    )
-
 @Composable
 private fun MiniPlayerBackground(
     style: MiniPlayerBackgroundStyle,
@@ -356,6 +359,8 @@ private fun MiniPlayerBackground(
     val isPreS = Build.VERSION.SDK_INT < Build.VERSION_CODES.S
     val effectiveStyle = if (isPreS && style == MiniPlayerBackgroundStyle.FROSTED) {
         MiniPlayerBackgroundStyle.THEME
+    } else if (isPreS && style == MiniPlayerBackgroundStyle.LIQUID_GLASS) {
+        MiniPlayerBackgroundStyle.THEME
     } else {
         style
     }
@@ -366,14 +371,27 @@ private fun MiniPlayerBackground(
             )
         }
 
+        MiniPlayerBackgroundStyle.LIQUID_GLASS -> {
+            val liquidGlassBackdrop = LocalLiquidGlassBackdrop.current
+            val baseColor = MaterialTheme.colorScheme.surfaceContainerHigh
+            if (liquidGlassBackdrop != null) {
+                Box(
+                    modifier =
+                        modifier.liquidGlass(
+                            backdrop = liquidGlassBackdrop,
+                            shape = MaterialTheme.shapes.extraLarge,
+                            interactive = false,
+                            baseColor = baseColor,
+                        ),
+                )
+            } else {
+                Box(
+                    modifier = modifier.background(baseColor),
+                )
+            }
+        }
+
         MiniPlayerBackgroundStyle.FROSTED -> {
-            // Same frosted-glass recipe as the navigation bar: an always-opaque surface with the
-            // captured app content blurred and composited on top at a bounded alpha. On Android
-            // 12+ this uses RenderEffect (every frame, hardware-accelerated). Below API 31
-            // RenderEffect is unavailable, so we fall back to a periodically captured + CPU-blurred
-            // bitmap (see [rememberPreSFrostedBitmap]) — same approach as the moving-blur lyrics
-            // background. When no backdrop capture is available (rail layouts), the plain theme
-            // surface is shown.
             val backdrop = LocalNavigationBarBackdrop.current
             val baseColor = MaterialTheme.colorScheme.surfaceContainerHigh
             if (backdrop == null) {
@@ -390,6 +408,7 @@ private fun MiniPlayerBackground(
                     barPositionInRoot = positionInRoot,
                     barSize = miniPlayerSize,
                     blurRadiusPx = FrostedMiniPlayerBlurRadiusPx,
+                    updateIntervalMs = if (LocalContext.current.isLowEndDevice()) 160L else 80L,
                 )
                 Box(
                     modifier =
@@ -427,7 +446,12 @@ private fun MiniPlayerBackground(
                             Modifier
                                 .fillMaxSize()
                                 .graphicsLayer {
-                                    renderEffect = FrostedMiniPlayerBlurEffect
+                                    renderEffect =
+                                        BlurEffect(
+                                            radiusX = FrostedMiniPlayerBlurRadiusPx,
+                                            radiusY = FrostedMiniPlayerBlurRadiusPx,
+                                            edgeTreatment = TileMode.Clamp,
+                                        )
                                     alpha = FrostedMiniPlayerOverlayAlpha
                                     clip = true
                                 }.drawBehind {
