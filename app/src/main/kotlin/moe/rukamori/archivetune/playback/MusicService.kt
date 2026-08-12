@@ -8334,27 +8334,33 @@ class MusicService :
     }
 
     private fun resolveMediaItemForCast(mediaItem: MediaItem): MediaItem {
-        val uri = mediaItem.localConfiguration?.uri ?: return mediaItem
+        val localConfiguration = mediaItem.localConfiguration ?: return mediaItem
+        val uri = localConfiguration.uri
         if (uri.shouldBypassYouTubeResolver()) return mediaItem
+        val mediaId = localConfiguration.customCacheKey ?: mediaItem.mediaId
         val dataSpec =
             DataSpec
                 .Builder()
                 .setUri(uri)
-                .setKey(mediaItem.localConfiguration?.customCacheKey ?: mediaItem.mediaId)
+                .setKey(mediaId)
                 .build()
         val resolvedDataSpec =
             resolvePlaybackDataSpec(
                 dataSpec = dataSpec,
                 allowCacheShortCircuit = false,
             )
-        return if (resolvedDataSpec.uri == uri) {
-            mediaItem
-        } else {
-            mediaItem
-                .buildUpon()
-                .setUri(resolvedDataSpec.uri)
-                .build()
-        }
+        val resolvedMimeType =
+            localConfiguration.mimeType
+                ?.substringBefore(";")
+                ?.takeIf { it.isNotBlank() && !it.endsWith("/*") }
+                ?: runBlocking(Dispatchers.IO) {
+                    database.format(mediaId).first()?.mimeType?.substringBefore(";")
+                }
+        return mediaItem
+            .buildUpon()
+            .setUri(resolvedDataSpec.uri)
+            .apply { resolvedMimeType?.let(::setMimeType) }
+            .build()
     }
 
     private fun parseTidalAudioQuality(): TidalAudioQuality {
