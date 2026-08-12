@@ -33,6 +33,7 @@
     <string name="last_week">Last week</string>
     <string name="most_played_songs">Most played songs</string>
     <string name="search">Search</string>
+    <string name="voice_search">Voice search</string>
     <string name="search_settings">Search settings</string>
     <string name="search_settings_empty">No settings match \u201c%1$s\u201d</string>
     <string name="clear_search">Clear search</string>

@@ -9,12 +9,15 @@
 
 package moe.rukamori.archivetune
 
+import android.Manifest
 import android.annotation.SuppressLint
+import android.app.ActivityNotFoundException
 import android.app.PictureInPictureParams
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
+import android.speech.RecognizerIntent
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.net.Uri
@@ -29,7 +32,9 @@ import android.view.WindowManager
 import android.webkit.MimeTypeMap
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.DrawableRes
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.AnimatedVisibility
@@ -166,6 +171,7 @@ import androidx.compose.ui.util.fastForEach
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.zIndex
+import androidx.core.content.ContextCompat
 import androidx.core.content.IntentCompat
 import androidx.core.net.toUri
 import androidx.core.view.WindowCompat
@@ -1156,6 +1162,55 @@ class MainActivity : ComponentActivity() {
                                     insert(SearchHistory(query = it))
                                 }
                             }
+                        }
+                    }
+
+                    val createVoiceSearchIntent: () -> Intent = {
+                        Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                            putExtra(
+                                RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                                RecognizerIntent.LANGUAGE_MODEL_FREE_FORM,
+                            )
+                            putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toLanguageTag())
+                        }
+                    }
+                    val voiceSearchLauncher =
+                        rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+                            val voiceQuery =
+                                result.data
+                                    ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+                                    ?.firstOrNull()
+                                    ?.trim()
+                                    .orEmpty()
+                            if (voiceQuery.isNotEmpty()) {
+                                onQueryChange(TextFieldValue(voiceQuery))
+                                onSearch(voiceQuery)
+                            }
+                        }
+                    val microphonePermissionLauncher =
+                        rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+                            if (granted) {
+                                try {
+                                    voiceSearchLauncher.launch(createVoiceSearchIntent())
+                                } catch (exception: ActivityNotFoundException) {
+                                    reportException(exception)
+                                }
+                            }
+                        }
+                    val launchVoiceSearch: () -> Unit = {
+                        if (
+                            ContextCompat.checkSelfPermission(
+                                this@MainActivity,
+                                Manifest.permission.RECORD_AUDIO,
+                            ) == PackageManager.PERMISSION_GRANTED
+                        ) {
+                            try {
+                                voiceSearchLauncher.launch(createVoiceSearchIntent())
+                            } catch (exception: ActivityNotFoundException) {
+                                reportException(exception)
+                            }
+                        } else {
+                            microphonePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                         }
                     }
 
@@ -2395,6 +2450,12 @@ class MainActivity : ComponentActivity() {
                                             trailingIcon = {
                                                 Row {
                                                     if (active) {
+                                                        IconButton(onClick = launchVoiceSearch) {
+                                                            Icon(
+                                                                painter = painterResource(R.drawable.mic),
+                                                                contentDescription = stringResource(R.string.voice_search),
+                                                            )
+                                                        }
                                                         if (query.text.isNotEmpty()) {
                                                             IconButton(
                                                                 onClick = {
