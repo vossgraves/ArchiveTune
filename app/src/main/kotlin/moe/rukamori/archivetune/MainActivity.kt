@@ -2427,7 +2427,6 @@ class MainActivity : ComponentActivity() {
                                     AnimatedVisibility(
                                         visible =
                                             active ||
-                                                navBackStackEntry?.destination?.route == Screens.Home.route ||
                                                 navBackStackEntry?.destination?.route?.startsWith(OnlineSearchResultRoutePrefix) == true,
                                         enter = fadeIn(animationSpec = tween(durationMillis = if (disableAnimations) 0 else 300)),
                                         exit = fadeOut(animationSpec = tween(durationMillis = if (disableAnimations) 0 else 200)),
@@ -2545,21 +2544,6 @@ class MainActivity : ComponentActivity() {
                                                                     ),
                                                                 contentDescription = null,
                                                             )
-                                                        }
-                                                    } else if (currentRoute == Screens.Home.route && searchSource == SearchSource.ONLINE) {
-                                                        Row {
-                                                            IconButton(onClick = launchVoiceSearch) {
-                                                                Icon(
-                                                                    painter = painterResource(R.drawable.mic),
-                                                                    contentDescription = stringResource(R.string.voice_search),
-                                                                )
-                                                            }
-                                                            IconButton(onClick = { onActiveChange(true) }) {
-                                                                Icon(
-                                                                    painter = painterResource(R.drawable.language),
-                                                                    contentDescription = stringResource(R.string.search_yt_music),
-                                                                )
-                                                            }
                                                         }
                                                     } else if (currentRoute?.startsWith(OnlineSearchResultRoutePrefix) == true) {
                                                         OnlineSearchSortMenu(

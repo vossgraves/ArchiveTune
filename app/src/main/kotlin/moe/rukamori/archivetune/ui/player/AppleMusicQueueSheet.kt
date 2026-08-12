@@ -53,6 +53,7 @@ import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -137,6 +138,8 @@ fun AppleMusicQueueSheet(
     val repeatMode by playerConnection.repeatMode.collectAsStateWithLifecycle()
     val isPlaying by playerConnection.isPlaying.collectAsStateWithLifecycle()
 
+    val localPlayer = playerConnection.localPlayer
+
     var locked by rememberPreference(QueueEditLockKey, defaultValue = true)
 
     // Sleep timer state — mirrors Queue.kt's sleep-timer block so the pill
@@ -174,7 +177,6 @@ fun AppleMusicQueueSheet(
 
     val lazyListState = rememberLazyListState()
     val mutableQueueWindows = remember { mutableStateListOf<Timeline.Window>() }
-    var dragInfo by remember { mutableStateOf<Pair<Int, Int>?>(null) }
 
     val currentPlayingUid =
         remember(currentWindowIndex, queueWindows) {
@@ -185,16 +187,18 @@ fun AppleMusicQueueSheet(
             }
         }
 
-    // Mirror Queue.kt's filter: show only the current song + upcoming songs.
-    // Previously-played songs are excluded so the currently playing track is
-    // always at the top — matching Apple Music / Spotify behavior.
-    LaunchedEffect(queueWindows, currentWindowIndex) {
-        Snapshot.withMutableSnapshot {
-            mutableQueueWindows.clear()
-            val startIndex = currentWindowIndex.coerceAtLeast(0)
-            mutableQueueWindows.addAll(queueWindows.drop(startIndex))
-        }
-    }
+    // Drag state — ported from Queue.kt (the bottom-sheet queue). The previous
+    // implementation tracked raw Int indices and called moveMediaItem with those
+    // display-list indices, but moveMediaItem expects TIMELINE indices (offset by
+    // currentWindowIndex). It also had no justCommittedDragUid guard, so the
+    // sync LaunchedEffect would re-populate mutableQueueWindows from the
+    // pre-timeline-update queueWindows immediately after the commit, causing
+    // the dragged item to visually "snap back". The fix mirrors Queue.kt:
+    // track the dragged item's UID + the destination anchor UID, resolve both
+    // against the full queueWindows on drag end, and skip one reset cycle so
+    // the player's onTimelineChanged has time to propagate.
+    var dragInfo by remember { mutableStateOf<AMQueueDragInfo?>(null) }
+    var justCommittedDragUid by remember { mutableStateOf<Any?>(null) }
 
     // Auto-scroll to the current song when the queue first appears. We use
     // a "has scrolled once" guard so the user is free to browse the queue
@@ -213,45 +217,108 @@ fun AppleMusicQueueSheet(
     val reorderableState =
         rememberReorderableLazyListState(
             lazyListState = lazyListState,
-        ) { from, to ->
-            val currentDragInfo = dragInfo
-            dragInfo =
-                if (currentDragInfo == null) {
-                    from.index to to.index
-                } else {
-                    currentDragInfo.first to to.index
-                }
-
-            val safeFrom = from.index.coerceIn(0, mutableQueueWindows.lastIndex)
-            val safeTo = to.index.coerceIn(0, mutableQueueWindows.lastIndex)
-            if (safeFrom in mutableQueueWindows.indices && safeTo in mutableQueueWindows.indices) {
-                mutableQueueWindows.move(safeFrom, safeTo)
+        ) onMove@{ from, to ->
+            val fromQueueIndex = from.index
+            val toQueueIndex = to.index
+            if (fromQueueIndex !in mutableQueueWindows.indices ||
+                toQueueIndex !in mutableQueueWindows.indices
+            ) {
+                return@onMove
             }
+
+            // Resolve the actual source item by UID — if a drag is already in
+            // progress, keep tracking the same item; otherwise capture the UID
+            // at the drag start. This matches Queue.kt's pattern and is robust
+            // to the list being reordered under us during the drag.
+            val draggedItemUid =
+                dragInfo?.draggedItemUid ?: mutableQueueWindows[fromQueueIndex].uid
+            val actualFromQueueIndex =
+                mutableQueueWindows.indexOfFirst { it.uid == draggedItemUid }
+            if (actualFromQueueIndex == -1) return@onMove
+
+            mutableQueueWindows.move(actualFromQueueIndex, toQueueIndex)
+
+            // Resolve the destination anchor: the item the dragged item should
+            // end up AFTER in the full timeline. Dropping at display position 0
+            // (the current song's slot) means "make this the next song after
+            // the current one" — same semantics as Queue.kt.
+            val destinationUid: Any? =
+                if (toQueueIndex == 0) {
+                    currentPlayingUid
+                } else {
+                    mutableQueueWindows.getOrNull(toQueueIndex - 1)?.uid
+                }
+            dragInfo = AMQueueDragInfo(draggedItemUid, destinationUid)
         }
 
-    LaunchedEffect(reorderableState.isAnyItemDragging) {
-        if (!reorderableState.isAnyItemDragging) {
-            dragInfo?.let { (from, to) ->
-                val safeFrom = from.coerceIn(0, queueWindows.lastIndex)
-                val safeTo = to.coerceIn(0, queueWindows.lastIndex)
-                if (safeFrom != safeTo) {
-                    if (!shuffleModeEnabled) {
-                        playerConnection.player.moveMediaItem(safeFrom, safeTo)
+    // Combined sync + commit effect. Re-fires on every queueWindows /
+    // currentWindowIndex update AND when dragging starts/stops. Mirrors
+    // Queue.kt's three-tier logic:
+    //   1. If a drag just ended (dragInfo != null, not currently dragging):
+    //      resolve UIDs against the full queueWindows and commit via
+    //      moveMediaItem / setShuffleOrder. Mark justCommittedDragUid so the
+    //      next iteration skips the reset (lets the timeline update propagate).
+    //   2. If we just committed a drag (justCommittedDragUid != null): clear
+    //      the flag and return WITHOUT resetting mutableQueueWindows. The
+    //      next queueWindows update (from onTimelineChanged) will do the
+    //      reset using the post-move order.
+    //   3. Otherwise: re-populate mutableQueueWindows from
+    //      queueWindows.drop(currentWindowIndex).
+    LaunchedEffect(queueWindows, currentWindowIndex, reorderableState.isAnyItemDragging) {
+        if (reorderableState.isAnyItemDragging) return@LaunchedEffect
+
+        val completedDrag = dragInfo
+        if (completedDrag != null) {
+            val sourceIndex =
+                queueWindows.indexOfFirst { it.uid == completedDrag.draggedItemUid }
+            val destinationAnchorIndex =
+                queueWindows.indexOfFirst { it.uid == completedDrag.destinationUid }
+            dragInfo = null
+
+            if (sourceIndex != -1) {
+                // Resolve the actual destination timeline index. If the
+                // anchor is null (currentPlayingUid was null when the drag
+                // started, or the anchor item was removed mid-drag), fall
+                // back to "move to start of timeline".
+                val destinationIndex =
+                    if (destinationAnchorIndex == -1) {
+                        0
+                    } else if (sourceIndex < destinationAnchorIndex) {
+                        destinationAnchorIndex
                     } else {
-                        playerConnection.localPlayer.setShuffleOrder(
+                        (destinationAnchorIndex + 1).coerceAtMost(queueWindows.lastIndex)
+                    }
+
+                if (sourceIndex != destinationIndex) {
+                    justCommittedDragUid = completedDrag.draggedItemUid
+                    if (!shuffleModeEnabled) {
+                        playerConnection.player.moveMediaItem(sourceIndex, destinationIndex)
+                    } else {
+                        localPlayer.setShuffleOrder(
                             DefaultShuffleOrder(
                                 queueWindows
                                     .map { it.firstPeriodIndex }
                                     .toMutableList()
-                                    .move(safeFrom, safeTo)
+                                    .move(sourceIndex, destinationIndex)
                                     .toIntArray(),
                                 System.currentTimeMillis(),
                             ),
                         )
                     }
+                    return@LaunchedEffect
                 }
-                dragInfo = null
             }
+        }
+
+        if (justCommittedDragUid != null) {
+            justCommittedDragUid = null
+            return@LaunchedEffect
+        }
+
+        Snapshot.withMutableSnapshot {
+            mutableQueueWindows.clear()
+            val startIndex = currentWindowIndex.coerceAtLeast(0)
+            mutableQueueWindows.addAll(queueWindows.drop(startIndex))
         }
     }
 
@@ -565,3 +632,17 @@ fun AppleMusicQueueSheet(
         )
     }
 }
+
+/**
+ * In-flight drag info for the Apple Music queue. Mirrors Queue.kt's
+ * QueueDragInfo: tracks the dragged item's UID (resolved against the full
+ * timeline on drag end, not the filtered display list) plus the UID of the
+ * item the dragged item should end up AFTER. A null [destinationUid] means
+ * "move to the very start of the timeline" — only used when the queue has no
+ * current playing item.
+ */
+@Immutable
+private data class AMQueueDragInfo(
+    val draggedItemUid: Any,
+    val destinationUid: Any?,
+)
