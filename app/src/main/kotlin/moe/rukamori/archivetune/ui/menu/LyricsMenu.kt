@@ -762,7 +762,7 @@ fun LyricsMenu(
                             NewAction(
                                 icon = {
                                     Icon(
-                                        painter = painterResource(R.drawable.undo),
+                                        painter = painterResource(R.drawable.restore),
                                         contentDescription = null,
                                         modifier = Modifier.size(28.dp),
                                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
