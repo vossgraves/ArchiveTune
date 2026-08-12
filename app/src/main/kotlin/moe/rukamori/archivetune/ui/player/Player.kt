@@ -901,7 +901,14 @@ fun BottomSheetPlayer(
                     }
                 } else {
                     position = currentPlayerPosition
-                    duration = currentPlayerDuration
+                    if (currentPlayerDuration > 0L && currentPlayerDuration != C.TIME_UNSET) {
+                        duration = currentPlayerDuration
+                    } else if (duration <= 0L || duration == C.TIME_UNSET) {
+                        mediaMetadata?.let {
+                            val metadataDuration = it.duration.toLong() * 1000
+                            if (metadataDuration > 0L) duration = metadataDuration
+                        }
+                    }
                     if (!isUserSeeking) {
                         sliderPosition?.let { targetPosition ->
                             val clampedTargetPosition =
