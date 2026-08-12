@@ -11,8 +11,8 @@ package moe.rukamori.archivetune
 
 import android.Manifest
 import android.annotation.SuppressLint
-import android.app.ActivityNotFoundException
 import android.app.PictureInPictureParams
+import android.content.ActivityNotFoundException
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
