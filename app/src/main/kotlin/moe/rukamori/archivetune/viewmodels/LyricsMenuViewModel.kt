@@ -333,7 +333,7 @@ class LyricsMenuViewModel
         fun undoTranslation(mediaId: String) {
             viewModelScope.launch(Dispatchers.IO) {
                 val snapshot = _translationUndo.value?.takeIf { it.mediaId == mediaId } ?: return@launch
-                database.query {
+                database.withTransaction {
                     replaceLyrics(
                         id = snapshot.mediaId,
                         lyrics = snapshot.lyrics,
@@ -347,7 +347,7 @@ class LyricsMenuViewModel
 
         private suspend fun captureLyricsBeforeTranslation(mediaId: String) {
             if (_translationUndo.value?.mediaId == mediaId) return
-            val existing = database.query { getLyricsById(mediaId) } ?: return
+            val existing = database.withTransaction { getLyricsById(mediaId) } ?: return
             if (existing.source == LyricsEntity.Source.AI_TRANSLATION.value) return
             _translationUndo.value =
                 LyricsTranslationUndoSnapshot(
