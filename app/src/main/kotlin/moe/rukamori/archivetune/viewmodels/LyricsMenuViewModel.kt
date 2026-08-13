@@ -240,8 +240,10 @@ class LyricsMenuViewModel
                         -> LyricsUtils.lyricsOrNotFound(lyrics)
 
                         LyricsEntity.Source.USER_EDIT,
-                        LyricsEntity.Source.AI_TRANSLATION,
                         -> lyrics
+
+                        LyricsEntity.Source.AI_TRANSLATION ->
+                            usableTranslatedLyrics(lyrics) ?: return@launch
                     }
                 database.query {
                     replaceLyrics(
@@ -289,9 +291,14 @@ class LyricsMenuViewModel
                                 lyrics = lyrics,
                                 targetLanguage = targetLanguage.ifBlank { "ENGLISH" },
                             )
+                        val usableLyrics = usableTranslatedLyrics(translatedLyrics)
+                        if (usableLyrics == null) {
+                            _aiTranslationEvents.emit(context.getString(R.string.translation_failed))
+                            return@launch
+                        }
                         saveTranslatedLyrics(
                             mediaId = mediaMetadata.id,
-                            lyrics = translatedLyrics,
+                            lyrics = usableLyrics,
                         )
                         Log.d(TAG, "AI translate success: song=${mediaMetadata.title} automatic=$isAutomatic")
                         if (!isAutomatic) {
@@ -323,6 +330,11 @@ class LyricsMenuViewModel
                     }
                 }
         }
+
+        private fun usableTranslatedLyrics(lyrics: String): String? =
+            LyricsUtils
+                .normalizeLyricsText(lyrics)
+                .takeIf(LyricsUtils::hasMeaningfulLyricsContent)
 
         fun cancelAiTranslation() {
             aiTranslationJob?.cancel()
