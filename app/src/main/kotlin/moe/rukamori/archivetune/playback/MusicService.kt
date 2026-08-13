@@ -3679,7 +3679,10 @@ class MusicService :
 
         var throwable: Throwable? = error.cause
         while (throwable != null) {
-            if (throwable.message?.contains("Skipping atom with length", ignoreCase = true) == true) {
+            if (
+                throwable.message?.contains("Skipping atom with length", ignoreCase = true) == true ||
+                    throwable.isMedia3ExtractorBoundsFailure()
+            ) {
                 return true
             }
             throwable = throwable.cause
@@ -3719,6 +3722,10 @@ class MusicService :
                     }
                 }
 
+                isContentCached && throwable.isMedia3ExtractorBoundsFailure() -> {
+                    return true
+                }
+
                 isContainerParseError && isContentCached && throwable is ParserException -> {
                     return true
                 }
@@ -3736,6 +3743,10 @@ class MusicService :
         }
         return false
     }
+
+    private fun Throwable.isMedia3ExtractorBoundsFailure(): Boolean =
+        this is ArrayIndexOutOfBoundsException &&
+            stackTrace.any { it.className.startsWith("androidx.media3.extractor") }
 
     private fun retryPlaybackAfterStreamFailure(
         mediaId: String,
