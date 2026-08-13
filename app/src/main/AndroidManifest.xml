@@ -37,6 +37,15 @@
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="https" />
         </intent>
+        <!-- Voice search: ACTION_RECOGNIZE_SPEECH must be declared as a &lt;queries&gt; intent
+             filter on Android 11+ (API 30+) so that PackageManager.resolveActivity() can see
+             speech recognizers (e.g. Google app, Samsung Voice Input). Without this, the
+             resolveActivity() check returns null even when a recognizer is installed, causing
+             the "Voice search is not available on this device" toast. -->
+        <intent>
+            <action android:name="android.speech.action.RECOGNIZE_SPEECH" />
+            <category android:name="android.intent.category.DEFAULT" />
+        </intent>
         <package android:name="com.google.android.apps.youtube.music" />
         <package android:name="com.google.android.youtube" />
         <package android:name="com.google.android.projection.gearhead" />

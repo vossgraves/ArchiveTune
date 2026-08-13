@@ -98,7 +98,7 @@ fun OnlineSearchScreen(
             state = lazyListState,
             contentPadding =
                 PaddingValues(
-                    top = 12.dp,
+                    top = maxOf(12.dp, WindowInsets.safeDrawing.asPaddingValues().calculateTopPadding()),
                     bottom =
                         WindowInsets.systemBars
                             .only(WindowInsetsSides.Bottom)

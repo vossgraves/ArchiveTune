@@ -21,7 +21,9 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -58,6 +60,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -118,6 +121,7 @@ private val SearchBarCornerRadius = 20.dp
 fun SearchScreen(
     navController: NavController,
     onSearchQuery: (String) -> Unit,
+    onVoiceSearch: () -> Unit = {},
     headerScrollConnection: NestedScrollConnection? = null,
     viewModel: SearchDiscoveryViewModel = hiltViewModel(),
     historyViewModel: SearchHistoryViewModel = hiltViewModel(),
@@ -127,6 +131,7 @@ fun SearchScreen(
     val selectedTab by viewModel.selectedTab.collectAsStateWithLifecycle()
     val recentSearches by historyViewModel.recentSearches.collectAsStateWithLifecycle()
     val lazyListState = rememberLazyListState()
+    val safeTopPadding = WindowInsets.safeDrawing.asPaddingValues().calculateTopPadding()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val scrollToTop =
         backStackEntry
@@ -161,7 +166,13 @@ fun SearchScreen(
 
         LazyColumn(
             state = lazyListState,
-            contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
+            contentPadding =
+                PaddingValues(
+                    top = maxOf(LocalPlayerAwareWindowInsets.current.asPaddingValues().calculateTopPadding(), safeTopPadding),
+                    bottom = LocalPlayerAwareWindowInsets.current.asPaddingValues().calculateBottomPadding(),
+                    start = LocalPlayerAwareWindowInsets.current.asPaddingValues().calculateLeftPadding(LayoutDirection.Ltr),
+                    end = LocalPlayerAwareWindowInsets.current.asPaddingValues().calculateRightPadding(LayoutDirection.Ltr),
+                ),
             modifier = Modifier.fillMaxSize(),
         ) {
             // Large rounded search bar — opens the existing OnlineSearchScreen
@@ -174,6 +185,7 @@ fun SearchScreen(
                     query = searchQuery,
                     onQueryChange = { searchQuery = it },
                     onSearch = onSearchQuery,
+                    onVoiceSearch = onVoiceSearch,
                     modifier =
                         Modifier
                             .fillMaxWidth()
@@ -373,6 +385,7 @@ private fun SearchEntryField(
     query: String,
     onQueryChange: (String) -> Unit,
     onSearch: (String) -> Unit,
+    onVoiceSearch: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val containerColor = MaterialTheme.colorScheme.surfaceContainerLow
@@ -445,6 +458,17 @@ private fun SearchEntryField(
                 }
             },
         )
+        IconButton(
+            onClick = onVoiceSearch,
+            modifier = Modifier.padding(end = 4.dp),
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.mic),
+                contentDescription = stringResource(R.string.voice_search),
+                tint = onSurfaceVariant,
+                modifier = Modifier.size(22.dp),
+            )
+        }
         Icon(
             painter = painterResource(R.drawable.language),
             contentDescription = null,

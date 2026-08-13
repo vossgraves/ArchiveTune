@@ -785,33 +785,6 @@ fun PlaylistListCard(
                     overflow = TextOverflow.Ellipsis,
                 )
 
-                // Tag pill
-                val tagText =
-                    if (playlist.playlist.isEditable) {
-                        stringResource(
-                            R.string.personal_label,
-                        )
-                    } else {
-                        stringResource(R.string.youtube_synced)
-                    }
-                val tagColor = if (playlist.playlist.isEditable) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary
-                Box(
-                    modifier =
-                        Modifier
-                            .clip(CircleShape)
-                            .background(tagColor.copy(alpha = 0.12f))
-                            .padding(horizontal = 8.dp, vertical = 2.dp),
-                ) {
-                    Text(
-                        text = tagText,
-                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                        color = tagColor,
-                        maxLines = 1,
-                        softWrap = false,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-
                 if (playlist.playlist.isHidden) {
                     Spacer(modifier = Modifier.width(8.dp))
                     Icon(

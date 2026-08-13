@@ -119,9 +119,15 @@ object CanvasArtworkPlaybackCache {
 
     fun init(context: Context) {
         val directory = StorageLocationRepository.cacheDirectory(context, StorageFolderKind.CANVAS_CACHE)
-        cacheDirectory = directory
-        cacheFile = directory.resolve(PERSIST_FILE)
-        loadFromDisk()
+        synchronized(this) {
+            cacheDirectory = directory
+            cacheFile = directory.resolve(PERSIST_FILE)
+        }
+        // Restoring the index can involve JSON parsing and filesystem I/O. Keep it
+        // off Application.onCreate's critical path so startup remains responsive.
+        persistScope.launch(Dispatchers.IO) {
+            loadFromDisk()
+        }
     }
 
     @Synchronized
@@ -278,6 +284,26 @@ object CanvasArtworkPlaybackCache {
             )
 
             artworkToCache
+        }
+
+    /**
+     * Downloads and persists the selected Canvas artwork before returning. Unlike [put],
+     * this is intentionally awaited by explicit user actions such as Save Canvas so the
+     * UI can report success only after the internal file has been validated.
+     */
+    suspend fun save(
+        mediaId: String,
+        artwork: CanvasArtwork,
+    ): Boolean =
+        withContext(Dispatchers.IO) {
+            if (maxSizeBytes == 0L || mediaId.isBlank()) return@withContext false
+            val directory = cacheDirectory ?: return@withContext false
+            directory.mkdirs()
+            synchronized(this@CanvasArtworkPlaybackCache) {
+                remove(mediaId)
+            }
+            cacheArtworkVideos(directory = directory, mediaId = mediaId, artwork = artwork)
+            get(mediaId = mediaId, preferCachedOnly = false) != null
         }
 
     suspend fun replace(
@@ -457,10 +483,9 @@ object CanvasArtworkPlaybackCache {
             val raw = file.readText()
             if (raw.isBlank()) return
             val restored = decodeEntries(raw)
-            map.clear()
             restored
                 .filter { entry -> entry.mediaId.isNotBlank() }
-                .forEach { entry -> map[entry.mediaId] = entry }
+                .forEach { entry -> map.putIfAbsent(entry.mediaId, entry) }
             cacheDirectory?.let(::trimLocked)
             Timber.d("Canvas cache restored: ${map.size} entries from disk")
         } catch (error: Exception) {

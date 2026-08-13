@@ -9,12 +9,15 @@
 
 package moe.rukamori.archivetune
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.app.PictureInPictureParams
+import android.content.ActivityNotFoundException
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
+import android.speech.RecognizerIntent
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.net.Uri
@@ -29,7 +32,9 @@ import android.view.WindowManager
 import android.webkit.MimeTypeMap
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.DrawableRes
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.AnimatedVisibility
@@ -166,6 +171,7 @@ import androidx.compose.ui.util.fastForEach
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.zIndex
+import androidx.core.content.ContextCompat
 import androidx.core.content.IntentCompat
 import androidx.core.net.toUri
 import androidx.core.view.WindowCompat
@@ -275,6 +281,8 @@ import moe.rukamori.archivetune.playback.PlayerConnection
 import moe.rukamori.archivetune.playback.queues.ListQueue
 import moe.rukamori.archivetune.playback.queues.Queue
 import moe.rukamori.archivetune.playback.queues.YouTubeQueue
+import moe.rukamori.archivetune.qobuz.QobuzAudioProvider
+import moe.rukamori.archivetune.utils.PoolAccountManager
 import moe.rukamori.archivetune.ui.component.BottomSheetMenu
 import moe.rukamori.archivetune.ui.component.BottomSheetPage
 import moe.rukamori.archivetune.ui.component.COLLAPSED_ANCHOR
@@ -486,6 +494,32 @@ class MainActivity : ComponentActivity() {
             )
         playPendingDeepLinkQueueIfReady()
         openPendingAodModeIfReady()
+
+        // Qobuz cache staleness fix: clear the transient failure cache and
+        // instance cooldowns on app foreground so Qobuz is retried without
+        // requiring a force-stop. Also clear the resolved-sources record
+        // for the currently-playing song so the "Play from" source picker
+        // reflects fresh availability.
+        //
+        // Root cause: QobuzAudioProvider.failureCache (10-min TTL) and
+        // instanceCooldownUntilMs (up to 10-min) are process-lived. When
+        // the user backgrounded the app and came back, these caches were
+        // still live, so Qobuz resolution returned null immediately
+        // without retrying. Force-stop cleared the process (and all
+        // in-memory caches), which is why re-opening the app fixed it.
+        // This provides the same cache-clearing effect without force-stop.
+        QobuzAudioProvider.clearTransientCaches()
+        playerConnection?.service?.let { service ->
+            val currentMediaId = playerConnection?.mediaMetadata?.value?.id
+            service.clearResolvedSources(currentMediaId)
+        }
+
+        // Refresh pool accounts in the background (non-forced — respects
+        // the 30-min throttle). This ensures Qobuz tokens are fresh when
+        // the user returns to the app, without hammering the pool API.
+        lifecycleScope.launch(Dispatchers.IO) {
+            runCatching { PoolAccountManager.refresh(this@MainActivity, force = false) }
+        }
     }
 
     private fun safeUnbindMusicService() {
@@ -1156,6 +1190,77 @@ class MainActivity : ComponentActivity() {
                                     insert(SearchHistory(query = it))
                                 }
                             }
+                        }
+                    }
+
+                    val createVoiceSearchIntent: () -> Intent = {
+                        Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                            putExtra(
+                                RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                                RecognizerIntent.LANGUAGE_MODEL_FREE_FORM,
+                            )
+                            putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toLanguageTag())
+                        }
+                    }
+                    val voiceSearchLauncher =
+                        rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+                            val voiceQuery =
+                                result.data
+                                    ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+                                    ?.firstOrNull()
+                                    ?.trim()
+                                    .orEmpty()
+                            if (voiceQuery.isNotEmpty()) {
+                                onQueryChange(TextFieldValue(voiceQuery))
+                                onSearch(voiceQuery)
+                            }
+                        }
+                    val launchSpeechRecognition: () -> Unit = {
+                        val speechIntent = createVoiceSearchIntent()
+                        if (speechIntent.resolveActivity(packageManager) == null) {
+                            android.widget.Toast
+                                .makeText(
+                                    this@MainActivity,
+                                    R.string.voice_search_unavailable,
+                                    android.widget.Toast.LENGTH_SHORT,
+                                ).show()
+                        } else {
+                            try {
+                                voiceSearchLauncher.launch(speechIntent)
+                            } catch (exception: ActivityNotFoundException) {
+                                reportException(exception)
+                                android.widget.Toast
+                                    .makeText(
+                                        this@MainActivity,
+                                        R.string.voice_search_unavailable,
+                                        android.widget.Toast.LENGTH_SHORT,
+                                    ).show()
+                            }
+                        }
+                    }
+                    val microphonePermissionLauncher =
+                        rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+                            if (granted) {
+                                launchSpeechRecognition()
+                            } else {
+                                android.widget.Toast
+                                    .makeText(
+                                        this@MainActivity,
+                                        R.string.voice_search_permission_denied,
+                                        android.widget.Toast.LENGTH_SHORT,
+                                    ).show()
+                            }
+                        }
+                    val launchVoiceSearch: () -> Unit = {
+                        if (
+                            ContextCompat.checkSelfPermission(
+                                this@MainActivity,
+                                Manifest.permission.RECORD_AUDIO,
+                            ) == PackageManager.PERMISSION_GRANTED
+                        ) {
+                            launchSpeechRecognition()
+                        } else {
+                            microphonePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                         }
                     }
 
@@ -2395,6 +2500,12 @@ class MainActivity : ComponentActivity() {
                                             trailingIcon = {
                                                 Row {
                                                     if (active) {
+                                                        IconButton(onClick = launchVoiceSearch) {
+                                                            Icon(
+                                                                painter = painterResource(R.drawable.mic),
+                                                                contentDescription = stringResource(R.string.voice_search),
+                                                            )
+                                                        }
                                                         if (query.text.isNotEmpty()) {
                                                             IconButton(
                                                                 onClick = {
@@ -2757,6 +2868,7 @@ class MainActivity : ComponentActivity() {
                                         disableAnimations,
                                         onClearUpdateBadge = { latestVersionName = BuildConfig.VERSION_NAME },
                                         onSearchQuery = onSearch,
+                                        onVoiceSearch = launchVoiceSearch,
                                         homeScrollConnection = homeScrollBehavior.nestedScrollConnection,
                                         searchScrollConnection = searchScrollBehavior.nestedScrollConnection,
                                         onlineSearchSort = onlineSearchSort,

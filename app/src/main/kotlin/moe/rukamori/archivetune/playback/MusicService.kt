@@ -8417,6 +8417,21 @@ class MusicService :
 
     private val resolvedSourcesByMediaId = ConcurrentHashMap<String, MutableSet<AudioSourceType>>()
 
+    /**
+     * Called on app foreground (MainActivity.onStart) for the currently-playing song (or null to
+     * clear all). Drops the in-memory record of which lossless sources last resolved successfully
+     * so the "Play from" picker re-resolves fresh instead of returning a stale cached set. This
+     * pairs with [moe.rukamori.archivetune.qobuz.QobuzAudioProvider.clearTransientCaches] to fix
+     * the bug where Qobuz lossless was unavailable until force-stop.
+     */
+    fun clearResolvedSources(mediaId: String?) {
+        if (mediaId == null) {
+            resolvedSourcesByMediaId.clear()
+        } else {
+            resolvedSourcesByMediaId.remove(mediaId)
+        }
+    }
+
     private fun recordResolvedSource(
         mediaId: String,
         source: AudioSourceType,

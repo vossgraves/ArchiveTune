@@ -8,6 +8,8 @@
 package moe.rukamori.archivetune.ui.player
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.canvas.AppleMusicProvider
 import moe.rukamori.archivetune.canvas.SpotifyCanvasProvider
@@ -179,6 +181,82 @@ private fun CanvasArtwork.hasRequiredCanvasVariant(requireVertical: Boolean): Bo
     }
 
 private const val CanvasArtworkLogTag = "CanvasArtwork"
+
+/**
+ * A single canvas source result for the "Save Canvas" feature.
+ * Each result has a human-readable source name and the resolved CanvasArtwork.
+ */
+data class CanvasSourceResult(
+    val sourceName: String,
+    val artwork: CanvasArtwork,
+)
+
+/**
+ * Fetch ALL canvas sources for a song (used by the "Save Canvas" overflow-
+ * menu action). Unlike [resolveCanvasArtworkForPlayback] which returns the
+ * first matching source, this queries every source independently and
+ * returns all that have a canvas — so the user can pick which one to save
+ * to internal storage.
+ *
+ * Sources queried (in parallel):
+ * - Spotify Canvas (via mlc.kouzu.in resolver, by YouTube video ID)
+ * - Apple Music (via AMP catalog, by song title + artist name)
+ *
+ * Returns a list of [CanvasSourceResult]. The list may be empty if no
+ * source has a canvas for this song.
+ *
+ * NOTE: The codebase currently has no Tidal canvas implementation.
+ * When/if Tidal canvas is added, it should be queried here too.
+ */
+internal suspend fun fetchAllCanvasSourcesForSong(
+    mediaId: String,
+    songTitleRaw: String,
+    artistNameRaw: String,
+    storefront: String,
+    albumTitle: String? = null,
+): List<CanvasSourceResult> = coroutineScope {
+    val strictIdentity = !(mediaId.isTelegramMediaId() || mediaId.isLocalMediaId())
+    val songTitle = normalizeCanvasSongTitle(songTitleRaw)
+    val artistName = normalizeCanvasArtistName(artistNameRaw)
+
+    // Spotify Canvas lookup (by video ID) — only for YouTube media (not local/Telegram).
+    val spotifyDeferred = async {
+        if (strictIdentity && mediaId.isNotBlank()) {
+            runCatching { SpotifyCanvasProvider.getByVideoId(mediaId) }
+                .getOrNull()
+                ?.takeIf { it.hasRequiredCanvasVariant(requireVertical = false) }
+        } else {
+            null
+        }
+    }
+
+    // Apple Music lookup (by song title + artist) — try normalized + raw candidates.
+    val appleMusicDeferred = async {
+        val candidates =
+            linkedSetOf(
+                songTitle to artistName,
+                songTitleRaw to artistName,
+                songTitle to artistNameRaw,
+                songTitleRaw to artistNameRaw,
+            ).filter { (song, artist) ->
+                song.isNotBlank() && artist.isNotBlank()
+            }
+        candidates.firstNotNullOfOrNull { (song, artist) ->
+            AppleMusicProvider.getBySongArtist(
+                song = song,
+                artist = artist,
+                storefront = storefront,
+                forceRefresh = false,
+                album = albumTitle,
+            )?.takeIf { it.hasRequiredCanvasVariant(requireVertical = false) }
+        }
+    }
+
+    val results = mutableListOf<CanvasSourceResult>()
+    spotifyDeferred.await()?.let { results.add(CanvasSourceResult("Spotify Canvas", it)) }
+    appleMusicDeferred.await()?.let { results.add(CanvasSourceResult("Apple Music", it)) }
+    results
+}
 
 private fun normalizeCanvasSongTitle(raw: String): String {
     val stripped =
