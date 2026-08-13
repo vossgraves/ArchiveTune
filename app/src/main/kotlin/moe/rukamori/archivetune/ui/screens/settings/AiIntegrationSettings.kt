@@ -701,6 +701,7 @@ private fun AiProvider.label(): String =
     when (this) {
         AiProvider.CHATGPT -> "OpenAI"
         AiProvider.GEMINI -> "Gemini"
+        AiProvider.OPENROUTER -> stringResource(R.string.ai_provider_openrouter)
         AiProvider.CUSTOM -> stringResource(R.string.custom)
         AiProvider.DEEPL -> "DeepL"
         AiProvider.OPENROUTER -> "OpenRouter"

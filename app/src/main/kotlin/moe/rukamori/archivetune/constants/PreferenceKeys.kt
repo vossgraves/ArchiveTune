@@ -344,6 +344,7 @@ val HideTop50CardKey = booleanPreferencesKey("hide_top50_card")
 enum class AiProvider {
     CHATGPT,
     GEMINI,
+    OPENROUTER,
     CUSTOM,
     DEEPL,
     OPENROUTER,
