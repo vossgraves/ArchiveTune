@@ -98,6 +98,7 @@ fun BottomSheet(
     morphMode: Boolean = false,
     backHandlerEnabled: Boolean = true,
     opaqueBackground: Boolean = false,
+    onCollapsedContentClick: (() -> Unit)? = null,
     collapsedContent: @Composable BoxScope.() -> Unit,
     content: @Composable BoxScope.() -> Unit,
 ) {
@@ -214,7 +215,7 @@ fun BottomSheet(
                         }.clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
-                            onClick = state::expandSoft,
+                            onClick = onCollapsedContentClick ?: state::expandSoft,
                         ).fillMaxWidth()
                         .height(state.collapsedBound),
                 content = collapsedContent,

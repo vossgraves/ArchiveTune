@@ -441,6 +441,7 @@ fun Queue(
         // so this sheet never shows). Keeping it alive there would compose a
         // second, invisible reorderable queue list behind the morph.
         keepContentAlive = playerDesignStyle != PlayerDesignStyle.APPLE_MUSIC,
+        onCollapsedContentClick = openQueue,
         collapsedContent = {
             when (playerDesignStyle) {
                 PlayerDesignStyle.V2 -> {
