@@ -11,7 +11,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -77,6 +76,12 @@ fun BottomSheetMenu(
     state.dialogContent?.invoke()
 
     if (state.isVisible) {
+        // NOTE: do NOT apply fillMaxHeight() here. Forcing the sheet to the full screen
+        // height makes every overflow menu (song menu, player menu, album menu, etc.)
+        // open as a full-screen overlay, which is jarring for short menus. The default
+        // ModalBottomSheet behavior is to wrap the content height and dock at the bottom,
+        // which is what users expect from a bottom-anchored menu. The passed-in modifier
+        // (typically just an alignment Modifier from the caller) is preserved.
         ModalBottomSheet(
             onDismissRequest = {
                 focusManager.clearFocus()
@@ -94,7 +99,7 @@ fun BottomSheetMenu(
                             .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)),
                 )
             },
-            modifier = modifier.fillMaxHeight(),
+            modifier = modifier,
         ) {
             Column(
                 modifier =

@@ -2334,7 +2334,11 @@ fun BottomSheetPlayer(
         mediaMetadata?.let { metadata ->
             MikoLyricsTransition(
                 visible = isLyricsScreenVisible,
-                backHandlerEnabled = false,
+                // Enable the LyricsScreen's own BackHandler so back press directly exits the
+                // lyrics overlay (instead of being intercepted by MainActivity's player-sheet
+                // collapse BackHandler, which left isLyricsScreenVisible=true and trapped the
+                // user on the lyrics screen until process death).
+                backHandlerEnabled = true,
                 mediaMetadata = metadata,
                 navController = navController,
                 lyricsSyncOffset = lyricsSyncOffset,
@@ -2532,6 +2536,14 @@ private fun V8PlayerBackdrop(
     ) {
         if (currentUrl != null) {
             val backdropHasBlur = backdropBlurAmount > 0
+            // Backdrop scale: previously 1.16f which over-zoomed the artwork and cropped
+            // significant portions of the image (the user reported "artwork/images look
+            // distorted or misplaced" in Immersive Mode). ContentScale.Crop already
+            // fills the screen by cropping; the extra 1.16x scale was a holdover from
+            // an earlier design that wanted the backdrop to feel "larger than life".
+            // Reducing to 1.0f keeps the screen fully covered (Crop guarantees that)
+            // while showing more of the actual artwork. Alpha stays at 0.66 so the
+            // dark overlay + control overlay remain readable.
             if (backdropHasBlur && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 AsyncImage(
                     model = backdropRequest,

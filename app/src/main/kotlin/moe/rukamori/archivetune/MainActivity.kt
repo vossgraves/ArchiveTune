@@ -2877,7 +2877,7 @@ class MainActivity : ComponentActivity() {
                             }
                         }
 
-                        BackHandler(enabled = playerBottomSheetState.isExpanded) {
+                        BackHandler(enabled = playerBottomSheetState.isExpanded && !isPlayerLyricsFullScreen) {
                             playerBottomSheetState.collapseSoft()
                         }
 

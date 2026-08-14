@@ -117,6 +117,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.plus
@@ -7453,6 +7454,16 @@ class MusicService :
             enqueueCurrentHistorySessionForFinalization()
             if (!isCrossfading || playbackState == Player.STATE_IDLE) {
                 cancelCrossfade(resetVolume = true, resetPauseAtEnd = true)
+            } else if (playbackState == Player.STATE_ENDED) {
+                // The crossfade was supposed to hand off to the next item before STATE_ENDED
+                // fired, but it didn't complete in time. A stale `isCrossfading = true` here
+                // means `pauseAtEndOfMediaItems` is still `true`, which prevents ExoPlayer's
+                // auto-advance — the player stops at the end of the current song and the user
+                // has to press Play to continue. Tear the crossfade down so the player can
+                // auto-advance normally. The crossfade's secondary player (if any) was either
+                // already promoting itself or never became ready — either way, releasing it
+                // here is safe and prevents a stuck `pauseAtEndOfMediaItems`.
+                cancelCrossfade(resetVolume = true, resetPauseAtEnd = true)
             }
             if (playbackState == Player.STATE_ENDED &&
                 !suppressAutoPlayback &&
@@ -8430,13 +8441,23 @@ class MusicService :
         } else {
             resolvedSourcesByMediaId.remove(mediaId)
         }
+        _resolvedSourcesRevision.value = _resolvedSourcesRevision.value + 1L
     }
+
+    /**
+     * Observable wrapper around [resolvedSourcesByMediaId] so the Source chooser UI can recompose
+     * when a refresh completes. Updated whenever [recordResolvedSource] adds a source.
+     */
+    private val _resolvedSourcesRevision = MutableStateFlow(0L)
 
     private fun recordResolvedSource(
         mediaId: String,
         source: AudioSourceType,
     ) {
-        resolvedSourcesByMediaId.getOrPut(mediaId) { java.util.concurrent.ConcurrentHashMap.newKeySet() }.add(source)
+        val set = resolvedSourcesByMediaId.getOrPut(mediaId) { java.util.concurrent.ConcurrentHashMap.newKeySet() }
+        if (set.add(source)) {
+            _resolvedSourcesRevision.value = _resolvedSourcesRevision.value + 1L
+        }
     }
 
     /**
@@ -8450,6 +8471,55 @@ class MusicService :
             it == AudioSourceType.YOUTUBE || it in resolved
         }
     }
+
+    /**
+     * Triggers a fresh resolution of every enabled non-YouTube source for [mediaId], bypassing
+     * the in-memory DirectStream cache.
+     *
+     * Why this exists: [resolveMultiSourceDataSpec] records each source that passes the metadata
+     * match gate into [resolvedSourcesByMediaId]. If a source failed transiently on the first
+     * resolution attempt (network blip, Qobuz/Tidal API timeout, pool-account rate-limit), it
+     * never gets recorded for the lifetime of the process — even though a retry would succeed.
+     * The user sees YouTube (and JioSaavn) as the only available sources until they force-stop
+     * and reopen the app, which clears the in-memory cache and triggers a fresh resolution.
+     *
+     * This function replicates the "force-stop and reopen" effect on demand: it evicts the cached
+     * DirectStream for [mediaId] and re-runs the lossless resolution chain in the background. The
+     * UI picks up the new sources via [_resolvedSourcesRevision] (a StateFlow the Source dialog
+     * collects to trigger recomposition).
+     *
+     * Safe to call repeatedly — concurrent invocations are coalesced by the [scope] coroutine
+     * and the cache eviction is idempotent.
+     */
+    fun refreshSourcesForSong(mediaId: String) {
+        if (mediaId.isLocalMediaId() || mediaId.isTelegramMediaId()) return
+        scope.launch(Dispatchers.IO) {
+            // Evict the in-memory cache so the slow path runs again. Without this, the fast
+            // path in resolveMultiSourceDataSpec would short-circuit to the previously cached
+            // (YouTube) stream and never re-try Qobuz/Tidal.
+            directStreamCache.remove(mediaId)
+            // Re-resolve by calling the same slow-path logic the player uses. We pass a dummy
+            // DataSpec because resolveMultiSourceDataSpec only uses it as a buildUpon base —
+            // the URI and key are overwritten inside. The returned DataSpec is discarded; we
+            // only care about the side effect of recording sources into resolvedSourcesByMediaId.
+            runCatching {
+                val dummySpec = DataSpec.Builder().setUri(mediaId.toUri()).build()
+                resolveMultiSourceDataSpec(dummySpec, mediaId, lowDataModeActive = false)
+            }.onFailure { error ->
+                Timber.tag("MusicService").w(error, "refreshSourcesForSong: resolution failed for %s", mediaId)
+            }
+            // Bump the revision even on failure so the UI can re-render with whatever sources
+            // were recorded (if any) and stop showing the loading state.
+            _resolvedSourcesRevision.value = _resolvedSourcesRevision.value + 1L
+        }
+    }
+
+    /**
+     * A monotonically increasing counter that bumps whenever [recordResolvedSource] or
+     * [refreshSourcesForSong] updates [resolvedSourcesByMediaId]. The Source dialog collects
+     * this flow to know when to re-query [availableSourcesForSong].
+     */
+    val resolvedSourcesRevision: StateFlow<Long> get() = _resolvedSourcesRevision
 
     /**
      * Applies a per-song "play from" override and, if [mediaId] is the current item, re-resolves it
@@ -8547,13 +8617,23 @@ class MusicService :
             // reflects the restored 1.0 factor.
             ensureAudioFocusForActivePlayback()
 
-            // Deterministic re-create: tear the playlist down entirely and re-add the item from
-            // scratch. This makes the in-place source switch take the exact same path as
-            // "skip to previous song and back" — a fresh MediaSource, fresh re-preparation and
-            // a fresh resolver run — instead of relying on prepare()/seekTo() re-opening the
-            // existing (and possibly stale) data source.
-            player.clearMediaItems()
-            player.setMediaItem(item, 0)
+            // Deterministic re-create: replace ONLY the current media item with a fresh one
+            // (so the new source's MediaSource is built from scratch) while preserving the
+            // rest of the queue. The previous implementation called clearMediaItems() +
+            // setMediaItem(item, 0), which discarded the entire queue — when the current
+            // song ended the player had no next item to auto-advance to, so playback stopped
+            // until the user manually pressed Play. We now capture the full media-items list
+            // and current index BEFORE the teardown, swap the current item for the freshly
+            // resolved one, and call setMediaItems(items, currentIndex, 0L) so the queue is
+            // intact and ExoPlayer's auto-advance works as expected.
+            val currentIndex = player.currentMediaItemIndex
+            val allItems = ArrayList(player.mediaItems)
+            if (currentIndex in allItems.indices) {
+                allItems[currentIndex] = item
+            } else {
+                allItems.add(item)
+            }
+            player.setMediaItems(allItems, currentIndex.coerceIn(0, allItems.lastIndex), 0L)
             player.prepare()
             player.playWhenReady = wasPlaying
             // Restore the effective volume immediately (bypass the smooth ramp) so the new source
