@@ -2465,6 +2465,21 @@ private fun MikoLyricsTransition(
         derivedStateOf { visible || progressState.value > 0f }
     }
 
+    // Fallback BackHandler: always composed when the lyrics overlay is visible,
+    // independent of the inner LyricsScreen's BackHandler. The inner BackHandler
+    // lives inside `LyricsScreen` which early-returns if `LocalPlayerConnection.current`
+    // is null OR is gated by `backHandlerEnabled`. If for any reason the inner
+    // BackHandler is not composed or not enabled, this fallback ensures the back
+    // press still dismisses the lyrics overlay — preventing the user from being
+    // trapped on the lyrics screen until process death.
+    //
+    // This is composed BEFORE the `if (showContent)` block so it is registered
+    // even during the slide-up/slide-down animation when `showContent` may be
+    // momentarily false (e.g. closing: `visible = false` but `progressState > 0`).
+    if (visible) {
+        BackHandler(enabled = true, onBack = onDismiss)
+    }
+
     if (showContent) {
         val surfaceColor = MaterialTheme.colorScheme.surface
         Box(
