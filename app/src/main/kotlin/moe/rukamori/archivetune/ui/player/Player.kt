@@ -22,8 +22,10 @@ import android.provider.Settings
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -96,6 +98,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -106,6 +109,7 @@ import androidx.compose.ui.composed
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -166,6 +170,7 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import moe.rukamori.archivetune.LocalAnimationsDisabled
 import moe.rukamori.archivetune.LocalDownloadUtil
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
@@ -2329,11 +2334,7 @@ fun BottomSheetPlayer(
         mediaMetadata?.let { metadata ->
             MikoLyricsTransition(
                 visible = isLyricsScreenVisible,
-                // Enable the LyricsScreen's own BackHandler so back press directly exits the
-                // lyrics overlay (instead of being intercepted by MainActivity's player-sheet
-                // collapse BackHandler, which left isLyricsScreenVisible=true and trapped the
-                // user on the lyrics screen until process death).
-                backHandlerEnabled = true,
+                backHandlerEnabled = false,
                 mediaMetadata = metadata,
                 navController = navController,
                 lyricsSyncOffset = lyricsSyncOffset,
@@ -2428,58 +2429,67 @@ private fun MikoLyricsTransition(
     onQueueClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // Fallback BackHandler: always composed when the lyrics overlay is visible,
-    // independent of the inner LyricsScreen's BackHandler. The inner BackHandler
-    // lives inside `LyricsScreen` which early-returns if `LocalPlayerConnection.current`
-    // is null OR is gated by `backHandlerEnabled`. If for any reason the inner
-    // BackHandler is not composed or not enabled, this fallback ensures the back
-    // press still dismisses the lyrics overlay — preventing the user from being
-    // trapped on the lyrics screen until process death.
-    //
-    // This is composed BEFORE the `if (visible || boundedProgress > 0.001f)` block
-    // so it is registered even during the scale-up/scale-down animation when the
-    // inner LyricsScreen may be momentarily absent.
-    if (visible) {
-        BackHandler(enabled = true, onBack = onDismiss)
+    val animationsDisabled = LocalAnimationsDisabled.current
+    val progress = remember { Animatable(initialValue = 0f) }
+    LaunchedEffect(visible, animationsDisabled) {
+        if (animationsDisabled) {
+            progress.snapTo(if (visible) 1f else 0f)
+        } else {
+            progress.animateTo(
+                targetValue = if (visible) 1f else 0f,
+                animationSpec =
+                    if (visible) {
+                        // OPEN — keep the premium slow glide (~500 ms).
+                        spring(
+                            dampingRatio = 1f,
+                            stiffness = 160f,
+                            visibilityThreshold = 0.001f,
+                        )
+                    } else {
+                        // CLOSE — slower by ~40% (~700 ms) per user request.
+                        spring(
+                            dampingRatio = 1f,
+                            stiffness = 80f,
+                            visibilityThreshold = 0.001f,
+                        )
+                    },
+            )
+        }
+    }
+    val progressState = progress.asState()
+    val showContent by remember(visible) {
+        derivedStateOf { visible || progressState.value > 0f }
     }
 
-    val progress by animateFloatAsState(
-        targetValue = if (visible) 1f else 0f,
-        animationSpec =
-            spring(
-                dampingRatio = 0.82f,
-                stiffness = Spring.StiffnessMediumLow,
-            ),
-        label = "mikoLyricsTransition",
-    )
-
-    val boundedProgress = progress.coerceIn(0f, 1f)
-
-    if (visible || boundedProgress > 0.001f) {
-        val scaleX = 0.92f + (0.08f * boundedProgress)
-        val scaleY = 0.78f + (0.22f * boundedProgress)
-        val alpha = (0.2f + (0.8f * boundedProgress)).coerceIn(0f, 1f)
-        val cornerRadius = 32.dp * (1f - boundedProgress)
-
+    if (showContent) {
+        val surfaceColor = MaterialTheme.colorScheme.surface
         Box(
             modifier =
                 modifier
                     .fillMaxSize()
-                    .graphicsLayer { this.alpha = boundedProgress }
-                    .background(Color.Black.copy(alpha = 0.24f * boundedProgress)),
+                    .drawBehind {
+                        // Use drawRect's built-in alpha parameter instead of
+                        // Color.Black.copy(alpha = ...) — avoids allocating a
+                        // new Color object on every frame of the slide animation.
+                        drawRect(
+                            color = Color.Black,
+                            alpha = 0.32f * progressState.value.coerceIn(0f, 1f),
+                        )
+                    },
         ) {
             Box(
                 modifier =
                     Modifier
                         .fillMaxSize()
                         .graphicsLayer {
-                            transformOrigin = TransformOrigin(0.5f, 1f)
-                            this.scaleX = scaleX
-                            this.scaleY = scaleY
-                            this.alpha = alpha
-                            translationY = size.height * 0.16f * (1f - boundedProgress)
-                        }.clip(RoundedCornerShape(cornerRadius))
-                        .background(MaterialTheme.colorScheme.surface),
+                            val p = progressState.value.coerceIn(0f, 1f)
+                            // Pure slide-up: the whole sheet travels from just below the screen to
+                            // its resting position, with a small rounded top lip while in transit.
+                            translationY = size.height * (1f - p)
+                            val corner = 28.dp.toPx() * (1f - p)
+                            shape = RoundedCornerShape(topStart = corner, topEnd = corner)
+                            clip = true
+                        }.background(surfaceColor),
             ) {
                 LyricsScreen(
                     mediaMetadata = mediaMetadata,
@@ -2522,14 +2532,6 @@ private fun V8PlayerBackdrop(
     ) {
         if (currentUrl != null) {
             val backdropHasBlur = backdropBlurAmount > 0
-            // Backdrop scale: previously 1.16f which over-zoomed the artwork and cropped
-            // significant portions of the image (the user reported "artwork/images look
-            // distorted or misplaced" in Immersive Mode). ContentScale.Crop already
-            // fills the screen by cropping; the extra 1.16x scale was a holdover from
-            // an earlier design that wanted the backdrop to feel "larger than life".
-            // Reducing to 1.0f keeps the screen fully covered (Crop guarantees that)
-            // while showing more of the actual artwork. Alpha stays at 0.66 so the
-            // dark overlay + control overlay remain readable.
             if (backdropHasBlur && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 AsyncImage(
                     model = backdropRequest,
