@@ -140,6 +140,7 @@ fun PlayerMenu(
     navController: NavController,
     playerBottomSheetState: BottomSheetState,
     isQueueTrigger: Boolean? = false,
+    onPlayNextFromQueue: (() -> Unit)? = null,
     onRemoveFromQueue: (() -> Unit)? = null,
     onShowDetailsDialog: () -> Unit,
     onDismiss: () -> Unit,
@@ -1095,6 +1096,31 @@ fun PlayerMenu(
         item {
             MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
                 Column {
+                    if (isQueueTrigger == true && onPlayNextFromQueue != null) {
+                        ListItem(
+                            headlineContent = {
+                                Text(text = stringResource(R.string.play_next))
+                            },
+                            leadingContent = {
+                                Icon(
+                                    painter = painterResource(R.drawable.playlist_play),
+                                    contentDescription = null,
+                                )
+                            },
+                            modifier =
+                                Modifier.clickable {
+                                    onPlayNextFromQueue()
+                                    onDismiss()
+                                },
+                            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                        )
+
+                        HorizontalDivider(
+                            modifier = Modifier.padding(start = 56.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant,
+                        )
+                    }
+
                     if (isQueueTrigger == true && onRemoveFromQueue != null) {
                         ListItem(
                             headlineContent = {

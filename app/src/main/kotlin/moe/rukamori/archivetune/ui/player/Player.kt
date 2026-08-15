@@ -22,10 +22,8 @@ import android.provider.Settings
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -98,7 +96,6 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -109,8 +106,6 @@ import androidx.compose.ui.composed
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
@@ -170,7 +165,6 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import moe.rukamori.archivetune.LocalAnimationsDisabled
 import moe.rukamori.archivetune.LocalDownloadUtil
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
@@ -2433,38 +2427,6 @@ private fun MikoLyricsTransition(
     onQueueClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val animationsDisabled = LocalAnimationsDisabled.current
-    val progress = remember { Animatable(initialValue = 0f) }
-    LaunchedEffect(visible, animationsDisabled) {
-        if (animationsDisabled) {
-            progress.snapTo(if (visible) 1f else 0f)
-        } else {
-            progress.animateTo(
-                targetValue = if (visible) 1f else 0f,
-                animationSpec =
-                    if (visible) {
-                        // OPEN — keep the premium slow glide (~500 ms).
-                        spring(
-                            dampingRatio = 1f,
-                            stiffness = 160f,
-                            visibilityThreshold = 0.001f,
-                        )
-                    } else {
-                        // CLOSE — slower by ~40% (~700 ms) per user request.
-                        spring(
-                            dampingRatio = 1f,
-                            stiffness = 80f,
-                            visibilityThreshold = 0.001f,
-                        )
-                    },
-            )
-        }
-    }
-    val progressState = progress.asState()
-    val showContent by remember(visible) {
-        derivedStateOf { visible || progressState.value > 0f }
-    }
-
     // Fallback BackHandler: always composed when the lyrics overlay is visible,
     // independent of the inner LyricsScreen's BackHandler. The inner BackHandler
     // lives inside `LyricsScreen` which early-returns if `LocalPlayerConnection.current`
@@ -2473,42 +2435,50 @@ private fun MikoLyricsTransition(
     // press still dismisses the lyrics overlay — preventing the user from being
     // trapped on the lyrics screen until process death.
     //
-    // This is composed BEFORE the `if (showContent)` block so it is registered
-    // even during the slide-up/slide-down animation when `showContent` may be
-    // momentarily false (e.g. closing: `visible = false` but `progressState > 0`).
+    // This is composed BEFORE the `if (visible || boundedProgress > 0.001f)` block
+    // so it is registered even during the scale-up/scale-down animation when the
+    // inner LyricsScreen may be momentarily absent.
     if (visible) {
         BackHandler(enabled = true, onBack = onDismiss)
     }
 
-    if (showContent) {
-        val surfaceColor = MaterialTheme.colorScheme.surface
+    val progress by animateFloatAsState(
+        targetValue = if (visible) 1f else 0f,
+        animationSpec =
+            spring(
+                dampingRatio = 0.82f,
+                stiffness = Spring.StiffnessMediumLow,
+            ),
+        label = "mikoLyricsTransition",
+    )
+
+    val boundedProgress = progress.coerceIn(0f, 1f)
+
+    if (visible || boundedProgress > 0.001f) {
+        val scaleX = 0.92f + (0.08f * boundedProgress)
+        val scaleY = 0.78f + (0.22f * boundedProgress)
+        val alpha = (0.2f + (0.8f * boundedProgress)).coerceIn(0f, 1f)
+        val cornerRadius = 32.dp * (1f - boundedProgress)
+
         Box(
             modifier =
                 modifier
                     .fillMaxSize()
-                    .drawBehind {
-                        // Use drawRect's built-in alpha parameter instead of
-                        // Color.Black.copy(alpha = ...) — avoids allocating a
-                        // new Color object on every frame of the slide animation.
-                        drawRect(
-                            color = Color.Black,
-                            alpha = 0.32f * progressState.value.coerceIn(0f, 1f),
-                        )
-                    },
+                    .graphicsLayer { this.alpha = boundedProgress }
+                    .background(Color.Black.copy(alpha = 0.24f * boundedProgress)),
         ) {
             Box(
                 modifier =
                     Modifier
                         .fillMaxSize()
                         .graphicsLayer {
-                            val p = progressState.value.coerceIn(0f, 1f)
-                            // Pure slide-up: the whole sheet travels from just below the screen to
-                            // its resting position, with a small rounded top lip while in transit.
-                            translationY = size.height * (1f - p)
-                            val corner = 28.dp.toPx() * (1f - p)
-                            shape = RoundedCornerShape(topStart = corner, topEnd = corner)
-                            clip = true
-                        }.background(surfaceColor),
+                            transformOrigin = TransformOrigin(0.5f, 1f)
+                            this.scaleX = scaleX
+                            this.scaleY = scaleY
+                            this.alpha = alpha
+                            translationY = size.height * 0.16f * (1f - boundedProgress)
+                        }.clip(RoundedCornerShape(cornerRadius))
+                        .background(MaterialTheme.colorScheme.surface),
             ) {
                 LyricsScreen(
                     mediaMetadata = mediaMetadata,

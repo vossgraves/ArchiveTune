@@ -357,6 +357,10 @@ class PlayerConnection(
         service.playNext(items)
     }
 
+    fun moveQueueItemToNext(mediaItemIndex: Int) {
+        service.moveQueueItemToNext(mediaItemIndex)
+    }
+
     fun addToQueue(item: MediaItem) = addToQueue(listOf(item))
 
     fun addToQueue(items: List<MediaItem>) {

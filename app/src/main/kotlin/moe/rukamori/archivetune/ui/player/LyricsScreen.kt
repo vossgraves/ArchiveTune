@@ -824,7 +824,7 @@ private fun MovingBlurBackground(
         initialValue = -60f,
         targetValue = 60f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 14_000, easing = FastOutSlowInEasing),
+            animation = tween(durationMillis = 6_000, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse,
         ),
         label = "moving-blur-x",
@@ -833,7 +833,7 @@ private fun MovingBlurBackground(
         initialValue = -45f,
         targetValue = 45f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 20_000, easing = FastOutSlowInEasing),
+            animation = tween(durationMillis = 8_000, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse,
         ),
         label = "moving-blur-y",

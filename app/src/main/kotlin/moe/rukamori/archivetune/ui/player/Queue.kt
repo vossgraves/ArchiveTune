@@ -707,12 +707,16 @@ fun Queue(
             }
         // Display list: current song at index 0, upcoming next, then previously-played
         // songs in reverse chronological order. See the sync LaunchedEffect below for
-        // the full rationale. The initial value is pre-reordered so the first frame
-        // doesn't flicker in timeline order.
+        // the full rationale. The initial value is pre-reordered (Apple Music) or
+        // in timeline order (non-Apple Music) so the first frame doesn't flicker.
         val mutableQueueWindows =
             remember {
                 mutableStateListOf<Timeline.Window>().apply {
-                    addAll(reorderedForDisplay(queueWindows, currentPlayingUid))
+                    if (playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC) {
+                        addAll(reorderedForDisplay(queueWindows, currentPlayingUid))
+                    } else {
+                        addAll(queueWindows)
+                    }
                 }
             }
         val queueLength by remember {
@@ -730,6 +734,11 @@ fun Queue(
         // resets mutableQueueWindows to the OLD queueWindows (before the move),
         // causing the dragged item to "snap back" to its original position.
         var justCommittedDragUid by remember { mutableStateOf<Any?>(null) }
+
+        val nextPlayingUid =
+            remember(currentWindowIndex, queueWindows) {
+                queueWindows.getOrNull(currentWindowIndex + 1)?.uid
+            }
 
         val reorderableState =
             rememberReorderableLazyListState(
@@ -762,13 +771,19 @@ fun Queue(
                         draggedItemUid = draggedItemUid,
                         destination =
                             if (toQueueIndex == 0) {
-                                // In the filtered queue list the current song is always at
-                                // index 0, so dropping at position 0 means "make this the
-                                // next song after the current one" rather than "move to the
-                                // very start of the full timeline" (which would place it
-                                // before already-played songs and is not visible anyway).
-                                currentPlayingUid?.let { QueueDragDestination.After(itemUid = it) }
-                                    ?: QueueDragDestination.Start
+                                if (playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC) {
+                                    // In the filtered Apple Music queue list the current song
+                                    // is always at index 0, so dropping at position 0 means
+                                    // "make this the next song after the current one" rather
+                                    // than "move to the very start of the full timeline".
+                                    currentPlayingUid?.let { QueueDragDestination.After(itemUid = it) }
+                                        ?: QueueDragDestination.Start
+                                } else {
+                                    // Non-Apple Music styles: match upstream behavior exactly —
+                                    // dropping at index 0 moves the song to the very start of
+                                    // the full timeline.
+                                    QueueDragDestination.Start
+                                }
                             } else {
                                 QueueDragDestination.After(
                                     itemUid = mutableQueueWindows[toQueueIndex - 1].uid,
@@ -843,21 +858,22 @@ fun Queue(
                 return@LaunchedEffect
             }
 
-            // Display the full queue list including previously-played songs,
-            // REORDERED so that:
-            //   1. The currently playing song is at index 0 (top of the list).
-            //   2. Upcoming songs follow (indices 1..upcomingCount).
-            //   3. Previously-played songs are at the end, in reverse
-            //      chronological order (most recently played first), so the
-            //      user can swipe up to scroll through upcoming and then
-            //      review what just played.
-            // The drag logic continues to work because the final moveMediaItem
-            // call resolves UIDs against `queueWindows` (timeline order), not
-            // against this reordered display list.
-            val reordered = reorderedForDisplay(queueWindows, currentPlayingUid)
+            // Apple Music style: display the current song and upcoming songs
+            // first, then previously-played songs in reverse chronological
+            // order (SimpMusic / Spotify style "Continue Playing" header).
+            // All other player styles: show the full queue timeline in
+            // timeline order (matches upstream rukamori/ArchiveTune exactly).
+            // The full `queueWindows` (including played songs) is still used
+            // for queue stats, clear-queue, and drag-source resolution.
+            val displayList =
+                if (playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC) {
+                    reorderedForDisplay(queueWindows, currentPlayingUid)
+                } else {
+                    queueWindows
+                }
             Snapshot.withMutableSnapshot {
                 mutableQueueWindows.clear()
-                mutableQueueWindows.addAll(reordered)
+                mutableQueueWindows.addAll(displayList)
             }
         }
 
@@ -1036,6 +1052,21 @@ fun Queue(
 
                                 val trackMetadata = window.mediaItem.metadata
                                 if (trackMetadata == null) return@content
+                                val onPlayNextFromQueue =
+                                    remember(
+                                        window.uid,
+                                        window.firstPeriodIndex,
+                                        currentPlayingUid,
+                                        nextPlayingUid,
+                                    ) {
+                                        if (window.uid != currentPlayingUid && window.uid != nextPlayingUid) {
+                                            {
+                                                playerConnection.moveQueueItemToNext(window.firstPeriodIndex)
+                                            }
+                                        } else {
+                                            null
+                                        }
+                                    }
                                 CompactQueueItem(
                                     mediaMetadata = trackMetadata,
                                     isActive = isActive,
@@ -1115,6 +1146,7 @@ fun Queue(
                                                 navController = navController,
                                                 playerBottomSheetState = playerBottomSheetState,
                                                 isQueueTrigger = true,
+                                                onPlayNextFromQueue = onPlayNextFromQueue,
                                                 onRemoveFromQueue = {
                                                     onRemoveWithUndo(window)
                                                 },
