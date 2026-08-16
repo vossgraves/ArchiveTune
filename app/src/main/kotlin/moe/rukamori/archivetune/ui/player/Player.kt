@@ -249,11 +249,7 @@ private const val V7SharpStagePortraitFraction = 0.62f
 private const val V7SharpStageLandscapeFraction = 0.58f
 private const val V7BackdropOverlapDp = 72
 private const val V7SharpStageBottomScrimStartFraction = 0.40f
-// ISSUE 4 FIX: lowered from 0.88 → 0.55 so the palette-color gradient dominates
-// the bottom ~45% of the backdrop (matching the reference image where the bottom
-// 35-40% is a smooth gradient, not a blur). Previously the gradient only kicked
-// in at 0.88, leaving positions 0.45→0.88 as blur-dominated.
-private const val V7BackdropFloorBlackStartFraction = 0.55f
+private const val V7BackdropFloorBlackStartFraction = 0.88f
 private const val V8BackdropArtworkSizePx = 1_024
 
 @Stable
@@ -2642,12 +2638,7 @@ private fun V8PlayerBackdrop(
                             .graphicsLayer {
                                 scaleX = 1.16f
                                 scaleY = 1.16f
-                                // Raised from 0.66 → 1.0 — let the artwork's
-                                // actual colours through; the previous 0.66
-                                // alpha combined with the 0.52 black scrim below
-                                // was crushing the brightness down to a muddy
-                                // grey. Matches ViviMusic's bright-blur aesthetic.
-                                alpha = 1.0f
+                                alpha = 0.66f
                             },
                     onState = { state ->
                         if (state is coil3.compose.AsyncImagePainter.State.Error) {
@@ -2665,7 +2656,7 @@ private fun V8PlayerBackdrop(
                             .graphicsLayer {
                                 scaleX = 1.16f
                                 scaleY = 1.16f
-                                alpha = 1.0f
+                                alpha = 0.66f
                             },
                     onError = { failedUrl ->
                         getNextFallbackUrl(failedUrl)?.let { currentUrl = it }
@@ -2682,7 +2673,7 @@ private fun V8PlayerBackdrop(
                             .graphicsLayer {
                                 scaleX = 1.16f
                                 scaleY = 1.16f
-                                alpha = 1.0f
+                                alpha = 0.66f
                             },
                     onState = { state ->
                         if (state is coil3.compose.AsyncImagePainter.State.Error) {
@@ -2693,17 +2684,12 @@ private fun V8PlayerBackdrop(
             }
         }
 
-        // ViviMusic-faithful scrim: a single uniform 30% black tint, like
-        // HazeTint(Color.Black.copy(alpha = 0.30f)). Previously this was a
-        // 0.52-alpha black box which, combined with the 0.66 graphicsLayer
-        // alpha above, produced an effective ~83% darkening — the opposite
-        // of ViviMusic's bright, vibrant blur. The 0.30 tint preserves the
-        // album art's colour while keeping text legible.
         Box(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.30f)),        )
+                    .background(Color.Black.copy(alpha = 0.52f)),
+        )
     }
 }
 
@@ -2825,28 +2811,17 @@ private fun V7PlayerBackdrop(
     // When canvas is available, prefer its static image as the sharp-stage placeholder.
     // This prevents the jarring YTM thumbnail → canvas video flash on expand.
     val sharpArtworkUrl = if (hasCanvas) (canvasStatic ?: coverArtworkUrl) else (coverArtworkUrl ?: canvasStatic)
-    // When canvas is active, prefer the canvas static image as the backdrop blur source too —
-    // matching the sharp stage. This keeps the backdrop consistent with the canvas artwork
-    // (Apple Music player style) instead of falling back to the album art, which looked
-    // inconsistent when the sharp stage showed the canvas video but the blur showed the
-    // album cover.
-    val backdropArtworkUrl = if (hasCanvas) (canvasStatic ?: coverArtworkUrl) else (coverArtworkUrl ?: canvasStatic)
+    val backdropArtworkUrl = coverArtworkUrl ?: canvasStatic
     // For palette extraction, use canvas static when canvas is active so the scrim
     // gradient is derived from the canvas colors rather than the YTM thumbnail.
     val paletteSourceUrl = if (hasCanvas && canvasStatic != null) canvasStatic else backdropArtworkUrl
-    // Keep the previous valid palette while the next artwork loads; only replace on success.
-    var backdropPalette by remember {
+    var backdropPalette by remember(paletteSourceUrl, fallbackColor) {
         mutableStateOf(V7BackdropPalette.fromColors(emptyList(), fallbackColor))
     }
-    var hasValidBackdropPalette by remember { mutableStateOf(false) }
 
     LaunchedEffect(paletteSourceUrl, hasCanvas, fallbackColor) {
-        if (paletteSourceUrl == null) {
-            if (!hasValidBackdropPalette) {
-                backdropPalette = V7BackdropPalette.fromColors(emptyList(), fallbackColor)
-            }
-            return@LaunchedEffect
-        }
+        backdropPalette = V7BackdropPalette.fromColors(emptyList(), fallbackColor)
+        if (paletteSourceUrl == null) return@LaunchedEffect
 
         val request =
             ImageRequest
@@ -2862,40 +2837,34 @@ private fun V7PlayerBackdrop(
 
         val extractedColors =
             try {
-                val result =
+                val image =
                     withContext(Dispatchers.IO) {
                         context.imageLoader.execute(request)
-                    }
-                if (result !is SuccessResult) {
+                    }.image
+                if (image == null) {
                     null
                 } else {
                     withContext(Dispatchers.Default) {
-                        val fullBitmap = result.image?.toBitmap()
-                        if (fullBitmap == null) {
-                            null
-                        } else {
-                            // When canvas is active, extract from the bottom 30% of the static frame.
-                            // This gives us the actual colors at the canvas bottom edge, so the scrim
-                            // gradient blends seamlessly into the backdrop below.
-                            val bitmapForPalette =
-                                if (hasCanvas && fullBitmap.height > 4) {
-                                    val startY = (fullBitmap.height * 0.70f).toInt().coerceAtLeast(0)
-                                    val cropHeight = (fullBitmap.height - startY).coerceAtLeast(1)
-                                    android.graphics.Bitmap.createBitmap(fullBitmap, 0, startY, fullBitmap.width, cropHeight)
-                                } else {
-                                    fullBitmap
-                                }
-                            val palette =
-                                Palette
-                                    .from(bitmapForPalette)
-                                    .maximumColorCount(PlayerColorExtractor.Config.MAX_COLOR_COUNT)
-                                    .resizeBitmapArea(PlayerColorExtractor.Config.BITMAP_AREA)
-                                    .generate()
-                            PlayerColorExtractor.extractGradientColors(
-                                palette = palette,
-                                fallbackColor = fallbackColor,
-                            )
-                        }
+                        val fullBitmap = image.toBitmap()
+                        // When canvas is active, extract from the bottom 30% of the static frame.
+                        // This gives us the actual colors at the canvas bottom edge, so the scrim
+                        // gradient blends seamlessly into the backdrop below.
+                        val bitmapForPalette =
+                            if (hasCanvas && fullBitmap.height > 4) {
+                                val startY = (fullBitmap.height * 0.70f).toInt().coerceAtLeast(0)
+                                val cropHeight = (fullBitmap.height - startY).coerceAtLeast(1)
+                                android.graphics.Bitmap.createBitmap(fullBitmap, 0, startY, fullBitmap.width, cropHeight)
+                            } else {
+                                fullBitmap
+                            }
+                        val palette =
+                            Palette
+                                .from(bitmapForPalette)
+                                .maximumColorCount(PlayerColorExtractor.Config.MAX_COLOR_COUNT)
+                                .resizeBitmapArea(PlayerColorExtractor.Config.BITMAP_AREA)
+                                .generate()
+                        val dominantRgb = palette.dominantSwatch?.rgb ?: palette.getDominantColor(fallbackColor)
+                        listOf(Color(dominantRgb))
                     }
                 }
             } catch (e: CancellationException) {
@@ -2904,12 +2873,7 @@ private fun V7PlayerBackdrop(
                 null
             }
 
-        if (extractedColors != null) {
-            backdropPalette = V7BackdropPalette.fromColors(extractedColors, fallbackColor)
-            hasValidBackdropPalette = true
-        } else if (!hasValidBackdropPalette) {
-            backdropPalette = V7BackdropPalette.fromColors(emptyList(), fallbackColor)
-        }
+        backdropPalette = V7BackdropPalette.fromColors(extractedColors.orEmpty(), fallbackColor)
     }
 
     val backdropState =
@@ -2934,40 +2898,25 @@ private fun V7PlayerBackdrop(
     val sharpStageBottomScrim =
         remember(backdropPalette) {
             val blendColor = backdropPalette.bottom
-            // ViviMusic-faithful: reduced alphas (0.18/0.52/0.82/1.0 →
-            // 0.10/0.28/0.46/0.62) so the bottom of the sharp stage still
-            // blends into the backdrop but doesn't aggressively darken the
-            // artwork. Combined with the brighter palette tone and raised
-            // backdrop alpha, the result reads as vibrant rather than muddy.
             Brush.verticalGradient(
                 colorStops =
                     arrayOf(
                         0f to Color.Transparent,
                         V7SharpStageBottomScrimStartFraction to Color.Transparent,
-                        0.60f to blendColor.copy(alpha = 0.10f),
-                        0.76f to blendColor.copy(alpha = 0.28f),
-                        0.88f to blendColor.copy(alpha = 0.46f),
-                        1f to blendColor.copy(alpha = 0.62f),
+                        0.60f to blendColor.copy(alpha = 0.18f),
+                        0.76f to blendColor.copy(alpha = 0.52f),
+                        0.88f to blendColor.copy(alpha = 0.82f),
+                        1f to blendColor,
                     ),
             )
         }
     val backdropFloor =
         remember(backdropPalette) {
-            // ISSUE 4 FIX: gradient now dominates the bottom ~55% of the backdrop
-            // (matching the reference image where the bottom 35-40% is a smooth
-            // palette-color gradient, not a blur). Previously the gradient only
-            // started at 0.45 and ramped to 0.85 alpha at 0.88, leaving the upper
-            // half of the controls area blur-dominated. Now the gradient starts
-            // at 0.30, ramps to 0.75 alpha at 0.55 (V7BackdropFloorBlackStartFraction),
-            // and reaches full opacity at 0.85 — so the bottom ~55% is gradient-
-            // dominated with the blur subtly visible at the top ~30%.
             Brush.verticalGradient(
                 colorStops =
                     arrayOf(
-                        0f to Color.Transparent,
-                        0.30f to Color.Transparent,
-                        V7BackdropFloorBlackStartFraction to backdropPalette.bottom.copy(alpha = 0.75f),
-                        0.85f to backdropPalette.bottom.copy(alpha = 0.96f),
+                        0f to backdropPalette.bottom,
+                        V7BackdropFloorBlackStartFraction to backdropPalette.bottom,
                         1f to backdropPalette.bottom,
                     ),
             )
@@ -2981,14 +2930,7 @@ private fun V7PlayerBackdrop(
                 .graphicsLayer {
                     scaleX = V7BackdropBlurScale
                     scaleY = V7BackdropBlurScale
-                    // ISSUE 4 FIX: lowered from 0.92 → 0.50 (and 0.50 → 0.30 for the
-                    // no-blur branch) so the gradient floor (backdropFloor) is the
-                    // dominant visual behind the controls, not the blur. The blur is
-                    // now a subtle texture at the top of the backdrop that fades into
-                    // the palette-color gradient — matching the reference image's
-                    // "frosted glass with gradient overlay" look. Previously 0.92
-                    // alpha made the blur dominate and the gradient was barely visible.
-                    alpha = if (disableBlur || !needsBlur) 0.30f else 0.50f
+                    alpha = if (disableBlur || !needsBlur) 0.20f else 0.58f
                 }
         }
     val canvasStageModifier =
@@ -3047,10 +2989,7 @@ private fun V7PlayerBackdrop(
                                 .graphicsLayer {
                                     scaleX = V7BackdropBlurScale
                                     scaleY = V7BackdropBlurScale
-                                    // ISSUE 4 FIX: lowered from 0.58 → 0.50 to match
-                                    // the S+ branch's 0.50 alpha so the gradient floor
-                                    // dominates on pre-S devices too.
-                                    alpha = 0.50f
+                                    alpha = 0.58f
                                 },
                         onError = { failedUrl ->
                             getNextFallbackUrl(failedUrl)?.let { backdropArtworkModel = it }
@@ -3165,14 +3104,10 @@ private data class V7BackdropPalette(
             // (e.g. red → green at +120°) which are wrong for a backdrop that should feel
             // coherent. We derive mid/bottom by darkening the same hue instead.
             val dominantColor = colors.firstOrNull()
-            // ViviMusic-faithful: previous valueMax caps (0.32/0.48/0.72) were
-            // crushing the palette into a dark, muddy sludge. New caps
-            // (0.62/0.78/0.92) let the actual dominant colour through, matching
-            // ViviMusic's bright, vibrant blur aesthetic.
-            val fallback = Color(fallbackColor).v7BackdropTone(valueMin = 0.20f, valueMax = 0.62f)
-            val top = dominantColor?.v7BackdropTone(valueMin = 0.32f, valueMax = 0.92f) ?: fallback
-            val mid = dominantColor?.v7BackdropTone(valueMin = 0.26f, valueMax = 0.78f) ?: top
-            val bottom = dominantColor?.v7BackdropTone(valueMin = 0.20f, valueMax = 0.62f) ?: mid
+            val fallback = Color(fallbackColor).v7BackdropTone(valueMin = 0.12f, valueMax = 0.38f)
+            val top = dominantColor?.v7BackdropTone(valueMin = 0.20f, valueMax = 0.72f) ?: fallback
+            val mid = dominantColor?.v7BackdropTone(valueMin = 0.13f, valueMax = 0.48f) ?: top
+            val bottom = dominantColor?.v7BackdropTone(valueMin = 0.08f, valueMax = 0.32f) ?: mid
             return V7BackdropPalette(
                 top = top,
                 mid = mid,
@@ -3192,7 +3127,7 @@ private fun Color.v7BackdropTone(
         if (hsv[1] < 0.12f) {
             hsv[1].coerceAtMost(0.08f)
         } else {
-            (hsv[1] * 1.22f).coerceIn(0f, 1f)
+            (hsv[1] * 1.27f).coerceIn(0f, 1f)
         }
     hsv[2] = hsv[2].coerceIn(valueMin, valueMax)
     return Color(android.graphics.Color.HSVToColor(hsv))
@@ -3338,7 +3273,7 @@ private fun LittlePlayerContent(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(
-                    painter = painterResource(R.drawable.player_expand_more),
+                    painter = painterResource(R.drawable.expand_more),
                     contentDescription = null,
                     tint = textColor.copy(alpha = 0.8f),
                     modifier =
@@ -3354,7 +3289,7 @@ private fun LittlePlayerContent(
                 Spacer(Modifier.weight(1f))
 
                 Icon(
-                    painter = painterResource(if (liked) R.drawable.player_favorite else R.drawable.player_favorite_border),
+                    painter = painterResource(if (liked) R.drawable.favorite else R.drawable.favorite_border),
                     contentDescription = null,
                     tint =
                         if (liked) {
@@ -3374,29 +3309,24 @@ private fun LittlePlayerContent(
 
                 Spacer(Modifier.width((18f * scale).dp))
 
-                Box(
-                    contentAlignment = Alignment.Center,
+                Icon(
+                    painter = painterResource(R.drawable.queue_music),
+                    contentDescription = null,
+                    tint = textColor.copy(alpha = 0.78f),
                     modifier =
                         Modifier
-                            .size(48.dp)
+                            .size(iconSize)
                             .clickable(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null,
                                 onClick = onExpandQueue,
                             ),
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.player_queue_music),
-                        contentDescription = null,
-                        tint = textColor.copy(alpha = 0.78f),
-                        modifier = Modifier.size(iconSize),
-                    )
-                }
+                )
 
                 Spacer(Modifier.width((18f * scale).dp))
 
                 Icon(
-                    painter = painterResource(R.drawable.player_more_vert),
+                    painter = painterResource(R.drawable.more_vert),
                     contentDescription = null,
                     tint = textColor.copy(alpha = 0.78f),
                     modifier =

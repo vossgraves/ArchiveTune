@@ -516,6 +516,15 @@ fun AppleMusicQueueSheet(
                                 // fought the glass tint. Suppress the container so only
                                 // the glass pill shows.
                                 showActiveContainer = false,
+                                // Force song titles to always render white. Without this
+                                // override, MediaMetadataListItem falls back to
+                                // MaterialTheme.colorScheme.onSurface / onSecondaryContainer,
+                                // which is what the V9 'Material Extended' dynamic-color
+                                // system mutates based on the artwork palette — so when a
+                                // dynamic theme is active the song titles in this queue
+                                // shift to the dominant artwork color instead of staying
+                                // white like the rest of the Apple Music UI.
+                                textColorOverride = Color.White,
                                 trailingContent = {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         IconButton(
