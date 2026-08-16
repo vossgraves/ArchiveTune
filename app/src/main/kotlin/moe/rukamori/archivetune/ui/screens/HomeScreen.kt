@@ -333,11 +333,13 @@ private fun HomeContent(
                     //  * When `uiState.minimalHomeMode == true`, the feed
                     //    collapses to:
                     //      hero -> Recently Played -> Keep Listening
-                    //      -> Live Performances
+                    //      -> Speed Dial -> Live Performances
                     //    All other shelves (category chips, remote/local quick
-                    //    picks, speed dial, account playlists, forgotten
-                    //    favorites, similar recommendations, and non-Live
-                    //    remote sections) are hidden.
+                    //    picks, account playlists, forgotten favorites, similar
+                    //    recommendations, and non-Live remote sections) are
+                    //    hidden. Speed Dial is preserved in minimal mode (placed
+                    //    directly below Keep Listening) so the user keeps one-tap
+                    //    access to their pinned items.
                     //
                     //  * When `uiState.minimalHomeMode == false` (default, also
                     //    matches upstream rukamori/ArchiveTune), the feed shows
@@ -469,6 +471,12 @@ private fun HomeContent(
                         }
                     }
 
+                    // In FULL mode, Speed Dial sits above Keep Listening (matches
+                    // upstream rukamori/ArchiveTune order). In MINIMAL mode, it is
+                    // relocated to sit directly below Keep Listening — the user
+                    // explicitly requested Speed Dial stay visible in minimal mode,
+                    // placed right under Keep Listening so they keep one-tap access
+                    // to their pinned items without re-enabling the full feed.
                     if (!minimalMode && uiState.speedDialItems.isNotEmpty()) {
                         sectionSpacer("speed_dial")
                         item(
@@ -519,6 +527,42 @@ private fun HomeContent(
                         ) {
                             KeepListeningSection(
                                 keepListening = uiState.keepListening,
+                                mediaMetadata = mediaMetadata,
+                                isPlaying = isPlaying,
+                                navController = navController,
+                                playerConnection = playerConnection,
+                                menuState = menuState,
+                                haptic = haptic,
+                                scope = scope,
+                                modifier = Modifier.animateItem(),
+                            )
+                        }
+                    }
+
+                    // MINIMAL-mode-only Speed Dial placement: directly below
+                    // Keep Listening. Uses distinct item keys (`_minimal`
+                    // suffix) so LazyColumn doesn't try to reuse the full-mode
+                    // Speed Dial items when the toggle flips.
+                    if (minimalMode && uiState.speedDialItems.isNotEmpty()) {
+                        sectionSpacer("speed_dial_minimal")
+                        item(
+                            key = "home_speed_dial_header_minimal",
+                            contentType = "section_header",
+                        ) {
+                            HomeSectionHeader(
+                                title = stringResource(R.string.speed_dial),
+                                leadingIcon = {
+                                    HomeSectionLeadingIcon(iconRes = R.drawable.bolt)
+                                },
+                                modifier = Modifier.animateItem(),
+                            )
+                        }
+                        item(
+                            key = "home_speed_dial_minimal",
+                            contentType = "speed_dial",
+                        ) {
+                            SpeedDialSection(
+                                speedDialItems = uiState.speedDialItems,
                                 mediaMetadata = mediaMetadata,
                                 isPlaying = isPlaying,
                                 navController = navController,

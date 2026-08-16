@@ -1152,14 +1152,36 @@ fun SimilarRecommendationsTitle(
     navController: NavController,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
+    val thumbSizePx =
+        with(LocalDensity.current) {
+            ListThumbnailSize.roundToPx().coerceAtLeast(1)
+        }
     HomeSectionHeader(
         label = stringResource(R.string.similar_to),
         title = recommendation.title.title,
         thumbnail =
             recommendation.title.thumbnailUrl?.let { thumbnailUrl ->
                 {
+                    // Sized ImageRequest so Coil asks the CDN for a thumbnail
+                    // bucket close to ListThumbnailSize (56dp ≈ 168px @ 3x)
+                    // instead of pulling the original maxresdefault (often
+                    // 1280x720+). Combined with the tuned OkHttp pool in
+                    // App.newImageLoader, this makes the similar-recommendations
+                    // header thumbnail load near-instantly.
+                    val imageRequest =
+                        remember(thumbnailUrl, thumbSizePx) {
+                            ImageRequest
+                                .Builder(context)
+                                .data(thumbnailUrl)
+                                .size(Size(thumbSizePx, thumbSizePx))
+                                .diskCachePolicy(CachePolicy.ENABLED)
+                                .memoryCachePolicy(CachePolicy.ENABLED)
+                                .crossfade(true)
+                                .build()
+                        }
                     AsyncImage(
-                        model = thumbnailUrl,
+                        model = imageRequest,
                         contentDescription = null,
                         modifier =
                             Modifier
@@ -1198,6 +1220,11 @@ fun HomePageSectionTitle(
     navController: NavController,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
+    val thumbSizePx =
+        with(LocalDensity.current) {
+            ListThumbnailSize.roundToPx().coerceAtLeast(1)
+        }
     HomeSectionHeader(
         title = section.title,
         label = section.label,
@@ -1212,8 +1239,24 @@ fun HomePageSectionTitle(
         thumbnail =
             section.thumbnail?.let { thumbnailUrl ->
                 {
+                    // Sized ImageRequest — same rationale as in
+                    // SimilarRecommendationsTitle: request a thumbnail bucket
+                    // close to 56dp instead of the original full-res artwork
+                    // the CDN would otherwise serve. This is the slow-loading
+                    // "playlist thumbnail" the user reported on the home feed.
+                    val imageRequest =
+                        remember(thumbnailUrl, thumbSizePx) {
+                            ImageRequest
+                                .Builder(context)
+                                .data(thumbnailUrl)
+                                .size(Size(thumbSizePx, thumbSizePx))
+                                .diskCachePolicy(CachePolicy.ENABLED)
+                                .memoryCachePolicy(CachePolicy.ENABLED)
+                                .crossfade(true)
+                                .build()
+                        }
                     AsyncImage(
-                        model = thumbnailUrl,
+                        model = imageRequest,
                         contentDescription = null,
                         modifier =
                             Modifier

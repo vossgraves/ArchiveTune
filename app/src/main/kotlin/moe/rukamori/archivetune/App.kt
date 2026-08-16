@@ -20,6 +20,7 @@ import coil3.SingletonImageLoader
 import coil3.disk.DiskCache
 import coil3.disk.directory
 import coil3.memory.MemoryCache
+import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import coil3.request.CachePolicy
 import coil3.request.allowHardware
 import coil3.request.crossfade
@@ -66,13 +67,16 @@ import moe.rukamori.archivetune.utils.get
 import moe.rukamori.archivetune.utils.potoken.BotGuardTokenGenerator
 import moe.rukamori.archivetune.utils.reportException
 import moe.rukamori.archivetune.utils.toPlaybackAuthState
+import okhttp3.ConnectionPool
 import okhttp3.Dns
+import okhttp3.OkHttpClient
 import timber.log.Timber
 import java.io.File
 import java.io.PrintWriter
 import java.io.StringWriter
 import java.net.Proxy
 import java.util.*
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.inject.Inject
 import kotlin.system.exitProcess
@@ -445,10 +449,45 @@ class App :
             applicationScope.launch(Dispatchers.IO) { trimImageDiskCache(diskCache) }
         }
 
+        // Tuned OkHttp client dedicated to image fetching. Defaults in Coil 3
+        // / OkHttp use a small connection pool (5 idle, 5 min keepalive) and
+        // 10s connect/read/write timeouts — fine for a single image, but the
+        // home feed fires 20+ thumbnail requests in parallel on cold start,
+        // which exhausts the pool and serialises behind connect timeouts.
+        //
+        // This config:
+        //  * Raises the pool to 20 idle / 5 min keepalive so all parallel
+        //    thumbnail fetches reuse kept-alive sockets (no extra TLS
+        //    handshakes after the first hit to lh3.googleusercontent.com /
+        //    i.ytimg.com / mosaic.scdn.co).
+        //  * Drops connect timeout to 6s (don't hang the UI for 10s on a
+        //    dead CDN edge — let the next retry bucket kick in fast).
+        //  * Keeps read/write at 10s (large high-res thumbnails can still
+        //    take a moment on slow networks; we don't want to abort them).
+        //  * Enables retryOnConnectionFailure + followRedirects so CDN
+        //    302s (e.g. googleusercontent -> ggpht) resolve transparently.
+        //
+        // Combined with explicit `.size()` on every AsyncImage call (so
+        // Coil requests the smallest bucket the server offers instead of
+        // pulling maxresdefault for a 56dp tile), this makes thumbnails
+        // load near-instantly after the first cache miss.
+        val imageHttpClient =
+            OkHttpClient
+                .Builder()
+                .connectionPool(ConnectionPool(20, 5, TimeUnit.MINUTES))
+                .connectTimeout(6, TimeUnit.SECONDS)
+                .readTimeout(10, TimeUnit.SECONDS)
+                .writeTimeout(10, TimeUnit.SECONDS)
+                .retryOnConnectionFailure(true)
+                .followRedirects(true)
+                .followSslRedirects(true)
+                .build()
+
         return ImageLoader
             .Builder(this)
             .components {
                 add(moe.rukamori.archivetune.telegram.TelegramThumbnailFetcher.Factory())
+                add(OkHttpNetworkFetcherFactory(imageHttpClient))
             }
             .crossfade(!lowRam)
             .allowHardware(Build.VERSION.SDK_INT >= Build.VERSION_CODES.P)
