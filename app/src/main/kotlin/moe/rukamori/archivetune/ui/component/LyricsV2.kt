@@ -281,12 +281,9 @@ fun LyricsV2(
     val playerBackground by rememberEnumPreference(PlayerBackgroundStyleKey, PlayerBackgroundStyle.DEFAULT)
 
     // ── Text colour derived from background style ──
-    val textColor =
-        textColorOverride ?: if (playerBackground == PlayerBackgroundStyle.DEFAULT) {
-            MaterialTheme.colorScheme.onBackground
-        } else {
-            Color.White
-        }
+    // Apple Music style and all lyrics backgrounds always use white text so that
+    // lyrics remain readable on the dark blurred backdrop regardless of system theme.
+    val textColor = textColorOverride ?: Color.White
     val lyricsLineBlur = (lyricsLineBlurOverride ?: lyricsLineBlurPreference) && !v2AnimationsDisabled
 
     val inactiveAlpha = 0.35f

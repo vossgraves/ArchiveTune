@@ -537,8 +537,10 @@ fun Lyrics(
             !lyrics.isNullOrEmpty() && (isLineSyncedLrc(lyrics) || isTtml(lyrics))
         }
 
-    val lyricsBaseColor = if (useDarkTheme || playerBackground != PlayerBackgroundStyle.DEFAULT) Color.White else Color.Black
-    val lyricsGlowColor = if (useDarkTheme || playerBackground != PlayerBackgroundStyle.DEFAULT) Color.White else Color.Black
+    // Apple Music style and all lyrics backgrounds always use white text so lyrics stay
+    // readable on the dark blurred backdrop regardless of system theme.
+    val lyricsBaseColor = Color.White
+    val lyricsGlowColor = Color.White
     val textColor = lyricsBaseColor
 
     val wordSyncLeadMs =

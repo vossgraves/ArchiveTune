@@ -212,12 +212,7 @@ fun LyricsScreen(
     val playerCustomBlur by rememberPreference(PlayerCustomBlurKey, 0f)
     val playerCustomContrast by rememberPreference(PlayerCustomContrastKey, 1f)
     val playerCustomBrightness by rememberPreference(PlayerCustomBrightnessKey, 1f)
-    val foregroundColor =
-        if (lyricsBackground == LyricsBackgroundStyle.FOLLOW_THEME) {
-            MaterialTheme.colorScheme.onSurface
-        } else {
-            Color.White
-        }
+    val foregroundColor = Color.White
     val showPlayerControlsState =
         rememberPreference(ShowLyricsPlayerControlsKey, true)
     val showPlayerControlsEnabled by showPlayerControlsState
@@ -580,6 +575,7 @@ fun LyricsScreen(
                 mediaMetadata = mediaMetadata,
                 foregroundColor = foregroundColor,
                 onMoreClick = showLyricsMenu,
+                onDismissClick = onBackClick,
                 isLiked = currentSongLiked,
                 onToggleLike = playerConnection::toggleLike,
                 modifier =
@@ -1085,6 +1081,7 @@ private fun AppleMusicTrackHeader(
     mediaMetadata: MediaMetadata,
     foregroundColor: Color,
     onMoreClick: () -> Unit,
+    onDismissClick: () -> Unit = {},
     modifier: Modifier = Modifier,
     isLiked: Boolean = false,
     onToggleLike: () -> Unit = {},
@@ -1145,6 +1142,19 @@ private fun AppleMusicTrackHeader(
         }
 
         Spacer(modifier = Modifier.width(8.dp))
+
+        // Close (cross) button — required so users can dismiss the lyrics sheet
+        // without relying on the system back gesture. Sits to the left of the
+        // overflow menu icon (and to the left of the heart button). Matches
+        // upstream rukamori/ArchiveTune's lyrics top bar layout.
+        AppleMusicHeaderIconButton(
+            iconRes = R.drawable.close,
+            contentDescription = stringResource(R.string.close),
+            foregroundColor = foregroundColor,
+            onClick = onDismissClick,
+        )
+
+        Spacer(modifier = Modifier.width(4.dp))
 
         // Favourite (heart) button — matches Apple Music's lyrics page where the
         // heart icon sits to the right of the song title/artist. Tapping toggles

@@ -117,6 +117,9 @@ media3-okhttp = { module = "androidx.media3:media3-datasource-okhttp", version.r
 media3-session = { module = "androidx.media3:media3-session", version.ref = "media3" }
 media3-cast = { module = "androidx.media3:media3-cast", version.ref = "media3" }
 mediarouter = { module = "androidx.mediarouter:mediarouter", version = "1.8.1" }
+# On-device speech recognition (Google Play Services speech). Used by the in-app
+# voice search mic button so users do NOT need to install the standalone Google app.
+play-services-speech = { module = "com.google.android.gms:play-services-speech", version = "20.5.0" }
 
 room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
 room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }

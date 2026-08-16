@@ -22,6 +22,7 @@ import android.provider.Settings
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
@@ -564,14 +565,15 @@ fun BottomSheetPlayer(
     // (kept in sync with the authoritative artwork resolver, including Tidal fallback commits).
     val paletteArtworkUrl = mediaMetadata?.thumbnailUrl
 
-    LaunchedEffect(mediaMetadata?.id, paletteArtworkUrl, playerBackground, useDarkTheme) {
+    LaunchedEffect(mediaMetadata?.id, paletteArtworkUrl, playerBackground, useDarkTheme, playerDesignStyle) {
         if (aodModeEnabled) return@LaunchedEffect
         val wantsPalette =
             playerBackground == PlayerBackgroundStyle.GRADIENT || playerBackground == PlayerBackgroundStyle.COLORING ||
                 playerBackground == PlayerBackgroundStyle.BLUR ||
                 playerBackground == PlayerBackgroundStyle.BLUR_GRADIENT ||
                 playerBackground == PlayerBackgroundStyle.GLOW ||
-                playerBackground == PlayerBackgroundStyle.GLOW_ANIMATED
+                playerBackground == PlayerBackgroundStyle.GLOW_ANIMATED ||
+                playerDesignStyle == PlayerDesignStyle.V9
         if (!wantsPalette) {
             gradientColors = emptyList()
             hasValidGradientPalette = false
@@ -659,8 +661,71 @@ fun BottomSheetPlayer(
 
     val changeBound = state.expandedBound / 3
 
+    // ── V9 "Material Extended" dynamic color system ──
+    // Derives background/accent/text/icon-button colors from the artwork's dominant
+    // palette color and animates between songs so the controls blend smoothly with
+    // the artwork (no blur behind the controls — pure color gradient instead).
+    val dominantColor = gradientColors.firstOrNull() ?: MaterialTheme.colorScheme.primary
+    val targetBgColor = remember(dominantColor, useDarkTheme) {
+        val hsv = FloatArray(3)
+        android.graphics.Color.colorToHSV(dominantColor.toArgb(), hsv)
+        if (useDarkTheme) {
+            hsv[1] = hsv[1].coerceIn(0.12f, 0.35f)
+            hsv[2] = 0.08f
+        } else {
+            hsv[1] = hsv[1].coerceIn(0.04f, 0.12f)
+            hsv[2] = 0.96f
+        }
+        Color(android.graphics.Color.HSVToColor(hsv))
+    }
+    val dynamicBgColor by animateColorAsState(
+        targetValue = targetBgColor,
+        animationSpec = tween(durationMillis = 800),
+        label = "dynamicBgColor",
+    )
+
+    val targetAccentColor = dominantColor
+    val dynamicAccentColor by animateColorAsState(
+        targetValue = targetAccentColor,
+        animationSpec = tween(durationMillis = 800),
+        label = "dynamicAccentColor",
+    )
+
+    val targetTextColor = remember(dominantColor, useDarkTheme) {
+        val hsv = FloatArray(3)
+        android.graphics.Color.colorToHSV(dominantColor.toArgb(), hsv)
+        if (useDarkTheme) {
+            hsv[1] = hsv[1].coerceAtMost(0.12f)
+            hsv[2] = 0.96f
+        } else {
+            hsv[1] = hsv[1].coerceIn(0.12f, 0.35f)
+            hsv[2] = 0.08f
+        }
+        Color(android.graphics.Color.HSVToColor(hsv))
+    }
+    val dynamicTextColor by animateColorAsState(
+        targetValue = targetTextColor,
+        animationSpec = tween(durationMillis = 800),
+        label = "dynamicTextColor",
+    )
+
+    val targetIconButtonColor = remember(dynamicAccentColor) {
+        val luminance =
+            0.299f * dynamicAccentColor.red +
+                0.587f * dynamicAccentColor.green +
+                0.114f * dynamicAccentColor.blue
+        if (luminance > 0.5f) Color.Black else Color.White
+    }
+    val dynamicIconButtonColor by animateColorAsState(
+        targetValue = targetIconButtonColor,
+        animationSpec = tween(durationMillis = 800),
+        label = "dynamicIconButtonColor",
+    )
+
     val TextBackgroundColor =
-        if (playerDesignStyle == PlayerDesignStyle.V7 || playerDesignStyle == PlayerDesignStyle.V8) {
+        if (playerDesignStyle == PlayerDesignStyle.V9) {
+            dynamicTextColor
+        } else if (playerDesignStyle == PlayerDesignStyle.V7 || playerDesignStyle == PlayerDesignStyle.V8) {
             Color.White
         } else {
             when (playerBackground) {
@@ -676,7 +741,9 @@ fun BottomSheetPlayer(
         }
 
     val icBackgroundColor =
-        if (playerDesignStyle == PlayerDesignStyle.V7 || playerDesignStyle == PlayerDesignStyle.V8) {
+        if (playerDesignStyle == PlayerDesignStyle.V9) {
+            dynamicBgColor
+        } else if (playerDesignStyle == PlayerDesignStyle.V7 || playerDesignStyle == PlayerDesignStyle.V8) {
             Color.Black
         } else {
             when (playerBackground) {
@@ -706,6 +773,8 @@ fun BottomSheetPlayer(
         }.let { (tb, ib) ->
             if (playerDesignStyle == PlayerDesignStyle.V7 || playerDesignStyle == PlayerDesignStyle.V8) {
                 Pair(Color.White, Color.Black)
+            } else if (playerDesignStyle == PlayerDesignStyle.V9) {
+                Pair(dynamicAccentColor, dynamicIconButtonColor)
             } else {
                 Pair(tb, ib)
             }
@@ -1091,7 +1160,20 @@ fun BottomSheetPlayer(
                     }
                 },
         backgroundColor =
-            if (playerDesignStyle == PlayerDesignStyle.V7 || playerDesignStyle == PlayerDesignStyle.V8) {
+            if (playerDesignStyle == PlayerDesignStyle.V9) {
+                // V9 "Material Extended": animate the sheet background to the artwork's
+                // dominant color so the controls blend smoothly with the artwork (no blur).
+                val progress =
+                    ((state.value - state.collapsedBound) / (state.expandedBound - state.collapsedBound))
+                        .coerceIn(0f, 1f)
+                val fadeProgress =
+                    if (progress < 0.2f) {
+                        ((0.2f - progress) / 0.2f).coerceIn(0f, 1f)
+                    } else {
+                        0f
+                    }
+                dynamicBgColor.copy(alpha = 1f - fadeProgress)
+            } else if (playerDesignStyle == PlayerDesignStyle.V7 || playerDesignStyle == PlayerDesignStyle.V8) {
                 val progress =
                     ((state.value - state.collapsedBound) / (state.expandedBound - state.collapsedBound))
                         .coerceIn(0f, 1f)
@@ -2240,7 +2322,9 @@ fun BottomSheetPlayer(
             )
         }
 
-        val queueOnBackgroundColor = if (useBlackBackground) Color.White else MaterialTheme.colorScheme.onSurface
+        // Always use white text on the queue sheet so titles/artists stay readable on the
+        // dark blurred backdrop regardless of light/dark theme (matches Apple Music style).
+        val queueOnBackgroundColor = Color.White
         val queueSurfaceColor = if (useBlackBackground) Color.Black else MaterialTheme.colorScheme.surface
 
         val (queueTextButtonColor, queueIconButtonColor) =
@@ -2334,7 +2418,14 @@ fun BottomSheetPlayer(
         mediaMetadata?.let { metadata ->
             MikoLyricsTransition(
                 visible = isLyricsScreenVisible,
-                backHandlerEnabled = false,
+                // Only Apple Music style intentionally suppresses the back handler
+                // (its lyrics sheet is part of the same collapsed/expanded sheet flow).
+                // All other player styles must allow the system back button (and the
+                // close affordance in the lyrics top bar) to dismiss the lyrics sheet.
+                backHandlerEnabled =
+                    isLyricsScreenVisible &&
+                        state.isExpandedOrExpanding &&
+                        playerDesignStyle != PlayerDesignStyle.APPLE_MUSIC,
                 mediaMetadata = metadata,
                 navController = navController,
                 lyricsSyncOffset = lyricsSyncOffset,

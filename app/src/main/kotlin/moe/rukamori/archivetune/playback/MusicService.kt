@@ -8501,12 +8501,16 @@ class MusicService :
     /**
      * Sources the player's "Play from" chooser should offer for [mediaId], based on the last
      * resolution result: any lossless source that matched the track, plus YouTube (always available
-     * as the fallback). Returned in the canonical Tidal, Qobuz, YouTube order.
+     * as the fallback), plus the user's per-song override source (so the user can always see, change
+     * or clear their pinned choice even if the last resolution attempt failed transiently — e.g.
+     * "Qobuz token returned preview-only; skipping"). Returned in the canonical Tidal, Qobuz, YouTube
+     * order.
      */
     fun availableSourcesForSong(mediaId: String): List<AudioSourceType> {
         val resolved = resolvedSourcesByMediaId[mediaId].orEmpty()
+        val override = SongSourceOverride.get(dataStore.get(SongSourceOverrideKey, ""), mediaId)
         return AudioSourceConfig.DEFAULT_ORDER.filter {
-            it == AudioSourceType.YOUTUBE || it in resolved
+            it == AudioSourceType.YOUTUBE || it in resolved || it == override
         }
     }
 

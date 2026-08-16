@@ -1345,9 +1345,11 @@ private fun QueueSelectionFloatingToolbar(
 ) {
     val colorScheme = MaterialTheme.colorScheme
     val toolbarContainerColor = if (pureBlack) Color.Black else colorScheme.surfaceContainerHigh
-    val toolbarContentColor = if (pureBlack) Color.White else colorScheme.onSurface
+    // Always use white text/icons on the queue selection toolbar to stay readable on the
+    // dark blurred backdrop (matches Apple Music style).
+    val toolbarContentColor = Color.White
     val fabContainerColor = if (pureBlack) Color.White.copy(alpha = 0.12f) else colorScheme.surfaceContainerHighest
-    val fabContentColor = if (pureBlack) Color.White else colorScheme.onSurface
+    val fabContentColor = Color.White
 
     HorizontalFloatingToolbar(
         expanded = true,

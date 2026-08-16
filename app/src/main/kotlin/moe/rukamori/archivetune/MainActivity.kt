@@ -19,6 +19,7 @@ import android.content.Intent
 import android.content.ServiceConnection
 import android.speech.RecognizerIntent
 import android.content.pm.PackageManager
+import android.Manifest
 import android.content.res.Configuration
 import android.net.Uri
 import android.os.Build
@@ -348,6 +349,8 @@ import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.utils.reportException
 import moe.rukamori.archivetune.utils.setAppLocale
+import moe.rukamori.archivetune.voicesearch.VoiceSearchControllerLocator
+import moe.rukamori.archivetune.voicesearch.VoiceSearchState
 import moe.rukamori.archivetune.viewmodels.BackupCategory
 import moe.rukamori.archivetune.viewmodels.BackupRestoreViewModel
 import moe.rukamori.archivetune.viewmodels.HomeViewModel
@@ -2431,6 +2434,27 @@ class MainActivity : ComponentActivity() {
                                         enter = fadeIn(animationSpec = tween(durationMillis = if (disableAnimations) 0 else 300)),
                                         exit = fadeOut(animationSpec = tween(durationMillis = if (disableAnimations) 0 else 200)),
                                     ) {
+                                        // ── In-app voice search side effect ──
+                                        // When the GMS/Foss VoiceSearchController emits a Result, fill
+                                        // the search box and submit the query. On Error, show a toast.
+                                        val voiceSearchController = remember {
+                                            VoiceSearchControllerLocator.get(this@MainActivity)
+                                        }
+                                        val voiceSearchState by voiceSearchController.state.collectAsStateWithLifecycle()
+                                        LaunchedEffect(voiceSearchState) {
+                                            when (val s = voiceSearchState) {
+                                                is VoiceSearchState.Result -> {
+                                                    onQueryChange(TextFieldValue(s.text))
+                                                    onSearch(s.text)
+                                                    voiceSearchController.cancel() // reset to Idle
+                                                }
+                                                is VoiceSearchState.Error -> {
+                                                    Toast.makeText(this@MainActivity, s.message, Toast.LENGTH_SHORT).show()
+                                                    voiceSearchController.cancel()
+                                                }
+                                                else -> Unit
+                                            }
+                                        }
                                         TopSearch(
                                             query = query,
                                             onQueryChange = onQueryChange,
@@ -2499,6 +2523,18 @@ class MainActivity : ComponentActivity() {
                                             },
                                             trailingIcon = {
                                                 Row {
+                                                    // In-app voice search mic button. Uses Google Play
+                                                    // Services speech (gms flavor) so the user does NOT
+                                                    // need to install the standalone Google app.
+                                                    // `voiceSearchController` and `voiceSearchState` come
+                                                    // from the outer scope (declared just above TopSearch).
+                                                    val micPermissionLauncher = rememberLauncherForActivityResult(
+                                                        ActivityResultContracts.RequestPermission(),
+                                                    ) { granted ->
+                                                        if (granted) {
+                                                            voiceSearchController.startListening(this@MainActivity)
+                                                        }
+                                                    }
                                                     if (active) {
                                                         IconButton(onClick = launchVoiceSearch) {
                                                             Icon(
@@ -2549,6 +2585,32 @@ class MainActivity : ComponentActivity() {
                                                         OnlineSearchSortMenu(
                                                             selectedSort = onlineSearchSort,
                                                             onSortSelected = { onlineSearchSort = it },
+                                                        )
+                                                    }
+
+                                                    // Mic button is always visible (collapsed and active search bar)
+                                                    // so users can voice-search regardless of search state.
+                                                    IconButton(
+                                                        onClick = {
+                                                            if (ContextCompat.checkSelfPermission(
+                                                                    this@MainActivity,
+                                                                    Manifest.permission.RECORD_AUDIO,
+                                                                ) == PackageManager.PERMISSION_GRANTED
+                                                            ) {
+                                                                voiceSearchController.startListening(this@MainActivity)
+                                                            } else {
+                                                                micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                                            }
+                                                        },
+                                                    ) {
+                                                        Icon(
+                                                            painter = painterResource(R.drawable.mic),
+                                                            contentDescription = stringResource(R.string.voice_search),
+                                                            tint = if (voiceSearchState is VoiceSearchState.Listening) {
+                                                                MaterialTheme.colorScheme.primary
+                                                            } else {
+                                                                LocalContentColor.current
+                                                            },
                                                         )
                                                     }
                                                 }
