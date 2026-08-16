@@ -440,9 +440,6 @@ dependencies {
     implementation("androidx.media3:media3-ui-compose:${libs.versions.media3.get()}")
     add("gmsImplementation", libs.media3.cast)
     add("gmsImplementation", libs.mediarouter)
-    // On-device speech recognition (no standalone Google app required — only needs
-    // Google Play Services, which the gms flavor already depends on for Cast).
-    add("gmsImplementation", libs.play.services.speech)
     implementation(libs.squigglyslider)
 
     // Prebuilt TDLib (Telegram MTProto client) with bundled JNI natives for all ABIs.
