@@ -11,6 +11,8 @@ package moe.rukamori.archivetune.ui.screens
 
 import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -55,12 +57,13 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SearchBar
+import androidx.compose.material3.SearchBarDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -70,8 +73,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -126,51 +127,115 @@ fun NewReleaseScreen(
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
-            // Plain top bar — no frosted pills. Modern, minimal.
-            LargeFlexibleTopAppBar(
-                title = {
-                    Text(
-                        text = stringResource(R.string.new_releases),
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                    )
+            // Switch between the normal top app bar and a Material3 SearchBar
+            // when the user taps the search icon. Rendering the search bar in
+            // the topBar slot (instead of as a grid item below the top app bar)
+            // ensures it is always visible when search is active — even if the
+            // grid has been scrolled down. Matches the pattern used by
+            // NewsScreen and HistoryScreen.
+            AnimatedContent(
+                targetState = isSearchActive,
+                transitionSpec = {
+                    fadeIn(spring(stiffness = Spring.StiffnessMediumLow)) togetherWith
+                        fadeOut(spring(stiffness = Spring.StiffnessMediumLow))
                 },
-                navigationIcon = {
-                    AppIconButton(
-                        onClick = navController::navigateUp,
-                        onLongClick = navController::backToMain,
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.arrow_back),
-                            contentDescription = null,
-                        )
-                    }
-                },
-                actions = {
-                    // Using Material3's standard IconButton here (not the
-                    // custom AppIconButton) because the custom one uses
-                    // combinedClickable which can fail to register taps in
-                    // the LargeFlexibleTopAppBar actions slot on some
-                    // Material3 1.5.0-alpha builds. The standard IconButton
-                    // uses a plain clickable and is more reliable here.
-                    IconButton(
-                        onClick = {
-                            isSearchActive = !isSearchActive
-                            if (!isSearchActive) searchQuery = ""
+                label = "newReleaseTopBar",
+            ) { searching ->
+                if (searching) {
+                    SearchBar(
+                        inputField = {
+                            SearchBarDefaults.InputField(
+                                query = searchQuery,
+                                onQueryChange = { searchQuery = it },
+                                onSearch = { isSearchActive = false },
+                                expanded = false,
+                                onExpandedChange = {},
+                                placeholder = {
+                                    Text(text = stringResource(R.string.search))
+                                },
+                                leadingIcon = {
+                                    IconButton(
+                                        onClick = {
+                                            searchQuery = ""
+                                            isSearchActive = false
+                                        },
+                                    ) {
+                                        Icon(
+                                            painter = painterResource(R.drawable.arrow_back),
+                                            contentDescription = null,
+                                        )
+                                    }
+                                },
+                                trailingIcon =
+                                    if (searchQuery.isNotEmpty()) {
+                                        {
+                                            IconButton(
+                                                onClick = { searchQuery = "" },
+                                            ) {
+                                                Icon(
+                                                    painter = painterResource(R.drawable.close),
+                                                    contentDescription = null,
+                                                )
+                                            }
+                                        }
+                                    } else {
+                                        null
+                                    },
+                            )
                         },
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.search),
-                            contentDescription = stringResource(R.string.search),
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.largeTopAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer,
-                ),
-                scrollBehavior = scrollBehavior,
-            )
+                        expanded = false,
+                        onExpandedChange = {},
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp)
+                                .padding(top = 8.dp, bottom = 4.dp),
+                    ) {}
+                } else {
+                    // Plain top bar — no frosted pills. Modern, minimal.
+                    LargeFlexibleTopAppBar(
+                        title = {
+                            Text(
+                                text = stringResource(R.string.new_releases),
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                            )
+                        },
+                        navigationIcon = {
+                            AppIconButton(
+                                onClick = navController::navigateUp,
+                                onLongClick = navController::backToMain,
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.arrow_back),
+                                    contentDescription = null,
+                                )
+                            }
+                        },
+                        actions = {
+                            // Using Material3's standard IconButton here (not the
+                            // custom AppIconButton) because the custom one uses
+                            // combinedClickable which can fail to register taps in
+                            // the LargeFlexibleTopAppBar actions slot on some
+                            // Material3 1.5.0-alpha builds. The standard IconButton
+                            // uses a plain clickable and is more reliable here.
+                            IconButton(
+                                onClick = { isSearchActive = true },
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.search),
+                                    contentDescription = stringResource(R.string.search),
+                                )
+                            }
+                        },
+                        colors = TopAppBarDefaults.largeTopAppBarColors(
+                            containerColor = MaterialTheme.colorScheme.surface,
+                            scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer,
+                        ),
+                        scrollBehavior = scrollBehavior,
+                    )
+                }
+            }
         },
         contentWindowInsets = LocalPlayerAwareWindowInsets.current,
     ) { paddingValues ->
@@ -207,12 +272,6 @@ fun NewReleaseScreen(
                         isPlaying = isPlaying,
                         coroutineScope = coroutineScope,
                         searchQuery = searchQuery,
-                        isSearchActive = isSearchActive,
-                        onSearchQueryChange = { searchQuery = it },
-                        onClearSearch = {
-                            searchQuery = ""
-                            isSearchActive = false
-                        },
                         onReleaseClick = { album -> navController.navigate("album/${album.id}") },
                         onReleaseLongClick = { album ->
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -345,9 +404,6 @@ private fun NewReleaseGridContent(
     isPlaying: Boolean,
     coroutineScope: CoroutineScope,
     searchQuery: String,
-    isSearchActive: Boolean,
-    onSearchQueryChange: (String) -> Unit,
-    onClearSearch: () -> Unit,
     onReleaseClick: (AlbumItem) -> Unit,
     onReleaseLongClick: (AlbumItem) -> Unit,
     onRefresh: () -> Unit,
@@ -383,22 +439,6 @@ private fun NewReleaseGridContent(
         contentPadding = paddingValues,
         modifier = Modifier.fillMaxSize(),
     ) {
-        // Search field — only shown when the user has tapped the search icon.
-        // Renders as a full-width row above the summary header.
-        if (isSearchActive) {
-            item(
-                key = "new_release_search_field",
-                span = { GridItemSpan(maxLineSpan) },
-                contentType = "new_release_search_field",
-            ) {
-                NewReleaseSearchField(
-                    query = searchQuery,
-                    onQueryChange = onSearchQueryChange,
-                    onClose = onClearSearch,
-                )
-            }
-        }
-
         item(
             key = "new_release_summary",
             span = { GridItemSpan(maxLineSpan) },
@@ -761,95 +801,3 @@ private fun NewReleaseContent.releaseSections(): List<NewReleaseSection> =
             add(NewReleaseSection(NewReleaseTab.Ep, eps))
         }
     }
-
-/**
- * Inline search field for the New Releases screen — rendered as a full-width
- * row above the summary header when the user taps the search icon in the top
- * app bar. Filters releases by album title / artist name in real time.
- *
- * Layout mirrors the SearchScreen's input row (search icon + text field +
- * clear button) but is rendered inside the grid content rather than as a
- * top app bar, so it appears in-line with the rest of the page content.
- *
- * Auto-focuses the text field on appearance so the keyboard opens
- * immediately — the user doesn't have to tap the field after tapping the
- * search icon in the top app bar.
- */
-@Composable
-private fun NewReleaseSearchField(
-    query: String,
-    onQueryChange: (String) -> Unit,
-    onClose: () -> Unit,
-) {
-    val onSurface = MaterialTheme.colorScheme.onSurface
-    val onSurfaceVariant = MaterialTheme.colorScheme.onSurfaceVariant
-    val primary = MaterialTheme.colorScheme.primary
-    val focusRequester = remember { FocusRequester() }
-
-    // Auto-focus the text field when this composable first appears so the
-    // keyboard opens immediately. This makes the search feel responsive —
-    // tap search icon → field appears → keyboard is already up → start typing.
-    LaunchedEffect(Unit) {
-        runCatching { focusRequester.requestFocus() }
-    }
-
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 4.dp)
-            .clip(RoundedCornerShape(24.dp))
-            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-            .padding(horizontal = 4.dp, vertical = 4.dp),
-    ) {
-        // Use Material3's standard IconButton (not the custom AppIconButton)
-        // for consistency with the top app bar search icon — and because
-        // these buttons don't need long-press support.
-        IconButton(onClick = onClose) {
-            Icon(
-                painter = painterResource(R.drawable.arrow_back),
-                contentDescription = null,
-                tint = onSurfaceVariant,
-            )
-        }
-        androidx.compose.foundation.text.BasicTextField(
-            value = query,
-            onValueChange = onQueryChange,
-            singleLine = true,
-            textStyle =
-                MaterialTheme.typography.bodyLarge.copy(color = onSurface),
-            cursorBrush = androidx.compose.ui.graphics.SolidColor(primary),
-            modifier = Modifier
-                .weight(1f)
-                .focusRequester(focusRequester),
-            decorationBox = { innerTextField ->
-                Box(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 8.dp),
-                    contentAlignment = Alignment.CenterStart,
-                ) {
-                    if (query.isEmpty()) {
-                        Text(
-                            text = stringResource(R.string.search),
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = onSurfaceVariant,
-                            maxLines = 1,
-                        )
-                    }
-                    innerTextField()
-                }
-            },
-        )
-        if (query.isNotEmpty()) {
-            IconButton(onClick = { onQueryChange("") }) {
-                Icon(
-                    painter = painterResource(R.drawable.close),
-                    contentDescription = null,
-                    tint = onSurfaceVariant,
-                )
-            }
-        }
-    }
-}
