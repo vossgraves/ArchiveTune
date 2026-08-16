@@ -14,6 +14,7 @@ import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -133,39 +134,13 @@ fun LoginScreen(
         },
     )
 
-    TopAppBar(
-        title = { Text(stringResource(R.string.login)) },
-        navigationIcon = {
-            IconButton(
-                onClick = {
-                    if (onNavigateBack != null) {
-                        onNavigateBack()
-                    } else {
-                        navController.navigateUp()
-                    }
-                },
-                onLongClick = {
-                    if (onNavigateBack != null) {
-                        onNavigateBack()
-                    } else {
-                        navController.backToMain()
-                    }
-                },
-            ) {
-                Icon(
-                    painterResource(R.drawable.arrow_back),
-                    contentDescription = null,
-                )
-            }
-        },
-    )
-
-    BackHandler(enabled = onNavigateBack != null || webView?.canGoBack() == true) {
-        if (webView?.canGoBack() == true) {
-            webView?.goBack()
-        } else {
-            onNavigateBack?.invoke()
-        }
+    // The AuthWebViewScreen above already renders its own TopAppBar (with the
+    // login title and a back button wired to navController). When this screen
+    // is reached from onboarding (onNavigateBack != null), we add a BackHandler
+    // so the system back gesture routes through onNavigateBack instead of
+    // popping the nav stack.
+    BackHandler(enabled = onNavigateBack != null) {
+        onNavigateBack?.invoke()
     }
 }
 
