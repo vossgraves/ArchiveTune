@@ -57,6 +57,12 @@ data class HomeUiState(
     val quickPicksDisplayMode: QuickPicksDisplayMode,
     val showCategoryChips: Boolean,
     val showTonalBackdrop: Boolean,
+    /**
+     * When `true`, the Home feed collapses to a focused subset
+     * (hero + Recently Played + Keep Listening + Live Performances).
+     * The hero section is always rendered regardless of this flag.
+     */
+    val minimalHomeMode: Boolean = false,
     val isRefreshing: Boolean,
     val isLoadingMore: Boolean,
 )

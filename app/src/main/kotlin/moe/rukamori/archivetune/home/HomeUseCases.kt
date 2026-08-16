@@ -25,12 +25,14 @@ class ObserveHomePresentationPreferencesUseCase
                 repository.quickPicksDisplayMode,
                 repository.quickPicksMode,
                 repository.showTonalBackdrop,
-            ) { showCategoryChips, quickPicksDisplayMode, quickPicksMode, showTonalBackdrop ->
+                repository.minimalHomeMode,
+            ) { showCategoryChips, quickPicksDisplayMode, quickPicksMode, showTonalBackdrop, minimalHomeMode ->
                 HomePresentationPreferences(
                     showCategoryChips = showCategoryChips,
                     quickPicksDisplayMode = quickPicksDisplayMode,
                     quickPicksMode = quickPicksMode,
                     showTonalBackdrop = showTonalBackdrop,
+                    minimalHomeMode = minimalHomeMode,
                 )
             }
     }
@@ -41,4 +43,5 @@ data class HomePresentationPreferences(
     val quickPicksDisplayMode: QuickPicksDisplayMode,
     val quickPicksMode: QuickPicks,
     val showTonalBackdrop: Boolean,
+    val minimalHomeMode: Boolean = false,
 )

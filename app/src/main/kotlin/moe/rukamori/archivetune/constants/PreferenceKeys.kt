@@ -426,6 +426,23 @@ val PlaylistTagsFilterKey = stringPreferencesKey("playlistTagsFilter")
 val ShowHomeCategoryChipsKey = booleanPreferencesKey("showHomeCategoryChips")
 val ShowTagsInLibraryKey = booleanPreferencesKey("showTagsInLibrary")
 
+/**
+ * When `true`, the Home feed collapses to a focused subset:
+ *   - Jump-back-in hero (always rendered, regardless of this toggle)
+ *   - Recently Played
+ *   - Keep Listening
+ *   - Live Performances (the "Live performance"-titled remote shelf)
+ *
+ * All other home sections (category chips, remote/local quick picks,
+ * speed dial, account playlists, forgotten favorites, similar
+ * recommendations, and the rest of the remote homePage sections such
+ * as "Fresh finds" / "Old favourites") are hidden.
+ *
+ * Default is `false` so a fresh install shows the full home feed
+ * (matches upstream rukamori/ArchiveTune).
+ */
+val MinimalHomeModeKey = booleanPreferencesKey("minimalHomeMode")
+
 val EqualizerEnabledKey = booleanPreferencesKey("equalizerEnabled")
 val EqualizerControlModeKey = stringPreferencesKey("equalizerControlMode")
 val EqualizerBandLevelsMbKey = stringPreferencesKey("equalizerBandLevelsMb")

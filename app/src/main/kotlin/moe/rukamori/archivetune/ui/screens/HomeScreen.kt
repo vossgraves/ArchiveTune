@@ -324,23 +324,45 @@ private fun HomeContent(
                             .fillMaxWidth()
                             .align(Alignment.TopCenter),
                 ) {
-                    // Minimal home layout — the greeting and category-chips
-                    // rows are intentionally omitted so the "Jump back in"
-                    // hero artwork sits directly under the floating ArchiveTune
-                    // top bar with only the window-inset padding in between.
-                    // Sections below are curated to keep the feed focused:
-                    //   hero -> Recently Played -> Speed Dial -> Keep Listening
-                    //   -> Live Performances -> Forgotten Favourites.
-                    // Algorithmic shelves (account playlists, similar
-                    // recommendations, and the rest of the remote home sections
-                    // such as "Fresh finds" / "Old favourites") are dropped.
+                    // Home feed layout policy:
+                    //
+                    //  * "Jump back in" hero is ALWAYS rendered (when there are
+                    //    hero picks) regardless of Minimal Mode, so the top of
+                    //    the home screen always has the big artwork card.
+                    //
+                    //  * When `uiState.minimalHomeMode == true`, the feed
+                    //    collapses to:
+                    //      hero -> Recently Played -> Keep Listening
+                    //      -> Live Performances
+                    //    All other shelves (category chips, remote/local quick
+                    //    picks, speed dial, account playlists, forgotten
+                    //    favorites, similar recommendations, and non-Live
+                    //    remote sections) are hidden.
+                    //
+                    //  * When `uiState.minimalHomeMode == false` (default, also
+                    //    matches upstream rukamori/ArchiveTune), the feed shows
+                    //    the full set:
+                    //      hero -> category chips -> remote/local quick picks
+                    //      -> Recently Played -> Speed Dial -> Keep Listening
+                    //      -> Account Playlists -> Forgotten Favourites
+                    //      -> Similar Recommendations -> ALL remote homePage
+                    //      sections (including but not limited to "Live
+                    //      performance").
+                    //
+                    // The hero and Recently Played sections are 4nx3b fork
+                    // additions; everything else mirrors upstream so a fresh
+                    // install (with only remote content available) sees a
+                    // populated home screen.
+
+                    val minimalMode = uiState.minimalHomeMode
 
                     // "Jump back in" hero — large card + 2 stacked side cards.
                     // Uses `heroPicks` (3 random songs from listening-preference
                     // based quickPicks) instead of the last-played 3, so the hero
                     // rotates fresh picks each visit. Mirrors the Apple Music /
                     // Muzo home hero. Skipped entirely if the user has no
-                    // listening history yet (e.g. fresh install).
+                    // listening history yet (e.g. fresh install). PERSISTENT —
+                    // renders in both full and minimal modes.
                     if (uiState.heroPicks.isNotEmpty()) {
                         item(
                             key = "home_jump_back_in",
@@ -359,37 +381,63 @@ private fun HomeContent(
                         }
                     }
 
-                    if (remoteQuickPicks?.items?.isNotEmpty() == true) {
-                        sectionSpacer("remote_quick_picks")
+                    if (!minimalMode && uiState.showCategoryChips) {
                         item(
-                            key = "home_remote_quick_picks_header",
-                            contentType = "section_header",
+                            key = "home_category_chips",
+                            contentType = "category_chips",
                         ) {
-                            HomeSectionHeader(
-                                title = remoteQuickPicks.title,
-                                modifier = Modifier.animateItem(),
-                            )
-                        }
-                        item(
-                            key = "home_remote_quick_picks",
-                            contentType = "media_shelf",
-                        ) {
-                            HomePageSectionContent(
-                                section = remoteQuickPicks,
-                                mediaMetadata = mediaMetadata,
-                                isPlaying = isPlaying,
-                                navController = navController,
-                                playerConnection = playerConnection,
-                                menuState = menuState,
-                                haptic = haptic,
-                                scope = scope,
+                            HomeCategoryChips(
+                                chips = uiState.homePage?.chips.orEmpty(),
+                                selectedChip = uiState.selectedChip,
+                                onChipSelected = { onAction(HomeAction.SelectChip(it)) },
                                 modifier = Modifier.animateItem(),
                             )
                         }
                     }
 
+                    if (!minimalMode) {
+                        if (remoteQuickPicks?.items?.isNotEmpty() == true) {
+                            sectionSpacer("remote_quick_picks")
+                            item(
+                                key = "home_remote_quick_picks_header",
+                                contentType = "section_header",
+                            ) {
+                                HomeSectionHeader(
+                                    title = remoteQuickPicks.title,
+                                    modifier = Modifier.animateItem(),
+                                )
+                            }
+                            item(
+                                key = "home_remote_quick_picks",
+                                contentType = "media_shelf",
+                            ) {
+                                HomePageSectionContent(
+                                    section = remoteQuickPicks,
+                                    mediaMetadata = mediaMetadata,
+                                    isPlaying = isPlaying,
+                                    navController = navController,
+                                    playerConnection = playerConnection,
+                                    menuState = menuState,
+                                    haptic = haptic,
+                                    scope = scope,
+                                    modifier = Modifier.animateItem(),
+                                )
+                            }
+                        }
+                        // Note: the local "Quick Picks" shelf (driven by
+                        // `uiState.quickPicks` and rendered by upstream's
+                        // `QuickPicksSection` composable) was intentionally
+                        // removed from this fork in commit 9bf3c6bd2 in favour
+                        // of the "Jump back in" hero (which is built from the
+                        // same listening-preference-based picks) plus the
+                        // remote YouTube Music "Quick picks" shelf above.
+                        // Restoring upstream's `QuickPicksSection` would
+                        // require porting back the composable and its
+                        // carousel dependencies — out of scope for this fix.
+                    }
+
                     // "Recently Played" — horizontal square-card row with a
-                    // clock-icon header (matches the screenshot).
+                    // clock-icon header. Renders in both full and minimal modes.
                     if (uiState.recentlyPlayed.size > 1) {
                         sectionSpacer("recently_played")
                         item(
@@ -421,7 +469,7 @@ private fun HomeContent(
                         }
                     }
 
-                    if (uiState.speedDialItems.isNotEmpty()) {
+                    if (!minimalMode && uiState.speedDialItems.isNotEmpty()) {
                         sectionSpacer("speed_dial")
                         item(
                             key = "home_speed_dial_header",
@@ -450,6 +498,7 @@ private fun HomeContent(
                         }
                     }
 
+                    // Keep Listening — renders in both full and minimal modes.
                     if (uiState.keepListening.isNotEmpty()) {
                         sectionSpacer("keep_listening")
                         item(
@@ -482,46 +531,33 @@ private fun HomeContent(
                         }
                     }
 
-                    // "Live performances" — surfaced from the YouTube Music
-                    // home feed. The remote `homePage.sections` list contains
-                    // several algorithmic shelves ("Fresh finds", "Old
-                    // favourites", …); only the one whose title mentions
-                    // "Live performance" is rendered so the home stays
-                    // minimal. Placed directly below Keep Listening.
-                    uiState.homePage?.sections.orEmpty().forEachIndexed { index, section ->
-                        if (!section.title.contains("Live performance", ignoreCase = true)) return@forEachIndexed
-
-                        val sectionKey = "${section.endpoint?.browseId ?: section.title}_$index"
-                        sectionSpacer("live_performances_$sectionKey")
+                    if (!minimalMode && uiState.accountPlaylists.isNotEmpty()) {
+                        sectionSpacer("account_playlists")
                         item(
-                            key = "home_live_performances_header_$sectionKey",
-                            contentType = "section_header",
-                        ) {
-                            HomePageSectionTitle(
-                                section = section,
-                                navController = navController,
-                                modifier = Modifier.animateItem(),
-                            )
-                        }
-                        item(
-                            key = "home_live_performances_$sectionKey",
+                            key = "home_account_playlists",
                             contentType = "media_shelf",
                         ) {
-                            HomePageSectionContent(
-                                section = section,
-                                mediaMetadata = mediaMetadata,
-                                isPlaying = isPlaying,
-                                navController = navController,
-                                playerConnection = playerConnection,
-                                menuState = menuState,
-                                haptic = haptic,
-                                scope = scope,
-                                modifier = Modifier.animateItem(),
-                            )
+                            Column(modifier = Modifier.animateItem()) {
+                                AccountPlaylistsTitle(
+                                    accountName = uiState.accountName,
+                                    accountImageUrl = uiState.accountImageUrl,
+                                    onClick = { navController.navigate("account") },
+                                )
+                                AccountPlaylistsSection(
+                                    accountPlaylists = uiState.accountPlaylists,
+                                    mediaMetadata = mediaMetadata,
+                                    isPlaying = isPlaying,
+                                    navController = navController,
+                                    playerConnection = playerConnection,
+                                    menuState = menuState,
+                                    haptic = haptic,
+                                    scope = scope,
+                                )
+                            }
                         }
                     }
 
-                    if (uiState.forgottenFavorites.isNotEmpty()) {
+                    if (!minimalMode && uiState.forgottenFavorites.isNotEmpty()) {
                         sectionSpacer("forgotten_favorites")
                         item(
                             key = "home_forgotten_favorites_header",
@@ -547,6 +583,82 @@ private fun HomeContent(
                                 playerConnection = playerConnection,
                                 menuState = menuState,
                                 haptic = haptic,
+                                modifier = Modifier.animateItem(),
+                            )
+                        }
+                    }
+
+                    if (!minimalMode) {
+                        uiState.similarRecommendations.forEach { recommendation ->
+                            sectionSpacer("similar_${recommendation.title.id}")
+                            item(
+                                key = "home_similar_header_${recommendation.title.id}",
+                                contentType = "section_header",
+                            ) {
+                                SimilarRecommendationsTitle(
+                                    recommendation = recommendation,
+                                    navController = navController,
+                                    modifier = Modifier.animateItem(),
+                                )
+                            }
+                            item(
+                                key = "home_similar_${recommendation.title.id}",
+                                contentType = "media_shelf",
+                            ) {
+                                SimilarRecommendationsSection(
+                                    recommendation = recommendation,
+                                    mediaMetadata = mediaMetadata,
+                                    isPlaying = isPlaying,
+                                    navController = navController,
+                                    playerConnection = playerConnection,
+                                    menuState = menuState,
+                                    haptic = haptic,
+                                    scope = scope,
+                                    modifier = Modifier.animateItem(),
+                                )
+                            }
+                        }
+                    }
+
+                    // Remote homePage sections.
+                    //
+                    //  * Minimal mode: only render the "Live performance"-titled
+                    //    shelf, placed directly below Keep Listening.
+                    //
+                    //  * Full mode: render ALL remote shelves (including "Live
+                    //    performance", "Fresh finds", "Old favourites", and any
+                    //    other algorithmic shelves YouTube Music returns) —
+                    //    matches upstream rukamori/ArchiveTune.
+                    uiState.homePage?.sections.orEmpty().forEachIndexed { index, section ->
+                        if (minimalMode && !section.title.contains("Live performance", ignoreCase = true)) {
+                            return@forEachIndexed
+                        }
+
+                        val sectionKey = "${section.endpoint?.browseId ?: section.title}_$index"
+                        sectionSpacer(if (minimalMode) "live_performances_$sectionKey" else "remote_$sectionKey")
+                        item(
+                            key = if (minimalMode) "home_live_performances_header_$sectionKey" else "home_remote_header_$sectionKey",
+                            contentType = "section_header",
+                        ) {
+                            HomePageSectionTitle(
+                                section = section,
+                                navController = navController,
+                                modifier = Modifier.animateItem(),
+                            )
+                        }
+                        item(
+                            key = if (minimalMode) "home_live_performances_$sectionKey" else "home_remote_$sectionKey",
+                            contentType = "media_shelf",
+                        ) {
+                            HomePageSectionContent(
+                                section = section,
+                                mediaMetadata = mediaMetadata,
+                                isPlaying = isPlaying,
+                                navController = navController,
+                                playerConnection = playerConnection,
+                                menuState = menuState,
+                                haptic = haptic,
+                                scope = scope,
                                 modifier = Modifier.animateItem(),
                             )
                         }

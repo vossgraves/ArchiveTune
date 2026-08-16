@@ -2325,9 +2325,20 @@ fun BottomSheetPlayer(
             )
         }
 
-        // Always use white text on the queue sheet so titles/artists stay readable on the
-        // dark blurred backdrop regardless of light/dark theme (matches Apple Music style).
-        val queueOnBackgroundColor = Color.White
+        // Queue text color policy:
+        //  - Apple Music style keeps a dark frosted backdrop in both light & dark
+        //    themes, so its queue text is pinned to white (matches AM visual language).
+        //  - All other styles follow the surface color: white when the user has
+        //    opted into useBlackBackground, otherwise MaterialTheme.colorScheme.onSurface
+        //    so titles/artists/dividers/pill outlines stay visible against the
+        //    (possibly light, dynamic-themed) surface. This mirrors upstream
+        //    rukamori/ArchiveTune Player.kt.
+        val queueOnBackgroundColor =
+            if (playerDesignStyle == PlayerDesignStyle.APPLE_MUSIC || useBlackBackground) {
+                Color.White
+            } else {
+                MaterialTheme.colorScheme.onSurface
+            }
         val queueSurfaceColor = if (useBlackBackground) Color.Black else MaterialTheme.colorScheme.surface
 
         val (queueTextButtonColor, queueIconButtonColor) =

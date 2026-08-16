@@ -90,6 +90,7 @@ import moe.rukamori.archivetune.constants.HidePlayerThumbnailKey
 import moe.rukamori.archivetune.constants.HideScrollbarKey
 import moe.rukamori.archivetune.constants.LibraryFilter
 import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
+import moe.rukamori.archivetune.constants.MinimalHomeModeKey
 import moe.rukamori.archivetune.constants.LyricsBackgroundStyle
 import moe.rukamori.archivetune.constants.LyricsBackgroundStyleKey
 import moe.rukamori.archivetune.constants.MiniPlayerBackgroundStyle
@@ -250,6 +251,8 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
         )
     val (hideScrollbar, onHideScrollbarChange) =
         rememberPreference(HideScrollbarKey, defaultValue = false)
+    val (minimalHomeMode, onMinimalHomeModeChange) =
+        rememberPreference(MinimalHomeModeKey, defaultValue = false)
 
     val customFontPickerLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -982,6 +985,16 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                         icon = { Icon(painterResource(R.drawable.desktop_windows), null) },
                         checked = tabletModeEnabled,
                         onCheckedChange = onTabletModeEnabledChange,
+                    )
+                }
+
+                item {
+                    SwitchPreference(
+                        title = { Text(stringResource(R.string.minimal_home_mode)) },
+                        description = stringResource(R.string.minimal_home_mode_desc),
+                        icon = { Icon(painterResource(R.drawable.home_outlined), null) },
+                        checked = minimalHomeMode,
+                        onCheckedChange = onMinimalHomeModeChange,
                     )
                 }
 
