@@ -148,6 +148,7 @@ fun NewReleaseScreen(
                             isSearchActive = !isSearchActive
                             if (!isSearchActive) searchQuery = ""
                         },
+                        onLongClick = {},
                     ) {
                         Icon(
                             painter = painterResource(R.drawable.search),
@@ -780,7 +781,7 @@ private fun NewReleaseSearchField(
             .background(MaterialTheme.colorScheme.surfaceContainerHigh)
             .padding(horizontal = 4.dp, vertical = 4.dp),
     ) {
-        IconButton(onClick = onClose) {
+        IconButton(onClick = onClose, onLongClick = {}) {
             Icon(
                 painter = painterResource(R.drawable.arrow_back),
                 contentDescription = null,
@@ -816,7 +817,7 @@ private fun NewReleaseSearchField(
             },
         )
         if (query.isNotEmpty()) {
-            IconButton(onClick = { onQueryChange("") }) {
+            IconButton(onClick = { onQueryChange("") }, onLongClick = {}) {
                 Icon(
                     painter = painterResource(R.drawable.close),
                     contentDescription = null,
