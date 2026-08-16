@@ -7973,28 +7973,28 @@ class MusicService :
                 contentLength > 0L && downloadCache.isCached(currentMediaId, 0L, contentLength)
             }.getOrDefault(false)
 
-        // Fallback: even if the cache metadata is missing the content length
-        // (which would make `isFullyDownloadedMedia` false), the Media3
-        // DownloadManager may still have the download marked as COMPLETED.
-        // Trust the download state in that case — this is the fix for the
-        // "downloaded songs don't play when offline" bug where the user has
-        // a complete download but the cache metadata was never persisted.
-        val isMarkedAsCompletedDownload =
-            if (isFullyDownloadedMedia) {
-                true
-            } else {
-                runCatching {
-                    androidx.media3.exoplayer.offline.Download.STATE_COMPLETED ==
-                        DownloadUtil.downloads.value[currentMediaId]?.state
-                }.getOrDefault(false)
-            }
-
+        // Check for cached spans across all source-prefixed keys. Even if the
+        // cache metadata is missing the content length (which would make
+        // `isFullyDownloadedMedia` false), having cached spans means the song
+        // was at least partially downloaded and we should try to play it from
+        // cache instead of waiting for network. This is the key fix for the
+        // "downloaded songs don't play when offline" bug — the cache metadata
+        // sometimes doesn't have the content length persisted, but the bytes
+        // are still there.
         val hasAnyCachedData =
             isFullyDownloadedMedia ||
-                isMarkedAsCompletedDownload ||
                 runCatching {
                     downloadCache.getCachedSpans(currentMediaId).isNotEmpty() ||
-                        playerCache.getCachedSpans(currentMediaId).isNotEmpty()
+                        playerCache.getCachedSpans(currentMediaId).isNotEmpty() ||
+                        // Also check source-prefixed keys (qobuz:, tidal:, deezer:) —
+                        // downloads from external lossless sources are cached under
+                        // these keys, not the bare mediaId.
+                        downloadCache.getCachedSpans("qobuz:$currentMediaId").isNotEmpty() ||
+                        downloadCache.getCachedSpans("tidal:$currentMediaId").isNotEmpty() ||
+                        downloadCache.getCachedSpans("deezer:$currentMediaId").isNotEmpty() ||
+                        playerCache.getCachedSpans("qobuz:$currentMediaId").isNotEmpty() ||
+                        playerCache.getCachedSpans("tidal:$currentMediaId").isNotEmpty() ||
+                        playerCache.getCachedSpans("deezer:$currentMediaId").isNotEmpty()
                 }.getOrDefault(false)
 
         val isConnectionError =
@@ -8002,13 +8002,13 @@ class MusicService :
                 (error.cause?.cause as PlaybackException).errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED
 
         // Offline bypass: if we have ANY cached data for this mediaId (a
-        // complete download, a download marked COMPLETED by Media3, or even
-        // partial cached spans), do NOT call `waitOnNetworkError()` — the
+        // complete download, or even partial cached spans under the bare or
+        // source-prefixed keys), do NOT call `waitOnNetworkError()` — the
         // cache resolver in `resolveCachedDataSpec` will serve the cached
         // bytes on the next prepare(). Calling `waitOnNetworkError()` here
         // would freeze playback indefinitely even though the song is fully
         // available locally.
-        if (!isLocalMedia && !isFullyDownloadedMedia && !isMarkedAsCompletedDownload && !hasAnyCachedData &&
+        if (!isLocalMedia && !isFullyDownloadedMedia && !hasAnyCachedData &&
             (!isNetworkConnected.value || isConnectionError)
         ) {
             waitOnNetworkError()
@@ -8023,10 +8023,9 @@ class MusicService :
         // consulted, and the YouTube resolver failed because we're offline.
         if (!isLocalMedia && hasAnyCachedData && (!isNetworkConnected.value || isConnectionError)) {
             Timber.tag("MusicService").i(
-                "Offline playback recovery for %s (fullyCached=%b, markedCompleted=%b, hasSpans=%b); re-preparing to force cache read",
+                "Offline playback recovery for %s (fullyCached=%b, hasSpans=%b); re-preparing to force cache read",
                 currentMediaId,
                 isFullyDownloadedMedia,
-                isMarkedAsCompletedDownload,
                 hasAnyCachedData,
             )
             // Invalidate any stale stream URL cache so the resolver is forced
