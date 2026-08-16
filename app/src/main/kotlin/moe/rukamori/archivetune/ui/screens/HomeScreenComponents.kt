@@ -1229,12 +1229,25 @@ fun HomePageSectionTitle(
         title = section.title,
         label = section.label,
         leadingIcon = {
-            // Live performances section gets a microphone icon to match
+            // Every remote HomePage section now gets a leading icon — matches
             // the Recently Played (history) and Keep Listening (listening)
-            // headers — every home section now has a leading icon.
-            if (section.title.contains("Live performance", ignoreCase = true)) {
-                HomeSectionLeadingIcon(iconRes = R.drawable.mic)
-            }
+            // pattern so all home-section headers have a recognisable
+            // affordance before the title text. Live performances get a
+            // microphone; algorithmic shelves (Fresh finds, Old favourites,
+            // Quick picks, etc.) get an auto_awesome sparkle.
+            val iconRes =
+                when {
+                    section.title.contains("Live performance", ignoreCase = true) -> R.drawable.mic
+                    section.title.contains("Quick pick", ignoreCase = true) -> R.drawable.discover_tune
+                    section.title.contains("Fresh", ignoreCase = true) -> R.drawable.fire
+                    section.title.contains("Old", ignoreCase = true) ||
+                        section.title.contains("favourite", ignoreCase = true) ||
+                        section.title.contains("forgotten", ignoreCase = true) -> R.drawable.cached
+                    section.title.contains("New release", ignoreCase = true) -> R.drawable.new_release
+                    section.title.contains("Trending", ignoreCase = true) -> R.drawable.trending_up
+                    else -> R.drawable.auto_awesome
+                }
+            HomeSectionLeadingIcon(iconRes = iconRes)
         },
         thumbnail =
             section.thumbnail?.let { thumbnailUrl ->

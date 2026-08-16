@@ -425,6 +425,9 @@ private fun HomeContent(
                             ) {
                                 HomeSectionHeader(
                                     title = remoteQuickPicks.title,
+                                    leadingIcon = {
+                                        HomeSectionLeadingIcon(iconRes = R.drawable.discover_tune)
+                                    },
                                     modifier = Modifier.animateItem(),
                                 )
                             }
@@ -504,6 +507,9 @@ private fun HomeContent(
                         ) {
                             HomeSectionHeader(
                                 title = stringResource(R.string.speed_dial),
+                                leadingIcon = {
+                                    HomeSectionLeadingIcon(iconRes = R.drawable.bolt)
+                                },
                                 modifier = Modifier.animateItem(),
                             )
                         }
@@ -664,6 +670,9 @@ private fun HomeContent(
                         ) {
                             HomeSectionHeader(
                                 title = stringResource(R.string.forgotten_favorites),
+                                leadingIcon = {
+                                    HomeSectionLeadingIcon(iconRes = R.drawable.cached)
+                                },
                                 modifier = Modifier.animateItem(),
                             )
                         }

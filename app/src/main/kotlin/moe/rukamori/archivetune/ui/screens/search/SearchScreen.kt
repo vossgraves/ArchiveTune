@@ -279,6 +279,7 @@ fun SearchScreen(
                                 ) {
                                     SearchSectionHeader(
                                         title = stringResource(R.string.search_trending_searches),
+                                        leadingIconRes = R.drawable.trending_up,
                                         modifier = Modifier.animateItem(),
                                     )
                                 }
@@ -535,14 +536,36 @@ private fun SearchSectionHeader(
     title: String,
     modifier: Modifier = Modifier,
     trailing: (@Composable () -> Unit)? = null,
+    leadingIconRes: Int? = null,
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
         modifier =
             modifier
                 .fillMaxWidth()
                 .padding(horizontal = SearchHorizontalPadding, vertical = 8.dp),
     ) {
+        // Leading icon in a circular container — matches the Home page's
+        // HomeSectionLeadingIcon pattern (clock for Recently Played, bolt
+        // for Speed Dial) so every section header across the app has a
+        // recognisable affordance before its title text.
+        if (leadingIconRes != null) {
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    painter = painterResource(leadingIconRes),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+        }
         Text(
             text = title,
             style = MaterialTheme.typography.titleLarge.copy(fontSize = 20.sp),
@@ -572,6 +595,7 @@ private fun RecentSearchesSection(
     Column(modifier = modifier.fillMaxWidth()) {
         SearchSectionHeader(
             title = stringResource(R.string.search_recent_searches),
+            leadingIconRes = R.drawable.history,
             trailing = {
                 Text(
                     text = stringResource(R.string.clear),
@@ -930,7 +954,7 @@ private fun <T> SearchSuggestionsRowSection(
     itemContent: @Composable (T) -> Unit,
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
-        SearchSectionHeader(title = title)
+        SearchSectionHeader(title = title, leadingIconRes = R.drawable.search)
         LazyRow(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             contentPadding = PaddingValues(horizontal = SearchHorizontalPadding),
@@ -970,7 +994,7 @@ private fun RecommendedSongsSection(
     val visibleSongs = remember(songs) { songs.take(6) }
 
     Column(modifier = modifier.fillMaxWidth()) {
-        SearchSectionHeader(title = stringResource(R.string.search_recommended_songs))
+        SearchSectionHeader(title = stringResource(R.string.search_recommended_songs), leadingIconRes = R.drawable.music_note)
         Column(
             modifier =
                 Modifier

@@ -18,6 +18,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,11 +31,13 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyHorizontalGrid
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -110,6 +113,11 @@ fun NewReleaseScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val coroutineScope = rememberCoroutineScope()
     var selectedTab by rememberSaveable { mutableStateOf(NewReleaseTab.All) }
+    // Local search state — filters releases by album/artist name. The search
+    // icon in the top app bar toggles a search field; typing filters the
+    // visible grid in-place. Empty query = show all releases.
+    var searchQuery by rememberSaveable { mutableStateOf("") }
+    var isSearchActive by rememberSaveable { mutableStateOf(false) }
 
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
@@ -131,6 +139,19 @@ fun NewReleaseScreen(
                         Icon(
                             painter = painterResource(R.drawable.arrow_back),
                             contentDescription = null,
+                        )
+                    }
+                },
+                actions = {
+                    IconButton(
+                        onClick = {
+                            isSearchActive = !isSearchActive
+                            if (!isSearchActive) searchQuery = ""
+                        },
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.search),
+                            contentDescription = stringResource(R.string.search),
                         )
                     }
                 },
@@ -175,6 +196,13 @@ fun NewReleaseScreen(
                         activeAlbumId = mediaMetadata?.album?.id,
                         isPlaying = isPlaying,
                         coroutineScope = coroutineScope,
+                        searchQuery = searchQuery,
+                        isSearchActive = isSearchActive,
+                        onSearchQueryChange = { searchQuery = it },
+                        onClearSearch = {
+                            searchQuery = ""
+                            isSearchActive = false
+                        },
                         onReleaseClick = { album -> navController.navigate("album/${album.id}") },
                         onReleaseLongClick = { album ->
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -306,6 +334,10 @@ private fun NewReleaseGridContent(
     activeAlbumId: String?,
     isPlaying: Boolean,
     coroutineScope: CoroutineScope,
+    searchQuery: String,
+    isSearchActive: Boolean,
+    onSearchQueryChange: (String) -> Unit,
+    onClearSearch: () -> Unit,
     onReleaseClick: (AlbumItem) -> Unit,
     onReleaseLongClick: (AlbumItem) -> Unit,
     onRefresh: () -> Unit,
@@ -319,11 +351,44 @@ private fun NewReleaseGridContent(
             if (selectedTab == NewReleaseTab.All) emptyList() else content.releasesFor(selectedTab)
         }
 
+    // Apply search filter to releases — matches album title OR artist name,
+    // case-insensitive. Empty query = no filtering.
+    val query = searchQuery.trim()
+    fun matchesQuery(album: AlbumItem): Boolean {
+        if (query.isEmpty()) return true
+        val title = album.title.lowercase()
+        val artists = album.artists?.joinToString(" ") { it.name }?.lowercase().orEmpty()
+        val q = query.lowercase()
+        return title.contains(q) || artists.contains(q)
+    }
+
+    val filteredReleases = remember(releases, query) { releases.filter(::matchesQuery) }
+    val filteredAllSections = remember(allSections, query) {
+        if (query.isEmpty()) allSections
+        else allSections.map { it.copy(releases = it.releases.filter(::matchesQuery)) }.filter { it.releases.isNotEmpty() }
+    }
+
     LazyVerticalGrid(
         columns = GridCells.Adaptive(minSize = GridThumbnailHeight + 24.dp),
         contentPadding = paddingValues,
         modifier = Modifier.fillMaxSize(),
     ) {
+        // Search field — only shown when the user has tapped the search icon.
+        // Renders as a full-width row above the summary header.
+        if (isSearchActive) {
+            item(
+                key = "new_release_search_field",
+                span = { GridItemSpan(maxLineSpan) },
+                contentType = "new_release_search_field",
+            ) {
+                NewReleaseSearchField(
+                    query = searchQuery,
+                    onQueryChange = onSearchQueryChange,
+                    onClose = onClearSearch,
+                )
+            }
+        }
+
         item(
             key = "new_release_summary",
             span = { GridItemSpan(maxLineSpan) },
@@ -336,8 +401,16 @@ private fun NewReleaseGridContent(
             )
         }
 
-        if (selectedTab == NewReleaseTab.All) {
-            allSections.forEach { section ->
+        if (query.isNotEmpty() && filteredAllSections.isEmpty() && filteredReleases.isEmpty()) {
+            item(
+                key = "new_release_search_empty",
+                span = { GridItemSpan(maxLineSpan) },
+                contentType = "new_release_empty",
+            ) {
+                NewReleaseCategoryEmptyState(onRefresh = onRefresh)
+            }
+        } else if (selectedTab == NewReleaseTab.All) {
+            filteredAllSections.forEach { section ->
                 item(
                     key = "new_release_section_header_${section.tab.name}",
                     span = { GridItemSpan(maxLineSpan) },
@@ -346,6 +419,7 @@ private fun NewReleaseGridContent(
                     NewReleaseSectionHeader(
                         title = stringResource(section.tab.titleRes),
                         count = section.releases.size,
+                        leadingIcon = section.tab.icon,
                     )
                 }
 
@@ -365,7 +439,7 @@ private fun NewReleaseGridContent(
                     )
                 }
             }
-        } else if (releases.isEmpty()) {
+        } else if (filteredReleases.isEmpty()) {
             item(
                 key = "new_release_empty_${selectedTab.name}",
                 span = { GridItemSpan(maxLineSpan) },
@@ -375,7 +449,7 @@ private fun NewReleaseGridContent(
             }
         } else {
             items(
-                items = releases,
+                items = filteredReleases,
                 key = { it.id },
                 contentType = { selectedTab.contentType },
             ) { album ->
@@ -402,6 +476,7 @@ private fun NewReleaseGridContent(
 private fun NewReleaseSectionHeader(
     title: String,
     count: Int,
+    leadingIcon: ImageVector? = null,
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -412,6 +487,27 @@ private fun NewReleaseSectionHeader(
                 .padding(start = 20.dp, top = 18.dp, end = 20.dp, bottom = 6.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
+            // Leading icon in a circular container — matches the Home page's
+            // HomeSectionLeadingIcon pattern (e.g. clock for Recently Played,
+            // bolt for Speed Dial) so every section header across the app has
+            // a recognisable affordance before its title.
+            if (leadingIcon != null) {
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = leadingIcon,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+            }
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleLarge,
@@ -484,8 +580,11 @@ private fun NewReleaseHorizontalSection(
  * Modern summary header — replaces the old frosted-glass summary card.
  *
  * Layout:
- *  - Top row: bold "Total releases" label + large count number on the right
- *  - Bottom: tab strip as a horizontal row of clean tonal chips
+ *  - Top row: "Total releases" label + count number grouped together on the
+ *    left (so the number sits beside the label, not floating at the right
+ *    edge — user-requested fix), with a search affordance icon on the right
+ *  - Bottom: tab strip as a horizontally-scrollable row of clean tonal chips
+ *    (scrollable so 4 tabs never truncate "Albums" → "Albu" on narrow screens)
  *
  * No frosted glass, no oversized rounded container — just typography +
  * a clean tab strip.
@@ -502,21 +601,42 @@ private fun NewReleaseSummaryHeader(
                 .fillMaxWidth()
                 .padding(start = 20.dp, top = 12.dp, end = 20.dp, bottom = 8.dp),
     ) {
-        // Total releases — inline row, no container background.
+        // Total releases — label and count grouped together on the LEFT so
+        // the count number reads as part of the label (e.g. "Total releases 200")
+        // rather than floating alone at the right edge of the screen. The
+        // search affordance icon is rendered by the top app bar instead.
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
             modifier = Modifier.fillMaxWidth(),
         ) {
+            // Small leading icon — matches the section header pattern so the
+            // summary header has the same visual language as the per-section
+            // headers below it.
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.LibraryMusic,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
             Text(
                 text = stringResource(R.string.total_releases),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            // Count number — bold and prominent, immediately after the label.
             Text(
                 text = content.totalReleases.toString(),
-                style = MaterialTheme.typography.headlineLarge,
+                style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Black,
                 color = MaterialTheme.colorScheme.onSurface,
             )
@@ -525,6 +645,8 @@ private fun NewReleaseSummaryHeader(
         Spacer(Modifier.height(16.dp))
 
         // Modern tab strip — clean chips with no frosted pill background.
+        // Horizontally scrollable so all 4 tab labels ("All", "Albums",
+        // "Singles", "EP") are fully visible regardless of screen width.
         NewReleaseTabs(
             selectedTab = selectedTab,
             onTabSelected = onTabSelected,
@@ -541,11 +663,14 @@ private fun NewReleaseTabs(
     val selectedContainer = MaterialTheme.colorScheme.primary
     val selectedContentColor = MaterialTheme.colorScheme.onPrimary
     val unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val scrollState = rememberScrollState()
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(scrollState),
     ) {
         tabs.forEach { tab ->
             val selected = tab == selectedTab
@@ -554,12 +679,12 @@ private fun NewReleaseTabs(
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
-                    .weight(1f)
+                    .wrapContentWidth()
                     .height(44.dp)
                     .clip(RoundedCornerShape(12.dp))
                     .background(if (selected) selectedContainer else Color.Transparent)
                     .combinedClickable(onClick = { onTabSelected(tab) })
-                    .padding(horizontal = 8.dp),
+                    .padding(horizontal = 14.dp),
                 horizontalArrangement = Arrangement.Center,
             ) {
                 Icon(
@@ -626,3 +751,78 @@ private fun NewReleaseContent.releaseSections(): List<NewReleaseSection> =
             add(NewReleaseSection(NewReleaseTab.Ep, eps))
         }
     }
+
+/**
+ * Inline search field for the New Releases screen — rendered as a full-width
+ * row above the summary header when the user taps the search icon in the top
+ * app bar. Filters releases by album title / artist name in real time.
+ *
+ * Layout mirrors the SearchScreen's input row (search icon + text field +
+ * clear button) but is rendered inside the grid content rather than as a
+ * top app bar, so it appears in-line with the rest of the page content.
+ */
+@Composable
+private fun NewReleaseSearchField(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    onClose: () -> Unit,
+) {
+    val onSurface = MaterialTheme.colorScheme.onSurface
+    val onSurfaceVariant = MaterialTheme.colorScheme.onSurfaceVariant
+    val primary = MaterialTheme.colorScheme.primary
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 4.dp)
+            .clip(RoundedCornerShape(24.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            .padding(horizontal = 4.dp, vertical = 4.dp),
+    ) {
+        IconButton(onClick = onClose) {
+            Icon(
+                painter = painterResource(R.drawable.arrow_back),
+                contentDescription = null,
+                tint = onSurfaceVariant,
+            )
+        }
+        androidx.compose.foundation.text.BasicTextField(
+            value = query,
+            onValueChange = onQueryChange,
+            singleLine = true,
+            textStyle =
+                MaterialTheme.typography.bodyLarge.copy(color = onSurface),
+            cursorBrush = androidx.compose.ui.graphics.SolidColor(primary),
+            modifier = Modifier.weight(1f),
+            decorationBox = { innerTextField ->
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp),
+                    contentAlignment = Alignment.CenterStart,
+                ) {
+                    if (query.isEmpty()) {
+                        Text(
+                            text = stringResource(R.string.search),
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = onSurfaceVariant,
+                            maxLines = 1,
+                        )
+                    }
+                    innerTextField()
+                }
+            },
+        )
+        if (query.isNotEmpty()) {
+            IconButton(onClick = { onQueryChange("") }) {
+                Icon(
+                    painter = painterResource(R.drawable.close),
+                    contentDescription = null,
+                    tint = onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
