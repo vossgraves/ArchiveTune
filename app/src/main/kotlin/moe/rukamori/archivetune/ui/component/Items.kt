@@ -1308,11 +1308,18 @@ fun MediaMetadataListItem(
 ) {
     ListItem(
         title = mediaMetadata.title,
-        subtitle =
-            joinByBullet(
-                mediaMetadata.artists.joinToString { it.name },
-                makeTimeString(mediaMetadata.duration * 1000L),
-            ),
+        subtitle = {
+            Text(
+                text =
+                    joinByBullet(
+                        mediaMetadata.artists.joinToString { it.name },
+                        makeTimeString(mediaMetadata.duration * 1000L),
+                    ),
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        },
         thumbnailContent = {
             ItemThumbnail(
                 thumbnailUrl = mediaMetadata.thumbnailUrl,

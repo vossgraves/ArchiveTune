@@ -232,11 +232,10 @@ object AiTextService {
                 )
             }
 
-            // DeepL / OpenRouter / Mistral are translation-only providers (not generic chat
-            // completion). AiTextService is used for AI Mix / Wrapped / chat-style prompts, so
-            // these providers throw — translation calls go through LyricsTranslationHelper instead.
+            // DeepL / Mistral are translation-only providers (not generic chat completion).
+            // AiTextService is used for AI Mix / Wrapped / chat-style prompts, so these
+            // providers throw — translation calls go through LyricsTranslationHelper instead.
             AiProvider.DEEPL,
-            AiProvider.OPENROUTER,
             AiProvider.MISTRAL,
             -> {
                 throw AiServiceException("${config.provider.name} is a translation-only provider; use LyricsTranslationHelper for translation calls")
@@ -254,8 +253,8 @@ object AiTextService {
             AiProvider.CHATGPT -> fetchOpenAiModels(OpenAiModelsEndpoint, config.apiKey)
             AiProvider.OPENROUTER -> fetchOpenAiModels(OpenRouterModelsEndpoint, config.apiKey)
             AiProvider.GEMINI -> fetchGeminiModels(config.apiKey)
-            // DeepL / OpenRouter / Mistral have no models-list endpoint exposed in this service.
-            AiProvider.DEEPL, AiProvider.OPENROUTER, AiProvider.MISTRAL, AiProvider.CUSTOM, AiProvider.NONE -> emptyList()
+            // DeepL / Mistral have no models-list endpoint exposed in this service.
+            AiProvider.DEEPL, AiProvider.MISTRAL, AiProvider.CUSTOM, AiProvider.NONE -> emptyList()
         }
     }
 

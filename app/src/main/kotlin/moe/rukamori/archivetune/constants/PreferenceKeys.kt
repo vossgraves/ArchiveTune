@@ -347,7 +347,6 @@ enum class AiProvider {
     OPENROUTER,
     CUSTOM,
     DEEPL,
-    OPENROUTER,
     MISTRAL,
     NONE,
 }

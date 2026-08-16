@@ -704,7 +704,6 @@ private fun AiProvider.label(): String =
         AiProvider.OPENROUTER -> stringResource(R.string.ai_provider_openrouter)
         AiProvider.CUSTOM -> stringResource(R.string.custom)
         AiProvider.DEEPL -> "DeepL"
-        AiProvider.OPENROUTER -> "OpenRouter"
         AiProvider.MISTRAL -> "Mistral AI"
         AiProvider.NONE -> stringResource(R.string.ai_provider_none)
     }

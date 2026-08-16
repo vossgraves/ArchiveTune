@@ -19,7 +19,6 @@ import android.content.Intent
 import android.content.ServiceConnection
 import android.speech.RecognizerIntent
 import android.content.pm.PackageManager
-import android.Manifest
 import android.content.res.Configuration
 import android.net.Uri
 import android.os.Build
