@@ -7973,8 +7973,25 @@ class MusicService :
                 contentLength > 0L && downloadCache.isCached(currentMediaId, 0L, contentLength)
             }.getOrDefault(false)
 
+        // Fallback: even if the cache metadata is missing the content length
+        // (which would make `isFullyDownloadedMedia` false), the Media3
+        // DownloadManager may still have the download marked as COMPLETED.
+        // Trust the download state in that case — this is the fix for the
+        // "downloaded songs don't play when offline" bug where the user has
+        // a complete download but the cache metadata was never persisted.
+        val isMarkedAsCompletedDownload =
+            if (isFullyDownloadedMedia) {
+                true
+            } else {
+                runCatching {
+                    androidx.media3.exoplayer.offline.Download.STATE_COMPLETED ==
+                        DownloadUtil.downloads.value[currentMediaId]?.state
+                }.getOrDefault(false)
+            }
+
         val hasAnyCachedData =
             isFullyDownloadedMedia ||
+                isMarkedAsCompletedDownload ||
                 runCatching {
                     downloadCache.getCachedSpans(currentMediaId).isNotEmpty() ||
                         playerCache.getCachedSpans(currentMediaId).isNotEmpty()
@@ -7984,9 +8001,41 @@ class MusicService :
             (error.cause?.cause is PlaybackException) &&
                 (error.cause?.cause as PlaybackException).errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED
 
-        if (!isLocalMedia && !isFullyDownloadedMedia && (!isNetworkConnected.value || isConnectionError)) {
+        // Offline bypass: if we have ANY cached data for this mediaId (a
+        // complete download, a download marked COMPLETED by Media3, or even
+        // partial cached spans), do NOT call `waitOnNetworkError()` — the
+        // cache resolver in `resolveCachedDataSpec` will serve the cached
+        // bytes on the next prepare(). Calling `waitOnNetworkError()` here
+        // would freeze playback indefinitely even though the song is fully
+        // available locally.
+        if (!isLocalMedia && !isFullyDownloadedMedia && !isMarkedAsCompletedDownload && !hasAnyCachedData &&
+            (!isNetworkConnected.value || isConnectionError)
+        ) {
             waitOnNetworkError()
             return
+        }
+
+        // If we have cached data but the player still errored (typically
+        // because the resolver tried the network first and failed), force a
+        // re-prepare so the cache resolver gets a chance to serve the bytes.
+        // This handles the case where the initial resolvePlaybackDataSpec
+        // call fell through to the YouTube resolver before the cache was
+        // consulted, and the YouTube resolver failed because we're offline.
+        if (!isLocalMedia && hasAnyCachedData && (!isNetworkConnected.value || isConnectionError)) {
+            Timber.tag("MusicService").i(
+                "Offline playback recovery for %s (fullyCached=%b, markedCompleted=%b, hasSpans=%b); re-preparing to force cache read",
+                currentMediaId,
+                isFullyDownloadedMedia,
+                isMarkedAsCompletedDownload,
+                hasAnyCachedData,
+            )
+            // Invalidate any stale stream URL cache so the resolver is forced
+            // to consult the cache first on the next prepare.
+            playbackUrlCache.remove(currentMediaId)
+            if (playbackStreamRecoveryTracker.registerRetryAttempt(currentMediaId)) {
+                player.prepare()
+                return
+            }
         }
 
         if (error.errorCode == PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND) {
@@ -9922,7 +9971,45 @@ class MusicService :
                 }
 
                 else -> {
-                    return null
+                    // No known content length and no explicit request length.
+                    // For offline playback of fully-downloaded songs whose
+                    // cache metadata never had the content length persisted,
+                    // compute the total cached byte range across all candidate
+                    // keys and use that as the requested length. This is the
+                    // key fix for "downloaded songs don't play when offline" —
+                    // without it, the resolver returns null here, falls
+                    // through to the YouTube resolver, and fails offline.
+                    val candidateKeys = listOf(mediaId, "qobuz:$mediaId", "tidal:$mediaId", "deezer:$mediaId")
+                    val maxCachedLength =
+                        candidateKeys.maxOfOrNull { key ->
+                            runCatching {
+                                val spans = downloadCache.getCachedSpans(key).toList() +
+                                    (if (includePlayerCache) playerCache.getCachedSpans(key).toList() else emptyList())
+                                if (spans.isEmpty()) {
+                                    0L
+                                } else {
+                                    // Sum up the total cached bytes starting from
+                                    // dataSpec.position. For a fully-downloaded
+                                    // song, this equals the content length.
+                                    val sortedSpans = spans.sortedBy { it.position }
+                                    var total = 0L
+                                    var cursor = dataSpec.position
+                                    for (span in sortedSpans) {
+                                        if (span.position > cursor) break
+                                        val spanEnd = span.position + span.length
+                                        if (spanEnd > cursor) {
+                                            total += (spanEnd - cursor)
+                                            cursor = spanEnd
+                                        }
+                                    }
+                                    total
+                                }
+                            }.getOrDefault(0L)
+                        }
+                    if (maxCachedLength == null || maxCachedLength <= 0L) {
+                        return null
+                    }
+                    maxCachedLength
                 }
             }
 

@@ -14,8 +14,8 @@ import kotlinx.coroutines.flow.transformLatest
 import javax.inject.Inject
 
 private const val OfflineBannerDebounceMillis = 750L
-private const val OfflineBannerDurationMillis = 3000L
-private const val BackOnlineBannerDurationMillis = 2500L
+private const val OfflineBannerDurationMillis = 3500L
+private const val BackOnlineBannerDurationMillis = 3000L
 
 internal fun Flow<Boolean>.asNetworkBannerUiState(
     offlineDebounceMillis: Long = OfflineBannerDebounceMillis,

@@ -866,7 +866,7 @@
     <string name="playlist_suggestion_source_title">Título da playlist</string>
     <string name="playlist_suggestion_source_content">Conteúdo da playlist</string>
     <string name="playlist_suggestion_source_both">Título e conteúdo da playlist</string>
-    <string name="music_together">ArchiveTune Music Together</string>
+    <string name="music_together">Listen Together</string>
     <string name="together_display_name">Nome de exibição</string>
     <string name="together_display_name_placeholder">Seu nome</string>
     <string name="together_port">Porta da sessão</string>
@@ -937,7 +937,7 @@
     <string name="together_activity_error">Erro: %1$s</string>
     <string name="got_it">Entendi</string>
     <string name="together_dont_show_again">Não mostrar novamente</string>
-    <string name="together_welcome_title">Bem-vindo ao ArchiveTune Music Together</string>
+    <string name="together_welcome_title">Bem-vindo ao Listen Together</string>
     <string name="together_welcome_body">O Music Together permite que vários dispositivos compartilhem uma sessão ao vivo com fila e reprodução sincronizadas.</string>
     <string name="together_welcome_host_title">Hospedar uma sessão</string>
     <string name="together_welcome_host_body">Toque em Iniciar sessão e compartilhe o link da sessão. Mantenha o ArchiveTune aberto em segundo plano enquanto hospeda.</string>

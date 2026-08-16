@@ -268,30 +268,10 @@ fun SearchScreen(
                                 }
                             }
 
-                            // Section 2 — Based on what you like (2-col cards).
-                            if (currentState.data.moodAndGenres.isNotEmpty()) {
-                                item(
-                                    key = "search_explore_moods_title",
-                                    contentType = "section_title",
-                                ) {
-                                    SearchSectionHeader(
-                                        title = stringResource(R.string.search_based_on_what_you_like),
-                                        modifier = Modifier.animateItem(),
-                                    )
-                                }
-                                item(
-                                    key = "search_explore_moods",
-                                    contentType = "mood_genres_grid",
-                                ) {
-                                    BasedOnWhatYouLikeGrid(
-                                        data = currentState.data,
-                                        navController = navController,
-                                        modifier = Modifier.animateItem(),
-                                    )
-                                }
-                            }
-
-                            // Section 3 — Trending Searches (minimal chips).
+                            // Section 2 — Trending Searches (minimal chips).
+                            // "Based on what you like" section has been removed
+                            // from the Explore tab per user request — Explore
+                            // now shows only Recent Searches + Trending Searches.
                             if (currentState.data.suggestedArtists.isNotEmpty()) {
                                 item(
                                     key = "search_trending_searches_title",
@@ -715,6 +695,10 @@ private fun RecentSearchMonogram(query: String) {
     val initial = remember(query) {
         query.firstOrNull { it.isLetterOrDigit() }?.uppercaseChar()?.toString() ?: "·"
     }
+    // Search icon sits behind the initial letter, giving each recent-search
+    // row a recognizable "search" affordance (user-requested: "add icons
+    // behind recent searches"). The letter remains prominent in the
+    // foreground; the icon is dimmed so it doesn't compete.
     Box(
         contentAlignment = Alignment.Center,
         modifier =
@@ -723,6 +707,14 @@ private fun RecentSearchMonogram(query: String) {
                 .clip(CircleShape)
                 .background(MaterialTheme.colorScheme.surfaceContainerHigh),
     ) {
+        // Background search icon — dimmed, slightly offset down-right.
+        Icon(
+            painter = painterResource(R.drawable.search),
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
+            modifier = Modifier.size(26.dp),
+        )
+        // Foreground initial letter.
         Text(
             text = initial,
             style = MaterialTheme.typography.titleMedium.copy(fontSize = 18.sp),
@@ -897,13 +889,23 @@ private fun TrendingChip(
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
         modifier =
             Modifier
                 .clip(RoundedCornerShape(20.dp))
                 .background(MaterialTheme.colorScheme.surfaceContainerLow)
                 .clickable(onClick = onClick)
-                .padding(horizontal = 16.dp, vertical = 10.dp),
+                .padding(horizontal = 14.dp, vertical = 10.dp),
     ) {
+        // Leading trending icon — gives each chip a recognizable "trending"
+        // affordance, matching the user's request to add icons behind trending
+        // searches.
+        Icon(
+            painter = painterResource(R.drawable.trending_up),
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(16.dp),
+        )
         Text(
             text = label,
             style = MaterialTheme.typography.labelLarge.copy(fontSize = 14.sp, fontWeight = FontWeight.SemiBold),

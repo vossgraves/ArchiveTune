@@ -529,7 +529,7 @@
     <string name="allow">Разрешить</string>
     <string name="you_might_like">Вам может понравиться</string>
     <string name="refresh_suggestions">Обновить предложения</string>
-    <string name="music_together">ArchiveTune Music Together</string>
+    <string name="music_together">Listen Together</string>
     <string name="together_display_name">Отображаемое имя</string>
     <string name="together_display_name_placeholder">Ваше имя</string>
     <string name="together_port">Порт сессии</string>
@@ -574,7 +574,7 @@
     <string name="together_error_state">Ошибка</string>
     <string name="got_it">Ясно</string>
     <string name="together_dont_show_again">Не показывать снова</string>
-    <string name="together_welcome_title">Добро пожаловать в ArchiveTune Music Together</string>
+    <string name="together_welcome_title">Добро пожаловать в Listen Together</string>
     <string name="together_welcome_body">Music Together позволяет нескольким устройствам делить сессию в реальном времени с синхронизированными очередью и воспроизведением.</string>
     <string name="together_welcome_host_title">Захостить сессию</string>
     <string name="together_welcome_host_body">Нажмите Начать сессию, потом поделитесь ссылкой сессии. Держите ArchiveTune открытым в фоне во время хостинга.</string>

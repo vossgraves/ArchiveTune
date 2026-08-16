@@ -89,7 +89,7 @@
     <string name="remote_history">Remote</string>
     <string name="charts">Charts</string>
     <string name="back_button_desc">Back</string>
-    <string name="news">News From Developers</string>
+    <string name="news">News</string>
     <string name="news_loading">Loading news…</string>
     <string name="news_empty_title">Nothing here yet</string>
     <string name="news_empty_desc">No announcements at the moment. Check back soon.</string>

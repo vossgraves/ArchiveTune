@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -34,6 +35,7 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyHorizontalGrid
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Album
@@ -44,15 +46,13 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
-import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
@@ -85,7 +85,6 @@ import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.GridThumbnailHeight
 import moe.rukamori.archivetune.innertube.models.AlbumItem
 import moe.rukamori.archivetune.ui.component.IconButton
-import moe.rukamori.archivetune.ui.component.LargeFrostedTopAppBar
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.YouTubeGridItem
 import moe.rukamori.archivetune.ui.component.shimmer.GridItemPlaceHolder
@@ -115,10 +114,30 @@ fun NewReleaseScreen(
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
-            LargeFrostedTopAppBar(
-                titleRes = R.string.new_releases,
-                onBack = navController::navigateUp,
-                onBackLongClick = navController::backToMain,
+            // Plain top bar — no frosted pills. Modern, minimal.
+            LargeFlexibleTopAppBar(
+                title = {
+                    Text(
+                        text = stringResource(R.string.new_releases),
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                    )
+                },
+                navigationIcon = {
+                    IconButton(
+                        onClick = navController::navigateUp,
+                        onLongClick = navController::backToMain,
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.arrow_back),
+                            contentDescription = null,
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.largeTopAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer,
+                ),
                 scrollBehavior = scrollBehavior,
             )
         },
@@ -310,7 +329,7 @@ private fun NewReleaseGridContent(
             span = { GridItemSpan(maxLineSpan) },
             contentType = "new_release_summary",
         ) {
-            NewReleaseSummaryCard(
+            NewReleaseSummaryHeader(
                 content = content,
                 selectedTab = selectedTab,
                 onTabSelected = onTabSelected,
@@ -384,23 +403,37 @@ private fun NewReleaseSectionHeader(
     title: String,
     count: Int,
 ) {
-    Column(
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
         modifier =
             Modifier
                 .fillMaxWidth()
-                .padding(start = 20.dp, top = 10.dp, end = 20.dp, bottom = 2.dp),
+                .padding(start = 20.dp, top = 18.dp, end = 20.dp, bottom = 6.dp),
     ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-        Text(
-            text = count.toString(),
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Spacer(Modifier.width(8.dp))
+            // Compact count chip — small rounded background with the count.
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                    .padding(horizontal = 8.dp, vertical = 2.dp),
+            ) {
+                Text(
+                    text = count.toString(),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
     }
 }
 
@@ -447,25 +480,33 @@ private fun NewReleaseHorizontalSection(
     }
 }
 
+/**
+ * Modern summary header — replaces the old frosted-glass summary card.
+ *
+ * Layout:
+ *  - Top row: bold "Total releases" label + large count number on the right
+ *  - Bottom: tab strip as a horizontal row of clean tonal chips
+ *
+ * No frosted glass, no oversized rounded container — just typography +
+ * a clean tab strip.
+ */
 @Composable
-private fun NewReleaseSummaryCard(
+private fun NewReleaseSummaryHeader(
     content: NewReleaseContent,
     selectedTab: NewReleaseTab,
     onTabSelected: (NewReleaseTab) -> Unit,
 ) {
-    val summaryShape = remember { RoundedCornerShape(28.dp) }
-
-    Surface(
-        shape = summaryShape,
-        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.86f),
-        tonalElevation = 3.dp,
+    Column(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+                .padding(start = 20.dp, top = 12.dp, end = 20.dp, bottom = 8.dp),
     ) {
-        Column(
-            modifier = Modifier.padding(start = 20.dp, top = 18.dp, end = 20.dp, bottom = 10.dp),
+        // Total releases — inline row, no container background.
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier.fillMaxWidth(),
         ) {
             Text(
                 text = stringResource(R.string.total_releases),
@@ -475,16 +516,19 @@ private fun NewReleaseSummaryCard(
             )
             Text(
                 text = content.totalReleases.toString(),
-                style = MaterialTheme.typography.displaySmall,
+                style = MaterialTheme.typography.headlineLarge,
                 fontWeight = FontWeight.Black,
                 color = MaterialTheme.colorScheme.onSurface,
             )
-            Spacer(Modifier.height(14.dp))
-            NewReleaseTabs(
-                selectedTab = selectedTab,
-                onTabSelected = onTabSelected,
-            )
         }
+
+        Spacer(Modifier.height(16.dp))
+
+        // Modern tab strip — clean chips with no frosted pill background.
+        NewReleaseTabs(
+            selectedTab = selectedTab,
+            onTabSelected = onTabSelected,
+        )
     }
 }
 
@@ -494,65 +538,45 @@ private fun NewReleaseTabs(
     onTabSelected: (NewReleaseTab) -> Unit,
 ) {
     val tabs = remember { NewReleaseTab.entries.toList() }
-    val selectedTabIndex = tabs.indexOf(selectedTab).coerceAtLeast(0)
-    val tabShape = remember { RoundedCornerShape(28.dp) }
-    val selectedContainer = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.56f)
-    val unselectedContainer = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.42f)
-    val selectedContentColor = MaterialTheme.colorScheme.onPrimaryContainer
+    val selectedContainer = MaterialTheme.colorScheme.primary
+    val selectedContentColor = MaterialTheme.colorScheme.onPrimary
     val unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant
-    val indicatorColor = MaterialTheme.colorScheme.primary
 
-    TabRow(
-        selectedTabIndex = selectedTabIndex,
-        containerColor = Color.Transparent,
-        contentColor = selectedContentColor,
-        divider = {},
-        indicator = { tabPositions ->
-            Box(
-                contentAlignment = Alignment.BottomCenter,
-                modifier =
-                    Modifier
-                        .tabIndicatorOffset(tabPositions[selectedTabIndex])
-                        .fillMaxSize(),
-            ) {
-                Box(
-                    modifier =
-                        Modifier
-                            .width(76.dp)
-                            .height(3.dp)
-                            .clip(RoundedCornerShape(3.dp))
-                            .background(indicatorColor),
-                )
-            }
-        },
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .height(66.dp),
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.fillMaxWidth(),
     ) {
         tabs.forEach { tab ->
             val selected = tab == selectedTab
             val title = stringResource(tab.titleRes)
 
-            Tab(
-                selected = selected,
-                onClick = { onTabSelected(tab) },
-                icon = {
-                    Icon(
-                        imageVector = tab.icon,
-                        contentDescription = title,
-                        modifier = Modifier.size(24.dp),
-                    )
-                },
-                selectedContentColor = selectedContentColor,
-                unselectedContentColor = unselectedContentColor,
-                modifier =
-                    Modifier
-                        .padding(horizontal = 3.dp, vertical = 6.dp)
-                        .height(56.dp)
-                        .clip(tabShape)
-                        .background(if (selected) selectedContainer else unselectedContainer),
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .weight(1f)
+                    .height(44.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(if (selected) selectedContainer else Color.Transparent)
+                    .combinedClickable(onClick = { onTabSelected(tab) })
+                    .padding(horizontal = 8.dp),
+                horizontalArrangement = Arrangement.Center,
+            ) {
+                Icon(
+                    imageVector = tab.icon,
+                    contentDescription = title,
+                    modifier = Modifier.size(18.dp),
+                    tint = if (selected) selectedContentColor else unselectedContentColor,
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
+                    color = if (selected) selectedContentColor else unselectedContentColor,
+                    maxLines = 1,
+                )
+            }
         }
     }
 }
@@ -573,9 +597,9 @@ private fun NewReleaseCategoryEmptyState(onRefresh: () -> Unit) {
             textAlign = TextAlign.Center,
         )
         Spacer(Modifier.height(24.dp))
-        Button(
+        FilledTonalButton(
             onClick = onRefresh,
-            shapes = ButtonDefaults.shapes(),
+            shape = RoundedCornerShape(20.dp),
         ) {
             Text(stringResource(R.string.refresh))
         }

@@ -351,12 +351,31 @@ private fun HomeContent(
                     //      sections (including but not limited to "Live
                     //      performance").
                     //
+                    //  * "Live performance" shelves are extracted from the
+                    //    remote homePage sections and rendered as a dedicated
+                    //    block IMMEDIATELY after Speed Dial in BOTH modes — so
+                    //    Live Performances always stays below Speed Dial whether
+                    //    Minimal Mode is on or off. Non-Live remote shelves
+                    //    continue to render at the bottom in full mode only.
+                    //
                     // The hero and Recently Played sections are 4nx3b fork
                     // additions; everything else mirrors upstream so a fresh
                     // install (with only remote content available) sees a
                     // populated home screen.
 
                     val minimalMode = uiState.minimalHomeMode
+
+                    // Partition remote sections into Live-performance and other.
+                    // Live-performance shelves are rendered in a dedicated block
+                    // right after Speed Dial (both modes); other remote shelves
+                    // are rendered at the bottom (full mode only).
+                    val allRemoteSections = uiState.homePage?.sections.orEmpty()
+                    val livePerformanceSections = allRemoteSections.filter { section ->
+                        section.title.contains("Live performance", ignoreCase = true)
+                    }
+                    val otherRemoteSections = allRemoteSections.filter { section ->
+                        !section.title.contains("Live performance", ignoreCase = true)
+                    }
 
                     // "Jump back in" hero — large card + 2 stacked side cards.
                     // Uses `heroPicks` (3 random songs from listening-preference
@@ -575,6 +594,42 @@ private fun HomeContent(
                         }
                     }
 
+                    // Live Performances — extracted from the remote homePage
+                    // sections and rendered as a dedicated block IMMEDIATELY
+                    // after Speed Dial in BOTH modes. This guarantees Live
+                    // Performances always stays below Speed Dial whether
+                    // Minimal Mode is on or off (user-requested invariant).
+                    livePerformanceSections.forEachIndexed { index, section ->
+                        val sectionKey = "${section.endpoint?.browseId ?: section.title}_$index"
+                        sectionSpacer("live_performances_$sectionKey")
+                        item(
+                            key = "home_live_performances_header_$sectionKey",
+                            contentType = "section_header",
+                        ) {
+                            HomePageSectionTitle(
+                                section = section,
+                                navController = navController,
+                                modifier = Modifier.animateItem(),
+                            )
+                        }
+                        item(
+                            key = "home_live_performances_$sectionKey",
+                            contentType = "media_shelf",
+                        ) {
+                            HomePageSectionContent(
+                                section = section,
+                                mediaMetadata = mediaMetadata,
+                                isPlaying = isPlaying,
+                                navController = navController,
+                                playerConnection = playerConnection,
+                                menuState = menuState,
+                                haptic = haptic,
+                                scope = scope,
+                                modifier = Modifier.animateItem(),
+                            )
+                        }
+                    }
+
                     if (!minimalMode && uiState.accountPlaylists.isNotEmpty()) {
                         sectionSpacer("account_playlists")
                         item(
@@ -664,47 +719,46 @@ private fun HomeContent(
                         }
                     }
 
-                    // Remote homePage sections.
+                    // Other Remote homePage sections (non-Live-performance).
                     //
-                    //  * Minimal mode: only render the "Live performance"-titled
-                    //    shelf, placed directly below Keep Listening.
+                    //  * Minimal mode: HIDDEN — Live performances are already
+                    //    rendered above (right after Speed Dial). All other
+                    //    remote shelves are filtered out in minimal mode.
                     //
-                    //  * Full mode: render ALL remote shelves (including "Live
-                    //    performance", "Fresh finds", "Old favourites", and any
-                    //    other algorithmic shelves YouTube Music returns) —
-                    //    matches upstream rukamori/ArchiveTune.
-                    uiState.homePage?.sections.orEmpty().forEachIndexed { index, section ->
-                        if (minimalMode && !section.title.contains("Live performance", ignoreCase = true)) {
-                            return@forEachIndexed
-                        }
-
-                        val sectionKey = "${section.endpoint?.browseId ?: section.title}_$index"
-                        sectionSpacer(if (minimalMode) "live_performances_$sectionKey" else "remote_$sectionKey")
-                        item(
-                            key = if (minimalMode) "home_live_performances_header_$sectionKey" else "home_remote_header_$sectionKey",
-                            contentType = "section_header",
-                        ) {
-                            HomePageSectionTitle(
-                                section = section,
-                                navController = navController,
-                                modifier = Modifier.animateItem(),
-                            )
-                        }
-                        item(
-                            key = if (minimalMode) "home_live_performances_$sectionKey" else "home_remote_$sectionKey",
-                            contentType = "media_shelf",
-                        ) {
-                            HomePageSectionContent(
-                                section = section,
-                                mediaMetadata = mediaMetadata,
-                                isPlaying = isPlaying,
-                                navController = navController,
-                                playerConnection = playerConnection,
-                                menuState = menuState,
-                                haptic = haptic,
-                                scope = scope,
-                                modifier = Modifier.animateItem(),
-                            )
+                    //  * Full mode: render ALL non-Live remote shelves (e.g.
+                    //    "Fresh finds", "Old favourites", and any other
+                    //    algorithmic shelves YouTube Music returns) — matches
+                    //    upstream rukamori/ArchiveTune.
+                    if (!minimalMode) {
+                        otherRemoteSections.forEachIndexed { index, section ->
+                            val sectionKey = "${section.endpoint?.browseId ?: section.title}_$index"
+                            sectionSpacer("remote_$sectionKey")
+                            item(
+                                key = "home_remote_header_$sectionKey",
+                                contentType = "section_header",
+                            ) {
+                                HomePageSectionTitle(
+                                    section = section,
+                                    navController = navController,
+                                    modifier = Modifier.animateItem(),
+                                )
+                            }
+                            item(
+                                key = "home_remote_$sectionKey",
+                                contentType = "media_shelf",
+                            ) {
+                                HomePageSectionContent(
+                                    section = section,
+                                    mediaMetadata = mediaMetadata,
+                                    isPlaying = isPlaying,
+                                    navController = navController,
+                                    playerConnection = playerConnection,
+                                    menuState = menuState,
+                                    haptic = haptic,
+                                    scope = scope,
+                                    modifier = Modifier.animateItem(),
+                                )
+                            }
                         }
                     }
 
