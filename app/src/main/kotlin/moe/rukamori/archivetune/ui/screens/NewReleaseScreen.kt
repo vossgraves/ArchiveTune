@@ -51,6 +51,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -59,6 +60,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -68,6 +70,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -87,7 +91,7 @@ import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.GridThumbnailHeight
 import moe.rukamori.archivetune.innertube.models.AlbumItem
-import moe.rukamori.archivetune.ui.component.IconButton
+import moe.rukamori.archivetune.ui.component.IconButton as AppIconButton
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.YouTubeGridItem
 import moe.rukamori.archivetune.ui.component.shimmer.GridItemPlaceHolder
@@ -132,7 +136,7 @@ fun NewReleaseScreen(
                     )
                 },
                 navigationIcon = {
-                    IconButton(
+                    AppIconButton(
                         onClick = navController::navigateUp,
                         onLongClick = navController::backToMain,
                     ) {
@@ -143,12 +147,17 @@ fun NewReleaseScreen(
                     }
                 },
                 actions = {
+                    // Using Material3's standard IconButton here (not the
+                    // custom AppIconButton) because the custom one uses
+                    // combinedClickable which can fail to register taps in
+                    // the LargeFlexibleTopAppBar actions slot on some
+                    // Material3 1.5.0-alpha builds. The standard IconButton
+                    // uses a plain clickable and is more reliable here.
                     IconButton(
                         onClick = {
                             isSearchActive = !isSearchActive
                             if (!isSearchActive) searchQuery = ""
                         },
-                        onLongClick = {},
                     ) {
                         Icon(
                             painter = painterResource(R.drawable.search),
@@ -761,6 +770,10 @@ private fun NewReleaseContent.releaseSections(): List<NewReleaseSection> =
  * Layout mirrors the SearchScreen's input row (search icon + text field +
  * clear button) but is rendered inside the grid content rather than as a
  * top app bar, so it appears in-line with the rest of the page content.
+ *
+ * Auto-focuses the text field on appearance so the keyboard opens
+ * immediately — the user doesn't have to tap the field after tapping the
+ * search icon in the top app bar.
  */
 @Composable
 private fun NewReleaseSearchField(
@@ -771,6 +784,14 @@ private fun NewReleaseSearchField(
     val onSurface = MaterialTheme.colorScheme.onSurface
     val onSurfaceVariant = MaterialTheme.colorScheme.onSurfaceVariant
     val primary = MaterialTheme.colorScheme.primary
+    val focusRequester = remember { FocusRequester() }
+
+    // Auto-focus the text field when this composable first appears so the
+    // keyboard opens immediately. This makes the search feel responsive —
+    // tap search icon → field appears → keyboard is already up → start typing.
+    LaunchedEffect(Unit) {
+        runCatching { focusRequester.requestFocus() }
+    }
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -781,7 +802,10 @@ private fun NewReleaseSearchField(
             .background(MaterialTheme.colorScheme.surfaceContainerHigh)
             .padding(horizontal = 4.dp, vertical = 4.dp),
     ) {
-        IconButton(onClick = onClose, onLongClick = {}) {
+        // Use Material3's standard IconButton (not the custom AppIconButton)
+        // for consistency with the top app bar search icon — and because
+        // these buttons don't need long-press support.
+        IconButton(onClick = onClose) {
             Icon(
                 painter = painterResource(R.drawable.arrow_back),
                 contentDescription = null,
@@ -795,7 +819,9 @@ private fun NewReleaseSearchField(
             textStyle =
                 MaterialTheme.typography.bodyLarge.copy(color = onSurface),
             cursorBrush = androidx.compose.ui.graphics.SolidColor(primary),
-            modifier = Modifier.weight(1f),
+            modifier = Modifier
+                .weight(1f)
+                .focusRequester(focusRequester),
             decorationBox = { innerTextField ->
                 Box(
                     modifier =
@@ -817,7 +843,7 @@ private fun NewReleaseSearchField(
             },
         )
         if (query.isNotEmpty()) {
-            IconButton(onClick = { onQueryChange("") }, onLongClick = {}) {
+            IconButton(onClick = { onQueryChange("") }) {
                 Icon(
                     painter = painterResource(R.drawable.close),
                     contentDescription = null,

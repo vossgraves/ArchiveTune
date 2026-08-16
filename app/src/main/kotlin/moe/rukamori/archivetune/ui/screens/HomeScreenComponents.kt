@@ -1160,36 +1160,10 @@ fun SimilarRecommendationsTitle(
     HomeSectionHeader(
         label = stringResource(R.string.similar_to),
         title = recommendation.title.title,
-        thumbnail =
-            recommendation.title.thumbnailUrl?.let { thumbnailUrl ->
-                {
-                    // Sized ImageRequest so Coil asks the CDN for a thumbnail
-                    // bucket close to ListThumbnailSize (56dp ≈ 168px @ 3x)
-                    // instead of pulling the original maxresdefault (often
-                    // 1280x720+). Combined with the tuned OkHttp pool in
-                    // App.newImageLoader, this makes the similar-recommendations
-                    // header thumbnail load near-instantly.
-                    val imageRequest =
-                        remember(thumbnailUrl, thumbSizePx) {
-                            ImageRequest
-                                .Builder(context)
-                                .data(thumbnailUrl)
-                                .size(Size(thumbSizePx, thumbSizePx))
-                                .diskCachePolicy(CachePolicy.ENABLED)
-                                .memoryCachePolicy(CachePolicy.ENABLED)
-                                .crossfade(true)
-                                .build()
-                        }
-                    AsyncImage(
-                        model = imageRequest,
-                        contentDescription = null,
-                        modifier =
-                            Modifier
-                                .size(ListThumbnailSize)
-                                .clip(RoundedCornerShape(ThumbnailCornerRadius)),
-                    )
-                }
-            },
+        // Thumbnail (album art) removed per user request — the "Similar to"
+        // label + artist/album title is enough context without the leading
+        // image. Keeps these headers visually consistent with the other
+        // text-only section headers on the home page.
         onClick = {
             when (recommendation.title) {
                 is Song -> {
