@@ -108,7 +108,6 @@ import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import moe.rukamori.archivetune.ui.component.IconButton as AppIconButton
-import moe.rukamori.archivetune.ui.component.LargeFrostedTopAppBar
 
 @Composable
 fun NewsScreen(
@@ -196,10 +195,30 @@ fun NewsScreen(
                                 .padding(top = 8.dp, bottom = 4.dp),
                     ) {}
                 } else {
-                    LargeFrostedTopAppBar(
-                        titleRes = R.string.news,
-                        onBack = navController::navigateUp,
-                        onBackLongClick = navController::backToMain,
+                    // Plain LargeFlexibleTopAppBar — no frosted pill backgrounds
+                    // around the title / back arrow / actions. The user
+                    // explicitly asked for the frosted enclosed pill headers
+                    // to be removed from the News page; this matches the
+                    // modern minimal styling already used on New Releases.
+                    LargeFlexibleTopAppBar(
+                        title = {
+                            Text(
+                                text = stringResource(R.string.news),
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                            )
+                        },
+                        navigationIcon = {
+                            AppIconButton(
+                                onClick = navController::navigateUp,
+                                onLongClick = navController::backToMain,
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.arrow_back),
+                                    contentDescription = null,
+                                )
+                            }
+                        },
                         actions = {
                             IconButton(onClick = { isSearchActive = true }) {
                                 Icon(
@@ -214,6 +233,10 @@ fun NewsScreen(
                                 )
                             }
                         },
+                        colors = TopAppBarDefaults.largeTopAppBarColors(
+                            containerColor = MaterialTheme.colorScheme.surface,
+                            scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer,
+                        ),
                         scrollBehavior = scrollBehavior,
                     )
                 }

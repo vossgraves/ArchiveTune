@@ -586,7 +586,7 @@
     <string name="share_logs">Chia sẻ nhật ký</string>
     <string name="you_might_like">Có thể bạn sẽ thích</string>
     <string name="refresh_suggestions">Làm mới gợi ý</string>
-    <string name="music_together">ArchiveTune Music Together</string>
+    <string name="music_together">Listen Together</string>
     <string name="together_display_name">Tên hiển thị</string>
     <string name="together_display_name_placeholder">Tên của bạn</string>
     <string name="together_port">Cổng phiên</string>
@@ -629,7 +629,7 @@
     <string name="together_error_state">Lỗi</string>
     <string name="got_it">Hiểu rồi</string>
     <string name="together_dont_show_again">Không hiển thị lại nữa</string>
-    <string name="together_welcome_title">Chào mừng đến với ArchiveTune Music Together</string>
+    <string name="together_welcome_title">Chào mừng đến với Listen Together</string>
     <string name="together_welcome_body">Music Together cho phép nhiều thiết bị chia sẻ một phiên trực tiếp với Queue đồng bộ và phát nhạc.</string>
     <string name="together_welcome_host_title">Tổ chức một phiên</string>
     <string name="together_welcome_host_body">Nhấn Bắt đầu phiên, sau đó chia sẻ liên kết phiên. Giữ ArchiveTune mở trong nền trong khi tổ chức.</string>

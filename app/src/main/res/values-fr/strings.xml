@@ -520,7 +520,7 @@
     <string name="no_releases">Aucune version disponible</string>
     <string name="you_might_like">Vous pourriez aimer</string>
     <string name="refresh_suggestions">Actualiser les suggestions</string>
-    <string name="music_together">ArchiveTune Music Together</string>
+    <string name="music_together">Listen Together</string>
     <string name="together_display_name">Nom d\'affichage</string>
     <string name="together_display_name_placeholder">Votre nom</string>
     <string name="together_port">Port de session</string>
@@ -564,7 +564,7 @@
     <string name="together_error_state">Erreur</string>
     <string name="got_it">Compris</string>
     <string name="together_dont_show_again">Ne plus afficher ce message</string>
-    <string name="together_welcome_title">Bienvenue sur ArchiveTune Music Together</string>
+    <string name="together_welcome_title">Bienvenue sur Listen Together</string>
     <string name="together_welcome_body">Music Together permet à plusieurs appareils de partager une session en direct avec une file d\'attente et une lecture synchronisées.</string>
     <string name="together_welcome_host_title">Organiser une session</string>
     <string name="together_welcome_host_body">Appuyez sur « Démarrer la session », puis partagez le lien de la session. Laissez ArchiveTune ouvert en arrière-plan pendant l\'hébergement.</string>

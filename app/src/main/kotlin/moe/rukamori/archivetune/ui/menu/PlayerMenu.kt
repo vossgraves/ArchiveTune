@@ -140,6 +140,7 @@ fun PlayerMenu(
     navController: NavController,
     playerBottomSheetState: BottomSheetState,
     isQueueTrigger: Boolean? = false,
+    onPlayNextFromQueue: (() -> Unit)? = null,
     onRemoveFromQueue: (() -> Unit)? = null,
     onShowDetailsDialog: () -> Unit,
     onDismiss: () -> Unit,
@@ -343,9 +344,21 @@ fun PlayerMenu(
             SongSourceOverride.get(songSourceRaw.ifBlank { null }, mediaMetadata.id)
         }
     var showSourceDialog by rememberSaveable { mutableStateOf(false) }
-    // Recomputed each time the dialog opens so it reflects the latest resolution result.
+
+    // Trigger a fresh source resolution each time the Source dialog opens. This fixes the bug
+    // where Qobuz (or Tidal) was missing from the Sources list because a previous resolution
+    // failed transiently — the in-memory cache pinned the song to YouTube, and the lossless
+    // sources were never retried for the lifetime of the process. The refresh evicts the cache
+    // and re-runs the lossless resolution chain in the background; the resulting sources show
+    // up via resolvedSourcesRevision (a StateFlow that bumps when recording completes).
+    val sourceRevision by playerConnection.service.resolvedSourcesRevision.collectAsStateWithLifecycle()
+    LaunchedEffect(showSourceDialog, mediaMetadata.id) {
+        if (showSourceDialog) {
+            playerConnection.service.refreshSourcesForSong(mediaMetadata.id)
+        }
+    }
     val availableSources =
-        remember(mediaMetadata.id, showSourceDialog) {
+        remember(mediaMetadata.id, showSourceDialog, sourceRevision) {
             playerConnection.service.availableSourcesForSong(mediaMetadata.id)
         }
 
@@ -839,12 +852,10 @@ fun PlayerMenu(
                             },
                         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                     )
-
                     HorizontalDivider(
                         modifier = Modifier.padding(start = 56.dp),
                         color = MaterialTheme.colorScheme.outlineVariant,
                     )
-
                     ListItem(
                         headlineContent = {
                             Text(
@@ -1085,6 +1096,31 @@ fun PlayerMenu(
         item {
             MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
                 Column {
+                    if (isQueueTrigger == true && onPlayNextFromQueue != null) {
+                        ListItem(
+                            headlineContent = {
+                                Text(text = stringResource(R.string.play_next))
+                            },
+                            leadingContent = {
+                                Icon(
+                                    painter = painterResource(R.drawable.playlist_play),
+                                    contentDescription = null,
+                                )
+                            },
+                            modifier =
+                                Modifier.clickable {
+                                    onPlayNextFromQueue()
+                                    onDismiss()
+                                },
+                            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                        )
+
+                        HorizontalDivider(
+                            modifier = Modifier.padding(start = 56.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant,
+                        )
+                    }
+
                     if (isQueueTrigger == true && onRemoveFromQueue != null) {
                         ListItem(
                             headlineContent = {

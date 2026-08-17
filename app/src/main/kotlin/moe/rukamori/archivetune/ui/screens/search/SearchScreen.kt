@@ -268,30 +268,10 @@ fun SearchScreen(
                                 }
                             }
 
-                            // Section 2 — Based on what you like (2-col cards).
-                            if (currentState.data.moodAndGenres.isNotEmpty()) {
-                                item(
-                                    key = "search_explore_moods_title",
-                                    contentType = "section_title",
-                                ) {
-                                    SearchSectionHeader(
-                                        title = stringResource(R.string.search_based_on_what_you_like),
-                                        modifier = Modifier.animateItem(),
-                                    )
-                                }
-                                item(
-                                    key = "search_explore_moods",
-                                    contentType = "mood_genres_grid",
-                                ) {
-                                    BasedOnWhatYouLikeGrid(
-                                        data = currentState.data,
-                                        navController = navController,
-                                        modifier = Modifier.animateItem(),
-                                    )
-                                }
-                            }
-
-                            // Section 3 — Trending Searches (minimal chips).
+                            // Section 2 — Trending Searches (minimal chips).
+                            // "Based on what you like" section has been removed
+                            // from the Explore tab per user request — Explore
+                            // now shows only Recent Searches + Trending Searches.
                             if (currentState.data.suggestedArtists.isNotEmpty()) {
                                 item(
                                     key = "search_trending_searches_title",
@@ -299,6 +279,7 @@ fun SearchScreen(
                                 ) {
                                     SearchSectionHeader(
                                         title = stringResource(R.string.search_trending_searches),
+                                        leadingIconRes = R.drawable.trending_up,
                                         modifier = Modifier.animateItem(),
                                     )
                                 }
@@ -555,14 +536,36 @@ private fun SearchSectionHeader(
     title: String,
     modifier: Modifier = Modifier,
     trailing: (@Composable () -> Unit)? = null,
+    leadingIconRes: Int? = null,
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
         modifier =
             modifier
                 .fillMaxWidth()
                 .padding(horizontal = SearchHorizontalPadding, vertical = 8.dp),
     ) {
+        // Leading icon in a circular container — matches the Home page's
+        // HomeSectionLeadingIcon pattern (clock for Recently Played, bolt
+        // for Speed Dial) so every section header across the app has a
+        // recognisable affordance before its title text.
+        if (leadingIconRes != null) {
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    painter = painterResource(leadingIconRes),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+        }
         Text(
             text = title,
             style = MaterialTheme.typography.titleLarge.copy(fontSize = 20.sp),
@@ -592,6 +595,7 @@ private fun RecentSearchesSection(
     Column(modifier = modifier.fillMaxWidth()) {
         SearchSectionHeader(
             title = stringResource(R.string.search_recent_searches),
+            leadingIconRes = R.drawable.history,
             trailing = {
                 Text(
                     text = stringResource(R.string.clear),
@@ -715,6 +719,10 @@ private fun RecentSearchMonogram(query: String) {
     val initial = remember(query) {
         query.firstOrNull { it.isLetterOrDigit() }?.uppercaseChar()?.toString() ?: "·"
     }
+    // Search icon sits behind the initial letter, giving each recent-search
+    // row a recognizable "search" affordance (user-requested: "add icons
+    // behind recent searches"). The letter remains prominent in the
+    // foreground; the icon is dimmed so it doesn't compete.
     Box(
         contentAlignment = Alignment.Center,
         modifier =
@@ -723,6 +731,14 @@ private fun RecentSearchMonogram(query: String) {
                 .clip(CircleShape)
                 .background(MaterialTheme.colorScheme.surfaceContainerHigh),
     ) {
+        // Background search icon — dimmed, slightly offset down-right.
+        Icon(
+            painter = painterResource(R.drawable.search),
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
+            modifier = Modifier.size(26.dp),
+        )
+        // Foreground initial letter.
         Text(
             text = initial,
             style = MaterialTheme.typography.titleMedium.copy(fontSize = 18.sp),
@@ -897,13 +913,23 @@ private fun TrendingChip(
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
         modifier =
             Modifier
                 .clip(RoundedCornerShape(20.dp))
                 .background(MaterialTheme.colorScheme.surfaceContainerLow)
                 .clickable(onClick = onClick)
-                .padding(horizontal = 16.dp, vertical = 10.dp),
+                .padding(horizontal = 14.dp, vertical = 10.dp),
     ) {
+        // Leading trending icon — gives each chip a recognizable "trending"
+        // affordance, matching the user's request to add icons behind trending
+        // searches.
+        Icon(
+            painter = painterResource(R.drawable.trending_up),
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(16.dp),
+        )
         Text(
             text = label,
             style = MaterialTheme.typography.labelLarge.copy(fontSize = 14.sp, fontWeight = FontWeight.SemiBold),
@@ -928,7 +954,7 @@ private fun <T> SearchSuggestionsRowSection(
     itemContent: @Composable (T) -> Unit,
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
-        SearchSectionHeader(title = title)
+        SearchSectionHeader(title = title, leadingIconRes = R.drawable.search)
         LazyRow(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             contentPadding = PaddingValues(horizontal = SearchHorizontalPadding),
@@ -968,7 +994,7 @@ private fun RecommendedSongsSection(
     val visibleSongs = remember(songs) { songs.take(6) }
 
     Column(modifier = modifier.fillMaxWidth()) {
-        SearchSectionHeader(title = stringResource(R.string.search_recommended_songs))
+        SearchSectionHeader(title = stringResource(R.string.search_recommended_songs), leadingIconRes = R.drawable.music_note)
         Column(
             modifier =
                 Modifier

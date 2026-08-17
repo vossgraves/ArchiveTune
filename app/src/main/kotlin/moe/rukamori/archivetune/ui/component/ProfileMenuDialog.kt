@@ -10,10 +10,14 @@ package moe.rukamori.archivetune.ui.component
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -23,8 +27,6 @@ import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.ListItem
-import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -78,7 +80,7 @@ fun ProfileMenuDialog(
 
             Surface(
                 modifier = Modifier
-                    .widthIn(max = 380.dp)
+                    .widthIn(max = 360.dp)
                     .padding(horizontal = 24.dp),
                 shape = RoundedCornerShape(28.dp),
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -88,31 +90,24 @@ fun ProfileMenuDialog(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 8.dp),
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
                 ) {
-                    
-                    if (accountName.isNotBlank()) {
-                        ListItem(
-                            headlineContent = {
-                                Text(
-                                    text = accountName,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                            },
-                            supportingContent = {
-                                Text(
-                                    text = stringResource(R.string.account),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            },
-                            leadingContent = {
+                    // Top row: account header (left) + dismiss button (right).
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        // Account header — leading avatar + name/subtitle, takes
+                        // available space, leaves room for the dismiss button.
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            if (accountName.isNotBlank()) {
                                 Surface(
-                                    modifier = Modifier.size(44.dp),
+                                    modifier = Modifier.size(40.dp),
                                     shape = CircleShape,
                                     color = MaterialTheme.colorScheme.primaryContainer,
                                 ) {
@@ -133,44 +128,86 @@ fun ProfileMenuDialog(
                                             Icon(
                                                 painter = painterResource(R.drawable.account),
                                                 contentDescription = null,
-                                                modifier = Modifier.size(22.dp),
+                                                modifier = Modifier.size(20.dp),
                                                 tint = MaterialTheme.colorScheme.onPrimaryContainer,
                                             )
                                         }
                                     }
                                 }
-                            },
-                            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                        )
-                    }
-
-                    items.forEach { item ->
-                        ListItem(
-                            headlineContent = {
-                                Text(
-                                    text = item.label,
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    fontWeight = FontWeight.Medium,
-                                )
-                            },
-                            leadingContent = {
-                                BadgedBox(badge = {
-                                    if (item.showBadge) Badge()
-                                }) {
-                                    Icon(
-                                        painter = painterResource(item.icon),
-                                        contentDescription = null,
-                                        modifier = Modifier.size(24.dp),
-                                        tint = MaterialTheme.colorScheme.onSurface,
+                                Column(modifier = Modifier.weight(1f, fill = false)) {
+                                    Text(
+                                        text = accountName,
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                    Text(
+                                        text = stringResource(R.string.account),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
                                 }
-                            },
+                            }
+                        }
+
+                        // Dismiss button (X) — compact 32dp circle.
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                                .clickable(onClick = onDismiss),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.close),
+                                contentDescription = stringResource(R.string.close_dialog),
+                                modifier = Modifier.size(18.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+
+                    if (accountName.isNotBlank()) {
+                        Spacer(Modifier.height(8.dp))
+                    }
+
+                    // Menu items — each rendered as a pill (rounded container)
+                    // styled like the rounded "song pills" on the history page.
+                    items.forEach { item ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(RoundedCornerShape(16.dp))
-                                .clickable(onClick = item.onClick),
-                            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                        )
+                                .clip(RoundedCornerShape(percent = 50))
+                                .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.6f))
+                                .clickable { item.onClick() }
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                        ) {
+                            BadgedBox(badge = {
+                                if (item.showBadge) Badge()
+                            }) {
+                                Icon(
+                                    painter = painterResource(item.icon),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(22.dp),
+                                    tint = MaterialTheme.colorScheme.onSurface,
+                                )
+                            }
+                            Text(
+                                text = item.label,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                        Spacer(Modifier.height(6.dp))
                     }
                 }
             }

@@ -10,6 +10,8 @@
 package moe.rukamori.archivetune.cast
 
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.Uri
 import android.webkit.MimeTypeMap
 import androidx.core.net.toUri
@@ -223,7 +225,7 @@ private class SafeCastTransferCallback(
         targetPlayer: Player,
     ) {
         val transferState = PlayerTransferState.fromPlayer(sourcePlayer)
-        if (targetPlayer !== localPlayer || transferState.mediaItems.all { it.localConfiguration != null }) {
+        if (targetPlayer !== localPlayer) {
             transferState.setToPlayer(targetPlayer)
             return
         }
@@ -235,17 +237,17 @@ private class SafeCastTransferCallback(
 
         transferState.mediaItems.forEachIndexed { sourceIndex, mediaItem ->
             val repairedItem =
-                mediaItem.takeIf { it.localConfiguration != null }
-                    ?: localItems.firstOrNull {
-                        it.localConfiguration != null &&
-                            mediaItem.mediaId.isNotBlank() &&
-                            mediaItem.mediaId != MediaItem.DEFAULT_MEDIA_ID &&
-                            it.mediaId == mediaItem.mediaId
-                    }
+                localItems.firstOrNull {
+                    it.localConfiguration != null &&
+                        mediaItem.mediaId.isNotBlank() &&
+                        mediaItem.mediaId != MediaItem.DEFAULT_MEDIA_ID &&
+                        it.mediaId == mediaItem.mediaId
+                }
                     ?: localItems.getOrNull(sourceIndex)?.takeIf {
                         it.localConfiguration != null &&
                             (mediaItem.mediaId.isBlank() || mediaItem.mediaId == MediaItem.DEFAULT_MEDIA_ID)
                     }
+                    ?: mediaItem.takeIf { it.localConfiguration != null && !it.isLocalCastProxy() }
                     ?: mediaItem
                         .mediaId
                         .takeIf { it.isNotBlank() && it != MediaItem.DEFAULT_MEDIA_ID }
@@ -282,6 +284,11 @@ private class SafeCastTransferCallback(
     }
 
     private fun Player.mediaItems(): List<MediaItem> = List(mediaItemCount) { index -> getMediaItemAt(index) }
+
+    private fun MediaItem.isLocalCastProxy(): Boolean {
+        val uri = localConfiguration?.uri ?: return false
+        return uri.scheme.equals("http", ignoreCase = true) && uri.path?.startsWith("/cast/local/") == true
+    }
 }
 
 private class GmsCastMediaItemConverter(
@@ -424,16 +431,18 @@ private class LocalCastMediaServer(
         const val HTTP_REQUESTED_RANGE_NOT_SATISFIABLE = 416
         const val REMOTE_CONNECT_TIMEOUT_MS = 15_000
         const val REMOTE_READ_TIMEOUT_MS = 45_000
-        const val DEFAULT_AUDIO_MIME_TYPE = "audio/mp4"
+        const val FALLBACK_AUDIO_MIME_TYPE = "audio/mp4"
         const val DEFAULT_IMAGE_MIME_TYPE = "image/jpeg"
     }
 
     private val servedItems = ConcurrentHashMap<String, ServedItem>()
     private val servedArtwork = ConcurrentHashMap<String, ServedAsset>()
-    private var engine: EmbeddedServer<*, *>? = null
-    private var port: Int = 0
-    private var hostAddress: String? = null
+    private val connectivityManager = requireNotNull(context.getSystemService(ConnectivityManager::class.java))
+    @Volatile private var engine: EmbeddedServer<*, *>? = null
+    @Volatile private var port: Int = 0
+    @Volatile private var hostAddress: String? = null
 
+    @Synchronized
     fun prepare(
         mediaItem: MediaItem,
         mediaItemResolver: CastMediaItemResolver? = null,
@@ -441,33 +450,45 @@ private class LocalCastMediaServer(
         val uri = mediaItem.localConfiguration?.uri ?: return null
         val host = ensureStarted() ?: return null
         val token = UUID.randomUUID().toString()
-        val mimeType = mediaItem.localConfiguration?.mimeType ?: mimeType(uri, DEFAULT_AUDIO_MIME_TYPE)
+        val resolvedMimeType =
+            mediaItem.localConfiguration?.mimeType
+                ?.substringBefore(";")
+                ?.takeIf { it.isNotBlank() && !it.endsWith("/*") }
+                ?: mimeType(uri)
         servedItems[token] =
             ServedItem(
                 mediaItem = mediaItem,
                 uri = uri,
-                mimeType = mimeType,
+                mimeType = resolvedMimeType,
                 mediaItemResolver = mediaItemResolver,
             )
         return mediaItem
             .withReceiverArtwork(host)
             .buildUpon()
             .setUri("http://$host:$port/cast/local/$token".toUri())
-            .setMimeType(mimeType)
+            .apply { resolvedMimeType?.let(::setMimeType) }
             .build()
     }
 
+    @Synchronized
     fun stop() {
         servedItems.clear()
         servedArtwork.clear()
-        val currentEngine = engine ?: return
+        val currentEngine = engine
         engine = null
-        runCatching { currentEngine.stop(1000, 2000) }
-            .onFailure { Timber.tag("Cast").w(it, "Unable to stop local Cast media server") }
+        port = 0
+        hostAddress = null
+        currentEngine?.let {
+            runCatching { it.stop(1000, 2000) }
+                .onFailure { error -> Timber.tag("Cast").w(error, "Unable to stop local Cast media server") }
+        }
     }
 
+    @Synchronized
     private fun ensureStarted(): String? {
-        hostAddress?.let { return it }
+        val currentEngine = engine
+        val currentHostAddress = hostAddress
+        if (currentEngine != null && currentHostAddress != null) return currentHostAddress
         val address = lanAddress() ?: return null
         val selectedPort = randomFreePort()
         val startedEngine =
@@ -517,7 +538,7 @@ private class LocalCastMediaServer(
         val artworkUri = mediaMetadata.artworkUri ?: return this
         if (!artworkUri.isLocalFileUrl()) return this
         val token = UUID.randomUUID().toString()
-        val artworkMimeType = mimeType(artworkUri, DEFAULT_IMAGE_MIME_TYPE)
+        val artworkMimeType = mimeType(artworkUri) ?: DEFAULT_IMAGE_MIME_TYPE
         servedArtwork[token] = ServedAsset(uri = artworkUri, mimeType = artworkMimeType)
         return buildUpon()
             .setMediaMetadata(
@@ -576,7 +597,7 @@ private class LocalCastMediaServer(
 
     private fun openLocalFileSource(
         uri: Uri,
-        mimeType: String,
+        mimeType: String?,
         rangeHeader: String?,
     ): OpenSource? {
         val file = File(uri.path ?: return null).takeIf { it.isFile } ?: return null
@@ -592,7 +613,7 @@ private class LocalCastMediaServer(
         return OpenSource(
             input = file.inputStream().apply { skipFully(start) },
             length = contentLength,
-            mimeType = mimeType,
+            mimeType = mimeType ?: FALLBACK_AUDIO_MIME_TYPE,
             status = if (validRange == null) HttpStatusCode.OK else HttpStatusCode.PartialContent,
             contentRange = validRange?.let { "bytes $start-$end/$length" },
         )
@@ -600,7 +621,7 @@ private class LocalCastMediaServer(
 
     private fun openContentSource(
         uri: Uri,
-        mimeType: String,
+        mimeType: String?,
         rangeHeader: String?,
     ): OpenSource? {
         val length = contentLength(uri)
@@ -617,7 +638,7 @@ private class LocalCastMediaServer(
         return OpenSource(
             input = BoundedInputStream(input, contentLength),
             length = contentLength ?: length,
-            mimeType = mimeType,
+            mimeType = mimeType ?: FALLBACK_AUDIO_MIME_TYPE,
             status = if (validRange == null) HttpStatusCode.OK else HttpStatusCode.PartialContent,
             contentRange = if (validRange != null && end != null && length != null) "bytes $start-$end/$length" else null,
         )
@@ -628,7 +649,12 @@ private class LocalCastMediaServer(
         rangeHeader: String?,
     ): OpenSource? {
         val resolved =
-            item.resolvedMediaItem ?: item.mediaItemResolver?.resolveForCast(item.mediaItem)?.also { item.resolvedMediaItem = it }
+            item.resolvedMediaItem
+                ?: item.mediaItemResolver?.let { resolver ->
+                    runCatching { resolver.resolveForCast(item.mediaItem) }
+                        .onFailure { Timber.tag("Cast").w(it, "Unable to resolve media item for Cast") }
+                        .getOrNull()
+                }?.also { item.resolvedMediaItem = it }
         val resolvedUri = resolved?.localConfiguration?.uri ?: return null
         if (!resolvedUri.isHttpUrl()) {
             val resolvedItem =
@@ -657,10 +683,20 @@ private class LocalCastMediaServer(
                 return@runCatching null
             }
             val responseLength = connection.getHeaderFieldLong(HttpHeaders.ContentLength, -1L).takeIf { it >= 0L }
+            val responseMimeType =
+                resolved.localConfiguration?.mimeType
+                    ?.substringBefore(";")
+                    ?.takeIf { it.isNotBlank() && !it.endsWith("/*") }
+                    ?: item.mimeType
+                    ?: connection.contentType
+                        ?.trim()
+                        ?.substringBefore(";")
+                        ?.takeIf(String::isNotEmpty)
+                    ?: FALLBACK_AUDIO_MIME_TYPE
             OpenSource(
                 input = connection.inputStream,
                 length = responseLength,
-                mimeType = connection.contentType?.substringBefore(";") ?: resolved.localConfiguration?.mimeType ?: item.mimeType,
+                mimeType = responseMimeType,
                 status =
                     if (responseCode == HttpURLConnection.HTTP_PARTIAL) {
                         HttpStatusCode.PartialContent
@@ -698,8 +734,7 @@ private class LocalCastMediaServer(
 
     private fun mimeType(
         uri: Uri,
-        fallback: String,
-    ): String =
+    ): String? =
         runCatching { context.contentResolver.getType(uri) }
             .getOrNull()
             ?.substringBefore(";")
@@ -708,7 +743,6 @@ private class LocalCastMediaServer(
                 ?.takeIf { it.isNotBlank() }
                 ?.lowercase(Locale.US)
                 ?.let(MimeTypeMap.getSingleton()::getMimeTypeFromExtension)
-            ?: fallback
 
     private fun parseRange(
         header: String?,
@@ -741,6 +775,37 @@ private class LocalCastMediaServer(
     }
 
     private fun lanAddress(): String? {
+        val activeNetwork = connectivityManager.activeNetwork
+        val networkAddress =
+            runCatching {
+                connectivityManager.allNetworks
+                    .asSequence()
+                    .sortedWith(
+                        compareBy<android.net.Network> {
+                            val capabilities = connectivityManager.getNetworkCapabilities(it)
+                            when {
+                                capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true -> 0
+                                capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) == true -> 1
+                                capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true -> 3
+                                capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) == true -> 4
+                                else -> 2
+                            }
+                        }.thenByDescending { it == activeNetwork },
+                    ).flatMap { network ->
+                        connectivityManager
+                            .getLinkProperties(network)
+                            ?.linkAddresses
+                            .orEmpty()
+                            .asSequence()
+                            .map { it.address }
+                    }.filterIsInstance<Inet4Address>()
+                    .filterNot { it.isLoopbackAddress }
+                    .filter { it.isSiteLocalAddress }
+                    .mapNotNull { it.hostAddress }
+                    .firstOrNull()
+            }.getOrNull()
+        if (networkAddress != null) return networkAddress
+
         val interfaces = NetworkInterface.getNetworkInterfaces().toList()
         return interfaces
             .asSequence()
@@ -762,14 +827,14 @@ private class LocalCastMediaServer(
     private data class ServedItem(
         val mediaItem: MediaItem,
         val uri: Uri,
-        val mimeType: String,
+        val mimeType: String?,
         val mediaItemResolver: CastMediaItemResolver?,
         @Volatile var resolvedMediaItem: MediaItem? = null,
     )
 
     private data class ServedAsset(
         val uri: Uri,
-        val mimeType: String,
+        val mimeType: String?,
     )
 
     private sealed interface ParsedRange {
@@ -801,7 +866,7 @@ private class LocalCastMediaServer(
             ) = OpenSource(
                 input = ByteArrayInputStream(ByteArray(0)),
                 length = 0L,
-                mimeType = "audio/mp4",
+                mimeType = FALLBACK_AUDIO_MIME_TYPE,
                 status = HttpStatusCode.RequestedRangeNotSatisfiable,
                 contentRange = length?.let { "bytes */$it" },
                 onClose = onClose,

@@ -314,7 +314,7 @@ fun SongMenu(
 
                 coroutineScope.launch {
                     database.query {
-                        update(song.song.copy(title = newTitle))
+                        update(song.song.copy(title = newTitle, titleOverride = true))
                         val artist = song.artists.firstOrNull()
                         if (artist != null) {
                             update(artist.copy(name = newArtist))

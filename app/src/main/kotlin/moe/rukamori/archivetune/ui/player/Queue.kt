@@ -21,6 +21,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -61,6 +62,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -71,7 +73,6 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.Snapshot
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -87,7 +88,6 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.media3.common.Player
 import androidx.media3.common.Timeline
 import androidx.media3.exoplayer.source.ShuffleOrder.DefaultShuffleOrder
 import androidx.navigation.NavController
@@ -117,6 +117,7 @@ import moe.rukamori.archivetune.ui.component.BottomSheet
 import moe.rukamori.archivetune.ui.component.BottomSheetState
 import moe.rukamori.archivetune.ui.component.LocalBottomSheetPageState
 import moe.rukamori.archivetune.ui.component.LocalMenuState
+import moe.rukamori.archivetune.ui.component.MediaMetadataListItem
 import moe.rukamori.archivetune.ui.component.TextFieldDialog
 import moe.rukamori.archivetune.ui.menu.AddToPlaylistDialog
 import moe.rukamori.archivetune.ui.menu.PlayerMenu
@@ -152,16 +153,16 @@ fun Queue(
     val bottomSheetPageState = LocalBottomSheetPageState.current
 
     val playerConnection = LocalPlayerConnection.current ?: return
-    val isPlaying by playerConnection.isPlaying.collectAsStateWithLifecycle()
-    val repeatMode by playerConnection.repeatMode.collectAsStateWithLifecycle()
+    val isPlaying by playerConnection.isPlaying.collectAsState()
+    val repeatMode by playerConnection.repeatMode.collectAsState()
 
-    val currentWindowIndex by playerConnection.currentWindowIndex.collectAsStateWithLifecycle()
-    val mediaMetadata by playerConnection.mediaMetadata.collectAsStateWithLifecycle()
-    val currentSong by playerConnection.currentSong.collectAsStateWithLifecycle(initialValue = null)
+    val currentWindowIndex by playerConnection.currentWindowIndex.collectAsState()
+    val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
+    val currentSong by playerConnection.currentSong.collectAsState(initial = null)
     val currentSongLiked = currentSong?.song?.liked == true
 
-    val currentFormat by playerConnection.currentFormat.collectAsStateWithLifecycle(initialValue = null)
-    val queueTitle by playerConnection.queueTitle.collectAsStateWithLifecycle()
+    val currentFormat by playerConnection.currentFormat.collectAsState(initial = null)
+    val queueTitle by playerConnection.queueTitle.collectAsState()
 
     val selectedSongs = remember { mutableStateListOf<MediaMetadata>() }
     val selectedItems = remember { mutableStateListOf<Timeline.Window>() }
@@ -181,8 +182,8 @@ fun Queue(
 
     var locked by rememberPreference(QueueEditLockKey, defaultValue = true)
     var infiniteQueueEnabled by rememberPreference(AutoLoadMoreKey, defaultValue = true)
-    val infiniteQueueLoading by playerConnection.service.infiniteQueueLoading.collectAsStateWithLifecycle()
-    val togetherSessionState by playerConnection.service.togetherSessionState.collectAsStateWithLifecycle()
+    val infiniteQueueLoading by playerConnection.service.infiniteQueueLoading.collectAsState()
+    val togetherSessionState by playerConnection.service.togetherSessionState.collectAsState()
     val togetherForcesLock =
         togetherSessionState is moe.rukamori.archivetune.together.TogetherSessionState.Joined &&
             (togetherSessionState as moe.rukamori.archivetune.together.TogetherSessionState.Joined).role is moe.rukamori.archivetune.together.TogetherRole.Guest
@@ -243,7 +244,7 @@ fun Queue(
         TextFieldDialog(
             icon = {
                 Icon(
-                    painter = painterResource(R.drawable.player_queue_music),
+                    painter = painterResource(R.drawable.queue_music),
                     contentDescription = null,
                 )
             },
@@ -295,7 +296,7 @@ fun Queue(
         )
     }
 
-    val queueWindows by playerConnection.queueWindows.collectAsStateWithLifecycle()
+    val queueWindows by playerConnection.queueWindows.collectAsState()
     val currentWindow =
         remember(currentWindowIndex, queueWindows) {
             queueWindows.getOrNull(currentWindowIndex)
@@ -376,7 +377,7 @@ fun Queue(
         ) {
             playerConnection.service.sleepTimer.isActive
         }
-    var sleepTimerTimeLeft by remember { mutableLongStateOf(0L) }
+    var sleepTimerTimeLeft by remember { mutableStateOf(0L) }
 
     val (showCodecOnPlayer) =
         rememberPreference(
@@ -411,36 +412,9 @@ fun Queue(
 
     BottomSheet(
         state = state,
-        // Pass the actual background color (surfaceContainer / Black) instead of
-        // Color.Unspecified, AND set opaqueBackground = true so the outer sheet
-        // background is fully opaque as soon as the sheet starts sliding up.
-        //
-        // Why: non-Apple-Music player styles render a zoomed/gradient/blur
-        // artwork backdrop behind the player (PlayerBackground composable).
-        // The previous Color.Unspecified made the outer sheet transparent, and
-        // the inner content's graphicsLayer alpha fade (which only reaches 1.0
-        // at progress = 0.5) let that artwork bleed through during the slide-up
-        // drag. With opaqueBackground = true, the outer background is opaque
-        // from the very first pixel of drag, fully covering the player artwork,
-        // while the inner queue rows still fade in smoothly via their own
-        // graphicsLayer alpha. Apple-Music style was unaffected because it
-        // doesn't render PlayerBackground — its player backdrop is already a
-        // solid surface color.
-        backgroundColor = backgroundColor,
-        opaqueBackground = true,
+        backgroundColor = Color.Unspecified,
         modifier = modifier,
-        morphMode = true,
-        // Keep the queue list composed while the sheet is collapsed at the peek
-        // height — otherwise the `!state.isCollapsed` gate unmounts the whole
-        // LazyColumn (and its scroll/selection state) the moment a drag reaches
-        // the peek, which combined with the old no-slide morph made the queue
-        // vanish while dragging it down.
-        //
-        // Apple Music is excluded: it renders its queue via the in-place
-        // SharedTransitionLayout morph in AppleMusicPlayer (peek height is 0dp,
-        // so this sheet never shows). Keeping it alive there would compose a
-        // second, invisible reorderable queue list behind the morph.
-        keepContentAlive = playerDesignStyle != PlayerDesignStyle.APPLE_MUSIC,
+        onCollapsedContentClick = openQueue,
         collapsedContent = {
             when (playerDesignStyle) {
                 PlayerDesignStyle.V2 -> {
@@ -521,14 +495,39 @@ fun Queue(
                 }
 
                 PlayerDesignStyle.V5 -> {
-                    // V5 keeps its collapsed peek bar empty, matching the APPLE_MUSIC approach.
-                    // The LittlePlayer (rendered inside Player.kt) already exposes queue, like,
-                    // and more-menu buttons with proper 48dp touch targets. Previously this
-                    // branch rendered QueueCollapsedContentV3 inside a 0dp-tall peek Box —
-                    // the button row overflowed the parent and its touch zone was clipped/
-                    // competed-for by the BottomSheet wrapper's own clickable, which caused
-                    // "queue button doesn't work at all" reports on V5. Sleep timer, lyrics,
-                    // and other controls remain reachable via the LittlePlayer's more-menu.
+                    QueueCollapsedContentV3(
+                        showCodecOnPlayer = showCodecOnPlayer,
+                        currentFormat = currentFormat,
+                        textBackgroundColor = TextBackgroundColor,
+                        sleepTimerEnabled = sleepTimerEnabled,
+                        sleepTimerTimeLeft = sleepTimerTimeLeft,
+                        onExpandQueue = openQueue,
+                        onSleepTimerClick = {
+                            if (sleepTimerEnabled) {
+                                playerConnection.service.sleepTimer.clear()
+                            } else {
+                                showSleepTimerDialog = true
+                            }
+                        },
+                        onShowLyrics = onShowLyrics,
+                        onMenuClick = {
+                            menuState.show {
+                                PlayerMenu(
+                                    mediaMetadata = mediaMetadata,
+                                    navController = navController,
+                                    playerBottomSheetState = playerBottomSheetState,
+                                    onShowDetailsDialog = {
+                                        mediaMetadata?.id?.let {
+                                            bottomSheetPageState.show {
+                                                ShowMediaInfo(it)
+                                            }
+                                        }
+                                    },
+                                    onDismiss = menuState::dismiss,
+                                )
+                            }
+                        },
+                    )
                 }
 
                 PlayerDesignStyle.V4 -> {
@@ -594,13 +593,8 @@ fun Queue(
                     )
                 }
 
-                PlayerDesignStyle.APPLE_MUSIC -> {
-                    // The Apple Music style keeps its collapsed peek bar empty: the queue, lyrics and
-                    // output controls all live in the player's own bottom row, so no extra pills here.
-                }
-
                 PlayerDesignStyle.V9 -> {
-                    val shuffleModeEnabled by playerConnection.shuffleModeEnabled.collectAsStateWithLifecycle()
+                    val shuffleModeEnabled by playerConnection.shuffleModeEnabled.collectAsState()
                     QueueCollapsedContentV9(
                         showCodecOnPlayer = showCodecOnPlayer,
                         currentFormat = currentFormat,
@@ -610,10 +604,6 @@ fun Queue(
                         shuffleModeEnabled = shuffleModeEnabled,
                         repeatMode = repeatMode,
                         onShuffleClick = {
-                            // Auto-disable repeat when turning shuffle on (mutually exclusive UX).
-                            if (!shuffleModeEnabled) {
-                                playerConnection.player.repeatMode = Player.REPEAT_MODE_OFF
-                            }
                             playerConnection.player.shuffleModeEnabled = !shuffleModeEnabled
                         },
                         onRepeatModeClick = { playerConnection.player.toggleRepeatMode() },
@@ -678,6 +668,16 @@ fun Queue(
                         device = audioDevice,
                     )
                 }
+
+                PlayerDesignStyle.APPLE_MUSIC -> {
+                    // The Apple Music style renders its queue via the in-place
+                    // SharedTransitionLayout morph in AppleMusicPlayer (its
+                    // collapsed peek height is 0dp, so this BottomSheet never
+                    // visibly collapses for that style). Keeping an explicit
+                    // empty branch here means the `when` stays exhaustive and
+                    // we don't accidentally render an upstream collapsed-content
+                    // variant behind the morph.
+                }
             }
 
             if (showSleepTimerDialog) {
@@ -696,23 +696,11 @@ fun Queue(
             }
         },
     ) {
-        val queueWindows by playerConnection.queueWindows.collectAsStateWithLifecycle()
-        val currentPlayingUid =
-            remember(currentWindowIndex, queueWindows) {
-                if (currentWindowIndex in queueWindows.indices) {
-                    queueWindows[currentWindowIndex].uid
-                } else {
-                    null
-                }
-            }
-        // Display list: current song at index 0, upcoming next, then previously-played
-        // songs in reverse chronological order. See the sync LaunchedEffect below for
-        // the full rationale. The initial value is pre-reordered so the first frame
-        // doesn't flicker in timeline order.
+        val queueWindows by playerConnection.queueWindows.collectAsState()
         val mutableQueueWindows =
             remember {
                 mutableStateListOf<Timeline.Window>().apply {
-                    addAll(reorderedForDisplay(queueWindows, currentPlayingUid))
+                    addAll(queueWindows)
                 }
             }
         val queueLength by remember {
@@ -724,12 +712,19 @@ fun Queue(
         val headerItems = 1
         val lazyListState = rememberLazyListState()
         var dragInfo by remember { mutableStateOf<QueueDragInfo?>(null) }
-        // UIDs of items that we just committed via moveMediaItem. Used to skip the
-        // mutableQueueWindows reset for ONE LaunchedEffect cycle so the player's
-        // timeline update has time to propagate. Without this, the else-branch
-        // resets mutableQueueWindows to the OLD queueWindows (before the move),
-        // causing the dragged item to "snap back" to its original position.
-        var justCommittedDragUid by remember { mutableStateOf<Any?>(null) }
+
+        val currentPlayingUid =
+            remember(currentWindowIndex, queueWindows) {
+                if (currentWindowIndex in queueWindows.indices) {
+                    queueWindows[currentWindowIndex].uid
+                } else {
+                    null
+                }
+            }
+        val nextPlayingUid =
+            remember(currentWindowIndex, queueWindows) {
+                queueWindows.getOrNull(currentWindowIndex + 1)?.uid
+            }
 
         val reorderableState =
             rememberReorderableLazyListState(
@@ -762,13 +757,7 @@ fun Queue(
                         draggedItemUid = draggedItemUid,
                         destination =
                             if (toQueueIndex == 0) {
-                                // In the filtered queue list the current song is always at
-                                // index 0, so dropping at position 0 means "make this the
-                                // next song after the current one" rather than "move to the
-                                // very start of the full timeline" (which would place it
-                                // before already-played songs and is not visible anyway).
-                                currentPlayingUid?.let { QueueDragDestination.After(itemUid = it) }
-                                    ?: QueueDragDestination.Start
+                                QueueDragDestination.Start
                             } else {
                                 QueueDragDestination.After(
                                     itemUid = mutableQueueWindows[toQueueIndex - 1].uid,
@@ -776,7 +765,7 @@ fun Queue(
                             },
                     )
 
-                if (selection) {
+                if (selection && currentWindowIndex in mutableQueueWindows.indices) {
                     val currentItem = queueWindows.getOrNull(currentWindowIndex)
 
                     if (currentItem?.uid == draggedItemUid) {
@@ -795,7 +784,7 @@ fun Queue(
                 }
             }
 
-        LaunchedEffect(queueWindows, currentWindowIndex, reorderableState.isAnyItemDragging) {
+        LaunchedEffect(queueWindows, reorderableState.isAnyItemDragging) {
             if (reorderableState.isAnyItemDragging) return@LaunchedEffect
 
             val completedDrag = dragInfo
@@ -809,10 +798,6 @@ fun Queue(
                     destinationIndex != null &&
                     sourceIndex != destinationIndex
                 ) {
-                    // Mark this drag as just-committed so the next LaunchedEffect
-                    // invocation (triggered by the player's onTimelineChanged)
-                    // doesn't reset mutableQueueWindows to the pre-move order.
-                    justCommittedDragUid = completedDrag.draggedItemUid
                     if (!playerConnection.player.shuffleModeEnabled) {
                         playerConnection.player.moveMediaItem(sourceIndex, destinationIndex)
                     } else {
@@ -831,45 +816,11 @@ fun Queue(
                 }
             }
 
-            // If we just committed a drag, skip the reset for one cycle to let
-            // the player's timeline update propagate. The next LaunchedEffect
-            // invocation (with the updated queueWindows) will clear the flag
-            // and apply the reset using the post-move order.
-            if (justCommittedDragUid != null) {
-                justCommittedDragUid = null
-                // Keep the local drag move visible until the player's queue
-                // update arrives. The next LaunchedEffect (triggered by the
-                // queueWindows change from onTimelineChanged) will do the reset.
-                return@LaunchedEffect
-            }
-
-            // Display the full queue list including previously-played songs,
-            // REORDERED so that:
-            //   1. The currently playing song is at index 0 (top of the list).
-            //   2. Upcoming songs follow (indices 1..upcomingCount).
-            //   3. Previously-played songs are at the end, in reverse
-            //      chronological order (most recently played first), so the
-            //      user can swipe up to scroll through upcoming and then
-            //      review what just played.
-            // The drag logic continues to work because the final moveMediaItem
-            // call resolves UIDs against `queueWindows` (timeline order), not
-            // against this reordered display list.
-            val reordered = reorderedForDisplay(queueWindows, currentPlayingUid)
             Snapshot.withMutableSnapshot {
                 mutableQueueWindows.clear()
-                mutableQueueWindows.addAll(reordered)
+                mutableQueueWindows.addAll(queueWindows)
             }
         }
-
-        // Tracks the previous collapsed state so we can detect the exact
-        // moment the queue sheet transitions from collapsed → expanded
-        // (whether via the queue button or a swipe-up gesture) and scroll
-        // to the currently playing song. Without this, the queue opens
-        // scrolled to the top, forcing the user to manually find what's
-        // playing. We avoid re-scrolling on every `currentPlayingUid`
-        // change so the user is free to browse the queue after opening it
-        // without being yanked back to the current song mid-scroll.
-        var prevIsCollapsed by remember { mutableStateOf(state.isCollapsed) }
 
         LaunchedEffect(
             state.isCollapsed,
@@ -877,33 +828,16 @@ fun Queue(
             currentPlayingUid,
             reorderableState.isAnyItemDragging,
         ) {
-            val justOpened = prevIsCollapsed && !state.isCollapsed
-            prevIsCollapsed = state.isCollapsed
-            val shouldScroll =
+            if (
                 !state.isCollapsed &&
-                    (justOpened || scrollToCurrentRequested) &&
-                    currentPlayingUid != null &&
-                    !reorderableState.isAnyItemDragging
-            if (shouldScroll) {
-                // Wait briefly for the queue windows to populate after the
-                // sheet expands. The first composition after expand often has
-                // an empty `mutableQueueWindows` (the Snapshot.withMutableSnapshot
-                // that copies `queueWindows` into `mutableQueueWindows` runs
-                // in a separate LaunchedEffect that hasn't fired yet). A short
-                // retry loop lets the index lookup succeed.
-                var attempts = 0
-                while (attempts < 8) {
-                    val indexInMutableList =
-                        mutableQueueWindows.indexOfFirst { it.uid == currentPlayingUid }
-                    if (indexInMutableList != -1) {
-                        lazyListState.scrollToItem(
-                            (indexInMutableList + headerItems).coerceAtLeast(0),
-                        )
-                        scrollToCurrentRequested = false
-                        break
-                    }
-                    kotlinx.coroutines.delay(50L)
-                    attempts++
+                scrollToCurrentRequested &&
+                currentPlayingUid != null &&
+                !reorderableState.isAnyItemDragging
+            ) {
+                val indexInMutableList = mutableQueueWindows.indexOfFirst { it.uid == currentPlayingUid }
+                if (indexInMutableList != -1) {
+                    lazyListState.scrollToItem(indexInMutableList + headerItems)
+                    scrollToCurrentRequested = false
                 }
             }
         }
@@ -915,14 +849,44 @@ fun Queue(
                     .background(backgroundColor),
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
-                CompactQueueHeader(
+                CurrentSongHeader(
                     sheetState = state,
+                    mediaMetadata = mediaMetadata,
+                    liked = currentSongLiked,
+                    isPlaying = isPlaying,
+                    repeatMode = repeatMode,
+                    shuffleModeEnabled = playerConnection.player.shuffleModeEnabled,
+                    locked = effectiveLocked,
                     songCount = queueWindows.size,
                     queueDuration = queueLength,
-                    locked = effectiveLocked,
                     infiniteQueueEnabled = infiniteQueueEnabled,
                     infiniteQueueLoading = infiniteQueueLoading,
+                    backgroundColor = backgroundColor,
                     onBackgroundColor = onBackgroundColor,
+                    onToggleLike = {
+                        playerConnection.service.toggleLike()
+                    },
+                    onMenuClick = {
+                        menuState.show {
+                            PlayerMenu(
+                                mediaMetadata = mediaMetadata,
+                                navController = navController,
+                                playerBottomSheetState = playerBottomSheetState,
+                                isQueueTrigger = true,
+                                onRemoveFromQueue = {
+                                    currentWindow?.let { onRemoveWithUndo(it) }
+                                },
+                                onShowDetailsDialog = {
+                                    mediaMetadata?.id?.let {
+                                        bottomSheetPageState.show {
+                                            ShowMediaInfo(it)
+                                        }
+                                    }
+                                },
+                                onDismiss = menuState::dismiss,
+                            )
+                        }
+                    },
                     onClearQueueClick = {
                         val windowsToRemove =
                             if (currentWindowIndex in queueWindows.indices) {
@@ -939,17 +903,16 @@ fun Queue(
                         }
 
                         if (infiniteQueueEnabled) {
-                            // Clear the current auto-generated items without changing the user's
-                            // persisted global Infinite Queue choice. The next queue will respect
-                            // the same saved setting.
+                            infiniteQueueEnabled = false
                             playerConnection.service.onInfiniteQueueDisabled()
                         }
                     },
-                    // NOTE: shuffle/repeat moved out of the queue header — the
-                    // player's own bottom row already exposes them. The
-                    // "auto-disable repeat when shuffle on" UX from the old
-                    // header is preserved in the player's shuffle button
-                    // (see BottomSheetPlayer shuffle handler).
+                    onRepeatClick = { playerConnection.player.toggleRepeatMode() },
+                    onShuffleClick = {
+                        coroutineScope.launch(Dispatchers.Main) {
+                            playerConnection.player.shuffleModeEnabled = !playerConnection.player.shuffleModeEnabled
+                        }
+                    },
                     onLockClick = {
                         if (togetherForcesLock) {
                             Toast.makeText(context, R.string.not_allowed, Toast.LENGTH_SHORT).show()
@@ -1027,131 +990,154 @@ fun Queue(
                                 }
                             }
 
-                            val content: @Composable () -> Unit = content@{
-                                val shouldLoadImages by remember {
-                                    derivedStateOf {
-                                        state.value > state.collapsedBound + 80.dp
+                            val content: @Composable () -> Unit = {
+                                Row(
+                                    horizontalArrangement = Arrangement.Center,
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    val shouldLoadImages by remember {
+                                        derivedStateOf {
+                                            state.value > state.collapsedBound + 80.dp
+                                        }
                                     }
-                                }
 
-                                val trackMetadata = window.mediaItem.metadata
-                                if (trackMetadata == null) return@content
-                                CompactQueueItem(
-                                    mediaMetadata = trackMetadata,
-                                    isActive = isActive,
-                                    isPlaying = isPlaying && isActive,
-                                    isSelected = selection && trackMetadata in selectedSongs,
-                                    shouldLoadImage = shouldLoadImages,
-                                    onBackgroundColor = onBackgroundColor,
-                                    onClick = {
-                                        if (selection) {
-                                            if (trackMetadata in selectedSongs) {
-                                                selectedSongs.remove(trackMetadata)
-                                                selectedItems.remove(currentItem)
-                                                if (selectedSongs.isEmpty()) {
-                                                    selection = false
+                                    val trackMetadata = window.mediaItem.metadata ?: return@Row
+                                    val onPlayNextFromQueue =
+                                        remember(
+                                            window.uid,
+                                            window.firstPeriodIndex,
+                                            currentPlayingUid,
+                                            nextPlayingUid,
+                                        ) {
+                                            if (window.uid != currentPlayingUid && window.uid != nextPlayingUid) {
+                                                {
+                                                    playerConnection.moveQueueItemToNext(window.firstPeriodIndex)
                                                 }
                                             } else {
-                                                selectedSongs.add(trackMetadata)
-                                                selectedItems.add(currentItem)
-                                            }
-                                        } else {
-                                            if (isActive) {
-                                                playerConnection.player.togglePlayPause()
-                                            } else {
-                                                val joined =
-                                                    togetherSessionState as? moe.rukamori.archivetune.together.TogetherSessionState.Joined
-                                                val isGuest = joined?.role is moe.rukamori.archivetune.together.TogetherRole.Guest
-                                                if (isGuest) {
-                                                    if (joined?.roomState?.settings?.allowGuestsToControlPlayback != true) {
-                                                        Toast
-                                                            .makeText(
-                                                                context,
-                                                                R.string.not_allowed,
-                                                                Toast.LENGTH_SHORT,
-                                                            ).show()
-                                                        return@CompactQueueItem
-                                                    }
-                                                    val trackId =
-                                                        window.mediaItem.metadata?.id?.trim().orEmpty().ifBlank {
-                                                            window.mediaItem.mediaId.trim()
-                                                        }
-                                                    if (trackId.isBlank()) return@CompactQueueItem
-                                                    Toast
-                                                        .makeText(
-                                                            context,
-                                                            R.string.together_requesting_song_change,
-                                                            Toast.LENGTH_SHORT,
-                                                        ).show()
-                                                    playerConnection.service.requestTogetherControl(
-                                                        moe.rukamori.archivetune.together.ControlAction.SeekToTrack(
-                                                            trackId = trackId,
-                                                            positionMs = 0L,
-                                                        ),
-                                                    )
-                                                } else {
-                                                    playerConnection.player.seekToDefaultPosition(
-                                                        window.firstPeriodIndex,
-                                                    )
-                                                    playerConnection.player.playWhenReady = true
-                                                }
+                                                null
                                             }
                                         }
-                                    },
-                                    onLongClick = {
-                                        if (enableHapticFeedback) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        if (!selection) {
-                                            selection = true
-                                        }
-                                        selectedSongs.clear()
-                                        selectedItems.clear()
-                                        selectedSongs.add(trackMetadata)
-                                        selectedItems.add(currentItem)
-                                    },
-                                    onMenuClick = {
-                                        menuState.show {
-                                            PlayerMenu(
-                                                mediaMetadata = trackMetadata,
-                                                navController = navController,
-                                                playerBottomSheetState = playerBottomSheetState,
-                                                isQueueTrigger = true,
-                                                onRemoveFromQueue = {
-                                                    onRemoveWithUndo(window)
-                                                },
-                                                onShowDetailsDialog = {
-                                                    window.mediaItem.mediaId.let {
-                                                        bottomSheetPageState.show {
-                                                            ShowMediaInfo(it)
-                                                        }
-                                                    }
-                                                },
-                                                onDismiss = menuState::dismiss,
-                                            )
-                                        }
-                                    },
-                                    dragHandle = {
-                                        if (!effectiveLocked) {
+                                    MediaMetadataListItem(
+                                        mediaMetadata = trackMetadata,
+                                        isSelected = selection && trackMetadata in selectedSongs,
+                                        isActive = isActive,
+                                        isPlaying = isPlaying && isActive,
+                                        shouldLoadImage = shouldLoadImages,
+                                        trailingContent = {
                                             IconButton(
-                                                onClick = { },
-                                                modifier =
-                                                    Modifier
-                                                        .size(36.dp)
-                                                        .draggableHandle(),
+                                                onClick = {
+                                                    menuState.show {
+                                                        PlayerMenu(
+                                                            mediaMetadata = trackMetadata,
+                                                            navController = navController,
+                                                            playerBottomSheetState = playerBottomSheetState,
+                                                            isQueueTrigger = true,
+                                                            onPlayNextFromQueue = onPlayNextFromQueue,
+                                                            onRemoveFromQueue = {
+                                                                onRemoveWithUndo(window)
+                                                            },
+                                                            onShowDetailsDialog = {
+                                                                window.mediaItem.mediaId.let {
+                                                                    bottomSheetPageState.show {
+                                                                        ShowMediaInfo(it)
+                                                                    }
+                                                                }
+                                                            },
+                                                            onDismiss = menuState::dismiss,
+                                                        )
+                                                    }
+                                                },
                                             ) {
                                                 Icon(
-                                                    painter = painterResource(R.drawable.player_drag_handle),
+                                                    painter = painterResource(R.drawable.more_vert),
                                                     contentDescription = null,
-                                                    modifier = Modifier.size(18.dp),
-                                                    tint = onBackgroundColor.copy(alpha = 0.6f),
                                                 )
                                             }
-                                        }
-                                    },
-                                    modifier =
-                                        Modifier
-                                            .fillMaxWidth()
-                                            .background(Color.Transparent),
-                                )
+                                            if (!effectiveLocked) {
+                                                IconButton(
+                                                    onClick = { },
+                                                    modifier = Modifier.draggableHandle(),
+                                                ) {
+                                                    Icon(
+                                                        painter = painterResource(R.drawable.drag_handle),
+                                                        contentDescription = null,
+                                                    )
+                                                }
+                                            }
+                                        },
+                                        modifier =
+                                            Modifier
+                                                .fillMaxWidth()
+                                                .background(backgroundColor)
+                                                .combinedClickable(
+                                                    onClick = {
+                                                        if (selection) {
+                                                            if (trackMetadata in selectedSongs) {
+                                                                selectedSongs.remove(trackMetadata)
+                                                                selectedItems.remove(currentItem)
+                                                                if (selectedSongs.isEmpty()) {
+                                                                    selection = false
+                                                                }
+                                                            } else {
+                                                                selectedSongs.add(trackMetadata)
+                                                                selectedItems.add(currentItem)
+                                                            }
+                                                        } else {
+                                                            if (index == currentWindowIndex) {
+                                                                playerConnection.player.togglePlayPause()
+                                                            } else {
+                                                                val joined =
+                                                                    togetherSessionState as? moe.rukamori.archivetune.together.TogetherSessionState.Joined
+                                                                val isGuest = joined?.role is moe.rukamori.archivetune.together.TogetherRole.Guest
+                                                                if (isGuest) {
+                                                                    if (joined?.roomState?.settings?.allowGuestsToControlPlayback != true) {
+                                                                        Toast
+                                                                            .makeText(
+                                                                                context,
+                                                                                R.string.not_allowed,
+                                                                                Toast.LENGTH_SHORT,
+                                                                            ).show()
+                                                                        return@combinedClickable
+                                                                    }
+                                                                    val trackId =
+                                                                        window.mediaItem.metadata?.id?.trim().orEmpty().ifBlank {
+                                                                            window.mediaItem.mediaId.trim()
+                                                                        }
+                                                                    if (trackId.isBlank()) return@combinedClickable
+                                                                    Toast
+                                                                        .makeText(
+                                                                            context,
+                                                                            R.string.together_requesting_song_change,
+                                                                            Toast.LENGTH_SHORT,
+                                                                        ).show()
+                                                                    playerConnection.service.requestTogetherControl(
+                                                                        moe.rukamori.archivetune.together.ControlAction.SeekToTrack(
+                                                                            trackId = trackId,
+                                                                            positionMs = 0L,
+                                                                        ),
+                                                                    )
+                                                                } else {
+                                                                    playerConnection.player.seekToDefaultPosition(
+                                                                        window.firstPeriodIndex,
+                                                                    )
+                                                                    playerConnection.player.playWhenReady = true
+                                                                }
+                                                            }
+                                                        }
+                                                    },
+                                                    onLongClick = {
+                                                        if (enableHapticFeedback) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                        if (!selection) {
+                                                            selection = true
+                                                        }
+                                                        selectedSongs.clear()
+                                                        selectedItems.clear()
+                                                        selectedSongs.add(trackMetadata)
+                                                        selectedItems.add(currentItem)
+                                                    },
+                                                ),
+                                    )
+                                }
                             }
 
                             if (effectiveLocked) {
@@ -1237,37 +1223,6 @@ private val Timeline.Window.queueItemKey: Long
         (uid.hashCode().toLong() shl Int.SIZE_BITS) xor
             (mediaItem.mediaId.hashCode().toLong() and UInt.MAX_VALUE.toLong())
 
-/**
- * Reorders [windows] for queue display so that:
- *  1. The currently playing song (identified by [currentPlayingUid]) is at
- *     index 0 (top of the list).
- *  2. Upcoming songs follow in playback order.
- *  3. Previously-played songs are at the end, in reverse chronological order
- *     (most recently played first), so the user can swipe up to scroll through
- *     upcoming and then review what just played.
- *
- * The underlying [windows] list is assumed to be in timeline order
- * ([previous, current, upcoming]) as produced by
- * [moe.rukamori.archivetune.extensions.getQueueWindows]. If [currentPlayingUid]
- * is null or not found, the list is returned unchanged.
- */
-private fun reorderedForDisplay(
-    windows: List<Timeline.Window>,
-    currentPlayingUid: Any?,
-): List<Timeline.Window> {
-    if (currentPlayingUid == null) return windows
-    val currentIdx = windows.indexOfFirst { it.uid == currentPlayingUid }
-    if (currentIdx == -1) return windows
-    val current = windows[currentIdx]
-    val upcoming = windows.drop(currentIdx + 1)
-    val previous = windows.take(currentIdx).asReversed()
-    return buildList {
-        add(current)
-        addAll(upcoming)
-        addAll(previous)
-    }
-}
-
 @Immutable
 private data class QueueDragInfo(
     public val draggedItemUid: Any,
@@ -1327,7 +1282,7 @@ private fun QueueSelectionFloatingToolbar(
                 contentColor = fabContentColor,
             ) {
                 Icon(
-                    painter = painterResource(R.drawable.player_close),
+                    painter = painterResource(R.drawable.close),
                     contentDescription = stringResource(R.string.close),
                     modifier = Modifier.size(22.dp),
                 )
@@ -1347,28 +1302,28 @@ private fun QueueSelectionFloatingToolbar(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             QueueSelectionToolbarAction(
-                icon = if (allSelected) R.drawable.player_deselect else R.drawable.player_select_all,
+                icon = if (allSelected) R.drawable.deselect else R.drawable.select_all,
                 contentDescription = null,
                 tint = toolbarContentColor,
                 onClick = onToggleSelectAll,
             )
 
             QueueSelectionToolbarAction(
-                icon = R.drawable.player_playlist_add,
+                icon = R.drawable.playlist_add,
                 contentDescription = stringResource(R.string.add_to_playlist),
                 tint = colorScheme.primary,
                 onClick = onAddToPlaylist,
             )
 
             QueueSelectionToolbarAction(
-                icon = R.drawable.player_queue_music,
+                icon = R.drawable.queue_music,
                 contentDescription = stringResource(R.string.create_playlist),
                 tint = colorScheme.primary,
                 onClick = onCreatePlaylist,
             )
 
             QueueSelectionToolbarAction(
-                icon = R.drawable.player_delete,
+                icon = R.drawable.delete,
                 contentDescription = stringResource(R.string.delete),
                 tint = colorScheme.error,
                 onClick = onDelete,

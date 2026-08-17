@@ -30,6 +30,7 @@ import android.util.Rational
 import android.view.View
 import android.view.WindowManager
 import android.webkit.MimeTypeMap
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -318,6 +319,7 @@ import moe.rukamori.archivetune.ui.menu.YouTubeSongMenu
 import moe.rukamori.archivetune.ui.player.BottomSheetPlayer
 import moe.rukamori.archivetune.ui.player.ProvideVideoFullscreenState
 import moe.rukamori.archivetune.ui.screens.LOGIN_URL_ARGUMENT
+import moe.rukamori.archivetune.ui.screens.LoginScreen
 import moe.rukamori.archivetune.ui.screens.Screens
 import moe.rukamori.archivetune.ui.screens.buildLoginRoute
 import moe.rukamori.archivetune.ui.screens.navigationBuilder
@@ -348,6 +350,8 @@ import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.utils.reportException
 import moe.rukamori.archivetune.utils.setAppLocale
+import moe.rukamori.archivetune.voicesearch.VoiceSearchControllerLocator
+import moe.rukamori.archivetune.voicesearch.VoiceSearchState
 import moe.rukamori.archivetune.viewmodels.BackupCategory
 import moe.rukamori.archivetune.viewmodels.BackupRestoreViewModel
 import moe.rukamori.archivetune.viewmodels.HomeViewModel
@@ -1021,8 +1025,10 @@ class MainActivity : ComponentActivity() {
                 fontPreference = fontPreference,
                 customFontUri = customFontUri,
             ) {
+                val navController = rememberNavController()
                 val onboardingViewModel: OnboardingViewModel = hiltViewModel()
                 val onboardingState by onboardingViewModel.screenState.collectAsStateWithLifecycle()
+                var showOnboardingLogin by rememberSaveable { mutableStateOf(false) }
                 val shouldShowOnboarding =
                     when (val state = onboardingState) {
                         OnboardingScreenState.Loading -> true
@@ -1032,7 +1038,25 @@ class MainActivity : ComponentActivity() {
                     }
 
                 if (shouldShowOnboarding) {
-                    OnboardingRoute(viewModel = onboardingViewModel)
+                    if (showOnboardingLogin) {
+                        CompositionLocalProvider(
+                            LocalPlayerAwareWindowInsets provides WindowInsets.systemBars,
+                        ) {
+                            LoginScreen(
+                                navController = navController,
+                                onLoginComplete = {
+                                    onboardingViewModel.onLoginCompleted()
+                                    showOnboardingLogin = false
+                                },
+                                onNavigateBack = { showOnboardingLogin = false },
+                            )
+                        }
+                    } else {
+                        OnboardingRoute(
+                            viewModel = onboardingViewModel,
+                            onLoginRequested = { showOnboardingLogin = true },
+                        )
+                    }
                     return@ArchiveTuneTheme
                 }
 
@@ -1091,7 +1115,6 @@ class MainActivity : ComponentActivity() {
                         )
                     }
 
-                    val navController = rememberNavController()
                     DisposableEffect(navController) {
                         this@MainActivity.navController = navController
                         onDispose {}
@@ -2431,6 +2454,27 @@ class MainActivity : ComponentActivity() {
                                         enter = fadeIn(animationSpec = tween(durationMillis = if (disableAnimations) 0 else 300)),
                                         exit = fadeOut(animationSpec = tween(durationMillis = if (disableAnimations) 0 else 200)),
                                     ) {
+                                        // ── In-app voice search side effect ──
+                                        // When the GMS/Foss VoiceSearchController emits a Result, fill
+                                        // the search box and submit the query. On Error, show a toast.
+                                        val voiceSearchController = remember {
+                                            VoiceSearchControllerLocator.get(this@MainActivity)
+                                        }
+                                        val voiceSearchState by voiceSearchController.state.collectAsStateWithLifecycle()
+                                        LaunchedEffect(voiceSearchState) {
+                                            when (val s = voiceSearchState) {
+                                                is VoiceSearchState.Result -> {
+                                                    onQueryChange(TextFieldValue(s.text))
+                                                    onSearch(s.text)
+                                                    voiceSearchController.cancel() // reset to Idle
+                                                }
+                                                is VoiceSearchState.Error -> {
+                                                    Toast.makeText(this@MainActivity, s.message, Toast.LENGTH_SHORT).show()
+                                                    voiceSearchController.cancel()
+                                                }
+                                                else -> Unit
+                                            }
+                                        }
                                         TopSearch(
                                             query = query,
                                             onQueryChange = onQueryChange,
@@ -2499,6 +2543,18 @@ class MainActivity : ComponentActivity() {
                                             },
                                             trailingIcon = {
                                                 Row {
+                                                    // In-app voice search mic button. Uses Google Play
+                                                    // Services speech (gms flavor) so the user does NOT
+                                                    // need to install the standalone Google app.
+                                                    // `voiceSearchController` and `voiceSearchState` come
+                                                    // from the outer scope (declared just above TopSearch).
+                                                    val micPermissionLauncher = rememberLauncherForActivityResult(
+                                                        ActivityResultContracts.RequestPermission(),
+                                                    ) { granted ->
+                                                        if (granted) {
+                                                            voiceSearchController.startListening(this@MainActivity)
+                                                        }
+                                                    }
                                                     if (active) {
                                                         IconButton(onClick = launchVoiceSearch) {
                                                             Icon(
@@ -2549,6 +2605,32 @@ class MainActivity : ComponentActivity() {
                                                         OnlineSearchSortMenu(
                                                             selectedSort = onlineSearchSort,
                                                             onSortSelected = { onlineSearchSort = it },
+                                                        )
+                                                    }
+
+                                                    // Mic button is always visible (collapsed and active search bar)
+                                                    // so users can voice-search regardless of search state.
+                                                    IconButton(
+                                                        onClick = {
+                                                            if (ContextCompat.checkSelfPermission(
+                                                                    this@MainActivity,
+                                                                    Manifest.permission.RECORD_AUDIO,
+                                                                ) == PackageManager.PERMISSION_GRANTED
+                                                            ) {
+                                                                voiceSearchController.startListening(this@MainActivity)
+                                                            } else {
+                                                                micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                                            }
+                                                        },
+                                                    ) {
+                                                        Icon(
+                                                            painter = painterResource(R.drawable.mic),
+                                                            contentDescription = stringResource(R.string.voice_search),
+                                                            tint = if (voiceSearchState is VoiceSearchState.Listening) {
+                                                                MaterialTheme.colorScheme.primary
+                                                            } else {
+                                                                LocalContentColor.current
+                                                            },
                                                         )
                                                     }
                                                 }
@@ -2877,7 +2959,7 @@ class MainActivity : ComponentActivity() {
                             }
                         }
 
-                        BackHandler(enabled = playerBottomSheetState.isExpanded) {
+                        BackHandler(enabled = playerBottomSheetState.isExpanded && !isPlayerLyricsFullScreen) {
                             playerBottomSheetState.collapseSoft()
                         }
 

@@ -154,21 +154,22 @@ inline fun ListItem(
     crossinline trailingContent: @Composable RowScope.() -> Unit = {},
     isActive: Boolean = false,
     showActiveContainer: Boolean = true,
+    textColorOverride: Color? = null,
 ) {
     val titleColor =
-        if (isActive) {
+        textColorOverride ?: if (isActive) {
             MaterialTheme.colorScheme.onSecondaryContainer
         } else {
             MaterialTheme.colorScheme.onSurface
         }
     val subtitleContentColor =
-        if (isActive) {
+        textColorOverride?.copy(alpha = 0.7f) ?: if (isActive) {
             MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f)
         } else {
             MaterialTheme.colorScheme.onSurfaceVariant
         }
     val trailingContentColor =
-        if (isActive) {
+        textColorOverride ?: if (isActive) {
             MaterialTheme.colorScheme.onSecondaryContainer
         } else {
             MaterialTheme.colorScheme.onSurfaceVariant
@@ -1303,14 +1304,22 @@ fun MediaMetadataListItem(
     // top and produce a bright, glitchy double-background.
     showActiveContainer: Boolean = true,
     trailingContent: @Composable RowScope.() -> Unit = {},
+    textColorOverride: Color? = null,
 ) {
     ListItem(
         title = mediaMetadata.title,
-        subtitle =
-            joinByBullet(
-                mediaMetadata.artists.joinToString { it.name },
-                makeTimeString(mediaMetadata.duration * 1000L),
-            ),
+        subtitle = {
+            Text(
+                text =
+                    joinByBullet(
+                        mediaMetadata.artists.joinToString { it.name },
+                        makeTimeString(mediaMetadata.duration * 1000L),
+                    ),
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        },
         thumbnailContent = {
             ItemThumbnail(
                 thumbnailUrl = mediaMetadata.thumbnailUrl,
@@ -1327,6 +1336,7 @@ fun MediaMetadataListItem(
         modifier = modifier,
         isActive = isActive,
         showActiveContainer = showActiveContainer,
+        textColorOverride = textColorOverride,
     )
 }
 

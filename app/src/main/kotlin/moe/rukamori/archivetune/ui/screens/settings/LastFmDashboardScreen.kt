@@ -97,6 +97,8 @@ import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.innertube.models.SongItem
 import moe.rukamori.archivetune.ui.component.IconButton as AppIconButton
 import moe.rukamori.archivetune.constants.DarkModeKey
+import moe.rukamori.archivetune.ui.utils.YTThumbQuality
+import moe.rukamori.archivetune.ui.utils.buildYTThumbnailUrl
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import javax.inject.Inject
@@ -651,9 +653,14 @@ private suspend fun resolveCatalogueCover(lookup: ArtworkLookup): String? {
     if (lookup.title.isBlank()) return null
     val title = lookup.title
     val artist = lookup.artist
-    return TelegramCoverProvider.coverUrl(title, artist)
+    // YouTube Music is the primary source — user-requested. The YT thumbnail
+    // is reliably available via i.ytimg.com and matches what the user sees in
+    // the rest of the app (album art comes from YT Music). Other catalogue
+    // providers (iTunes/Deezer/Last.fm/Cover Art Archive/Spotify) are kept as
+    // fallbacks for tracks that YT search can't resolve.
+    return resolveYtThumbnail(title, artist)
+        ?: TelegramCoverProvider.coverUrl(title, artist)
         ?: CatalogueCoverProvider.resolveCoverUrl(title, artist)
-        ?: resolveYtThumbnail(title, artist)
 }
 
 private suspend fun resolveYtThumbnail(title: String, artist: String?): String? {
@@ -664,7 +671,16 @@ private suspend fun resolveYtThumbnail(title: String, artist: String?): String? 
         YouTube.search(term, YouTube.SearchFilter.FILTER_SONG).getOrNull()
             ?: return null
     val first = searchResult.items.firstOrNull { it is SongItem } as? SongItem ?: return null
-    return first.thumbnail.takeIf(String::isNotBlank)
+    // Prefer the canonical i.ytimg.com URL (built from the videoId) over the
+    // search-result thumbnail URL — the canonical URL is more cache-friendly
+    // and supports on-the-fly quality switching (hqdefault is always present
+    // even when maxresdefault isn't).
+    val videoId = first.id
+    return if (videoId.length == 11) {
+        buildYTThumbnailUrl(videoId, YTThumbQuality.HQ)
+    } else {
+        first.thumbnail.takeIf(String::isNotBlank)
+    }
 }
 
 private fun List<RecentTrack>.dedupeNowPlayingEchoes(): List<RecentTrack> {

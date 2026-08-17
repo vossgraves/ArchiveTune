@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import moe.rukamori.archivetune.constants.DisableBlurKey
+import moe.rukamori.archivetune.constants.MinimalHomeModeKey
 import moe.rukamori.archivetune.constants.QuickPicks
 import moe.rukamori.archivetune.constants.QuickPicksKey
 import moe.rukamori.archivetune.constants.QuickPicksDisplayMode
@@ -46,5 +47,15 @@ class HomeRepository
         val showTonalBackdrop: Flow<Boolean> =
             context.dataStore.data
                 .map { preferences -> preferences[DisableBlurKey] != true }
+                .distinctUntilChanged()
+
+        /**
+         * When `true`, the Home feed collapses to a focused subset
+         * (hero + Recently Played + Keep Listening + Live Performances).
+         * See [MinimalHomeModeKey] for the full description.
+         */
+        val minimalHomeMode: Flow<Boolean> =
+            context.dataStore.data
+                .map { preferences -> preferences[MinimalHomeModeKey] ?: false }
                 .distinctUntilChanged()
     }

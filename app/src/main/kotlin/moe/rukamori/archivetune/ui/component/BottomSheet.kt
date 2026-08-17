@@ -98,6 +98,7 @@ fun BottomSheet(
     morphMode: Boolean = false,
     backHandlerEnabled: Boolean = true,
     opaqueBackground: Boolean = false,
+    onCollapsedContentClick: (() -> Unit)? = null,
     collapsedContent: @Composable BoxScope.() -> Unit,
     content: @Composable BoxScope.() -> Unit,
 ) {
@@ -119,17 +120,37 @@ fun BottomSheet(
                     ),
                 ).background(
                     if (opaqueBackground) {
-                        // Render the outer background fully opaque as soon as
-                        // the sheet is visible. The sheet is offset off-screen
-                        // when collapsed (so the opaque background is not
-                        // visible until the user starts dragging), and once
-                        // the sheet starts sliding up the opaque background
-                        // immediately covers whatever is behind the sheet
-                        // (e.g. the player's zoomed artwork backdrop). The
-                        // inner content still fades in via its own
-                        // graphicsLayer alpha, so the queue rows appear
-                        // smoothly on top of the now-opaque background.
-                        backgroundColor
+                        // Render the outer background fully opaque ONLY when
+                        // the sheet is actually sliding up or expanded
+                        // (progress > 0). When the sheet is fully collapsed
+                        // (progress = 0), the background is transparent so it
+                        // does NOT cover the system navigation bar area
+                        // (gesture hint / 3-button nav) at the bottom of the
+                        // screen.
+                        //
+                        // Previously, this branch returned `backgroundColor`
+                        // unconditionally, which meant the opaque background
+                        // was always rendered — even when the sheet was
+                        // collapsed at the peek height. Because the queue
+                        // sheet's `collapsedBound` is
+                        // `dynamicQueuePeekHeight + systemBarsBottom`, the
+                        // visible portion of the collapsed sheet INCLUDES the
+                        // navigation bar inset, and the opaque background
+                        // covered it, hiding the gesture hint / 3-button nav.
+                        //
+                        // By gating on `progress > 0`, the background is:
+                        //   - transparent when collapsed (progress = 0): the
+                        //     navigation bar shows through normally.
+                        //   - opaque as soon as the user starts dragging
+                        //     (progress > 0): the player's zoomed artwork
+                        //     backdrop is hidden during the slide-up, which
+                        //     was the original bug `opaqueBackground = true`
+                        //     was introduced to fix.
+                        if (state.progress > 0f) {
+                            backgroundColor
+                        } else {
+                            Color.Transparent
+                        }
                     } else {
                         backgroundColor.copy(
                             alpha = backgroundColor.alpha * state.progress.coerceIn(0f, 1f),
@@ -194,7 +215,7 @@ fun BottomSheet(
                         }.clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
-                            onClick = state::expandSoft,
+                            onClick = onCollapsedContentClick ?: state::expandSoft,
                         ).fillMaxWidth()
                         .height(state.collapsedBound),
                 content = collapsedContent,

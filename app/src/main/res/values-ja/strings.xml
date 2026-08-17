@@ -877,7 +877,7 @@
     <string name="playlist_suggestion_source_title">プレイリストタイトル</string>
     <string name="playlist_suggestion_source_content">プレイリスト内容</string>
     <string name="playlist_suggestion_source_both">プレイリストタイトルと内容</string>
-    <string name="music_together">ArchiveTune Music Together</string>
+    <string name="music_together">Listen Together</string>
     <string name="together_display_name">表示名</string>
     <string name="together_display_name_placeholder">あなたの名前</string>
     <string name="together_port">セッションポート</string>
@@ -948,7 +948,7 @@
     <string name="together_activity_error">エラー: %1$s</string>
     <string name="got_it">了解</string>
     <string name="together_dont_show_again">今後表示しない</string>
-    <string name="together_welcome_title">ArchiveTune Music Togetherへようこそ</string>
+    <string name="together_welcome_title">Listen Togetherへようこそ</string>
     <string name="together_welcome_body">Music Togetherでは、複数の端末で同期キューと再生を共有するライブセッションが使える。</string>
     <string name="together_welcome_host_title">セッションをホスト</string>
     <string name="together_welcome_host_body">「セッションを開始」をタップしてセッションリンクを共有。ホスト中はArchiveTuneをバックグラウンドで開いたままにしてね。</string>

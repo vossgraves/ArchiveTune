@@ -62,4 +62,11 @@
     <string name="clear_downloaded_updates_auto_info">Downloaded update APKs are cleared automatically after a successful install. You can also delete them manually from storage settings.</string>
     <string name="manual_delete_hint_title">Manual delete</string>
     <string name="manual_delete_hint_desc">If an update download was interrupted, the partial file lives in cache/app_update and is safe to delete.</string>
+
+    <!-- Minimal Home Mode (AppearanceSettings.kt + HomeScreen.kt).
+         When enabled, the Home feed collapses to a focused subset:
+         hero (Jump back in) + Recently Played + Keep Listening + Live Performances.
+         The hero is always shown regardless of this toggle. -->
+    <string name="minimal_home_mode">Minimal mode</string>
+    <string name="minimal_home_mode_desc">Hide all home sections except Keep listening, Recently played and Live performances. The hero card at the top stays visible.</string>
 </resources>

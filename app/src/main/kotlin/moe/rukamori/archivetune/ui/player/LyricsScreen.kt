@@ -212,12 +212,7 @@ fun LyricsScreen(
     val playerCustomBlur by rememberPreference(PlayerCustomBlurKey, 0f)
     val playerCustomContrast by rememberPreference(PlayerCustomContrastKey, 1f)
     val playerCustomBrightness by rememberPreference(PlayerCustomBrightnessKey, 1f)
-    val foregroundColor =
-        if (lyricsBackground == LyricsBackgroundStyle.FOLLOW_THEME) {
-            MaterialTheme.colorScheme.onSurface
-        } else {
-            Color.White
-        }
+    val foregroundColor = Color.White
     val showPlayerControlsState =
         rememberPreference(ShowLyricsPlayerControlsKey, true)
     val showPlayerControlsEnabled by showPlayerControlsState
@@ -343,12 +338,19 @@ fun LyricsScreen(
     val (autoTranslateLyrics) = rememberPreference(AutoTranslateLyricsKey, defaultValue = false)
     val (translatorTargetLang) = rememberPreference(TranslatorTargetLangKey, defaultValue = "")
     val lyricsMenuViewModel: LyricsMenuViewModel = hiltViewModel()
+    // Observe the set of media IDs the user has dismissed translation for.
+    // When a user clicks "Undo Translation", the mediaId is added to this set;
+    // auto-translate is suppressed for dismissed songs until the user manually
+    // triggers translation again (which clears the dismissal in the ViewModel).
+    val translationDismissedMediaIds by lyricsMenuViewModel.translationDismissedMediaIds
+        .collectAsStateWithLifecycle()
     LaunchedEffect(
         mediaMetadata.id,
         currentLyrics?.lyrics,
         currentLyrics?.source,
         autoTranslateLyrics,
         translatorTargetLang,
+        translationDismissedMediaIds,
     ) {
         if (!autoTranslateLyrics) return@LaunchedEffect
         val snapshot = currentLyrics ?: return@LaunchedEffect
@@ -364,6 +366,12 @@ fun LyricsScreen(
         if (snapshot.source == LyricsEntity.Source.AI_TRANSLATION.value &&
             LyricsUtils.hasTranslation(text)
         ) return@LaunchedEffect
+
+        // Skip auto-translate if the user has dismissed translation for this
+        // song. The user clicked "Undo Translation" — they explicitly do not
+        // want the translation back. Auto-translate will resume only after the
+        // user manually triggers translation (which clears the dismissal).
+        if (mediaMetadata.id in translationDismissedMediaIds) return@LaunchedEffect
 
         if (!LyricsUtils.shouldAutoTranslate(text, translatorTargetLang)) return@LaunchedEffect
 
@@ -580,6 +588,7 @@ fun LyricsScreen(
                 mediaMetadata = mediaMetadata,
                 foregroundColor = foregroundColor,
                 onMoreClick = showLyricsMenu,
+                onDismissClick = onBackClick,
                 isLiked = currentSongLiked,
                 onToggleLike = playerConnection::toggleLike,
                 modifier =
@@ -824,7 +833,7 @@ private fun MovingBlurBackground(
         initialValue = -60f,
         targetValue = 60f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 14_000, easing = FastOutSlowInEasing),
+            animation = tween(durationMillis = 6_000, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse,
         ),
         label = "moving-blur-x",
@@ -833,7 +842,7 @@ private fun MovingBlurBackground(
         initialValue = -45f,
         targetValue = 45f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 20_000, easing = FastOutSlowInEasing),
+            animation = tween(durationMillis = 8_000, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse,
         ),
         label = "moving-blur-y",
@@ -1085,6 +1094,7 @@ private fun AppleMusicTrackHeader(
     mediaMetadata: MediaMetadata,
     foregroundColor: Color,
     onMoreClick: () -> Unit,
+    onDismissClick: () -> Unit = {},
     modifier: Modifier = Modifier,
     isLiked: Boolean = false,
     onToggleLike: () -> Unit = {},
@@ -1145,6 +1155,19 @@ private fun AppleMusicTrackHeader(
         }
 
         Spacer(modifier = Modifier.width(8.dp))
+
+        // Close (cross) button — required so users can dismiss the lyrics sheet
+        // without relying on the system back gesture. Sits to the left of the
+        // overflow menu icon (and to the left of the heart button). Matches
+        // upstream rukamori/ArchiveTune's lyrics top bar layout.
+        AppleMusicHeaderIconButton(
+            iconRes = R.drawable.close,
+            contentDescription = stringResource(R.string.close),
+            foregroundColor = foregroundColor,
+            onClick = onDismissClick,
+        )
+
+        Spacer(modifier = Modifier.width(4.dp))
 
         // Favourite (heart) button — matches Apple Music's lyrics page where the
         // heart icon sits to the right of the song title/artist. Tapping toggles

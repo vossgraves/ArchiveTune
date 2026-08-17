@@ -63,12 +63,15 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.graphics.ColorUtils
@@ -76,6 +79,10 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
+import coil3.request.CachePolicy
+import coil3.request.ImageRequest
+import coil3.request.crossfade
+import coil3.size.Size
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.LocalDatabase
@@ -103,6 +110,42 @@ import moe.rukamori.archivetune.viewmodels.LibraryTopMixUiModel
 import moe.rukamori.archivetune.viewmodels.LibraryTopMixesUiState
 import moe.rukamori.archivetune.viewmodels.MostPlayedAlbumUiModel
 import moe.rukamori.archivetune.viewmodels.MostPlayedAlbumUiState
+
+/**
+ * Builds a sized, cache-enabled [ImageRequest] for a thumbnail that will be
+ * displayed at [widthDp] × [heightDp]. Without an explicit `.size()` Coil
+ * downloads the original full-resolution image (often 1280×720+ for YT
+ * thumbnails, 640×640 for Spotify playlist covers) and downsamples on the
+ * fly — slow on cold start, especially when the Library tab fires 10+
+ * parallel requests at once.
+ *
+ * Passing an explicit size lets the CDN serve the smallest bucket it has
+ * (YT `mqdefault` is 320×180, Spotify `image` URLs honour `=w300-h300`),
+ * which combined with the tuned OkHttp pool in [moe.rukamori.archivetune.App.newImageLoader]
+ * makes thumbnails load near-instantly after the first cache miss.
+ */
+@Composable
+private fun rememberSizedImageRequest(
+    url: String?,
+    widthDp: Dp,
+    heightDp: Dp,
+): ImageRequest? {
+    if (url.isNullOrBlank()) return null
+    val context = LocalContext.current
+    val density = LocalDensity.current
+    val widthPx = with(density) { widthDp.roundToPx().coerceAtLeast(1) }
+    val heightPx = with(density) { heightDp.roundToPx().coerceAtLeast(1) }
+    return remember(url, widthPx, heightPx) {
+        ImageRequest
+            .Builder(context)
+            .data(url)
+            .size(Size(widthPx, heightPx))
+            .diskCachePolicy(CachePolicy.ENABLED)
+            .memoryCachePolicy(CachePolicy.ENABLED)
+            .crossfade(true)
+            .build()
+    }
+}
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -375,7 +418,7 @@ fun LibraryMixScreen(
                                                     .clip(RoundedCornerShape(28.dp)),
                                         ) {
                                             AsyncImage(
-                                                model = song.song.thumbnailUrl,
+                                                model = rememberSizedImageRequest(song.song.thumbnailUrl, 110.dp, 110.dp),
                                                 contentDescription = null,
                                                 contentScale = ContentScale.Crop,
                                                 modifier = Modifier.fillMaxSize(),
@@ -536,7 +579,7 @@ fun LibraryMixScreen(
                                                     .clip(RoundedCornerShape(24.dp)),
                                         ) {
                                             AsyncImage(
-                                                model = playlist.thumbnails.getOrNull(0),
+                                                model = rememberSizedImageRequest(playlist.thumbnails.getOrNull(0), 106.dp, 106.dp),
                                                 contentDescription = null,
                                                 contentScale = ContentScale.Crop,
                                                 modifier = Modifier.fillMaxSize(),
@@ -696,7 +739,7 @@ fun LibraryMixScreen(
                                         horizontalAlignment = Alignment.CenterHorizontally,
                                     ) {
                                         AsyncImage(
-                                            model = artist.thumbnailUrl,
+                                            model = rememberSizedImageRequest(artist.thumbnailUrl, 72.dp, 72.dp),
                                             contentDescription = null,
                                             contentScale = ContentScale.Crop,
                                             modifier =
@@ -809,7 +852,7 @@ private fun SpotifyPlaylistCompactCard(
                     .clip(RoundedCornerShape(24.dp)),
         ) {
             AsyncImage(
-                model = thumbnailUrl,
+                model = rememberSizedImageRequest(thumbnailUrl, 106.dp, 106.dp),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
@@ -1141,7 +1184,7 @@ private fun LibraryTopMixCard(
                             )
                         } else {
                             AsyncImage(
-                                model = artworkUrl,
+                                model = rememberSizedImageRequest(artworkUrl, 28.dp, 28.dp),
                                 contentDescription = null,
                                 contentScale = ContentScale.Crop,
                                 modifier =
@@ -1234,7 +1277,7 @@ private fun MostPlayedAlbumSpotlightCard(
                     val thumbnailUrl = album.thumbnailUrl
                     if (thumbnailUrl != null) {
                         AsyncImage(
-                            model = thumbnailUrl,
+                            model = rememberSizedImageRequest(thumbnailUrl, 64.dp, 64.dp),
                             contentDescription = null,
                             contentScale = ContentScale.Crop,
                             modifier = Modifier.fillMaxSize(),

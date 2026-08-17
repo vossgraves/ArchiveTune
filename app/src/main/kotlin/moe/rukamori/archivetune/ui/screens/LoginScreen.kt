@@ -14,6 +14,7 @@ import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -56,6 +57,8 @@ private val YOUTUBE_COOKIE_URLS =
 fun LoginScreen(
     navController: NavController,
     startUrl: String? = null,
+    onLoginComplete: (() -> Unit)? = null,
+    onNavigateBack: (() -> Unit)? = null,
     viewModel: LoginViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
@@ -66,7 +69,11 @@ fun LoginScreen(
     LaunchedEffect(screenState, loginSuccessMessage) {
         if (screenState is LoginScreenState.Success) {
             Toast.makeText(context, loginSuccessMessage, Toast.LENGTH_SHORT).show()
-            navController.navigateUp()
+            if (onLoginComplete != null) {
+                onLoginComplete()
+            } else {
+                navController.navigateUp()
+            }
         }
     }
 
@@ -126,6 +133,15 @@ fun LoginScreen(
             }
         },
     )
+
+    // The AuthWebViewScreen above already renders its own TopAppBar (with the
+    // login title and a back button wired to navController). When this screen
+    // is reached from onboarding (onNavigateBack != null), we add a BackHandler
+    // so the system back gesture routes through onNavigateBack instead of
+    // popping the nav stack.
+    BackHandler(enabled = onNavigateBack != null) {
+        onNavigateBack?.invoke()
+    }
 }
 
 private class YouTubeLoginWebViewClient(

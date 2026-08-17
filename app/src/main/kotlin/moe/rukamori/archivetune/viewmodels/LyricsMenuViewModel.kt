@@ -113,6 +113,23 @@ class LyricsMenuViewModel
         private val _translationUndo = MutableStateFlow<LyricsTranslationUndoSnapshot?>(null)
         val translationUndo: StateFlow<LyricsTranslationUndoSnapshot?> = _translationUndo.asStateFlow()
 
+        /**
+         * Set of media IDs for which the user has clicked "Undo Translation".
+         * While a media ID is in this set, auto-translation is suppressed —
+         * the user explicitly reverted the translation and does NOT want it
+         * re-translated automatically. The dismissal is cleared when the user
+         * manually triggers translation again via [translateLyricsWithAi].
+         *
+         * This is session-scoped (in-memory) rather than persisted, because
+         * the user's intent is "don't auto-translate this song again for now"
+         * — not "never translate this song again forever". If the app is
+         * restarted, auto-translate may fire once more; the user can undo
+         * again if desired.
+         */
+        private val _translationDismissedMediaIds = MutableStateFlow<Set<String>>(emptySet())
+        val translationDismissedMediaIds: StateFlow<Set<String>> =
+            _translationDismissedMediaIds.asStateFlow()
+
         private val _aiTranslationEvents = MutableSharedFlow<String>()
         val aiTranslationEvents: SharedFlow<String> = _aiTranslationEvents.asSharedFlow()
 
@@ -231,6 +248,12 @@ class LyricsMenuViewModel
             viewModelScope.launch(Dispatchers.IO) {
                 if (source == LyricsEntity.Source.AI_TRANSLATION) {
                     captureLyricsBeforeTranslation(mediaMetadata.id)
+                    // Clear the translation dismissal for this media ID —
+                    // the user is manually applying a translation (via the
+                    // standard translator), so any previous "Undo Translation"
+                    // dismissal is no longer relevant.
+                    _translationDismissedMediaIds.value =
+                        _translationDismissedMediaIds.value - mediaMetadata.id
                 }
                 val lyricsToSave =
                     when (source) {
@@ -240,8 +263,10 @@ class LyricsMenuViewModel
                         -> LyricsUtils.lyricsOrNotFound(lyrics)
 
                         LyricsEntity.Source.USER_EDIT,
-                        LyricsEntity.Source.AI_TRANSLATION,
                         -> lyrics
+
+                        LyricsEntity.Source.AI_TRANSLATION ->
+                            usableTranslatedLyrics(lyrics) ?: return@launch
                     }
                 database.query {
                     replaceLyrics(
@@ -260,6 +285,14 @@ class LyricsMenuViewModel
             targetLanguage: String,
         ) {
             if (isAiTranslating.value || lyrics.isBlank()) return
+            // Clear the translation dismissal for this media ID — the user
+            // is explicitly requesting a translation (either manually or via
+            // auto-translate), so any previous "Undo Translation" dismissal
+            // is no longer relevant. This ensures that after a manual
+            // translation, future auto-translate can fire again if the lyrics
+            // change back to a non-translated source.
+            _translationDismissedMediaIds.value =
+                _translationDismissedMediaIds.value - mediaMetadata.id
             aiTranslationJob =
                 viewModelScope.launch(Dispatchers.IO) {
                     isAiTranslating.value = true
@@ -289,9 +322,14 @@ class LyricsMenuViewModel
                                 lyrics = lyrics,
                                 targetLanguage = targetLanguage.ifBlank { "ENGLISH" },
                             )
+                        val usableLyrics = usableTranslatedLyrics(translatedLyrics)
+                        if (usableLyrics == null) {
+                            _aiTranslationEvents.emit(context.getString(R.string.translation_failed))
+                            return@launch
+                        }
                         saveTranslatedLyrics(
                             mediaId = mediaMetadata.id,
-                            lyrics = translatedLyrics,
+                            lyrics = usableLyrics,
                         )
                         Log.d(TAG, "AI translate success: song=${mediaMetadata.title} automatic=$isAutomatic")
                         if (!isAutomatic) {
@@ -324,6 +362,11 @@ class LyricsMenuViewModel
                 }
         }
 
+        private fun usableTranslatedLyrics(lyrics: String): String? =
+            LyricsUtils
+                .normalizeLyricsText(lyrics)
+                .takeIf(LyricsUtils::hasMeaningfulLyricsContent)
+
         fun cancelAiTranslation() {
             aiTranslationJob?.cancel()
             aiTranslationJob = null
@@ -342,6 +385,14 @@ class LyricsMenuViewModel
                     )
                 }
                 _translationUndo.value = null
+                // Mark this media ID as "translation dismissed" so that
+                // auto-translate does NOT re-translate it. The user clicked
+                // "Undo Translation" — they explicitly do not want the
+                // translation back. Auto-translate will be re-enabled for
+                // this song only when the user manually triggers translation
+                // again (which clears the dismissal via translateLyricsWithAi).
+                _translationDismissedMediaIds.value =
+                    _translationDismissedMediaIds.value + mediaId
             }
         }
 

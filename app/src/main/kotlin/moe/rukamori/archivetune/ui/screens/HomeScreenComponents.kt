@@ -1152,22 +1152,18 @@ fun SimilarRecommendationsTitle(
     navController: NavController,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
+    val thumbSizePx =
+        with(LocalDensity.current) {
+            ListThumbnailSize.roundToPx().coerceAtLeast(1)
+        }
     HomeSectionHeader(
         label = stringResource(R.string.similar_to),
         title = recommendation.title.title,
-        thumbnail =
-            recommendation.title.thumbnailUrl?.let { thumbnailUrl ->
-                {
-                    AsyncImage(
-                        model = thumbnailUrl,
-                        contentDescription = null,
-                        modifier =
-                            Modifier
-                                .size(ListThumbnailSize)
-                                .clip(RoundedCornerShape(ThumbnailCornerRadius)),
-                    )
-                }
-            },
+        // Thumbnail (album art) removed per user request — the "Similar to"
+        // label + artist/album title is enough context without the leading
+        // image. Keeps these headers visually consistent with the other
+        // text-only section headers on the home page.
         onClick = {
             when (recommendation.title) {
                 is Song -> {
@@ -1198,22 +1194,56 @@ fun HomePageSectionTitle(
     navController: NavController,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
+    val thumbSizePx =
+        with(LocalDensity.current) {
+            ListThumbnailSize.roundToPx().coerceAtLeast(1)
+        }
     HomeSectionHeader(
         title = section.title,
         label = section.label,
         leadingIcon = {
-            // Live performances section gets a microphone icon to match
+            // Every remote HomePage section now gets a leading icon — matches
             // the Recently Played (history) and Keep Listening (listening)
-            // headers — every home section now has a leading icon.
-            if (section.title.contains("Live performance", ignoreCase = true)) {
-                HomeSectionLeadingIcon(iconRes = R.drawable.mic)
-            }
+            // pattern so all home-section headers have a recognisable
+            // affordance before the title text. Live performances get a
+            // microphone; algorithmic shelves (Fresh finds, Old favourites,
+            // Quick picks, etc.) get an auto_awesome sparkle.
+            val iconRes =
+                when {
+                    section.title.contains("Live performance", ignoreCase = true) -> R.drawable.mic
+                    section.title.contains("Quick pick", ignoreCase = true) -> R.drawable.discover_tune
+                    section.title.contains("Fresh", ignoreCase = true) -> R.drawable.fire
+                    section.title.contains("Old", ignoreCase = true) ||
+                        section.title.contains("favourite", ignoreCase = true) ||
+                        section.title.contains("forgotten", ignoreCase = true) -> R.drawable.cached
+                    section.title.contains("New release", ignoreCase = true) -> R.drawable.new_release
+                    section.title.contains("Trending", ignoreCase = true) -> R.drawable.trending_up
+                    else -> R.drawable.auto_awesome
+                }
+            HomeSectionLeadingIcon(iconRes = iconRes)
         },
         thumbnail =
             section.thumbnail?.let { thumbnailUrl ->
                 {
+                    // Sized ImageRequest — same rationale as in
+                    // SimilarRecommendationsTitle: request a thumbnail bucket
+                    // close to 56dp instead of the original full-res artwork
+                    // the CDN would otherwise serve. This is the slow-loading
+                    // "playlist thumbnail" the user reported on the home feed.
+                    val imageRequest =
+                        remember(thumbnailUrl, thumbSizePx) {
+                            ImageRequest
+                                .Builder(context)
+                                .data(thumbnailUrl)
+                                .size(Size(thumbSizePx, thumbSizePx))
+                                .diskCachePolicy(CachePolicy.ENABLED)
+                                .memoryCachePolicy(CachePolicy.ENABLED)
+                                .crossfade(true)
+                                .build()
+                        }
                     AsyncImage(
-                        model = thumbnailUrl,
+                        model = imageRequest,
                         contentDescription = null,
                         modifier =
                             Modifier

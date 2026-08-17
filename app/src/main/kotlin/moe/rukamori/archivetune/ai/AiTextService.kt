@@ -34,6 +34,8 @@ object AiTextService {
     private const val TAG = "AiTextService"
     private const val OpenAiEndpoint = "https://api.openai.com/v1/chat/completions"
     private const val OpenAiModelsEndpoint = "https://api.openai.com/v1/models"
+    private const val OpenRouterEndpoint = "https://openrouter.ai/api/v1/chat/completions"
+    private const val OpenRouterModelsEndpoint = "https://openrouter.ai/api/v1/models"
     private const val GeminiBaseEndpoint = "https://generativelanguage.googleapis.com/v1beta"
 
     /**
@@ -194,6 +196,18 @@ object AiTextService {
                 )
             }
 
+            AiProvider.OPENROUTER -> {
+                completeOpenAiCompatible(
+                    endpoint = OpenRouterEndpoint,
+                    apiKey = config.apiKey,
+                    model = model,
+                    systemPrompt = systemPrompt,
+                    userPrompt = userPrompt,
+                    temperature = temperature,
+                    maxTokens = maxTokens,
+                )
+            }
+
             AiProvider.CUSTOM -> {
                 completeOpenAiCompatible(
                     endpoint = config.customEndpoint,
@@ -218,11 +232,10 @@ object AiTextService {
                 )
             }
 
-            // DeepL / OpenRouter / Mistral are translation-only providers (not generic chat
-            // completion). AiTextService is used for AI Mix / Wrapped / chat-style prompts, so
-            // these providers throw — translation calls go through LyricsTranslationHelper instead.
+            // DeepL / Mistral are translation-only providers (not generic chat completion).
+            // AiTextService is used for AI Mix / Wrapped / chat-style prompts, so these
+            // providers throw — translation calls go through LyricsTranslationHelper instead.
             AiProvider.DEEPL,
-            AiProvider.OPENROUTER,
             AiProvider.MISTRAL,
             -> {
                 throw AiServiceException("${config.provider.name} is a translation-only provider; use LyricsTranslationHelper for translation calls")
@@ -237,10 +250,11 @@ object AiTextService {
     suspend fun fetchModels(config: AiServiceConfig): List<AiModelOption> {
         if (!config.canCallApi) throw AiServiceException("AI provider is not configured")
         return when (config.provider) {
-            AiProvider.CHATGPT -> fetchOpenAiModels(config.apiKey)
+            AiProvider.CHATGPT -> fetchOpenAiModels(OpenAiModelsEndpoint, config.apiKey)
+            AiProvider.OPENROUTER -> fetchOpenAiModels(OpenRouterModelsEndpoint, config.apiKey)
             AiProvider.GEMINI -> fetchGeminiModels(config.apiKey)
-            // DeepL / OpenRouter / Mistral have no models-list endpoint exposed in this service.
-            AiProvider.DEEPL, AiProvider.OPENROUTER, AiProvider.MISTRAL, AiProvider.CUSTOM, AiProvider.NONE -> emptyList()
+            // DeepL / Mistral have no models-list endpoint exposed in this service.
+            AiProvider.DEEPL, AiProvider.MISTRAL, AiProvider.CUSTOM, AiProvider.NONE -> emptyList()
         }
     }
 
@@ -334,15 +348,18 @@ object AiTextService {
             AiProvider.CHATGPT -> "gpt-4o"
             AiProvider.GEMINI -> "gemini-3.5-flash"
             AiProvider.MISTRAL -> "mistral-small-latest"
-            AiProvider.OPENROUTER -> "openai/gpt-4o-mini"
+            AiProvider.OPENROUTER -> "~openai/gpt-latest"
             AiProvider.CUSTOM -> throw AiServiceException("No AI model configured")
             // DeepL doesn't use a model picker (the API key determines the tier).
             AiProvider.DEEPL, AiProvider.NONE -> throw AiServiceException("AI provider is disabled")
         }
 
-    private suspend fun fetchOpenAiModels(apiKey: String): List<AiModelOption> {
+    private suspend fun fetchOpenAiModels(
+        endpoint: String,
+        apiKey: String,
+    ): List<AiModelOption> {
         val response =
-            client.get(OpenAiModelsEndpoint) {
+            client.get(endpoint) {
                 header("Authorization", "Bearer ${apiKey.trim()}")
             }
         val raw = response.bodyAsText()

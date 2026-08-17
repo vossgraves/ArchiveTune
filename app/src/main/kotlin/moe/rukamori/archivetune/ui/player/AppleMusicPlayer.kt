@@ -534,12 +534,19 @@ fun AppleMusicPlayerContent(
     val (autoTranslateLyrics) = rememberPreference(AutoTranslateLyricsKey, defaultValue = false)
     val (translatorTargetLang) = rememberPreference(TranslatorTargetLangKey, defaultValue = "")
     val lyricsMenuViewModel: LyricsMenuViewModel = hiltViewModel()
+    // Observe the set of media IDs the user has dismissed translation for.
+    // When a user clicks "Undo Translation", the mediaId is added to this set;
+    // auto-translate is suppressed for dismissed songs until the user manually
+    // triggers translation again (which clears the dismissal in the ViewModel).
+    val translationDismissedMediaIds by lyricsMenuViewModel.translationDismissedMediaIds
+        .collectAsStateWithLifecycle()
     LaunchedEffect(
         mediaMetadata.id,
         currentLyrics?.lyrics,
         currentLyrics?.source,
         autoTranslateLyrics,
         translatorTargetLang,
+        translationDismissedMediaIds,
     ) {
         if (!autoTranslateLyrics) return@LaunchedEffect
         val snapshot = currentLyrics ?: return@LaunchedEffect
@@ -554,6 +561,13 @@ fun AppleMusicPlayerContent(
         if (snapshot.source == LyricsEntity.Source.AI_TRANSLATION.value &&
             LyricsUtils.hasTranslation(text)
         ) return@LaunchedEffect
+
+        // Skip auto-translate if the user has dismissed translation for this
+        // song. The user clicked "Undo Translation" — they explicitly do not
+        // want the translation back. Auto-translate will resume only after the
+        // user manually triggers translation (which clears the dismissal).
+        if (mediaMetadata.id in translationDismissedMediaIds) return@LaunchedEffect
+
         if (!LyricsUtils.shouldAutoTranslate(text, translatorTargetLang)) return@LaunchedEffect
         lyricsMenuViewModel.translateLyricsWithAi(
             mediaMetadata = mediaMetadata,
