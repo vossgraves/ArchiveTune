@@ -32,59 +32,43 @@ jobs:
     strategy:
       matrix:
         include:
+          # 64-bit mobile build — the only mobile APK shipped now.
+          # Removed flavors: gms-mobile-armeabi, gms-mobile-x86,
+          # gms-mobile-x86_64, gms-mobile-universal, foss-mobile-universal.
+          # 32-bit ABIs were dropped because Google Play requires 64-bit
+          # and the universal APK was redundant with the per-ABI build.
+          # FOSS universal was removed because the fork ships GMS-only.
           - device: mobile
             distribution: gms
             distributionName: Gms
             deviceName: Mobile
             abi: arm64
-          - device: mobile
-            distribution: gms
-            distributionName: Gms
-            deviceName: Mobile
-            abi: armeabi
-          - device: mobile
-            distribution: gms
-            distributionName: Gms
-            deviceName: Mobile
-            abi: x86
-          - device: mobile
-            distribution: gms
-            distributionName: Gms
-            deviceName: Mobile
-            abi: x86_64
-          - device: mobile
-            distribution: gms
-            distributionName: Gms
-            deviceName: Mobile
-            abi: universal
+          # Android TV build — kept universal because TV devices are
+          # heterogeneous and a single universal APK covers them all
+          # without inflating the matrix.
           - device: tv
             distribution: gms
             distributionName: Gms
             deviceName: Tv
-            abi: universal
-          - device: mobile
-            distribution: foss
-            distributionName: Foss
-            deviceName: Mobile
             abi: universal
 
     steps:
       - uses: actions/checkout@v7
         with:
           submodules: true
-      
+
       - name: Set up JDK 21
         uses: actions/setup-java@v5
         with:
           java-version: '21'
           distribution: 'temurin'
-      
+
       - name: Set Up Gradle
         uses: gradle/actions/setup-gradle@v6
         with:
           cache-cleanup: on-success
           cache-read-only: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/dev' }}
-          
+
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
@@ -122,16 +106,15 @@ jobs:
 
       - name: Build Release APK
         shell: bash
+        # Simplified: the previous armeabi/x86 branch (which piped gradle
+        # output through a python filter to suppress the CXX5202 32-bit
+        # warning) is dead code now that those ABIs are no longer in the
+        # matrix. Both remaining variants (arm64, tv-universal) are 64-bit
+        # and never trigger that warning.
         run: |
           set -euo pipefail
           GRADLE_TASK="${{ steps.variant.outputs.gradle_task }}"
-          ABI="${{ matrix.abi }}"
-
-          if [ "$ABI" = "armeabi" ] || [ "$ABI" = "x86" ]; then
-            ./gradlew "$GRADLE_TASK" 2>&1 | python3 -c "import re,sys;p=re.compile(r'^(WARNING: )?\[CXX5202\] This app only has 32-bit \[(armeabi-v7a|x86)\] native libraries\. Beginning August 1, 2019 Google Play store requires that all apps that include native libraries must provide 64-bit versions\. For more information, visit https://g\.co/64-bit-requirement\$');[sys.stdout.write(l) for l in sys.stdin if not p.match(l.rstrip())]"
-          else
-            ./gradlew "$GRADLE_TASK"
-          fi
+          ./gradlew "$GRADLE_TASK"
         env:
           PULL_REQUEST: 'false'
           GITHUB_EVENT_NAME: ${{ github.event_name }}
@@ -232,8 +215,8 @@ jobs:
             # one. Previously each run - and each ABI variant within a run - generated a
             # brand-new ephemeral key, so every build was signed differently and Android
             # refused to update in place (forcing uninstall + reinstall). Using one stable
-            # committed key means every build and every ABI (arm64, x86_64, universal, ...)
-            # shares the same signature and installs/updates over the previous one.
+            # committed key means every build and every ABI (arm64, universal, ...) shares
+            # the same signature and installs/updates over the previous one.
             # Debug-grade key: fine for self-distribution, NOT for the Play Store.
             FIXED_KEYSTORE="$GITHUB_WORKSPACE/app/persistent-debug.keystore"
             if [ ! -f "$FIXED_KEYSTORE" ]; then
@@ -285,7 +268,7 @@ jobs:
             exit 1
           fi
           mv "$SIGNED_APK" "$RELEASE_DIR/out/${{ steps.variant.outputs.apk_name }}"
-  
+
       - name: Upload Signed APK
         uses: actions/upload-artifact@v7
         with:
