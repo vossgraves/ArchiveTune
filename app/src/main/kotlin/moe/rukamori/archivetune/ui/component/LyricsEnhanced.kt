@@ -183,6 +183,12 @@ private const val SMOOTH_PLAYBACK_DRIFT_CORRECTION = 0.55f
 // while still looking smooth rather than instant.
 private const val LYRIC_FOCUS_SCROLL_DURATION_MS = 280
 private const val MIN_KARAOKE_SYLLABLE_DURATION_MS = 1
+// Minimum backward position jump (in ms) that we treat as a "reset" trigger —
+// large enough to ride through ExoPlayer's normal position jitter (which is
+// well under 200ms even on a stuttering device) and minor playback corrections,
+// small enough to catch any real seek-backward or REPEAT_MODE_ONE wrap (which
+// is typically a jump from near the end of the song back to 0, i.e. minutes).
+private const val POSITION_RESET_BACKWARD_THRESHOLD_MS = 1000L
 
 @Composable
 fun LyricsEnhanced(
@@ -390,9 +396,21 @@ fun LyricsEnhanced(
     // rebuilt when romanization finishes) without re-launching the loop and stuttering the
     // 60 Hz position interpolation.
     val latestSyncedLyrics = rememberUpdatedState(syncedLyrics)
+    // Incremented every time we detect a backward position discontinuity larger
+    // than 1 second — this happens when REPEAT_MODE_ONE wraps the song back to
+    // the start (or when the user seeks backward by more than a second). The
+    // KaraokeLyricsView from com.mocharealm.accompanist:lyrics-ui doesn't reset
+    // its internal karaoke-progress / current-line state when the player
+    // position jumps backward, so the highlight gets stuck at whatever line
+    // was last active before the wrap. Forcing a re-key here disposes the old
+    // view instance and creates a fresh one, which restarts the karaoke
+    // animation from the current line. The user-visible symptom of the bug is
+    // "lyrics stuck at start, no highlight, only fixed by closing and
+    // reopening the lyrics sheet".
+    var positionResetCounter by remember { mutableIntStateOf(0) }
     var isManualScrolling by remember { mutableStateOf(false) }
     var lastManualScrollTime by remember { mutableLongStateOf(0L) }
-    val listState = key(lyricsSessionKey) { rememberLazyListState() }
+    val listState = key(lyricsSessionKey, positionResetCounter) { rememberLazyListState() }
 
     LaunchedEffect(lyricsSessionKey) {
         playbackPositionMs.longValue = player.currentPosition.coerceAtLeast(0L)
@@ -409,6 +427,7 @@ fun LyricsEnhanced(
         var wasSliderActive = false
         var anchorPlayerPositionMs = player.currentPosition.coerceAtLeast(0L)
         var anchorFrameNanos = 0L
+        var lastRawPositionMs = player.currentPosition.coerceAtLeast(0L)
         // Cache the current line index + boundary timestamps to avoid calling
         // findLastStartedLineIndex (binary search) every frame. In the common
         // case the position stays within the current line for several seconds,
@@ -435,6 +454,19 @@ fun LyricsEnhanced(
             wasSliderActive = isSliderActive
 
             val rawPosition = (sliderPosition ?: player.currentPosition).coerceAtLeast(0L)
+            // Detect a backward position discontinuity. We only count it as a
+            // reset when the player isn't being scrubbed via the slider (slider
+            // position is null) and the new position is more than 1 second
+            // behind the last seen position — that threshold excludes normal
+            // playback jitter and minor ExoPlayer position corrections but
+            // catches both REPEAT_MODE_ONE wraps (which jump from
+            // duration -> 0) and explicit backward seeks.
+            if (sliderPosition == null &&
+                lastRawPositionMs - rawPosition > POSITION_RESET_BACKWARD_THRESHOLD_MS
+            ) {
+                positionResetCounter += 1
+            }
+            lastRawPositionMs = rawPosition
             // effectivePositionMs is the synced position (offset + lead +
             // tuning) that we'd otherwise compute via playbackSyncPosition().
                        // Computing it here inline avoids a redundant State read of
@@ -837,9 +869,15 @@ fun LyricsEnhanced(
                 ) {
                     val lyricsViewportOffset = remember(maxHeight) { maxHeight * 0.08f }
 
-                    // Keyed on the session only: romanization updates flow in as new state instead
-                    // of disposing and rebuilding the whole karaoke view mid-playback.
-                    key(lyricsSessionKey) {
+                    // Keyed on the session + a position-reset counter so that when
+                    // the song repeats (REPEAT_MODE_ONE wraps position to 0) or the
+                    // user seeks backward by more than 1 second, the
+                    // KaraokeLyricsView instance is disposed and recreated — the
+                    // library's internal highlight state doesn't reset on
+                    // backward position jumps, so without this re-key the
+                    // karaoke animation freezes at the line that was active
+                    // just before the repeat.
+                    key(lyricsSessionKey, positionResetCounter) {
                         KaraokeLyricsView(
                             listState = listState,
                             lyrics = syncedLyrics,
