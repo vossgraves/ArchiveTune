@@ -3792,7 +3792,6 @@ class MusicService :
 
 
 
-
     private fun updateNotification() {
         try {
             val customLayout =

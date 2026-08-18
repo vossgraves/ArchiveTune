@@ -258,6 +258,56 @@ enum class DownloadSource {
 }
 
 val DownloadSourceKey = stringPreferencesKey("downloadSource")
+
+// CSV of DownloadSource names in the user's chosen priority order. Empty/null falls back to
+// DownloadSourceConfig.DEFAULT_ORDER (Qobuz, Tidal, Deezer, YouTube Music). Consumed by
+// DownloadUtil to drive the per-song download source chain — replacing the old single-pick
+// DownloadSourceKey. The old key is kept for migration / backup compatibility.
+val DownloadSourceOrderKey = stringPreferencesKey("downloadSourceOrder")
+
+/**
+ * Helpers for the download-source priority list. Mirrors [AudioSourceConfig] in the audiosource
+ * package — same CSV serialization, append-missing-on-parse semantics, and a single DEFAULT_ORDER.
+ *
+ * The four sources [QOBUZ], [TIDAL], [DEEZER] require a Source Pool account to be configured
+ * (see `PoolAccountManager.isEnabled`). [YOUTUBE_MUSIC] always works.
+ */
+object DownloadSourceConfig {
+    val DEFAULT_ORDER: List<DownloadSource> =
+        listOf(
+            DownloadSource.QOBUZ,
+            DownloadSource.TIDAL,
+            DownloadSource.DEEZER,
+            DownloadSource.YOUTUBE_MUSIC,
+        )
+
+    /** Sources that need a Source Pool account configured to be usable for downloads. */
+    val REQUIRES_POOL: Set<DownloadSource> =
+        setOf(DownloadSource.QOBUZ, DownloadSource.TIDAL, DownloadSource.DEEZER)
+
+    private fun parseType(name: String): DownloadSource? =
+        runCatching { DownloadSource.valueOf(name.trim().uppercase()) }.getOrNull()
+
+    /**
+     * Resolves the effective ordered list of all download sources from the stored CSV,
+     * preserving the user's chosen order and appending any missing sources in default order.
+     */
+    fun parseOrder(rawOrder: String?): List<DownloadSource> {
+        val parsed =
+            rawOrder
+                ?.split(',')
+                ?.mapNotNull { parseType(it) }
+                ?.distinct()
+                .orEmpty()
+        val merged = LinkedHashSet(parsed)
+        DEFAULT_ORDER.forEach { merged.add(it) }
+        return merged.toList()
+    }
+
+    /** Serialize an order back to the CSV form for storage. */
+    fun serialize(order: List<DownloadSource>): String = order.joinToString(",") { it.name }
+}
+
 val AiContentFilterEnabledKey = booleanPreferencesKey("aiContentFilterEnabled")
 val AiContentFilterIncludeModerateKey = booleanPreferencesKey("aiContentFilterIncludeModerate")
 val AiContentFilterLastUpdatedKey = longPreferencesKey("aiContentFilterLastUpdated")
@@ -323,11 +373,23 @@ val TranslateSourceLanguageKey = stringPreferencesKey("translateSourceLanguage")
 // Hides the AI-generated "Top mixes" section in the library Mix tab (and stops auto-generation).
 val HideAiMixKey = booleanPreferencesKey("hide_ai_mix")
 
+// Whether the user pressed the pause button on the Debug Logs screen. Persisted so the pause
+// state survives screen navigation AND process restarts — previously the flag lived in a
+// HiltViewModel's MutableStateFlow, which was destroyed on screen exit, so the user's pause
+// was silently dropped every time they navigated away.
+val LogcatPausedKey = booleanPreferencesKey("logcatPaused")
+
 // When on, any foreign-language lyrics that have an AI provider configured will be translated
 // to the user's preferred language automatically on lyrics load — no manual tap through the
 // translate dialog required. The "Translation saved" toast is also suppressed in this mode so
 // background translations don't fire a notification every time a new song starts.
 val AutoTranslateLyricsKey = booleanPreferencesKey("autoTranslateLyrics")
+
+// Set of uppercase language codes (e.g. "JAPANESE", "KOREAN", "CHINESE") that should NOT be
+// auto-translated even when [AutoTranslateLyricsKey] is on. The user picks them via the
+// multi-select dialog in AiIntegrationSettings. Codes match `TranslatorLanguage.code` in
+// assets/translator_languages.json.
+val AutoTranslateExcludedLanguagesKey = stringSetPreferencesKey("autoTranslateExcludedLanguages")
 
 // Set by the "Never show again" pill on the startup update popup. Stores the
 // "<versionName>|<versionCode>" of the version the user suppressed the popup for, so we

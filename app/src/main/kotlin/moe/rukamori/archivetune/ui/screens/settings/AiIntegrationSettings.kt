@@ -24,6 +24,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -42,17 +43,20 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
@@ -61,6 +65,7 @@ import androidx.compose.material3.SearchBarDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -74,6 +79,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -100,6 +106,7 @@ import moe.rukamori.archivetune.constants.AiCustomModelKey
 import moe.rukamori.archivetune.constants.AiProvider
 import moe.rukamori.archivetune.constants.AiProviderKey
 import moe.rukamori.archivetune.constants.AiSelectedModelKey
+import moe.rukamori.archivetune.constants.AutoTranslateExcludedLanguagesKey
 import moe.rukamori.archivetune.constants.AutoTranslateLyricsKey
 import moe.rukamori.archivetune.constants.DeeplApiKeyKey
 import moe.rukamori.archivetune.constants.DeeplFormalityKey
@@ -117,6 +124,8 @@ import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.SwitchPreference
 import moe.rukamori.archivetune.ui.utils.backToMain
+import moe.rukamori.archivetune.utils.TranslatorLang
+import moe.rukamori.archivetune.utils.TranslatorLanguages
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.AiIntegrationSettingsViewModel
@@ -152,6 +161,9 @@ fun AiIntegrationSettings(
     var showDeeplKeyDialog by rememberSaveable { mutableStateOf(false) }
     var showOpenRouterKeyDialog by rememberSaveable { mutableStateOf(false) }
     var showOpenRouterModelDialog by rememberSaveable { mutableStateOf(false) }
+    val (excludedLanguageCodes, onExcludedLanguageCodesChange) =
+        rememberPreference(AutoTranslateExcludedLanguagesKey, defaultValue = emptySet())
+    var showExcludedLanguagesDialog by rememberSaveable { mutableStateOf(false) }
     var showApiKeyDialog by rememberSaveable { mutableStateOf(false) }
     var showDeeplFormalityDialog by rememberSaveable { mutableStateOf(false) }
     var showTranslateModeDialog by rememberSaveable { mutableStateOf(false) }
@@ -206,6 +218,17 @@ fun AiIntegrationSettings(
             onSave = { value ->
                 setDeeplApiKey(value.trim())
                 setValidationStatus(AiApiValidationStatus.UNKNOWN)
+            },
+        )
+    }
+
+    if (showExcludedLanguagesDialog) {
+        ExcludedLanguagesDialog(
+            initialSelected = excludedLanguageCodes,
+            onDismiss = { showExcludedLanguagesDialog = false },
+            onConfirm = { newSet ->
+                onExcludedLanguageCodesChange(newSet)
+                showExcludedLanguagesDialog = false
             },
         )
     }
@@ -533,6 +556,28 @@ fun AiIntegrationSettings(
                     // Without an AI provider + API key, there's no engine to run the
                     // translation, so the toggle is greyed out rather than silently ignored.
                     isEnabled = hasApiConfiguration,
+                )
+            }
+
+            // "Don't auto translate these languages" — multi-select. Visible only when
+            // auto-translate is on. Lets users pick language codes that should NEVER be
+            // auto-translated (e.g. they understand Japanese and don't want it translated).
+            item(visible = autoTranslateLyrics) {
+                val languages = remember(context) { TranslatorLanguages.load(context) }
+                val selectedNames =
+                    remember(excludedLanguageCodes, languages) {
+                        languages
+                            .filter { it.code in excludedLanguageCodes }
+                            .joinToString(", ") { it.name }
+                            .ifEmpty { null }
+                    }
+                PreferenceEntry(
+                    title = { Text(stringResource(R.string.auto_translate_excluded_languages)) },
+                    description =
+                        selectedNames
+                            ?: stringResource(R.string.auto_translate_excluded_languages_none),
+                    icon = { Icon(painterResource(R.drawable.block), null) },
+                    onClick = { showExcludedLanguagesDialog = true },
                 )
             }
         }
@@ -996,4 +1041,83 @@ private fun ModelPickerPreference(
         onClick = if (isEnabled && availableModels.isNotEmpty()) ({ showSheet = true }) else null,
         isEnabled = isEnabled,
     )
+}
+
+/**
+ * Multi-select dialog for the "Don't auto translate these languages" preference.
+ *
+ * Lists every language known to [TranslatorLanguages] with a checkbox. Toggling a checkbox
+ * adds/removes its uppercase code in the persisted [AutoTranslateExcludedLanguagesKey] set.
+ */
+@Composable
+private fun ExcludedLanguagesDialog(
+    initialSelected: Set<String>,
+    onDismiss: () -> Unit,
+    onConfirm: (Set<String>) -> Unit,
+) {
+    val context = LocalContext.current
+    val languages = remember(context) { TranslatorLanguages.load(context) }
+    val selected = remember { mutableStateOf(initialSelected.toMutableSet()) }
+
+    DefaultDialog(
+        onDismiss = onDismiss,
+        icon = { Icon(painterResource(R.drawable.block), contentDescription = null) },
+        title = { Text(stringResource(R.string.auto_translate_excluded_languages)) },
+        buttons = {
+            TextButton(onClick = onDismiss, shapes = ButtonDefaults.shapes()) {
+                Text(stringResource(android.R.string.cancel))
+            }
+            TextButton(
+                onClick = { onConfirm(selected.value.toSet()) },
+                shapes = ButtonDefaults.shapes(),
+            ) {
+                Text(stringResource(android.R.string.ok))
+            }
+        },
+    ) {
+        Column(modifier = Modifier.padding(top = 4.dp)) {
+            Text(
+                text = stringResource(R.string.auto_translate_excluded_languages_desc),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 8.dp),
+            )
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 440.dp),
+            ) {
+                itemsIndexed(languages, key = { _, lang -> lang.code }) { _, lang ->
+                    val isChecked = lang.code in selected.value
+                    ListItem(
+                        headlineContent = { Text(lang.name) },
+                        leadingContent = {
+                            Checkbox(
+                                checked = isChecked,
+                                onCheckedChange = { checked ->
+                                    val updated = selected.value.toMutableSet()
+                                    if (checked) {
+                                        updated.add(lang.code)
+                                    } else {
+                                        updated.remove(lang.code)
+                                    }
+                                    selected.value = updated
+                                },
+                            )
+                        },
+                        modifier = Modifier.clickable {
+                            val updated = selected.value.toMutableSet()
+                            if (lang.code in updated) {
+                                updated.remove(lang.code)
+                            } else {
+                                updated.add(lang.code)
+                            }
+                            selected.value = updated
+                        },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    )
+                }
+            }
+        }
+    }
 }

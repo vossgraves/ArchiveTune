@@ -48,6 +48,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
@@ -86,6 +87,7 @@ import androidx.media3.exoplayer.offline.DownloadService
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalDatabase
@@ -100,8 +102,11 @@ import moe.rukamori.archivetune.constants.PlayerDesignStyle
 import moe.rukamori.archivetune.constants.PlayerDesignStyleKey
 import moe.rukamori.archivetune.constants.SpeedDialSongIdsKey
 import moe.rukamori.archivetune.models.MediaMetadata
+import moe.rukamori.archivetune.models.toMediaMetadata
 import moe.rukamori.archivetune.playback.CanvasArtworkRefetchResult
 import moe.rukamori.archivetune.playback.ExoDownloadService
+import moe.rukamori.archivetune.playback.queues.YouTubeQueue
+import moe.rukamori.archivetune.extensions.toMediaItem
 import moe.rukamori.archivetune.db.entities.ArtistEntity
 import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.ui.component.BottomSheetState
@@ -371,6 +376,11 @@ fun PlayerMenu(
                 onSongSourceChange(SongSourceOverride.withOverride(songSourceRaw, mediaMetadata.id, source))
                 playerConnection.service.setSongSourceOverride(mediaMetadata.id, source)
                 showSourceDialog = false
+            },
+            onPlaySong = { song ->
+                // Swapping to a different track entirely — play the chosen song via YouTube radio
+                // so it seeds a fresh queue with the picked track as the first item.
+                playerConnection.playQueue(YouTubeQueue.radio(song.toMediaMetadata()))
             },
         )
     }
@@ -1148,6 +1158,45 @@ fun PlayerMenu(
                             modifier = Modifier.padding(start = 56.dp),
                             color = MaterialTheme.colorScheme.outlineVariant,
                         )
+
+                        // "Play Next" and "Add to Queue" surface on every queue song's overflow
+                        // menu so the user can re-order the queue without going back to the
+                        // search/list page. Mirrors SongMenu.kt's pattern.
+                        ListItem(
+                            headlineContent = { Text(text = stringResource(R.string.play_next)) },
+                            leadingContent = {
+                                Icon(
+                                    painter = painterResource(R.drawable.playlist_play),
+                                    contentDescription = null,
+                                )
+                            },
+                            modifier =
+                                Modifier.clickable {
+                                    mediaMetadata?.toMediaItem()?.let { playerConnection.playNext(it) }
+                                    onDismiss()
+                                },
+                            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                        )
+                        ListItem(
+                            headlineContent = { Text(text = stringResource(R.string.add_to_queue)) },
+                            leadingContent = {
+                                Icon(
+                                    painter = painterResource(R.drawable.queue_music),
+                                    contentDescription = null,
+                                )
+                            },
+                            modifier =
+                                Modifier.clickable {
+                                    mediaMetadata?.toMediaItem()?.let { playerConnection.addToQueue(it) }
+                                    onDismiss()
+                                },
+                            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                        )
+
+                        HorizontalDivider(
+                            modifier = Modifier.padding(start = 56.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant,
+                        )
                     }
 
                     ListItem(
@@ -1787,6 +1836,11 @@ private fun AudioSourceType.sourceIconRes(): Int =
  * Per-song "Play from" chooser. Lists the [sources] that have the current track (from the last
  * resolution) plus YouTube, and lets the user force which one this song plays from. [selected] is
  * the current override (null = automatic / follow the global order).
+ *
+ * Also includes a search icon button (top-right) that expands an inline song search powered by
+ * `YouTube.search(filter = FILTER_SONG)`. Tapping a search result plays that specific track
+ * via [onPlaySong]. This lets users swap to a DIFFERENT song entirely (cover, live version, etc.)
+ * without leaving the source-change popup.
  */
 @Composable
 private fun SongSourceDialog(
@@ -1794,7 +1848,27 @@ private fun SongSourceDialog(
     selected: AudioSourceType?,
     onDismiss: () -> Unit,
     onSelect: (AudioSourceType?) -> Unit,
+    onPlaySong: (SongItem) -> Unit,
 ) {
+    var searchMode by rememberSaveable { mutableStateOf(false) }
+    var searchQuery by rememberSaveable { mutableStateOf("") }
+    var searchResults by remember { mutableStateOf<List<SongItem>>(emptyList()) }
+    var isSearching by remember { mutableStateOf(false) }
+
+    // Debounced search — only fires when searchMode is on and query length >= 2.
+    LaunchedEffect(searchQuery) {
+        if (!searchMode || searchQuery.length < 2) {
+            searchResults = emptyList()
+            return@LaunchedEffect
+        }
+        isSearching = true
+        delay(350L)
+        val result =
+            YouTube.search(searchQuery, YouTube.SearchFilter.FILTER_SONG, useAccountContext = false).getOrNull()
+        searchResults = result?.items?.filterIsInstance<SongItem>().orEmpty()
+        isSearching = false
+    }
+
     DefaultDialog(
         onDismiss = onDismiss,
         buttons = {
@@ -1804,26 +1878,112 @@ private fun SongSourceDialog(
         },
     ) {
         Column(modifier = Modifier.padding(top = 4.dp)) {
-            Text(
-                text = stringResource(R.string.play_from),
-                style = MaterialTheme.typography.headlineSmall,
-                modifier = Modifier.padding(bottom = 12.dp),
-            )
-            // "Automatic" clears the override so the song follows the global preferred-source order.
-            SongSourceRow(
-                iconRes = R.drawable.tune,
-                label = stringResource(R.string.play_from_automatic),
-                checked = selected == null,
-                onClick = { onSelect(null) },
-            )
-            sources.forEach { source ->
-                SongSourceRow(
-                    iconRes = source.sourceIconRes(),
-                    label = stringResource(source.sourceLabelRes()),
-                    checked = selected == source,
-                    onClick = { onSelect(source) },
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = stringResource(R.string.play_from),
+                    style = MaterialTheme.typography.headlineSmall,
+                    modifier = Modifier.weight(1f),
                 )
+                IconButton(
+                    onClick = {
+                        searchMode = !searchMode
+                        if (!searchMode) {
+                            searchQuery = ""
+                            searchResults = emptyList()
+                        }
+                    },
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.search),
+                        contentDescription = stringResource(R.string.download_source_search),
+                        tint = if (searchMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                    )
+                }
             }
+            if (searchMode) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = { Text(stringResource(R.string.download_source_search_hint)) },
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 8.dp),
+                    trailingIcon = {
+                        if (isSearching) {
+                            CircularWavyProgressIndicator(modifier = Modifier.size(20.dp))
+                        }
+                    },
+                )
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 320.dp),
+                ) {
+                    items(searchResults, key = { it.id }) { song ->
+                        SongSearchRow(song = song) {
+                            onPlaySong(song)
+                            onDismiss()
+                        }
+                    }
+                }
+            } else {
+                // "Automatic" clears the override so the song follows the global preferred-source order.
+                SongSourceRow(
+                    iconRes = R.drawable.tune,
+                    label = stringResource(R.string.play_from_automatic),
+                    checked = selected == null,
+                    onClick = { onSelect(null) },
+                )
+                sources.forEach { source ->
+                    SongSourceRow(
+                        iconRes = source.sourceIconRes(),
+                        label = stringResource(source.sourceLabelRes()),
+                        checked = selected == source,
+                        onClick = { onSelect(source) },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SongSearchRow(
+    song: SongItem,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+                .padding(vertical = 8.dp, horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            painter = painterResource(R.drawable.play),
+            contentDescription = null,
+            modifier = Modifier.size(20.dp),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Column(modifier = Modifier.padding(start = 12.dp).weight(1f)) {
+            Text(
+                text = song.title,
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = song.artists.joinToString(", ") { it.name },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }

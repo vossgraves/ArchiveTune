@@ -23,6 +23,7 @@ import moe.rukamori.archivetune.constants.AiCustomModelKey
 import moe.rukamori.archivetune.constants.AiProvider
 import moe.rukamori.archivetune.constants.AiProviderKey
 import moe.rukamori.archivetune.constants.AiSelectedModelKey
+import moe.rukamori.archivetune.constants.AutoTranslateExcludedLanguagesKey
 import moe.rukamori.archivetune.constants.AutoTranslateLyricsKey
 import moe.rukamori.archivetune.constants.TranslatorTargetLangKey
 import moe.rukamori.archivetune.db.MusicDatabase
@@ -60,7 +61,15 @@ class AutoLyricsTranslator
                         if (existing != null && existing.source == LyricsEntity.Source.AI_TRANSLATION.value) return@launch
 
                         val targetLanguage = prefs[TranslatorTargetLangKey].orEmpty()
-                        if (!LyricsUtils.shouldAutoTranslate(lyricsText, targetLanguage)) return@launch
+                        val excludedLanguages = prefs[AutoTranslateExcludedLanguagesKey] ?: emptySet()
+                        if (!LyricsUtils.shouldAutoTranslate(
+                                lyrics = lyricsText,
+                                targetLanguage = targetLanguage,
+                                excludedLanguageCodes = excludedLanguages,
+                            )
+                        ) {
+                            return@launch
+                        }
 
                         val config =
                             AiServiceConfig(

@@ -149,6 +149,9 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.graphics.drawable.toBitmap
 import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.C
 import androidx.media3.common.Player.STATE_BUFFERING
@@ -979,6 +982,23 @@ fun BottomSheetPlayer(
         if (state.isExpandedOrExpanding && !queueSheetState.isCollapsed) {
             queueSheetState.collapseSoft()
         }
+    }
+
+    // Collapse the queue sheet whenever the app goes to the background (ON_STOP), so that
+    // re-entering the app doesn't re-open a queue the user had previously expanded. Without
+    // this, `queueSheetState.previousAnchor` stays at EXPANDED across the ON_PAUSE/ON_RESUME
+    // roundtrip, so the user has to manually close the queue sheet every time they return to
+    // the app. Collapsing on ON_STOP writes COLLAPSED_ANCHOR into previousAnchor via the
+    // sheet's onAnchorChanged callback, so the queue stays collapsed on return.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, queueSheetState) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP && !queueSheetState.isCollapsed) {
+                queueSheetState.collapseSoft()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     var isLyricsScreenVisible by rememberSaveable {

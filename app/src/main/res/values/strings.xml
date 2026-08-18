@@ -177,7 +177,7 @@
     <string name="export_to_folder">Export to folder…</string>
     <string name="export">Export</string>
     <string name="export_all_songs">Export all songs</string>
-    <string name="download_source_title">Download source</string>
+    <string name="download_source_title">Download source priority</string>
     <string name="download_source_youtube_music">YouTube Music</string>
     <string name="download_source_tidal">Tidal</string>
     <string name="download_source_qobuz">Qobuz</string>
@@ -814,9 +814,13 @@
     <string name="audio_source_youtube_fallback">YouTube is always tried last if no other source can resolve a track.</string>
     <string name="source_tidal">Tidal</string>
     <string name="source_youtube">YouTube</string>
+    <string name="source_deezer">Deezer</string>
     <string name="play_from">Play from</string>
     <string name="play_from_automatic">Automatic (preferred order)</string>
     <string name="playback_sources">Sources</string>
+    <string name="download_source_requires_pool">Requires Source Pool — configure in Integrations to enable</string>
+    <string name="download_source_search">Search songs</string>
+    <string name="download_source_search_hint">Search by title, artist, or album</string>
     <string name="preferred_sources">Preferred sources</string>
     <string name="preferred_sources_summary">Top of the list is tried first</string>
     <string name="set_source_priority">Drag to set source priority</string>

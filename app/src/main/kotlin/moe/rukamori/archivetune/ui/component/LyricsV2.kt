@@ -107,6 +107,7 @@ import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalAnimationsDisabled
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.ui.player.LocalLyricsScrollListener
 import moe.rukamori.archivetune.constants.LyricsClickKey
 import moe.rukamori.archivetune.constants.LyricsLineBlurKey
 import moe.rukamori.archivetune.constants.LyricsLineSpacingKey
@@ -475,6 +476,13 @@ fun LyricsV2(
             delay(MANUAL_SCROLL_TIMEOUT_MS)
             isManualScrolling = false
         }
+    }
+
+    // Forward the user-scroll signal up to LyricsScreen via LocalLyricsScrollListener so the
+    // Apple Music-style bottom controls can slide in when the user scrolls lyrics.
+    val onLyricsScroll = LocalLyricsScrollListener.current
+    LaunchedEffect(isManualScrolling) {
+        onLyricsScroll(isManualScrolling)
     }
 
     // Auto-scroll to active line

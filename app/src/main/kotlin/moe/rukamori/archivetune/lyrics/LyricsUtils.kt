@@ -432,8 +432,18 @@ object LyricsUtils {
         return false
     }
 
-    fun shouldAutoTranslate(lyrics: String, targetLanguage: String): Boolean {
+    fun shouldAutoTranslate(
+        lyrics: String,
+        targetLanguage: String,
+        excludedLanguageCodes: Set<String> = emptySet(),
+    ): Boolean {
         if (lyrics.isBlank()) return false
+        val dominant = detectDominantLanguageCode(lyrics)
+        // If the lyrics' dominant language is in the user's "Don't auto translate these languages"
+        // exclusion set, skip translation even when auto-translate is on.
+        if (dominant != null && dominant.uppercase() in excludedLanguageCodes.map { it.uppercase() }) {
+            return false
+        }
         val allowedScripts = allowedScriptsForLanguage(targetLanguage)
         // When the target is English (or unset, which defaults to English), we also
         // trigger on non-ASCII Latin letters (á, é, í, ó, ú, ñ, ü, ç, etc.) so that
@@ -453,6 +463,46 @@ object LyricsUtils {
     private fun isEnglishTarget(language: String): Boolean {
         val normalized = language.trim().lowercase().replace('_', '-').substringBefore('-')
         return normalized.isEmpty() || normalized == "english" || normalized == "en"
+    }
+
+    /**
+     * Returns the uppercase language code (e.g. "JAPANESE", "KOREAN", "CHINESE", "HINDI",
+     * "ARABIC", "RUSSIAN", "THAI", "HEBREW", "GREEK", "ARMENIAN", "GEORGIAN") that best
+     * describes the dominant non-Latin script in [lyrics], or `null` if the lyrics are
+     * predominantly Latin (so no exclusion can match).
+     *
+     * The returned codes match `TranslatorLanguage.code` in `assets/translator_languages.json`.
+     */
+    fun detectDominantLanguageCode(lyrics: String): String? {
+        if (lyrics.isBlank()) return null
+        // Tally non-Latin scripts found in the lyrics. Latin/Common/Inherited are ignored.
+        val scriptCounts = HashMap<UnicodeScript, Int>()
+        for (char in lyrics) {
+            if (!char.isLetter()) continue
+            val script = UnicodeScript.of(char.code)
+            when (script) {
+                UnicodeScript.LATIN,
+                UnicodeScript.COMMON,
+                UnicodeScript.INHERITED -> Unit
+                else -> scriptCounts[script] = (scriptCounts[script] ?: 0) + 1
+            }
+        }
+        if (scriptCounts.isEmpty()) return null
+        val dominantScript = scriptCounts.maxByOrNull { it.value }!!.key
+        return when (dominantScript) {
+            UnicodeScript.HAN -> "CHINESE"
+            UnicodeScript.HIRAGANA, UnicodeScript.KATAKANA -> "JAPANESE"
+            UnicodeScript.HANGUL -> "KOREAN"
+            UnicodeScript.DEVANAGARI -> "HINDI"
+            UnicodeScript.ARABIC -> "ARABIC"
+            UnicodeScript.CYRILLIC -> "RUSSIAN"
+            UnicodeScript.THAI -> "THAI"
+            UnicodeScript.HEBREW -> "HEBREW"
+            UnicodeScript.GREEK -> "GREEK"
+            UnicodeScript.ARMENIAN -> "ARMENIAN"
+            UnicodeScript.GEORGIAN -> "GEORGIAN"
+            else -> null
+        }
     }
 
     private fun allowedScriptsForLanguage(language: String): Set<UnicodeScript> {

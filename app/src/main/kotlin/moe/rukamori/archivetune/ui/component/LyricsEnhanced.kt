@@ -61,6 +61,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
@@ -92,6 +93,7 @@ import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.media3.common.Player
 import com.mocharealm.accompanist.lyrics.core.model.ISyncedLine
 import com.mocharealm.accompanist.lyrics.core.model.SyncedLyrics
 import com.mocharealm.accompanist.lyrics.core.model.karaoke.KaraokeAlignment
@@ -111,6 +113,7 @@ import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalAnimationsDisabled
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.ui.player.LocalLyricsScrollListener
 import moe.rukamori.archivetune.constants.LyricsClickKey
 import moe.rukamori.archivetune.constants.LyricsLineBlurKey
 import moe.rukamori.archivetune.constants.LyricsRomanizeChineseKey
@@ -271,9 +274,35 @@ fun LyricsEnhanced(
         remember(currentLyrics?.source) {
             currentLyrics?.source == LyricsEntity.Source.AI_TRANSLATION.value
         }
+
+    // Restart tick: bumps when the SAME song restarts (auto-repeat, manual replay, seek-to-zero)
+    // so the karaoke subtree tears down and re-animates from the beginning. Without this,
+    // mediaId + lyrics text are unchanged on restart, so lyricsSessionKey stays the same and
+    // all per-session Animatable instances retain their settled values — no intro animation replays.
+    val playbackState by playerConnection.playbackState.collectAsState()
+    var restartTick by remember { mutableIntStateOf(0) }
+    var lastPlaybackState by remember { mutableStateOf(Player.STATE_READY) }
+    LaunchedEffect(mediaMetadata?.id, playbackState) {
+        if (playbackState == Player.STATE_READY &&
+            lastPlaybackState == Player.STATE_ENDED &&
+            player.currentPosition < 1_000L
+        ) {
+            restartTick++
+        } else if (playbackState == Player.STATE_READY &&
+            lastPlaybackState == Player.STATE_BUFFERING &&
+            player.currentPosition < 500L &&
+            restartTick > 0
+        ) {
+            // Manual replay from the queue / notification while the song was already playing.
+            // Only count it as a restart if we've already started once (restartTick > 0)
+            // to avoid firing on the very first load.
+            restartTick++
+        }
+        lastPlaybackState = playbackState
+    }
     val lyricsSessionKey =
-        remember(mediaMetadata?.id, lyrics) {
-            mediaMetadata?.id.orEmpty() to lyrics
+        remember(mediaMetadata?.id, lyrics, restartTick) {
+            Triple(mediaMetadata?.id.orEmpty(), lyrics, restartTick)
         }
 
     val isSynced = remember(lyrics) { lyrics != null && (isLineSyncedLrc(lyrics!!) || isTtml(lyrics!!)) }
@@ -599,6 +628,13 @@ fun LyricsEnhanced(
             delay(MANUAL_SCROLL_TIMEOUT_MS)
             isManualScrolling = false
         }
+    }
+
+    // Forward the user-scroll signal up to LyricsScreen via LocalLyricsScrollListener so the
+    // Apple Music-style bottom controls can slide in when the user scrolls lyrics.
+    val onLyricsScroll = LocalLyricsScrollListener.current
+    LaunchedEffect(isManualScrolling) {
+        onLyricsScroll(isManualScrolling)
     }
 
     // NOTE: this LaunchedEffect used to key on `syncedLyrics` as well. That

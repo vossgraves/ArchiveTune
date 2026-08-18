@@ -41,7 +41,9 @@ import kotlinx.coroutines.runBlocking
 import moe.rukamori.archivetune.constants.AudioQuality
 import moe.rukamori.archivetune.constants.AudioQualityKey
 import moe.rukamori.archivetune.constants.DownloadSource
+import moe.rukamori.archivetune.constants.DownloadSourceConfig
 import moe.rukamori.archivetune.constants.DownloadSourceKey
+import moe.rukamori.archivetune.constants.DownloadSourceOrderKey
 import moe.rukamori.archivetune.constants.QobuzAudioQuality
 import moe.rukamori.archivetune.constants.QobuzAudioQualityKey
 import moe.rukamori.archivetune.constants.TidalAudioQuality
@@ -60,6 +62,7 @@ import moe.rukamori.archivetune.utils.PoolAccountManager
 import moe.rukamori.archivetune.utils.StreamClientUtils
 import moe.rukamori.archivetune.utils.YTPlayerUtils
 import moe.rukamori.archivetune.utils.enumPreference
+import moe.rukamori.archivetune.utils.preference
 import moe.rukamori.archivetune.utils.isLowDataModeActive
 import moe.rukamori.archivetune.utils.retryWithoutPlaybackLoginContext
 import okhttp3.ConnectionPool
@@ -103,6 +106,12 @@ class DownloadUtil
         private val connectivityManager = context.getSystemService<ConnectivityManager>()!!
         private val audioQuality by enumPreference(context, AudioQualityKey, AudioQuality.AUTO)
         private val downloadSource by enumPreference(context, DownloadSourceKey, DownloadSource.AUTO)
+        // Reads the user's drag-and-drop download source priority list (CSV of DownloadSource
+        // names). Falls back to DEFAULT_ORDER when blank. The legacy `downloadSource` field is
+        // kept only for backup compatibility — resolution now uses this ordered chain.
+        private val downloadSourceOrderCsv by preference(context, DownloadSourceOrderKey, "")
+        private val downloadSourceOrder: List<DownloadSource>
+            get() = DownloadSourceConfig.parseOrder(downloadSourceOrderCsv)
         private val qobuzAudioQuality by enumPreference(context, QobuzAudioQualityKey, QobuzAudioQuality.FLAC)
         private val tidalAudioQuality by enumPreference(context, TidalAudioQualityKey, TidalAudioQuality.FLAC)
         private val downloadScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -536,15 +545,11 @@ class DownloadUtil
                 val album = song.album?.title?.takeIf { it.isNotBlank() }
                 val durationMs = song.song.duration.takeIf { it > 0 }?.toLong()?.times(1000L)
                 if (title != null) {
-                    val sourceOrder: List<DownloadSource> = when (downloadSource) {
-                        DownloadSource.AUTO -> listOf(
-                            DownloadSource.QOBUZ,
-                            DownloadSource.TIDAL,
-                            DownloadSource.DEEZER,
-                            DownloadSource.YOUTUBE_MUSIC,
-                        )
-                        else -> listOf(downloadSource)
-                    }
+                    // Use the user-configured drag-and-drop priority list (Qobuz → Tidal →
+                    // Deezer → YouTube Music by default). The legacy single-pick
+                    // `downloadSource` preference is preserved only for the early-exit guard
+                    // above — the actual chain is `downloadSourceOrder`.
+                    val sourceOrder: List<DownloadSource> = downloadSourceOrder
                     for (source in sourceOrder) {
                         val resolved = runCatching {
                             resolveSourceStream(source, mediaId, title, artists, album, durationMs)
@@ -701,19 +706,9 @@ class DownloadUtil
             val album = song.album?.title?.takeIf { it.isNotBlank() }
             val durationMs = song.song.duration.takeIf { it > 0 }?.toLong()?.times(1000L)
 
-            // Build the source chain based on the user's preference.
-            // AUTO tries Qobuz → Tidal → Deezer (lossless FLAC), falling
-            // back to YouTube Music (lossy MP3/AAC) only when none of
-            // the lossless backends resolve the track.
-            val sourceOrder: List<DownloadSource> = when (downloadSource) {
-                DownloadSource.AUTO -> listOf(
-                    DownloadSource.QOBUZ,
-                    DownloadSource.TIDAL,
-                    DownloadSource.DEEZER,
-                    DownloadSource.YOUTUBE_MUSIC,
-                )
-                else -> listOf(downloadSource)
-            }
+            // Build the source chain based on the user's drag-and-drop priority list.
+            // Default order: Qobuz → Tidal → Deezer (lossless FLAC) → YouTube Music (lossy).
+            val sourceOrder: List<DownloadSource> = downloadSourceOrder
 
             // Resolve the source-specific direct stream and pull out the
             // metadata we need to (a) build the DataSpec and (b) persist a

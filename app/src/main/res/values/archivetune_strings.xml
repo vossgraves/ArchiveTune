@@ -293,6 +293,10 @@
     <string name="link_copied">Link copied to clipboard</string>
     <string name="block_artist">Block artist</string>
     <string name="unblock_artist">Unblock artist</string>
+    <string name="dont_recommend_song_again">Don\'t recommend this song again</string>
+    <string name="undo_dont_recommend_song_again">Allow recommendations for this song again</string>
+    <string name="song_blocked_success">Song removed from recommendations</string>
+    <string name="song_unblocked_success">Song restored to recommendations</string>
     <string name="now_playing">Now Playing</string>
     <string name="close">Close</string>
     <string name="minimum_volume">Minimum Volume</string>
@@ -702,6 +706,9 @@
     <string name="hide_ai_mix_desc">Hide the AI-generated mixes section in your library and stop generating new mixes</string>
     <string name="auto_translate_lyrics">Automatic translation</string>
     <string name="auto_translate_lyrics_desc">When on, foreign-language lyrics are translated to your preferred language automatically using the configured AI provider. The "Translation saved" toast is suppressed while this is active.</string>
+    <string name="auto_translate_excluded_languages">Don\'t auto translate these languages</string>
+    <string name="auto_translate_excluded_languages_desc">Pick languages that should never be auto-translated even when automatic translation is on. Useful if you already understand a language and don\'t want it overridden.</string>
+    <string name="auto_translate_excluded_languages_none">None — every foreign-language lyric will be translated</string>
     <string name="update_remind_later">Remind me later</string>
     <string name="update_never_show_again">Never show again</string>
     <string name="settings_lyrics_providers_subtitle">Choose which lyrics providers are active and set priority</string>

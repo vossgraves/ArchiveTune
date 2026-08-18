@@ -208,11 +208,25 @@ object PoolAccountManager {
                         val tidal = parseTidal(root.optJSONObject("tidal")?.optJSONArray("accounts"))
                         val qobuz = parseQobuz(root.optJSONObject("qobuz")?.optJSONArray("accounts"))
                         val deezer = parseDeezer(root.optJSONObject("deezer")?.optJSONArray("accounts"))
-                        tidalCache = tidal
-                        qobuzCache = qobuz
-                        deezerCache = deezer
-                        lastRefreshAt = System.currentTimeMillis()
-                        persist(context, tidal, qobuz, deezer)
+                        // Don't overwrite the in-memory cache with an empty list when the pool
+                        // returns a 200 with a partial/empty response (rate-limit, transient
+                        // server bug, captive-portal interception, malformed JSON). The user
+                        // symptom is "Qobuz and other source providers disappear all of a sudden
+                        // while playing songs" — and the only way to recover was force-stop +
+                        // re-open. Only update the cache when at least one list is non-empty.
+                        // Otherwise keep the previous (non-empty) cache so playback keeps working.
+                        val allEmpty = tidal.isEmpty() && qobuz.isEmpty() && deezer.isEmpty()
+                        if (allEmpty && hasAccounts()) {
+                            Timber
+                                .tag(TAG)
+                                .w("Pool returned empty account lists — keeping existing cache to avoid mid-playback source disappearance")
+                        } else {
+                            tidalCache = tidal
+                            qobuzCache = qobuz
+                            deezerCache = deezer
+                            lastRefreshAt = System.currentTimeMillis()
+                            persist(context, tidal, qobuz, deezer)
+                        }
                         Timber.tag(TAG).i(
                             "Pool accounts refreshed: tidal=%d qobuz=%d deezer=%d",
                             tidal.size,
