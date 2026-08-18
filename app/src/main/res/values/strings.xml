@@ -814,7 +814,6 @@
     <string name="audio_source_youtube_fallback">YouTube is always tried last if no other source can resolve a track.</string>
     <string name="source_tidal">Tidal</string>
     <string name="source_youtube">YouTube</string>
-    <string name="source_deezer">Deezer</string>
     <string name="play_from">Play from</string>
     <string name="play_from_automatic">Automatic (preferred order)</string>
     <string name="playback_sources">Sources</string>
