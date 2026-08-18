@@ -45,6 +45,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -1203,7 +1204,7 @@ fun SongMenu(
         // block at any time by tapping the same menu item (which now reads "Allow recommendations
         // for this song again"). Excluded from local songs because recommendations never include
         // local tracks anyway.
-        item(visible = !song.song.isLocal) {
+        if (!song.song.isLocal) item {
             val blockedSongIds by database.blockedSongIds().collectAsState(initial = emptyList())
             val isSongBlocked = remember(blockedSongIds, song.id) { song.id in blockedSongIds }
             MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {

@@ -846,7 +846,27 @@ private fun MovingBlurBackground(
     // Vibrancy ColorFilter applied ONLY to the moving-blur lyrics background — does not touch
     // the shared PlayerColorExtractor palette (which other screens consume). 1.6× saturation
     // gives Apple-Music-style vivid artwork colors that punch through the 64-dp blur.
-    val vibrancyColorFilter = remember { ColorFilter.colorMatrix(ColorMatrix().apply { setSaturation(1.6f) }) }
+    // ColorMatrix is built manually because androidx.compose.ui.graphics.ColorMatrix doesn't
+    // expose setSaturation() (unlike android.graphics.ColorMatrix). The matrix below is the
+    // standard saturation matrix: R' = αR + βG + βB, G' = βR + αG + βB, B' = βR + βG + αB,
+    // where α = 0.213 + 0.787*sat and β = 0.715 - 0.715*sat (Rec. 709 luma coefficients),
+    // and the existing gamma is preserved (sat=1 → identity).
+    val vibrancyColorFilter = remember {
+        val sat = 1.6f
+        val alpha = 0.213f + 0.787f * sat
+        val beta = 0.715f - 0.715f * sat
+        val gamma = 0.072f - 0.072f * sat
+        ColorFilter.colorMatrix(
+            ColorMatrix(
+                floatArrayOf(
+                    alpha, beta, gamma, 0f, 0f,
+                    alpha, beta, gamma, 0f, 0f,
+                    alpha, beta, gamma, 0f, 0f,
+                    0f, 0f, 0f, 1f, 0f,
+                ),
+            ),
+        )
+    }
 
     val context = LocalContext.current
     val imageLoader = context.imageLoader
