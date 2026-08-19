@@ -97,7 +97,7 @@ private fun AudioSourceType.iconRes(): Int =
         AudioSourceType.TIDAL -> R.drawable.provider_tidal
         AudioSourceType.QOBUZ -> R.drawable.provider_qobuz
         AudioSourceType.DEEZER -> R.drawable.provider_deezer
-        AudioSourceType.JIOSAAVN -> R.drawable.play
+        AudioSourceType.JIOSAAVN -> R.drawable.provider_jiosaavn
         AudioSourceType.YOUTUBE -> R.drawable.play
     }
 

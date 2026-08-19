@@ -254,6 +254,14 @@ enum class DownloadSource {
      */
     DEEZER,
 
+    /**
+     * JioSaavn lookup — uses the public JioSaavn API to resolve a 96/160/320 kbps
+     * AAC stream URL. Falls back to the next source in [AUTO] order when the
+     * track isn't on JioSaavn. Does NOT require a Source Pool account (the
+     * public API is used directly), so it is NOT in [DownloadSourceConfig.REQUIRES_POOL].
+     */
+    JIOSAAVN,
+
     YOUTUBE_MUSIC,
 }
 
@@ -269,8 +277,9 @@ val DownloadSourceOrderKey = stringPreferencesKey("downloadSourceOrder")
  * Helpers for the download-source priority list. Mirrors [AudioSourceConfig] in the audiosource
  * package — same CSV serialization, append-missing-on-parse semantics, and a single DEFAULT_ORDER.
  *
- * The four sources [QOBUZ], [TIDAL], [DEEZER] require a Source Pool account to be configured
- * (see `PoolAccountManager.isEnabled`). [YOUTUBE_MUSIC] always works.
+ * The three sources [QOBUZ], [TIDAL], [DEEZER] require a Source Pool account to be configured
+ * (see `PoolAccountManager.isEnabled`). [JIOSAAVN] uses the public JioSaavn API (no pool needed).
+ * [YOUTUBE_MUSIC] always works.
  */
 object DownloadSourceConfig {
     val DEFAULT_ORDER: List<DownloadSource> =
@@ -278,6 +287,7 @@ object DownloadSourceConfig {
             DownloadSource.QOBUZ,
             DownloadSource.TIDAL,
             DownloadSource.DEEZER,
+            DownloadSource.JIOSAAVN,
             DownloadSource.YOUTUBE_MUSIC,
         )
 

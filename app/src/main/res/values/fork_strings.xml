@@ -69,4 +69,17 @@
          The hero is always shown regardless of this toggle. -->
     <string name="minimal_home_mode">Minimal mode</string>
     <string name="minimal_home_mode_desc">Hide all home sections except Keep listening, Recently played and Live performances. The hero card at the top stays visible.</string>
+
+    <!-- Download source priority (fork-only — JioSaavn added). -->
+    <string name="download_source_jiosaavn">JioSaavn</string>
+
+    <!-- Source search popup (ui/menu/PlayerMenu.kt SongSourceDialog).
+         Shown when the user filters search results by a specific provider. -->
+    <string name="source_search_filter_all">All</string>
+    <string name="source_search_no_results">No results yet — type a song title to search</string>
+    <string name="source_search_no_backend">Search is not yet available for this provider</string>
+    <string name="quality_badge_aac">AAC 256 kbps</string>
+    <string name="quality_badge_saavn">AAC 320 kbps</string>
+    <string name="quality_badge_lossless">Lossless</string>
+    <string name="quality_badge_hires">Hi-Res</string>
 </resources>

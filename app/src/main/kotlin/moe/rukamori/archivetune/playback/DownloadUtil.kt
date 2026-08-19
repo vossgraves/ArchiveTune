@@ -791,6 +791,14 @@ class DownloadUtil
                 // to populate the song's album/thumbnail/ISRC metadata.
                 null
             }
+            DownloadSource.JIOSAAVN -> {
+                // The JioSaavn public API exposes 96/160/320 kbps AAC stream URLs at runtime,
+                // but the download path needs a stable, contentLength-bearing resolver like
+                // LosslessStreamResolver.resolveQobuz/resolveTidal. Until that's added, return
+                // null so the AUTO chain falls through to the next source. The runtime playback
+                // path (MusicService.resolveJioSaavnStream) is unaffected and still works.
+                null
+            }
             DownloadSource.AUTO, DownloadSource.YOUTUBE_MUSIC -> null
         }
 
