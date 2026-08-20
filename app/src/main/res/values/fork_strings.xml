@@ -94,4 +94,27 @@
     <string name="quality_badge_saavn">AAC 320 kbps</string>
     <string name="quality_badge_lossless">Lossless</string>
     <string name="quality_badge_hires">Hi-Res</string>
+
+    <!-- Last.fm dashboard redesign (ui/screens/settings/LastFmDashboardScreen.kt).
+         Strings for the LastWave-native-inspired dashboard layout: the filter
+         dropdown on the "List" section header, and the per-track overflow
+         ModalBottomSheet (Start Mix / Genre / Play in ArchiveTune / Play next /
+         Add to queue / Add to playlist / Open in Last.fm / Copy Song). -->
+    <string name="lastfm_list">List</string>
+    <string name="lastfm_filter_recent">Recent</string>
+    <string name="lastfm_filter_top_tracks">Top Tracks</string>
+    <string name="lastfm_filter_top_artists">Top Artists</string>
+    <string name="lastfm_filter_top_albums">Top Albums</string>
+    <string name="lastfm_start_mix">Start Mix with this Song</string>
+    <string name="lastfm_genre">Genre</string>
+    <string name="lastfm_play_in_archivetune">Play in ArchiveTune</string>
+    <string name="lastfm_play_next">Play next</string>
+    <string name="lastfm_add_to_queue">Add to queue</string>
+    <string name="lastfm_add_to_playlist">Add to playlist</string>
+    <string name="lastfm_open_in_lastfm">Open in Last.fm</string>
+    <string name="lastfm_copy_song">Copy Song</string>
+    <string name="lastfm_song_copied">Song copied to clipboard</string>
+    <string name="lastfm_no_yt_match">Couldn\'t find this song on YouTube</string>
+    <string name="lastfm_searching_yt">Searching YouTube…</string>
+    <string name="lastfm_unknown_genre">Unknown</string>
 </resources>
