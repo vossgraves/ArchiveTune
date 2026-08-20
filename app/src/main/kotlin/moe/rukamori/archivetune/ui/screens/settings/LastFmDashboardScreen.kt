@@ -371,17 +371,20 @@ fun LastFmDashboardScreen(
                 val toResolve = chunk.filter { lookup -> snapshot[lookup.key].isNullOrBlank() }
                 if (toResolve.isEmpty()) continue
                 val resolved = withContext(Dispatchers.IO) {
-                    toResolve.map { lookup ->
-                        async(Dispatchers.IO) {
-                            val url = resolveCatalogueCover(lookup)
-                            if (url != null) {
-                                CachedArtworkStore.put(lookup.key, url)
-                                lookup.key to url
-                            } else {
-                                null
+                    toResolve
+                        .map { lookup ->
+                            async(Dispatchers.IO) {
+                                val url = resolveCatalogueCover(lookup)
+                                if (url != null) {
+                                    CachedArtworkStore.put(lookup.key, url)
+                                    lookup.key to url
+                                } else {
+                                    null
+                                }
                             }
-                        }.awaitAll().filterNotNull()
-                    }.awaitAll().flatten()
+                        }
+                        .awaitAll()
+                        .filterNotNull()
                 }
                 if (resolved.isEmpty()) continue
                 resolved.forEach { (k, u) -> snapshot[k] = u }
