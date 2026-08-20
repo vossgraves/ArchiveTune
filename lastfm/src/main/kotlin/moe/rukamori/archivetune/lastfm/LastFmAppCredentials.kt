@@ -29,13 +29,12 @@ object LastFmAppCredentials {
     /**
      * Builds the Last.fm web auth URL. The user approves the app in the browser / WebView,
      * then Last.fm redirects to [AUTH_CALLBACK_URI] with a `token` query parameter.
+     *
+     * NOTE: uses plain string concatenation instead of `android.net.Uri` because the
+     * `lastfm` module is a pure Kotlin module without the Android framework dependency.
+     * The URL components are URL-safe (the API key is hex, the callback URI is a
+     * custom scheme with no special chars) so no encoding is needed.
      */
     fun authUrl(): String =
-        android.net.Uri
-            .parse("https://www.last.fm/api/auth/")
-            .buildUpon()
-            .appendQueryParameter("api_key", API_KEY)
-            .appendQueryParameter("cb", AUTH_CALLBACK_URI)
-            .build()
-            .toString()
+        "https://www.last.fm/api/auth/?api_key=$API_KEY&cb=$AUTH_CALLBACK_URI"
 }
