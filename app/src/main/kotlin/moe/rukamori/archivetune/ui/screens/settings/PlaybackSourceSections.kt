@@ -85,6 +85,7 @@ import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.SwitchPreference
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
+import moe.rukamori.archivetune.utils.PoolAccountManager
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
 import kotlinx.coroutines.Dispatchers
@@ -119,16 +120,40 @@ private fun AudioSourceType.iconRes(): Int =
 @Composable
 fun PlaybackSourceSections(navController: NavController) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
 
     val (sourceOrderRaw, onSourceOrderChange) = rememberPreference(AudioSourceOrderKey, "")
     val (tidalEnabled, onTidalEnabledChange) = rememberPreference(TidalEnabledKey, true)
-    val (qobuzEnabled, onQobuzEnabledChange) = rememberPreference(QobuzEnabledKey, false)
-    val (deezerEnabled, onDeezerEnabledChange) = rememberPreference(DeezerEnabledKey, false)
+    val (qobuzEnabled, onQobuzEnabledChangeRaw) = rememberPreference(QobuzEnabledKey, false)
+    val (deezerEnabled, onDeezerEnabledChangeRaw) = rememberPreference(DeezerEnabledKey, false)
     val (deezerQuality, onDeezerQualityChange) =
         rememberEnumPreference(DeezerAudioQualityKey, DeezerAudioQuality.FLAC)
     val (jioSaavnEnabled, onJioSaavnEnabledChange) = rememberPreference(JioSaavnEnabledKey, false)
     val (saavnQuality, onSaavnQualityChange) =
         rememberEnumPreference(SaavnAudioQualityKey, SaavnAudioQuality.QUALITY_320)
+
+    // When the user enables a pool-backed source (Qobuz or Deezer), automatically
+    // trigger a pool refresh in the background. This ensures the latest pool
+    // accounts are loaded before the user tries to play a song through that
+    // source — fixing the "Qobuz server through the pool doesn't work even when
+    // accounts are already added" bug where the pool cache was stale or empty
+    // when the user enabled the source.
+    val onQobuzEnabledChange: (Boolean) -> Unit = { enabled ->
+        onQobuzEnabledChangeRaw(enabled)
+        if (enabled && PoolAccountManager.isEnabled) {
+            scope.launch(Dispatchers.IO) {
+                runCatching { PoolAccountManager.refresh(context, force = true) }
+            }
+        }
+    }
+    val onDeezerEnabledChange: (Boolean) -> Unit = { enabled ->
+        onDeezerEnabledChangeRaw(enabled)
+        if (enabled && PoolAccountManager.isEnabled) {
+            scope.launch(Dispatchers.IO) {
+                runCatching { PoolAccountManager.refresh(context, force = true) }
+            }
+        }
+    }
 
     val (tidalAccountFirst, onTidalAccountFirstChange) = rememberPreference(TidalAccountFirstKey, true)
     val (audioQuality, onAudioQualityChange) =
