@@ -17,6 +17,7 @@ import moe.rukamori.archivetune.tidal.TidalAudioProvider
 import moe.rukamori.archivetune.utils.PoolAccountManager
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
 /**
@@ -202,7 +203,7 @@ object SourceCheckService {
                 // Step 2: HEAD-probe the resolved CDN URL.
                 val cdnRequest = Request.Builder()
                     .url(streamUrl)
-                    .head()
+                    .method("HEAD", null)
                     .header("User-Agent", "ArchiveTune-Android")
                     .build()
                 client.newCall(cdnRequest).execute().use { cdnResponse ->

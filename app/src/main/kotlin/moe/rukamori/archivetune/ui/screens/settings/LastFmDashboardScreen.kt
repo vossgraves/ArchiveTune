@@ -524,7 +524,7 @@ private fun UserCard(
                             ) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                     Text(
-                                        text = formatCount(info.playcount ?: 0L),
+                                        text = formatCount((info.playcount ?: 0).toLong()),
                                         style = MaterialTheme.typography.displaySmall,
                                         fontWeight = FontWeight.Bold,
                                         color = MaterialTheme.colorScheme.onPrimaryContainer,

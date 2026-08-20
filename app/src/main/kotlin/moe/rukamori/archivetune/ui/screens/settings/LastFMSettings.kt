@@ -195,6 +195,7 @@ private fun LastFmSettingsContent(
 
             is LastFmSettingsScreenState.Success -> {
                 LastFmSettingsSuccess(
+                    navController = navController,
                     model = state.model,
                     positions = positions,
                     onOpenServiceEditor = onOpenServiceEditor,
@@ -271,6 +272,7 @@ private fun LastFmSettingsError(
 
 @Composable
 private fun LastFmSettingsSuccess(
+    navController: NavController,
     model: LastFmSettingsUiModel,
     positions: PreferencePositions,
     onOpenServiceEditor: () -> Unit,

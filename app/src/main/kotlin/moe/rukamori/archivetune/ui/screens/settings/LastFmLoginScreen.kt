@@ -25,7 +25,7 @@ import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.LastFMApiKeyOverrideKey
 import moe.rukamori.archivetune.constants.LastFMCustomEndpointKey
-import moe.rukamori.archivetune.constants.LastFMProvider
+import moe.rukamori.archivetune.constants.LastFmProvider
 import moe.rukamori.archivetune.constants.LastFMProviderKey
 import moe.rukamori.archivetune.constants.LastFMSecretOverrideKey
 import moe.rukamori.archivetune.constants.LastFMSessionKey
