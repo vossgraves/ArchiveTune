@@ -456,7 +456,28 @@ class MusicService :
                         host.endsWith("youtube-nocookie.com") ||
                         host.endsWith("ytimg.com")
 
-                if (!isYouTubeMediaHost) return@addInterceptor chain.proceed(request)
+                if (!isYouTubeMediaHost) {
+                    // Qobuz backup server (mlc.kouzu.in) — used as a fallback when the primary
+                    // Qobuz backends (direct tokens + community proxy instances) all fail to
+                    // resolve a track. The endpoint takes a YouTube video id and returns a
+                    // lossless stream. The x-request-source: muzo header MUST be sent on every
+                    // request (including the redirected CDN fetch in some setups) — without it
+                    // the server rate-limits aggressively. ExoPlayer streams through this same
+                    // OkHttp client, so injecting the header here means the streaming requests
+                    // (not just the initial resolve) also bypass rate-limiting.
+                    if (host.endsWith("kouzu.in") && !request.header("x-request-source").isNullOrEmpty()) {
+                        return@addInterceptor chain.proceed(request)
+                    }
+                    if (host.endsWith("kouzu.in")) {
+                        val patched =
+                            request
+                                .newBuilder()
+                                .header("x-request-source", "muzo")
+                                .build()
+                        return@addInterceptor chain.proceed(patched)
+                    }
+                    return@addInterceptor chain.proceed(request)
+                }
 
                 val requestProfile = StreamClientUtils.resolveRequestProfile(request.url)
                 chain.proceed(
@@ -9388,22 +9409,142 @@ class MusicService :
         )
         QobuzAudioProvider.setTokens(configuredTokens)
         QobuzAudioProvider.setInstances(configuredInstances)
+        val primary =
+            runCatching {
+                runBlocking(Dispatchers.IO) {
+                    QobuzAudioProvider.resolve(
+                        query =
+                            QobuzAudioProvider.Query(
+                                mediaId = query.mediaId,
+                                title = query.title,
+                                artists = query.artists,
+                                album = query.album,
+                                durationMs = query.durationMs,
+                            ),
+                        formatId = formatId,
+                    )
+                }
+            }.onFailure { error ->
+                Timber.tag("MusicService").w(error, "QOBUZ stream resolution failed for %s", query.mediaId)
+            }.getOrNull()
+        if (primary != null) return primary
+
+        // ── Qobuz backup server fallback ──────────────────────────────────────────
+        // mlc.kouzu.in hosts a community backup that takes a YouTube video id and
+        // returns a lossless stream — used when the primary Qobuz backends (direct
+        // tokens + community proxy instances) all fail to resolve a track. The
+        // x-request-source: muzo header is injected by the mediaOkHttpClient
+        // interceptor on every kouzu.in request (including the ExoPlayer stream
+        // fetch), so the data spec we hand back can just point at the kouzu.in URL.
+        //
+        // The backup returns whatever lossless quality the server has for the
+        // track; we don't get to pick the format id. Marking the stream as FLAC
+        // matches the typical response shape (the server is documented as serving
+        // Qobuz-sourced lossless audio).
+        val backup = resolveQobuzBackupStream(query)
+        if (backup != null) return backup
+
+        return null
+    }
+
+    /**
+     * Backup Qobuz stream: https://mlc.kouzu.in/api/stream?id=<youtube_id>
+     *
+     * The endpoint takes a YouTube video id (the mediaId of the song in the queue)
+     * and returns a lossless audio stream. The `x-request-source: muzo` header
+     * must be sent on every request — without it the server rate-limits the
+     * client aggressively. The header is injected centrally by the
+     * [mediaOkHttpClient] interceptor for any kouzu.in host request, so the
+     * DirectStream we return here can just point at the kouzu.in URL — ExoPlayer's
+     * stream fetch will go through the same OkHttp client and pick up the header.
+     *
+     * Returns null when:
+     *   - mediaId is blank or not a YouTube video id (not 11 chars)
+     *   - the backup server is unreachable / returns a non-2xx
+     *   - the resolved URL is blank
+     *
+     * Marked [trustedDirectId] = true because the user has explicitly chosen the
+     * Qobuz source (or Qobuz is in their resolution chain) — the YouTube mediaId
+     * IS the authoritative identity for the song the user is playing, so we skip
+     * the title/artist metadata gate for the backup path.
+     */
+    private fun resolveQobuzBackupStream(query: SourceQuery): DirectStream? {
+        val ytId = query.mediaId.trim()
+        // YouTube video ids are 11 characters. Anything else isn't a valid id for
+        // the kouzu.in endpoint — bail early so we don't waste a network call.
+        if (ytId.length != 11 || ytId.any { !it.isLetterOrDigit() && it != '_' && it != '-' }) {
+            Timber.tag("MusicService").d("Qobuz backup skip: mediaId=%s is not a valid YT id", ytId)
+            return null
+        }
         return runCatching {
             runBlocking(Dispatchers.IO) {
-                QobuzAudioProvider.resolve(
-                    query =
-                        QobuzAudioProvider.Query(
-                            mediaId = query.mediaId,
-                            title = query.title,
-                            artists = query.artists,
-                            album = query.album,
-                            durationMs = query.durationMs,
-                        ),
-                    formatId = formatId,
-                )
+                val backupUrl = "https://mlc.kouzu.in/api/stream?id=$ytId"
+                // HEAD probe to verify the endpoint is reachable and returns an
+                // audio content type. We don't follow the body here — ExoPlayer
+                // will issue the actual GET with byte-range requests through the
+                // same OkHttp client (which auto-injects x-request-source: muzo).
+                val headRequest =
+                    okhttp3.Request
+                        .Builder()
+                        .url(backupUrl)
+                        .head()
+                        .header("User-Agent", "ArchiveTune-Android")
+                        .build()
+                mediaOkHttpClient.newCall(headRequest).execute().use { response ->
+                    if (!response.isSuccessful) {
+                        Timber.tag("MusicService").d(
+                            "Qobuz backup miss for %s: HTTP %d",
+                            ytId,
+                            response.code,
+                        )
+                        return@runBlocking null
+                    }
+                    val contentType = response.header("Content-Type")?.lowercase().orEmpty()
+                    // Accept any audio/* content type, plus video/* (some backup
+                    // servers remux lossless audio into an MP4 container) and the
+                    // catch-all octet-stream (used when the server is a pure file
+                    // proxy). The HEAD response is informational; the actual GET
+                    // from ExoPlayer will follow redirects to the final CDN URL.
+                    val looksLikeAudio =
+                        contentType.startsWith("audio/") ||
+                            contentType.startsWith("video/") ||
+                            contentType.contains("octet-stream")
+                    if (!looksLikeAudio) {
+                        Timber.tag("MusicService").d(
+                            "Qobuz backup miss for %s: unexpected Content-Type=%s",
+                            ytId,
+                            contentType,
+                        )
+                        return@runBlocking null
+                    }
+                    val finalUrl = response.request.url.toString()
+                    val streamUrl = if (finalUrl.isNotBlank()) finalUrl else backupUrl
+                    Timber.tag("MusicService").i(
+                        "Qobuz backup resolved \"%s\" via mlc.kouzu.in [%s] finalUrl=%s",
+                        query.title,
+                        contentType,
+                        streamUrl.take(80),
+                    )
+                    DirectStream(
+                        uri = streamUrl,
+                        mimeType = "audio/flac",
+                        codecs = "flac",
+                        contentLength = response.header("Content-Length")?.toLongOrNull(),
+                        label = "Qobuz backup (kouzu.in)",
+                        source = AudioSourceType.QOBUZ,
+                        // The YouTube mediaId is the authoritative identity of the
+                        // song the user is playing — we trust it without requiring
+                        // the backup server to echo back matching metadata.
+                        trustedDirectId = true,
+                        matchedTitle = query.title,
+                        matchedArtist = query.artists.joinToString(", ").ifBlank { null },
+                        matchedAlbum = query.album,
+                        matchedDurationMs = query.durationMs,
+                    )
+                }
             }
         }.onFailure { error ->
-            Timber.tag("MusicService").w(error, "QOBUZ stream resolution failed for %s", query.mediaId)
+            Timber.tag("MusicService").w(error, "Qobuz backup resolution failed for %s", ytId)
         }.getOrNull()
     }
 
