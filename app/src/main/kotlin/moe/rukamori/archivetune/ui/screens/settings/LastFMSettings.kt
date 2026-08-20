@@ -43,7 +43,9 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -110,13 +112,6 @@ fun LastFMSettings(
             state = state,
             topPadding = topPadding,
             scrollTo = scrollTo,
-            onOpenServiceEditor = viewModel::openServiceEditor,
-            onDismissServiceEditor = viewModel::dismissServiceEditor,
-            onServiceProviderChange = viewModel::updateServiceProvider,
-            onCustomEndpointChange = viewModel::updateCustomEndpoint,
-            onApiKeyOverrideChange = viewModel::updateApiKeyOverride,
-            onSecretOverrideChange = viewModel::updateSecretOverride,
-            onSaveServiceEditor = viewModel::saveServiceEditor,
             onOpenLoginDialog = viewModel::openLoginDialog,
             onDismissLoginDialog = viewModel::dismissLoginDialog,
             onLoginUsernameChange = viewModel::updateLoginUsername,
@@ -131,6 +126,15 @@ fun LastFMSettings(
             onTimingDelayPercentChange = viewModel::updateTimingDelayPercent,
             onTimingDelaySecondsChange = viewModel::updateTimingDelaySeconds,
             onSaveTimingEditor = viewModel::saveTimingEditor,
+            // (Task 4) The custom-endpoint dialog is wired straight to the
+            // repository via a coroutine — it persists the entered endpoint /
+            // api key / secret directly into DataStore (under the CUSTOM
+            // provider keys), bypassing the view model's service-editor
+            // state machine (which we're phasing out in favour of the
+            // simpler WebView + custom-dialog flows).
+            onSaveCustomEndpoint = { endpoint, apiKey, secret ->
+                viewModel.saveCustomEndpoint(endpoint, apiKey, secret)
+            },
         )
     }
 }
@@ -141,13 +145,6 @@ private fun LastFmSettingsContent(
     state: LastFmSettingsScreenState,
     topPadding: Dp,
     scrollTo: String? = null,
-    onOpenServiceEditor: () -> Unit,
-    onDismissServiceEditor: () -> Unit,
-    onServiceProviderChange: (LastFmProvider) -> Unit,
-    onCustomEndpointChange: (String) -> Unit,
-    onApiKeyOverrideChange: (String) -> Unit,
-    onSecretOverrideChange: (String) -> Unit,
-    onSaveServiceEditor: () -> Unit,
     onOpenLoginDialog: () -> Unit,
     onDismissLoginDialog: () -> Unit,
     onLoginUsernameChange: (String) -> Unit,
@@ -162,6 +159,7 @@ private fun LastFmSettingsContent(
     onTimingDelayPercentChange: (Float) -> Unit,
     onTimingDelaySecondsChange: (Int) -> Unit,
     onSaveTimingEditor: () -> Unit,
+    onSaveCustomEndpoint: (endpoint: String, apiKey: String, secret: String) -> Unit,
 ) {
     val scrollState = rememberScrollState()
     val positions = rememberPreferencePositions()
@@ -170,6 +168,10 @@ private fun LastFmSettingsContent(
             .only(WindowInsetsSides.Bottom)
             .asPaddingValues()
             .calculateBottomPadding()
+
+    // (Task 4) Custom-endpoint dialog state — hoisted here so it survives
+    // recompositions of the inner Column (e.g. when the model updates).
+    var showCustomEndpointDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(scrollTo) { positions.scrollToKey(scrollTo, scrollState) }
 
@@ -198,12 +200,13 @@ private fun LastFmSettingsContent(
                     navController = navController,
                     model = state.model,
                     positions = positions,
-                    onOpenServiceEditor = onOpenServiceEditor,
                     onOpenLoginDialog = onOpenLoginDialog,
                     onLogout = onLogout,
                     onScrobblingChange = onScrobblingChange,
                     onNowPlayingChange = onNowPlayingChange,
                     onOpenTimingEditor = onOpenTimingEditor,
+                    showCustomEndpointDialog = showCustomEndpointDialog,
+                    onShowCustomEndpointDialog = { showCustomEndpointDialog = it },
                 )
             }
         }
@@ -219,14 +222,20 @@ private fun LastFmSettingsContent(
             onPasswordChange = onLoginPasswordChange,
             onLogin = onLogin,
         )
-        LastFmServiceEditorDialog(
-            editor = model.serviceEditor,
-            onDismiss = onDismissServiceEditor,
-            onProviderChange = onServiceProviderChange,
-            onCustomEndpointChange = onCustomEndpointChange,
-            onApiKeyOverrideChange = onApiKeyOverrideChange,
-            onSecretOverrideChange = onSecretOverrideChange,
-            onSave = onSaveServiceEditor,
+        // (Task 4) The legacy LastFmServiceEditorDialog invocation has
+        // been removed — its opening affordances (the service provider /
+        // API credentials PreferenceGroup) were removed in Task 3, so the
+        // dialog could never be opened from the UI. The composable
+        // function itself is kept in the file as dead code (it's harmless
+        // and removing it would touch the LastFmServiceEditorUiModel /
+        // viewModel.openServiceEditor chain — left for a future cleanup).
+        LastFmCustomEndpointDialog(
+            visible = showCustomEndpointDialog,
+            onDismiss = { showCustomEndpointDialog = false },
+            onSave = { endpoint, apiKey, secret ->
+                onSaveCustomEndpoint(endpoint, apiKey, secret)
+                showCustomEndpointDialog = false
+            },
         )
         LastFmTimingEditorDialog(
             editor = model.timingEditor,
@@ -275,48 +284,23 @@ private fun LastFmSettingsSuccess(
     navController: NavController,
     model: LastFmSettingsUiModel,
     positions: PreferencePositions,
-    onOpenServiceEditor: () -> Unit,
     onOpenLoginDialog: () -> Unit,
     onLogout: () -> Unit,
     onScrobblingChange: (Boolean) -> Unit,
     onNowPlayingChange: (Boolean) -> Unit,
     onOpenTimingEditor: (LastFmTimingSetting) -> Unit,
+    showCustomEndpointDialog: Boolean,
+    onShowCustomEndpointDialog: (Boolean) -> Unit,
 ) {
-    val providerName = stringResource(model.provider.titleResId())
-    val endpointDescription =
-        if (model.endpointValid) {
-            model.resolvedEndpoint
-        } else {
-            stringResource(R.string.lastfm_endpoint_invalid)
-        }
-
-    PreferenceGroup(
-        modifier = positions.modifierFor("lastfm_service"),
-        title = stringResource(R.string.lastfm_service),
-    ) {
-        item {
-            PreferenceEntry(
-                title = { Text(stringResource(R.string.lastfm_service_provider)) },
-                description = "$providerName\n$endpointDescription",
-                icon = { Icon(painterResource(R.drawable.token), null) },
-                onClick = onOpenServiceEditor,
-            )
-        }
-
-        item {
-            PreferenceEntry(
-                title = { Text(stringResource(R.string.lastfm_api_credentials)) },
-                description =
-                    if (model.apiKeyOverride.isBlank() && model.secretOverride.isBlank()) {
-                        stringResource(R.string.lastfm_api_credentials_default)
-                    } else {
-                        stringResource(R.string.lastfm_api_credentials_custom)
-                    },
-                icon = { Icon(painterResource(R.drawable.token), null) },
-                onClick = onOpenServiceEditor,
-            )
-        }
-    }
+    // (Task 3) The "Scrobbling service" PreferenceGroup (service provider +
+    // API credentials entries) has been removed — the user now signs in
+    // via the WebView flow with baked-in credentials (Last.fm + Libre.fm)
+    // or enters custom endpoint credentials in a dedicated dialog. There's
+    // no longer a need to expose the service editor here, and the provider
+    // switch / endpoint / apiKeyOverride / secretOverride state in the
+    // view model is still used internally — it's just driven from the
+    // Libre.fm and Custom-endpoint flows instead of from this settings
+    // group. The `onOpenServiceEditor` callback is no longer passed in.
 
     PreferenceGroup(
         modifier = positions.modifierFor("lastfm_account"),
@@ -333,6 +317,37 @@ private fun LastFmSettingsSuccess(
                 description = stringResource(R.string.lastfm_connect_button_description),
                 icon = { Icon(painterResource(R.drawable.login), null) },
                 onClick = { navController.navigate(LASTFM_LOGIN_ROUTE) },
+            )
+        }
+
+        // (Task 4) Libre.fm — opens a parallel WebView login flow that
+        // uses libre.fm's auth URL and the same baked-in credentials
+        // (Libre.fm is API-compatible with Last.fm and accepts any API
+        // key for read access). After login, the runtime endpoint is
+        // switched to https://libre.fm/2.0/ and the provider is pinned
+        // to LIBREFM so subsequent scrobbles / now-playing updates go to
+        // Libre.fm instead of Last.fm.
+        item {
+            PreferenceEntry(
+                title = { Text(stringResource(R.string.lastfm_connect_librefm_button)) },
+                description = stringResource(R.string.lastfm_connect_librefm_button_description),
+                icon = { Icon(painterResource(R.drawable.login), null) },
+                onClick = { navController.navigate(LASTFM_LIBREFM_LOGIN_ROUTE) },
+            )
+        }
+
+        // (Task 4) Custom endpoint — opens a dialog where the user
+        // enters their own API endpoint URL + API key + shared secret
+        // (for self-hosted GNU FM / ListenBrainz-compatible scrobblers
+        // that aren't Libre.fm). After saving, the provider is pinned
+        // to CUSTOM and the runtime config is initialized with the
+        // entered values.
+        item {
+            PreferenceEntry(
+                title = { Text(stringResource(R.string.lastfm_connect_custom_button)) },
+                description = stringResource(R.string.lastfm_connect_custom_button_description),
+                icon = { Icon(painterResource(R.drawable.token), null) },
+                onClick = { onShowCustomEndpointDialog(true) },
             )
         }
 
@@ -714,3 +729,106 @@ private fun LastFmTimingSetting.titleResId(): Int =
         LastFmTimingSetting.DELAY_PERCENT -> R.string.scrobble_delay_percent
         LastFmTimingSetting.DELAY_SECONDS -> R.string.scrobble_delay_minutes
     }
+
+/**
+ * (Task 4) Custom-endpoint sign-in dialog. Lets the user enter their own
+ * API endpoint URL (e.g. `https://my-scrobbler.example.com/2.0/`), API key,
+ * and shared secret for self-hosted GNU FM / ListenBrainz-compatible
+ * scrobblers that aren't Libre.fm. After saving, the view model's
+ * [saveCustomEndpoint] persists the values into DataStore (under the
+ * `LastFMCustomEndpointKey` + `CustomScrobbleApiKeyOverrideKey` +
+ * `CustomScrobbleSecretOverrideKey` keys), pins `LastFMProviderKey` to
+ * `CUSTOM`, and the runtime LastFM singleton is reconfigured with the
+ * new endpoint.
+ *
+ * Empty API key / secret are allowed — for endpoints that don't validate
+ * credentials (e.g. local ListenBrainz test deployments), the runtime
+ * falls back to [LastFM.FALLBACK_COMPAT_API_KEY] /
+ * [LastFM.FALLBACK_COMPAT_SECRET] so signing still works.
+ */
+@Composable
+private fun LastFmCustomEndpointDialog(
+    visible: Boolean,
+    onDismiss: () -> Unit,
+    onSave: (endpoint: String, apiKey: String, secret: String) -> Unit,
+) {
+    if (!visible) return
+    var endpoint by remember { mutableStateOf("") }
+    var apiKey by remember { mutableStateOf("") }
+    var secret by remember { mutableStateOf("") }
+    var endpointError by remember { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.lastfm_connect_custom_button)) },
+        text = {
+            Column(
+                modifier = Modifier
+                    .heightIn(max = 420.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                InfoLabel(text = stringResource(R.string.lastfm_custom_endpoint_hint))
+                OutlinedTextField(
+                    value = endpoint,
+                    onValueChange = {
+                        endpoint = it
+                        endpointError = false
+                    },
+                    label = { Text(stringResource(R.string.lastfm_custom_endpoint)) },
+                    placeholder = { Text("https://my-scrobbler.example.com/2.0/") },
+                    singleLine = true,
+                    isError = endpointError,
+                    supportingText = if (endpointError) {
+                        { Text(stringResource(R.string.lastfm_endpoint_invalid)) }
+                    } else null,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = apiKey,
+                    onValueChange = { apiKey = it },
+                    label = { Text(stringResource(R.string.lastfm_api_key_override)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = secret,
+                    onValueChange = { secret = it },
+                    label = { Text(stringResource(R.string.lastfm_secret_override)) },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    // Validate the endpoint is a well-formed HTTP(S) URL —
+                    // LastFM.normalizeEndpoint throws on malformed input, which
+                    // we catch and surface as a field error. Empty API key /
+                    // secret are allowed (the runtime falls back to the
+                    // FALLBACK_COMPAT_* constants for endpoints that don't
+                    // validate credentials).
+                    val normalized = runCatching {
+                        moe.rukamori.archivetune.lastfm.LastFM.normalizeEndpoint(endpoint.trim())
+                    }.getOrNull()
+                    if (normalized.isNullOrBlank()) {
+                        endpointError = true
+                        return@TextButton
+                    }
+                    onSave(normalized, apiKey.trim(), secret.trim())
+                },
+                shapes = ButtonDefaults.shapes(),
+            ) {
+                Text(stringResource(android.R.string.ok))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, shapes = ButtonDefaults.shapes()) {
+                Text(stringResource(android.R.string.cancel))
+            }
+        },
+    )
+}
