@@ -15,7 +15,7 @@ import io.ktor.client.plugins.cache.HttpCache
 import io.ktor.client.plugins.compression.ContentEncoding
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.get
-import io.ktor.client.request.parameter
+import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.CancellationException
@@ -30,22 +30,27 @@ import java.util.concurrent.ConcurrentHashMap
 /**
  * Fetches Spotify Canvas looping videos for songs by their YouTube Music video ID.
  *
- * The provider delegates to the third-party `mlc.kouzu.in` resolver, which maps a YouTube
- * Music video ID → the song's Spotify Canvas URL. The resolver also returns the matched
- * song name and artist name, which we surface in the resulting [CanvasArtwork] for
- * identity verification by the caller.
- *
- * Endpoint: `GET https://mlc.kouzu.in/api/canvas?id=<videoId>`
+ * The provider delegates to the third-party `velamhere-img.hf.space` CDN, which serves the
+ * Spotify Canvas video for a given YouTube Music video ID directly. The CDN endpoint is
+ * `https://velamhere-img.hf.space/id/<videoId>` — the video ID is appended as a path segment
+ * after the fixed `/id` prefix.
  *
  * The response shape is tolerant — we accept any of the common field names seen across
  * resolvers of this kind (`url` / `canvas_url` / `video_url`, `song` / `name` / `title`,
- * `artist` / `artists`).
+ * `artist` / `artists`). When the response is direct video bytes (no JSON envelope), we
+ * fall back to using the request URL itself as the canvas video URL — the CDN serves the
+ * raw video at that URL.
  *
- * Results are cached in-memory for 1 hour per video ID to avoid hammering the resolver
- * on every recomposition / replay.
+ * Results are cached in-memory for 1 hour per video ID to avoid hammering the CDN on every
+ * recomposition / replay.
  */
 object SpotifyCanvasProvider {
-    private const val BASE_URL = "https://mlc.kouzu.in/api/canvas"
+    /**
+     * CDN base URL. The full URL is `$BASE_URL/<videoId>` — the video ID is appended as a
+     * path segment. The `/id` segment is part of the fixed CDN path, so the full URL pattern
+     * is `https://velamhere-img.hf.space/id/<videoId>`.
+     */
+    private const val BASE_URL = "https://velamhere-img.hf.space/id"
     private const val CACHE_TTL_MS = 60L * 60 * 1000 // 1 hour
 
     private val json =
@@ -99,16 +104,23 @@ object SpotifyCanvasProvider {
 
         val artwork =
             try {
-                val response =
-                    client.get(BASE_URL) {
-                        parameter("id", videoId)
-                    }
+                // The CDN URL pattern is `https://velamhere-img.hf.space/id/<videoId>` —
+                // the video ID is appended as a path segment after the fixed `/id` prefix.
+                val cdnUrl = "$BASE_URL/$videoId"
+                val response = client.get(cdnUrl)
                 if (response.status != HttpStatusCode.OK) {
                     cache[videoId] = CacheEntry(null, System.currentTimeMillis() + CACHE_TTL_MS)
                     return null
                 }
-                val body: JsonObject = response.body()
-                parseCanvasArtwork(body, videoId)
+                // Two response shapes are supported:
+                //   1. JSON envelope with a `url` / `canvas_url` / `video_url` field pointing
+                //      at the actual canvas video. parseCanvasArtwork extracts it.
+                //   2. Direct video bytes (the CDN serves the raw video at the request URL).
+                //      In this case JSON parsing fails — fall back to using cdnUrl as the
+                //      video URL directly.
+                val bodyText = response.bodyAsText()
+                val artwork = parseCanvasArtwork(bodyText, videoId, cdnUrl)
+                artwork
             } catch (throwable: Throwable) {
                 if (throwable is CancellationException) throw throwable
                 // Network/parse failure — don't cache, allow a retry next time.
@@ -119,42 +131,79 @@ object SpotifyCanvasProvider {
         return artwork
     }
 
-    private fun parseCanvasArtwork(body: JsonObject, videoId: String): CanvasArtwork? {
-        // The resolver may either return the canvas fields at the top level or nested
-        // under a `data` / `result` envelope. Handle both.
-        val payload = body["data"]?.jsonObject ?: body["result"]?.jsonObject ?: body
+    /**
+     * Parse the CDN response into a [CanvasArtwork].
+     *
+     * The response may be either:
+     *   - A JSON object (possibly nested under a `data` / `result` envelope) with a
+     *     `url` / `canvas_url` / `video_url` field — the value of that field is the
+     *     actual canvas video URL.
+     *   - Direct video bytes (no JSON envelope) — in this case the request URL itself
+     *     serves the raw video, and we fall back to using [fallbackVideoUrl] as the
+     *     canvas video URL.
+     *
+     * The JSON shape is tolerant — we accept any of the common field names seen across
+     * resolvers of this kind (`url` / `canvas_url` / `video_url`, `song` / `name` / `title`,
+     * `artist` / `artists`).
+     */
+    private fun parseCanvasArtwork(bodyText: String, videoId: String, fallbackVideoUrl: String): CanvasArtwork? {
+        // Try JSON parsing first.
+        val payload = runCatching {
+            val obj = json.parseToJsonElement(bodyText).jsonObject
+            obj["data"]?.jsonObject ?: obj["result"]?.jsonObject ?: obj
+        }.getOrNull()
 
-        val videoUrl =
-            payload["url"]?.jsonPrimitive?.contentOrNull
-                ?: payload["canvas_url"]?.jsonPrimitive?.contentOrNull
-                ?: payload["video_url"]?.jsonPrimitive?.contentOrNull
-                ?: payload["canvas"]?.jsonPrimitive?.contentOrNull
-                ?: return null
-        if (videoUrl.isBlank()) return null
+        // JSON path: extract url / song / artist from the envelope.
+        if (payload != null) {
+            val videoUrl =
+                payload["url"]?.jsonPrimitive?.contentOrNull
+                    ?: payload["canvas_url"]?.jsonPrimitive?.contentOrNull
+                    ?: payload["video_url"]?.jsonPrimitive?.contentOrNull
+                    ?: payload["canvas"]?.jsonPrimitive?.contentOrNull
+                    ?: fallbackVideoUrl // JSON envelope but no url field — use the CDN URL.
+            if (videoUrl.isBlank()) return null
 
-        val songName =
-            payload["song"]?.jsonPrimitive?.contentOrNull
-                ?: payload["name"]?.jsonPrimitive?.contentOrNull
-                ?: payload["title"]?.jsonPrimitive?.contentOrNull
-                ?: payload["track"]?.jsonPrimitive?.contentOrNull
+            val songName =
+                payload["song"]?.jsonPrimitive?.contentOrNull
+                    ?: payload["name"]?.jsonPrimitive?.contentOrNull
+                    ?: payload["title"]?.jsonPrimitive?.contentOrNull
+                    ?: payload["track"]?.jsonPrimitive?.contentOrNull
 
-        val artistName =
-            payload["artist"]?.jsonPrimitive?.contentOrNull
-                ?: payload["artists"]?.jsonPrimitive?.contentOrNull
-                ?: payload["author"]?.jsonPrimitive?.contentOrNull
+            val artistName =
+                payload["artist"]?.jsonPrimitive?.contentOrNull
+                    ?: payload["artists"]?.jsonPrimitive?.contentOrNull
+                    ?: payload["author"]?.jsonPrimitive?.contentOrNull
 
+            return CanvasArtwork(
+                name = songName,
+                artist = artistName,
+                // Use the YouTube videoId as a stable albumId placeholder so the cache key
+                // machinery in CanvasArtworkPlaybackCache dedupes correctly.
+                albumId = "yt:$videoId",
+                albumName = null,
+                static = null,
+                animated = null,
+                animatedVertical = null,
+                videoUrl = videoUrl,
+                videoUrlVertical = videoUrl,
+            )
+        }
+
+        // Non-JSON response: the CDN serves the raw video at the request URL itself.
+        // Use fallbackVideoUrl as the canvas video URL. We don't have song/artist
+        // metadata, so we leave those null — the caller's identity verification will
+        // skip the song/artist match step (the YouTube song's title/artist from the
+        // queue is used as the source of truth).
         return CanvasArtwork(
-            name = songName,
-            artist = artistName,
-            // Use the YouTube videoId as a stable albumId placeholder so the cache key
-            // machinery in CanvasArtworkPlaybackCache dedupes correctly.
+            name = null,
+            artist = null,
             albumId = "yt:$videoId",
             albumName = null,
             static = null,
             animated = null,
             animatedVertical = null,
-            videoUrl = videoUrl,
-            videoUrlVertical = videoUrl,
+            videoUrl = fallbackVideoUrl,
+            videoUrlVertical = fallbackVideoUrl,
         )
     }
 }

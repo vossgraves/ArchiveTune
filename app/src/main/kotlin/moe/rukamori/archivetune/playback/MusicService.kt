@@ -458,14 +458,14 @@ class MusicService :
                         host.endsWith("ytimg.com")
 
                 if (!isYouTubeMediaHost) {
-                    // Qobuz backup server (mlc.kouzu.in) — used as a fallback when the primary
-                    // Qobuz backends (direct tokens + community proxy instances) all fail to
-                    // resolve a track. The endpoint takes a YouTube video id and returns a
-                    // lossless stream. The x-request-source: muzo header MUST be sent on every
-                    // request (including the redirected CDN fetch in some setups) — without it
-                    // the server rate-limits aggressively. ExoPlayer streams through this same
-                    // OkHttp client, so injecting the header here means the streaming requests
-                    // (not just the initial resolve) also bypass rate-limiting.
+                    // Qobuz backup server (mlc-ytify.kouzu.in) — used as a separate audio source
+                    // when the user explicitly enables QOBUZ_BACKUP. The endpoint takes a YouTube
+                    // video id as a path segment and returns a lossless stream. The
+                    // x-request-source: muzo header MUST be sent on every request (including the
+                    // redirected CDN fetch in some setups) — without it the server rate-limits
+                    // aggressively. ExoPlayer streams through this same OkHttp client, so
+                    // injecting the header here means the streaming requests (not just the
+                    // initial resolve) also bypass rate-limiting.
                     if (host.endsWith("kouzu.in") && !request.header("x-request-source").isNullOrEmpty()) {
                         return@addInterceptor chain.proceed(request)
                     }
@@ -9433,11 +9433,11 @@ class MusicService :
     }
 
     /**
-     * Backup Qobuz stream: https://mlc.kouzu.in/api/stream?id=<youtube_id>
+     * Backup Qobuz stream: https://mlc-ytify.kouzu.in/<youtube_id>
      *
      * The endpoint takes a YouTube video id (the mediaId of the song in the queue)
-     * and returns a lossless audio stream. The `x-request-source: muzo` header
-     * must be sent on every request — without it the server rate-limits the
+     * as a path segment and returns a lossless audio stream. The `x-request-source: muzo`
+     * header must be sent on every request — without it the server rate-limits the
      * client aggressively. The header is injected centrally by the
      * [mediaOkHttpClient] interceptor for any kouzu.in host request, so the
      * DirectStream we return here can just point at the kouzu.in URL — ExoPlayer's
@@ -9463,7 +9463,11 @@ class MusicService :
         }
         return runCatching {
             runBlocking(Dispatchers.IO) {
-                val backupUrl = "https://mlc.kouzu.in/api/stream?id=$ytId"
+                // The backup server endpoint: https://mlc-ytify.kouzu.in/<youtube_id>
+                // The ytId is appended as a path segment (not a query parameter). The
+                // x-request-source: muzo header is injected centrally by the
+                // mediaOkHttpClient interceptor for any kouzu.in host request.
+                val backupUrl = "https://mlc-ytify.kouzu.in/$ytId"
                 // HEAD probe to verify the endpoint is reachable and returns an
                 // audio content type. We don't follow the body here — ExoPlayer
                 // will issue the actual GET with byte-range requests through the
@@ -9505,7 +9509,7 @@ class MusicService :
                     val finalUrl = response.request.url.toString()
                     val streamUrl = if (finalUrl.isNotBlank()) finalUrl else backupUrl
                     Timber.tag("MusicService").i(
-                        "Qobuz backup resolved \"%s\" via mlc.kouzu.in [%s] finalUrl=%s",
+                        "Qobuz backup resolved \"%s\" via mlc-ytify.kouzu.in [%s] finalUrl=%s",
                         query.title,
                         contentType,
                         streamUrl.take(80),

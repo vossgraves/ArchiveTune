@@ -91,6 +91,7 @@ import moe.rukamori.archivetune.utils.rememberPreference
 import okhttp3.OkHttpClient
 import timber.log.Timber
 import java.util.Locale
+import java.util.concurrent.TimeUnit
 
 /**
  * Below this absolute drift, NO correction is applied — the desync is
@@ -726,11 +727,35 @@ fun rememberVideoArtworkState(
     val updatedHoldAudioUntilVideoReady by rememberUpdatedState(holdAudioUntilVideoReady)
 
     // ── OkHttp client with the YouTube stream proxy + request profile headers ──
+    //
+    // MIRRORS MusicService.mediaOkHttpClient — the audio player's client. The previous
+    // implementation was a stripped-down version that was missing:
+    //   - explicit followRedirects / followSslRedirects (OkHttp's default is true, but
+    //     being explicit makes the intent clear and matches the audio client)
+    //   - explicit connectTimeout / readTimeout (OkHttp's default is 10s, which is too
+    //     short for a 1080p video load on a slow connection — the audio client uses 30s)
+    //   - the kouzu.in x-request-source: muzo header branch (not strictly needed for
+    //     video, but matches the audio client so the two stay in sync)
+    //
+    // The user's crash log showed HTTP 403 from googlevideo.com when ExoPlayer tried to
+    // load the ANDROID_VR video URL, while the audio URL (also ANDROID_VR) loaded fine.
+    // The audio and video clients had different setups — matching them eliminates that
+    // variable. If the 403 still happens after this fix, the root cause is YouTube
+    // rejecting the ANDROID_VR video URL specifically (signature/IP-rate-limit/etc.) and
+    // we'd need to fall back to a different client (see resolveVideoStreamUrl's clients
+    // list — it now tries ANDROID_VR first, then WEB_REMIX; the WEB_REMIX fallback kicks
+    // in when ANDROID_VR's URL resolution itself fails, not when its URL gives 403 on
+    // playback — for the latter, a more invasive fix would be needed: detect 403 on
+    // ExoPlayer's load and re-resolve via the next client).
     val okHttpClient =
         remember {
             OkHttpClient
                 .Builder()
                 .proxy(YouTube.streamOkHttpProxy)
+                .followRedirects(true)
+                .followSslRedirects(true)
+                .connectTimeout(30, TimeUnit.SECONDS)
+                .readTimeout(30, TimeUnit.SECONDS)
                 .addInterceptor { chain ->
                     val request = chain.request()
                     val host = request.url.host
@@ -742,12 +767,10 @@ fun rememberVideoArtworkState(
                             host.endsWith("ytimg.com")
 
                     if (!isYouTubeMediaHost) {
-                        return@addInterceptor chain.proceed(
-                            request
-                                .newBuilder()
-                                .header("User-Agent", VideoPlaybackUserAgent)
-                                .build(),
-                        )
+                        // Match the audio client: pass through non-YouTube hosts unchanged
+                        // (no User-Agent override). The audio client doesn't override the
+                        // User-Agent for non-YouTube hosts either.
+                        return@addInterceptor chain.proceed(request)
                     }
 
                     val requestProfile = StreamClientUtils.resolveRequestProfile(request.url)
@@ -2269,5 +2292,3 @@ private fun ExoPlayer.setVideoPlayback(isPlaying: Boolean) {
 }
 
 internal const val VideoPlaybackLogTag = "VideoArtworkPlayback"
-private const val VideoPlaybackUserAgent =
-    "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Mobile Safari/537.36"
