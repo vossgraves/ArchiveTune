@@ -117,4 +117,16 @@
     <string name="lastfm_no_yt_match">Couldn\'t find this song on YouTube</string>
     <string name="lastfm_searching_yt">Searching YouTube…</string>
     <string name="lastfm_unknown_genre">Unknown</string>
+
+    <!-- (Task 4) Libre.fm + custom endpoint sign-in buttons + scrobble-search
+         overlay (Task 6c) + overflow-sheet error states (Task 5). -->
+    <string name="lastfm_connect_librefm_button">Connect with Libre.fm</string>
+    <string name="lastfm_connect_librefm_button_description">One-tap Libre.fm web sign-in. Uses the same API key as Last.fm.</string>
+    <string name="lastfm_connect_custom_button">Custom endpoint</string>
+    <string name="lastfm_connect_custom_button_description">Self-hosted GNU FM / ListenBrainz-compatible scrobbler. Enter endpoint, API key, and shared secret.</string>
+    <string name="lastfm_custom_endpoint_hint">Enter the scrobbler\'s /2.0/ endpoint, API key, and shared secret. Leave key / secret blank for endpoints that don\'t validate credentials.</string>
+    <string name="auth_webview_librefm_subtitle">Tap \"Yes, allow access\" on Libre.fm. ArchiveTune captures the session automatically.</string>
+    <string name="lastfm_search_placeholder">Search scrobbles</string>
+    <string name="lastfm_no_search_results">No matching tracks.</string>
+    <string name="lastfm_player_unavailable">Player not ready. Try again in a moment.</string>
 </resources>

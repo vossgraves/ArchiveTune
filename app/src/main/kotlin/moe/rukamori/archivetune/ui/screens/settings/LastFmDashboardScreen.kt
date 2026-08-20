@@ -60,9 +60,11 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -95,6 +97,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import timber.log.Timber
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
@@ -339,10 +342,23 @@ private val ytSearchCache = ConcurrentHashMap<String, SongItem?>()
 private suspend fun searchYtForLastFmTrack(title: String, artist: String?): SongItem? {
     if (title.isBlank()) return null
     val cacheKey = "${title.trim().lowercase()}::${artist?.trim()?.lowercase().orEmpty()}"
-    ytSearchCache[cacheKey]?.let { return it }
+    ytSearchCache[cacheKey]?.let {
+        Timber.d("searchYt cache hit: %s → %s", cacheKey, it?.id ?: "null-cached")
+        return it
+    }
     val term = listOfNotNull(artist?.takeIf(String::isNotBlank), title).joinToString(" ")
-    val result = YouTube.search(term, YouTube.SearchFilter.FILTER_SONG).getOrNull()
-    val first = result?.items?.firstOrNull { it is SongItem } as? SongItem
+    Timber.d("searchYt query: \"%s\" (key=%s)", term, cacheKey)
+    val result = runCatching { YouTube.search(term, YouTube.SearchFilter.FILTER_SONG) }
+    val first = result
+        .onFailure { Timber.w(it, "YouTube.search failed for Last.fm track: %s", term) }
+        .getOrNull()
+        ?.items
+        ?.firstOrNull { it is SongItem } as? SongItem
+    if (first == null) {
+        Timber.w("searchYt no SongItem in results for: \"%s\"", term)
+    } else {
+        Timber.d("searchYt resolved: \"%s\" → videoId=%s thumb=%s", term, first.id, first.thumbnail.orEmpty())
+    }
     ytSearchCache[cacheKey] = first
     return first
 }
@@ -470,10 +486,33 @@ fun LastFmDashboardScreen(
     var topTracks by remember { mutableStateOf<Result<TopTracksResponse>?>(null) }
     var topArtists by remember { mutableStateOf<Result<TopArtistsResponse>?>(null) }
     var topAlbums by remember { mutableStateOf<Result<TopAlbumsResponse>?>(null) }
+    // Stats-only responses from the limit=1 fetches. Mirrors LastWave-native's
+    // _fetchHomeData() Promise.allSettled batch, which fires four parallel
+    // calls (user.getinfo + the three limit=1 stats calls) so the hero card
+    // reads `attr.total` (the lifetime unique-item count) instead of the
+    // page size. The list calls below (limit=20) feed the filter views; the
+    // stats calls here feed the hero stat pills — separated so that a slow
+    // list fetch can't delay the stats, and a stats fetch failure can't take
+    // the lists down with it.
+    var statsTopTracks by remember { mutableStateOf<Result<TopTracksResponse>?>(null) }
+    var statsTopArtists by remember { mutableStateOf<Result<TopArtistsResponse>?>(null) }
+    var statsTopAlbums by remember { mutableStateOf<Result<TopAlbumsResponse>?>(null) }
     var isRefreshing by remember { mutableStateOf(false) }
     var selectedFilter by remember { mutableStateOf(LastFmFilter.RECENT) }
     var overflowTrack by remember { mutableStateOf<LastFmTrackRef?>(null) }
     var showAddToPlaylist by remember { mutableStateOf(false) }
+    // (Task 5c) Captured ref of the track the user wants to add to a playlist.
+    // Decoupled from [overflowTrack] because the bottom sheet is dismissed
+    // BEFORE the AddToPlaylistDialog opens (otherwise the dialog renders
+    // behind the sheet's high-elevation scrim). The ref lives here so it
+    // survives the sheet dismissal and is consumed by the dialog's onGetSong.
+    var showAddToPlaylistTrack by remember { mutableStateOf<LastFmTrackRef?>(null) }
+    // Inline scrobble-search overlay (Task 6c): tapping the header search
+    // icon toggles a TextField that filters the currently-loaded recent +
+    // top tracks by title / artist, with an "×N" badge for each match's
+    // play count (from the merged-dedup data). Empty when not visible.
+    var searchVisible by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
 
     fun refresh() {
         val username = current?.username?.takeIf { it.isNotBlank() } ?: return
@@ -482,27 +521,67 @@ fun LastFmDashboardScreen(
             isRefreshing = true
             try {
                 current.serviceConfig.apply(sessionKey = current.sessionKey)
-                // Five parallel Last.fm calls — user.getInfo for the header / hero
-                // card, plus the four lists the dashboard cycles through via the
-                // filter dropdown. Fetched once on refresh (and on re-login) so
-                // switching filters is instant; the lists are small (limit = 20)
-                // so this is a single round-trip's worth of bandwidth.
-                val infoResult = LastFM.getUserInfo(username)
-                val recentResult = LastFM.getRecentTracks(username, limit = 20)
-                val topTracksResult = LastFM.getTopTracks(username, period = "overall", limit = 20)
-                val topArtistsResult = LastFM.getTopArtists(username, period = "overall", limit = 20)
-                val topAlbumsResult = LastFM.getTopAlbums(username, period = "overall", limit = 20)
-                withContext(Dispatchers.Default) {
+                // Eight parallel Last.fm calls — mirrors LastWave-native's
+                // _fetchHomeData() Promise.allSettled batch:
+                //   • user.getInfo                → header + hero scrobbles count
+                //   • user.getRecentTracks(20)   → RECENT filter view
+                //   • user.getTopTracks(20)      → TOP_TRACKS filter view
+                //   • user.getTopArtists(20)    → TOP_ARTISTS filter view
+                //   • user.getTopAlbums(20)     → TOP_ALBUMS filter view
+                //   • user.getTopTracks(1)      → hero stat pill (attr.total)
+                //   • user.getTopArtists(1)    → hero stat pill (attr.total)
+                //   • user.getTopAlbums(1)     → hero stat pill (attr.total)
+                //
+                // The three limit=1 stats calls only need to read `@attr.total`
+                // (the lifetime unique-item count) — fetching a single item is
+                // enough to get the count, and is much lighter than pulling the
+                // whole first page just to count it. List calls use limit=20 so
+                // the dashboard's filter views render instantly without a second
+                // round-trip on filter switch.
+                withContext(Dispatchers.IO) {
+                    val infoDeferred = async { LastFM.getUserInfo(username) }
+                    val recentDeferred = async { LastFM.getRecentTracks(username, limit = 20) }
+                    val topTracksDeferred = async { LastFM.getTopTracks(username, period = "overall", limit = 20) }
+                    val topArtistsDeferred = async { LastFM.getTopArtists(username, period = "overall", limit = 20) }
+                    val topAlbumsDeferred = async { LastFM.getTopAlbums(username, period = "overall", limit = 20) }
+                    val statsTracksDeferred = async { LastFM.getTopTracks(username, period = "overall", limit = 1) }
+                    val statsArtistsDeferred = async { LastFM.getTopArtists(username, period = "overall", limit = 1) }
+                    val statsAlbumsDeferred = async { LastFM.getTopAlbums(username, period = "overall", limit = 1) }
+
+                    val infoResult = infoDeferred.await()
+                    val recentResult = recentDeferred.await()
+                    val topTracksResult = topTracksDeferred.await()
+                    val topArtistsResult = topArtistsDeferred.await()
+                    val topAlbumsResult = topAlbumsDeferred.await()
+                    val statsTracksResult = statsTracksDeferred.await()
+                    val statsArtistsResult = statsArtistsDeferred.await()
+                    val statsAlbumsResult = statsAlbumsDeferred.await()
+
+                    // Surface parse / auth failures to logcat so the dashboard
+                    // doesn't silently fall back to "0" stats without any signal
+                    // that the request failed (the previous implementation would
+                    // show 0 across the board with no clue as to why).
+                    infoResult.onFailure { Timber.e(it, "Last.fm user.getInfo failed") }
+                    recentResult.onFailure { Timber.e(it, "Last.fm user.getRecentTracks failed") }
+                    topTracksResult.onFailure { Timber.e(it, "Last.fm user.getTopTracks(limit=20) failed") }
+                    topArtistsResult.onFailure { Timber.e(it, "Last.fm user.getTopArtists(limit=20) failed") }
+                    topAlbumsResult.onFailure { Timber.e(it, "Last.fm user.getTopAlbums(limit=20) failed") }
+                    statsTracksResult.onFailure { Timber.e(it, "Last.fm user.getTopTracks(limit=1 stats) failed") }
+                    statsArtistsResult.onFailure { Timber.e(it, "Last.fm user.getTopArtists(limit=1 stats) failed") }
+                    statsAlbumsResult.onFailure { Timber.e(it, "Last.fm user.getTopAlbums(limit=1 stats) failed") }
+
                     userInfo = infoResult
                     recentTracks = recentResult.map { it.recenttracks.track }
                     // Keep the wrappers intact (see the var declaration comment
                     // for why) — the read site unwraps to the page list, and the
                     // hero stat pills read .toptracks.attr.total etc. directly
-                    // off the same state. (Previous implementation unwrapped
-                    // here, which dropped the attr.)
+                    // off the same state.
                     topTracks = topTracksResult
                     topArtists = topArtistsResult
                     topAlbums = topAlbumsResult
+                    statsTopTracks = statsTracksResult
+                    statsTopArtists = statsArtistsResult
+                    statsTopAlbums = statsAlbumsResult
                 }
             } finally {
                 isRefreshing = false
@@ -534,12 +613,17 @@ fun LastFmDashboardScreen(
             LastFmDashboardHeader(
                 userInfo = userInfo,
                 isRefreshing = isRefreshing,
+                searchVisible = searchVisible,
+                searchQuery = searchQuery,
+                onSearchQueryChange = { searchQuery = it },
+                onToggleSearch = {
+                    searchVisible = !searchVisible
+                    if (!searchVisible) searchQuery = ""
+                },
                 theme = theme,
                 onRefresh = { if (!isRefreshing) refresh() },
                 onBack = navController::navigateUp,
                 onBackLong = navController::backToMain,
-                onExplore = { navController.navigate(Screens.MoodAndGenres.route) },
-                onSearch = { navController.navigate(Screens.Search.route) },
                 onAvatar = { navController.navigate(Screens.MoodAndGenres.route) },
             )
         },
@@ -576,45 +660,43 @@ fun LastFmDashboardScreen(
             recent.associateArtworkByTrack()
         }
 
-        val seedMap = remember(allTracksForArtworkSeedKey(recent.map { it.track }, top)) {
-            val snapshot = HashMap<String, String>()
-            for (lookup in buildAllArtworkLookups(recent.map { it.track }, top)) {
-                CachedArtworkStore.get(lookup.key)?.let { snapshot[lookup.key] = it }
+        // (Task 6a) Track artwork is now resolved lazily per-row inside
+        // [DashboardTrackRow] via its own `LaunchedEffect(track.artworkKey())`.
+        // The previous upfront batch resolution (LaunchedEffect over all
+        // tracks at once) ran even for off-screen rows; the per-row approach
+        // only resolves what's actually composed, so opening the dashboard
+        // with a long recent-tracks list no longer kicks off 50+ parallel
+        // YouTube searches before the user has scrolled past row 3. The
+        // [CachedArtworkStore] process cache (seed lookups below) is still
+        // consulted so a previously-resolved row doesn't re-resolve.
+
+        // Scrobble-search filter (Task 6c): case-insensitive substring match
+        // on title or artist text. Empty query = no filtering (return the
+        // original list).
+        val q = searchQuery.trim()
+        val recentFiltered = remember(recent, q) {
+            if (q.isBlank() || !searchVisible) recent
+            else recent.filter { e ->
+                e.track.name?.contains(q, ignoreCase = true) == true ||
+                    e.track.artist?.text?.contains(q, ignoreCase = true) == true
             }
-            snapshot
         }
-        var catalogueArtworkByTrack by remember { mutableStateOf<Map<String, String>>(seedMap) }
-
-        val allTracksForArtwork = remember(recent, top) {
-            buildAllArtworkLookups(recent.map { it.track }, top)
+        val topFiltered = remember(top, q) {
+            if (q.isBlank() || !searchVisible) top
+            else top.filter { t ->
+                t.name?.contains(q, ignoreCase = true) == true ||
+                    t.artist?.text?.contains(q, ignoreCase = true) == true
+            }
         }
-
-        LaunchedEffect(allTracksForArtwork) {
-            if (allTracksForArtwork.isEmpty()) return@LaunchedEffect
-            val snapshot = HashMap<String, String>(catalogueArtworkByTrack)
-            val chunks = allTracksForArtwork.chunked(LASTFM_ARTWORK_CONCURRENCY)
-            for (chunk in chunks) {
-                val toResolve = chunk.filter { lookup -> snapshot[lookup.key].isNullOrBlank() }
-                if (toResolve.isEmpty()) continue
-                val resolved = withContext(Dispatchers.IO) {
-                    toResolve
-                        .map { lookup ->
-                            async(Dispatchers.IO) {
-                                val url = resolveCatalogueCover(lookup)
-                                if (url != null) {
-                                    CachedArtworkStore.put(lookup.key, url)
-                                    lookup.key to url
-                                } else {
-                                    null
-                                }
-                            }
-                        }
-                        .awaitAll()
-                        .filterNotNull()
-                }
-                if (resolved.isEmpty()) continue
-                resolved.forEach { (k, u) -> snapshot[k] = u }
-                catalogueArtworkByTrack = snapshot.toMap()
+        val artistsFiltered = remember(artists, q) {
+            if (q.isBlank() || !searchVisible) artists
+            else artists.filter { it.name?.contains(q, ignoreCase = true) == true }
+        }
+        val albumsFiltered = remember(albums, q) {
+            if (q.isBlank() || !searchVisible) albums
+            else albums.filter { a ->
+                a.name?.contains(q, ignoreCase = true) == true ||
+                    a.artist?.text?.contains(q, ignoreCase = true) == true
             }
         }
 
@@ -698,26 +780,41 @@ fun LastFmDashboardScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            item(key = "header_pills") {
-                HeaderPillRow(
-                    userInfo = userInfo,
-                    username = current.username,
-                    theme = theme,
-                )
-            }
+            // Hide header pills + hero card while the scrobble-search overlay
+            // is open — the user is searching, not browsing stats, so we
+            // collapse down to just the search field + filtered list (Task 6c).
+            if (!searchVisible) {
+                item(key = "header_pills") {
+                    HeaderPillRow(
+                        userInfo = userInfo,
+                        username = current.username,
+                        theme = theme,
+                    )
+                }
 
-            item(key = "hero_card") {
-                HeroStatsCard(
-                    userInfo = userInfo,
-                    username = current.username,
-                    isRefreshing = isRefreshing,
-                    trackCount = topTracks?.getOrNull()?.toptracks?.attr?.total?.toIntOrNull() ?: 0,
-                    artistCount = topArtists?.getOrNull()?.topartists?.attr?.total?.toIntOrNull() ?: 0,
-                    albumCount = topAlbums?.getOrNull()?.topalbums?.attr?.total?.toIntOrNull() ?: 0,
-                    onRetry = ::refresh,
-                    onOpenGenres = { navController.navigate(Screens.MoodAndGenres.route) },
-                    theme = theme,
-                )
+                item(key = "hero_card") {
+                    HeroStatsCard(
+                        userInfo = userInfo,
+                        username = current.username,
+                        isRefreshing = isRefreshing,
+                        // (Task 1) Read the lifetime unique-item counts
+                        // off the dedicated limit=1 stats responses — mirrors
+                        // LastWave-native's _fetchHomeData() batch where the
+                        // hero stats come from the limit=1 fetches, not the
+                        // list fetches. Falls back to the list responses if
+                        // the stats fetch failed (defensive: same source, so
+                        // the value is still authoritative).
+                        trackCount = (statsTopTracks ?: topTracks)
+                            ?.getOrNull()?.toptracks?.attr?.total?.toIntOrNull() ?: 0,
+                        artistCount = (statsTopArtists ?: topArtists)
+                            ?.getOrNull()?.topartists?.attr?.total?.toIntOrNull() ?: 0,
+                        albumCount = (statsTopAlbums ?: topAlbums)
+                            ?.getOrNull()?.topalbums?.attr?.total?.toIntOrNull() ?: 0,
+                        onRetry = ::refresh,
+                        onOpenGenres = { navController.navigate(Screens.MoodAndGenres.route) },
+                        theme = theme,
+                    )
+                }
             }
 
             item(key = "filter_header") {
@@ -730,22 +827,23 @@ fun LastFmDashboardScreen(
 
             when (selectedFilter) {
                 LastFmFilter.RECENT -> {
-                    if (recent.isEmpty() && recentTracks != null && !isRefreshing) {
+                    if (recentFiltered.isEmpty() && recentTracks != null && !isRefreshing) {
                         item(key = "recent_empty") {
                             EmptyHint(
-                                text = stringResource(R.string.lastfm_no_recent_tracks),
+                                text = if (searchVisible && q.isNotBlank())
+                                    stringResource(R.string.lastfm_no_search_results)
+                                else stringResource(R.string.lastfm_no_recent_tracks),
                                 theme = theme,
                             )
                         }
                     } else {
                         items(
-                            recent,
+                            recentFiltered,
                             key = { "recent_${it.track.name}_${it.track.date?.uts ?: it.track.attr?.nowplaying ?: ""}" },
                         ) { entry ->
                             DashboardTrackRow(
                                 track = entry.track.toRef(playCount = entry.playCount),
-                                fallbackArtworkUrl = recentArtworkByTrack[entry.track.trackArtworkKey()]
-                                    ?: catalogueArtworkByTrack[entry.track.trackArtworkKey()],
+                                fallbackArtworkUrl = recentArtworkByTrack[entry.track.trackArtworkKey()],
                                 onOverflow = { overflowTrack = entry.track.toRef(playCount = entry.playCount) },
                                 theme = theme,
                             )
@@ -753,23 +851,24 @@ fun LastFmDashboardScreen(
                     }
                 }
                 LastFmFilter.TOP_TRACKS -> {
-                    if (top.isEmpty() && topTracks != null && !isRefreshing) {
+                    if (topFiltered.isEmpty() && topTracks != null && !isRefreshing) {
                         item(key = "top_empty") {
                             EmptyHint(
-                                text = stringResource(R.string.lastfm_no_top_tracks),
+                                text = if (searchVisible && q.isNotBlank())
+                                    stringResource(R.string.lastfm_no_search_results)
+                                else stringResource(R.string.lastfm_no_top_tracks),
                                 theme = theme,
                             )
                         }
                     } else {
                         items(
-                            top.withIndex().toList(),
+                            topFiltered.withIndex().toList(),
                             key = { "top_${it.index}_${it.value.name}" },
                         ) { (index, track) ->
                             DashboardTrackRow(
                                 track = track.toRef(),
                                 rank = index + 1,
-                                fallbackArtworkUrl = recentArtworkByTrack[track.trackArtworkKey()]
-                                    ?: catalogueArtworkByTrack[track.trackArtworkKey()],
+                                fallbackArtworkUrl = recentArtworkByTrack[track.trackArtworkKey()],
                                 onOverflow = { overflowTrack = track.toRef() },
                                 theme = theme,
                             )
@@ -777,16 +876,18 @@ fun LastFmDashboardScreen(
                     }
                 }
                 LastFmFilter.TOP_ARTISTS -> {
-                    if (artists.isEmpty() && topArtists != null && !isRefreshing) {
+                    if (artistsFiltered.isEmpty() && topArtists != null && !isRefreshing) {
                         item(key = "artists_empty") {
                             EmptyHint(
-                                text = stringResource(R.string.lastfm_no_top_tracks),
+                                text = if (searchVisible && q.isNotBlank())
+                                    stringResource(R.string.lastfm_no_search_results)
+                                else stringResource(R.string.lastfm_no_top_tracks),
                                 theme = theme,
                             )
                         }
                     } else {
                         items(
-                            artists.withIndex().toList(),
+                            artistsFiltered.withIndex().toList(),
                             key = { "artist_${it.index}_${it.value.name}" },
                         ) { (index, artist) ->
                             DashboardArtistRow(
@@ -801,16 +902,18 @@ fun LastFmDashboardScreen(
                     }
                 }
                 LastFmFilter.TOP_ALBUMS -> {
-                    if (albums.isEmpty() && topAlbums != null && !isRefreshing) {
+                    if (albumsFiltered.isEmpty() && topAlbums != null && !isRefreshing) {
                         item(key = "albums_empty") {
                             EmptyHint(
-                                text = stringResource(R.string.lastfm_no_top_tracks),
+                                text = if (searchVisible && q.isNotBlank())
+                                    stringResource(R.string.lastfm_no_search_results)
+                                else stringResource(R.string.lastfm_no_top_tracks),
                                 theme = theme,
                             )
                         }
                     } else {
                         items(
-                            albums.withIndex().toList(),
+                            albumsFiltered.withIndex().toList(),
                             key = { "album_${it.index}_${it.value.name}_${it.value.artist?.text ?: ""}" },
                         ) { (index, album) ->
                             DashboardAlbumRow(
@@ -827,18 +930,32 @@ fun LastFmDashboardScreen(
             }
         }
 
+        // (Task 5c) Dismiss the bottom sheet FIRST, then surface the
+        // AddToPlaylistDialog on top. The previous implementation left the
+        // sheet mounted while the dialog opened, so the dialog (a low-
+        // elevation AlertDialog) was visually hidden behind the high-
+        // elevation ModalBottomSheet and the user saw nothing happen. The
+        // sheet's onDismiss clears `overflowTrack`, but we capture the
+        // ref locally first so the dialog still has a track to resolve.
         overflowTrack?.let { track ->
             TrackOverflowSheet(
                 track = track,
                 onDismiss = { overflowTrack = null },
                 onOpenGenres = { navController.navigate(Screens.MoodAndGenres.route) },
-                onAddToPlaylist = { showAddToPlaylist = true },
+                onAddToPlaylist = {
+                    // Capture the ref before dismissing the sheet — the
+                    // AddToPlaylistDialog's onGetSong callback needs it.
+                    val captured = track
+                    overflowTrack = null
+                    showAddToPlaylistTrack = captured
+                    showAddToPlaylist = true
+                },
                 theme = theme,
             )
         }
 
-        if (showAddToPlaylist && overflowTrack != null) {
-            val track = overflowTrack!!
+        if (showAddToPlaylist && showAddToPlaylistTrack != null) {
+            val track = showAddToPlaylistTrack!!
             AddToPlaylistDialog(
                 isVisible = true,
                 onGetSong = {
@@ -848,13 +965,17 @@ fun LastFmDashboardScreen(
                     // first SongItem match so the dialog can write it into
                     // the picked playlist's playlist_map / playlist_song
                     // join tables via the standard LocalDatabase path.
+                    Timber.d("AddToPlaylist onGetSong for title=%s artist=%s", track.title, track.artist.orEmpty())
                     val song = searchYtForLastFmTrack(track.title, track.artist)
+                    if (song == null) {
+                        Timber.w("No YouTube match for Last.fm track (add-to-playlist): %s - %s", track.artist.orEmpty(), track.title)
+                    }
                     listOfNotNull(song?.id)
                 },
-                onDismiss = { showAddToPlaylist = false },
+                onDismiss = { showAddToPlaylist = false; showAddToPlaylistTrack = null },
                 onAddComplete = { _, _ ->
                     showAddToPlaylist = false
-                    overflowTrack = null
+                    showAddToPlaylistTrack = null
                 },
             )
         }
@@ -863,16 +984,35 @@ fun LastFmDashboardScreen(
 
 // ── Header ────────────────────────────────────────────────────────────────────
 
+/**
+ * Top app bar for the dashboard.
+ *
+ * Simplified per Task 6b — only four actions remain, mirroring the
+ * LastWave-native action set (back arrow on the left, title in the
+ * middle, then refresh + search + avatar on the right in that order).
+ * The previous explore (mood_and_genres) icon is gone (the same target
+ * is reachable via the hero card's arrow + the avatar tap).
+ *
+ * Title text reads `R.string.stats` (Task 2) — the rest of the app
+ * (profile popup on the home page) keeps using `R.string.lastfm_dashboard`
+ * for the navigation entry, but the visible title on the dashboard page
+ * itself is just "Stats" so it lines up with the Library tab's stats label.
+ *
+ * Scrobble-search (Task 6c): tapping the search icon swaps the title
+ * text for an [OutlinedTextField] that drives the LazyColumn's filter.
+ */
 @Composable
 private fun LastFmDashboardHeader(
     userInfo: Result<UserInfo>?,
     isRefreshing: Boolean,
+    searchVisible: Boolean,
+    searchQuery: String,
+    onSearchQueryChange: (String) -> Unit,
+    onToggleSearch: () -> Unit,
     theme: DashboardTheme,
     onRefresh: () -> Unit,
     onBack: () -> Unit,
     onBackLong: () -> Unit,
-    onExplore: () -> Unit,
-    onSearch: () -> Unit,
     onAvatar: () -> Unit,
 ) {
     Surface(
@@ -902,20 +1042,62 @@ private fun LastFmDashboardHeader(
                     tint = theme.topAppBarIconTint,
                 )
             }
-            Text(
-                text = stringResource(R.string.lastfm_dashboard),
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                color = theme.topAppBarTitleText,
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(start = 8.dp),
-            )
+            if (searchVisible) {
+                // Inline search field replaces the title while the overlay is
+                // open. Same weight(1f) slot as the title so the action icons
+                // on the right stay anchored. Tinted to match the header's
+                // icon color so the field reads as part of the bar.
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = onSearchQueryChange,
+                    singleLine = true,
+                    placeholder = { Text(stringResource(R.string.lastfm_search_placeholder)) },
+                    leadingIcon = {
+                        Icon(
+                            painter = painterResource(R.drawable.solar_magnifer_linear),
+                            contentDescription = null,
+                            tint = theme.topAppBarIconTint,
+                        )
+                    },
+                    trailingIcon = {
+                        AppIconButton(
+                            onClick = onToggleSearch,
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.solar_close_circle_linear),
+                                contentDescription = stringResource(R.string.clear_search),
+                                tint = theme.topAppBarIconTint,
+                            )
+                        }
+                    },
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 4.dp),
+                    colors = TextFieldDefaults.colors(
+                        focusedContainerColor = Color.Transparent,
+                        unfocusedContainerColor = Color.Transparent,
+                        focusedTextColor = theme.topAppBarTitleText,
+                        unfocusedTextColor = theme.topAppBarTitleText,
+                        cursorColor = theme.accent,
+                        focusedIndicatorColor = theme.accent,
+                        unfocusedIndicatorColor = theme.topAppBarIconTint.copy(alpha = 0.4f),
+                    ),
+                )
+            } else {
+                Text(
+                    text = stringResource(R.string.stats),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = theme.topAppBarTitleText,
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(start = 8.dp),
+                )
+            }
             // Refresh icon rotates while a fetch is in flight, same as the
             // previous LargeFlexibleTopAppBar implementation — just moved into
-            // a circular IconButton to match the LastWave-native action set
-            // (explore + search + avatar). The rotation tween is preserved
-            // verbatim so the spin/snap transition behaviour is unchanged.
+            // a circular IconButton. The rotation tween is preserved verbatim
+            // so the spin/snap transition behaviour is unchanged.
             val rotation by animateFloatAsState(
                 targetValue = if (isRefreshing) 360f else 0f,
                 animationSpec = if (isRefreshing) {
@@ -942,20 +1124,9 @@ private fun LastFmDashboardHeader(
                     modifier = Modifier.graphicsLayer { rotationZ = rotation },
                 )
             }
+            // Search icon — toggles the inline scrobble-search field (Task 6c).
             IconButton(
-                onClick = onExplore,
-                colors = IconButtonDefaults.iconButtonColors(
-                    contentColor = theme.topAppBarIconTint,
-                ),
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.solar_server_linear),
-                    contentDescription = stringResource(R.string.mood_and_genres),
-                    tint = theme.topAppBarIconTint,
-                )
-            }
-            IconButton(
-                onClick = onSearch,
+                onClick = onToggleSearch,
                 colors = IconButtonDefaults.iconButtonColors(
                     contentColor = theme.topAppBarIconTint,
                 ),
@@ -967,11 +1138,10 @@ private fun LastFmDashboardHeader(
                 )
             }
             // 40dp circular Last.fm avatar — taps navigate to mood_and_genres
-            // (same target as the explore button, mirroring LastWave-native's
-            // ProfileAvatar which opens the discover view). When no avatar URL
-            // is available (not logged in / image array empty), falls back to
-            // solar_user_circle_linear so the header still reads as a tappable
-            // profile afford.
+            // (the discover view, mirroring LastWave-native's ProfileAvatar).
+            // When no avatar URL is available (not logged in / image array
+            // empty), falls back to solar_user_circle_linear so the header
+            // still reads as a tappable profile afford.
             IconButton(
                 onClick = onAvatar,
                 colors = IconButtonDefaults.iconButtonColors(
@@ -1515,7 +1685,36 @@ private fun DashboardTrackRow(
     onOverflow: () -> Unit,
     theme: DashboardTheme,
 ) {
-    val artworkUrl = bestArtwork(track.image) ?: fallbackArtworkUrl
+    // (Task 6a) Lazy per-row artwork resolution. Seed from: (1) the Last.fm
+    // image array via [bestArtwork], (2) the parent's pre-resolved map (which
+    // for the RECENT filter is just `recentArtworkByTrack` — same Last.fm
+    // images, deduplicated), (3) the process-wide [CachedArtworkStore].
+    // Only if all three miss do we kick off a YouTube search in a
+    // `LaunchedEffect(track.artworkKey())` — and that effect only runs when
+    // this row is actually composed (i.e. visible / about to be visible on
+    // the LazyColumn), so the dashboard no longer fires 50+ parallel YT
+    // searches the moment it opens. Resolved URLs are written back to the
+    // [CachedArtworkStore] so re-composition (filter switch, scroll back)
+    // doesn't re-resolve.
+    val artworkKey = track.artworkKey()
+    var resolvedArtworkUrl by remember(artworkKey) {
+        mutableStateOf(
+            bestArtwork(track.image)
+                ?: fallbackArtworkUrl
+                ?: CachedArtworkStore.get(artworkKey),
+        )
+    }
+    LaunchedEffect(artworkKey, resolvedArtworkUrl) {
+        if (!resolvedArtworkUrl.isNullOrBlank()) return@LaunchedEffect
+        val url = withContext(Dispatchers.IO) {
+            resolveCatalogueCover(ArtworkLookup(artworkKey, track.title, track.artist))
+        }
+        if (!url.isNullOrBlank()) {
+            CachedArtworkStore.put(artworkKey, url)
+            resolvedArtworkUrl = url
+        }
+    }
+    val artworkUrl = resolvedArtworkUrl
     val isNowPlaying = track.isNowPlaying
     val trackTitleColor = if (isNowPlaying) theme.nowPlayingTrackTitle else theme.textPrimary
     val trackArtistColor = if (isNowPlaying) theme.nowPlayingTrackArtist else theme.textSecondary
@@ -1913,8 +2112,47 @@ private fun TrackOverflowSheet(
     val playerConnection = LocalPlayerConnection.current
     var loadingAction by remember { mutableStateOf<String?>(null) }
 
+    // (Task 5a) Pre-resolve the YT search once on sheet open so the
+    // banner can show the YouTube thumbnail when Last.fm has no artwork,
+    // AND so the user-facing play / queue / mix actions are instant (cache
+    // hit). The resolved SongItem (or null, if no match) is also cached
+    // in [ytSearchCache] so subsequent taps reuse it without re-searching.
+    // Falls back to Last.fm's own image array via [bestArtwork] first —
+    // for most scrobbles Last.fm has artwork, so the YT search never even
+    // has to run for the banner.
+    var bannerArtworkUrl by remember(track.artworkKey()) {
+        mutableStateOf(bestArtwork(track.image))
+    }
+    LaunchedEffect(track.artworkKey()) {
+        if (!bannerArtworkUrl.isNullOrBlank()) return@LaunchedEffect
+        // Kick off a background YT search to (1) populate the banner image
+        // and (2) prime the cache so the user's first action is instant.
+        val song = withContext(Dispatchers.IO) {
+            searchYtForLastFmTrack(track.title, track.artist)
+        }
+        if (!song?.thumbnail.isNullOrBlank()) {
+            bannerArtworkUrl = song!!.thumbnail
+        }
+    }
+
+    // (Task 5b) Wraps each YT-resolving action with: leading CircularProgressIndicator
+    // while the search is in flight (via [loadingAction] state), toast on null
+    // match, toast on null [playerConnection], and Timber logging so failures
+    // don't disappear silently. The previous implementation called into
+    // `playerConnection?.playNext(...)` etc., which no-ops if the player
+    // service isn't bound — the user tapped and saw nothing happen. Now we
+    // surface that as a toast.
     fun runWithYtSearch(action: String, onFound: (SongItem) -> Unit) {
         if (loadingAction != null) return
+        if (playerConnection == null) {
+            Timber.w("playerConnection is null in TrackOverflowSheet action=%s", action)
+            Toast.makeText(
+                context,
+                context.getString(R.string.lastfm_player_unavailable),
+                Toast.LENGTH_SHORT,
+            ).show()
+            return
+        }
         scope.launch {
             loadingAction = action
             try {
@@ -1922,14 +2160,23 @@ private fun TrackOverflowSheet(
                     searchYtForLastFmTrack(track.title, track.artist)
                 }
                 if (song == null) {
+                    Timber.w("No YT match for Last.fm track action=%s title=%s artist=%s", action, track.title, track.artist.orEmpty())
                     Toast.makeText(
                         context,
                         context.getString(R.string.lastfm_no_yt_match),
                         Toast.LENGTH_SHORT,
                     ).show()
                 } else {
+                    Timber.d("YT action %s resolved to videoId=%s", action, song.id)
                     onFound(song)
                 }
+            } catch (t: Throwable) {
+                Timber.e(t, "YT action %s threw", action)
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.lastfm_no_yt_match),
+                    Toast.LENGTH_SHORT,
+                ).show()
             } finally {
                 loadingAction = null
                 onDismiss()
@@ -1947,6 +2194,13 @@ private fun TrackOverflowSheet(
         // The banner is intentionally a clickable Surface (not a ListItem)
         // so it reads as a primary CTA — same visual hierarchy as
         // LastWave-native's hero "Start radio" banner.
+        //
+        // (Task 5a) The 48dp circular slot now shows the track's album
+        // artwork: Last.fm image array via [bestArtwork] → YouTube
+        // thumbnail from the background-resolved SongItem → accent-color
+        // fallback with solar_forward_linear icon when no artwork is
+        // available at all. The CircularProgressIndicator still renders on
+        // top while the search is in flight.
         Surface(
             onClick = {
                 runWithYtSearch("mix") { song ->
@@ -1969,13 +2223,21 @@ private fun TrackOverflowSheet(
                     modifier = Modifier.size(48.dp),
                 ) {
                     Box(contentAlignment = Alignment.Center) {
+                        if (!bannerArtworkUrl.isNullOrBlank()) {
+                            AsyncImage(
+                                model = bannerArtworkUrl,
+                                contentDescription = null,
+                                modifier = Modifier.fillMaxSize().clip(CircleShape),
+                                contentScale = ContentScale.Crop,
+                            )
+                        }
                         if (loadingAction == "mix") {
                             CircularProgressIndicator(
                                 modifier = Modifier.size(24.dp),
                                 color = theme.nowPlayingPillText,
                                 strokeWidth = 2.dp,
                             )
-                        } else {
+                        } else if (bannerArtworkUrl.isNullOrBlank()) {
                             Icon(
                                 painter = painterResource(R.drawable.solar_forward_linear),
                                 contentDescription = null,
@@ -2281,6 +2543,13 @@ private object CachedArtworkStore {
 }
 
 private const val LASTFM_ARTWORK_CONCURRENCY = 12
+// (Task 6a) The upfront batch-resolve helpers below are kept for future use
+// — the per-row lazy resolution in [DashboardTrackRow] replaces the previous
+// batch approach, but the chunked async pattern is still the right shape if
+// we ever need to pre-warm the cache (e.g. on a `loadMore` call). For now
+// they're unused; the per-row LaunchedEffect is sufficient because
+// [CachedArtworkStore] is process-scoped so a row that scrolls out and back
+// in re-reads the cached URL without re-resolving.
 
 private fun buildAllArtworkLookups(
     recent: List<RecentTrack>,
