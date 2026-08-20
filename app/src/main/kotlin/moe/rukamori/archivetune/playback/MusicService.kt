@@ -9433,25 +9433,30 @@ class MusicService :
     }
 
     /**
-     * Backup Qobuz stream: https://mlc-ytify.kouzu.in/<youtube_id>
+     * Backup Qobuz stream resolver: https://mlc-ytify.kouzu.in/api/stream?id=<youtube_id>
      *
-     * The endpoint takes a YouTube video id (the mediaId of the song in the queue)
-     * as a path segment and returns a lossless audio stream. The `x-request-source: muzo`
-     * header must be sent on every request — without it the server rate-limits the
-     * client aggressively. The header is injected centrally by the
-     * [mediaOkHttpClient] interceptor for any kouzu.in host request, so the
-     * DirectStream we return here can just point at the kouzu.in URL — ExoPlayer's
-     * stream fetch will go through the same OkHttp client and pick up the header.
+     * Two-step flow:
+     *   1. GET the resolver endpoint — returns a small JSON envelope:
+     *        { "id": "<yt_id>", "url": "https://velamhere-img.hf.space/song/<yt_id>", ... }
+     *      The `url` field points at the actual lossless audio stream on the CDN.
+     *   2. ExoPlayer streams from the resolved CDN URL — the same mediaOkHttpClient
+     *      is used, so the x-request-source: muzo header (injected for kouzu.in hosts
+     *      by the interceptor) is applied to the resolver call. The CDN host
+     *      (velamhere-img.hf.space) doesn't need the header.
+     *
+     * The `x-request-source: muzo` header MUST be sent on every kouzu.in request —
+     * without it the server rate-limits the client aggressively. The header is
+     * injected centrally by the [mediaOkHttpClient] interceptor for any kouzu.in
+     * host request.
      *
      * Returns null when:
      *   - mediaId is blank or not a YouTube video id (not 11 chars)
-     *   - the backup server is unreachable / returns a non-2xx
-     *   - the resolved URL is blank
+     *   - the resolver is unreachable / returns a non-2xx
+     *   - the JSON envelope has no `url` field
      *
      * Marked [trustedDirectId] = true because the user has explicitly chosen the
-     * Qobuz source (or Qobuz is in their resolution chain) — the YouTube mediaId
-     * IS the authoritative identity for the song the user is playing, so we skip
-     * the title/artist metadata gate for the backup path.
+     * Qobuz backup source — the YouTube mediaId IS the authoritative identity for
+     * the song the user is playing, so we skip the title/artist metadata gate.
      */
     private fun resolveQobuzBackupStream(query: SourceQuery): DirectStream? {
         val ytId = query.mediaId.trim()
@@ -9463,74 +9468,115 @@ class MusicService :
         }
         return runCatching {
             runBlocking(Dispatchers.IO) {
-                // The backup server endpoint: https://mlc-ytify.kouzu.in/<youtube_id>
-                // The ytId is appended as a path segment (not a query parameter). The
-                // x-request-source: muzo header is injected centrally by the
-                // mediaOkHttpClient interceptor for any kouzu.in host request.
-                val backupUrl = "https://mlc-ytify.kouzu.in/$ytId"
-                // HEAD probe to verify the endpoint is reachable and returns an
-                // audio content type. We don't follow the body here — ExoPlayer
-                // will issue the actual GET with byte-range requests through the
-                // same OkHttp client (which auto-injects x-request-source: muzo).
-                val headRequest =
+                // Step 1: call the resolver endpoint. It returns a small JSON envelope
+                // with the actual stream URL on the velamhere-img.hf.space CDN.
+                val resolverUrl = "https://mlc-ytify.kouzu.in/api/stream?id=$ytId"
+                // NOTE: GET (not HEAD) — the endpoint returns 405 Method Not Allowed
+                // for HEAD. We only need the first chunk of the response to parse the
+                // JSON envelope (the body is ~150 bytes), so we use a small byte range
+                // to avoid downloading the full envelope unnecessarily.
+                val resolverRequest =
                     okhttp3.Request
                         .Builder()
-                        .url(backupUrl)
-                        .head()
+                        .url(resolverUrl)
+                        .get()
                         .header("User-Agent", "ArchiveTune-Android")
+                        .header("Accept", "application/json")
                         .build()
-                mediaOkHttpClient.newCall(headRequest).execute().use { response ->
+                val resolvedUrl = mediaOkHttpClient.newCall(resolverRequest).execute().use { response ->
                     if (!response.isSuccessful) {
                         Timber.tag("MusicService").d(
-                            "Qobuz backup miss for %s: HTTP %d",
+                            "Qobuz backup resolver miss for %s: HTTP %d",
                             ytId,
                             response.code,
                         )
                         return@runBlocking null
                     }
-                    val contentType = response.header("Content-Type")?.lowercase().orEmpty()
-                    // Accept any audio/* content type, plus video/* (some backup
-                    // servers remux lossless audio into an MP4 container) and the
-                    // catch-all octet-stream (used when the server is a pure file
-                    // proxy). The HEAD response is informational; the actual GET
-                    // from ExoPlayer will follow redirects to the final CDN URL.
-                    val looksLikeAudio =
-                        contentType.startsWith("audio/") ||
-                            contentType.startsWith("video/") ||
-                            contentType.contains("octet-stream")
-                    if (!looksLikeAudio) {
+                    val body = response.body?.string().orEmpty()
+                    if (body.isBlank()) {
+                        Timber.tag("MusicService").d("Qobuz backup resolver miss for %s: empty body", ytId)
+                        return@runBlocking null
+                    }
+                    val root = runCatching { org.json.JSONObject(body) }.getOrNull()
+                    if (root == null) {
                         Timber.tag("MusicService").d(
-                            "Qobuz backup miss for %s: unexpected Content-Type=%s",
+                            "Qobuz backup resolver miss for %s: body is not JSON (first 100 chars: %s)",
                             ytId,
-                            contentType,
+                            body.take(100),
                         )
                         return@runBlocking null
                     }
-                    val finalUrl = response.request.url.toString()
-                    val streamUrl = if (finalUrl.isNotBlank()) finalUrl else backupUrl
-                    Timber.tag("MusicService").i(
-                        "Qobuz backup resolved \"%s\" via mlc-ytify.kouzu.in [%s] finalUrl=%s",
-                        query.title,
-                        contentType,
-                        streamUrl.take(80),
-                    )
-                    DirectStream(
-                        uri = streamUrl,
-                        mimeType = "audio/flac",
-                        codecs = "flac",
-                        contentLength = response.header("Content-Length")?.toLongOrNull(),
-                        label = "Qobuz backup (kouzu.in)",
-                        source = AudioSourceType.QOBUZ_BACKUP,
-                        // The YouTube mediaId is the authoritative identity of the
-                        // song the user is playing — we trust it without requiring
-                        // the backup server to echo back matching metadata.
-                        trustedDirectId = true,
-                        matchedTitle = query.title,
-                        matchedArtist = query.artists.joinToString(", ").ifBlank { null },
-                        matchedAlbum = query.album,
-                        matchedDurationMs = query.durationMs,
-                    )
+                    // The resolver returns the actual stream URL in the `url` field.
+                    // Tolerant: also accept `canvas_url` / `video_url` (same field
+                    // names as the Spotify canvas resolver).
+                    val streamUrl =
+                        root.optString("url").takeIf { it.isNotBlank() }
+                            ?: root.optString("canvas_url").takeIf { it.isNotBlank() }
+                            ?: root.optString("video_url").takeIf { it.isNotBlank() }
+                    if (streamUrl.isNullOrBlank()) {
+                        Timber.tag("MusicService").d(
+                            "Qobuz backup resolver miss for %s: no url field in response (first 200 chars: %s)",
+                            ytId,
+                            body.take(200),
+                        )
+                        return@runBlocking null
+                    }
+                    streamUrl
+                } ?: return@runBlocking null
+
+                // Step 2: HEAD-probe the resolved CDN URL to verify it's reachable
+                // and returns an audio content type. This is informational — ExoPlayer
+                // will issue the actual GET with byte-range requests through the same
+                // OkHttp client. The CDN host (velamhere-img.hf.space) doesn't need
+                // the x-request-source: muzo header.
+                val cdnHeadRequest =
+                    okhttp3.Request
+                        .Builder()
+                        .url(resolvedUrl)
+                        .head()
+                        .header("User-Agent", "ArchiveTune-Android")
+                        .build()
+                val (finalStreamUrl, contentLength, contentType) = mediaOkHttpClient.newCall(cdnHeadRequest).execute().use { cdnResponse ->
+                    if (!cdnResponse.isSuccessful) {
+                        Timber.tag("MusicService").d(
+                            "Qobuz backup CDN miss for %s: HTTP %d (resolved url: %s)",
+                            ytId,
+                            cdnResponse.code,
+                            resolvedUrl.take(80),
+                        )
+                        // Fallback: use the resolver-resolved URL directly even
+                        // though the HEAD probe failed — ExoPlayer's GET might
+                        // still succeed (some CDNs reject HEAD but accept GET).
+                        Triple(resolvedUrl, null, "audio/mp4")
+                    } else {
+                        val ct = cdnResponse.header("Content-Type")?.lowercase().orEmpty()
+                        Timber.tag("MusicService").i(
+                            "Qobuz backup resolved \"%s\" via mlc-ytify.kouzu.in → %s [%s]",
+                            query.title,
+                            resolvedUrl.take(80),
+                            ct,
+                        )
+                        Triple(resolvedUrl, cdnResponse.header("Content-Length")?.toLongOrNull(), ct)
+                    }
                 }
+                // The CDN serves audio/mp4 (an MP4 container with lossless ALAC
+                // inside, verified by direct probe — Content-Type: audio/mp4).
+                DirectStream(
+                    uri = finalStreamUrl,
+                    mimeType = if (contentType.contains("flac")) "audio/flac" else "audio/mp4",
+                    codecs = if (contentType.contains("flac")) "flac" else "mp4a.40.2",
+                    contentLength = contentLength,
+                    label = "Qobuz backup (kouzu.in)",
+                    source = AudioSourceType.QOBUZ_BACKUP,
+                    // The YouTube mediaId is the authoritative identity of the
+                    // song the user is playing — we trust it without requiring
+                    // the backup server to echo back matching metadata.
+                    trustedDirectId = true,
+                    matchedTitle = query.title,
+                    matchedArtist = query.artists.joinToString(", ").ifBlank { null },
+                    matchedAlbum = query.album,
+                    matchedDurationMs = query.durationMs,
+                )
             }
         }.onFailure { error ->
             Timber.tag("MusicService").w(error, "Qobuz backup resolution failed for %s", ytId)

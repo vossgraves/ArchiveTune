@@ -106,6 +106,7 @@ fun LastFMSettings(
         val topPadding = innerPadding.calculateTopPadding()
 
         LastFmSettingsContent(
+            navController = navController,
             state = state,
             topPadding = topPadding,
             scrollTo = scrollTo,
@@ -136,6 +137,7 @@ fun LastFMSettings(
 
 @Composable
 private fun LastFmSettingsContent(
+    navController: NavController,
     state: LastFmSettingsScreenState,
     topPadding: Dp,
     scrollTo: String? = null,
@@ -318,32 +320,41 @@ private fun LastFmSettingsSuccess(
         modifier = positions.modifierFor("lastfm_account"),
         title = stringResource(R.string.account),
     ) {
+        // PRIMARY: One-tap WebView sign-in. Opens the LastFmLoginScreen which loads
+        // Last.fm's official auth page in a WebView. The user approves the app,
+        // Last.fm redirects to our custom scheme, we capture the token and exchange
+        // it for a session key via auth.getSession. No API key / secret / username /
+        // password fields — the baked-in LastFmAppCredentials identifies the app.
         item {
             PreferenceEntry(
-                title = {
-                    Text(
-                        text = if (model.isLoggedIn) model.username else stringResource(R.string.not_logged_in),
-                        modifier = Modifier.alpha(if (model.isLoggedIn) 1f else 0.5f),
-                    )
-                },
-                description = null,
-                icon = { Icon(painterResource(R.drawable.token), null) },
-                trailingContent = {
-                    if (model.isLoggedIn) {
+                title = { Text(stringResource(R.string.lastfm_connect_button)) },
+                description = stringResource(R.string.lastfm_connect_button_description),
+                icon = { Icon(painterResource(R.drawable.login), null) },
+                onClick = { navController.navigate(LASTFM_LOGIN_ROUTE) },
+            )
+        }
+
+        // Status row showing the current username + sign out button. When not
+        // logged in, this row is hidden — the connect button above is the only
+        // sign-in affordance.
+        if (model.isLoggedIn) {
+            item {
+                PreferenceEntry(
+                    title = {
+                        Text(
+                            text = model.username,
+                            modifier = Modifier.alpha(1f),
+                        )
+                    },
+                    description = null,
+                    icon = { Icon(painterResource(R.drawable.account), null) },
+                    trailingContent = {
                         OutlinedButton(onClick = onLogout, shapes = ButtonDefaults.shapes()) {
                             Text(stringResource(R.string.action_logout))
                         }
-                    } else {
-                        OutlinedButton(
-                            onClick = onOpenLoginDialog,
-                            enabled = model.canLogin,
-                            shapes = ButtonDefaults.shapes(),
-                        ) {
-                            Text(stringResource(R.string.action_login))
-                        }
-                    }
-                },
-            )
+                    },
+                )
+            }
         }
     }
 

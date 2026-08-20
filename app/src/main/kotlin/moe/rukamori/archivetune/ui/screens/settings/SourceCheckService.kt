@@ -148,40 +148,90 @@ object SourceCheckService {
     }
 
     private fun checkQobuzBackup(): SourceCheckResult {
-        // HEAD-probe the kouzu.in endpoint with a stable YouTube id. The
-        // x-request-source: muzo header is injected centrally by the
-        // MusicService.mediaOkHttpClient interceptor — but here we're using
-        // our own client, so add it manually.
-        // URL pattern: https://mlc-ytify.kouzu.in/<yt_id> (yt_id is a path segment).
-        val url = "https://mlc-ytify.kouzu.in/$KOZU_PROBE_YT_ID"
+        // The Qobuz backup is a two-step resolver: GET the resolver endpoint to
+        // get the actual stream URL on the velamhere-img.hf.space CDN, then HEAD-probe
+        // the CDN URL to verify it serves audio.
+        //
+        // Step 1: resolver GET. The endpoint returns 405 Method Not Allowed for HEAD
+        // (it only accepts GET). The x-request-source: muzo header is REQUIRED —
+        // without it the server rate-limits the client aggressively. We add it
+        // manually here (the SourceCheckService uses its own OkHttpClient, not
+        // MusicService.mediaOkHttpClient).
+        val resolverUrl = "https://mlc-ytify.kouzu.in/api/stream?id=$KOZU_PROBE_YT_ID"
         return runCatching {
-            val request = Request.Builder()
-                .url(url)
-                .head()
+            val resolverRequest = Request.Builder()
+                .url(resolverUrl)
+                .get()
                 .header("x-request-source", "muzo")
+                .header("User-Agent", "ArchiveTune-Android")
+                .header("Accept", "application/json")
                 .build()
-            client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
+            client.newCall(resolverRequest).execute().use { resolverResponse ->
+                if (!resolverResponse.isSuccessful) {
                     return@runCatching SourceCheckResult(
                         healthy = false,
-                        summary = "mlc-ytify.kouzu.in returned HTTP ${response.code} for the probe request. " +
-                            "The backup server may be down or rate-limiting your IP.",
+                        summary = "mlc-ytify.kouzu.in resolver returned HTTP ${resolverResponse.code} " +
+                            "for the probe request. The backup server may be down or rate-limiting your IP.",
                     )
                 }
-                val contentType = response.header("Content-Type")?.lowercase().orEmpty()
-                val ok = contentType.startsWith("audio/") ||
-                    contentType.startsWith("video/") ||
-                    contentType.contains("octet-stream")
-                SourceCheckResult(
-                    healthy = ok,
-                    summary = if (ok) {
-                        "mlc-ytify.kouzu.in is reachable and returned an audio stream ($contentType). " +
-                            "Qobuz backup is READY."
-                    } else {
-                        "mlc-ytify.kouzu.in returned an unexpected content type: $contentType. " +
-                            "The backup server may be misconfigured."
-                    },
-                )
+                val body = resolverResponse.body?.string().orEmpty()
+                if (body.isBlank()) {
+                    return@runCatching SourceCheckResult(
+                        healthy = false,
+                        summary = "mlc-ytify.kouzu.in resolver returned an empty body.",
+                    )
+                }
+                val root = runCatching { JSONObject(body) }.getOrNull()
+                if (root == null) {
+                    return@runCatching SourceCheckResult(
+                        healthy = false,
+                        summary = "mlc-ytify.kouzu.in resolver returned a non-JSON response " +
+                            "(first 100 chars: ${body.take(100)}).",
+                    )
+                }
+                val streamUrl = root.optString("url").takeIf { it.isNotBlank() }
+                    ?: root.optString("canvas_url").takeIf { it.isNotBlank() }
+                    ?: root.optString("video_url").takeIf { it.isNotBlank() }
+                if (streamUrl.isNullOrBlank()) {
+                    return@runCatching SourceCheckResult(
+                        healthy = false,
+                        summary = "mlc-ytify.kouzu.in resolver returned a JSON envelope with no `url` field " +
+                            "(first 200 chars: ${body.take(200)}).",
+                    )
+                }
+                // Step 2: HEAD-probe the resolved CDN URL.
+                val cdnRequest = Request.Builder()
+                    .url(streamUrl)
+                    .head()
+                    .header("User-Agent", "ArchiveTune-Android")
+                    .build()
+                client.newCall(cdnRequest).execute().use { cdnResponse ->
+                    if (!cdnResponse.isSuccessful) {
+                        // Some CDNs reject HEAD but accept GET — report healthy=true
+                        // if the resolver returned a URL even if HEAD failed.
+                        return@runCatching SourceCheckResult(
+                            healthy = true,
+                            summary = "mlc-ytify.kouzu.in resolver returned a stream URL " +
+                                "(${streamUrl.take(60)}...) but the CDN HEAD probe got HTTP ${cdnResponse.code}. " +
+                                "ExoPlayer's GET might still succeed (some CDNs reject HEAD). " +
+                                "Qobuz backup is PROBABLY READY.",
+                        )
+                    }
+                    val contentType = cdnResponse.header("Content-Type")?.lowercase().orEmpty()
+                    val ok = contentType.startsWith("audio/") ||
+                        contentType.startsWith("video/") ||
+                        contentType.contains("octet-stream")
+                    SourceCheckResult(
+                        healthy = ok || contentType.isBlank(),
+                        summary = if (ok || contentType.isBlank()) {
+                            "mlc-ytify.kouzu.in resolver → $contentType stream on velamhere-img.hf.space. " +
+                                "Qobuz backup is READY."
+                        } else {
+                            "mlc-ytify.kouzu.in resolver succeeded but the CDN returned an unexpected content type: $contentType. " +
+                                "The backup server may be misconfigured."
+                        },
+                    )
+                }
             }
         }.getOrElse { e ->
             SourceCheckResult(

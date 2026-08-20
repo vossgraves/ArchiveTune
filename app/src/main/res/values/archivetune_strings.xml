@@ -537,6 +537,12 @@
     <string name="auth_webview_tidal_subtitle">Sign in to Tidal below. ArchiveTune saves the session automatically.</string>
     <string name="auth_webview_qobuz_subtitle">Sign in to Qobuz below. Your credentials are captured automatically.</string>
     <string name="auth_webview_deezer_subtitle">Sign in to Deezer below. The session cookie is saved automatically.</string>
+    <string name="auth_webview_lastfm_subtitle">Tap \"Yes, allow access\" on Last.fm. ArchiveTune captures the session automatically.</string>
+    <string name="lastfm_login">Connect with Last.fm</string>
+    <string name="lastfm_login_success">Signed in to Last.fm</string>
+    <string name="lastfm_login_cancelled">Last.fm sign-in cancelled</string>
+    <string name="lastfm_connect_button">Connect with Last.fm</string>
+    <string name="lastfm_connect_button_description">Opens a one-tap Last.fm web sign-in. No API key or password needed.</string>
     <string name="settings_section_player_content">Player &amp; Content</string>
     <string name="settings_appearance_subtitle">Themes, layout, and visual styles</string>
     <string name="settings_playback_title">Playback</string>

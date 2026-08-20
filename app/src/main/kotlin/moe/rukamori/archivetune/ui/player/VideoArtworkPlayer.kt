@@ -2201,7 +2201,20 @@ private suspend fun resolveVideoStreamUrl(
     videoId: String,
     preferredHeight: Int?,
 ): VideoStreamInfo? {
-    val clients = listOf(ANDROID_VR_1_65_10 to null, WEB_REMIX to "sts")
+    // Client order: WEB_REMIX first, ANDROID_VR fallback.
+    //
+    // Previously ANDROID_VR was first. The crash log showed ANDROID_VR video URLs
+    // getting HTTP 403 from googlevideo.com while the audio URL (also ANDROID_VR)
+    // loaded fine. The audio path uses the user's WEB auth context, which means
+    // the user is logged in via WEB — WEB_REMIX URLs are more likely to work
+    // for this user than ANDROID_VR URLs (which are anonymous Quest-3 fingerprint).
+    //
+    // WEB_REMIX URLs need signature deobfuscation (handled by NewPipeUtils.getStreamUrl)
+    // and may need poToken + n-param transform — but since the user's audio plays
+    // fine via the WEB client, the WEB_REMIX video URL should also work.
+    //
+    // ANDROID_VR is kept as a fallback for users who aren't logged in via WEB.
+    val clients = listOf(WEB_REMIX to "sts", ANDROID_VR_1_65_10 to null)
 
     var lastAvailableHeights: List<Int> = emptyList()
     var lastCaptionTracks: List<PlayerResponse.CaptionTrack> = emptyList()
