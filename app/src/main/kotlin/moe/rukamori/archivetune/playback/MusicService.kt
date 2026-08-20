@@ -456,7 +456,28 @@ class MusicService :
                         host.endsWith("youtube-nocookie.com") ||
                         host.endsWith("ytimg.com")
 
-                if (!isYouTubeMediaHost) return@addInterceptor chain.proceed(request)
+                if (!isYouTubeMediaHost) {
+                    // Qobuz backup server (mlc.kouzu.in) — used as a fallback when the primary
+                    // Qobuz backends (direct tokens + community proxy instances) all fail to
+                    // resolve a track. The endpoint takes a YouTube video id and returns a
+                    // lossless stream. The x-request-source: muzo header MUST be sent on every
+                    // request (including the redirected CDN fetch in some setups) — without it
+                    // the server rate-limits aggressively. ExoPlayer streams through this same
+                    // OkHttp client, so injecting the header here means the streaming requests
+                    // (not just the initial resolve) also bypass rate-limiting.
+                    if (host.endsWith("kouzu.in") && !request.header("x-request-source").isNullOrEmpty()) {
+                        return@addInterceptor chain.proceed(request)
+                    }
+                    if (host.endsWith("kouzu.in")) {
+                        val patched =
+                            request
+                                .newBuilder()
+                                .header("x-request-source", "muzo")
+                                .build()
+                        return@addInterceptor chain.proceed(patched)
+                    }
+                    return@addInterceptor chain.proceed(request)
+                }
 
                 val requestProfile = StreamClientUtils.resolveRequestProfile(request.url)
                 chain.proceed(
@@ -8573,8 +8594,21 @@ class MusicService :
     fun availableSourcesForSong(mediaId: String): List<AudioSourceType> {
         val resolved = resolvedSourcesByMediaId[mediaId].orEmpty()
         val override = SongSourceOverride.get(dataStore.get(SongSourceOverrideKey, ""), mediaId)
+        // Sources are surfaced in the Source chooser when ANY of:
+        //   - Always-available: YouTube (the implicit fallback).
+        //   - The source was previously resolved successfully for this media id.
+        //   - The user previously pinned this song to this source (override).
+        //   - The source is GLOBALLY ENABLED — the user has explicitly turned the source
+        //     on in Settings, so they should be able to pick it per-song even if the
+        //     initial resolution hasn't completed (or failed transiently). Previously
+        //     JioSaavn / Qobuz would not appear in the chooser until they happened to
+        //     resolve, which made the user think the source "did nothing" when picked
+        //     elsewhere. Now any enabled source is selectable.
         return AudioSourceConfig.DEFAULT_ORDER.filter {
-            it == AudioSourceType.YOUTUBE || it in resolved || it == override
+            it == AudioSourceType.YOUTUBE ||
+                it in resolved ||
+                it == override ||
+                isSourceEnabled(it)
         }
     }
 
@@ -8730,16 +8764,28 @@ class MusicService :
             // song ended the player had no next item to auto-advance to, so playback stopped
             // until the user manually pressed Play. We now capture the full media-items list
             // and current index BEFORE the teardown, swap the current item for the freshly
-            // resolved one, and call setMediaItems(items, currentIndex, 0L) so the queue is
-            // intact and ExoPlayer's auto-advance works as expected.
+            // resolved one, and call setMediaItems(items, currentIndex, startPositionMs) so
+            // the queue is intact and ExoPlayer's auto-advance works as expected.
+            //
+            // POSITION PRESERVATION: the previous call passed 0L as startPositionMs, which
+            // restarted the song from the beginning on every source switch. The user's
+            // expectation is that the original song stays where it was — only the audio
+            // source changes. We now capture player.currentPosition BEFORE setMediaItems
+            // (it would be 0 / unset after the call) and pass it as startPositionMs so
+            // ExoPlayer resumes the new source's stream at the same playback position.
             val currentIndex = player.currentMediaItemIndex
+            val capturedPositionMs = player.currentPosition.coerceAtLeast(0L)
             val allItems = ArrayList(player.mediaItems)
             if (currentIndex in allItems.indices) {
                 allItems[currentIndex] = item
             } else {
                 allItems.add(item)
             }
-            player.setMediaItems(allItems, currentIndex.coerceIn(0, allItems.lastIndex), 0L)
+            player.setMediaItems(
+                allItems,
+                currentIndex.coerceIn(0, allItems.lastIndex),
+                capturedPositionMs,
+            )
             player.prepare()
             player.playWhenReady = wasPlaying
             // Restore the effective volume immediately (bypass the smooth ramp) so the new source
@@ -8895,6 +8941,15 @@ class MusicService :
         // Resolve each enabled lossless source and apply the shared metadata-aware safety gate.
         // Title, artist, duration, album and version markers are evaluated together; title-only
         // results must clear a stricter fallback threshold. The strongest accepted candidate wins.
+        //
+        // OVERRIDE BYPASS: when the user has explicitly pinned this song to a single source via
+        // the player's Source chooser ("Play from"), we trust their intent — the TitleMatch gate is
+        // skipped for that source's candidate. This fixes the bug where picking JioSaavn (or any
+        // non-YouTube source) from the Source chooser "did nothing": the JioSaavn candidate's
+        // title formatting often differs from the YouTube-derived wanted title enough to fail the
+        // metadata gate, the resolver silently fell back to YouTube, and the user saw no change.
+        // The override is the user's manual override of the gate — we should respect it.
+        val overrideIsSourceOverride = override != null && override != AudioSourceType.YOUTUBE
         var best: DirectStream? = null
         var bestSource: AudioSourceType? = null
         var bestScore = 0.0
@@ -8913,13 +8968,23 @@ class MusicService :
                 continue
             }
             val match =
-                TitleMatch.evaluate(
-                    wantedTitle = query.title,
-                    wantedArtists = query.artists,
-                    wantedAlbum = query.album,
-                    wantedDurationMs = query.durationMs,
-                    stream = stream,
-                )
+                if (overrideIsSourceOverride && source == override) {
+                    // Explicit per-song override: trust the user's choice. Still record the source
+                    // as resolved so the Source chooser remembers it for next time.
+                    Timber.tag("MusicService").i(
+                        "Source %s ACCEPTED for \"%s\" via per-song override (skipping metadata gate) [%s]",
+                        source.name, query.title, stream.label,
+                    )
+                    TitleMatch.Result(true, 1.0, 1.0, 1.0, 1.0, "per-song override bypass")
+                } else {
+                    TitleMatch.evaluate(
+                        wantedTitle = query.title,
+                        wantedArtists = query.artists,
+                        wantedAlbum = query.album,
+                        wantedDurationMs = query.durationMs,
+                        stream = stream,
+                    )
+                }
             if (!match.accepted) {
                 Timber.tag("MusicService").i(
                     "Source %s rejected for \"%s\": %s score=%.1f%% title=%.1f%% artist=%s duration=%s matched=\"%s\"",
@@ -9344,22 +9409,142 @@ class MusicService :
         )
         QobuzAudioProvider.setTokens(configuredTokens)
         QobuzAudioProvider.setInstances(configuredInstances)
+        val primary =
+            runCatching {
+                runBlocking(Dispatchers.IO) {
+                    QobuzAudioProvider.resolve(
+                        query =
+                            QobuzAudioProvider.Query(
+                                mediaId = query.mediaId,
+                                title = query.title,
+                                artists = query.artists,
+                                album = query.album,
+                                durationMs = query.durationMs,
+                            ),
+                        formatId = formatId,
+                    )
+                }
+            }.onFailure { error ->
+                Timber.tag("MusicService").w(error, "QOBUZ stream resolution failed for %s", query.mediaId)
+            }.getOrNull()
+        if (primary != null) return primary
+
+        // ── Qobuz backup server fallback ──────────────────────────────────────────
+        // mlc.kouzu.in hosts a community backup that takes a YouTube video id and
+        // returns a lossless stream — used when the primary Qobuz backends (direct
+        // tokens + community proxy instances) all fail to resolve a track. The
+        // x-request-source: muzo header is injected by the mediaOkHttpClient
+        // interceptor on every kouzu.in request (including the ExoPlayer stream
+        // fetch), so the data spec we hand back can just point at the kouzu.in URL.
+        //
+        // The backup returns whatever lossless quality the server has for the
+        // track; we don't get to pick the format id. Marking the stream as FLAC
+        // matches the typical response shape (the server is documented as serving
+        // Qobuz-sourced lossless audio).
+        val backup = resolveQobuzBackupStream(query)
+        if (backup != null) return backup
+
+        return null
+    }
+
+    /**
+     * Backup Qobuz stream: https://mlc.kouzu.in/api/stream?id=<youtube_id>
+     *
+     * The endpoint takes a YouTube video id (the mediaId of the song in the queue)
+     * and returns a lossless audio stream. The `x-request-source: muzo` header
+     * must be sent on every request — without it the server rate-limits the
+     * client aggressively. The header is injected centrally by the
+     * [mediaOkHttpClient] interceptor for any kouzu.in host request, so the
+     * DirectStream we return here can just point at the kouzu.in URL — ExoPlayer's
+     * stream fetch will go through the same OkHttp client and pick up the header.
+     *
+     * Returns null when:
+     *   - mediaId is blank or not a YouTube video id (not 11 chars)
+     *   - the backup server is unreachable / returns a non-2xx
+     *   - the resolved URL is blank
+     *
+     * Marked [trustedDirectId] = true because the user has explicitly chosen the
+     * Qobuz source (or Qobuz is in their resolution chain) — the YouTube mediaId
+     * IS the authoritative identity for the song the user is playing, so we skip
+     * the title/artist metadata gate for the backup path.
+     */
+    private fun resolveQobuzBackupStream(query: SourceQuery): DirectStream? {
+        val ytId = query.mediaId.trim()
+        // YouTube video ids are 11 characters. Anything else isn't a valid id for
+        // the kouzu.in endpoint — bail early so we don't waste a network call.
+        if (ytId.length != 11 || ytId.any { !it.isLetterOrDigit() && it != '_' && it != '-' }) {
+            Timber.tag("MusicService").d("Qobuz backup skip: mediaId=%s is not a valid YT id", ytId)
+            return null
+        }
         return runCatching {
             runBlocking(Dispatchers.IO) {
-                QobuzAudioProvider.resolve(
-                    query =
-                        QobuzAudioProvider.Query(
-                            mediaId = query.mediaId,
-                            title = query.title,
-                            artists = query.artists,
-                            album = query.album,
-                            durationMs = query.durationMs,
-                        ),
-                    formatId = formatId,
-                )
+                val backupUrl = "https://mlc.kouzu.in/api/stream?id=$ytId"
+                // HEAD probe to verify the endpoint is reachable and returns an
+                // audio content type. We don't follow the body here — ExoPlayer
+                // will issue the actual GET with byte-range requests through the
+                // same OkHttp client (which auto-injects x-request-source: muzo).
+                val headRequest =
+                    okhttp3.Request
+                        .Builder()
+                        .url(backupUrl)
+                        .head()
+                        .header("User-Agent", "ArchiveTune-Android")
+                        .build()
+                mediaOkHttpClient.newCall(headRequest).execute().use { response ->
+                    if (!response.isSuccessful) {
+                        Timber.tag("MusicService").d(
+                            "Qobuz backup miss for %s: HTTP %d",
+                            ytId,
+                            response.code,
+                        )
+                        return@runBlocking null
+                    }
+                    val contentType = response.header("Content-Type")?.lowercase().orEmpty()
+                    // Accept any audio/* content type, plus video/* (some backup
+                    // servers remux lossless audio into an MP4 container) and the
+                    // catch-all octet-stream (used when the server is a pure file
+                    // proxy). The HEAD response is informational; the actual GET
+                    // from ExoPlayer will follow redirects to the final CDN URL.
+                    val looksLikeAudio =
+                        contentType.startsWith("audio/") ||
+                            contentType.startsWith("video/") ||
+                            contentType.contains("octet-stream")
+                    if (!looksLikeAudio) {
+                        Timber.tag("MusicService").d(
+                            "Qobuz backup miss for %s: unexpected Content-Type=%s",
+                            ytId,
+                            contentType,
+                        )
+                        return@runBlocking null
+                    }
+                    val finalUrl = response.request.url.toString()
+                    val streamUrl = if (finalUrl.isNotBlank()) finalUrl else backupUrl
+                    Timber.tag("MusicService").i(
+                        "Qobuz backup resolved \"%s\" via mlc.kouzu.in [%s] finalUrl=%s",
+                        query.title,
+                        contentType,
+                        streamUrl.take(80),
+                    )
+                    DirectStream(
+                        uri = streamUrl,
+                        mimeType = "audio/flac",
+                        codecs = "flac",
+                        contentLength = response.header("Content-Length")?.toLongOrNull(),
+                        label = "Qobuz backup (kouzu.in)",
+                        source = AudioSourceType.QOBUZ,
+                        // The YouTube mediaId is the authoritative identity of the
+                        // song the user is playing — we trust it without requiring
+                        // the backup server to echo back matching metadata.
+                        trustedDirectId = true,
+                        matchedTitle = query.title,
+                        matchedArtist = query.artists.joinToString(", ").ifBlank { null },
+                        matchedAlbum = query.album,
+                        matchedDurationMs = query.durationMs,
+                    )
+                }
             }
         }.onFailure { error ->
-            Timber.tag("MusicService").w(error, "QOBUZ stream resolution failed for %s", query.mediaId)
+            Timber.tag("MusicService").w(error, "Qobuz backup resolution failed for %s", ytId)
         }.getOrNull()
     }
 
@@ -9441,7 +9626,14 @@ class MusicService :
      * stream URL matching the user's quality preference. Falls back to YouTube on any failure.
      */
     private fun resolveJioSaavnStream(query: SourceQuery): DirectStream? {
-        if (!dataStore.get(JioSaavnEnabledKey, false)) return null
+        // NOTE: the global JioSaavnEnabledKey gate was removed here. The chain
+        // (sourceResolutionChain / the override list) already filters by enabled-ness,
+        // so re-checking it here is redundant for the global-on case. More importantly,
+        // it BLOCKED the per-song override path: if the user has JioSaavn globally OFF
+        // but explicitly pinned one song to JioSaavn via the Source chooser, this gate
+        // returned null and the resolver silently fell back to YouTube — making the
+        // override look like it "did nothing". Removing the gate lets the override
+        // resolve even when JioSaavn is globally disabled.
         val quality = SaavnAudioQuality.fromStoredName(dataStore.get(SaavnAudioQualityKey, SaavnAudioQuality.QUALITY_320.name))
         val qualityApiValue = quality.toApiValue()
         Timber.tag("MusicService").d("JioSaavn resolve start | quality=%s", qualityApiValue)

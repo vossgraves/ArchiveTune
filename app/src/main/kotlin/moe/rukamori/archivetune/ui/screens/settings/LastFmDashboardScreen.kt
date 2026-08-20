@@ -87,6 +87,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.lastfm.LastFM
+import moe.rukamori.archivetune.lastfm.LastFmArtworkNormalizer
 import moe.rukamori.archivetune.lastfm.models.RecentTrack
 import moe.rukamori.archivetune.lastfm.models.TopTrack
 import moe.rukamori.archivetune.lastfm.models.UserInfo
@@ -490,7 +491,10 @@ private fun UserCard(
                     modifier = Modifier.fillMaxWidth().padding(20.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    val avatar = info.image?.lastOrNull { it.text.isNotBlank() }?.text
+                    // Ported from LastWave-native's ProfileAvatar: use the Last.fm size priority
+                    // chain (extralarge > large > medium > any real image) and reject the Last.fm
+                    // gray-placeholder hash, instead of just picking the last non-blank image.
+                    val avatar = LastFmArtworkNormalizer.bestImageUrl(info.image)
                     Surface(
                         modifier = Modifier.size(72.dp),
                         shape = CircleShape,
@@ -584,10 +588,12 @@ private fun EmptyHint(text: String) {
 }
 
 private fun bestArtwork(images: List<moe.rukamori.archivetune.lastfm.models.UserImage>?): String? =
-    images
-        ?.filter { it.text.isNotBlank() }
-        ?.lastOrNull()
-        ?.text
+    // Ported from LastWave-native's ArtworkNormalizer.bestImageUrl: filters the Last.fm
+    // gray placeholder (hash 2a96cbd8b46e442fc41c2b86b821562f) and picks the best quality
+    // in the canonical extralarge > large > medium > any order. The previous implementation
+    // just took the last non-blank image, which trusted the placeholder and ignored size
+    // priority, producing low-res artwork on the dashboard.
+    LastFmArtworkNormalizer.bestImageUrl(images)
 
 private fun RecentTrack.trackArtworkKey(): String = "${name.orEmpty().trim().lowercase()}::${artist?.text.orEmpty().trim().lowercase()}"
 

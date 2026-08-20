@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    ArchiveTune (2026)
+    © Rukamori — github.com/rukamori
+    GPL-3.0 License | Contributors: see git history
+
+    PlayerView with TextureView surface_type. Used below API 34
+    (UPSIDE_DOWN_CAKE) where SurfaceView's surface re-creation would
+    require re-creating the video codec on every fullscreen toggle /
+    orientation change. TextureView can move between parent surfaces
+    without re-creating the codec, at the cost of the well-known
+    stale-frame issue (mitigated by VideoSurfaceManager's PlaceholderSurface
+    keeping the codec alive + the existing kickRenderer() micro-cycle).
+
+    Ported from Flow's app/src/main/res/layout/video_player_view.xml.
+-->
+<androidx.media3.ui.PlayerView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/video_artwork_player_view"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#000000"
+    app:use_controller="false"
+    app:surface_type="texture_view"
+    app:keep_content_on_player_reset="false" />
