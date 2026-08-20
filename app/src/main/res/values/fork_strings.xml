@@ -78,6 +78,7 @@
     <string name="source_search_filter_all">All</string>
     <string name="source_search_no_results">No results yet — type a song title to search</string>
     <string name="source_search_no_backend">Search is not yet available for this provider</string>
+    <string name="source_search_play_no_yt_match">Couldn\'t find a matching YouTube track to seed the queue — try a different result or use the automatic source</string>
     <string name="quality_badge_aac">AAC 256 kbps</string>
     <string name="quality_badge_saavn">AAC 320 kbps</string>
     <string name="quality_badge_lossless">Lossless</string>

@@ -388,6 +388,54 @@ fun PlayerMenu(
                 // so it seeds a fresh queue with the picked track as the first item.
                 playerConnection.playQueue(YouTubeQueue.radio(song.toMediaMetadata()))
             },
+            onPlayFromSource = { result ->
+                // Non-YT search-result row tapped (JioSaavn / Tidal / Qobuz / Deezer).
+                // We don't have a SongItem to seed a YouTube radio queue from directly —
+                // these providers' search results return their own internal track ids, not
+                // YouTube video ids. To make the row actually play something, we:
+                //   1. Search YouTube Music for a track matching the title + primary artist.
+                //   2. If found, play it via YouTube radio (seeds a fresh queue with that song).
+                //   3. Immediately set the per-song source override to the picked source so
+                //      the very first playback attempt resolves through that source (JioSaavn /
+                //      Tidal lossless) instead of YouTube's audio.
+                //   4. If YouTube search returns nothing, fall back to a Toast — we can't
+                //      play a JioSaavn-only / Tidal-only track without a YT-side media id
+                //      because the rest of the queue / scrobbling / cache layer is YT-id-keyed.
+                scope.launch(Dispatchers.IO) {
+                    val query = buildString {
+                        append(result.title)
+                        if (result.artist.isNotBlank()) append(" ").append(result.artist)
+                    }
+                    val ytSong = runCatching {
+                        YouTube.search(query, YouTube.SearchFilter.FILTER_SONG, useAccountContext = false)
+                            .getOrNull()
+                            ?.items
+                            ?.filterIsInstance<SongItem>()
+                            ?.firstOrNull()
+                    }.getOrNull()
+                    if (ytSong == null) {
+                        withContext(Dispatchers.Main) {
+                            android.widget.Toast.makeText(
+                                context,
+                                context.getString(R.string.source_search_play_no_yt_match),
+                                android.widget.Toast.LENGTH_SHORT,
+                            ).show()
+                        }
+                        return@launch
+                    }
+                    // Set the per-song override BEFORE playing so the very first resolution
+                    // attempt goes through the picked source. The override is also persisted
+                    // to SongSourceOverrideKey via onSongSourceChange in the parent LaunchedEffect.
+                    playerConnection.service.setSongSourceOverride(ytSong.id, result.source)
+                    withContext(Dispatchers.Main) {
+                        onSongSourceChange(
+                            SongSourceOverride.withOverride(songSourceRaw, ytSong.id, result.source),
+                        )
+                        playerConnection.playQueue(YouTubeQueue.radio(ytSong.toMediaMetadata()))
+                        showSourceDialog = false
+                    }
+                }
+            },
         )
     }
 
@@ -1868,6 +1916,7 @@ private fun SongSourceDialog(
     onDismiss: () -> Unit,
     onSelect: (AudioSourceType?) -> Unit,
     onPlaySong: (SongItem) -> Unit,
+    onPlayFromSource: (SourceSearchResult) -> Unit,
 ) {
     var searchMode by rememberSaveable { mutableStateOf(false) }
     var searchQuery by rememberSaveable { mutableStateOf("") }
@@ -2076,10 +2125,18 @@ private fun SongSourceDialog(
                         ) {
                             items(results, key = { result -> "${result.source.name}:${result.trackId}" }) { result ->
                                 SourceSearchResultRow(result = result) {
-                                    result.songItem?.let { song ->
-                                        onPlaySong(song)
-                                        onDismiss()
+                                    // YTM results seed the queue directly. Non-YT results
+                                    // (JioSaavn / Tidal / Qobuz / Deezer) don't carry a
+                                    // YouTube-side SongItem — they go through onPlayFromSource
+                                    // which searches YTM for a matching track and pins the
+                                    // source override so playback resolves through the
+                                    // picked source on the very first attempt.
+                                    if (result.songItem != null) {
+                                        onPlaySong(result.songItem)
+                                    } else {
+                                        onPlayFromSource(result)
                                     }
+                                    onDismiss()
                                 }
                                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
                             }
@@ -2113,20 +2170,23 @@ private fun SongSourceDialog(
  * a small quality badge (AAC 256 kbps / Lossless / Hi-Res) on the right, and a 16dp provider
  * icon furthest right so the user can tell at a glance which source each row came from.
  *
- * Tappable only when [SourceSearchResult.songItem] is non-null (YTM results). Other providers'
- * rows are display-only — grayed out and not clickable — until their playback path is wired up.
+ * ALWAYS tappable: YTM results seed the queue directly via [onPlaySong]; non-YT results
+ * (JioSaavn / Tidal / Qobuz / Deezer) go through [onPlayFromSource] which searches YTM for
+ * a matching track by title+artist and pins the per-song source override so playback resolves
+ * through the picked source on the very first attempt. Previously non-YT rows were grayed
+ * out and not clickable — that made the JioSaavn / Tidal "Play from" search popup look
+ * broken ("clicking on play from popup in jiosaavn category still doesn't do anything").
  */
 @Composable
 private fun SourceSearchResultRow(
     result: SourceSearchResult,
     onClick: () -> Unit,
 ) {
-    val tappable = result.songItem != null
     Row(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .clickable(enabled = tappable, onClick = onClick)
+                .clickable(onClick = onClick)
                 .padding(vertical = 8.dp, horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -2161,7 +2221,7 @@ private fun SourceSearchResultRow(
                 style = MaterialTheme.typography.bodyMedium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                color = if (tappable) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                color = MaterialTheme.colorScheme.onSurface,
             )
             val subtitle =
                 buildString {
