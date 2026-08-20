@@ -9,8 +9,13 @@
 
 package moe.rukamori.archivetune.ui.screens.settings
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.RepeatableSpec
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -473,30 +478,104 @@ private fun UserCard(
     isRefreshing: Boolean,
     onRetry: () -> Unit,
 ) {
-    Surface(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-        shape = RoundedCornerShape(20.dp),
-        color = dashboardCardColor(),
-    ) {
-        when {
-            userInfo == null && isRefreshing -> {
+    // Ported from LastWave-native's HomeScreen StatsCard + HeaderRow pattern.
+    // The card now shows:
+    //   - A hero stats card at the top with the user's playcount as a big
+    //     animated number ("Scrobbles"), plus a small stats grid below
+    //     (playlists as a proxy for tracks — Last.fm's user.getInfo doesn't
+    //     return trackCount/artistCount/albumCount directly; those need
+    //     separate getTopTracks/getTopArtists/getTopAlbums calls).
+    //   - A compact user row below with avatar + username + realname.
+    // The previous implementation was a single card with avatar + username +
+    // playcount — functional but visually flat. The LastWave-style hero card
+    // gives the dashboard a stronger visual identity that matches the
+    // LastWave-native app the user explicitly asked us to copy.
+    when {
+        userInfo == null && isRefreshing -> {
+            Box(
+                modifier = Modifier.fillMaxWidth().padding(24.dp),
+                contentAlignment = Alignment.Center,
+            ) { CircularProgressIndicator(color = DashboardAccentColor) }
+        }
+        userInfo?.isSuccess == true -> {
+            val info = userInfo.getOrNull()!!
+            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                // ── Hero stats card ─────────────────────────────────────────────
+                // Big animated scrobbles count + a small stats grid below.
+                // Ported from LastWave-native's StatsCard composable.
+                Surface(
+                    shape = RoundedCornerShape(24.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    tonalElevation = 2.dp,
+                    shadowElevation = 4.dp,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Column(Modifier.padding(horizontal = 20.dp, vertical = 18.dp)) {
+                        Surface(
+                            shape = RoundedCornerShape(20.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 18.dp, vertical = 16.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text(
+                                        text = formatCount(info.playcount ?: 0L),
+                                        style = MaterialTheme.typography.displaySmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    )
+                                    Text(
+                                        text = stringResource(R.string.lastfm_scrobbles),
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f),
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(Modifier.height(12.dp))
+
+                        // Stats grid: playlists (proxy for tracks) + registered year.
+                        // We don't have separate trackCount/artistCount/albumCount
+                        // from user.getInfo, so we use what's available.
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            StatPill(
+                                label = stringResource(R.string.lastfm_stat_playlists),
+                                value = (info.playlists ?: 0).toString(),
+                                modifier = Modifier.weight(1f),
+                            )
+                            StatPill(
+                                label = stringResource(R.string.lastfm_stat_registered),
+                                value = info.registered?.text?.toString().orEmpty().take(4),
+                                modifier = Modifier.weight(1f),
+                            )
+                            StatPill(
+                                label = stringResource(R.string.lastfm_stat_country),
+                                value = info.country?.take(2)?.uppercase().orEmpty().ifBlank { "—" },
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(12.dp))
+
+                // ── Compact user row (avatar + username + realname) ─────────────
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(24.dp),
-                    horizontalArrangement = Arrangement.Center,
-                ) { CircularProgressIndicator(color = DashboardAccentColor) }
-            }
-            userInfo?.isSuccess == true -> {
-                val info = userInfo.getOrNull()!!
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(20.dp),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    // Ported from LastWave-native's ProfileAvatar: use the Last.fm size priority
-                    // chain (extralarge > large > medium > any real image) and reject the Last.fm
-                    // gray-placeholder hash, instead of just picking the last non-blank image.
                     val avatar = LastFmArtworkNormalizer.bestImageUrl(info.image)
                     Surface(
-                        modifier = Modifier.size(72.dp),
+                        modifier = Modifier.size(40.dp),
                         shape = CircleShape,
                         color = dashboardIconBackgroundColor(),
                     ) {
@@ -513,41 +592,37 @@ private fun UserCard(
                                     painter = painterResource(R.drawable.account),
                                     contentDescription = null,
                                     tint = DashboardAccentColor,
+                                    modifier = Modifier.size(20.dp),
                                 )
                             }
                         }
                     }
-                    Spacer(Modifier.size(16.dp))
+                    Spacer(Modifier.size(12.dp))
                     Column(Modifier.weight(1f)) {
                         Text(
                             text = info.realname?.takeIf { it.isNotBlank() } ?: info.name,
-                            style = MaterialTheme.typography.titleLarge,
+                            style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
-                        Spacer(Modifier.height(4.dp))
                         Text(
                             text = "@${info.name}",
-                            style = MaterialTheme.typography.bodyMedium,
+                            style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
-                        Spacer(Modifier.height(8.dp))
-                        info.playcount?.let { count ->
-                            Text(
-                                text = stringResource(R.string.lastfm_playcount, count),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = DashboardAccentColor,
-                                fontWeight = FontWeight.Medium,
-                            )
-                        }
                     }
                 }
             }
-            else -> {
-                
+        }
+        else -> {
+            Surface(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                shape = RoundedCornerShape(20.dp),
+                color = dashboardCardColor(),
+            ) {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(20.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -573,6 +648,45 @@ private fun UserCard(
                     )
                 }
             }
+        }
+    }
+}
+
+/**
+ * Formats a count with thousands separators (e.g., 6328 → "6,328").
+ * Ported from LastWave-native's formatCount helper.
+ */
+private fun formatCount(count: Long): String = "%,d".format(count)
+
+/**
+ * Small stat pill used in the hero stats card. Ported from LastWave-native's StatPill.
+ */
+@Composable
+private fun StatPill(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.55f),
+    ) {
+        Column(
+            Modifier.padding(vertical = 10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text = value,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }
@@ -786,24 +900,58 @@ private fun DashboardTrackCard(
             }
 
             if (track.isNowPlaying) {
+                // Ported from LastWave-native's pulsing Now Playing badge — a pill
+                // with a small dot that gently pulses (scales 1.0 ↔ 1.06 over 1.2s,
+                // linear easing on both legs, Reverse repeat mode). The previous
+                // implementation was a static Surface — visually flat. The pulse
+                // gives the now-playing row a clear, animated identity matching
+                // LastWave-native's design.
+                val infiniteTransition = rememberInfiniteTransition(label = "lastfm_now_playing_pulse")
+                val pulseScale by infiniteTransition.animateFloat(
+                    initialValue = 1.0f,
+                    targetValue = 1.06f,
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(1200, easing = LinearEasing),
+                        repeatMode = RepeatMode.Reverse,
+                    ),
+                    label = "lastfm_pulse_scale",
+                )
                 Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = dashboardIconBackgroundColor(),
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.primary,
+                    tonalElevation = 4.dp,
+                    shadowElevation = 2.dp,
+                    modifier = Modifier.graphicsLayer {
+                        scaleX = pulseScale
+                        scaleY = pulseScale
+                    },
                 ) {
-                    Text(
-                        text = stringResource(R.string.lastfm_now_playing),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = DashboardAccentColor,
-                        fontWeight = FontWeight.Medium,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                    ) {
+                        Spacer(Modifier.size(6.dp).background(MaterialTheme.colorScheme.onPrimary, CircleShape))
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            text = stringResource(R.string.lastfm_now_playing),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimary,
+                        )
+                    }
                 }
             } else if (playCount != null) {
-                Text(
-                    text = stringResource(R.string.lastfm_playcount_short, playCount),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                ) {
+                    Text(
+                        text = stringResource(R.string.lastfm_playcount_short, playCount),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                    )
+                }
             }
         }
     }
@@ -892,11 +1040,17 @@ private fun DashboardTrackCard(
             }
 
             if (playCount != null) {
-                Text(
-                    text = stringResource(R.string.lastfm_playcount_short, playCount),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                ) {
+                    Text(
+                        text = stringResource(R.string.lastfm_playcount_short, playCount),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                    )
+                }
             }
         }
     }

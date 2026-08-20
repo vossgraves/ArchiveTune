@@ -990,6 +990,10 @@
     <string name="lastfm_refresh">Refresh Last.fm stats</string>
     <string name="lastfm_playcount">%1$d scrobbles</string>
     <string name="lastfm_playcount_short">%1$d plays</string>
+    <string name="lastfm_scrobbles">Scrobbles</string>
+    <string name="lastfm_stat_playlists">Playlists</string>
+    <string name="lastfm_stat_registered">Since</string>
+    <string name="lastfm_stat_country">Country</string>
     <string name="enable_scrobbling">Enable Scrobbling</string>
     <string name="lastfm_now_playing">Now playing</string>
     <string name="refresh_telegram_playlist">Refresh from Telegram</string>
