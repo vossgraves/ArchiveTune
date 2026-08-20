@@ -402,7 +402,7 @@ fun PlayerMenu(
                 //   4. If YouTube search returns nothing, fall back to a Toast — we can't
                 //      play a JioSaavn-only / Tidal-only track without a YT-side media id
                 //      because the rest of the queue / scrobbling / cache layer is YT-id-keyed.
-                scope.launch(Dispatchers.IO) {
+                coroutineScope.launch(Dispatchers.IO) {
                     val query = buildString {
                         append(result.title)
                         if (result.artist.isNotBlank()) append(" ").append(result.artist)
