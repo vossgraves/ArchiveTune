@@ -8573,8 +8573,21 @@ class MusicService :
     fun availableSourcesForSong(mediaId: String): List<AudioSourceType> {
         val resolved = resolvedSourcesByMediaId[mediaId].orEmpty()
         val override = SongSourceOverride.get(dataStore.get(SongSourceOverrideKey, ""), mediaId)
+        // Sources are surfaced in the Source chooser when ANY of:
+        //   - Always-available: YouTube (the implicit fallback).
+        //   - The source was previously resolved successfully for this media id.
+        //   - The user previously pinned this song to this source (override).
+        //   - The source is GLOBALLY ENABLED — the user has explicitly turned the source
+        //     on in Settings, so they should be able to pick it per-song even if the
+        //     initial resolution hasn't completed (or failed transiently). Previously
+        //     JioSaavn / Qobuz would not appear in the chooser until they happened to
+        //     resolve, which made the user think the source "did nothing" when picked
+        //     elsewhere. Now any enabled source is selectable.
         return AudioSourceConfig.DEFAULT_ORDER.filter {
-            it == AudioSourceType.YOUTUBE || it in resolved || it == override
+            it == AudioSourceType.YOUTUBE ||
+                it in resolved ||
+                it == override ||
+                isSourceEnabled(it)
         }
     }
 
@@ -8730,16 +8743,28 @@ class MusicService :
             // song ended the player had no next item to auto-advance to, so playback stopped
             // until the user manually pressed Play. We now capture the full media-items list
             // and current index BEFORE the teardown, swap the current item for the freshly
-            // resolved one, and call setMediaItems(items, currentIndex, 0L) so the queue is
-            // intact and ExoPlayer's auto-advance works as expected.
+            // resolved one, and call setMediaItems(items, currentIndex, startPositionMs) so
+            // the queue is intact and ExoPlayer's auto-advance works as expected.
+            //
+            // POSITION PRESERVATION: the previous call passed 0L as startPositionMs, which
+            // restarted the song from the beginning on every source switch. The user's
+            // expectation is that the original song stays where it was — only the audio
+            // source changes. We now capture player.currentPosition BEFORE setMediaItems
+            // (it would be 0 / unset after the call) and pass it as startPositionMs so
+            // ExoPlayer resumes the new source's stream at the same playback position.
             val currentIndex = player.currentMediaItemIndex
+            val capturedPositionMs = player.currentPosition.coerceAtLeast(0L)
             val allItems = ArrayList(player.mediaItems)
             if (currentIndex in allItems.indices) {
                 allItems[currentIndex] = item
             } else {
                 allItems.add(item)
             }
-            player.setMediaItems(allItems, currentIndex.coerceIn(0, allItems.lastIndex), 0L)
+            player.setMediaItems(
+                allItems,
+                currentIndex.coerceIn(0, allItems.lastIndex),
+                capturedPositionMs,
+            )
             player.prepare()
             player.playWhenReady = wasPlaying
             // Restore the effective volume immediately (bypass the smooth ramp) so the new source
@@ -8895,6 +8920,15 @@ class MusicService :
         // Resolve each enabled lossless source and apply the shared metadata-aware safety gate.
         // Title, artist, duration, album and version markers are evaluated together; title-only
         // results must clear a stricter fallback threshold. The strongest accepted candidate wins.
+        //
+        // OVERRIDE BYPASS: when the user has explicitly pinned this song to a single source via
+        // the player's Source chooser ("Play from"), we trust their intent — the TitleMatch gate is
+        // skipped for that source's candidate. This fixes the bug where picking JioSaavn (or any
+        // non-YouTube source) from the Source chooser "did nothing": the JioSaavn candidate's
+        // title formatting often differs from the YouTube-derived wanted title enough to fail the
+        // metadata gate, the resolver silently fell back to YouTube, and the user saw no change.
+        // The override is the user's manual override of the gate — we should respect it.
+        val overrideIsSourceOverride = override != null && override != AudioSourceType.YOUTUBE
         var best: DirectStream? = null
         var bestSource: AudioSourceType? = null
         var bestScore = 0.0
@@ -8913,13 +8947,23 @@ class MusicService :
                 continue
             }
             val match =
-                TitleMatch.evaluate(
-                    wantedTitle = query.title,
-                    wantedArtists = query.artists,
-                    wantedAlbum = query.album,
-                    wantedDurationMs = query.durationMs,
-                    stream = stream,
-                )
+                if (overrideIsSourceOverride && source == override) {
+                    // Explicit per-song override: trust the user's choice. Still record the source
+                    // as resolved so the Source chooser remembers it for next time.
+                    Timber.tag("MusicService").i(
+                        "Source %s ACCEPTED for \"%s\" via per-song override (skipping metadata gate) [%s]",
+                        source.name, query.title, stream.label,
+                    )
+                    TitleMatch.Result(true, 1.0, 1.0, 1.0, 1.0, "per-song override bypass")
+                } else {
+                    TitleMatch.evaluate(
+                        wantedTitle = query.title,
+                        wantedArtists = query.artists,
+                        wantedAlbum = query.album,
+                        wantedDurationMs = query.durationMs,
+                        stream = stream,
+                    )
+                }
             if (!match.accepted) {
                 Timber.tag("MusicService").i(
                     "Source %s rejected for \"%s\": %s score=%.1f%% title=%.1f%% artist=%s duration=%s matched=\"%s\"",
@@ -9441,7 +9485,14 @@ class MusicService :
      * stream URL matching the user's quality preference. Falls back to YouTube on any failure.
      */
     private fun resolveJioSaavnStream(query: SourceQuery): DirectStream? {
-        if (!dataStore.get(JioSaavnEnabledKey, false)) return null
+        // NOTE: the global JioSaavnEnabledKey gate was removed here. The chain
+        // (sourceResolutionChain / the override list) already filters by enabled-ness,
+        // so re-checking it here is redundant for the global-on case. More importantly,
+        // it BLOCKED the per-song override path: if the user has JioSaavn globally OFF
+        // but explicitly pinned one song to JioSaavn via the Source chooser, this gate
+        // returned null and the resolver silently fell back to YouTube — making the
+        // override look like it "did nothing". Removing the gate lets the override
+        // resolve even when JioSaavn is globally disabled.
         val quality = SaavnAudioQuality.fromStoredName(dataStore.get(SaavnAudioQualityKey, SaavnAudioQuality.QUALITY_320.name))
         val qualityApiValue = quality.toApiValue()
         Timber.tag("MusicService").d("JioSaavn resolve start | quality=%s", qualityApiValue)
