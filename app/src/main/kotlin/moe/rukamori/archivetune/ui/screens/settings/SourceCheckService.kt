@@ -152,7 +152,8 @@ object SourceCheckService {
         // x-request-source: muzo header is injected centrally by the
         // MusicService.mediaOkHttpClient interceptor — but here we're using
         // our own client, so add it manually.
-        val url = "https://mlc.kouzu.in/api/stream?id=$KOZU_PROBE_YT_ID"
+        // URL pattern: https://mlc-ytify.kouzu.in/<yt_id> (yt_id is a path segment).
+        val url = "https://mlc-ytify.kouzu.in/$KOZU_PROBE_YT_ID"
         return runCatching {
             val request = Request.Builder()
                 .url(url)
@@ -163,7 +164,7 @@ object SourceCheckService {
                 if (!response.isSuccessful) {
                     return@runCatching SourceCheckResult(
                         healthy = false,
-                        summary = "mlc.kouzu.in returned HTTP ${response.code} for the probe request. " +
+                        summary = "mlc-ytify.kouzu.in returned HTTP ${response.code} for the probe request. " +
                             "The backup server may be down or rate-limiting your IP.",
                     )
                 }
@@ -174,10 +175,10 @@ object SourceCheckService {
                 SourceCheckResult(
                     healthy = ok,
                     summary = if (ok) {
-                        "mlc.kouzu.in is reachable and returned an audio stream ($contentType). " +
+                        "mlc-ytify.kouzu.in is reachable and returned an audio stream ($contentType). " +
                             "Qobuz backup is READY."
                     } else {
-                        "mlc.kouzu.in returned an unexpected content type: $contentType. " +
+                        "mlc-ytify.kouzu.in returned an unexpected content type: $contentType. " +
                             "The backup server may be misconfigured."
                     },
                 )
@@ -185,7 +186,7 @@ object SourceCheckService {
         }.getOrElse { e ->
             SourceCheckResult(
                 healthy = false,
-                summary = "Failed to reach mlc.kouzu.in: ${e.message ?: e.javaClass.simpleName}",
+                summary = "Failed to reach mlc-ytify.kouzu.in: ${e.message ?: e.javaClass.simpleName}",
             )
         }
     }

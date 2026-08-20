@@ -402,6 +402,14 @@ fun PlayerMenu(
                 //   4. If YouTube search returns nothing, fall back to a Toast — we can't
                 //      play a JioSaavn-only / Tidal-only track without a YT-side media id
                 //      because the rest of the queue / scrobbling / cache layer is YT-id-keyed.
+                //
+                // THREAD-SAFETY: YouTube.search is a suspend function that does its own
+                // dispatcher switching internally, so launching on Dispatchers.IO is fine.
+                // BUT setSongSourceOverride touches ExoPlayer (player.currentMediaItem) which
+                // must be called from the application thread (main) — wrapping it in
+                // withContext(Dispatchers.Main) prevents the "Player is accessed on the wrong
+                // thread" IllegalStateException that crashed the app when changing source via
+                // the JioSaavn search-result row.
                 coroutineScope.launch(Dispatchers.IO) {
                     val query = buildString {
                         append(result.title)
@@ -424,14 +432,24 @@ fun PlayerMenu(
                         }
                         return@launch
                     }
-                    // Set the per-song override BEFORE playing so the very first resolution
-                    // attempt goes through the picked source. The override is also persisted
-                    // to SongSourceOverrideKey via onSongSourceChange in the parent LaunchedEffect.
-                    playerConnection.service.setSongSourceOverride(ytSong.id, result.source)
+                    // Switch to the main thread for all ExoPlayer-touching calls.
+                    // setSongSourceOverride reads player.currentMediaItem and writes to
+                    // player.setMediaItems — both must run on the player's application
+                    // thread (the main thread, since MusicService creates the ExoPlayer on
+                    // the main looper).
                     withContext(Dispatchers.Main) {
+                        // Persist the override in DataStore FIRST so the very first
+                        // resolution attempt reads the override from storage and pins
+                        // the picked source.
                         onSongSourceChange(
                             SongSourceOverride.withOverride(songSourceRaw, ytSong.id, result.source),
                         )
+                        // Then apply the override in-memory via the service — this evicts
+                        // caches and re-creates the media item with the new override.
+                        playerConnection.service.setSongSourceOverride(ytSong.id, result.source)
+                        // Finally, play the matched YouTube song. Because the override is
+                        // already set, the playback resolver will pin JioSaavn / Tidal /
+                        // Qobuz / Deezer on the first attempt.
                         playerConnection.playQueue(YouTubeQueue.radio(ytSong.toMediaMetadata()))
                         showSourceDialog = false
                     }
