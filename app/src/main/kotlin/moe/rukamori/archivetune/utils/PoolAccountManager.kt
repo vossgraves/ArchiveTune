@@ -15,8 +15,10 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.BuildConfig
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import timber.log.Timber
@@ -47,7 +49,11 @@ import java.util.concurrent.TimeUnit
  */
 object PoolAccountManager {
     private const val TAG = "PoolAccounts"
-    private const val MIN_REFRESH_INTERVAL_MS = 30 * 60 * 1000L // 30 min
+    // Pool credentials change slowly (submissions + hourly health sweeps on the server). Fetching
+    // more than once a day mostly re-reads the same bytes, so 24h keeps the pool's database from
+    // being woken for nothing on every app start. `force = true` (the settings refresh button)
+    // still bypasses this.
+    private const val MIN_REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000L
 
     private val CACHE_TIDAL_KEY = stringPreferencesKey("poolTidalAccounts")
     private val CACHE_QOBUZ_KEY = stringPreferencesKey("poolQobuzAccounts")
@@ -55,6 +61,7 @@ object PoolAccountManager {
 
     /** A shared Tidal subscriber token contributed to the pool. */
     data class TidalPoolAccount(
+        val id: Long?,
         val token: String,
         val refreshToken: String?,
         val countryCode: String?,
@@ -63,6 +70,7 @@ object PoolAccountManager {
 
     /** A shared Qobuz subscriber credential. [appSecret] is required to sign stream URLs. */
     data class QobuzPoolAccount(
+        val id: Long?,
         val token: String,
         val appId: String,
         val appSecret: String,
@@ -76,6 +84,7 @@ object PoolAccountManager {
      * the account has no lossless entitlement, so it can still serve MP3 but will refuse FLAC.
      */
     data class DeezerPoolAccount(
+        val id: Long?,
         val arl: String,
         val premium: Boolean,
         /** Optional override for the Blowfish key salt; null means use the salt the app ships with. */
@@ -106,6 +115,8 @@ object PoolAccountManager {
             .readTimeout(8, TimeUnit.SECONDS)
             .callTimeout(10, TimeUnit.SECONDS)
             .build()
+
+    private val JSON_MEDIA = "application/json; charset=utf-8".toMediaTypeOrNull()
 
     /** True when a Source Pool URL is configured, i.e. account discovery is possible. */
     val isEnabled: Boolean
@@ -250,6 +261,7 @@ object PoolAccountManager {
                 tidal.forEach {
                     put(
                         JSONObject()
+                            .put("id", it.id)
                             .put("token", it.token)
                             .put("refreshToken", it.refreshToken)
                             .put("countryCode", it.countryCode)
@@ -262,6 +274,7 @@ object PoolAccountManager {
                 qobuz.forEach {
                     put(
                         JSONObject()
+                            .put("id", it.id)
                             .put("token", it.token)
                             .put("appId", it.appId)
                             .put("appSecret", it.appSecret)
@@ -274,6 +287,7 @@ object PoolAccountManager {
                 deezer.forEach {
                     put(
                         JSONObject()
+                            .put("id", it.id)
                             .put("arl", it.arl)
                             .put("masterSecret", it.masterSecret)
                             .put("premium", it.premium),
@@ -287,6 +301,47 @@ object PoolAccountManager {
                 prefs[CACHE_DEEZER_KEY] = deezerJson
             }
         }.onFailure { Timber.tag(TAG).w(it, "Failed to persist pool accounts") }
+    }
+
+    /**
+     * Reports playback-time observations back to the pool (`dead` / `not_premium`) so entries that
+     * fail for real users stop being leased without waiting for the next server sweep — and so the
+     * pool's database is not hit repeatedly by every app probing every credential. Fire-and-forget:
+     * a report must never break playback. Manual accounts (id == null) are never reported.
+     */
+    suspend fun report(
+        service: String,
+        kind: String,
+        id: Long?,
+        reportType: String,
+    ) {
+        if (id == null) return
+        val base = sourcesUrl?.removeSuffix("/api/sources") ?: return
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val body =
+                    JSONObject()
+                        .put("service", service)
+                        .put("kind", kind)
+                        .put("id", id)
+                        .put("report", reportType)
+                        .toString()
+                val builder =
+                    Request
+                        .Builder()
+                        .url("$base/api/report")
+                        .header("User-Agent", "ArchiveTune-Android")
+                        .post(body.toRequestBody(JSON_MEDIA))
+                if (BuildConfig.SOURCE_PROVIDER_KEY.isNotBlank()) {
+                    builder.header("Authorization", "Bearer ${BuildConfig.SOURCE_PROVIDER_KEY}")
+                }
+                client.newCall(builder.build()).execute().use { response ->
+                    if (!response.isSuccessful) {
+                        Timber.tag(TAG).d("Pool report %s/%s/%s returned HTTP %d", service, reportType, id, response.code)
+                    }
+                }
+            }.onFailure { Timber.tag(TAG).w(it, "Pool report failed") }
+        }
     }
 
     /** Decrypts a sensitive field. Empty/blank blobs and decrypt failures yield null. */
@@ -307,6 +362,7 @@ object PoolAccountManager {
             val token = field(obj, "token") ?: continue
             out +=
                 TidalPoolAccount(
+                    id = entryId(obj),
                     token = token,
                     refreshToken = field(obj, "refreshToken"),
                     countryCode = field(obj, "countryCode"),
@@ -328,6 +384,7 @@ object PoolAccountManager {
             val appSecret = field(obj, "appSecret") ?: continue
             out +=
                 QobuzPoolAccount(
+                    id = entryId(obj),
                     token = token,
                     appId = appId,
                     appSecret = appSecret,
@@ -345,6 +402,7 @@ object PoolAccountManager {
             val arl = field(obj, "arl") ?: continue
             out +=
                 DeezerPoolAccount(
+                    id = entryId(obj),
                     arl = arl,
                     premium = obj.optBoolean("premium", false),
                     masterSecret = field(obj, "masterSecret"),
@@ -352,4 +410,8 @@ object PoolAccountManager {
         }
         return out
     }
+
+    /** Pool entry id from /api/sources (positive when present); null for manual/legacy entries. */
+    private fun entryId(obj: JSONObject): Long? =
+        obj.optLong("id", 0L).takeIf { it > 0L }
 }

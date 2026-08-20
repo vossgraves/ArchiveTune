@@ -108,8 +108,8 @@ object DeezerAudioProvider {
                 null
             } else {
                 // masterSecret stays null: only the pool serves an override, and DeezerCrypto falls
-                // back to the salt the app ships with.
-                PoolAccountManager.DeezerPoolAccount(arl = trimmed, premium = premium)
+                // back to the salt the app ships with. id null = a manual account, never reported.
+                PoolAccountManager.DeezerPoolAccount(id = null, arl = trimmed, premium = premium)
             }
         val previous = manualAccount
         manualAccount = next
@@ -351,7 +351,12 @@ object DeezerAudioProvider {
         val results = json.optJSONObject("results")
         val user = requireNotNull(results?.optJSONObject("USER")) { "no USER in session payload" }
         // An invalid or expired ARL still returns HTTP 200 with USER_ID 0, so this is the real check.
-        require(user.optLong("USER_ID", 0L) != 0L) { "ARL rejected by gateway" }
+        if (user.optLong("USER_ID", 0L) == 0L) {
+            // Playback just learned the pooled credential is dead; tell the pool so it stops being
+            // leased to other users before the next server-side sweep. Fire-and-forget.
+            PoolAccountManager.report("deezer", "account", account.id, "dead")
+            throw IllegalStateException("ARL rejected by gateway")
+        }
 
         val options = requireNotNull(user.optJSONObject("OPTIONS")) { "no OPTIONS in session payload" }
         val licenseToken = options.optString("license_token")
@@ -359,6 +364,16 @@ object DeezerAudioProvider {
 
         val apiToken = results?.optString("checkForm").orEmpty()
         require(apiToken.isNotBlank()) { "no api token in session" }
+
+        val lossless =
+            options.optBoolean("web_lossless", false) ||
+                options.optBoolean("mobile_lossless", false)
+        // A pool entry flagged premium but without lossless entitlement would make the pool lease it
+        // first for FLAC requests everywhere; the truth is the opposite. Tell the pool once per
+        // session so its ordering stops preferring this account. Fire-and-forget.
+        if (account.premium && !lossless) {
+            PoolAccountManager.report("deezer", "account", account.id, "not_premium")
+        }
 
         val session =
             Session(
@@ -368,9 +383,7 @@ object DeezerAudioProvider {
                 // Entitlement lives in flat OPTIONS booleans. Check both the web and mobile flags: a
                 // plan can carry lossless on one surface only, and either is enough for us to ask for
                 // FLAC. The pool's own `premium` hint only orders attempts; this is the real gate.
-                lossless =
-                    options.optBoolean("web_lossless", false) ||
-                        options.optBoolean("mobile_lossless", false),
+                lossless = lossless,
                 masterSecret = account.masterSecret,
                 establishedAt = now,
             )
