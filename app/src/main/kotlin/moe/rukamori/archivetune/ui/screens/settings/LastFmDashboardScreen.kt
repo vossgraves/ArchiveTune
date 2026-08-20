@@ -353,7 +353,8 @@ private suspend fun searchYtForLastFmTrack(title: String, artist: String?): Song
         .onFailure { Timber.w(it, "YouTube.search failed for Last.fm track: %s", term) }
         .getOrNull()
         ?.items
-        ?.firstOrNull { it is SongItem } as? SongItem
+        ?.filterIsInstance<SongItem>()
+        ?.firstOrNull()
     if (first == null) {
         Timber.w("searchYt no SongItem in results for: \"%s\"", term)
     } else {
@@ -1062,6 +1063,7 @@ private fun LastFmDashboardHeader(
                     trailingIcon = {
                         AppIconButton(
                             onClick = onToggleSearch,
+                            onLongClick = {},
                         ) {
                             Icon(
                                 painter = painterResource(R.drawable.solar_close_circle_linear),
