@@ -32,43 +32,26 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.filled.AccountCircle
-import androidx.compose.material.icons.filled.Album
-import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.material.icons.filled.Explore
-import androidx.compose.material.icons.filled.MoreHoriz
-import androidx.compose.material.icons.filled.MusicNote
-import androidx.compose.material.icons.filled.OpenInBrowser
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.PlaylistAdd
-import androidx.compose.material.icons.filled.Queue
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -118,14 +101,13 @@ import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.DarkModeKey
 import moe.rukamori.archivetune.extensions.toMediaItem
 import moe.rukamori.archivetune.innertube.YouTube
+import moe.rukamori.archivetune.innertube.models.ArtistItem
 import moe.rukamori.archivetune.innertube.models.SongItem
 import moe.rukamori.archivetune.lastfm.CatalogueCoverProvider
 import moe.rukamori.archivetune.lastfm.LastFM
 import moe.rukamori.archivetune.lastfm.LastFmArtworkNormalizer
 import moe.rukamori.archivetune.lastfm.models.RecentTrack
-import moe.rukamori.archivetune.lastfm.models.TopAlbum
 import moe.rukamori.archivetune.lastfm.models.TopAlbumsResponse
-import moe.rukamori.archivetune.lastfm.models.TopArtist
 import moe.rukamori.archivetune.lastfm.models.TopArtistsResponse
 import moe.rukamori.archivetune.lastfm.models.TopTrack
 import moe.rukamori.archivetune.lastfm.models.TopTracksResponse
@@ -145,7 +127,180 @@ import moe.rukamori.archivetune.utils.rememberEnumPreference
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 
+// ── Theme tokens ────────────────────────────────────────────────────────────
+
+/**
+ * Backwards-compat accent color constant. New code should prefer
+ * [DashboardTheme.accent] from [dashboardTheme], which switches between the
+ * dark-mode muted rose/brown (0xFF9D6B63) and the light-mode dusty red
+ * (0xFFBE123C). Kept here because external callers (e.g. the colored refresh
+ * spinner) may still reference it.
+ */
 private val DashboardAccentColor = Color(0xFFBE123C)
+
+/**
+ * Centralised color tokens for the Last.fm dashboard. Both light and dark
+ * modes render the SAME component tree and the SAME composables — only the
+ * [DashboardTheme] instance they read from differs. Tokens are intentionally
+ * hardcoded (rather than derived from `MaterialTheme.colorScheme`) so the
+ * dashboard's warm-light / charcoal-dark palette is independent of the global
+ * app palette, matching the LastWave-native reference.
+ */
+private data class DashboardTheme(
+    val pageBackground: Color,
+    val cardBackground: Color,
+    val pillBackground: Color,
+    val accent: Color,
+    val nowPlayingRowBackground: Color,
+    val textPrimary: Color,
+    val textSecondary: Color,
+    val statsHeroInner: Color,
+    val statsHeroNumberText: Color,
+    val statsHeroLabelText: Color,
+    val statsPillBackground: Color,
+    val statsPillValueText: Color,
+    val statsPillLabelText: Color,
+    val heroArrowCircleBackground: Color,
+    val heroArrowIconTint: Color,
+    val rankingBadgeBackground: Color,
+    val rankingBadgeText: Color,
+    val playCountPillBackground: Color,
+    val playCountPillText: Color,
+    val nowPlayingPillBackground: Color,
+    val nowPlayingPillText: Color,
+    val nowPlayingDotColor: Color,
+    val nowPlayingTrackTitle: Color,
+    val nowPlayingTrackArtist: Color,
+    val artworkPlaceholderBackground: Color,
+    val artworkPlaceholderTint: Color,
+    val filterPillBackground: Color,
+    val filterPillText: Color,
+    val filterPillIconTint: Color,
+    val dropdownBackground: Color,
+    val dropdownActiveItemBackground: Color,
+    val dropdownActiveItemText: Color,
+    val dropdownActiveItemIconTint: Color,
+    val dropdownInactiveItemText: Color,
+    val dropdownInactiveItemIconTint: Color,
+    val dropdownCheckTint: Color,
+    val overflowIconTint: Color,
+    val topAppBarContainer: Color,
+    val topAppBarIconTint: Color,
+    val topAppBarTitleText: Color,
+    val fallbackCardBackground: Color,
+    val fallbackAvatarBackground: Color,
+    val fallbackAvatarTint: Color,
+    val signInAvatarBackground: Color,
+    val signInAvatarTint: Color,
+    val signInButtonText: Color,
+    val signInButtonContainer: Color,
+    val emptyHintText: Color,
+    val dividerColor: Color,
+)
+
+private val DarkDashboardTheme = DashboardTheme(
+    pageBackground = Color(0xFF0F0F0F),
+    cardBackground = Color(0xFF1C1C1E),
+    pillBackground = Color(0xFF2A2A2C),
+    accent = Color(0xFF9D6B63),
+    nowPlayingRowBackground = Color(0xFF9D6B63),
+    textPrimary = Color.White,
+    textSecondary = Color(0xFFA0A0A0),
+    statsHeroInner = Color(0xFF9D6B63),
+    statsHeroNumberText = Color.White,
+    statsHeroLabelText = Color.White.copy(alpha = 0.75f),
+    statsPillBackground = Color(0xFF28282A),
+    statsPillValueText = Color.White,
+    statsPillLabelText = Color(0xFFA0A0A0),
+    heroArrowCircleBackground = Color.White,
+    heroArrowIconTint = Color(0xFF9D6B63),
+    rankingBadgeBackground = Color(0xFF2A2A2C),
+    rankingBadgeText = Color(0xFF9D6B63),
+    playCountPillBackground = Color(0xFF2A2A2C),
+    playCountPillText = Color(0xFFA0A0A0),
+    nowPlayingPillBackground = Color.White,
+    nowPlayingPillText = Color(0xFF9D6B63),
+    nowPlayingDotColor = Color(0xFF9D6B63),
+    nowPlayingTrackTitle = Color.White,
+    nowPlayingTrackArtist = Color.White.copy(alpha = 0.8f),
+    artworkPlaceholderBackground = Color(0xFF2A2A2C),
+    artworkPlaceholderTint = Color(0xFFA0A0A0),
+    filterPillBackground = Color(0xFF2A2A2C),
+    filterPillText = Color.White,
+    filterPillIconTint = Color(0xFFA0A0A0),
+    dropdownBackground = Color(0xFF1C1C1E),
+    dropdownActiveItemBackground = Color(0xFF9D6B63).copy(alpha = 0.22f),
+    dropdownActiveItemText = Color(0xFFC9A8A2),
+    dropdownActiveItemIconTint = Color(0xFFC9A8A2),
+    dropdownInactiveItemText = Color.White,
+    dropdownInactiveItemIconTint = Color(0xFFA0A0A0),
+    dropdownCheckTint = Color(0xFFC9A8A2),
+    overflowIconTint = Color.White,
+    topAppBarContainer = Color(0xFF0F0F0F),
+    topAppBarIconTint = Color.White,
+    topAppBarTitleText = Color.White,
+    fallbackCardBackground = Color(0xFF1C1C1E),
+    fallbackAvatarBackground = Color(0xFF2A2A2C),
+    fallbackAvatarTint = Color(0xFF9D6B63),
+    signInAvatarBackground = Color(0xFF2A2A2C),
+    signInAvatarTint = Color(0xFF9D6B63),
+    signInButtonText = Color.White,
+    signInButtonContainer = Color(0xFF9D6B63),
+    emptyHintText = Color(0xFFA0A0A0),
+    dividerColor = Color.White.copy(alpha = 0.08f),
+)
+
+private val LightDashboardTheme = DashboardTheme(
+    pageBackground = Color(0xFFFFF8F5),
+    cardBackground = Color(0xFFFFF0ED),
+    pillBackground = Color(0xFFFCE4E6),
+    accent = Color(0xFFBE123C),
+    nowPlayingRowBackground = Color(0xFFFCE4E6),
+    textPrimary = Color(0xFF1F1416),
+    textSecondary = Color(0xFF8B6B6E),
+    statsHeroInner = Color(0xFFFCE4E6),
+    statsHeroNumberText = Color(0xFFBE123C),
+    statsHeroLabelText = Color(0xFF8B6B6E),
+    statsPillBackground = Color(0xFFFFE4E6),
+    statsPillValueText = Color(0xFF1F1416),
+    statsPillLabelText = Color(0xFF8B6B6E),
+    heroArrowCircleBackground = Color(0xFFBE123C),
+    heroArrowIconTint = Color.White,
+    rankingBadgeBackground = Color(0xFFFCE4E6),
+    rankingBadgeText = Color(0xFFBE123C),
+    playCountPillBackground = Color(0xFFFCE4E6),
+    playCountPillText = Color(0xFF8B6B6E),
+    nowPlayingPillBackground = Color(0xFFBE123C),
+    nowPlayingPillText = Color.White,
+    nowPlayingDotColor = Color.White,
+    nowPlayingTrackTitle = Color(0xFF1F1416),
+    nowPlayingTrackArtist = Color(0xFF8B6B6E),
+    artworkPlaceholderBackground = Color(0xFFFCE4E6),
+    artworkPlaceholderTint = Color(0xFF8B6B6E),
+    filterPillBackground = Color(0xFFFCE4E6),
+    filterPillText = Color(0xFF1F1416),
+    filterPillIconTint = Color(0xFF8B6B6E),
+    dropdownBackground = Color(0xFFFFF0ED),
+    dropdownActiveItemBackground = Color(0xFFBE123C).copy(alpha = 0.14f),
+    dropdownActiveItemText = Color(0xFFBE123C),
+    dropdownActiveItemIconTint = Color(0xFFBE123C),
+    dropdownInactiveItemText = Color(0xFF1F1416),
+    dropdownInactiveItemIconTint = Color(0xFF8B6B6E),
+    dropdownCheckTint = Color(0xFFBE123C),
+    overflowIconTint = Color(0xFF1F1416),
+    topAppBarContainer = Color(0xFFFFF8F5),
+    topAppBarIconTint = Color(0xFF1F1416),
+    topAppBarTitleText = Color(0xFF1F1416),
+    fallbackCardBackground = Color(0xFFFFF0ED),
+    fallbackAvatarBackground = Color(0xFFFCE4E6),
+    fallbackAvatarTint = Color(0xFFBE123C),
+    signInAvatarBackground = Color(0xFFFCE4E6),
+    signInAvatarTint = Color(0xFFBE123C),
+    signInButtonText = Color.White,
+    signInButtonContainer = Color(0xFFBE123C),
+    emptyHintText = Color(0xFF8B6B6E),
+    dividerColor = Color(0xFF1F1416).copy(alpha = 0.08f),
+)
 
 @Composable
 private fun isDashboardDarkTheme(): Boolean {
@@ -154,12 +309,8 @@ private fun isDashboardDarkTheme(): Boolean {
 }
 
 @Composable
-private fun dashboardCardColor(): Color =
-    if (isDashboardDarkTheme()) Color(0xFF1F1416) else Color(0xFFFFF5F5)
-
-@Composable
-private fun dashboardIconBackgroundColor(): Color =
-    if (isDashboardDarkTheme()) Color(0xFF3A1F23) else Color(0xFFFFE4E6)
+private fun dashboardTheme(): DashboardTheme =
+    if (isDashboardDarkTheme()) DarkDashboardTheme else LightDashboardTheme
 
 private enum class LastFmFilter { RECENT, TOP_TRACKS, TOP_ARTISTS, TOP_ALBUMS }
 
@@ -201,10 +352,10 @@ private suspend fun searchYtForLastFmTrack(title: String, artist: String?): Song
  * [RecentTrack] and [TopTrack] collapse to the same shape once they reach the
  * overflow sheet — the only fields the sheet cares about are title, artist,
  * the Last.fm web URL (for "Open in Last.fm"), the Last.fm image array (for
- * the album thumbnail), an optional play count (for top tracks), and the
- * now-playing flag (for recents). Wrapping both model types in a single
- * data class keeps the sheet's API stable regardless of which list the user
- * opened it from.
+ * the album thumbnail), an optional play count (for top tracks / deduped
+ * recents), and the now-playing flag (for recents). Wrapping both model types
+ * in a single data class keeps the sheet's API stable regardless of which
+ * list the user opened it from.
  */
 private data class LastFmTrackRef(
     val title: String,
@@ -217,12 +368,12 @@ private data class LastFmTrackRef(
     fun artworkKey(): String = "${title.trim().lowercase()}::${artist.orEmpty().trim().lowercase()}"
 }
 
-private fun RecentTrack.toRef(): LastFmTrackRef = LastFmTrackRef(
+private fun RecentTrack.toRef(playCount: Int? = null): LastFmTrackRef = LastFmTrackRef(
     title = name.orEmpty(),
     artist = artist?.text,
     url = url,
     image = image,
-    playCount = null,
+    playCount = playCount,
     isNowPlaying = isNowPlaying,
 )
 
@@ -235,11 +386,67 @@ private fun TopTrack.toRef(): LastFmTrackRef = LastFmTrackRef(
     isNowPlaying = false,
 )
 
+// ── Recent-track dedup ──────────────────────────────────────────────────────
+
+/**
+ * Paired (track, count) for the merged recent-tracks list. The dashboard
+ * groups consecutive scrobbles of the same (name, artist.text) tuple into a
+ * single row with a "×N" play-count badge — Last.fm's recents feed echoes
+ * every play 1:1, so without this merge a song stuck on repeat shows up three
+ * times in a row, which is noisy and useless. The first occurrence of each
+ * consecutive group is kept as the representative track (so the now-playing
+ * flag, date, and artwork all read off the most recent scrobble in the run).
+ */
+private data class RecentTrackWithCount(
+    val track: RecentTrack,
+    val playCount: Int,
+)
+
+/**
+ * Group consecutive recent-tracks by `(name, artist.text)` and emit a single
+ * [RecentTrackWithCount] per group, with [RecentTrackWithCount.playCount]
+ * equal to the number of consecutive scrobbles. Non-consecutive repeats are
+ * kept as separate groups (a song played at 9am and again at 11am, with a
+ * different song at 10am, surfaces as two rows).
+ *
+ * Extends the previous `dedupeNowPlayingEchoes` behaviour: when a now-playing
+ * scrobble is present, its stale historical copies are still dropped (the
+ * now-playing copy is a transient state — its date is "now", so it can't be
+ * meaningfully merged with historical scrobbles that share its title/artist).
+ */
+private fun List<RecentTrack>.mergeDuplicatesWithCount(): List<RecentTrackWithCount> {
+    if (isEmpty()) return emptyList()
+    val nowPlayingKey = firstOrNull { it.isNowPlaying }?.trackArtworkKey()
+    val result = mutableListOf<RecentTrackWithCount>()
+    for (track in this) {
+        val key = track.trackArtworkKey()
+        if (nowPlayingKey != null && key == nowPlayingKey && !track.isNowPlaying) continue
+        val last = result.lastOrNull()
+        if (last != null && last.track.trackArtworkKey() == key) {
+            // Promote to now-playing if any copy in the run is now-playing —
+            // the now-playing flag should be preserved across the merge so
+            // the row renders with the pulsing badge.
+            val mergedIsNowPlaying = last.track.isNowPlaying || track.isNowPlaying
+            val representative = if (mergedIsNowPlaying && track.isNowPlaying) track else last.track
+            result[result.lastIndex] = last.copy(
+                track = representative,
+                playCount = last.playCount + 1,
+            )
+        } else {
+            result.add(RecentTrackWithCount(track, 1))
+        }
+    }
+    return result
+}
+
+// ── Screen ──────────────────────────────────────────────────────────────────
+
 @Composable
 fun LastFmDashboardScreen(
     navController: NavController,
     repository: LastFmSettingsRepository = hiltViewModel<LastFmDashboardViewModel>().repository,
 ) {
+    val theme = dashboardTheme()
     val settings by repository.observeSettings().collectAsStateWithLifecycle(initialValue = null)
     val current = settings
     val isLoggedIn = current?.isLoggedIn == true
@@ -307,14 +514,27 @@ fun LastFmDashboardScreen(
         if (isLoggedIn) refresh()
     }
 
+    // ── Notch / status-bar handling ─────────────────────────────────────
+    //
+    // The Scaffold's `contentWindowInsets` is set to `WindowInsets.safeDrawing`
+    // so that the body content's `innerPadding` always accounts for the
+    // display cutout / status bar — even when the user has toggled "hide
+    // status bar" on (in which case `WindowInsets.statusBars` reports 0 but
+    // `safeDrawing.displayCutout` still tracks the physical notch).
+    //
+    // The TopAppBar's Row ALSO applies `windowInsetsPadding(safeDrawing)`
+    // so the header's icon buttons are pushed below the notch, and
+    // `consumeWindowInsets` is chained so the body doesn't double-count
+    // (standard Material3 TopAppBar pattern).
     Scaffold(
         modifier = Modifier.fillMaxSize(),
-        containerColor = MaterialTheme.colorScheme.surface,
-        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        containerColor = theme.pageBackground,
+        contentWindowInsets = WindowInsets.safeDrawing,
         topBar = {
             LastFmDashboardHeader(
                 userInfo = userInfo,
                 isRefreshing = isRefreshing,
+                theme = theme,
                 onRefresh = { if (!isRefreshing) refresh() },
                 onBack = navController::navigateUp,
                 onBackLong = navController::backToMain,
@@ -325,8 +545,11 @@ fun LastFmDashboardScreen(
         },
     ) { innerPadding ->
         if (current == null) {
-            Box(Modifier.fillMaxSize().padding(innerPadding), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
+            Box(
+                Modifier.fillMaxSize().padding(innerPadding),
+                contentAlignment = Alignment.Center,
+            ) {
+                CircularProgressIndicator(color = theme.accent)
             }
             return@Scaffold
         }
@@ -334,13 +557,14 @@ fun LastFmDashboardScreen(
         if (!isLoggedIn) {
             NotSignedIn(
                 onSignIn = { navController.navigate("settings/lastfm") },
+                theme = theme,
                 modifier = Modifier.fillMaxSize().padding(innerPadding),
             )
             return@Scaffold
         }
 
         val recent = remember(recentTracks) {
-            recentTracks?.getOrNull().orEmpty().dedupeNowPlayingEchoes()
+            recentTracks?.getOrNull().orEmpty().mergeDuplicatesWithCount()
         }
         // Unwrap the page list off the stored wrapper (state still holds the
         // wrapper so the hero stat pills can read .attr.total off the same
@@ -348,11 +572,13 @@ fun LastFmDashboardScreen(
         val top = topTracks?.getOrNull()?.toptracks?.track.orEmpty()
         val artists = topArtists?.getOrNull()?.topartists?.artist.orEmpty()
         val albums = topAlbums?.getOrNull()?.topalbums?.album.orEmpty()
-        val recentArtworkByTrack = remember(recent) { recent.associateArtworkByTrack() }
+        val recentArtworkByTrack = remember(recent) {
+            recent.associateArtworkByTrack()
+        }
 
-        val seedMap = remember(allTracksForArtworkSeedKey(recent, top)) {
+        val seedMap = remember(allTracksForArtworkSeedKey(recent.map { it.track }, top)) {
             val snapshot = HashMap<String, String>()
-            for (lookup in buildAllArtworkLookups(recent, top)) {
+            for (lookup in buildAllArtworkLookups(recent.map { it.track }, top)) {
                 CachedArtworkStore.get(lookup.key)?.let { snapshot[lookup.key] = it }
             }
             snapshot
@@ -360,7 +586,7 @@ fun LastFmDashboardScreen(
         var catalogueArtworkByTrack by remember { mutableStateOf<Map<String, String>>(seedMap) }
 
         val allTracksForArtwork = remember(recent, top) {
-            buildAllArtworkLookups(recent, top)
+            buildAllArtworkLookups(recent.map { it.track }, top)
         }
 
         LaunchedEffect(allTracksForArtwork) {
@@ -392,6 +618,70 @@ fun LastFmDashboardScreen(
             }
         }
 
+        // ── Artist image resolution ────────────────────────────────────
+        //
+        // Last.fm artist images are sparse (the placeholder hash gets rejected
+        // by LastFmArtworkNormalizer for less-known artists), so for any artist
+        // whose image array is empty we fall back to a YouTube artist-channel
+        // search and use the returned thumbnail. Mirrors the track artwork
+        // pipeline (seed cache → resolve missing → publish snapshot).
+        val artistSeedMap = remember(artists) {
+            val snapshot = HashMap<String, String>()
+            for (artist in artists) {
+                val key = artist.name.orEmpty().trim().lowercase()
+                if (key.isBlank()) continue
+                CachedArtworkStore.get("artist::$key")?.let { snapshot[key] = it }
+            }
+            snapshot
+        }
+        var artistArtworkByName by remember { mutableStateOf<Map<String, String>>(artistSeedMap) }
+
+        LaunchedEffect(artists) {
+            if (artists.isEmpty()) return@LaunchedEffect
+            val snapshot = HashMap<String, String>(artistArtworkByName)
+            // Seed with any Last.fm-provided images first (synchronous, no IO).
+            for (artist in artists) {
+                val name = artist.name.orEmpty()
+                val key = name.trim().lowercase()
+                if (key.isBlank() || snapshot.containsKey(key)) continue
+                val lastFmImage = bestArtwork(artist.image)
+                if (!lastFmImage.isNullOrBlank()) {
+                    snapshot[key] = lastFmImage
+                    CachedArtworkStore.put("artist::$key", lastFmImage)
+                }
+            }
+            artistArtworkByName = snapshot.toMap()
+            // Resolve missing entries via YouTube artist search in parallel.
+            val toResolve = artists
+                .filter { artist ->
+                    val key = artist.name.orEmpty().trim().lowercase()
+                    key.isNotBlank() && !snapshot.containsKey(key)
+                }
+            if (toResolve.isEmpty()) return@LaunchedEffect
+            val resolved = withContext(Dispatchers.IO) {
+                toResolve
+                    .map { artist ->
+                        async(Dispatchers.IO) {
+                            val name = artist.name.orEmpty()
+                            val key = name.trim().lowercase()
+                            val url = resolveArtistImage(name)
+                            if (url != null) {
+                                CachedArtworkStore.put("artist::$key", url)
+                                key to url
+                            } else {
+                                null
+                            }
+                        }
+                    }
+                    .awaitAll()
+                    .filterNotNull()
+            }
+            if (resolved.isNotEmpty()) {
+                resolved.forEach { (k, u) -> snapshot[k] = u }
+                artistArtworkByName = snapshot.toMap()
+            }
+        }
+
         val playerAwareInsets = LocalPlayerAwareWindowInsets.current
         val density = LocalDensity.current
         val bottomInsetDp = with(density) { playerAwareInsets.getBottom(density).toDp() }
@@ -412,6 +702,7 @@ fun LastFmDashboardScreen(
                 HeaderPillRow(
                     userInfo = userInfo,
                     username = current.username,
+                    theme = theme,
                 )
             }
 
@@ -425,6 +716,7 @@ fun LastFmDashboardScreen(
                     albumCount = topAlbums?.getOrNull()?.topalbums?.attr?.total?.toIntOrNull() ?: 0,
                     onRetry = ::refresh,
                     onOpenGenres = { navController.navigate(Screens.MoodAndGenres.route) },
+                    theme = theme,
                 )
             }
 
@@ -432,30 +724,42 @@ fun LastFmDashboardScreen(
                 FilterHeader(
                     selectedFilter = selectedFilter,
                     onSelect = { selectedFilter = it },
+                    theme = theme,
                 )
             }
 
             when (selectedFilter) {
                 LastFmFilter.RECENT -> {
                     if (recent.isEmpty() && recentTracks != null && !isRefreshing) {
-                        item(key = "recent_empty") { EmptyHint(text = stringResource(R.string.lastfm_no_recent_tracks)) }
+                        item(key = "recent_empty") {
+                            EmptyHint(
+                                text = stringResource(R.string.lastfm_no_recent_tracks),
+                                theme = theme,
+                            )
+                        }
                     } else {
                         items(
                             recent,
-                            key = { "recent_${it.name}_${it.date?.uts ?: it.attr?.nowplaying ?: ""}" },
-                        ) { track ->
+                            key = { "recent_${it.track.name}_${it.track.date?.uts ?: it.track.attr?.nowplaying ?: ""}" },
+                        ) { entry ->
                             DashboardTrackRow(
-                                track = track.toRef(),
-                                fallbackArtworkUrl = recentArtworkByTrack[track.trackArtworkKey()]
-                                    ?: catalogueArtworkByTrack[track.trackArtworkKey()],
-                                onOverflow = { overflowTrack = track.toRef() },
+                                track = entry.track.toRef(playCount = entry.playCount),
+                                fallbackArtworkUrl = recentArtworkByTrack[entry.track.trackArtworkKey()]
+                                    ?: catalogueArtworkByTrack[entry.track.trackArtworkKey()],
+                                onOverflow = { overflowTrack = entry.track.toRef(playCount = entry.playCount) },
+                                theme = theme,
                             )
                         }
                     }
                 }
                 LastFmFilter.TOP_TRACKS -> {
                     if (top.isEmpty() && topTracks != null && !isRefreshing) {
-                        item(key = "top_empty") { EmptyHint(text = stringResource(R.string.lastfm_no_top_tracks)) }
+                        item(key = "top_empty") {
+                            EmptyHint(
+                                text = stringResource(R.string.lastfm_no_top_tracks),
+                                theme = theme,
+                            )
+                        }
                     } else {
                         items(
                             top.withIndex().toList(),
@@ -467,13 +771,19 @@ fun LastFmDashboardScreen(
                                 fallbackArtworkUrl = recentArtworkByTrack[track.trackArtworkKey()]
                                     ?: catalogueArtworkByTrack[track.trackArtworkKey()],
                                 onOverflow = { overflowTrack = track.toRef() },
+                                theme = theme,
                             )
                         }
                     }
                 }
                 LastFmFilter.TOP_ARTISTS -> {
                     if (artists.isEmpty() && topArtists != null && !isRefreshing) {
-                        item(key = "artists_empty") { EmptyHint(text = stringResource(R.string.lastfm_no_top_tracks)) }
+                        item(key = "artists_empty") {
+                            EmptyHint(
+                                text = stringResource(R.string.lastfm_no_top_tracks),
+                                theme = theme,
+                            )
+                        }
                     } else {
                         items(
                             artists.withIndex().toList(),
@@ -483,14 +793,21 @@ fun LastFmDashboardScreen(
                                 name = artist.name.orEmpty(),
                                 playCount = artist.playcount,
                                 rank = index + 1,
-                                artworkUrl = bestArtwork(artist.image),
+                                artworkUrl = bestArtwork(artist.image)
+                                    ?: artistArtworkByName[artist.name.orEmpty().trim().lowercase()],
+                                theme = theme,
                             )
                         }
                     }
                 }
                 LastFmFilter.TOP_ALBUMS -> {
                     if (albums.isEmpty() && topAlbums != null && !isRefreshing) {
-                        item(key = "albums_empty") { EmptyHint(text = stringResource(R.string.lastfm_no_top_tracks)) }
+                        item(key = "albums_empty") {
+                            EmptyHint(
+                                text = stringResource(R.string.lastfm_no_top_tracks),
+                                theme = theme,
+                            )
+                        }
                     } else {
                         items(
                             albums.withIndex().toList(),
@@ -502,6 +819,7 @@ fun LastFmDashboardScreen(
                                 playCount = album.playcount,
                                 rank = index + 1,
                                 artworkUrl = bestArtwork(album.image),
+                                theme = theme,
                             )
                         }
                     }
@@ -515,6 +833,7 @@ fun LastFmDashboardScreen(
                 onDismiss = { overflowTrack = null },
                 onOpenGenres = { navController.navigate(Screens.MoodAndGenres.route) },
                 onAddToPlaylist = { showAddToPlaylist = true },
+                theme = theme,
             )
         }
 
@@ -548,6 +867,7 @@ fun LastFmDashboardScreen(
 private fun LastFmDashboardHeader(
     userInfo: Result<UserInfo>?,
     isRefreshing: Boolean,
+    theme: DashboardTheme,
     onRefresh: () -> Unit,
     onBack: () -> Unit,
     onBackLong: () -> Unit,
@@ -556,7 +876,7 @@ private fun LastFmDashboardHeader(
     onAvatar: () -> Unit,
 ) {
     Surface(
-        color = MaterialTheme.colorScheme.surface,
+        color = theme.topAppBarContainer,
         tonalElevation = 0.dp,
         shadowElevation = 0.dp,
     ) {
@@ -564,7 +884,10 @@ private fun LastFmDashboardHeader(
             modifier = Modifier
                 .fillMaxWidth()
                 .windowInsetsPadding(
-                    WindowInsets.systemBars.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
+                    WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
+                )
+                .consumeWindowInsets(
+                    WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
                 )
                 .padding(horizontal = 4.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -574,14 +897,16 @@ private fun LastFmDashboardHeader(
                 onLongClick = onBackLong,
             ) {
                 Icon(
-                    painter = painterResource(R.drawable.arrow_back),
+                    painter = painterResource(R.drawable.solar_arrow_left_linear),
                     contentDescription = stringResource(R.string.back_button_desc),
+                    tint = theme.topAppBarIconTint,
                 )
             }
             Text(
-                text = "Last.fm",
+                text = stringResource(R.string.lastfm_dashboard),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
+                color = theme.topAppBarTitleText,
                 modifier = Modifier
                     .weight(1f)
                     .padding(start = 8.dp),
@@ -607,47 +932,50 @@ private fun LastFmDashboardHeader(
                 onClick = onRefresh,
                 enabled = !isRefreshing,
                 colors = IconButtonDefaults.iconButtonColors(
-                    contentColor = MaterialTheme.colorScheme.onSurface,
+                    contentColor = theme.topAppBarIconTint,
                 ),
             ) {
                 Icon(
-                    imageVector = Icons.Default.Refresh,
+                    painter = painterResource(R.drawable.cached),
                     contentDescription = stringResource(R.string.lastfm_refresh),
+                    tint = theme.topAppBarIconTint,
                     modifier = Modifier.graphicsLayer { rotationZ = rotation },
                 )
             }
             IconButton(
                 onClick = onExplore,
                 colors = IconButtonDefaults.iconButtonColors(
-                    contentColor = MaterialTheme.colorScheme.onSurface,
+                    contentColor = theme.topAppBarIconTint,
                 ),
             ) {
                 Icon(
-                    imageVector = Icons.Filled.Explore,
+                    painter = painterResource(R.drawable.solar_server_linear),
                     contentDescription = stringResource(R.string.mood_and_genres),
+                    tint = theme.topAppBarIconTint,
                 )
             }
             IconButton(
                 onClick = onSearch,
                 colors = IconButtonDefaults.iconButtonColors(
-                    contentColor = MaterialTheme.colorScheme.onSurface,
+                    contentColor = theme.topAppBarIconTint,
                 ),
             ) {
                 Icon(
-                    imageVector = Icons.Filled.Search,
+                    painter = painterResource(R.drawable.solar_magnifer_linear),
                     contentDescription = stringResource(R.string.search),
+                    tint = theme.topAppBarIconTint,
                 )
             }
             // 40dp circular Last.fm avatar — taps navigate to mood_and_genres
             // (same target as the explore button, mirroring LastWave-native's
             // ProfileAvatar which opens the discover view). When no avatar URL
             // is available (not logged in / image array empty), falls back to
-            // AccountCircle so the header still reads as a tappable profile
-            // afford.
+            // solar_user_circle_linear so the header still reads as a tappable
+            // profile afford.
             IconButton(
                 onClick = onAvatar,
                 colors = IconButtonDefaults.iconButtonColors(
-                    contentColor = MaterialTheme.colorScheme.onSurface,
+                    contentColor = theme.topAppBarIconTint,
                 ),
             ) {
                 val info = userInfo?.getOrNull()
@@ -661,8 +989,9 @@ private fun LastFmDashboardHeader(
                     )
                 } else {
                     Icon(
-                        imageVector = Icons.Filled.AccountCircle,
+                        painter = painterResource(R.drawable.solar_user_circle_linear),
                         contentDescription = null,
+                        tint = theme.topAppBarIconTint,
                         modifier = Modifier.size(40.dp),
                     )
                 }
@@ -686,6 +1015,7 @@ private fun LastFmDashboardHeader(
 private fun HeaderPillRow(
     userInfo: Result<UserInfo>?,
     username: String,
+    theme: DashboardTheme,
 ) {
     val info = userInfo?.getOrNull()
     val scrobbles = info?.playcount ?: 0
@@ -698,47 +1028,47 @@ private fun HeaderPillRow(
     ) {
         Surface(
             shape = RoundedCornerShape(50),
-            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            color = theme.pillBackground,
         ) {
             Row(
                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(
-                    imageVector = Icons.Filled.AccountCircle,
+                    painter = painterResource(R.drawable.solar_user_circle_linear),
                     contentDescription = null,
                     modifier = Modifier.size(15.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    tint = theme.textSecondary,
                 )
                 Spacer(Modifier.width(6.dp))
                 Text(
                     text = username.ifBlank { "—" },
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface,
+                    color = theme.textPrimary,
                 )
             }
         }
         Surface(
             shape = RoundedCornerShape(50),
-            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            color = theme.pillBackground,
         ) {
             Row(
                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(
-                    painter = painterResource(R.drawable.stats),
+                    painter = painterResource(R.drawable.solar_music_note_2_linear),
                     contentDescription = null,
                     modifier = Modifier.size(15.dp),
-                    tint = DashboardAccentColor,
+                    tint = theme.accent,
                 )
                 Spacer(Modifier.width(6.dp))
                 Text(
                     text = formatCount(scrobbles.toLong()),
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface,
+                    color = theme.textPrimary,
                 )
             }
         }
@@ -750,9 +1080,10 @@ private fun HeaderPillRow(
 /**
  * Large rounded stats card replacing the previous flat UserCard. Ported
  * from LastWave-native's StatsCard composable (HomeScreen.kt lines 524-599):
- *   - surfaceContainerHigh outer card
- *   - primaryContainer inner hero area with the formatted scrobbles count
- *   - a 46dp primary Surface with a forward-arrow IconButton on the right
+ *   - surfaceContainerHigh-equivalent outer card (theme.cardBackground)
+ *   - accent/primaryContainer-equivalent inner hero area (theme.statsHeroInner)
+ *     with the formatted scrobbles count
+ *   - a 46dp hero-arrow Surface with a forward-arrow IconButton on the right
  *     of the hero (opens mood_and_genres — LastWave-native's "Genres" target)
  *   - three StatPills below for Tracks / Artists / Albums
  *
@@ -770,20 +1101,21 @@ private fun HeroStatsCard(
     albumCount: Int,
     onRetry: () -> Unit,
     onOpenGenres: () -> Unit,
+    theme: DashboardTheme,
 ) {
     when {
         userInfo == null && isRefreshing -> {
             Box(
                 modifier = Modifier.fillMaxWidth().padding(24.dp),
                 contentAlignment = Alignment.Center,
-            ) { CircularProgressIndicator(color = DashboardAccentColor) }
+            ) { CircularProgressIndicator(color = theme.accent) }
         }
         userInfo?.isSuccess == true -> {
             val info = userInfo.getOrNull()!!
             Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
                 Surface(
                     shape = RoundedCornerShape(24.dp),
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    color = theme.cardBackground,
                     tonalElevation = 2.dp,
                     shadowElevation = 4.dp,
                     modifier = Modifier.fillMaxWidth(),
@@ -791,7 +1123,7 @@ private fun HeroStatsCard(
                     Column(Modifier.padding(horizontal = 20.dp, vertical = 18.dp)) {
                         Surface(
                             shape = RoundedCornerShape(20.dp),
-                            color = MaterialTheme.colorScheme.primaryContainer,
+                            color = theme.statsHeroInner,
                             modifier = Modifier.fillMaxWidth(),
                         ) {
                             Box(
@@ -807,17 +1139,17 @@ private fun HeroStatsCard(
                                         text = formatCount((info.playcount ?: 0).toLong()),
                                         style = MaterialTheme.typography.displaySmall,
                                         fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                        color = theme.statsHeroNumberText,
                                     )
                                     Text(
                                         text = stringResource(R.string.lastfm_scrobbles),
                                         style = MaterialTheme.typography.labelMedium,
-                                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f),
+                                        color = theme.statsHeroLabelText,
                                     )
                                 }
                                 Surface(
                                     shape = RoundedCornerShape(50),
-                                    color = MaterialTheme.colorScheme.primary,
+                                    color = theme.heroArrowCircleBackground,
                                     modifier = Modifier
                                         .size(46.dp)
                                         .align(Alignment.CenterEnd),
@@ -825,9 +1157,9 @@ private fun HeroStatsCard(
                                     Box(contentAlignment = Alignment.Center) {
                                         IconButton(onClick = onOpenGenres) {
                                             Icon(
-                                                imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                                painter = painterResource(R.drawable.solar_forward_linear),
                                                 contentDescription = stringResource(R.string.mood_and_genres),
-                                                tint = MaterialTheme.colorScheme.onPrimary,
+                                                tint = theme.heroArrowIconTint,
                                             )
                                         }
                                     }
@@ -837,22 +1169,25 @@ private fun HeroStatsCard(
                         Spacer(Modifier.height(12.dp))
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
                             StatPill(
                                 label = stringResource(R.string.lastfm_filter_top_tracks),
                                 value = formatCount(trackCount.toLong()),
                                 modifier = Modifier.weight(1f),
+                                theme = theme,
                             )
                             StatPill(
                                 label = stringResource(R.string.lastfm_filter_top_artists),
                                 value = formatCount(artistCount.toLong()),
                                 modifier = Modifier.weight(1f),
+                                theme = theme,
                             )
                             StatPill(
                                 label = stringResource(R.string.lastfm_filter_top_albums),
                                 value = formatCount(albumCount.toLong()),
                                 modifier = Modifier.weight(1f),
+                                theme = theme,
                             )
                         }
                     }
@@ -869,7 +1204,7 @@ private fun HeroStatsCard(
                     Surface(
                         modifier = Modifier.size(40.dp),
                         shape = CircleShape,
-                        color = dashboardIconBackgroundColor(),
+                        color = theme.artworkPlaceholderBackground,
                     ) {
                         if (!avatar.isNullOrBlank()) {
                             AsyncImage(
@@ -881,9 +1216,9 @@ private fun HeroStatsCard(
                         } else {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
-                                    painter = painterResource(R.drawable.account),
+                                    painter = painterResource(R.drawable.solar_user_circle_linear),
                                     contentDescription = null,
-                                    tint = DashboardAccentColor,
+                                    tint = theme.accent,
                                     modifier = Modifier.size(20.dp),
                                 )
                             }
@@ -895,13 +1230,14 @@ private fun HeroStatsCard(
                             text = info.realname?.takeIf { it.isNotBlank() } ?: info.name,
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
+                            color = theme.textPrimary,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
                         Text(
                             text = "@${info.name}",
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = theme.textSecondary,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
@@ -915,7 +1251,7 @@ private fun HeroStatsCard(
                 onClick = onRetry,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                 shape = RoundedCornerShape(20.dp),
-                color = dashboardCardColor(),
+                color = theme.fallbackCardBackground,
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(20.dp),
@@ -924,13 +1260,13 @@ private fun HeroStatsCard(
                     Surface(
                         modifier = Modifier.size(48.dp),
                         shape = CircleShape,
-                        color = dashboardIconBackgroundColor(),
+                        color = theme.fallbackAvatarBackground,
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(
-                                painter = painterResource(R.drawable.account),
+                                painter = painterResource(R.drawable.solar_user_circle_linear),
                                 contentDescription = null,
-                                tint = DashboardAccentColor,
+                                tint = theme.fallbackAvatarTint,
                                 modifier = Modifier.size(24.dp),
                             )
                         }
@@ -939,6 +1275,7 @@ private fun HeroStatsCard(
                     Text(
                         text = "@$username",
                         style = MaterialTheme.typography.titleMedium,
+                        color = theme.textPrimary,
                     )
                 }
             }
@@ -960,11 +1297,12 @@ private fun StatPill(
     label: String,
     value: String,
     modifier: Modifier = Modifier,
+    theme: DashboardTheme,
 ) {
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.55f),
+        shape = RoundedCornerShape(16.dp),
+        color = theme.statsPillBackground,
     ) {
         Column(
             Modifier.padding(vertical = 10.dp),
@@ -974,12 +1312,12 @@ private fun StatPill(
                 text = value,
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface,
+                color = theme.statsPillValueText,
             )
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = theme.statsPillLabelText,
             )
         }
     }
@@ -996,6 +1334,7 @@ private fun StatPill(
 private fun FilterHeader(
     selectedFilter: LastFmFilter,
     onSelect: (LastFmFilter) -> Unit,
+    theme: DashboardTheme,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     Row(
@@ -1009,13 +1348,14 @@ private fun FilterHeader(
             text = stringResource(R.string.lastfm_list),
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold,
+            color = theme.textPrimary,
             modifier = Modifier.align(Alignment.CenterVertically),
         )
         Box {
             Surface(
                 onClick = { menuOpen = true },
                 shape = RoundedCornerShape(50),
-                color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                color = theme.filterPillBackground,
                 tonalElevation = 1.dp,
                 modifier = Modifier.heightIn(min = 34.dp),
             ) {
@@ -1024,24 +1364,24 @@ private fun FilterHeader(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Icon(
-                        imageVector = iconForFilter(selectedFilter),
+                        painter = painterResource(iconForFilter(selectedFilter)),
                         contentDescription = null,
                         modifier = Modifier.size(15.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        tint = theme.filterPillIconTint,
                     )
                     Spacer(Modifier.width(6.dp))
                     Text(
                         text = labelForFilter(selectedFilter),
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurface,
+                        color = theme.filterPillText,
                     )
                     Spacer(Modifier.width(4.dp))
                     Icon(
-                        imageVector = Icons.Filled.ExpandMore,
+                        painter = painterResource(R.drawable.expand_more),
                         contentDescription = null,
                         modifier = Modifier.size(15.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        tint = theme.filterPillIconTint,
                     )
                 }
             }
@@ -1049,45 +1389,49 @@ private fun FilterHeader(
                 expanded = menuOpen,
                 onDismissRequest = { menuOpen = false },
                 shape = RoundedCornerShape(24.dp),
-                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                containerColor = theme.dropdownBackground,
                 tonalElevation = 3.dp,
                 shadowElevation = 3.dp,
                 modifier = Modifier.padding(vertical = 4.dp),
             ) {
                 FilterOption(
-                    icon = Icons.Filled.Refresh,
+                    iconRes = R.drawable.cached,
                     label = stringResource(R.string.lastfm_filter_recent),
                     active = selectedFilter == LastFmFilter.RECENT,
                     onClick = { onSelect(LastFmFilter.RECENT); menuOpen = false },
+                    theme = theme,
                 )
                 FilterOption(
-                    icon = Icons.Filled.MusicNote,
+                    iconRes = R.drawable.solar_music_note_2_linear,
                     label = stringResource(R.string.lastfm_filter_top_tracks),
                     active = selectedFilter == LastFmFilter.TOP_TRACKS,
                     onClick = { onSelect(LastFmFilter.TOP_TRACKS); menuOpen = false },
+                    theme = theme,
                 )
                 FilterOption(
-                    icon = Icons.Filled.Person,
+                    iconRes = R.drawable.solar_users_group_rounded_linear,
                     label = stringResource(R.string.lastfm_filter_top_artists),
                     active = selectedFilter == LastFmFilter.TOP_ARTISTS,
                     onClick = { onSelect(LastFmFilter.TOP_ARTISTS); menuOpen = false },
+                    theme = theme,
                 )
                 FilterOption(
-                    icon = Icons.Filled.Album,
+                    iconRes = R.drawable.solar_playlist_linear,
                     label = stringResource(R.string.lastfm_filter_top_albums),
                     active = selectedFilter == LastFmFilter.TOP_ALBUMS,
                     onClick = { onSelect(LastFmFilter.TOP_ALBUMS); menuOpen = false },
+                    theme = theme,
                 )
             }
         }
     }
 }
 
-private fun iconForFilter(filter: LastFmFilter) = when (filter) {
-    LastFmFilter.RECENT -> Icons.Filled.Refresh
-    LastFmFilter.TOP_TRACKS -> Icons.Filled.MusicNote
-    LastFmFilter.TOP_ARTISTS -> Icons.Filled.Person
-    LastFmFilter.TOP_ALBUMS -> Icons.Filled.Album
+private fun iconForFilter(filter: LastFmFilter): Int = when (filter) {
+    LastFmFilter.RECENT -> R.drawable.cached
+    LastFmFilter.TOP_TRACKS -> R.drawable.solar_music_note_2_linear
+    LastFmFilter.TOP_ARTISTS -> R.drawable.solar_users_group_rounded_linear
+    LastFmFilter.TOP_ALBUMS -> R.drawable.solar_playlist_linear
 }
 
 @Composable
@@ -1100,10 +1444,11 @@ private fun labelForFilter(filter: LastFmFilter) = when (filter) {
 
 @Composable
 private fun FilterOption(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    @androidx.annotation.DrawableRes iconRes: Int,
     label: String,
     active: Boolean,
     onClick: () -> Unit,
+    theme: DashboardTheme,
 ) {
     DropdownMenuItem(
         text = {
@@ -1111,14 +1456,14 @@ private fun FilterOption(
                 label,
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
-                color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                color = if (active) theme.dropdownActiveItemText else theme.dropdownInactiveItemText,
             )
         },
         leadingIcon = {
             Icon(
-                imageVector = icon,
+                painter = painterResource(iconRes),
                 contentDescription = null,
-                tint = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                tint = if (active) theme.dropdownActiveItemIconTint else theme.dropdownInactiveItemIconTint,
             )
         },
         trailingIcon = {
@@ -1126,7 +1471,7 @@ private fun FilterOption(
                 Icon(
                     painter = painterResource(R.drawable.check),
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
+                    tint = theme.dropdownCheckTint,
                 )
             }
         },
@@ -1135,7 +1480,7 @@ private fun FilterOption(
             Modifier
                 .padding(horizontal = 6.dp)
                 .clip(RoundedCornerShape(14.dp))
-                .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f))
+                .background(theme.dropdownActiveItemBackground)
         } else {
             Modifier.padding(horizontal = 6.dp)
         },
@@ -1157,10 +1502,10 @@ private fun FilterOption(
  *   - The play-count badge is a pill (e.g. "2×", "3×") — formatted
  *     inline as "${count}×" rather than via the existing plurals
  *     string, to match LastWave-native's visual.
- *   - Tapping the three-dot MoreHoriz button opens the [TrackOverflowSheet]
- *     by setting the [LastFmDashboardScreen]'s overflowTrack state — the
- *     sheet itself is rendered at the screen level so it can outlive the
- *     specific row that triggered it.
+ *   - Tapping the three-dot solar_more_circle_linear button opens the
+ *     [TrackOverflowSheet] by setting the [LastFmDashboardScreen]'s
+ *     overflowTrack state — the sheet itself is rendered at the screen
+ *     level so it can outlive the specific row that triggered it.
  */
 @Composable
 private fun DashboardTrackRow(
@@ -1168,15 +1513,15 @@ private fun DashboardTrackRow(
     rank: Int? = null,
     fallbackArtworkUrl: String? = null,
     onOverflow: () -> Unit,
+    theme: DashboardTheme,
 ) {
     val artworkUrl = bestArtwork(track.image) ?: fallbackArtworkUrl
     val isNowPlaying = track.isNowPlaying
-    val secondaryTextColor =
-        if (isNowPlaying) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
-        else MaterialTheme.colorScheme.onSurfaceVariant
+    val trackTitleColor = if (isNowPlaying) theme.nowPlayingTrackTitle else theme.textPrimary
+    val trackArtistColor = if (isNowPlaying) theme.nowPlayingTrackArtist else theme.textSecondary
     Surface(
         shape = if (isNowPlaying) RoundedCornerShape(22.dp) else RoundedCornerShape(18.dp),
-        color = if (isNowPlaying) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+        color = if (isNowPlaying) theme.nowPlayingRowBackground else Color.Transparent,
         tonalElevation = if (isNowPlaying) 1.dp else 0.dp,
         modifier = Modifier
             .fillMaxWidth()
@@ -1193,7 +1538,7 @@ private fun DashboardTrackRow(
                 modifier = Modifier
                     .size(52.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+                    .background(theme.artworkPlaceholderBackground),
             ) {
                 if (!artworkUrl.isNullOrBlank()) {
                     AsyncImage(
@@ -1205,10 +1550,10 @@ private fun DashboardTrackRow(
                 } else {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
-                            imageVector = Icons.Filled.MusicNote,
+                            painter = painterResource(R.drawable.solar_music_note_2_linear),
                             contentDescription = null,
                             modifier = Modifier.size(24.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            tint = theme.artworkPlaceholderTint,
                         )
                     }
                 }
@@ -1218,14 +1563,14 @@ private fun DashboardTrackRow(
                 Surface(
                     modifier = Modifier.size(28.dp),
                     shape = CircleShape,
-                    color = dashboardIconBackgroundColor(),
+                    color = theme.rankingBadgeBackground,
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Text(
                             text = rank.toString(),
                             style = MaterialTheme.typography.labelLarge,
                             fontWeight = FontWeight.Bold,
-                            color = DashboardAccentColor,
+                            color = theme.rankingBadgeText,
                         )
                     }
                 }
@@ -1235,16 +1580,16 @@ private fun DashboardTrackRow(
                 Text(
                     text = track.title,
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
+                    fontWeight = FontWeight.Bold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    color = if (isNowPlaying) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+                    color = trackTitleColor,
                 )
                 Spacer(Modifier.height(2.dp))
                 Text(
                     text = track.artist.orEmpty(),
                     style = MaterialTheme.typography.bodyMedium,
-                    color = secondaryTextColor,
+                    color = trackArtistColor,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -1263,7 +1608,7 @@ private fun DashboardTrackRow(
                 )
                 Surface(
                     shape = RoundedCornerShape(50),
-                    color = MaterialTheme.colorScheme.primary,
+                    color = theme.nowPlayingPillBackground,
                     tonalElevation = 4.dp,
                     shadowElevation = 2.dp,
                     modifier = Modifier.graphicsLayer {
@@ -1275,33 +1620,38 @@ private fun DashboardTrackRow(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
                     ) {
-                        Spacer(Modifier.size(6.dp).background(MaterialTheme.colorScheme.onPrimary, CircleShape))
+                        Box(
+                            Modifier
+                                .size(6.dp)
+                                .background(theme.nowPlayingDotColor, CircleShape),
+                        )
                         Spacer(Modifier.width(6.dp))
                         Text(
                             text = stringResource(R.string.lastfm_now_playing),
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onPrimary,
+                            color = theme.nowPlayingPillText,
                         )
                     }
                 }
-            } else if (track.playCount != null && track.playCount > 0) {
+            } else if (track.playCount != null && track.playCount > 1) {
                 Surface(
                     shape = RoundedCornerShape(50),
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    color = theme.playCountPillBackground,
                 ) {
                     Text(
                         text = "${track.playCount}×",
                         style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = theme.playCountPillText,
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
                     )
                 }
             }
             IconButton(onClick = onOverflow) {
                 Icon(
-                    imageVector = Icons.Filled.MoreHoriz,
+                    painter = painterResource(R.drawable.solar_more_circle_linear),
                     contentDescription = "More",
+                    tint = theme.overflowIconTint,
                 )
             }
         }
@@ -1313,6 +1663,14 @@ private fun DashboardTrackRow(
  * no track-specific actions (no overflow menu, since the bottom sheet's
  * actions are all track-focused: Start Mix / Play / Add to queue all
  * need a YouTube song id that an artist row can't supply).
+ *
+ * Issue-3 fix: the row now displays the artist's actual image using
+ * `LastFmArtworkNormalizer.bestImageUrl(artist.image)` + `AsyncImage`. When
+ * the Last.fm image array is empty (the placeholder hash gets rejected by
+ * the normalizer for less-known artists), the [LastFmDashboardScreen] screens
+ * resolve a YouTube artist-channel thumbnail via [resolveArtistImage] and
+ * pass it in as `artworkUrl`. The fallback to `solar_user_circle_linear`
+ * only renders when both sources fail.
  */
 @Composable
 private fun DashboardArtistRow(
@@ -1320,6 +1678,7 @@ private fun DashboardArtistRow(
     playCount: Int?,
     rank: Int,
     artworkUrl: String?,
+    theme: DashboardTheme,
 ) {
     Surface(
         shape = RoundedCornerShape(18.dp),
@@ -1339,7 +1698,7 @@ private fun DashboardArtistRow(
                 modifier = Modifier
                     .size(52.dp)
                     .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+                    .background(theme.artworkPlaceholderBackground),
             ) {
                 if (!artworkUrl.isNullOrBlank()) {
                     AsyncImage(
@@ -1351,10 +1710,10 @@ private fun DashboardArtistRow(
                 } else {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
-                            imageVector = Icons.Filled.AccountCircle,
+                            painter = painterResource(R.drawable.solar_user_circle_linear),
                             contentDescription = null,
                             modifier = Modifier.size(28.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            tint = theme.artworkPlaceholderTint,
                         )
                     }
                 }
@@ -1363,14 +1722,14 @@ private fun DashboardArtistRow(
             Surface(
                 modifier = Modifier.size(28.dp),
                 shape = CircleShape,
-                color = dashboardIconBackgroundColor(),
+                color = theme.rankingBadgeBackground,
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Text(
                         text = rank.toString(),
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.Bold,
-                        color = DashboardAccentColor,
+                        color = theme.rankingBadgeText,
                     )
                 }
             }
@@ -1379,16 +1738,17 @@ private fun DashboardArtistRow(
                 Text(
                     text = name,
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
+                    fontWeight = FontWeight.Bold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                    color = theme.textPrimary,
                 )
                 Spacer(Modifier.height(2.dp))
                 Text(
                     text = playCount?.let { stringResource(R.string.lastfm_playcount, it) }
                         ?: stringResource(R.string.lastfm_filter_top_artists),
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = theme.textSecondary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -1397,12 +1757,12 @@ private fun DashboardArtistRow(
             if (playCount != null && playCount > 0) {
                 Surface(
                     shape = RoundedCornerShape(50),
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    color = theme.playCountPillBackground,
                 ) {
                     Text(
                         text = "${playCount}×",
                         style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = theme.playCountPillText,
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
                     )
                 }
@@ -1422,6 +1782,7 @@ private fun DashboardAlbumRow(
     playCount: Int?,
     rank: Int,
     artworkUrl: String?,
+    theme: DashboardTheme,
 ) {
     Surface(
         shape = RoundedCornerShape(18.dp),
@@ -1441,7 +1802,7 @@ private fun DashboardAlbumRow(
                 modifier = Modifier
                     .size(52.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+                    .background(theme.artworkPlaceholderBackground),
             ) {
                 if (!artworkUrl.isNullOrBlank()) {
                     AsyncImage(
@@ -1453,10 +1814,10 @@ private fun DashboardAlbumRow(
                 } else {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
-                            imageVector = Icons.Filled.MusicNote,
+                            painter = painterResource(R.drawable.solar_music_note_2_linear),
                             contentDescription = null,
                             modifier = Modifier.size(24.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            tint = theme.artworkPlaceholderTint,
                         )
                     }
                 }
@@ -1465,14 +1826,14 @@ private fun DashboardAlbumRow(
             Surface(
                 modifier = Modifier.size(28.dp),
                 shape = CircleShape,
-                color = dashboardIconBackgroundColor(),
+                color = theme.rankingBadgeBackground,
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Text(
                         text = rank.toString(),
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.Bold,
-                        color = DashboardAccentColor,
+                        color = theme.rankingBadgeText,
                     )
                 }
             }
@@ -1481,15 +1842,16 @@ private fun DashboardAlbumRow(
                 Text(
                     text = title,
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
+                    fontWeight = FontWeight.Bold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                    color = theme.textPrimary,
                 )
                 Spacer(Modifier.height(2.dp))
                 Text(
                     text = artist.orEmpty(),
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = theme.textSecondary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -1498,12 +1860,12 @@ private fun DashboardAlbumRow(
             if (playCount != null && playCount > 0) {
                 Surface(
                     shape = RoundedCornerShape(50),
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    color = theme.playCountPillBackground,
                 ) {
                     Text(
                         text = "${playCount}×",
                         style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = theme.playCountPillText,
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
                     )
                 }
@@ -1517,8 +1879,9 @@ private fun DashboardAlbumRow(
 /**
  * ModalBottomSheet shown when the user taps the three-dot overflow button on
  * a [DashboardTrackRow]. Renders, top to bottom:
- *   1. "Start Mix with this Song" banner (shuffle icon, primaryContainer bg)
- *      → searches YouTube for a matching song and seeds a radio queue
+ *   1. "Start Mix with this Song" banner (solar_forward_linear icon,
+ *      primaryContainer bg) → searches YouTube for a matching song and seeds
+ *      a radio queue
  *   2. "Genre: Unknown" → taps open mood_and_genres (we have no genre
  *      detection for Last.fm tracks, so always shows "Unknown")
  *   3. "Play in ArchiveTune" → searches YouTube, plays via YouTube radio
@@ -1542,6 +1905,7 @@ private fun TrackOverflowSheet(
     onDismiss: () -> Unit,
     onOpenGenres: () -> Unit,
     onAddToPlaylist: () -> Unit,
+    theme: DashboardTheme,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
@@ -1576,8 +1940,8 @@ private fun TrackOverflowSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = MaterialTheme.colorScheme.surface,
-        contentColor = MaterialTheme.colorScheme.onSurface,
+        containerColor = theme.cardBackground,
+        contentColor = theme.textPrimary,
     ) {
         // ── 1. Start Mix banner ─────────────────────────────────────────
         // The banner is intentionally a clickable Surface (not a ListItem)
@@ -1590,7 +1954,7 @@ private fun TrackOverflowSheet(
                 }
             },
             shape = RoundedCornerShape(20.dp),
-            color = MaterialTheme.colorScheme.primaryContainer,
+            color = theme.statsHeroInner,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 8.dp),
@@ -1601,21 +1965,21 @@ private fun TrackOverflowSheet(
             ) {
                 Surface(
                     shape = CircleShape,
-                    color = MaterialTheme.colorScheme.primary,
+                    color = theme.accent,
                     modifier = Modifier.size(48.dp),
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         if (loadingAction == "mix") {
                             CircularProgressIndicator(
                                 modifier = Modifier.size(24.dp),
-                                color = MaterialTheme.colorScheme.onPrimary,
+                                color = theme.nowPlayingPillText,
                                 strokeWidth = 2.dp,
                             )
                         } else {
                             Icon(
-                                imageVector = Icons.Filled.Shuffle,
+                                painter = painterResource(R.drawable.solar_forward_linear),
                                 contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onPrimary,
+                                tint = theme.nowPlayingPillText,
                             )
                         }
                     }
@@ -1626,12 +1990,12 @@ private fun TrackOverflowSheet(
                         text = stringResource(R.string.lastfm_start_mix),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        color = theme.statsHeroNumberText,
                     )
                     Text(
                         text = listOfNotNull(track.artist, track.title).joinToString(" - "),
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f),
+                        color = theme.statsHeroLabelText,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -1643,9 +2007,25 @@ private fun TrackOverflowSheet(
 
         // ── 2. Genre ────────────────────────────────────────────────────
         ListItem(
-            headlineContent = { Text(stringResource(R.string.lastfm_genre)) },
-            supportingContent = { Text(stringResource(R.string.lastfm_unknown_genre)) },
-            leadingContent = { Icon(Icons.Filled.Explore, contentDescription = null) },
+            headlineContent = {
+                Text(
+                    stringResource(R.string.lastfm_genre),
+                    color = theme.textPrimary,
+                )
+            },
+            supportingContent = {
+                Text(
+                    stringResource(R.string.lastfm_unknown_genre),
+                    color = theme.textSecondary,
+                )
+            },
+            leadingContent = {
+                Icon(
+                    painter = painterResource(R.drawable.solar_server_linear),
+                    contentDescription = null,
+                    tint = theme.textSecondary,
+                )
+            },
             modifier = Modifier.clickable {
                 onDismiss()
                 onOpenGenres()
@@ -1653,12 +2033,12 @@ private fun TrackOverflowSheet(
             colors = ListItemDefaults.colors(containerColor = Color.Transparent),
         )
 
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+        HorizontalDivider(color = theme.dividerColor)
 
         // ── 3. Play in ArchiveTune ─────────────────────────────────────
         OverflowActionItem(
             label = stringResource(R.string.lastfm_play_in_archivetune),
-            icon = Icons.Filled.PlayArrow,
+            iconRes = R.drawable.solar_play_linear,
             loading = loadingAction == "play",
             enabled = loadingAction == null,
             onClick = {
@@ -1666,12 +2046,13 @@ private fun TrackOverflowSheet(
                     playerConnection?.playQueue(YouTubeQueue.radio(song.toMediaMetadata()))
                 }
             },
+            theme = theme,
         )
 
         // ── 4. Play next ───────────────────────────────────────────────
         OverflowActionItem(
             label = stringResource(R.string.lastfm_play_next),
-            icon = Icons.Filled.PlayArrow,
+            iconRes = R.drawable.solar_skip_next_linear,
             loading = loadingAction == "playNext",
             enabled = loadingAction == null,
             onClick = {
@@ -1679,12 +2060,13 @@ private fun TrackOverflowSheet(
                     playerConnection?.playNext(song.toMediaItem())
                 }
             },
+            theme = theme,
         )
 
         // ── 5. Add to queue ─────────────────────────────────────────────
         OverflowActionItem(
             label = stringResource(R.string.lastfm_add_to_queue),
-            icon = Icons.Filled.Queue,
+            iconRes = R.drawable.solar_playlist_linear,
             loading = loadingAction == "addToQueue",
             enabled = loadingAction == null,
             onClick = {
@@ -1692,27 +2074,29 @@ private fun TrackOverflowSheet(
                     playerConnection?.addToQueue(song.toMediaItem())
                 }
             },
+            theme = theme,
         )
 
         // ── 6. Add to playlist ─────────────────────────────────────────
         OverflowActionItem(
             label = stringResource(R.string.lastfm_add_to_playlist),
-            icon = Icons.Filled.PlaylistAdd,
+            iconRes = R.drawable.solar_add_circle_linear,
             loading = false,
             enabled = loadingAction == null,
             onClick = {
                 onDismiss()
                 onAddToPlaylist()
             },
+            theme = theme,
         )
 
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+        HorizontalDivider(color = theme.dividerColor)
 
         // ── 7. Open in Last.fm ─────────────────────────────────────────
         val lastFmUrl = track.url?.takeIf(String::isNotBlank)
         OverflowActionItem(
             label = stringResource(R.string.lastfm_open_in_lastfm),
-            icon = Icons.Filled.OpenInBrowser,
+            iconRes = R.drawable.solar_send_square_linear,
             loading = false,
             enabled = loadingAction == null && !lastFmUrl.isNullOrBlank(),
             onClick = {
@@ -1723,12 +2107,13 @@ private fun TrackOverflowSheet(
                     context.startActivity(intent)
                 }
             },
+            theme = theme,
         )
 
         // ── 8. Copy Song ───────────────────────────────────────────────
         OverflowActionItem(
             label = stringResource(R.string.lastfm_copy_song),
-            icon = Icons.Filled.ContentCopy,
+            iconRes = R.drawable.copy,
             loading = false,
             enabled = loadingAction == null,
             onClick = {
@@ -1743,6 +2128,7 @@ private fun TrackOverflowSheet(
                 ).show()
                 onDismiss()
             },
+            theme = theme,
         )
 
         Spacer(Modifier.height(16.dp))
@@ -1752,27 +2138,38 @@ private fun TrackOverflowSheet(
 @Composable
 private fun OverflowActionItem(
     label: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    @androidx.annotation.DrawableRes iconRes: Int,
     loading: Boolean,
     enabled: Boolean,
     onClick: () -> Unit,
+    theme: DashboardTheme,
 ) {
     ListItem(
-        headlineContent = { Text(label) },
+        headlineContent = {
+            Text(
+                label,
+                color = if (enabled) theme.textPrimary else theme.textSecondary.copy(alpha = 0.4f),
+            )
+        },
         leadingContent = {
             if (loading) {
                 CircularProgressIndicator(
                     modifier = Modifier.size(20.dp),
                     strokeWidth = 2.dp,
+                    color = theme.accent,
                 )
             } else {
-                Icon(icon, contentDescription = null)
+                Icon(
+                    painter = painterResource(iconRes),
+                    contentDescription = null,
+                    tint = if (enabled) theme.textPrimary else theme.textSecondary.copy(alpha = 0.4f),
+                )
             }
         },
         modifier = Modifier.clickable(enabled = enabled, onClick = onClick),
         colors = ListItemDefaults.colors(
             containerColor = Color.Transparent,
-            disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+            disabledContentColor = theme.textSecondary.copy(alpha = 0.4f),
         ),
     )
 }
@@ -1782,6 +2179,7 @@ private fun OverflowActionItem(
 @Composable
 private fun NotSignedIn(
     onSignIn: () -> Unit,
+    theme: DashboardTheme,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -1792,14 +2190,14 @@ private fun NotSignedIn(
         Surface(
             modifier = Modifier.size(72.dp),
             shape = CircleShape,
-            color = dashboardIconBackgroundColor(),
+            color = theme.signInAvatarBackground,
         ) {
             Box(contentAlignment = Alignment.Center) {
                 Icon(
-                    painter = painterResource(R.drawable.stats),
+                    painter = painterResource(R.drawable.solar_music_note_2_linear),
                     contentDescription = null,
                     modifier = Modifier.size(36.dp),
-                    tint = DashboardAccentColor,
+                    tint = theme.signInAvatarTint,
                 )
             }
         }
@@ -1808,26 +2206,41 @@ private fun NotSignedIn(
             text = stringResource(R.string.lastfm_sign_in_required),
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.SemiBold,
+            color = theme.textPrimary,
         )
         Spacer(Modifier.height(8.dp))
         Text(
             text = stringResource(R.string.lastfm_sign_in_required_desc),
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = theme.textSecondary,
         )
         Spacer(Modifier.height(24.dp))
-        FilledTonalButton(onClick = onSignIn) {
-            Text(stringResource(R.string.lastfm_sign_in_button))
+        Surface(
+            onClick = onSignIn,
+            shape = RoundedCornerShape(50),
+            color = theme.signInButtonContainer,
+        ) {
+            Box(
+                Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = stringResource(R.string.lastfm_sign_in_button),
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = theme.signInButtonText,
+                )
+            }
         }
     }
 }
 
 @Composable
-private fun EmptyHint(text: String) {
+private fun EmptyHint(text: String, theme: DashboardTheme) {
     Text(
         text = text,
         style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        color = theme.emptyHintText,
         modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
     )
 }
@@ -1841,8 +2254,8 @@ private fun RecentTrack.trackArtworkKey(): String = "${name.orEmpty().trim().low
 
 private fun TopTrack.trackArtworkKey(): String = "${name.orEmpty().trim().lowercase()}::${artist?.text.orEmpty().trim().lowercase()}"
 
-private fun List<RecentTrack>.associateArtworkByTrack(): Map<String, String> =
-    mapNotNull { track -> bestArtwork(track.image)?.let { track.trackArtworkKey() to it } }.toMap()
+private fun List<RecentTrackWithCount>.associateArtworkByTrack(): Map<String, String> =
+    mapNotNull { entry -> bestArtwork(entry.track.image)?.let { entry.track.trackArtworkKey() to it } }.toMap()
 
 private data class ArtworkLookup(
     val key: String,
@@ -1922,17 +2335,20 @@ private suspend fun resolveYtThumbnail(title: String, artist: String?): String? 
     }
 }
 
-private fun List<RecentTrack>.dedupeNowPlayingEchoes(): List<RecentTrack> {
-    val nowPlayingKeys = filter { it.isNowPlaying }.mapTo(mutableSetOf()) { it.trackArtworkKey() }
-    val emittedNowPlaying = mutableSetOf<String>()
-    return filter { track ->
-        val key = track.trackArtworkKey()
-        when {
-            track.isNowPlaying -> emittedNowPlaying.add(key)
-            key in nowPlayingKeys -> false
-            else -> true
-        }
-    }
+/**
+ * Resolves an artist's profile image via a YouTube artist-channel search.
+ * Used as a fallback when [LastFmArtworkNormalizer.bestImageUrl] returns
+ * null (Last.fm's artist image array is sparse for less-popular artists —
+ * the placeholder hash gets rejected by the normalizer, so we round-trip
+ * through YouTube's FILTER_ARTIST search and pick the first ArtistItem's
+ * thumbnail). Mirrors the [resolveYtThumbnail] pattern for tracks.
+ */
+private suspend fun resolveArtistImage(artistName: String): String? {
+    if (artistName.isBlank()) return null
+    val searchResult = YouTube.search(artistName, YouTube.SearchFilter.FILTER_ARTIST).getOrNull()
+        ?: return null
+    val firstArtist = searchResult.items.firstOrNull { it is ArtistItem } as? ArtistItem
+    return firstArtist?.thumbnail?.takeIf(String::isNotBlank)
 }
 
 // ── View model ────────────────────────────────────────────────────────────────
