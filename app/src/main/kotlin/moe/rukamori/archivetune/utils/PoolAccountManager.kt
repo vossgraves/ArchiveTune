@@ -10,7 +10,10 @@ package moe.rukamori.archivetune.utils
 import android.content.Context
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -117,6 +120,9 @@ object PoolAccountManager {
             .build()
 
     private val JSON_MEDIA = "application/json; charset=utf-8".toMediaTypeOrNull()
+
+    /** Fire-and-forget reports survive app lifecycle (SupervisorJob); reports never gate playback. */
+    private val reportScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     /** True when a Source Pool URL is configured, i.e. account discovery is possible. */
     val isEnabled: Boolean
@@ -307,9 +313,10 @@ object PoolAccountManager {
      * Reports playback-time observations back to the pool (`dead` / `not_premium`) so entries that
      * fail for real users stop being leased without waiting for the next server sweep — and so the
      * pool's database is not hit repeatedly by every app probing every credential. Fire-and-forget:
-     * a report must never break playback. Manual accounts (id == null) are never reported.
+     * a report must never break playback or block a resolver, hence non-suspend + own scope.
+     * Manual accounts (id == null) are never reported.
      */
-    suspend fun report(
+    fun report(
         service: String,
         kind: String,
         id: Long?,
@@ -317,7 +324,7 @@ object PoolAccountManager {
     ) {
         if (id == null) return
         val base = sourcesUrl?.removeSuffix("/api/sources") ?: return
-        withContext(Dispatchers.IO) {
+        reportScope.launch {
             runCatching {
                 val body =
                     JSONObject()
