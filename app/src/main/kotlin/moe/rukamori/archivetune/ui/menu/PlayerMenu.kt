@@ -114,6 +114,7 @@ import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.innertube.models.SongItem
 import moe.rukamori.archivetune.jiosaavn.SaavnService
 import moe.rukamori.archivetune.tidal.TidalAudioProvider
+import moe.rukamori.archivetune.qobuz.QobuzAudioProvider
 import moe.rukamori.archivetune.ui.component.BottomSheetState
 import moe.rukamori.archivetune.ui.component.ChipsRow
 import moe.rukamori.archivetune.ui.component.DefaultDialog
@@ -1872,6 +1873,7 @@ private fun AudioSourceType.sourceLabelRes(): Int =
     when (this) {
         AudioSourceType.TIDAL -> R.string.source_tidal
         AudioSourceType.QOBUZ -> R.string.source_qobuz
+        AudioSourceType.QOBUZ_BACKUP -> R.string.source_qobuz_backup
         AudioSourceType.DEEZER -> R.string.source_deezer
         AudioSourceType.JIOSAAVN -> R.string.source_jiosaavn
         AudioSourceType.YOUTUBE -> R.string.source_youtube
@@ -1881,6 +1883,7 @@ private fun AudioSourceType.sourceIconRes(): Int =
     when (this) {
         AudioSourceType.TIDAL -> R.drawable.provider_tidal
         AudioSourceType.QOBUZ -> R.drawable.provider_qobuz
+        AudioSourceType.QOBUZ_BACKUP -> R.drawable.provider_qobuz
         AudioSourceType.DEEZER -> R.drawable.provider_deezer
         AudioSourceType.JIOSAAVN -> R.drawable.provider_jiosaavn
         AudioSourceType.YOUTUBE -> R.drawable.play
@@ -1929,13 +1932,16 @@ private fun SongSourceDialog(
     val noResultsText = stringResource(R.string.source_search_no_results)
     val noBackendText = stringResource(R.string.source_search_no_backend)
 
-    // Provider filter → "search backend not yet available" empty state. YTM, Tidal and JioSaavn
-    // are the only providers with a usable list-search API right now (Tidal via searchCandidates,
-    // JioSaavn via SaavnService.searchSongs). Qobuz and Deezer have no public list search.
+    // Provider filter → "search backend not yet available" empty state. YTM, Tidal, Qobuz and
+    // JioSaavn are the providers with a usable list-search API right now (Tidal via
+    // searchCandidates, Qobuz via QobuzAudioProvider.searchCandidates, JioSaavn via
+    // SaavnService.searchSongs). Qobuz Backup (kouzu.in) doesn't have a search API — it only
+    // streams by YouTube video id. Deezer has no public list search.
     val backendMissing =
         sourceFilter != null &&
             sourceFilter != AudioSourceType.YOUTUBE &&
             sourceFilter != AudioSourceType.TIDAL &&
+            sourceFilter != AudioSourceType.QOBUZ &&
             sourceFilter != AudioSourceType.JIOSAAVN
 
     // Debounced search — only fires when searchMode is on and query length >= 2.
@@ -1953,6 +1959,7 @@ private fun SongSourceDialog(
         val out = mutableListOf<SourceSearchResult>()
         val searchYtm = sourceFilter == null || sourceFilter == AudioSourceType.YOUTUBE
         val searchTidal = sourceFilter == null || sourceFilter == AudioSourceType.TIDAL
+        val searchQobuz = sourceFilter == null || sourceFilter == AudioSourceType.QOBUZ
         val searchSaavn = sourceFilter == null || sourceFilter == AudioSourceType.JIOSAAVN
 
         if (searchYtm) {
@@ -2000,6 +2007,29 @@ private fun SongSourceDialog(
                     ),
                 )
             }
+        }
+        if (searchQobuz) {
+            // Qobuz search needs pool tokens or proxy instances configured. The
+            // searchCandidates method handles that internally — it returns an
+            // empty list when no backends are configured, in which case the user
+            // just sees no Qobuz rows in the results (same as if the query had
+            // no hits).
+            runCatching { QobuzAudioProvider.searchCandidates(searchQuery, limit = 8) }
+                .getOrDefault(emptyList())
+                .forEach { candidate ->
+                    out.add(
+                        SourceSearchResult(
+                            source = AudioSourceType.QOBUZ,
+                            trackId = candidate.trackId,
+                            title = candidate.title,
+                            artist = candidate.artist.orEmpty(),
+                            thumbnailUrl = null,
+                            durationMs = candidate.durationMs,
+                            qualityLabel = losslessLabel,
+                            songItem = null,
+                        ),
+                    )
+                }
         }
         if (searchSaavn) {
             runCatching { SaavnService.searchSongs(searchQuery).getOrDefault(emptyList()) }

@@ -79,6 +79,17 @@
     <string name="source_search_no_results">No results yet — type a song title to search</string>
     <string name="source_search_no_backend">Search is not yet available for this provider</string>
     <string name="source_search_play_no_yt_match">Couldn\'t find a matching YouTube track to seed the queue — try a different result or use the automatic source</string>
+
+    <!-- Qobuz backup source (mlc.kouzu.in) — separate from regular Qobuz. -->
+    <string name="source_qobuz_backup">Qobuz Backup</string>
+    <string name="qobuz_backup_specific">Qobuz backup (kouzu.in)</string>
+    <string name="qobuz_backup_enable">Enable Qobuz backup server</string>
+    <string name="qobuz_backup_enable_description">Streams lossless audio from the community-hosted mlc.kouzu.in backup server using a YouTube video id. Separate from the regular Qobuz source — toggle, reorder and per-song pin each independently.</string>
+
+    <!-- Check source — per-source health probe shown below each source pill in Source Settings. -->
+    <string name="check_source">Check source</string>
+    <string name="check_source_description">Run a health probe to verify this source is reachable and configured correctly</string>
+    <string name="check_source_result_title">%1s check</string>
     <string name="quality_badge_aac">AAC 256 kbps</string>
     <string name="quality_badge_saavn">AAC 320 kbps</string>
     <string name="quality_badge_lossless">Lossless</string>

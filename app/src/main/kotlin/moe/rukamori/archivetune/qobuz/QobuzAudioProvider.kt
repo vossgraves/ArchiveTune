@@ -134,6 +134,21 @@ object QobuzAudioProvider {
         val durationMs: Long?,
     )
 
+    /**
+     * Public search candidate metadata — used by the Source chooser's search popup
+     * to show Qobuz track results the user can pick from. Mirrors
+     * [moe.rukamori.archivetune.tidal.TidalAudioProvider.CandidateMetadata].
+     */
+    data class CandidateMetadata(
+        val trackId: String,
+        val title: String,
+        val artist: String?,
+        val album: String?,
+        val durationMs: Long?,
+        /** The backend label that produced this candidate (for diagnostics). */
+        val backendLabel: String,
+    )
+
     private data class CachedStream(val stream: DirectStream, val expiresAt: Long)
 
     private val searchCache = ConcurrentHashMap<String, CachedSearch>()
@@ -407,6 +422,67 @@ object QobuzAudioProvider {
         }
         failureCache[cacheKey] = now + FAILURE_CACHE_MS
         return null
+    }
+
+    /**
+     * Public search — used by the Source chooser's "Play from" search popup to show
+     * Qobuz track results the user can pick from. Mirrors
+     * [moe.rukamori.archivetune.tidal.TidalAudioProvider.searchCandidates].
+     *
+     * Searches every configured backend (direct API tokens + community proxy
+     * instances) and returns up to [limit] candidates total. The first backend
+     * that returns results wins; we don't merge across backends because the
+     * same track id can resolve differently across proxies (squid.wtf-style
+     * proxies use their own internal ids).
+     *
+     * Returns an empty list when no backends are configured or every backend
+     * fails — callers should treat that as "no Qobuz results for this query",
+     * not a hard error.
+     */
+    fun searchCandidates(
+        query: String,
+        limit: Int = 8,
+    ): List<CandidateMetadata> {
+        val backends = orderedBackends()
+        if (backends.isEmpty()) return emptyList()
+        val wanted = query.titleMatchNormalized()
+        if (wanted.isBlank()) return emptyList()
+        val out = mutableListOf<CandidateMetadata>()
+        for (backend in backends) {
+            if (out.size >= limit) break
+            runCatching {
+                val items = backend.search(query) ?: return@runCatching
+                for (index in 0 until items.length()) {
+                    if (out.size >= limit) break
+                    val item = items.optJSONObject(index) ?: continue
+                    val id = item.trackId() ?: continue
+                    val rawTitle = item.stringOrNull("title") ?: continue
+                    val candidateArtist =
+                        item.optJSONObject("performer")?.stringOrNull("name")
+                            ?: item.stringOrNull("artist")
+                            ?: item.optJSONObject("album")?.optJSONObject("artist")?.stringOrNull("name")
+                            ?: ""
+                    val candidateAlbum = item.optJSONObject("album")?.stringOrNull("title")
+                    val candidateDurationMs = item.longOrNull("duration")?.times(1000L)
+                    out.add(
+                        CandidateMetadata(
+                            trackId = id,
+                            title = rawTitle,
+                            artist = candidateArtist.takeIf { it.isNotBlank() },
+                            album = candidateAlbum,
+                            durationMs = candidateDurationMs,
+                            backendLabel = backend.label,
+                        ),
+                    )
+                }
+            }.onFailure { error ->
+                Timber.tag("Qobuz").w(error, "Search backend %s failed for query \"%s\"", backend.label, query)
+            }
+            // If this backend returned results, stop — we don't merge across backends
+            // because the same track id can resolve differently across proxies.
+            if (out.isNotEmpty()) break
+        }
+        return out
     }
 
     /** Builds the ordered backend list: direct API tokens first (highest fidelity), then proxies. */

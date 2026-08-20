@@ -196,6 +196,7 @@ import moe.rukamori.archivetune.constants.TidalCountryCodeKey
 import moe.rukamori.archivetune.constants.TidalUserIdKey
 import moe.rukamori.archivetune.constants.TidalNeedsReloginKey
 import moe.rukamori.archivetune.constants.QobuzEnabledKey
+import moe.rukamori.archivetune.constants.QobuzBackupEnabledKey
 import moe.rukamori.archivetune.constants.QobuzInstancesKey
 import moe.rukamori.archivetune.constants.QobuzAudioQuality
 import moe.rukamori.archivetune.constants.QobuzAudioQualityKey
@@ -8463,6 +8464,7 @@ class MusicService :
                 // UI and the resolver agree on which sources are active out of the box.
                 AudioSourceType.TIDAL to dataStore.get(TidalEnabledKey, true),
                 AudioSourceType.QOBUZ to dataStore.get(QobuzEnabledKey, false),
+                AudioSourceType.QOBUZ_BACKUP to dataStore.get(QobuzBackupEnabledKey, false),
                 AudioSourceType.DEEZER to dataStore.get(DeezerEnabledKey, false),
                 AudioSourceType.JIOSAAVN to dataStore.get(JioSaavnEnabledKey, false),
                 AudioSourceType.YOUTUBE to true,
@@ -8490,6 +8492,7 @@ class MusicService :
             AudioSourceType.YOUTUBE -> true
             AudioSourceType.TIDAL -> dataStore.get(TidalEnabledKey, true)
             AudioSourceType.QOBUZ -> dataStore.get(QobuzEnabledKey, false)
+            AudioSourceType.QOBUZ_BACKUP -> dataStore.get(QobuzBackupEnabledKey, false)
             AudioSourceType.DEEZER -> dataStore.get(DeezerEnabledKey, false)
             AudioSourceType.JIOSAAVN -> dataStore.get(JioSaavnEnabledKey, false)
         }
@@ -8959,6 +8962,7 @@ class MusicService :
                 when (source) {
                     AudioSourceType.TIDAL -> resolveTidalStream(query)
                     AudioSourceType.QOBUZ -> resolveQobuzStream(query)
+                    AudioSourceType.QOBUZ_BACKUP -> resolveQobuzBackupStream(query)
                     AudioSourceType.DEEZER -> resolveDeezerStream(query)
                     AudioSourceType.JIOSAAVN -> resolveJioSaavnStream(query)
                     AudioSourceType.YOUTUBE -> null
@@ -9409,42 +9413,23 @@ class MusicService :
         )
         QobuzAudioProvider.setTokens(configuredTokens)
         QobuzAudioProvider.setInstances(configuredInstances)
-        val primary =
-            runCatching {
-                runBlocking(Dispatchers.IO) {
-                    QobuzAudioProvider.resolve(
-                        query =
-                            QobuzAudioProvider.Query(
-                                mediaId = query.mediaId,
-                                title = query.title,
-                                artists = query.artists,
-                                album = query.album,
-                                durationMs = query.durationMs,
-                            ),
-                        formatId = formatId,
-                    )
-                }
-            }.onFailure { error ->
-                Timber.tag("MusicService").w(error, "QOBUZ stream resolution failed for %s", query.mediaId)
-            }.getOrNull()
-        if (primary != null) return primary
-
-        // ── Qobuz backup server fallback ──────────────────────────────────────────
-        // mlc.kouzu.in hosts a community backup that takes a YouTube video id and
-        // returns a lossless stream — used when the primary Qobuz backends (direct
-        // tokens + community proxy instances) all fail to resolve a track. The
-        // x-request-source: muzo header is injected by the mediaOkHttpClient
-        // interceptor on every kouzu.in request (including the ExoPlayer stream
-        // fetch), so the data spec we hand back can just point at the kouzu.in URL.
-        //
-        // The backup returns whatever lossless quality the server has for the
-        // track; we don't get to pick the format id. Marking the stream as FLAC
-        // matches the typical response shape (the server is documented as serving
-        // Qobuz-sourced lossless audio).
-        val backup = resolveQobuzBackupStream(query)
-        if (backup != null) return backup
-
-        return null
+        return runCatching {
+            runBlocking(Dispatchers.IO) {
+                QobuzAudioProvider.resolve(
+                    query =
+                        QobuzAudioProvider.Query(
+                            mediaId = query.mediaId,
+                            title = query.title,
+                            artists = query.artists,
+                            album = query.album,
+                            durationMs = query.durationMs,
+                        ),
+                    formatId = formatId,
+                )
+            }
+        }.onFailure { error ->
+            Timber.tag("MusicService").w(error, "QOBUZ stream resolution failed for %s", query.mediaId)
+        }.getOrNull()
     }
 
     /**
@@ -9531,7 +9516,7 @@ class MusicService :
                         codecs = "flac",
                         contentLength = response.header("Content-Length")?.toLongOrNull(),
                         label = "Qobuz backup (kouzu.in)",
-                        source = AudioSourceType.QOBUZ,
+                        source = AudioSourceType.QOBUZ_BACKUP,
                         // The YouTube mediaId is the authoritative identity of the
                         // song the user is playing — we trust it without requiring
                         // the backup server to echo back matching metadata.
@@ -9870,9 +9855,13 @@ class MusicService :
     private fun tidalSourceApplies(mediaId: String): Boolean {
         if (mediaId.isLocalMediaId()) return false
         // Defaults MUST match PlaybackSourceSections + sourceResolutionChain(). Any enabled
-        // external lossless source (Tidal or Qobuz) must bypass the ephemeral YouTube player cache
-        // so toggling a source on takes effect immediately instead of replaying cached YT bytes.
-        return dataStore.get(TidalEnabledKey, true) || dataStore.get(QobuzEnabledKey, false)
+        // external lossless source (Tidal, Qobuz, Qobuz backup, Deezer) must bypass the ephemeral
+        // YouTube player cache so toggling a source on takes effect immediately instead of
+        // replaying cached YT bytes.
+        return dataStore.get(TidalEnabledKey, true) ||
+            dataStore.get(QobuzEnabledKey, false) ||
+            dataStore.get(QobuzBackupEnabledKey, false) ||
+            dataStore.get(DeezerEnabledKey, false)
     }
 
     private fun resolvePlaybackDataSpec(

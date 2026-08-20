@@ -1175,6 +1175,14 @@ val TidalAudioQualityOptions =
 // proxy instance URLs. Each instance exposes get-music (search) + download-music (stream URL).
 val QobuzEnabledKey = booleanPreferencesKey("qobuzEnabled")
 
+// ---------------------------------------------------------------------------
+// Qobuz backup server (mlc.kouzu.in). Separate from Qobuz proper — the
+// backup takes a YouTube video id and returns a lossless stream, while
+// regular Qobuz uses source pool tokens + community proxy instances. The
+// user can toggle / reorder / per-song-pin each independently. Default OFF
+// because it's an external community service that should be opt-in.
+val QobuzBackupEnabledKey = booleanPreferencesKey("qobuzBackupEnabled")
+
 // CSV of user-provided Qobuz proxy instance base URLs, highest priority first.
 val QobuzInstancesKey = stringPreferencesKey("qobuzInstances")
 
@@ -1264,6 +1272,7 @@ val TelegramBotForwardToChannelKey = booleanPreferencesKey("telegramBotForwardTo
 enum class AudioSourceType {
     TIDAL,
     QOBUZ,
+    QOBUZ_BACKUP,
     DEEZER,
     JIOSAAVN,
     YOUTUBE,
