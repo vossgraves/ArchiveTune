@@ -317,6 +317,7 @@ object AudioSourceConfig {
         listOf(
             AudioSourceType.TIDAL,
             AudioSourceType.QOBUZ,
+            AudioSourceType.QOBUZ_BACKUP,
             AudioSourceType.DEEZER,
             AudioSourceType.JIOSAAVN,
             AudioSourceType.YOUTUBE,

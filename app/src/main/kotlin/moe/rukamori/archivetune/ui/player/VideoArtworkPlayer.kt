@@ -9,15 +9,11 @@
 
 package moe.rukamori.archivetune.ui.player
 
-import android.content.Context
 import android.graphics.Bitmap
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
-import android.view.SurfaceHolder
-import android.view.SurfaceView
-import android.view.View
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -36,7 +32,6 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -55,7 +50,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.net.toUri
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -73,7 +67,8 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.ui.AspectRatioFrameLayout
-import androidx.media3.ui.PlayerView
+import androidx.media3.ui.compose.ContentFrame
+import androidx.media3.ui.compose.SURFACE_TYPE_TEXTURE_VIEW
 import coil3.imageLoader
 import coil3.request.ImageRequest
 import coil3.request.SuccessResult
@@ -84,7 +79,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
-import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.VideoPlaybackSpeedKey
 import moe.rukamori.archivetune.innertube.NewPipeUtils
 import moe.rukamori.archivetune.innertube.YouTube
@@ -1942,146 +1936,17 @@ fun VideoArtworkSurface(
         label = "videoAlpha",
     )
 
-    val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
-
-    // ── Flow-style surface management ──────────────────────────────────────
-    //
-    // Ported from Flow's VideoPlayerSurface.kt. The previous implementation
-    // used Media3's ContentFrame composable with SURFACE_TYPE_TEXTURE_VIEW,
-    // which has two failure modes:
-    //   1. TextureView holds a STALE frame after surface re-attach (fullscreen
-    //      toggle, orientation change) — the video looks frozen/laggy while
-    //      the drift poller sees no drift because it compares clocks, not
-    //      displayed frames. The existing kickRenderer() micro-cycle worked
-    //      around this reactively.
-    //   2. clearVideoSurface() on detach tears down the video codec — re-attach
-    //      requires a full re-decode (1–2s stall) on devices that don't
-    //      support setOutputSurface's in-place surface swap.
-    //
-    // Flow's approach is proactive: a real PlayerView (inflated programmatically
-    // here — ArchiveTune has no XML layouts) is wrapped in AndroidView, and
-    // SurfaceHolder.Callbacks are managed explicitly via VideoSurfaceManager.
-    // On detach, instead of clearVideoSurface(), a PlaceholderSurface is set
-    // so the codec keeps its decoder alive. On re-attach, setVideoSurface()
-    // swaps the output in place — zero-cost on API 34+, minimal elsewhere.
-    //
-    // SurfaceView is used on API 34+ (UPSIDE_DOWN_CAKE — supports in-place
-    // surface swapping); TextureView on older devices.
-    val surfaceManager = remember { VideoSurfaceManager() }
-    var surfaceRestoreTrigger by remember { mutableIntStateOf(0) }
-    val currentResizeMode by rememberUpdatedState(resizeMode)
-    val currentAlpha by rememberUpdatedState(alpha)
-
-    // The shared PlayerView — created once and reused across recompositions.
-    // PlayerView is a ViewGroup that owns its own SurfaceView (or TextureView)
-    // internally; we read that out via getVideoSurfaceView() to wire the
-    // SurfaceHolder callbacks.
-    //
-    // Surface-type selection: Flow uses SurfaceView on API 34+
-    // (UPSIDE_DOWN_CAKE — supports in-place surface swapping via
-    // setOutputSurface) and TextureView below. We inflate the right XML
-    // layout at runtime based on VideoSurfacePolicy.usesSurfaceView(sdkInt),
-    // matching Flow's pickPlayerViewLayoutRes(). PlayerView's surface_type
-    // is set via XML attr only (no public setter exists at runtime), so we
-    // MUST inflate from XML rather than construct programmatically.
-    val playerView =
-        remember {
-            val layoutRes =
-                if (VideoSurfacePolicy.usesSurfaceView(Build.VERSION.SDK_INT)) {
-                    R.layout.video_artwork_player_view_surface
-                } else {
-                    R.layout.video_artwork_player_view
-                }
-            Timber
-                .tag(VideoPlaybackLogTag)
-                .d(
-                    "Inflating shared PlayerView (sdk=${Build.VERSION.SDK_INT}, layoutRes=$layoutRes, usesSurfaceView=${VideoSurfacePolicy.usesSurfaceView(Build.VERSION.SDK_INT)})",
-                )
-            val inflater = android.view.LayoutInflater.from(context)
-            inflater.inflate(layoutRes, null) as PlayerView
-        }
-
-    // SurfaceHolder.Callback — wires the PlayerView's internal SurfaceView to
-    // the ExoPlayer via VideoSurfaceManager. On surfaceCreated/surfaceChanged
-    // we attach with forceAttach=true (Android can reuse the SurfaceHolder
-    // Java object while replacing the native buffer queue); on
-    // surfaceDestroyed we detach (which sets a PlaceholderSurface so the
-    // codec stays alive).
-    DisposableEffect(playerView) {
-        val surfaceView = playerView.videoSurfaceView as? SurfaceView
-        if (surfaceView == null) {
-            // TextureView path — no SurfaceHolder to manage. ContentFrame's
-            // built-in TextureView surface lifecycle handles it.
-            Timber.tag(VideoPlaybackLogTag).d("PlayerView has no SurfaceView — TextureView mode, no holder callbacks")
-            return@DisposableEffect onDispose { }
-        }
-
-        val callback =
-            object : SurfaceHolder.Callback {
-                override fun surfaceCreated(holder: SurfaceHolder) {
-                    Timber.tag(VideoPlaybackLogTag).d("surfaceCreated — attaching via VideoSurfaceManager")
-                    surfaceManager.attachVideoSurface(holder, state.exoPlayer, forceAttach = true)
-                    // Kick the renderer once on first surface creation so we
-                    // don't show a stale TextureView frame (the existing
-                    // kickRenderer path still applies as a belt-and-suspenders
-                    // for the renderer-frozen case).
-                    state.kickRenderer(SystemClock.elapsedRealtime())
-                }
-
-                override fun surfaceChanged(
-                    holder: SurfaceHolder,
-                    format: Int,
-                    width: Int,
-                    height: Int,
-                ) {
-                    // Android may reuse the same SurfaceHolder/Surface Java
-                    // object while replacing the underlying native buffer
-                    // queue — the dedup check inside attachVideoSurface
-                    // cannot detect this, so forceAttach=true is mandatory
-                    // here to make sure the codec is bound to the new buffer
-                    // queue.
-                    surfaceManager.attachVideoSurface(holder, state.exoPlayer, forceAttach = true)
-                }
-
-                override fun surfaceDestroyed(holder: SurfaceHolder) {
-                    Timber.tag(VideoPlaybackLogTag).d("surfaceDestroyed — detaching (PlaceholderSurface keeps codec alive)")
-                    surfaceManager.detachVideoSurface(holder, state.exoPlayer, context)
-                }
-            }
-
-        surfaceView.holder.addCallback(callback)
-        // Attach immediately if the surface is already valid (the initial
-        // surfaceCreated may have fired before this DisposableEffect ran).
-        surfaceManager.attachVideoSurface(surfaceView.holder, state.exoPlayer, forceAttach = true)
-
-        onDispose {
-            surfaceView.holder.removeCallback(callback)
-            surfaceManager.detachVideoSurface(null, state.exoPlayer, context)
-        }
-    }
-
-    // Lifecycle observer — Flow's VideoPlayerSurface bumps a
-    // surfaceRestoreTrigger on ON_START / ON_RESUME so the AndroidView.update
-    // block re-runs and re-attaches the surface after the activity returns
-    // from background. Without this, the surface can be in a stale state
-    // after backgrounding (the codec kept running on the placeholder surface
-    // but the real surface may have been re-created by the system).
-    DisposableEffect(lifecycleOwner) {
-        val observer =
-            LifecycleEventObserver { _, event ->
-                if (event == Lifecycle.Event.ON_START || event == Lifecycle.Event.ON_RESUME) {
-                    surfaceRestoreTrigger++
-                }
-            }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
-
-    // Drive the PlayerView's player binding and resize mode. This runs on
-    // every recomposition, matching Flow's AndroidView.update block.
-    val currentSurfaceRestoreTrigger = surfaceRestoreTrigger
-
+    // NOTE: A previous attempt ported Flow's PlayerView + SurfaceManager pattern
+    // here (inflating PlayerView from XML and managing SurfaceHolder.Callbacks
+    // explicitly with PlaceholderSurface). It compiled but produced a black
+    // screen — the explicit surface wiring raced with the PlayerView's own
+    // internal surface lifecycle and the codec never attached. We reverted
+    // to Media3's ContentFrame composable with SURFACE_TYPE_TEXTURE_VIEW,
+    // which was the working implementation. The Flow files (VideoSurfacePolicy,
+    // VideoSurfaceManager, the two XML layouts) are kept in the tree for a
+    // future attempt — the PlaceholderSurface codec-preservation insight is
+    // sound; the wiring just needs more careful integration with the
+    // VideoArtworkState's existing Player.Listener + kickRenderer paths.
     Box(modifier = modifier) {
         // ── Ambient mode background ──
         // Render a slowly drifting, blurred copy of the song thumbnail
@@ -2103,75 +1968,13 @@ fun VideoArtworkSurface(
             )
         }
 
-        AndroidView(
-            factory = { playerView },
-            update = { view ->
-                // Touch currentSurfaceRestoreTrigger so the lambda captures
-                // it and re-runs when the lifecycle observer bumps it.
-                @Suppress("UNUSED_VARIABLE")
-                val restoreTrigger = currentSurfaceRestoreTrigger
-
-                // Bind the ExoPlayer to the PlayerView. ContentFrame used to
-                // do this implicitly; we do it explicitly here so the
-                // surface-attach lifecycle is under our control. We never
-                // call removeListener on the previous player here — the
-                // VideoArtworkState owns its own Player.Listener registration
-                // separately (see the Player.Listener at the bottom of
-                // rememberVideoArtworkState), and the PlayerView's own
-                // internal listener setup is independent of our state's.
-                val newPlayer = state.exoPlayer
-                val oldPlayer = view.player
-                if (oldPlayer !== newPlayer) {
-                    view.player = newPlayer
-                }
-
-                // Re-attach the surface if it's valid and we just came back
-                // from background (Flow's "restore video output after
-                // audio-only background mode" path, adapted for our single
-                // surface model).
-                if (surfaceManager.getSurfaceHolder()?.let { it.surface?.isValid } == true) {
-                    surfaceManager.reattachSurfaceIfValid(newPlayer)
-                }
-
-                // If the player is IDLE with a media item set, prepare it
-                // (matches Flow's "PlayerView attached; player IDLE with
-                // media - calling prepare()" path — fixes the case where
-                // the player was released and re-created but never started).
-                if (newPlayer.playbackState == Player.STATE_IDLE && newPlayer.currentMediaItem != null) {
-                    Timber.tag(VideoPlaybackLogTag).d("PlayerView attached; player IDLE with media - calling prepare()")
-                    newPlayer.prepare()
-                }
-
-                // Hide the subtitle view rendered by PlayerView itself — we
-                // render our own caption overlay at the bottom of the Box
-                // so it sits on top of the video and respects our color
-                // scheme.
-                view.subtitleView?.let { subtitleView ->
-                    if (subtitleView.visibility != View.GONE) {
-                        subtitleView.visibility = View.GONE
-                    }
-                }
-
-                val desiredResizeMode =
-                    when (currentResizeMode) {
-                        AspectRatioFrameLayout.RESIZE_MODE_FIT ->
-                            androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
-                        AspectRatioFrameLayout.RESIZE_MODE_FILL ->
-                            androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL
-                        AspectRatioFrameLayout.RESIZE_MODE_ZOOM ->
-                            androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-                        else -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
-                    }
-                if (view.resizeMode != desiredResizeMode) {
-                    view.resizeMode = desiredResizeMode
-                }
-
-                view.setBackgroundColor(android.graphics.Color.BLACK)
-
-                // Apply the alpha animation (was on ContentFrame's modifier before).
-                view.alpha = currentAlpha
-            },
-            modifier = Modifier.fillMaxSize(),
+        ContentFrame(
+            player = state.exoPlayer,
+            surfaceType = SURFACE_TYPE_TEXTURE_VIEW,
+            contentScale = resizeMode.toContentScale(),
+            keepContentOnReset = false,
+            shutter = {},
+            modifier = Modifier.fillMaxSize().alpha(alpha),
         )
 
         // Caption overlay — rendered from the ExoPlayer's current cue text.

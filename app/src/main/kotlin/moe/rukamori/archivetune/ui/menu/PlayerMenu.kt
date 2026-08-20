@@ -114,6 +114,7 @@ import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.innertube.models.SongItem
 import moe.rukamori.archivetune.jiosaavn.SaavnService
 import moe.rukamori.archivetune.tidal.TidalAudioProvider
+import moe.rukamori.archivetune.qobuz.QobuzAudioProvider
 import moe.rukamori.archivetune.ui.component.BottomSheetState
 import moe.rukamori.archivetune.ui.component.ChipsRow
 import moe.rukamori.archivetune.ui.component.DefaultDialog
@@ -387,6 +388,54 @@ fun PlayerMenu(
                 // Swapping to a different track entirely — play the chosen song via YouTube radio
                 // so it seeds a fresh queue with the picked track as the first item.
                 playerConnection.playQueue(YouTubeQueue.radio(song.toMediaMetadata()))
+            },
+            onPlayFromSource = { result ->
+                // Non-YT search-result row tapped (JioSaavn / Tidal / Qobuz / Deezer).
+                // We don't have a SongItem to seed a YouTube radio queue from directly —
+                // these providers' search results return their own internal track ids, not
+                // YouTube video ids. To make the row actually play something, we:
+                //   1. Search YouTube Music for a track matching the title + primary artist.
+                //   2. If found, play it via YouTube radio (seeds a fresh queue with that song).
+                //   3. Immediately set the per-song source override to the picked source so
+                //      the very first playback attempt resolves through that source (JioSaavn /
+                //      Tidal lossless) instead of YouTube's audio.
+                //   4. If YouTube search returns nothing, fall back to a Toast — we can't
+                //      play a JioSaavn-only / Tidal-only track without a YT-side media id
+                //      because the rest of the queue / scrobbling / cache layer is YT-id-keyed.
+                scope.launch(Dispatchers.IO) {
+                    val query = buildString {
+                        append(result.title)
+                        if (result.artist.isNotBlank()) append(" ").append(result.artist)
+                    }
+                    val ytSong = runCatching {
+                        YouTube.search(query, YouTube.SearchFilter.FILTER_SONG, useAccountContext = false)
+                            .getOrNull()
+                            ?.items
+                            ?.filterIsInstance<SongItem>()
+                            ?.firstOrNull()
+                    }.getOrNull()
+                    if (ytSong == null) {
+                        withContext(Dispatchers.Main) {
+                            android.widget.Toast.makeText(
+                                context,
+                                context.getString(R.string.source_search_play_no_yt_match),
+                                android.widget.Toast.LENGTH_SHORT,
+                            ).show()
+                        }
+                        return@launch
+                    }
+                    // Set the per-song override BEFORE playing so the very first resolution
+                    // attempt goes through the picked source. The override is also persisted
+                    // to SongSourceOverrideKey via onSongSourceChange in the parent LaunchedEffect.
+                    playerConnection.service.setSongSourceOverride(ytSong.id, result.source)
+                    withContext(Dispatchers.Main) {
+                        onSongSourceChange(
+                            SongSourceOverride.withOverride(songSourceRaw, ytSong.id, result.source),
+                        )
+                        playerConnection.playQueue(YouTubeQueue.radio(ytSong.toMediaMetadata()))
+                        showSourceDialog = false
+                    }
+                }
             },
         )
     }
@@ -1824,6 +1873,7 @@ private fun AudioSourceType.sourceLabelRes(): Int =
     when (this) {
         AudioSourceType.TIDAL -> R.string.source_tidal
         AudioSourceType.QOBUZ -> R.string.source_qobuz
+        AudioSourceType.QOBUZ_BACKUP -> R.string.source_qobuz_backup
         AudioSourceType.DEEZER -> R.string.source_deezer
         AudioSourceType.JIOSAAVN -> R.string.source_jiosaavn
         AudioSourceType.YOUTUBE -> R.string.source_youtube
@@ -1833,6 +1883,7 @@ private fun AudioSourceType.sourceIconRes(): Int =
     when (this) {
         AudioSourceType.TIDAL -> R.drawable.provider_tidal
         AudioSourceType.QOBUZ -> R.drawable.provider_qobuz
+        AudioSourceType.QOBUZ_BACKUP -> R.drawable.provider_qobuz
         AudioSourceType.DEEZER -> R.drawable.provider_deezer
         AudioSourceType.JIOSAAVN -> R.drawable.provider_jiosaavn
         AudioSourceType.YOUTUBE -> R.drawable.play
@@ -1868,6 +1919,7 @@ private fun SongSourceDialog(
     onDismiss: () -> Unit,
     onSelect: (AudioSourceType?) -> Unit,
     onPlaySong: (SongItem) -> Unit,
+    onPlayFromSource: (SourceSearchResult) -> Unit,
 ) {
     var searchMode by rememberSaveable { mutableStateOf(false) }
     var searchQuery by rememberSaveable { mutableStateOf("") }
@@ -1880,13 +1932,16 @@ private fun SongSourceDialog(
     val noResultsText = stringResource(R.string.source_search_no_results)
     val noBackendText = stringResource(R.string.source_search_no_backend)
 
-    // Provider filter → "search backend not yet available" empty state. YTM, Tidal and JioSaavn
-    // are the only providers with a usable list-search API right now (Tidal via searchCandidates,
-    // JioSaavn via SaavnService.searchSongs). Qobuz and Deezer have no public list search.
+    // Provider filter → "search backend not yet available" empty state. YTM, Tidal, Qobuz and
+    // JioSaavn are the providers with a usable list-search API right now (Tidal via
+    // searchCandidates, Qobuz via QobuzAudioProvider.searchCandidates, JioSaavn via
+    // SaavnService.searchSongs). Qobuz Backup (kouzu.in) doesn't have a search API — it only
+    // streams by YouTube video id. Deezer has no public list search.
     val backendMissing =
         sourceFilter != null &&
             sourceFilter != AudioSourceType.YOUTUBE &&
             sourceFilter != AudioSourceType.TIDAL &&
+            sourceFilter != AudioSourceType.QOBUZ &&
             sourceFilter != AudioSourceType.JIOSAAVN
 
     // Debounced search — only fires when searchMode is on and query length >= 2.
@@ -1904,6 +1959,7 @@ private fun SongSourceDialog(
         val out = mutableListOf<SourceSearchResult>()
         val searchYtm = sourceFilter == null || sourceFilter == AudioSourceType.YOUTUBE
         val searchTidal = sourceFilter == null || sourceFilter == AudioSourceType.TIDAL
+        val searchQobuz = sourceFilter == null || sourceFilter == AudioSourceType.QOBUZ
         val searchSaavn = sourceFilter == null || sourceFilter == AudioSourceType.JIOSAAVN
 
         if (searchYtm) {
@@ -1951,6 +2007,29 @@ private fun SongSourceDialog(
                     ),
                 )
             }
+        }
+        if (searchQobuz) {
+            // Qobuz search needs pool tokens or proxy instances configured. The
+            // searchCandidates method handles that internally — it returns an
+            // empty list when no backends are configured, in which case the user
+            // just sees no Qobuz rows in the results (same as if the query had
+            // no hits).
+            runCatching { QobuzAudioProvider.searchCandidates(searchQuery, limit = 8) }
+                .getOrDefault(emptyList())
+                .forEach { candidate ->
+                    out.add(
+                        SourceSearchResult(
+                            source = AudioSourceType.QOBUZ,
+                            trackId = candidate.trackId,
+                            title = candidate.title,
+                            artist = candidate.artist.orEmpty(),
+                            thumbnailUrl = null,
+                            durationMs = candidate.durationMs,
+                            qualityLabel = losslessLabel,
+                            songItem = null,
+                        ),
+                    )
+                }
         }
         if (searchSaavn) {
             runCatching { SaavnService.searchSongs(searchQuery).getOrDefault(emptyList()) }
@@ -2076,10 +2155,18 @@ private fun SongSourceDialog(
                         ) {
                             items(results, key = { result -> "${result.source.name}:${result.trackId}" }) { result ->
                                 SourceSearchResultRow(result = result) {
-                                    result.songItem?.let { song ->
-                                        onPlaySong(song)
-                                        onDismiss()
+                                    // YTM results seed the queue directly. Non-YT results
+                                    // (JioSaavn / Tidal / Qobuz / Deezer) don't carry a
+                                    // YouTube-side SongItem — they go through onPlayFromSource
+                                    // which searches YTM for a matching track and pins the
+                                    // source override so playback resolves through the
+                                    // picked source on the very first attempt.
+                                    if (result.songItem != null) {
+                                        onPlaySong(result.songItem)
+                                    } else {
+                                        onPlayFromSource(result)
                                     }
+                                    onDismiss()
                                 }
                                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
                             }
@@ -2113,20 +2200,23 @@ private fun SongSourceDialog(
  * a small quality badge (AAC 256 kbps / Lossless / Hi-Res) on the right, and a 16dp provider
  * icon furthest right so the user can tell at a glance which source each row came from.
  *
- * Tappable only when [SourceSearchResult.songItem] is non-null (YTM results). Other providers'
- * rows are display-only — grayed out and not clickable — until their playback path is wired up.
+ * ALWAYS tappable: YTM results seed the queue directly via [onPlaySong]; non-YT results
+ * (JioSaavn / Tidal / Qobuz / Deezer) go through [onPlayFromSource] which searches YTM for
+ * a matching track by title+artist and pins the per-song source override so playback resolves
+ * through the picked source on the very first attempt. Previously non-YT rows were grayed
+ * out and not clickable — that made the JioSaavn / Tidal "Play from" search popup look
+ * broken ("clicking on play from popup in jiosaavn category still doesn't do anything").
  */
 @Composable
 private fun SourceSearchResultRow(
     result: SourceSearchResult,
     onClick: () -> Unit,
 ) {
-    val tappable = result.songItem != null
     Row(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .clickable(enabled = tappable, onClick = onClick)
+                .clickable(onClick = onClick)
                 .padding(vertical = 8.dp, horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -2161,7 +2251,7 @@ private fun SourceSearchResultRow(
                 style = MaterialTheme.typography.bodyMedium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                color = if (tappable) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                color = MaterialTheme.colorScheme.onSurface,
             )
             val subtitle =
                 buildString {
