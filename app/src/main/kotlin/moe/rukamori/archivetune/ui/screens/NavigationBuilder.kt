@@ -76,6 +76,8 @@ import moe.rukamori.archivetune.ui.screens.settings.QobuzLoginScreen
 import moe.rukamori.archivetune.ui.screens.settings.QOBUZ_LOGIN_ROUTE
 import moe.rukamori.archivetune.ui.screens.settings.DeezerLoginScreen
 import moe.rukamori.archivetune.ui.screens.settings.DEEZER_LOGIN_ROUTE
+import moe.rukamori.archivetune.ui.screens.settings.LASTFM_LOGIN_ROUTE
+import moe.rukamori.archivetune.ui.screens.settings.LastFmLoginScreen
 import moe.rukamori.archivetune.ui.screens.settings.TELEGRAM_LOGIN_ROUTE
 import moe.rukamori.archivetune.ui.screens.settings.TelegramLoginScreen
 import moe.rukamori.archivetune.ui.screens.settings.TelegramSettings
@@ -536,6 +538,9 @@ fun NavGraphBuilder.navigationBuilder(
     }
     composable(DEEZER_LOGIN_ROUTE) {
         DeezerLoginScreen(navController)
+    }
+    composable(LASTFM_LOGIN_ROUTE) {
+        LastFmLoginScreen(navController)
     }
     composable("settings/telegram") {
         TelegramSettings(navController)

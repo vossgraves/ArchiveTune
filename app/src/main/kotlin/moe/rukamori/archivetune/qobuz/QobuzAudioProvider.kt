@@ -435,6 +435,14 @@ object QobuzAudioProvider {
      * same track id can resolve differently across proxies (squid.wtf-style
      * proxies use their own internal ids).
      *
+     * AUTO-POPULATES tokens/instances: if [tokens] or [instances] are empty,
+     * pulls from [PoolAccountManager.qobuzAccounts] (community source pool) and
+     * [QobuzAudioProvider.discoverInstances] (community proxy discovery) before
+     * searching. This fixes the bug where the Source chooser's search popup
+     * showed "No results yet" for Qobuz even when the user had pool accounts
+     * loaded — the popup's `searchCandidates` call was hitting `orderedBackends`
+     * before MusicService.resolveQobuzStream had a chance to call setTokens.
+     *
      * Returns an empty list when no backends are configured or every backend
      * fails — callers should treat that as "no Qobuz results for this query",
      * not a hard error.
@@ -443,8 +451,38 @@ object QobuzAudioProvider {
         query: String,
         limit: Int = 8,
     ): List<CandidateMetadata> {
+        // Auto-populate tokens/instances if they're empty. This matches the
+        // logic in MusicService.resolveQobuzStream so the search popup works
+        // without the user having to play a Qobuz song first.
+        if (tokens.isEmpty()) {
+            val poolTokens = runCatching {
+                moe.rukamori.archivetune.utils.PoolAccountManager.qobuzAccounts().map {
+                    QobuzToken(
+                        token = it.token,
+                        appId = it.appId,
+                        appSecret = it.appSecret,
+                        label = "Source Pool",
+                        subscription = if (it.premium) "premium" else "",
+                    )
+                }
+            }.getOrDefault(emptyList())
+            if (poolTokens.isNotEmpty()) {
+                setTokens(poolTokens)
+                Timber.tag("Qobuz").d("searchCandidates auto-populated %d pool tokens", poolTokens.size)
+            }
+        }
+        if (instances.isEmpty()) {
+            val discovered = runCatching { discoverInstances() }.getOrDefault(emptyList())
+            if (discovered.isNotEmpty()) {
+                setInstances(discovered)
+                Timber.tag("Qobuz").d("searchCandidates auto-populated %d discovered instances", discovered.size)
+            }
+        }
         val backends = orderedBackends()
-        if (backends.isEmpty()) return emptyList()
+        if (backends.isEmpty()) {
+            Timber.tag("Qobuz").d("searchCandidates: no backends configured (no tokens or instances)")
+            return emptyList()
+        }
         val wanted = query.titleMatchNormalized()
         if (wanted.isBlank()) return emptyList()
         val out = mutableListOf<CandidateMetadata>()
