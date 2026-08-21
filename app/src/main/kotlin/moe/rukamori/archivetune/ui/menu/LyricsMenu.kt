@@ -142,6 +142,10 @@ fun LyricsMenu(
     viewModel: LyricsMenuViewModel = hiltViewModel(),
     // The control preferences are optional because the standalone lyrics screen owns their state;
     // callers that do not provide callbacks keep the menu focused on lyric actions only.
+    showPlayerControlsState: State<Boolean>? = null,
+    onShowPlayerControlsChange: ((Boolean) -> Unit)? = null,
+    onAutoHidePlayerControlsChange: (Boolean) -> Unit = {},
+    showControlsToggles: Boolean = true,
 ) {
     val context = LocalContext.current
     val showPlayerControls = showPlayerControlsState?.value ?: true
