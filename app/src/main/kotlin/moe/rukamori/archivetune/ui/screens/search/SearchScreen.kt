@@ -479,7 +479,7 @@ private fun SearchEntryField(
         SearchSourcePicker(
             currentScope = SearchSource.ONLINE,
             currentProvider = searchProvider,
-            onSelection = onSearchSourceSelection,
+            onSelection = onSourceSelection,
             includeLocal = false,
         )
     }
