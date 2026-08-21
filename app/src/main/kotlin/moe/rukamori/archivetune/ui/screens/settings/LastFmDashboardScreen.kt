@@ -350,23 +350,13 @@ private suspend fun searchYtForLastFmTrack(title: String, artist: String?): Song
     }
     val term = listOfNotNull(artist?.takeIf(String::isNotBlank), title).joinToString(" ")
     Timber.d("searchYt query: \"%s\" (key=%s)", term, cacheKey)
-    val result = runCatching { YouTube.search(term, YouTube.SearchFilter.FILTER_SONG) }
-    val searchResult = result
-        .onFailure { Timber.w(it, "YouTube.search failed for Last.fm track: %s", term) }
-        .getOrNull()
-        ?: run {
-            Timber.w("searchYt no result for: \"%s\"", term)
-            ytSearchCache[cacheKey] = null
-            return null
-        }
-    val items: List<YTItem> = searchResult!!.items
-    var first: SongItem? = null
-    for (item in items) {
-        if (item is SongItem) {
-            first = item
-            break
-        }
+    val searchResult = YouTube.search(term, YouTube.SearchFilter.FILTER_SONG).getOrNull()
+    if (searchResult == null) {
+        Timber.w("searchYt no result for: \"%s\"", term)
+        ytSearchCache[cacheKey] = null
+        return null
     }
+    val first = findFirstSongItem(searchResult)
     if (first == null) {
         Timber.w("searchYt no SongItem in results for: \"%s\"", term)
     } else {
@@ -374,6 +364,14 @@ private suspend fun searchYtForLastFmTrack(title: String, artist: String?): Song
     }
     ytSearchCache[cacheKey] = first
     return first
+}
+
+/** Extracts the first SongItem from a SearchResult's items list. */
+private fun findFirstSongItem(result: SearchResult): SongItem? {
+    for (item in result.items) {
+        if (item is SongItem) return item
+    }
+    return null
 }
 
 /**
@@ -2609,20 +2607,12 @@ private suspend fun resolveYtThumbnail(title: String, artist: String?): String? 
     val searchResult =
         YouTube.search(term, YouTube.SearchFilter.FILTER_SONG).getOrNull()
             ?: return null
-    val items: List<YTItem> = searchResult!!.items
-    var first: SongItem? = null
-    for (item in items) {
-        if (item is SongItem) {
-            first = item
-            break
-        }
-    }
-    first ?: return null
-    val videoId = first!!.id
+    val first = findFirstSongItem(searchResult) ?: return null
+    val videoId = first.id
     return if (videoId.length == 11) {
         buildYTThumbnailUrl(videoId, YTThumbQuality.HQ)
     } else {
-        first!!.thumbnail.takeIf(String::isNotBlank)
+        first.thumbnail.takeIf(String::isNotBlank)
     }
 }
 
@@ -2634,18 +2624,19 @@ private suspend fun resolveYtThumbnail(title: String, artist: String?): String? 
  * through YouTube's FILTER_ARTIST search and pick the first ArtistItem's
  * thumbnail). Mirrors the [resolveYtThumbnail] pattern for tracks.
  */
+/** Extracts the first ArtistItem from a SearchResult's items list. */
+private fun findFirstArtistItem(result: SearchResult): ArtistItem? {
+    for (item in result.items) {
+        if (item is ArtistItem) return item
+    }
+    return null
+}
+
 private suspend fun resolveArtistImage(artistName: String): String? {
     if (artistName.isBlank()) return null
     val searchResult = YouTube.search(artistName, YouTube.SearchFilter.FILTER_ARTIST).getOrNull()
         ?: return null
-    val items: List<YTItem> = searchResult!!.items
-    var firstArtist: ArtistItem? = null
-    for (item in items) {
-        if (item is ArtistItem) {
-            firstArtist = item
-            break
-        }
-    }
+    val firstArtist = findFirstArtistItem(searchResult)
     return firstArtist?.thumbnail?.takeIf(String::isNotBlank)
 }
 
