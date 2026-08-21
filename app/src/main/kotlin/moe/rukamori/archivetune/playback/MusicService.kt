@@ -3822,7 +3822,9 @@ class MusicService :
             responseException.responseCode,
             requestProfile.variantLabel,
         )
+        val shouldResume = player.playWhenReady
         player.prepare()
+        if (shouldResume) player.play()
         return true
     }
 
@@ -8335,6 +8337,31 @@ class MusicService :
                 )
             }
         }
+        // One final bounded retry covers transient decoder/container/network failures that do not
+        // match the specialised branches above. Retrying the same media item before honoring
+        // AutoSkipNextOnError prevents a single short-lived failure from silently advancing the
+        // queue. The tracker keeps this from looping forever.
+        if (
+            !isLocalMedia &&
+                !isFullyDownloadedMedia &&
+                playbackStreamRecoveryTracker.registerRetryAttempt(currentMediaId)
+        ) {
+            val shouldResume = player.playWhenReady
+            playbackUrlCache.remove(currentMediaId)
+            directStreamCache.remove(currentMediaId)
+            contentLengthCache.remove(currentMediaId)
+            YTPlayerUtils.invalidateCachedStreamUrls(currentMediaId)
+            Timber.tag("MusicService").w(
+                "Retrying remote playback for %s after unclassified error %s (%s)",
+                currentMediaId,
+                error.errorCodeName,
+                describeCauseChain(error),
+            )
+            player.prepare()
+            if (shouldResume) player.play()
+            return
+        }
+
 
         if (dataStore.get(AutoSkipNextOnErrorKey, false)) {
             skipOnError()
