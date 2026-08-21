@@ -437,6 +437,11 @@ object YTPlayerUtils {
         }
         return true
     }
+    internal fun isStreamClientBlocked(
+        videoId: String,
+        clientKey: String?,
+        authFingerprint: String,
+    ): Boolean = isStreamClientTemporarilyBlocked(videoId, clientKey, authFingerprint)
 
     private fun normalizeStreamClientKey(clientKey: String?): String = StreamClientUtils.normalizeClientKey(clientKey)
 

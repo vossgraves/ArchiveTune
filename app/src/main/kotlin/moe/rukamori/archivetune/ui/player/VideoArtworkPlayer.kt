@@ -79,16 +79,23 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.withTimeoutOrNull
 import moe.rukamori.archivetune.constants.VideoPlaybackSpeedKey
+import moe.rukamori.archivetune.constants.AutoChoosePlaybackClientKey
+import moe.rukamori.archivetune.constants.PlayerStreamClient
+import moe.rukamori.archivetune.constants.PlayerStreamClientKey
 import moe.rukamori.archivetune.innertube.NewPipeUtils
 import moe.rukamori.archivetune.innertube.YouTube
-import moe.rukamori.archivetune.innertube.models.YouTubeClient.Companion.ANDROID_VR_1_65_10
-import moe.rukamori.archivetune.innertube.models.YouTubeClient.Companion.WEB_REMIX
 import moe.rukamori.archivetune.innertube.models.response.PlayerResponse
 import moe.rukamori.archivetune.utils.ImageBlurUtils
 import moe.rukamori.archivetune.utils.StreamClientUtils
 import moe.rukamori.archivetune.utils.rememberPreference
+import moe.rukamori.archivetune.utils.PreferenceStore
+import moe.rukamori.archivetune.utils.YTPlayerUtils
+import moe.rukamori.archivetune.extensions.toEnum
 import okhttp3.OkHttpClient
+import java.net.SocketTimeoutException
 import timber.log.Timber
 import java.util.Locale
 import java.util.concurrent.TimeUnit
@@ -296,6 +303,7 @@ private const val MaxVideoHeightCap = 1080
  * silence if the video is slow to resolve or the network is degraded.
  */
 private const val VideoReadyHoldTimeoutMs = 10000L
+private const val VideoClientAttemptTimeoutMs = 8000L
 
 /**
  * Delay between the video's first frame rendering and the actual resume
@@ -737,16 +745,10 @@ fun rememberVideoArtworkState(
     //   - the kouzu.in x-request-source: muzo header branch (not strictly needed for
     //     video, but matches the audio client so the two stay in sync)
     //
-    // The user's crash log showed HTTP 403 from googlevideo.com when ExoPlayer tried to
-    // load the ANDROID_VR video URL, while the audio URL (also ANDROID_VR) loaded fine.
-    // The audio and video clients had different setups — matching them eliminates that
-    // variable. If the 403 still happens after this fix, the root cause is YouTube
-    // rejecting the ANDROID_VR video URL specifically (signature/IP-rate-limit/etc.) and
-    // we'd need to fall back to a different client (see resolveVideoStreamUrl's clients
-    // list — it now tries ANDROID_VR first, then WEB_REMIX; the WEB_REMIX fallback kicks
-    // in when ANDROID_VR's URL resolution itself fails, not when its URL gives 403 on
-    // playback — for the latter, a more invasive fix would be needed: detect 403 on
-    // ExoPlayer's load and re-resolve via the next client).
+    // Video URL resolution now uses the same bounded client order, auth context, client-version
+    // patching, and poToken attachment as audio playback. An individual video client can still
+    // fail independently; its eight-second attempt is marked failed and the next allowed client
+    // is tried without interrupting the main audio player.
     val okHttpClient =
         remember {
             OkHttpClient
@@ -889,22 +891,22 @@ fun rememberVideoArtworkState(
             .d("Video for $videoId loading — audio paused for 1s settling")
     }
 
-    fun releaseAudioHold() {
+    fun releaseAudioHold(resumeMainAudio: Boolean = false) {
         if (!awaitingVideoReady) return
+        val shouldResumeAudio = resumeAudioAfterVideoReady
         awaitingVideoReady = false
-        // DON'T clear `resumeAudioAfterVideoReady` here —
-        // `onRenderedFirstFrame` captures it BEFORE calling this
-        // function so it can decide whether to schedule an audio
-        // resume. Clearing it now would race with that capture. It
-        // gets cleared after the scheduled resume fires (or when the
-        // video id changes).
-        //
-        // No audio resume here — let the `pendingResumeAtMs`
-        // LaunchedEffect resume it after the 1-second settling delay
-        // so both audio and video start together.
+        // A failed or disposed video must not leave the main audio paused. The caller supplies
+        // resumeMainAudio only for those terminal paths; the first-frame path keeps the flag until
+        // it schedules the coordinated resume.
+        if (resumeMainAudio && shouldResumeAudio) {
+            resumeAudioAfterVideoReady = false
+            updatedOnRequestResumeMain()
+        }
+        // The first-frame path intentionally leaves `resumeAudioAfterVideoReady` intact until it
+        // has copied the value into the pending-resume flags below.
         Timber
             .tag(VideoPlaybackLogTag)
-            .d("Video ready — clearing hold flag (resume scheduled)")
+            .d("Video ready — clearing hold flag (resume scheduled=${!resumeMainAudio})")
     }
 
     // Propagate loading state to the parent so it can render a spinner.
@@ -980,7 +982,7 @@ fun rememberVideoArtworkState(
 
         if (resolved == null) {
             state.hasPlaybackFailed = true
-            releaseAudioHold()
+            releaseAudioHold(resumeMainAudio = true)
             updatedOnPlaybackFailed()
             updatedOnStreamResolved(null)
         } else {
@@ -1583,7 +1585,7 @@ fun rememberVideoArtworkState(
                     state.isChangingQuality = false
                     state.isResyncing = false
                     state.bufferingStartedAtMs = 0L
-                    releaseAudioHold()
+                    releaseAudioHold(resumeMainAudio = true)
                     updatedOnPlaybackFailed()
                 }
 
@@ -1861,7 +1863,7 @@ fun rememberVideoArtworkState(
     // audio must be resumed right away or it would stay paused forever.
     DisposableEffect(exoPlayer) {
         onDispose {
-            releaseAudioHold()
+            releaseAudioHold(resumeMainAudio = true)
             Handler(Looper.getMainLooper()).post {
                 exoPlayer.release()
             }
@@ -2201,81 +2203,108 @@ private suspend fun resolveVideoStreamUrl(
     videoId: String,
     preferredHeight: Int?,
 ): VideoStreamInfo? {
-    // Client order: WEB_REMIX first, ANDROID_VR fallback.
-    //
-    // Previously ANDROID_VR was first. The crash log showed ANDROID_VR video URLs
-    // getting HTTP 403 from googlevideo.com while the audio URL (also ANDROID_VR)
-    // loaded fine. The audio path uses the user's WEB auth context, which means
-    // the user is logged in via WEB — WEB_REMIX URLs are more likely to work
-    // for this user than ANDROID_VR URLs (which are anonymous Quest-3 fingerprint).
-    //
-    // WEB_REMIX URLs need signature deobfuscation (handled by NewPipeUtils.getStreamUrl)
-    // and may need poToken + n-param transform — but since the user's audio plays
-    // fine via the WEB client, the WEB_REMIX video URL should also work.
-    //
-    // ANDROID_VR is kept as a fallback for users who aren't logged in via WEB.
-    val clients = listOf(WEB_REMIX to "sts", ANDROID_VR_1_65_10 to null)
+    // Use the same bounded, preference-aware client order as audio playback. Video and audio
+    // requests must agree on client context; otherwise a video URL can be minted by one profile
+    // and fetched with another profile's headers or token.
+    val authState = YouTube.currentPlaybackAuthState()
+    val preferredClient =
+        PreferenceStore
+            .get(PlayerStreamClientKey)
+            .toEnum(PlayerStreamClient.WEB_REMIX)
+    val autoChoose = PreferenceStore.get(AutoChoosePlaybackClientKey) ?: true
+    val clients = YTPlayerUtils.buildStreamClientOrder(preferredClient, authState, autoChoose)
 
-    var lastAvailableHeights: List<Int> = emptyList()
-    var lastCaptionTracks: List<PlayerResponse.CaptionTrack> = emptyList()
-
-    for ((client, stsMode) in clients) {
-        val result =
-            runCatching {
-                val sts =
-                    if (stsMode == null) {
-                        null
-                    } else {
-                        NewPipeUtils.getSignatureTimestamp(videoId).getOrNull()
-                    }
-                val playerResponse =
-                    YouTube
-                        .player(
-                            videoId = videoId,
-                            client = client,
-                            signatureTimestamp = sts,
-                        ).getOrThrow()
-
-                lastAvailableHeights =
-                    (playerResponse.streamingData?.formats.orEmpty() +
-                        playerResponse.streamingData?.adaptiveFormats.orEmpty())
-                        .mapNotNull { it.height?.takeIf { h -> h > 0 } }
-                        .distinct()
-                        .sorted()
-
-                lastCaptionTracks =
-                    playerResponse.captions
-                        ?.playerCaptionsTracklistRenderer
-                        ?.captionTracks
-                        .orEmpty()
-
-                val format = pickVideoFormat(playerResponse, preferredHeight) ?: return@runCatching null
-                val url =
-                    NewPipeUtils
-                        .getStreamUrl(
-                            format = format,
-                            videoId = videoId,
-                        ).getOrNull()
-                        ?.let { StreamClientUtils.patchClientVersion(it, client.clientVersion) }
-                if (url.isNullOrBlank()) null else url
-            }
-
-        val url = result.getOrNull()
-        if (!url.isNullOrBlank()) {
-            Timber
-                .tag(VideoPlaybackLogTag)
-                .i("Resolved video stream for $videoId via ${client.clientName}")
-            return VideoStreamInfo(
-                streamUrl = url,
-                availableHeights = lastAvailableHeights,
-                captionTracks = lastCaptionTracks,
-            )
+    val usableClients =
+        clients.filterNot { client ->
+            autoChoose &&
+                YTPlayerUtils.isStreamClientBlocked(
+                    videoId = videoId,
+                    clientKey = StreamClientUtils.buildClientKey(client),
+                    authFingerprint = authState.fingerprint,
+                )
         }
 
+    for (client in usableClients) {
+        val usesCookieAuthentication = authState.hasPlaybackLoginContext && client.supportsCookieAuthentication
+        if (client.loginRequired && !usesCookieAuthentication) continue
+
+        val result =
+            withTimeoutOrNull(VideoClientAttemptTimeoutMs) {
+                runCatching {
+                    val signatureTimestamp =
+                        if (client.useSignatureTimestamp) {
+                            NewPipeUtils.getSignatureTimestamp(videoId).getOrNull()
+                        } else {
+                            null
+                        }
+                    val poToken = authState.resolvePlayerPoToken(client)?.takeIf { it.isNotBlank() }
+                    val playerResponse =
+                        YouTube
+                            .player(
+                                videoId = videoId,
+                                client = client,
+                                signatureTimestamp = signatureTimestamp,
+                                poToken = poToken,
+                                setLogin = usesCookieAuthentication,
+                                authState = authState,
+                            ).getOrThrow()
+                    if (playerResponse.playabilityStatus.status != "OK") {
+                        throw IllegalStateException(
+                            "${client.clientName} returned ${playerResponse.playabilityStatus.status}: " +
+                                playerResponse.playabilityStatus.reason.orEmpty(),
+                        )
+                    }
+
+                    val availableHeights =
+                        (playerResponse.streamingData?.formats.orEmpty() +
+                            playerResponse.streamingData?.adaptiveFormats.orEmpty())
+                            .mapNotNull { it.height?.takeIf { height -> height in 1..MaxVideoHeightCap } }
+                            .distinct()
+                            .sorted()
+                    val captionTracks =
+                        playerResponse.captions
+                            ?.playerCaptionsTracklistRenderer
+                            ?.captionTracks
+                            .orEmpty()
+                    val format = pickVideoFormat(playerResponse, preferredHeight) ?: return@runCatching null
+                    val rawUrl = NewPipeUtils.getStreamUrl(format = format, videoId = videoId).getOrThrow()
+                    val versionedUrl = StreamClientUtils.patchClientVersion(rawUrl, client.clientVersion)
+                    val finalUrl = poToken?.let { StreamClientUtils.appendPoToken(versionedUrl, it) } ?: versionedUrl
+                    VideoStreamInfo(
+                        streamUrl = finalUrl,
+                        availableHeights = availableHeights,
+                        captionTracks = captionTracks,
+                    )
+                }.onFailure { error ->
+                    if (error is CancellationException) throw error
+                }
+            } ?: Result.failure(
+                SocketTimeoutException(
+                    "Video client ${client.clientName} timed out after ${VideoClientAttemptTimeoutMs}ms",
+                ),
+            )
+
+        val streamInfo = result.getOrNull()
+        if (streamInfo != null && streamInfo.streamUrl.isNotBlank()) {
+            YTPlayerUtils.markStreamUrlSuccessful(streamInfo.streamUrl)
+            Timber
+                .tag(VideoPlaybackLogTag)
+                .i("Resolved video stream for $videoId via ${client.clientName}@${client.clientVersion}")
+            return streamInfo
+        }
+
+        if (autoChoose) {
+            YTPlayerUtils.markStreamClientFailed(
+                videoId = videoId,
+                clientKey = StreamClientUtils.buildClientKey(client),
+                httpStatusCode = null,
+                authFingerprint = authState.fingerprint,
+            )
+        }
         result.exceptionOrNull()?.let { error ->
             Timber
                 .tag(VideoPlaybackLogTag)
-                .w(error, "Video stream resolution failed for $videoId via ${client.clientName}")
+                .w(error, "Video stream resolution failed for $videoId via ${client.clientName}@${client.clientVersion}")
         }
     }
 

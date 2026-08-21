@@ -2662,6 +2662,7 @@ private fun V8Artwork(
     val videoArtworkState = LocalVideoArtworkState.current
     val showVideo =
         videoArtworkState != null &&
+            !videoArtworkState.hasPlaybackFailed &&
             isMusicVideo &&
             !videoId.isNullOrBlank() &&
             playerConnection != null
@@ -3606,6 +3607,7 @@ private fun V9Artwork(
     val videoArtworkState = LocalVideoArtworkState.current
     val showVideo =
         videoArtworkState != null &&
+            !videoArtworkState.hasPlaybackFailed &&
             isMusicVideo &&
             !videoId.isNullOrBlank() &&
             playerConnection != null

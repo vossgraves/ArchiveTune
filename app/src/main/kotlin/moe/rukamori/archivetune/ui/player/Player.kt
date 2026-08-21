@@ -1086,8 +1086,16 @@ fun BottomSheetPlayer(
             onStreamResolved = { info -> videoAvailableHeights = info?.availableHeights.orEmpty() },
             onPlaybackFailed = { videoPlaybackFailed = true },
             onLoadingStateChange = { /* loading is computed from state directly in InlineVideoPlayer */ },
-            onRequestPauseMain = { playerConnection.player.pause() },
-            onRequestResumeMain = { playerConnection.player.play() },
+            onRequestPauseMain = {
+                if (videoMediaId != null && playerConnection.player.currentMediaItem?.mediaId == videoMediaId) {
+                    playerConnection.player.pause()
+                }
+            },
+            onRequestResumeMain = {
+                if (videoMediaId != null && playerConnection.player.currentMediaItem?.mediaId == videoMediaId) {
+                    playerConnection.player.play()
+                }
+            },
         )
 
     CompositionLocalProvider(
