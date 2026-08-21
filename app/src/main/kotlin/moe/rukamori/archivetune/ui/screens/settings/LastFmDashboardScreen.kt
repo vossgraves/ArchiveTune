@@ -223,9 +223,9 @@ private val DarkDashboardTheme = DashboardTheme(
     rankingBadgeText = Color(0xFF9D6B63),
     playCountPillBackground = Color(0xFF2A2A2C),
     playCountPillText = Color(0xFFA0A0A0),
-    nowPlayingPillBackground = Color.White,
-    nowPlayingPillText = Color(0xFF9D6B63),
-    nowPlayingDotColor = Color(0xFF9D6B63),
+    nowPlayingPillBackground = Color(0xFFE8D5D2),
+    nowPlayingPillText = Color(0xFF3A3A3C),
+    nowPlayingDotColor = Color(0xFF3A3A3C),
     nowPlayingTrackTitle = Color.White,
     nowPlayingTrackArtist = Color.White.copy(alpha = 0.8f),
     artworkPlaceholderBackground = Color(0xFF2A2A2C),
@@ -241,7 +241,7 @@ private val DarkDashboardTheme = DashboardTheme(
     dropdownInactiveItemIconTint = Color(0xFFA0A0A0),
     dropdownCheckTint = Color(0xFFC9A8A2),
     overflowIconTint = Color.White,
-    topAppBarContainer = Color(0xFF0F0F0F),
+    topAppBarContainer = Color(0xFF1A1A1A),
     topAppBarIconTint = Color.White,
     topAppBarTitleText = Color.White,
     fallbackCardBackground = Color(0xFF1C1C1E),
@@ -1238,6 +1238,12 @@ private fun LastFmDashboardHeader(
  * username + scrobble count pills (the username is no longer shown here per
  * user request — the stats are more useful in this compact area).
  */
+/**
+ * Pills below the header — left shows scrobbles count, right shows listening time.
+ * Matches LastWave-native's HeaderRow: left pill = username, right pill = listening time.
+ * We show scrobbles count on the left (more useful than username since the hero card
+ * already shows it) and estimated listening time on the right (scrobbles * 210s).
+ */
 @Composable
 private fun HeaderPillRow(
     scrobbles: Long,
@@ -1245,33 +1251,40 @@ private fun HeaderPillRow(
     albumCount: Int,
     theme: DashboardTheme,
 ) {
+    // Listening time estimate: LastWave uses scrobbles * 210 seconds (avg track length)
+    val totalSeconds = scrobbles * 210L
+    val days = totalSeconds / 86400
+    val hours = (totalSeconds % 86400) / 3600
+    val minutes = (totalSeconds % 3600) / 60
+    val timeStr = when {
+        days > 0 -> "${days}d ${hours}h ${minutes}m"
+        hours > 0 -> "${hours}h ${minutes}m"
+        else -> "${minutes}m"
+    }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        // Scrobbles pill
+        // Left pill: Scrobbles count
         Surface(
             shape = RoundedCornerShape(50),
             color = theme.pillBackground,
-            modifier = Modifier.weight(1f),
         ) {
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center,
             ) {
                 Icon(
                     painter = painterResource(R.drawable.solar_music_note_2_linear),
                     contentDescription = null,
-                    modifier = Modifier.size(14.dp),
+                    modifier = Modifier.size(16.dp),
                     tint = theme.accent,
                 )
-                Spacer(Modifier.width(5.dp))
+                Spacer(Modifier.width(6.dp))
                 Text(
                     text = formatCount(scrobbles),
                     style = MaterialTheme.typography.labelLarge,
@@ -1280,59 +1293,27 @@ private fun HeaderPillRow(
                 )
             }
         }
-        // Artists pill
+        // Right pill: Listening time
         Surface(
             shape = RoundedCornerShape(50),
             color = theme.pillBackground,
-            modifier = Modifier.weight(1f),
         ) {
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center,
             ) {
                 Icon(
-                    painter = painterResource(R.drawable.solar_users_group_rounded_linear),
+                    painter = painterResource(R.drawable.solar_user_circle_linear),
                     contentDescription = null,
-                    modifier = Modifier.size(14.dp),
-                    tint = theme.accent,
+                    modifier = Modifier.size(16.dp),
+                    tint = theme.textSecondary,
                 )
-                Spacer(Modifier.width(5.dp))
+                Spacer(Modifier.width(6.dp))
                 Text(
-                    text = formatCount(artistCount.toLong()),
+                    text = timeStr,
                     style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.SemiBold,
-                    color = theme.textPrimary,
-                )
-            }
-        }
-        // Albums pill
-        Surface(
-            shape = RoundedCornerShape(50),
-            color = theme.pillBackground,
-            modifier = Modifier.weight(1f),
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center,
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.solar_server_linear),
-                    contentDescription = null,
-                    modifier = Modifier.size(14.dp),
-                    tint = theme.accent,
-                )
-                Spacer(Modifier.width(5.dp))
-                Text(
-                    text = formatCount(albumCount.toLong()),
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.SemiBold,
-                    color = theme.textPrimary,
+                    fontWeight = FontWeight.Medium,
+                    color = theme.textSecondary,
                 )
             }
         }
