@@ -1981,66 +1981,54 @@ private fun SongSourceDialog(
         val searchSaavn = sourceFilter == null || sourceFilter == AudioSourceType.JIOSAAVN
 
         if (searchYtm) {
-            runCatching {
-                YouTube.search(searchQuery, YouTube.SearchFilter.FILTER_SONG, useAccountContext = false).getOrNull()
-                    ?.items?.filterIsInstance<SongItem>().orEmpty()
-            }.getOrNull()?.forEach { song ->
-                out.add(
-                    SourceSearchResult(
-                        source = AudioSourceType.YOUTUBE,
-                        trackId = song.id,
-                        title = song.title,
-                        artist = song.artists.joinToString(", ") { it.name },
-                        thumbnailUrl = song.thumbnail,
-                        durationMs = song.duration?.toLong()?.times(1000L),
-                        qualityLabel = aacLabel,
-                        songItem = song,
-                    ),
-                )
+            withContext(Dispatchers.IO) {
+                runCatching {
+                    val ytResult = YouTube.search(searchQuery, YouTube.SearchFilter.FILTER_SONG, useAccountContext = false).getOrNull()
+                    if (ytResult == null) {
+                        emptyList()
+                    } else {
+                        val songs = mutableListOf<SongItem>()
+                        for (item in ytResult.items) {
+                            if (item is SongItem) songs.add(item)
+                        }
+                        songs
+                    }
+                }.getOrNull()?.forEach { song ->
+                    out.add(
+                        SourceSearchResult(
+                            source = AudioSourceType.YOUTUBE,
+                            trackId = song.id,
+                            title = song.title,
+                            artist = song.artists.joinToString(", ") { it.name },
+                            thumbnailUrl = song.thumbnail,
+                            durationMs = song.duration?.toLong()?.times(1000L),
+                            qualityLabel = aacLabel,
+                            songItem = song,
+                        ),
+                    )
+                }
             }
         }
         if (searchTidal) {
-            runCatching {
-                val tidalQuery =
-                    TidalAudioProvider.Query(
-                        mediaId = "",
-                        title = searchQuery,
-                        artists = emptyList(),
-                        album = null,
-                        isrc = null,
-                        durationMs = null,
-                    )
-                TidalAudioProvider.searchCandidates(tidalQuery, limit = 8)
-            }.getOrNull()?.forEach { candidate ->
-                out.add(
-                    SourceSearchResult(
-                        source = AudioSourceType.TIDAL,
-                        trackId = candidate.trackId,
-                        title = candidate.title,
-                        artist = candidate.artist,
-                        thumbnailUrl = null,
-                        durationMs = candidate.durationMs,
-                        qualityLabel = losslessLabel,
-                        songItem = null,
-                    ),
-                )
-            }
-        }
-        if (searchQobuz) {
-            // Qobuz search needs pool tokens or proxy instances configured. The
-            // searchCandidates method handles that internally — it returns an
-            // empty list when no backends are configured, in which case the user
-            // just sees no Qobuz rows in the results (same as if the query had
-            // no hits).
-            runCatching { QobuzAudioProvider.searchCandidates(searchQuery, limit = 8) }
-                .getOrDefault(emptyList())
-                .forEach { candidate ->
+            withContext(Dispatchers.IO) {
+                runCatching {
+                    val tidalQuery =
+                        TidalAudioProvider.Query(
+                            mediaId = "",
+                            title = searchQuery,
+                            artists = emptyList(),
+                            album = null,
+                            isrc = null,
+                            durationMs = null,
+                        )
+                    TidalAudioProvider.searchCandidates(tidalQuery, limit = 8)
+                }.getOrNull()?.forEach { candidate ->
                     out.add(
                         SourceSearchResult(
-                            source = AudioSourceType.QOBUZ,
+                            source = AudioSourceType.TIDAL,
                             trackId = candidate.trackId,
                             title = candidate.title,
-                            artist = candidate.artist.orEmpty(),
+                            artist = candidate.artist,
                             thumbnailUrl = null,
                             durationMs = candidate.durationMs,
                             qualityLabel = losslessLabel,
@@ -2048,11 +2036,40 @@ private fun SongSourceDialog(
                         ),
                     )
                 }
+            }
+        }
+        if (searchQobuz) {
+            // Qobuz search needs pool tokens or proxy instances configured. The
+            // searchCandidates method handles that internally — it returns an
+            // empty list when no backends are configured, in which case the user
+            // just sees no Qobuz rows in the results (same as if the query had
+            // no hits). Must run on IO because searchCandidates does network
+            // calls (PoolAccountManager.qobuzAccounts + discoverInstances +
+            // the actual search API call).
+            withContext(Dispatchers.IO) {
+                runCatching { QobuzAudioProvider.searchCandidates(searchQuery, limit = 8) }
+                    .getOrDefault(emptyList())
+                    .forEach { candidate ->
+                        out.add(
+                            SourceSearchResult(
+                                source = AudioSourceType.QOBUZ,
+                                trackId = candidate.trackId,
+                                title = candidate.title,
+                                artist = candidate.artist.orEmpty(),
+                                thumbnailUrl = null,
+                                durationMs = candidate.durationMs,
+                                qualityLabel = losslessLabel,
+                                songItem = null,
+                            ),
+                        )
+                    }
+            }
         }
         if (searchSaavn) {
-            runCatching { SaavnService.searchSongs(searchQuery).getOrDefault(emptyList()) }
-                .getOrDefault(emptyList())
-                .forEach { saavnSong ->
+            withContext(Dispatchers.IO) {
+                runCatching { SaavnService.searchSongs(searchQuery).getOrDefault(emptyList()) }
+                    .getOrDefault(emptyList())
+                    .forEach { saavnSong ->
                     val cover = saavnSong.image.maxByOrNull { runCatching { it.quality.substringBefore("x").toInt() }.getOrDefault(0) }?.url
                     out.add(
                         SourceSearchResult(
@@ -2067,6 +2084,7 @@ private fun SongSourceDialog(
                         ),
                     )
                 }
+            }
         }
         value = out
     }

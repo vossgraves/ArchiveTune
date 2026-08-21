@@ -25,6 +25,7 @@ import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.SharedTransitionScope.OverlayClip
 import androidx.compose.animation.BoundsTransform
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloat
@@ -452,9 +453,12 @@ fun AppleMusicPlayerContent(
     // each edge (162dp for W=360), which is > drift(60) + blur(64) = 124dp,
     // so the image always covers the parent with a comfortable safety margin.
     //
-    // SPEED: increased ~30% faster per user request (19s/27s → 14s/20s).
-    // BLUR: 64dp (reverted from a temporary 96dp experiment back to 64dp
-    // per user request — the 50% increase was too heavy on the visual).
+    // SPEED: uses LinearEasing instead of FastOutSlowInEasing. The previous
+    // FastOutSlowInEasing made the drift feel fast at the start but slow at
+    // the turnaround points (the easing decelerates into each endpoint then
+    // accelerates back out). LinearEasing gives a constant, uniform speed
+    // throughout the entire cycle — no perceived "slowdown" at the edges.
+    // Duration kept at 14s/20s (already increased from the original 19s/27s).
     //
     // CRITICAL PERF: we keep the State<Float> objects (NOT `by` delegation) so
     // the animation values are read ONLY inside Modifier.graphicsLayer { }
@@ -471,7 +475,7 @@ fun AppleMusicPlayerContent(
         initialValue = -60f,
         targetValue = 60f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 14_000, easing = FastOutSlowInEasing),
+            animation = tween(durationMillis = 14_000, easing = LinearEasing),
             repeatMode = RepeatMode.Reverse,
         ),
         label = "am-lyrics-drift-x",
@@ -480,7 +484,7 @@ fun AppleMusicPlayerContent(
         initialValue = -45f,
         targetValue = 45f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 20_000, easing = FastOutSlowInEasing),
+            animation = tween(durationMillis = 20_000, easing = LinearEasing),
             repeatMode = RepeatMode.Reverse,
         ),
         label = "am-lyrics-drift-y",
