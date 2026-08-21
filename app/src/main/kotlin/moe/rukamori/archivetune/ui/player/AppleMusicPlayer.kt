@@ -1527,6 +1527,7 @@ private fun AppleMusicSharpArtwork(
         val videoArtworkState = LocalVideoArtworkState.current
         val showVideo =
             videoArtworkState != null &&
+                !videoArtworkState.hasPlaybackFailed &&
                 isMusicVideo &&
                 !videoId.isNullOrBlank() &&
                 playerConnection != null

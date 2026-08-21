@@ -633,6 +633,7 @@
     <string name="musixmatch_experimental_warning">This provider uses Musixmatch\'s internal app endpoint. It may break without notice if Musixmatch changes their API, requires the user token, or rate-limits requests. Disable and re-enable to refresh the token if lyrics stop returning.</string>
     <string name="player_and_audio">Player and audio</string>
     <string name="audio_quality">Audio quality</string>
+    <string name="audio_quality_description">Controls YouTube fallback stream quality. Tidal, Qobuz, Deezer and JioSaavn use their own quality settings.</string>
     <string name="audio_quality_auto">Auto</string>
     <string name="audio_quality_high">High</string>
     <string name="audio_quality_low">Low</string>

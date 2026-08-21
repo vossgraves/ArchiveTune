@@ -34,6 +34,7 @@ fun SearchSourcePicker(
     currentScope: SearchSource,
     currentProvider: SearchProvider,
     onSelection: (SearchSource, SearchProvider) -> Unit,
+    includeLocal: Boolean = true,
 ) {
     var expanded by rememberSaveable { mutableStateOf(false) }
 
@@ -57,13 +58,15 @@ fun SearchSourcePicker(
             expanded = expanded,
             onDismissRequest = { expanded = false },
         ) {
-            SearchSourceMenuItem(
-                label = stringResource(R.string.search_library),
-                iconRes = R.drawable.library_music,
-                selected = currentScope == SearchSource.LOCAL,
-            ) {
-                expanded = false
-                onSelection(SearchSource.LOCAL, currentProvider)
+            if (includeLocal) {
+                SearchSourceMenuItem(
+                    label = stringResource(R.string.search_library),
+                    iconRes = R.drawable.library_music,
+                    selected = currentScope == SearchSource.LOCAL,
+                ) {
+                    expanded = false
+                    onSelection(SearchSource.LOCAL, currentProvider)
+                }
             }
             SearchSourceMenuItem(
                 label = stringResource(R.string.search_source_youtube),

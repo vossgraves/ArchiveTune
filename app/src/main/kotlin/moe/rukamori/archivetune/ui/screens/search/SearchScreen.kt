@@ -86,6 +86,9 @@ import coil3.compose.AsyncImage
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.constants.DefaultSearchSourceKey
+import moe.rukamori.archivetune.constants.SearchProvider
+import moe.rukamori.archivetune.constants.SearchSource
 import moe.rukamori.archivetune.db.entities.SearchHistory
 import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.innertube.models.AlbumItem
@@ -100,6 +103,7 @@ import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.YouTubeGridItem
 import moe.rukamori.archivetune.ui.component.YouTubeListItem
 import moe.rukamori.archivetune.ui.component.shimmer.ShimmerHost
+import moe.rukamori.archivetune.ui.component.SearchSourcePicker
 import moe.rukamori.archivetune.ui.component.shimmer.TextPlaceholder
 import moe.rukamori.archivetune.ui.menu.YouTubeSongMenu
 import moe.rukamori.archivetune.ui.screens.rememberMoodAndGenresArtworkModel
@@ -108,6 +112,7 @@ import moe.rukamori.archivetune.viewmodels.SearchDiscoveryScreenState
 import moe.rukamori.archivetune.viewmodels.SearchDiscoveryTab
 import moe.rukamori.archivetune.viewmodels.SearchDiscoveryViewModel
 import moe.rukamori.archivetune.viewmodels.SearchHistoryViewModel
+import moe.rukamori.archivetune.utils.rememberEnumPreference
 
 private val SearchHorizontalPadding = 24.dp
 private val SearchSectionSpacing = 28.dp
@@ -127,6 +132,10 @@ fun SearchScreen(
     historyViewModel: SearchHistoryViewModel = hiltViewModel(),
 ) {
     var searchQuery by rememberSaveable { mutableStateOf("") }
+    var searchProvider by rememberEnumPreference(DefaultSearchSourceKey, SearchProvider.YOUTUBE)
+    val onSearchSourceSelection: (SearchSource, SearchProvider) -> Unit = { _, provider ->
+        searchProvider = provider
+    }
     val state by viewModel.state.collectAsStateWithLifecycle()
     val selectedTab by viewModel.selectedTab.collectAsStateWithLifecycle()
     val recentSearches by historyViewModel.recentSearches.collectAsStateWithLifecycle()
@@ -186,6 +195,9 @@ fun SearchScreen(
                     onQueryChange = { searchQuery = it },
                     onSearch = onSearchQuery,
                     onVoiceSearch = onVoiceSearch,
+                    searchScope = SearchSource.ONLINE,
+                    searchProvider = searchProvider,
+                    onSourceSelection = onSearchSourceSelection,
                     modifier =
                         Modifier
                             .fillMaxWidth()
@@ -367,6 +379,9 @@ private fun SearchEntryField(
     onQueryChange: (String) -> Unit,
     onSearch: (String) -> Unit,
     onVoiceSearch: () -> Unit,
+    searchScope: SearchSource,
+    searchProvider: SearchProvider,
+    onSourceSelection: (SearchSource, SearchProvider) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val containerColor = MaterialTheme.colorScheme.surfaceContainerLow
@@ -428,7 +443,18 @@ private fun SearchEntryField(
                 ) {
                     if (query.isEmpty()) {
                         Text(
-                            text = stringResource(R.string.search_yt_music),
+                            text =
+                                stringResource(
+                                    when (searchScope) {
+                                        SearchSource.LOCAL -> R.string.search_library
+                                        SearchSource.ONLINE ->
+                                            if (searchProvider == SearchProvider.SPOTIFY) {
+                                                R.string.search_source_spotify
+                                            } else {
+                                                R.string.search_yt_music
+                                            }
+                                    },
+                                ),
                             style = MaterialTheme.typography.titleMedium.copy(fontSize = 16.sp),
                             color = onSurfaceVariant,
                             maxLines = 1,
@@ -450,14 +476,11 @@ private fun SearchEntryField(
                 modifier = Modifier.size(22.dp),
             )
         }
-        Icon(
-            painter = painterResource(R.drawable.language),
-            contentDescription = null,
-            tint = onSurfaceVariant,
-            modifier =
-                Modifier
-                    .padding(end = 20.dp)
-                    .size(22.dp),
+        SearchSourcePicker(
+            currentScope = SearchSource.ONLINE,
+            currentProvider = searchProvider,
+            onSelection = onSearchSourceSelection,
+            includeLocal = false,
         )
     }
 }

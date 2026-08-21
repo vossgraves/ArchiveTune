@@ -278,6 +278,7 @@ fun PlaybackSourceSections(navController: NavController) {
         item {
             EnumListPreference(
                 title = { Text(stringResource(R.string.audio_quality)) },
+                description = stringResource(R.string.audio_quality_description),
                 icon = { Icon(painterResource(R.drawable.graphic_eq), null) },
                 selectedValue = ytAudioQuality,
                 onValueSelected = onYtAudioQualityChange,
