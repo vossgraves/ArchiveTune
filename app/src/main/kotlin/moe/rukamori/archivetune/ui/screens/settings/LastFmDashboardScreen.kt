@@ -353,12 +353,12 @@ private suspend fun searchYtForLastFmTrack(title: String, artist: String?): Song
         .onFailure { Timber.w(it, "YouTube.search failed for Last.fm track: %s", term) }
         .getOrNull()
         ?.items
-        ?.filterIsInstance<SongItem>()
+        ?.mapNotNull { it as? SongItem }
         ?.firstOrNull()
     if (first == null) {
         Timber.w("searchYt no SongItem in results for: \"%s\"", term)
     } else {
-        Timber.d("searchYt resolved: \"%s\" → videoId=%s thumb=%s", term, first.id, first.thumbnail.orEmpty())
+        Timber.d("searchYt resolved: \"%s\" → videoId=%s thumb=%s", term, first.id, first.thumbnail)
     }
     ytSearchCache[cacheKey] = first
     return first
@@ -2597,7 +2597,7 @@ private suspend fun resolveYtThumbnail(title: String, artist: String?): String? 
     val searchResult =
         YouTube.search(term, YouTube.SearchFilter.FILTER_SONG).getOrNull()
             ?: return null
-    val first = searchResult.items.firstOrNull { it is SongItem } as? SongItem ?: return null
+    val first = searchResult.items.mapNotNull { it as? SongItem }.firstOrNull() ?: return null
     val videoId = first.id
     return if (videoId.length == 11) {
         buildYTThumbnailUrl(videoId, YTThumbQuality.HQ)
@@ -2618,7 +2618,7 @@ private suspend fun resolveArtistImage(artistName: String): String? {
     if (artistName.isBlank()) return null
     val searchResult = YouTube.search(artistName, YouTube.SearchFilter.FILTER_ARTIST).getOrNull()
         ?: return null
-    val firstArtist = searchResult.items.firstOrNull { it is ArtistItem } as? ArtistItem
+    val firstArtist = searchResult.items.mapNotNull { it as? ArtistItem }.firstOrNull()
     return firstArtist?.thumbnail?.takeIf(String::isNotBlank)
 }
 
