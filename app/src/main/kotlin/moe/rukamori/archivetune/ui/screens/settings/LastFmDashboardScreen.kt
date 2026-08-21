@@ -797,8 +797,11 @@ fun LastFmDashboardScreen(
             if (!searchVisible) {
                 item(key = "header_pills") {
                     HeaderPillRow(
-                        userInfo = userInfo,
-                        username = current.username,
+                        scrobbles = (userInfo?.getOrNull()?.playcount ?: 0).toLong(),
+                        artistCount = (statsTopArtists ?: topArtists)
+                            ?.getOrNull()?.topartists?.attr?.total?.toIntOrNull() ?: 0,
+                        albumCount = (statsTopAlbums ?: topAlbums)
+                            ?.getOrNull()?.topalbums?.attr?.total?.toIntOrNull() ?: 0,
                         theme = theme,
                     )
                 }
@@ -806,7 +809,6 @@ fun LastFmDashboardScreen(
                 item(key = "hero_card") {
                     HeroStatsCard(
                         userInfo = userInfo,
-                        username = current.username,
                         isRefreshing = isRefreshing,
                         // (Task 1) Read the lifetime unique-item counts
                         // off the dedicated limit=1 stats responses — mirrors
@@ -1185,69 +1187,103 @@ private fun LastFmDashboardHeader(
 // ── Header pill row ──────────────────────────────────────────────────────────
 
 /**
- * The free-floating row of pills below the header — a rounded username pill
- * on the left, a scrobble-count pill on the right. Ported from
- * LastWave-native's HeaderRow (the username half) plus the existing
- * lastfm_playcount scrobble total (the right half, where LastWave-native
- * shows a live listen timer — Last.fm doesn't expose one, so we show the
- * lifetime scrobble count instead, which is the most Last.fm-equivalent
- * single-number stat).
+ * The free-floating row of pills below the header — three stat pills showing
+ * the user's total scrobbles, artists, and albums. Replaces the previous
+ * username + scrobble count pills (the username is no longer shown here per
+ * user request — the stats are more useful in this compact area).
  */
 @Composable
 private fun HeaderPillRow(
-    userInfo: Result<UserInfo>?,
-    username: String,
+    scrobbles: Long,
+    artistCount: Int,
+    albumCount: Int,
     theme: DashboardTheme,
 ) {
-    val info = userInfo?.getOrNull()
-    val scrobbles = info?.playcount ?: 0
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        // Scrobbles pill
         Surface(
             shape = RoundedCornerShape(50),
             color = theme.pillBackground,
+            modifier = Modifier.weight(1f),
         ) {
             Row(
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
             ) {
                 Icon(
-                    painter = painterResource(R.drawable.solar_user_circle_linear),
+                    painter = painterResource(R.drawable.solar_music_note_2_linear),
                     contentDescription = null,
-                    modifier = Modifier.size(15.dp),
-                    tint = theme.textSecondary,
+                    modifier = Modifier.size(14.dp),
+                    tint = theme.accent,
                 )
-                Spacer(Modifier.width(6.dp))
+                Spacer(Modifier.width(5.dp))
                 Text(
-                    text = username.ifBlank { "—" },
+                    text = formatCount(scrobbles),
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.SemiBold,
                     color = theme.textPrimary,
                 )
             }
         }
+        // Artists pill
         Surface(
             shape = RoundedCornerShape(50),
             color = theme.pillBackground,
+            modifier = Modifier.weight(1f),
         ) {
             Row(
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
             ) {
                 Icon(
-                    painter = painterResource(R.drawable.solar_music_note_2_linear),
+                    painter = painterResource(R.drawable.solar_users_group_rounded_linear),
                     contentDescription = null,
-                    modifier = Modifier.size(15.dp),
+                    modifier = Modifier.size(14.dp),
                     tint = theme.accent,
                 )
-                Spacer(Modifier.width(6.dp))
+                Spacer(Modifier.width(5.dp))
                 Text(
-                    text = formatCount(scrobbles.toLong()),
+                    text = formatCount(artistCount.toLong()),
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = theme.textPrimary,
+                )
+            }
+        }
+        // Albums pill
+        Surface(
+            shape = RoundedCornerShape(50),
+            color = theme.pillBackground,
+            modifier = Modifier.weight(1f),
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.solar_server_linear),
+                    contentDescription = null,
+                    modifier = Modifier.size(14.dp),
+                    tint = theme.accent,
+                )
+                Spacer(Modifier.width(5.dp))
+                Text(
+                    text = formatCount(albumCount.toLong()),
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.SemiBold,
                     color = theme.textPrimary,
@@ -1268,15 +1304,10 @@ private fun HeaderPillRow(
  *   - a 46dp hero-arrow Surface with a forward-arrow IconButton on the right
  *     of the hero (opens mood_and_genres — LastWave-native's "Genres" target)
  *   - three StatPills below for Tracks / Artists / Albums
- *
- * Below the card: a compact avatar + username + realname row (LastWave-native
- * puts this in the header; ArchiveTune's dashboard keeps it in the body to
- * stay consistent with the previous design and to keep the header compact).
  */
 @Composable
 private fun HeroStatsCard(
     userInfo: Result<UserInfo>?,
-    username: String,
     isRefreshing: Boolean,
     trackCount: Int,
     artistCount: Int,
@@ -1374,57 +1405,6 @@ private fun HeroStatsCard(
                         }
                     }
                 }
-
-                Spacer(Modifier.height(12.dp))
-
-                // Compact avatar + username + realname row.
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    val avatar = LastFmArtworkNormalizer.bestImageUrl(info.image)
-                    Surface(
-                        modifier = Modifier.size(40.dp),
-                        shape = CircleShape,
-                        color = theme.artworkPlaceholderBackground,
-                    ) {
-                        if (!avatar.isNullOrBlank()) {
-                            AsyncImage(
-                                model = avatar,
-                                contentDescription = null,
-                                modifier = Modifier.fillMaxSize().clip(CircleShape),
-                                contentScale = ContentScale.Crop,
-                            )
-                        } else {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    painter = painterResource(R.drawable.solar_user_circle_linear),
-                                    contentDescription = null,
-                                    tint = theme.accent,
-                                    modifier = Modifier.size(20.dp),
-                                )
-                            }
-                        }
-                    }
-                    Spacer(Modifier.size(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            text = info.realname?.takeIf { it.isNotBlank() } ?: info.name,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = theme.textPrimary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        Text(
-                            text = "@${info.name}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = theme.textSecondary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
             }
         }
         else -> {
@@ -1455,7 +1435,7 @@ private fun HeroStatsCard(
                     }
                     Spacer(Modifier.size(12.dp))
                     Text(
-                        text = "@$username",
+                        text = stringResource(R.string.lastfm_load_failed),
                         style = MaterialTheme.typography.titleMedium,
                         color = theme.textPrimary,
                     )
