@@ -631,12 +631,10 @@ fun LastFmDashboardScreen(
                     searchVisible = !searchVisible
                     if (!searchVisible) searchQuery = ""
                 },
-                onExplore = { navController.navigate(Screens.MoodAndGenres.route) },
                 theme = theme,
                 onRefresh = { if (!isRefreshing) refresh() },
                 onBack = navController::navigateUp,
                 onBackLong = navController::backToMain,
-                onAvatar = { navController.navigate(Screens.MoodAndGenres.route) },
             )
         },
     ) { innerPadding ->
@@ -802,11 +800,8 @@ fun LastFmDashboardScreen(
             // collapse down to just the search field + filtered list (Task 6c).
             if (!searchVisible) {
                 HeaderPillRow(
+                    username = current.username,
                     scrobbles = (userInfo?.getOrNull()?.playcount ?: 0).toLong(),
-                    artistCount = (statsTopArtists ?: topArtists)
-                        ?.getOrNull()?.topartists?.attr?.total?.toIntOrNull() ?: 0,
-                    albumCount = (statsTopAlbums ?: topAlbums)
-                        ?.getOrNull()?.topalbums?.attr?.total?.toIntOrNull() ?: 0,
                     theme = theme,
                 )
 
@@ -1046,12 +1041,10 @@ private fun LastFmDashboardHeader(
     searchQuery: String,
     onSearchQueryChange: (String) -> Unit,
     onToggleSearch: () -> Unit,
-    onExplore: () -> Unit,
     theme: DashboardTheme,
     onRefresh: () -> Unit,
     onBack: () -> Unit,
     onBackLong: () -> Unit,
-    onAvatar: () -> Unit,
 ) {
     Surface(
         color = theme.topAppBarContainer,
@@ -1168,23 +1161,7 @@ private fun LastFmDashboardHeader(
                     modifier = Modifier.graphicsLayer { rotationZ = rotation },
                 )
             }
-            // Explore (compass) button — opens mood_and_genres, mirroring
-            // LastWave-native's HeaderActionIcon(Explore). Placed before the
-            // search button so the right-side action order reads:
-            // [Explore] [Search] [Avatar], same as the reference HomeScreen.
-            IconButton(
-                onClick = onExplore,
-                colors = IconButtonDefaults.iconButtonColors(
-                    contentColor = theme.topAppBarIconTint,
-                ),
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.explore_outlined),
-                    contentDescription = stringResource(R.string.lastfm_explore),
-                    tint = theme.topAppBarIconTint,
-                )
-            }
-            // Search icon — toggles the inline scrobble-search field (Task 6c).
+            // Search icon — toggles the inline scrobble-search field.
             IconButton(
                 onClick = onToggleSearch,
                 colors = IconButtonDefaults.iconButtonColors(
@@ -1196,35 +1173,6 @@ private fun LastFmDashboardHeader(
                     contentDescription = stringResource(R.string.search),
                     tint = theme.topAppBarIconTint,
                 )
-            }
-            // 40dp circular Last.fm avatar — taps navigate to mood_and_genres
-            // (the discover view, mirroring LastWave-native's ProfileAvatar).
-            // When no avatar URL is available (not logged in / image array
-            // empty), falls back to solar_user_circle_linear so the header
-            // still reads as a tappable profile afford.
-            IconButton(
-                onClick = onAvatar,
-                colors = IconButtonDefaults.iconButtonColors(
-                    contentColor = theme.topAppBarIconTint,
-                ),
-            ) {
-                val info = userInfo?.getOrNull()
-                val avatar = info?.let { LastFmArtworkNormalizer.bestImageUrl(it.image) }
-                if (!avatar.isNullOrBlank()) {
-                    AsyncImage(
-                        model = avatar,
-                        contentDescription = null,
-                        modifier = Modifier.size(40.dp).clip(CircleShape),
-                        contentScale = ContentScale.Crop,
-                    )
-                } else {
-                    Icon(
-                        painter = painterResource(R.drawable.solar_user_circle_linear),
-                        contentDescription = null,
-                        tint = theme.topAppBarIconTint,
-                        modifier = Modifier.size(40.dp),
-                    )
-                }
             }
         }
     }
@@ -1239,16 +1187,13 @@ private fun LastFmDashboardHeader(
  * user request — the stats are more useful in this compact area).
  */
 /**
- * Pills below the header — left shows scrobbles count, right shows listening time.
- * Matches LastWave-native's HeaderRow: left pill = username, right pill = listening time.
- * We show scrobbles count on the left (more useful than username since the hero card
- * already shows it) and estimated listening time on the right (scrobbles * 210s).
+ * Pills below the header — left shows username, right shows listening time.
+ * Matches LastWave-native's HeaderRow exactly.
  */
 @Composable
 private fun HeaderPillRow(
+    username: String,
     scrobbles: Long,
-    artistCount: Int,
-    albumCount: Int,
     theme: DashboardTheme,
 ) {
     // Listening time estimate: LastWave uses scrobbles * 210 seconds (avg track length)
@@ -1269,29 +1214,18 @@ private fun HeaderPillRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        // Left pill: Scrobbles count
+        // Left pill: Username
         Surface(
             shape = RoundedCornerShape(50),
             color = theme.pillBackground,
         ) {
-            Row(
+            Text(
+                text = username.ifBlank { "—" },
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = theme.textPrimary,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.solar_music_note_2_linear),
-                    contentDescription = null,
-                    modifier = Modifier.size(16.dp),
-                    tint = theme.accent,
-                )
-                Spacer(Modifier.width(6.dp))
-                Text(
-                    text = formatCount(scrobbles),
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.SemiBold,
-                    color = theme.textPrimary,
-                )
-            }
+            )
         }
         // Right pill: Listening time
         Surface(
@@ -1303,7 +1237,7 @@ private fun HeaderPillRow(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(
-                    painter = painterResource(R.drawable.solar_user_circle_linear),
+                    painter = painterResource(R.drawable.solar_music_note_2_linear),
                     contentDescription = null,
                     modifier = Modifier.size(16.dp),
                     tint = theme.textSecondary,
@@ -1435,39 +1369,10 @@ private fun HeroStatsCard(
             }
         }
         else -> {
-            // Fallback card shown when user.getInfo failed. Tapping retries.
-            Surface(
-                onClick = onRetry,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                shape = RoundedCornerShape(20.dp),
-                color = theme.fallbackCardBackground,
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(20.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Surface(
-                        modifier = Modifier.size(48.dp),
-                        shape = CircleShape,
-                        color = theme.fallbackAvatarBackground,
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                painter = painterResource(R.drawable.solar_user_circle_linear),
-                                contentDescription = null,
-                                tint = theme.fallbackAvatarTint,
-                                modifier = Modifier.size(24.dp),
-                            )
-                        }
-                    }
-                    Spacer(Modifier.size(12.dp))
-                    Text(
-                        text = stringResource(R.string.lastfm_load_failed),
-                        style = MaterialTheme.typography.titleMedium,
-                        color = theme.textPrimary,
-                    )
-                }
-            }
+            // When user.getInfo fails, show nothing — the user will see
+            // just the list below. The refresh button in the header can
+            // be tapped to retry. (Previously showed a "Could not load"
+            // fallback card which the user found unnecessary.)
         }
     }
 }
