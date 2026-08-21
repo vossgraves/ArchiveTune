@@ -1180,21 +1180,18 @@ fun rememberVideoArtworkState(
         if (awaitingVideoReady && !state.isVideoReady) {
             Timber
                 .tag(VideoPlaybackLogTag)
-                .w("Video not ready within ${VideoReadyHoldTimeoutMs}ms — releasing audio hold")
-            // Capture whether the audio was paused and should be resumed
-            // before releaseAudioHold() (which no longer clears the flag).
-            val shouldResumeAudio = resumeAudioAfterVideoReady
-            releaseAudioHold()
+                .w("Video not ready within ${VideoReadyHoldTimeoutMs}ms — falling back to artwork")
+            state.hasPlaybackFailed = true
+            exoPlayer.stop()
+            releaseAudioHold(resumeMainAudio = true)
             // Cancel any pending resume — the video isn't coming, so
             // don't let a stale scheduled resume fire later.
             state.pendingResumeAtMs = 0L
             state.pendingResumeMainAudio = false
             state.pendingResumeVideo = false
-            resumeAudioAfterVideoReady = false
-            // Resume the main audio immediately so the user isn't stuck
-            // in silence — playback falls back to audio-only with the
-            // artwork.
-            if (shouldResumeAudio) updatedOnRequestResumeMain()
+            // Resume is guarded by the media id in Player.kt, so a late timeout from an old video
+            // cannot start a newly selected track.
+            updatedOnPlaybackFailed()
         }
     }
 
