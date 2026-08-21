@@ -352,9 +352,13 @@ private suspend fun searchYtForLastFmTrack(title: String, artist: String?): Song
     val searchResult = result
         .onFailure { Timber.w(it, "YouTube.search failed for Last.fm track: %s", term) }
         .getOrNull()
-    val items = searchResult?.items.orEmpty()
+    if (searchResult == null) {
+        Timber.w("searchYt no result for: \"%s\"", term)
+        ytSearchCache[cacheKey] = null
+        return null
+    }
     var first: SongItem? = null
-    for (item in items) {
+    for (item in searchResult.items) {
         if (item is SongItem) {
             first = item
             break
