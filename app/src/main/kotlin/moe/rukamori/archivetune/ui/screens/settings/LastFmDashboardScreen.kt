@@ -349,12 +349,17 @@ private suspend fun searchYtForLastFmTrack(title: String, artist: String?): Song
     val term = listOfNotNull(artist?.takeIf(String::isNotBlank), title).joinToString(" ")
     Timber.d("searchYt query: \"%s\" (key=%s)", term, cacheKey)
     val result = runCatching { YouTube.search(term, YouTube.SearchFilter.FILTER_SONG) }
-    val first = result
+    val searchResult = result
         .onFailure { Timber.w(it, "YouTube.search failed for Last.fm track: %s", term) }
         .getOrNull()
-        ?.items
-        ?.mapNotNull { it as? SongItem }
-        ?.firstOrNull()
+    val items = searchResult?.items.orEmpty()
+    var first: SongItem? = null
+    for (item in items) {
+        if (item is SongItem) {
+            first = item
+            break
+        }
+    }
     if (first == null) {
         Timber.w("searchYt no SongItem in results for: \"%s\"", term)
     } else {
@@ -2597,12 +2602,19 @@ private suspend fun resolveYtThumbnail(title: String, artist: String?): String? 
     val searchResult =
         YouTube.search(term, YouTube.SearchFilter.FILTER_SONG).getOrNull()
             ?: return null
-    val first = searchResult.items.mapNotNull { it as? SongItem }.firstOrNull() ?: return null
-    val videoId = first.id
+    var first: SongItem? = null
+    for (item in searchResult.items) {
+        if (item is SongItem) {
+            first = item
+            break
+        }
+    }
+    first ?: return null
+    val videoId = first!!.id
     return if (videoId.length == 11) {
         buildYTThumbnailUrl(videoId, YTThumbQuality.HQ)
     } else {
-        first.thumbnail.takeIf(String::isNotBlank)
+        first!!.thumbnail.takeIf(String::isNotBlank)
     }
 }
 
@@ -2618,7 +2630,13 @@ private suspend fun resolveArtistImage(artistName: String): String? {
     if (artistName.isBlank()) return null
     val searchResult = YouTube.search(artistName, YouTube.SearchFilter.FILTER_ARTIST).getOrNull()
         ?: return null
-    val firstArtist = searchResult.items.mapNotNull { it as? ArtistItem }.firstOrNull()
+    var firstArtist: ArtistItem? = null
+    for (item in searchResult.items) {
+        if (item is ArtistItem) {
+            firstArtist = item
+            break
+        }
+    }
     return firstArtist?.thumbnail?.takeIf(String::isNotBlank)
 }
 
