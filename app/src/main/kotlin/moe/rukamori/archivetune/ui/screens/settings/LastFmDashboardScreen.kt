@@ -106,6 +106,8 @@ import moe.rukamori.archivetune.extensions.toMediaItem
 import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.innertube.models.ArtistItem
 import moe.rukamori.archivetune.innertube.models.SongItem
+import moe.rukamori.archivetune.innertube.models.YTItem
+import moe.rukamori.archivetune.innertube.pages.SearchResult
 import moe.rukamori.archivetune.lastfm.CatalogueCoverProvider
 import moe.rukamori.archivetune.lastfm.LastFM
 import moe.rukamori.archivetune.lastfm.LastFmArtworkNormalizer
@@ -357,7 +359,7 @@ private suspend fun searchYtForLastFmTrack(title: String, artist: String?): Song
             ytSearchCache[cacheKey] = null
             return null
         }
-    val items: List<moe.rukamori.archivetune.innertube.models.YTItem> = searchResult.items
+    val items: List<YTItem> = searchResult.items
     var first: SongItem? = null
     for (item in items) {
         if (item is SongItem) {
@@ -2607,7 +2609,7 @@ private suspend fun resolveYtThumbnail(title: String, artist: String?): String? 
     val searchResult =
         YouTube.search(term, YouTube.SearchFilter.FILTER_SONG).getOrNull()
             ?: return null
-    val items: List<moe.rukamori.archivetune.innertube.models.YTItem> = searchResult.items
+    val items: List<YTItem> = searchResult.items
     var first: SongItem? = null
     for (item in items) {
         if (item is SongItem) {
@@ -2636,7 +2638,7 @@ private suspend fun resolveArtistImage(artistName: String): String? {
     if (artistName.isBlank()) return null
     val searchResult = YouTube.search(artistName, YouTube.SearchFilter.FILTER_ARTIST).getOrNull()
         ?: return null
-    val items: List<moe.rukamori.archivetune.innertube.models.YTItem> = searchResult.items
+    val items: List<YTItem> = searchResult.items
     var firstArtist: ArtistItem? = null
     for (item in items) {
         if (item is ArtistItem) {
