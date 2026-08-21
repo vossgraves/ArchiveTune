@@ -105,7 +105,7 @@ import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.allowHardware
 import moe.rukamori.archivetune.R
-import moe.rukamori.archivetune.ui.component.LargeFrostedTopAppBar
+import androidx.compose.material3.LargeTopAppBar
 import moe.rukamori.archivetune.ui.component.SwitchPreference
 import moe.rukamori.archivetune.ui.screens.search.onlineSearchResultRoute
 import moe.rukamori.archivetune.ui.utils.appBarScrollBehavior
@@ -259,9 +259,19 @@ private fun MusicRecognitionContent(
                 .fillMaxSize()
                 .nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
-            LargeFrostedTopAppBar(
-                titleRes = R.string.music_recognition,
-                onBack = onNavigateBack,
+            LargeTopAppBar(
+                title = { Text(stringResource(R.string.music_recognition)) },
+                navigationIcon = {
+                    moe.rukamori.archivetune.ui.component.IconButton(
+                        onClick = onNavigateBack,
+                        onLongClick = {},
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.arrow_back),
+                            contentDescription = null,
+                        )
+                    }
+                },
                 actions = {
                     FilledTonalIconButton(onClick = onShowHistory) {
                         Icon(

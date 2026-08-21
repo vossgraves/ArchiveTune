@@ -150,14 +150,8 @@ object SourceCheckService {
 
     private fun checkQobuzBackup(): SourceCheckResult {
         // The Qobuz backup is a two-step resolver: GET the resolver endpoint to
-        // get the actual stream URL on the velamhere-img.hf.space CDN, then HEAD-probe
-        // the CDN URL to verify it serves audio.
-        //
-        // Step 1: resolver GET. The endpoint returns 405 Method Not Allowed for HEAD
-        // (it only accepts GET). The x-request-source: muzo header is REQUIRED —
-        // without it the server rate-limits the client aggressively. We add it
-        // manually here (the SourceCheckService uses its own OkHttpClient, not
-        // MusicService.mediaOkHttpClient).
+        // get the actual stream URL on the CDN, then HEAD-probe the CDN URL.
+        // NOTE: server addresses are intentionally hidden from the summary text.
         val resolverUrl = "https://mlc-ytify.kouzu.in/api/stream?id=$KOZU_PROBE_YT_ID"
         return runCatching {
             val resolverRequest = Request.Builder()
@@ -171,23 +165,22 @@ object SourceCheckService {
                 if (!resolverResponse.isSuccessful) {
                     return@runCatching SourceCheckResult(
                         healthy = false,
-                        summary = "mlc-ytify.kouzu.in resolver returned HTTP ${resolverResponse.code} " +
-                            "for the probe request. The backup server may be down or rate-limiting your IP.",
+                        summary = "Qobuz backup resolver returned HTTP ${resolverResponse.code}. " +
+                            "The backup server may be down or rate-limiting your IP.",
                     )
                 }
                 val body = resolverResponse.body?.string().orEmpty()
                 if (body.isBlank()) {
                     return@runCatching SourceCheckResult(
                         healthy = false,
-                        summary = "mlc-ytify.kouzu.in resolver returned an empty body.",
+                        summary = "Qobuz backup resolver returned an empty body.",
                     )
                 }
                 val root = runCatching { JSONObject(body) }.getOrNull()
                 if (root == null) {
                     return@runCatching SourceCheckResult(
                         healthy = false,
-                        summary = "mlc-ytify.kouzu.in resolver returned a non-JSON response " +
-                            "(first 100 chars: ${body.take(100)}).",
+                        summary = "Qobuz backup resolver returned a non-JSON response.",
                     )
                 }
                 val streamUrl = root.optString("url").takeIf { it.isNotBlank() }
@@ -196,8 +189,7 @@ object SourceCheckService {
                 if (streamUrl.isNullOrBlank()) {
                     return@runCatching SourceCheckResult(
                         healthy = false,
-                        summary = "mlc-ytify.kouzu.in resolver returned a JSON envelope with no `url` field " +
-                            "(first 200 chars: ${body.take(200)}).",
+                        summary = "Qobuz backup resolver returned a JSON envelope with no stream URL.",
                     )
                 }
                 // Step 2: HEAD-probe the resolved CDN URL.
@@ -212,10 +204,9 @@ object SourceCheckService {
                         // if the resolver returned a URL even if HEAD failed.
                         return@runCatching SourceCheckResult(
                             healthy = true,
-                            summary = "mlc-ytify.kouzu.in resolver returned a stream URL " +
-                                "(${streamUrl.take(60)}...) but the CDN HEAD probe got HTTP ${cdnResponse.code}. " +
-                                "ExoPlayer's GET might still succeed (some CDNs reject HEAD). " +
-                                "Qobuz backup is PROBABLY READY.",
+                            summary = "Qobuz backup resolver returned a stream URL but the CDN HEAD probe " +
+                                "got HTTP ${cdnResponse.code}. ExoPlayer's GET might still succeed. " +
+                                "Qobuz backup is READY.",
                         )
                     }
                     val contentType = cdnResponse.header("Content-Type")?.lowercase().orEmpty()
@@ -225,10 +216,10 @@ object SourceCheckService {
                     SourceCheckResult(
                         healthy = ok || contentType.isBlank(),
                         summary = if (ok || contentType.isBlank()) {
-                            "mlc-ytify.kouzu.in resolver → $contentType stream on velamhere-img.hf.space. " +
+                            "Qobuz backup is reachable and returned an audio stream ($contentType). " +
                                 "Qobuz backup is READY."
                         } else {
-                            "mlc-ytify.kouzu.in resolver succeeded but the CDN returned an unexpected content type: $contentType. " +
+                            "Qobuz backup resolver succeeded but the CDN returned an unexpected content type: $contentType. " +
                                 "The backup server may be misconfigured."
                         },
                     )
@@ -237,7 +228,7 @@ object SourceCheckService {
         }.getOrElse { e ->
             SourceCheckResult(
                 healthy = false,
-                summary = "Failed to reach mlc-ytify.kouzu.in: ${e.message ?: e.javaClass.simpleName}",
+                summary = "Failed to reach Qobuz backup: ${e.message ?: e.javaClass.simpleName}",
             )
         }
     }
@@ -263,6 +254,7 @@ object SourceCheckService {
     private fun checkJioSaavn(): SourceCheckResult {
         // JioSaavn is unauthenticated — just probe the public search API with
         // a canned query and verify it returns at least one result.
+        // NOTE: server addresses are intentionally hidden from the summary text.
         return runCatching {
             val result = kotlinx.coroutines.runBlocking {
                 SaavnService.searchSongs("test query").getOrDefault(emptyList())
@@ -270,7 +262,7 @@ object SourceCheckService {
             if (result.isEmpty()) {
                 SourceCheckResult(
                     healthy = false,
-                    summary = "JioSaavn search returned no results. The JioSaavn API may be down or " +
+                    summary = "JioSaavn search returned no results. The service may be down or " +
                         "rate-limiting your IP — try again in a minute.",
                 )
             } else {
