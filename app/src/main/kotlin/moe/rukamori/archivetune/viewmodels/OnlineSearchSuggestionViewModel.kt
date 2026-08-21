@@ -8,6 +8,7 @@
 package moe.rukamori.archivetune.viewmodels
 
 import android.content.Context
+import kotlinx.coroutines.CancellationException
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -24,12 +25,17 @@ import moe.rukamori.archivetune.constants.HideExplicitKey
 import moe.rukamori.archivetune.constants.HideVideoKey
 import moe.rukamori.archivetune.db.MusicDatabase
 import moe.rukamori.archivetune.db.entities.SearchHistory
+import kotlinx.coroutines.flow.combine
 import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.innertube.models.YTItem
 import moe.rukamori.archivetune.innertube.models.filterExplicit
 import moe.rukamori.archivetune.innertube.models.filterVideo
 import moe.rukamori.archivetune.utils.dataStore
 import moe.rukamori.archivetune.utils.get
+import moe.rukamori.archivetune.constants.SearchProvider
+import moe.rukamori.archivetune.spotify.SpotifyLibraryRepository
+import moe.rukamori.archivetune.spotify.SpotifySearchItem
+import moe.rukamori.archivetune.spotify.toSearchItems
 import javax.inject.Inject
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -41,19 +47,38 @@ class OnlineSearchSuggestionViewModel
         private val database: MusicDatabase,
         private val loadAiContentFilterPolicy: LoadAiContentFilterPolicyUseCase,
         private val filterAiContent: FilterAiContentUseCase,
+        private val spotifyRepository: SpotifyLibraryRepository,
     ) : ViewModel() {
         private val query = MutableStateFlow("")
+        private val provider = MutableStateFlow(SearchProvider.YOUTUBE)
         private val _viewState = MutableStateFlow(SearchSuggestionViewState())
         val viewState = _viewState.asStateFlow()
 
         init {
             viewModelScope.launch {
                 query
-                    .flatMapLatest { query ->
+                    .combine(provider) { query, provider -> query to provider }
+                    .flatMapLatest { (query, provider) ->
                         if (query.isEmpty()) {
                             database.searchHistory().map { history ->
+                                SearchSuggestionViewState(history = history)
+                            }
+                        } else if (provider == SearchProvider.SPOTIFY) {
+                            val spotifyItems =
+                                try {
+                                    spotifyRepository
+                                        .search(query = query, limit = 8)
+                                        .toSearchItems()
+                                        .take(8)
+                                } catch (error: CancellationException) {
+                                    throw error
+                                } catch (_: Throwable) {
+                                    emptyList()
+                                }
+                            database.searchHistory(query).map { history ->
                                 SearchSuggestionViewState(
-                                    history = history,
+                                    history = history.take(3),
+                                    spotifyItems = spotifyItems,
                                 )
                             }
                         } else {
@@ -68,8 +93,8 @@ class OnlineSearchSuggestionViewModel
                                         suggestions =
                                             result
                                                 ?.queries
-                                                ?.filter { query ->
-                                                    history.none { it.query == query }
+                                                ?.filter { suggestion ->
+                                                    history.none { it.query == suggestion }
                                                 }.orEmpty(),
                                         items =
                                             filterAiContent(
@@ -97,6 +122,10 @@ class OnlineSearchSuggestionViewModel
             this.query.value = query
         }
 
+        fun updateProvider(provider: SearchProvider) {
+            this.provider.value = provider
+        }
+
         fun deleteHistory(history: SearchHistory) {
             database.query {
                 delete(history)
@@ -106,6 +135,7 @@ class OnlineSearchSuggestionViewModel
 
 data class SearchSuggestionViewState(
     val history: List<SearchHistory> = emptyList(),
+    val spotifyItems: List<SpotifySearchItem> = emptyList(),
     val suggestions: List<String> = emptyList(),
     val items: List<YTItem> = emptyList(),
 )

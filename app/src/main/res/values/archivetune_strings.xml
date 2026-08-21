@@ -521,6 +521,10 @@
     <string name="audio_crossfade_seconds">%1$s s</string>
     <string name="crossfade_gapless_title">Skip gapless albums</string>
     <string name="crossfade_gapless_description">Do not crossfade consecutive songs from the same album.</string>
+    <string name="auto_choose_playback_client">Auto choose playback client</string>
+    <string name="auto_choose_playback_client_desc">Try the fastest compatible YouTube client and fall back quickly when a client fails or times out.</string>
+    <string name="auto_choose_playback_client_enabled_note">ArchiveTune chooses a compatible client using recent success, latency and failures.</string>
+    <string name="auto_choose_playback_client_disabled_note">Only the selected playback client is used. Failures are reported without automatic client fallback.</string>
     <string name="player_stream_client">Playback client</string>
     <string name="player_stream_client_desc">Controls which playback source is used to fetch streams</string>
     <string name="player_stream_client_android_vr">Android VR</string>

@@ -185,6 +185,12 @@ grep -q "resolveMultiSourceDataSpec" \
   || die "tidal package missing after merge"
 [ -d app/src/main/kotlin/moe/rukamori/archivetune/audiosource ] \
   || die "audiosource package missing after merge"
+grep -q "DefaultMetadataSourceKey" app/src/main/kotlin/moe/rukamori/archivetune/constants/PreferenceKeys.kt \
+  || die "Spotify catalog source preferences lost after merge"
+grep -q "SpotifySearchViewModel" app/src/main/kotlin/moe/rukamori/archivetune/viewmodels/SpotifySearchViewModel.kt \
+  || die "Spotify search UI integration lost after merge"
+grep -q "AutoChoosePlaybackClientKey" app/src/main/kotlin/moe/rukamori/archivetune/constants/PreferenceKeys.kt \
+  || die "automatic YouTube client policy lost after merge"
 [ -d app/src/main/kotlin/moe/rukamori/archivetune/telegram ] \
   || die "telegram package missing after merge"
 grep -q "TelegramDataSource" \

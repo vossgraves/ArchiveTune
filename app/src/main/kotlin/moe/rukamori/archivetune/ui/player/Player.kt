@@ -1254,7 +1254,7 @@ fun BottomSheetPlayer(
         onDismiss = {
             playerConnection.service.stopAndClearPlayback(clearPersistentState = true)
         },
-        backHandlerEnabled = !aodModeEnabled,
+        backHandlerEnabled = !aodModeEnabled && !isLyricsScreenVisible,
         keepContentAlive = true,
         collapsedContent = {
             MiniPlayer(
@@ -2458,8 +2458,7 @@ fun BottomSheetPlayer(
                 // close affordance in the lyrics top bar) to dismiss the lyrics sheet.
                 backHandlerEnabled =
                     isLyricsScreenVisible &&
-                        state.isExpandedOrExpanding &&
-                        playerDesignStyle != PlayerDesignStyle.APPLE_MUSIC,
+                        state.isExpandedOrExpanding,
                 mediaMetadata = metadata,
                 navController = navController,
                 lyricsSyncOffset = lyricsSyncOffset,
@@ -3228,56 +3227,70 @@ private fun LittlePlayerContent(
                 verticalAlignment = Alignment.Top,
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    AnimatedContent(
-                        targetState = mediaMetadata.title,
-                        transitionSpec = { fadeIn() togetherWith fadeOut() },
-                        label = "little_title",
-                    ) { title ->
-                        PlayerTitleText(
-                            title = title,
-                            explicit = mediaMetadata.explicit,
-                            color = titleColor,
-                            style = LocalTextStyle.current,
-                            fontSize = titleSize,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.basicMarquee(),
-                        )
-                    }
-
-                    Spacer(Modifier.height((10f * scale).dp))
-
-                    mediaMetadata.album?.title?.takeIf { it.isNotBlank() }?.let { albumTitle ->
+                PlayerTextBackdrop(
+                    textColor = textColor,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
                         AnimatedContent(
-                            targetState = albumTitle,
+                            targetState = mediaMetadata.title,
                             transitionSpec = { fadeIn() togetherWith fadeOut() },
-                            label = "little_album",
-                        ) { album ->
-                            Text(
-                                text = album,
-                                color = secondaryColor,
-                                style = MaterialTheme.typography.bodyMedium,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.basicMarquee(),
+                            label = "little_title",
+                        ) { title ->
+                            PlayerTitleText(
+                                title = title,
+                                explicit = mediaMetadata.explicit,
+                                color = titleColor,
+                                style = LocalTextStyle.current,
+                                fontSize = titleSize,
+                                fontWeight = FontWeight.Bold,
+                                modifier =
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .basicMarquee(),
                             )
                         }
-                    }
 
-                    artistsText.takeIf { it.isNotBlank() }?.let { artists ->
-                        AnimatedContent(
-                            targetState = artists,
-                            transitionSpec = { fadeIn() togetherWith fadeOut() },
-                            label = "little_artists",
-                        ) { artistLine ->
-                            Text(
-                                text = "by - $artistLine",
-                                color = secondaryColor,
-                                style = MaterialTheme.typography.bodyMedium,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.basicMarquee(),
-                            )
+                        Spacer(Modifier.height((10f * scale).dp))
+
+                        mediaMetadata.album?.title?.takeIf { it.isNotBlank() }?.let { albumTitle ->
+                            AnimatedContent(
+                                targetState = albumTitle,
+                                transitionSpec = { fadeIn() togetherWith fadeOut() },
+                                label = "little_album",
+                            ) { album ->
+                                Text(
+                                    text = album,
+                                    color = secondaryColor,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier =
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .basicMarquee(),
+                                )
+                            }
+                        }
+
+                        artistsText.takeIf { it.isNotBlank() }?.let { artists ->
+                            AnimatedContent(
+                                targetState = artists,
+                                transitionSpec = { fadeIn() togetherWith fadeOut() },
+                                label = "little_artists",
+                            ) { artistLine ->
+                                Text(
+                                    text = "by - $artistLine",
+                                    color = secondaryColor,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier =
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .basicMarquee(),
+                                )
+                            }
                         }
                     }
                 }

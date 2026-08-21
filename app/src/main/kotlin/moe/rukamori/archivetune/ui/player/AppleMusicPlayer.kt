@@ -39,6 +39,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.BorderStroke
@@ -138,6 +139,7 @@ import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.AutoTranslateLyricsKey
+import moe.rukamori.archivetune.constants.AutoHideLyricsPlayerControlsKey
 import moe.rukamori.archivetune.constants.ThumbnailCornerRadiusKey
 import moe.rukamori.archivetune.constants.TranslatorTargetLangKey
 import moe.rukamori.archivetune.db.entities.FormatEntity
@@ -155,6 +157,7 @@ import moe.rukamori.archivetune.ui.component.LyricsEnhanced
 import moe.rukamori.archivetune.ui.component.LyricsV2
 import moe.rukamori.archivetune.constants.LyricsMode
 import moe.rukamori.archivetune.constants.LyricsModeKey
+import moe.rukamori.archivetune.constants.ShowLyricsPlayerControlsKey
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.ui.menu.LyricsMenu
 import moe.rukamori.archivetune.ui.menu.PlayerMenu
@@ -308,6 +311,8 @@ fun AppleMusicPlayerContent(
     // forces an extra layout pass on top of whatever the lyrics view is already
     // spending its frame budget on.
     val animationsDisabled = LocalAnimationsDisabled.current
+    val showLyricsPlayerControls by rememberPreference(ShowLyricsPlayerControlsKey, defaultValue = true)
+    val autoHideLyricsPlayerControls by rememberPreference(AutoHideLyricsPlayerControlsKey, defaultValue = false)
 
     // Toggling one closes the other — queue and lyrics are mutually exclusive
     // (only one morph target can be active at a time).
@@ -342,17 +347,14 @@ fun AppleMusicPlayerContent(
         lyricsOpen = false
     }
 
-    // === Auto-hide player controls (always-on in Apple Music style) ===
-    // The in-place Apple Music lyrics view ALWAYS auto-hides the bottom
-    // controls (seekbar + transport + volume + action row) after 3 seconds.
-    // Touching anywhere on the lyrics restores them and restarts the timer.
-    // This is hardcoded behavior — there is no toggle in the LyricsMenu
-    // overflow because the Apple Music style is designed to auto-hide.
-    // The standalone LyricsScreen still has the toggle (for other player
-    // styles that use it).
-    var playerControlsExpanded by remember(mediaMetadata.id) { mutableStateOf(true) }
+    // The same lyrics-control preferences are used by the standalone lyrics sheet. Keeping the
+    // policy here avoids a second hard-coded timer in Apple Music style and lets users restore the
+    // controls after a tap without restarting playback.
+    var playerControlsExpanded by remember(mediaMetadata.id, showLyricsPlayerControls) {
+        mutableStateOf(showLyricsPlayerControls)
+    }
     var playerControlsVisibilityTick by remember(mediaMetadata.id) { mutableIntStateOf(0) }
-    val autoHideDelayMs = 3_000L
+    val autoHideDelayMs = 5_000L
 
     LaunchedEffect(lyricsOpen) {
         if (lyricsOpen) {
@@ -372,8 +374,8 @@ fun AppleMusicPlayerContent(
     DisposableEffect(Unit) {
         onDispose { onLyricsVisibilityChange(false) }
     }
-    LaunchedEffect(lyricsOpen, playerControlsVisibilityTick) {
-        if (!lyricsOpen) return@LaunchedEffect
+    LaunchedEffect(lyricsOpen, autoHideLyricsPlayerControls, showLyricsPlayerControls, playerControlsVisibilityTick) {
+        if (!lyricsOpen || !showLyricsPlayerControls || !autoHideLyricsPlayerControls) return@LaunchedEffect
         playerControlsExpanded = true
         delay(autoHideDelayMs)
         playerControlsExpanded = false
@@ -402,11 +404,11 @@ fun AppleMusicPlayerContent(
             canvasVisibleForLyrics = true
         }
     }
-    val pokePlayerControlsVisibility = remember {
+    val pokePlayerControlsVisibility = remember(lyricsOpen, showLyricsPlayerControls, autoHideLyricsPlayerControls) {
         {
-            if (lyricsOpen) {
+            if (lyricsOpen && showLyricsPlayerControls) {
                 playerControlsExpanded = true
-                playerControlsVisibilityTick++
+                if (autoHideLyricsPlayerControls) playerControlsVisibilityTick++
             }
         }
     }
@@ -590,13 +592,8 @@ fun AppleMusicPlayerContent(
     }
     val onMoreClick = {
         if (lyricsOpen) {
-            // When lyrics is open, the overflow menu shows the LyricsMenu
-            // (Edit / Refetch / Translate / Sync offset / Search) instead of
-            // the regular PlayerMenu. The "Show player controls" and
-            // "Auto-hide player controls" toggles are NOT passed at all —
-            // the in-place Apple Music lyrics view does not support auto-hide
-            // (controls are always visible), so those toggles would be no-ops.
-            // showControlsToggles = false hides them from the UI.
+            // When lyrics is open, the overflow menu shows lyric actions. Control visibility is governed
+            // by the shared Lyrics settings, so the Apple Music style does not duplicate those toggles.
             menuState.show {
                 LyricsMenu(
                     lyricsProvider = { currentLyrics },
@@ -1408,14 +1405,13 @@ fun AppleMusicPlayerContent(
                 // mini header above) so only the seekbar + transport + volume + bottom
                 // row render.
                 //
-                // Auto-hide: when lyrics is open, the controls auto-hide after 3s
-                // (always-on in Apple Music style — no toggle). Touching the lyrics
-                // overlay above restores them.
+                // Auto-hide follows the standalone LyricsScreen preference (5s when enabled).
+                // The mini header remains visible, so the user can always return to the player.
                 // Slide requires an extra layout pass on top of the fade; skip it when
                 // animations are reduced so the auto-hide/show cycle doesn't compete with
                 // the karaoke lyrics view for frame budget on lower-end devices.
                 AnimatedVisibility(
-                    visible = !lyricsOpen || playerControlsExpanded,
+                    visible = !lyricsOpen || (showLyricsPlayerControls && (!autoHideLyricsPlayerControls || playerControlsExpanded)),
                     enter = if (animationsDisabled) {
                         fadeIn(tween(120))
                     } else {
@@ -1812,35 +1808,46 @@ private fun AppleMusicControlsColumn(
     // the mini header above the queue list).
     if (showTitleRow) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(
-                    text = mediaMetadata.title,
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier =
-                        Modifier.clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = titleActions.onTitleClick,
-                        ),
-                )
-                Text(
-                    text = mediaMetadata.artists.joinToString { it.name },
-                    style = MaterialTheme.typography.titleMedium,
-                    color = Color.White.copy(alpha = 0.64f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier =
-                        Modifier.clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                        ) {
-                            mediaMetadata.artists.firstOrNull()?.id?.let(titleActions.onArtistClick)
-                        },
-                )
+            PlayerTextBackdrop(
+                textColor = Color.White,
+                modifier = Modifier.weight(1f),
+            ) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        text = mediaMetadata.title,
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .basicMarquee()
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null,
+                                    onClick = titleActions.onTitleClick,
+                                ),
+                    )
+                    Text(
+                        text = mediaMetadata.artists.joinToString { it.name },
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Color.White.copy(alpha = 0.64f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .basicMarquee()
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null,
+                                ) {
+                                    mediaMetadata.artists.firstOrNull()?.id?.let(titleActions.onArtistClick)
+                                },
+                    )
+                }
             }
             Spacer(Modifier.width(12.dp))
             AppleMusicChip(
@@ -2181,35 +2188,46 @@ private fun SharedTransitionScope.AppleMusicMiniHeader(
             )
         }
         Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
-            Text(
-                text = mediaMetadata.title,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = Color.White,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier =
-                    Modifier.clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = titleActions.onTitleClick,
-                    ),
-            )
-            Text(
-                text = mediaMetadata.artists.joinToString { it.name },
-                style = MaterialTheme.typography.titleSmall,
-                color = Color.White.copy(alpha = 0.7f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier =
-                    Modifier.clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                    ) {
-                        mediaMetadata.artists.firstOrNull()?.id?.let(titleActions.onArtistClick)
-                    },
-            )
+        PlayerTextBackdrop(
+            textColor = Color.White,
+            modifier = Modifier.weight(1f),
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = mediaMetadata.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .basicMarquee()
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = titleActions.onTitleClick,
+                            ),
+                )
+                Text(
+                    text = mediaMetadata.artists.joinToString { it.name },
+                    style = MaterialTheme.typography.titleSmall,
+                    color = Color.White.copy(alpha = 0.7f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .basicMarquee()
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                            ) {
+                                mediaMetadata.artists.firstOrNull()?.id?.let(titleActions.onArtistClick)
+                            },
+                )
+            }
         }
         AppleMusicChip(
             iconRes = if (currentSongLiked) R.drawable.player_star_filled else R.drawable.player_star,

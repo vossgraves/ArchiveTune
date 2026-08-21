@@ -466,6 +466,7 @@ enum class AudioQuality {
 }
 
 val PlayerStreamClientKey = stringPreferencesKey("playerStreamClient")
+val AutoChoosePlaybackClientKey = booleanPreferencesKey("autoChoosePlaybackClient")
 
 enum class PlayerStreamClient {
     ANDROID_VR,
@@ -1071,6 +1072,21 @@ val RepeatModeKey = intPreferencesKey("repeatMode")
 val SearchSourceKey = stringPreferencesKey("searchSource")
 val SwipeThumbnailKey = booleanPreferencesKey("swipeThumbnail")
 val SwipeSensitivityKey = floatPreferencesKey("swipeSensitivity")
+// Catalog providers are independent from the local-vs-online search scope above. Spotify is a
+// metadata/search provider here; it is intentionally not an AudioSourceType because playback is
+// resolved by the existing audio-source chain.
+val DefaultMetadataSourceKey = stringPreferencesKey("defaultMetadataSource")
+val DefaultSearchSourceKey = stringPreferencesKey("defaultSearchSource")
+
+enum class MetadataSource {
+    YOUTUBE,
+    SPOTIFY,
+}
+
+enum class SearchProvider {
+    YOUTUBE,
+    SPOTIFY,
+}
 
 enum class SearchSource {
     LOCAL,

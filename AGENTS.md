@@ -18,7 +18,9 @@ the fork invariants below — especially when merging upstream changes.
    through `resolveMultiSourceDataSpec` in
    `playback/MusicService.kt` — YouTube is the final fallback. Do not rewire
    playback around this.
-3. **Telegram channel streaming** —
+3. **Spotify catalog source** — `spotifycore/` plus the app's `spotify/` repository/resolver and search UI provide authenticated Spotify metadata, artwork, search and track-to-YouTube identification. Spotify remains a catalog source, not an `AudioSourceType`; resolved playback continues through `MusicService.resolveMultiSourceDataSpec` and its configured audio providers.
+4. **Playback client policy** — `AutoChoosePlaybackClientKey` and `YTPlayerUtils` own bounded YouTube client selection/fallback. Manual mode must remain available and must not be replaced by an automatic-only path.
+5. **Telegram channel streaming** —
    `app/src/main/kotlin/moe/rukamori/archivetune/telegram/` (`TelegramClient`
    TDLib wrapper, `TelegramDataSource` Media3 streaming source, media-id codec
    + models), UI `ui/screens/TelegramBrowseScreen.kt` +
@@ -38,16 +40,16 @@ the fork invariants below — especially when merging upstream changes.
    title/artist (`TelegramCoverProvider`, iTunes), falling back to the embedded
    Telegram cover. Downloads route `telegram://` through TDLib via
    `DownloadUtil`'s `DownloadSchemeRoutingDataSource`.
-4. **Fork CI signing patch** — workflows sign with the committed
+6. **Fork CI signing patch** — workflows sign with the committed
    `app/persistent-debug.keystore` when the `KEYSTORE` secret is absent
    (forks have no release keystore). Upstream's workflows must not overwrite
    this logic (see `build.yml`, `release.yml`).
-5. **Listen Together runs on LAN + the vivimusic public servers only** —
+7. **Listen Together runs on LAN + the vivimusic public servers only** —
    there is no koiverse REST/WS path and no `*.koiiverse.cloud` or
    `raw.githubusercontent.com/koiverse/*` network call anywhere in the tree.
    Public rooms connect via `TogetherPublicServers` (vivimusic WSS endpoints)
    and `TogetherPublicClient`; LAN rooms via `TogetherServer`/`TogetherClient`.
-6. **Protected files** — the `applicationId` (`moe.rukamori.archivetune`) in
+8. **Protected files** — the `applicationId` (`moe.rukamori.archivetune`) in
    `app/build.gradle.kts` is a fork-identity file: do not adopt upstream
    changes to it without explicit instruction. (`Koiverse.jks`,
    `Koiverse.jks.base64`, `ArchiveTuneKoiverseServer.txt` and `DataServer.txt`

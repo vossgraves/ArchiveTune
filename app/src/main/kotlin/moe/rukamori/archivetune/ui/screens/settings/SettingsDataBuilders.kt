@@ -34,6 +34,7 @@ import moe.rukamori.archivetune.constants.CropThumbnailToSquareKey
 import moe.rukamori.archivetune.constants.CrossfadeEnabledKey
 import moe.rukamori.archivetune.constants.CrossfadeGaplessKey
 import moe.rukamori.archivetune.constants.DisableAnimationsKey
+import moe.rukamori.archivetune.constants.AutoHideLyricsPlayerControlsKey
 import moe.rukamori.archivetune.constants.DisableBlurKey
 import moe.rukamori.archivetune.constants.DisableScreenshotKey
 import moe.rukamori.archivetune.constants.EnableVideoPlaybackKey
@@ -226,13 +227,15 @@ fun buildSettingsGroups(
             title = stringResource(R.string.source_settings),
             subtitle = stringResource(R.string.source_settings_subtitle),
             accentColor = MaterialTheme.colorScheme.tertiary,
-            keywords = listOf("source", "music source", "youtube music", "tidal", "qobuz", "provider", "streaming", "telegram", "telegram channel", "flac", "lossless", "private channel"),
+            keywords = listOf("source", "music source", "youtube music", "spotify", "metadata source", "search source", "tidal", "qobuz", "provider", "streaming", "telegram", "telegram channel", "flac", "lossless", "private channel"),
             onClick = { navController.navigate("settings/sources") },
             // Moved to the Playback sub-page (Task 4). Kept in the search index so existing
             // search shortcuts still work.
             hidden = true,
             children = listOf(
                 SettingsChild("YouTube Music", "youtube_music", listOf("youtube", "youtube music", "yt music")),
+                SettingsChild("Default metadata source", "default_metadata_source", listOf("metadata", "spotify", "catalog", "artwork")),
+                SettingsChild("Default search source", "default_search_source", listOf("search", "spotify", "youtube", "provider")),
                 SettingsChild("Qobuz", "qobuz", listOf("qobuz", "hires", "hi-res", "flac", "lossless", "cd quality")),
                 SettingsChild("Tidal", "tidal", listOf("tidal", "lossless", "hifi", "master", "mq")),
             ),
@@ -269,6 +272,7 @@ fun buildSettingsGroups(
                 SettingsChild("Lyrics click to seek", "lyrics_click", listOf("click lyrics", "tap lyrics", "seek lyrics")) { SearchResultSwitch(LyricsClickKey, false) },
                 SettingsChild("Lyrics auto-scroll", "lyrics_scroll", listOf("scroll", "auto scroll", "lyrics scroll")) { SearchResultSwitch(LyricsScrollKey, true) },
                 SettingsChild("Show lyrics player controls", "show_lyrics_player_controls", listOf("player controls", "lyrics controls")) { SearchResultSwitch(ShowLyricsPlayerControlsKey, true) },
+                SettingsChild("Auto-hide lyrics controls", "auto_hide_lyrics_player_controls", listOf("auto hide", "lyrics controls", "controls timeout", "5 seconds")) { SearchResultSwitch(AutoHideLyricsPlayerControlsKey, false) },
                 SettingsChild("Preload queue lyrics", "preload_queue_lyrics", listOf("preload", "preload lyrics", "queue lyrics", "preload count", "queue lyrics count", "preload amount", "preload size")),
                 SettingsChild("Lyrics background style", "lyrics_background_style", listOf("lyrics background", "lyrics bg")),
                 SettingsChild("BetterLyrics", "betterlyrics", listOf("betterlyrics", "better lyrics", "better lyrics provider")),

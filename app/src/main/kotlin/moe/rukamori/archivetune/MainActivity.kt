@@ -255,6 +255,8 @@ import moe.rukamori.archivetune.constants.HideStatusBarKey
 import moe.rukamori.archivetune.constants.RemindAfterKey
 import moe.rukamori.archivetune.constants.SYSTEM_DEFAULT
 import moe.rukamori.archivetune.constants.SearchSource
+import moe.rukamori.archivetune.constants.DefaultSearchSourceKey
+import moe.rukamori.archivetune.constants.SearchProvider
 import moe.rukamori.archivetune.constants.SearchSourceKey
 import moe.rukamori.archivetune.constants.StopMusicOnTaskClearKey
 import moe.rukamori.archivetune.constants.TabletModeEnabledKey
@@ -312,6 +314,7 @@ import moe.rukamori.archivetune.ui.component.MarkdownText
 import moe.rukamori.archivetune.ui.component.NetworkStatusBanner
 import moe.rukamori.archivetune.ui.component.StarDialog
 import moe.rukamori.archivetune.ui.component.TopSearch
+import moe.rukamori.archivetune.ui.component.SearchSourcePicker
 import moe.rukamori.archivetune.ui.component.TvNavigationRail
 import moe.rukamori.archivetune.ui.component.rememberBottomSheetState
 import moe.rukamori.archivetune.ui.component.shimmer.ShimmerTheme
@@ -1190,6 +1193,10 @@ class MainActivity : ComponentActivity() {
                     }
 
                     var searchSource by rememberEnumPreference(SearchSourceKey, SearchSource.ONLINE)
+                    var searchProvider by rememberEnumPreference(
+                        DefaultSearchSourceKey,
+                        SearchProvider.YOUTUBE,
+                    )
 
                     val searchBarFocusRequester = remember { FocusRequester() }
                     val tvRailFocusRequester = remember { FocusRequester() }
@@ -1207,10 +1214,35 @@ class MainActivity : ComponentActivity() {
                     val onSearch: (String) -> Unit = {
                         if (it.isNotEmpty()) {
                             onActiveChange(false)
-                            navController.navigate(onlineSearchResultRoute(it))
+                            navController.navigate(onlineSearchResultRoute(it, searchProvider))
                             if (!pauseSearchHistory) {
                                 database.query {
                                     insert(SearchHistory(query = it))
+                                }
+                            }
+                        }
+                    }
+
+                    val selectSearchSource: (SearchSource, SearchProvider) -> Unit = { scope, provider ->
+                        searchSource = scope
+                        if (scope == SearchSource.ONLINE) {
+                            searchProvider = provider
+                        }
+                        if (!active && currentRoute?.startsWith(OnlineSearchResultRoutePrefix) == true) {
+                            val currentQuery = onlineSearchEncodedQuery?.let(::decodeOnlineSearchQuery).orEmpty()
+                            if (scope == SearchSource.LOCAL) {
+                                onQueryChange(TextFieldValue(currentQuery, TextRange(currentQuery.length)))
+                                active = true
+                            } else if (currentQuery.isNotBlank()) {
+                                val replacementRoute = onlineSearchResultRoute(currentQuery, provider)
+                                val currentDestinationId = navController.currentDestination?.id
+                                if (currentDestinationId != null) {
+                                    navController.navigate(replacementRoute) {
+                                        popUpTo(currentDestinationId) { inclusive = true }
+                                        launchSingleTop = true
+                                    }
+                                } else {
+                                    navController.navigate(replacementRoute)
                                 }
                             }
                         }
@@ -2487,7 +2519,12 @@ class MainActivity : ComponentActivity() {
                                                         stringResource(
                                                             when (searchSource) {
                                                                 SearchSource.LOCAL -> R.string.search_library
-                                                                SearchSource.ONLINE -> R.string.search_yt_music
+                                                                SearchSource.ONLINE ->
+                                                                    if (searchProvider == SearchProvider.SPOTIFY) {
+                                                                        R.string.search_source_spotify
+                                                                    } else {
+                                                                        R.string.search_yt_music
+                                                                    }
                                                             },
                                                         ),
                                                 )
@@ -2578,30 +2615,17 @@ class MainActivity : ComponentActivity() {
                                                                 )
                                                             }
                                                         }
-                                                        IconButton(
-                                                            onClick = {
-                                                                searchSource =
-                                                                    if (searchSource ==
-                                                                        SearchSource.ONLINE
-                                                                    ) {
-                                                                        SearchSource.LOCAL
-                                                                    } else {
-                                                                        SearchSource.ONLINE
-                                                                    }
-                                                            },
-                                                        ) {
-                                                            Icon(
-                                                                painter =
-                                                                    painterResource(
-                                                                        when (searchSource) {
-                                                                            SearchSource.LOCAL -> R.drawable.library_music
-                                                                            SearchSource.ONLINE -> R.drawable.language
-                                                                        },
-                                                                    ),
-                                                                contentDescription = null,
-                                                            )
-                                                        }
+                                                        SearchSourcePicker(
+                                                            currentScope = searchSource,
+                                                            currentProvider = searchProvider,
+                                                            onSelection = selectSearchSource,
+                                                        )
                                                     } else if (currentRoute?.startsWith(OnlineSearchResultRoutePrefix) == true) {
+                                                        SearchSourcePicker(
+                                                            currentScope = SearchSource.ONLINE,
+                                                            currentProvider = searchProvider,
+                                                            onSelection = selectSearchSource,
+                                                        )
                                                         OnlineSearchSortMenu(
                                                             selectedSort = onlineSearchSort,
                                                             onSortSelected = { onlineSearchSort = it },
@@ -2664,17 +2688,17 @@ class MainActivity : ComponentActivity() {
                                                 },
                                         ) {
                                             Crossfade(
-                                                targetState = searchSource,
+                                                targetState = searchSource to searchProvider,
                                                 animationSpec = tween(durationMillis = if (disableAnimations) 0 else 300),
-                                                label = "",
+                                                label = "searchSource",
                                                 modifier =
                                                     Modifier
                                                         .fillMaxSize()
                                                         .padding(
                                                             bottom = if (!playerBottomSheetState.isDismissed) MiniPlayerHeight else 0.dp,
                                                         ).navigationBarsPadding(),
-                                            ) { searchSource ->
-                                                when (searchSource) {
+                                            ) { (searchScope, provider) ->
+                                                when (searchScope) {
                                                     SearchSource.LOCAL -> {
                                                         LocalSearchScreen(
                                                             query = query.text,
@@ -2690,7 +2714,7 @@ class MainActivity : ComponentActivity() {
                                                             onQueryChange = onQueryChange,
                                                             navController = navController,
                                                             onSearch = {
-                                                                navController.navigate(onlineSearchResultRoute(it))
+                                                                navController.navigate(onlineSearchResultRoute(it, provider))
                                                                 if (!pauseSearchHistory) {
                                                                     database.query {
                                                                         insert(SearchHistory(query = it))
@@ -2699,6 +2723,7 @@ class MainActivity : ComponentActivity() {
                                                             },
                                                             onDismiss = { onActiveChange(false) },
                                                             pureBlack = pureBlack,
+                                                            searchProvider = provider,
                                                         )
                                                     }
                                                 }

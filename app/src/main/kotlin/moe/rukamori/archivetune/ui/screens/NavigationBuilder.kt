@@ -45,6 +45,7 @@ import moe.rukamori.archivetune.ui.screens.playlist.SpotifyPlaylistScreen
 import moe.rukamori.archivetune.ui.screens.playlist.TopPlaylistScreen
 import moe.rukamori.archivetune.ui.screens.search.OnlineSearchResult
 import moe.rukamori.archivetune.ui.screens.search.OnlineSearchResultArgument
+import moe.rukamori.archivetune.ui.screens.search.OnlineSearchProviderArgument
 import moe.rukamori.archivetune.ui.screens.search.OnlineSearchResultRoute
 import moe.rukamori.archivetune.ui.screens.search.OnlineSearchResultRoutePrefix
 import moe.rukamori.archivetune.ui.screens.search.SearchScreen
@@ -211,6 +212,10 @@ fun NavGraphBuilder.navigationBuilder(
             listOf(
                 navArgument(OnlineSearchResultArgument) {
                     type = NavType.StringType
+                },
+                navArgument(OnlineSearchProviderArgument) {
+                    type = NavType.StringType
+                    defaultValue = moe.rukamori.archivetune.constants.SearchProvider.YOUTUBE.name
                 },
             ),
         enterTransition = {

@@ -72,7 +72,12 @@ import moe.rukamori.archivetune.constants.TidalAudioQuality
 import moe.rukamori.archivetune.constants.TidalAudioQualityKey
 import moe.rukamori.archivetune.constants.TidalEnabledKey
 import moe.rukamori.archivetune.constants.AudioQuality
+import moe.rukamori.archivetune.constants.AutoChoosePlaybackClientKey
 import moe.rukamori.archivetune.constants.AudioQualityKey
+import moe.rukamori.archivetune.constants.DefaultMetadataSourceKey
+import moe.rukamori.archivetune.constants.DefaultSearchSourceKey
+import moe.rukamori.archivetune.constants.MetadataSource
+import moe.rukamori.archivetune.constants.SearchProvider
 import moe.rukamori.archivetune.constants.PlayerStreamClient
 import moe.rukamori.archivetune.constants.PlayerStreamClientKey
 import moe.rukamori.archivetune.innertube.utils.hasYouTubeLoginCookie
@@ -131,6 +136,11 @@ fun PlaybackSourceSections(navController: NavController) {
     val (jioSaavnEnabled, onJioSaavnEnabledChange) = rememberPreference(JioSaavnEnabledKey, false)
     val (saavnQuality, onSaavnQualityChange) =
         rememberEnumPreference(SaavnAudioQualityKey, SaavnAudioQuality.QUALITY_320)
+    val (defaultMetadataSource, onDefaultMetadataSourceChange) =
+        rememberEnumPreference(DefaultMetadataSourceKey, MetadataSource.YOUTUBE)
+    val (defaultSearchSource, onDefaultSearchSourceChange) =
+        rememberEnumPreference(DefaultSearchSourceKey, SearchProvider.YOUTUBE)
+
 
     // When the user enables a pool-backed source (Qobuz or Deezer), automatically
     // trigger a pool refresh in the background. This ensures the latest pool
@@ -164,6 +174,8 @@ fun PlaybackSourceSections(navController: NavController) {
         rememberEnumPreference(AudioQualityKey, defaultValue = AudioQuality.AUTO)
     val (playerStreamClient, onPlayerStreamClientChange) =
         rememberEnumPreference(PlayerStreamClientKey, defaultValue = PlayerStreamClient.WEB_REMIX)
+    val (autoChoosePlaybackClient, onAutoChoosePlaybackClientChange) =
+        rememberPreference(AutoChoosePlaybackClientKey, true)
     val playerStreamClients =
         remember { PlayerStreamClient.entries }
     val selectedPlayerStreamClient =
@@ -218,6 +230,49 @@ fun PlaybackSourceSections(navController: NavController) {
             )
         }
     }
+    PreferenceGroup(title = stringResource(R.string.catalog_sources)) {
+        item {
+            EnumListPreference(
+                title = { Text(stringResource(R.string.default_metadata_source)) },
+                description = stringResource(R.string.default_metadata_source_desc),
+                icon = { Icon(painterResource(R.drawable.album), null) },
+                selectedValue = defaultMetadataSource,
+                valueText = {
+                    when (it) {
+                        MetadataSource.YOUTUBE -> stringResource(R.string.metadata_source_youtube)
+                        MetadataSource.SPOTIFY -> stringResource(R.string.metadata_source_spotify)
+                    }
+                },
+                onValueSelected = onDefaultMetadataSourceChange,
+            )
+        }
+
+        item {
+            EnumListPreference(
+                title = { Text(stringResource(R.string.default_search_source)) },
+                description = stringResource(R.string.default_search_source_desc),
+                icon = { Icon(painterResource(R.drawable.language), null) },
+                selectedValue = defaultSearchSource,
+                valueText = {
+                    when (it) {
+                        SearchProvider.YOUTUBE -> stringResource(R.string.search_source_youtube)
+                        SearchProvider.SPOTIFY -> stringResource(R.string.search_source_spotify)
+                    }
+                },
+                onValueSelected = onDefaultSearchSourceChange,
+            )
+        }
+
+        item {
+            PreferenceEntry(
+                title = { Text(stringResource(R.string.spotify_catalog_source)) },
+                description = stringResource(R.string.spotify_catalog_source_desc),
+                icon = { Icon(painterResource(R.drawable.spotify_icon), null) },
+                onClick = { navController.navigate("settings/integration") },
+            )
+        }
+    }
+
 
     PreferenceGroup(title = stringResource(R.string.source_youtube)) {
         item {
@@ -236,6 +291,23 @@ fun PlaybackSourceSections(navController: NavController) {
                 },
             )
         }
+        item {
+            SwitchPreference(
+                title = { Text(stringResource(R.string.auto_choose_playback_client)) },
+                description =
+                    stringResource(
+                        if (autoChoosePlaybackClient) {
+                            R.string.auto_choose_playback_client_enabled_note
+                        } else {
+                            R.string.auto_choose_playback_client_disabled_note
+                        },
+                    ),
+                icon = { Icon(painterResource(R.drawable.tune), null) },
+                checked = autoChoosePlaybackClient,
+                onCheckedChange = onAutoChoosePlaybackClientChange,
+            )
+        }
+
 
         item {
             ListPreference(
@@ -245,6 +317,7 @@ fun PlaybackSourceSections(navController: NavController) {
                 selectedValue = selectedPlayerStreamClient,
                 values = playerStreamClients,
                 onValueSelected = onPlayerStreamClientChange,
+                isEnabled = !autoChoosePlaybackClient,
                 // Exhaustive on purpose: no `else` branch, so adding a client to
                 // PlayerStreamClient fails the build here instead of silently rendering
                 // every row with the Web Remix label.

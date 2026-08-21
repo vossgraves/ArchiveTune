@@ -17,6 +17,10 @@ import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.innertube.models.SongItem
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.models.toMediaMetadata
+import moe.rukamori.archivetune.constants.DefaultMetadataSourceKey
+import moe.rukamori.archivetune.constants.MetadataSource
+import moe.rukamori.archivetune.extensions.toEnum
+import moe.rukamori.archivetune.utils.PreferenceStore
 import moe.rukamori.archivetune.spotify.models.SpotifyTrack
 
 object SpotifyPlaybackResolver {
@@ -33,8 +37,13 @@ object SpotifyPlaybackResolver {
 
     suspend fun resolveToMetadata(track: SpotifyTrack): MediaMetadata? =
         withContext(Dispatchers.IO) {
+            val metadataSource =
+                PreferenceStore
+                    .get(DefaultMetadataSourceKey)
+                    .toEnum(MetadataSource.YOUTUBE)
+            val cacheKey = "${track.id}:${metadataSource.name}"
             mutex.withLock {
-                cache[track.id]?.let { return@withContext it }
+                cache[cacheKey]?.let { return@withContext it }
             }
 
             val searchResult =
@@ -75,19 +84,43 @@ object SpotifyPlaybackResolver {
             if (score < MIN_MATCH_THRESHOLD) return@withContext null
 
             val bestMetadata = best.toMediaMetadata()
+            val useSpotifyMetadata = metadataSource == MetadataSource.SPOTIFY
             val metadata =
                 bestMetadata.copy(
-                    thumbnailUrl = SpotifyMapper.getTrackThumbnail(track) ?: best.thumbnail,
-                    duration = if (track.durationMs > 0) track.durationMs / 1000 else best.duration ?: -1,
+                    title = if (useSpotifyMetadata) track.name.takeIf(String::isNotBlank) ?: best.title else best.title,
+                    artists =
+                        if (useSpotifyMetadata) {
+                            track.artists
+                                .filter { it.name.isNotBlank() }
+                                .map { artist ->
+                                    MediaMetadata.Artist(
+                                        id = artist.id,
+                                        name = artist.name,
+                                    )
+                                }.ifEmpty { bestMetadata.artists }
+                        } else {
+                            bestMetadata.artists
+                        },
+                    thumbnailUrl =
+                        if (useSpotifyMetadata) {
+                            SpotifyMapper.getTrackThumbnail(track) ?: best.thumbnail
+                        } else {
+                            best.thumbnail
+                        },
+                    duration = if (useSpotifyMetadata && track.durationMs > 0) track.durationMs / 1000 else best.duration ?: -1,
                     explicit = track.explicit || best.explicit,
                     album =
-                        track.album?.let { MediaMetadata.Album(id = it.id, title = it.name) }
-                            ?: bestMetadata.album,
+                        if (useSpotifyMetadata) {
+                            track.album?.let { MediaMetadata.Album(id = it.id, title = it.name) }
+                                ?: bestMetadata.album
+                        } else {
+                            bestMetadata.album
+                        },
                     spotifyTrackId = track.id.takeIf(String::isNotBlank),
                 )
 
             mutex.withLock {
-                cache[track.id] = metadata
+                cache[cacheKey] = metadata
             }
             metadata
         }

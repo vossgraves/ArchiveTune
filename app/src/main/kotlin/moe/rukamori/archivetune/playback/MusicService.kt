@@ -125,6 +125,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.withTimeout
 import moe.rukamori.archivetune.MainActivity
 import moe.rukamori.archivetune.R
@@ -133,10 +134,13 @@ import moe.rukamori.archivetune.cast.CastPlaybackRepository
 import moe.rukamori.archivetune.cast.CastPlaybackRepositoryLocator
 import moe.rukamori.archivetune.cast.CastScreenState
 import moe.rukamori.archivetune.constants.AudioNormalizationKey
+import moe.rukamori.archivetune.constants.DefaultMetadataSourceKey
+import moe.rukamori.archivetune.constants.MetadataSource
 import moe.rukamori.archivetune.constants.AudioOffload
 import moe.rukamori.archivetune.constants.AudioQuality
 import moe.rukamori.archivetune.constants.AudioQualityKey
 import moe.rukamori.archivetune.constants.AutoDownloadOnLikeKey
+import moe.rukamori.archivetune.constants.AutoChoosePlaybackClientKey
 import moe.rukamori.archivetune.constants.AutoLoadMoreKey
 import moe.rukamori.archivetune.constants.AutoSkipNextOnErrorKey
 import moe.rukamori.archivetune.constants.AutoStartOnBluetoothKey
@@ -262,6 +266,7 @@ import moe.rukamori.archivetune.extensions.getQueueWindows
 import moe.rukamori.archivetune.extensions.mediaItems
 import moe.rukamori.archivetune.extensions.metadata
 import moe.rukamori.archivetune.extensions.move
+import moe.rukamori.archivetune.extensions.toEnum
 import moe.rukamori.archivetune.extensions.setOffloadEnabled
 import moe.rukamori.archivetune.extensions.toContinuationQueue
 import moe.rukamori.archivetune.extensions.toMediaItem
@@ -283,6 +288,7 @@ import moe.rukamori.archivetune.lyrics.LyricsHelper
 import moe.rukamori.archivetune.lyrics.LyricsPreloadManager
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.models.PersistPlayerState
+import moe.rukamori.archivetune.spotify.SpotifyLibraryRepository
 import moe.rukamori.archivetune.models.PersistQueue
 import moe.rukamori.archivetune.models.toMediaMetadata
 import moe.rukamori.archivetune.playback.queues.EmptyQueue
@@ -356,6 +362,8 @@ class MusicService :
     MediaLibraryService(),
     Player.Listener,
     PlaybackStatsListener.Callback {
+    @Inject
+    lateinit var spotifyLibraryRepository: SpotifyLibraryRepository
     @Inject
     lateinit var database: MusicDatabase
 
@@ -435,6 +443,11 @@ class MusicService :
         this,
         PlayerStreamClientKey,
         PlayerStreamClient.ANDROID_VR,
+    )
+    private val autoChoosePlaybackClient by preference(
+        this,
+        AutoChoosePlaybackClientKey,
+        true,
     )
     private val playbackUrlCache = ConcurrentHashMap<String, AuthScopedCacheValue>()
     private val remotePlaybackTrackingUrlCache = ConcurrentHashMap<String, String>()
@@ -3887,9 +3900,26 @@ class MusicService :
             withContext(Dispatchers.Main) {
                 player.findNextMediaItemById(mediaId)?.metadata
             } ?: return
+        val metadataSource =
+            dataStore
+                .get(DefaultMetadataSourceKey, MetadataSource.YOUTUBE.name)
+                .toEnum(MetadataSource.YOUTUBE)
+        val effectiveMetadata =
+            if (metadataSource == MetadataSource.SPOTIFY) {
+                withTimeoutOrNull(5_000L) {
+                    spotifyLibraryRepository.enrichMetadata(mediaMetadata)
+                } ?: mediaMetadata
+            } else {
+                mediaMetadata
+            }
+        if (effectiveMetadata != mediaMetadata) {
+            withContext(Dispatchers.Main) {
+                commitResolvedMetadata(mediaId, effectiveMetadata)
+            }
+        }
         val duration =
             song?.song?.duration?.takeIf { it != -1 }
-                ?: mediaMetadata.duration.takeIf { it != -1 }
+                ?: effectiveMetadata.duration.takeIf { it != -1 }
                 ?: (
                     playbackData?.videoDetails ?: YTPlayerUtils
                         .playerResponseForMetadata(mediaId)
@@ -3899,7 +3929,7 @@ class MusicService :
                 ?: -1
         database.query {
             if (song == null) {
-                insert(mediaMetadata.copy(duration = duration))
+                insert(effectiveMetadata.copy(duration = duration))
             } else if (song.song.duration == -1) {
                 update(song.song.copy(duration = duration))
             }
@@ -7214,6 +7244,42 @@ class MusicService :
             }
     }
 
+    /** Commits catalog metadata without changing the playable media URI or source cache key. */
+    private fun commitResolvedMetadata(
+        mediaId: String,
+        resolved: MediaMetadata,
+    ) {
+        if (currentMediaMetadata.value?.id == mediaId) {
+            currentMediaMetadata.value = resolved
+        }
+        queuedMetadataByMediaId[mediaId] = resolved
+        val index =
+            (0 until player.mediaItemCount).firstOrNull {
+                player.getMediaItemAt(it).mediaId == mediaId
+            } ?: return
+        val item = player.getMediaItemAt(index)
+        val platformMetadata =
+            item.mediaMetadata
+                .buildUpon()
+                .setTitle(resolved.title)
+                .setSubtitle(resolved.artists.joinToString { it.name })
+                .setArtist(resolved.artists.joinToString { it.name })
+                .setAlbumTitle(resolved.album?.title)
+                .apply {
+                    resolved.thumbnailUrl?.toUri()?.let(::setArtworkUri)
+                }.build()
+        val updated =
+            item
+                .buildUpon()
+                .setTag(resolved)
+                .setMediaMetadata(platformMetadata)
+                .build()
+        runCatching { player.replaceMediaItem(index, updated) }
+            .onFailure {
+                Timber.tag(TAG).w(it, "metadata: failed to update MediaItem metadata mediaId=%s", mediaId)
+            }
+    }
+
     /** Commits a resolved fallback artwork to the metadata flow and the queued MediaItem. */
     private fun commitResolvedArtwork(
         mediaId: String,
@@ -7484,6 +7550,7 @@ class MusicService :
                                 audioQuality = if (lowData) AudioQuality.LOW else audioQuality,
                                 connectivityManager = connectivityManager,
                                 preferredStreamClient = preferredStreamClient,
+                                autoChoosePlaybackClient = autoChoosePlaybackClient,
                                 networkMetered = lowData,
                             )
                         }
@@ -10022,6 +10089,7 @@ class MusicService :
                         audioQuality = if (lowDataModeActive) AudioQuality.LOW else audioQuality,
                         connectivityManager = connectivityManager,
                         preferredStreamClient = preferredStreamClient,
+                        autoChoosePlaybackClient = autoChoosePlaybackClient,
                         networkMetered = lowDataModeActive,
                     )
                 }.recoverCatching { youtubeFailure ->

@@ -808,6 +808,20 @@
     <!-- Multi-source audio framework -->
     <string name="audio_sources">Audio Sources</string>
     <string name="audio_sources_description">Choose which services to stream from, in what order. YouTube is always used as the final fallback.</string>
+    <string name="catalog_sources">Catalog sources</string>
+    <string name="default_metadata_source">Default metadata source</string>
+    <string name="default_metadata_source_desc">Choose which catalog supplies titles, artists, albums and artwork when available.</string>
+    <string name="default_search_source">Default search source</string>
+    <string name="default_search_source_desc">Choose which online catalog the Search page queries. This is independent from metadata.</string>
+    <string name="metadata_source_youtube">YouTube Music</string>
+    <string name="metadata_source_spotify">Spotify</string>
+    <string name="search_source_youtube">YouTube Music</string>
+    <string name="search_source_spotify">Spotify</string>
+    <string name="spotify_catalog_source">Spotify catalog</string>
+    <string name="spotify_catalog_source_desc">Connect Spotify in Integration for metadata/search. Audio is resolved through the app\'s supported playback sources; Spotify DRM streams are not used.</string>
+    <string name="search_spotify">Search Spotify</string>
+    <string name="search_source_picker">Choose search source</string>
+    <string name="spotify_track_unavailable">Spotify track could not be mapped to a playable source.</string>
     <string name="audio_search_source">Preferred source</string>
     <string name="audio_source_enabled">Enabled</string>
     <string name="audio_source_disabled">Disabled — enable it in its section below</string>

@@ -205,58 +205,110 @@ internal fun PlayerTitleText(
 }
 
 @Composable
+internal fun PlayerTextBackdrop(
+    textColor: Color,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    val scrimColor =
+        remember(textColor) {
+            val luminance =
+                0.299f * textColor.red +
+                    0.587f * textColor.green +
+                    0.114f * textColor.blue
+            if (luminance > 0.55f) Color.Black else Color.White
+        }
+    val shape = RoundedCornerShape(16.dp)
+    Box(modifier = modifier) {
+        Box(
+            modifier =
+                Modifier
+                    .matchParentSize()
+                    .blur(14.dp)
+                    .background(
+                        Brush.horizontalGradient(
+                            listOf(
+                                scrimColor.copy(alpha = 0f),
+                                scrimColor.copy(alpha = 0.22f),
+                                scrimColor.copy(alpha = 0.28f),
+                                scrimColor.copy(alpha = 0f),
+                            ),
+                        ),
+                    ),
+        )
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .clip(shape)
+                    .background(scrimColor.copy(alpha = 0.11f))
+                    .padding(horizontal = 10.dp, vertical = 7.dp),
+        ) {
+            content()
+        }
+    }
+}
+
+@Composable
 fun PlayerTitleSection(
     mediaMetadata: MediaMetadata,
     textBackgroundColor: Color,
     navController: NavController,
     state: BottomSheetState,
 ) {
-    // Tap/long-press behavior is centralized; this style keeps its own visual rendering.
     val actions =
         rememberPlayerTitleActions(
             mediaMetadata = mediaMetadata,
             navController = navController,
             state = state,
         )
-    AnimatedContent(
-        targetState = mediaMetadata.title,
-        transitionSpec = { fadeIn() togetherWith fadeOut() },
-        label = "",
-    ) { title ->
-        PlayerTitleText(
-            title = title,
-            explicit = mediaMetadata.explicit,
-            color = textBackgroundColor,
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold,
-            modifier =
-                Modifier
-                    .basicMarquee()
-                    .combinedClickable(
-                        enabled = true,
-                        indication = null,
-                        interactionSource = remember { MutableInteractionSource() },
-                        onClick = actions.onTitleClick,
-                        onLongClick = actions.onCopyTitle,
-                    ),
-        )
+    // Keep the text rows in one bounded container so marquee measurement has a stable width.
+    PlayerTextBackdrop(
+        textColor = textBackgroundColor,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column {
+            AnimatedContent(
+                targetState = mediaMetadata.title,
+                transitionSpec = { fadeIn() togetherWith fadeOut() },
+                label = "player_title",
+            ) { title ->
+                PlayerTitleText(
+                    title = title,
+                    explicit = mediaMetadata.explicit,
+                    color = textBackgroundColor,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .basicMarquee()
+                            .combinedClickable(
+                                enabled = true,
+                                indication = null,
+                                interactionSource = remember { MutableInteractionSource() },
+                                onClick = actions.onTitleClick,
+                                onLongClick = actions.onCopyTitle,
+                            ),
+                )
+            }
+
+            Spacer(Modifier.height(6.dp))
+
+            ClickableArtists(
+                artists = mediaMetadata.artists,
+                onArtistClick = actions.onArtistClick,
+                style = MaterialTheme.typography.titleMedium.copy(color = textBackgroundColor, fontSize = 16.sp),
+                onLongClick = actions.onCopyArtists,
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .basicMarquee(),
+            )
+        }
     }
 
-    Spacer(Modifier.height(6.dp))
-
-    ClickableArtists(
-        artists = mediaMetadata.artists,
-        onArtistClick = actions.onArtistClick,
-        style = MaterialTheme.typography.titleMedium.copy(color = textBackgroundColor, fontSize = 16.sp),
-        onLongClick = actions.onCopyArtists,
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .basicMarquee()
-                .padding(end = 12.dp),
-    )
 }
-
 @Composable
 fun PlayerTopActions(
     mediaMetadata: MediaMetadata,
@@ -2667,32 +2719,40 @@ private fun V8MetadataActions(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(18.dp),
     ) {
-        Column(
+        PlayerTextBackdrop(
+            textColor = foreground,
             modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            PlayerTitleText(
-                title = title,
-                explicit = explicit,
-                color = foreground,
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                modifier =
-                    Modifier
-                        .basicMarquee()
-                        .clickable(
-                            indication = null,
-                            interactionSource = remember { MutableInteractionSource() },
-                            onClick = onTitleClick,
-                        ),
-            )
-            ClickableArtists(
-                artists = artists,
-                onArtistClick = onArtistClick,
-                style = MaterialTheme.typography.titleMedium,
-                color = foreground,
-                modifier = Modifier.basicMarquee(),
-            )
+            Column(
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                PlayerTitleText(
+                    title = title,
+                    explicit = explicit,
+                    color = foreground,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .basicMarquee()
+                            .clickable(
+                                indication = null,
+                                interactionSource = remember { MutableInteractionSource() },
+                                onClick = onTitleClick,
+                            ),
+                )
+                ClickableArtists(
+                    artists = artists,
+                    onArtistClick = onArtistClick,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = foreground,
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .basicMarquee(),
+                )
+            }
         }
 
         Row(
@@ -3595,39 +3655,43 @@ private fun V9Metadata(
     onTitleClick: () -> Unit,
     onArtistClick: (artistId: String) -> Unit,
 ) {
-    Column(
+    PlayerTextBackdrop(
+        textColor = textColor,
         modifier = Modifier.fillMaxWidth(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        PlayerTitleText(
-            title = title,
-            explicit = explicit,
-            color = textColor,
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold,
-            textAlign = TextAlign.Center,
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .basicMarquee()
-                    .clickable(
-                        indication = null,
-                        interactionSource = remember { MutableInteractionSource() },
-                        onClick = onTitleClick,
-                    ),
-        )
-        ClickableArtists(
-            artists = artists,
-            onArtistClick = onArtistClick,
-            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
-            color = textColor.copy(alpha = 0.72f),
-            textAlign = TextAlign.Center,
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .basicMarquee(),
-        )
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            PlayerTitleText(
+                title = title,
+                explicit = explicit,
+                color = textColor,
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center,
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .basicMarquee()
+                        .clickable(
+                            indication = null,
+                            interactionSource = remember { MutableInteractionSource() },
+                            onClick = onTitleClick,
+                        ),
+            )
+            ClickableArtists(
+                artists = artists,
+                onArtistClick = onArtistClick,
+                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
+                color = textColor.copy(alpha = 0.72f),
+                textAlign = TextAlign.Center,
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .basicMarquee(),
+            )
+        }
     }
 }
 
