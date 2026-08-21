@@ -359,7 +359,7 @@ private suspend fun searchYtForLastFmTrack(title: String, artist: String?): Song
             ytSearchCache[cacheKey] = null
             return null
         }
-    val items: List<YTItem> = searchResult.items
+    val items: List<YTItem> = searchResult!!.items
     var first: SongItem? = null
     for (item in items) {
         if (item is SongItem) {
@@ -2609,7 +2609,7 @@ private suspend fun resolveYtThumbnail(title: String, artist: String?): String? 
     val searchResult =
         YouTube.search(term, YouTube.SearchFilter.FILTER_SONG).getOrNull()
             ?: return null
-    val items: List<YTItem> = searchResult.items
+    val items: List<YTItem> = searchResult!!.items
     var first: SongItem? = null
     for (item in items) {
         if (item is SongItem) {
@@ -2638,7 +2638,7 @@ private suspend fun resolveArtistImage(artistName: String): String? {
     if (artistName.isBlank()) return null
     val searchResult = YouTube.search(artistName, YouTube.SearchFilter.FILTER_ARTIST).getOrNull()
         ?: return null
-    val items: List<YTItem> = searchResult.items
+    val items: List<YTItem> = searchResult!!.items
     var firstArtist: ArtistItem? = null
     for (item in items) {
         if (item is ArtistItem) {
