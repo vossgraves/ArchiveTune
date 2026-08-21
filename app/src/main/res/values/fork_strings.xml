@@ -101,6 +101,7 @@
          ModalBottomSheet (Start Mix / Genre / Play in ArchiveTune / Play next /
          Add to queue / Add to playlist / Open in Last.fm / Copy Song). -->
     <string name="lastfm_list">List</string>
+    <string name="lastfm_explore">Explore</string>
     <string name="lastfm_filter_recent">Recent</string>
     <string name="lastfm_filter_top_tracks">Top Tracks</string>
     <string name="lastfm_filter_top_artists">Top Artists</string>

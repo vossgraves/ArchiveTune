@@ -631,6 +631,7 @@ fun LastFmDashboardScreen(
                     searchVisible = !searchVisible
                     if (!searchVisible) searchQuery = ""
                 },
+                onExplore = { navController.navigate(Screens.MoodAndGenres.route) },
                 theme = theme,
                 onRefresh = { if (!isRefreshing) refresh() },
                 onBack = navController::navigateUp,
@@ -779,164 +780,187 @@ fun LastFmDashboardScreen(
         val density = LocalDensity.current
         val bottomInsetDp = with(density) { playerAwareInsets.getBottom(density).toDp() }
 
-        LazyColumn(
+        // (v4 redesign) Layout now mirrors LastWave-native's HomeScreen
+        // structure: header pills + hero stats card sit ABOVE a rounded
+        // list container (ListContainerShape — 28dp top corners, filled
+        // with theme.cardBackground) that holds the FilterHeader + the
+        // scrollable track list. The previous single LazyColumn scrolled
+        // the header pills and hero card along with the tracks; the
+        // reference design keeps them fixed above the list, which also
+        // gives the list its own card-like visual grouping.
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .windowInsetsPadding(
                     playerAwareInsets.only(WindowInsetsSides.Horizontal),
                 ),
-            contentPadding = PaddingValues(
-                top = innerPadding.calculateTopPadding(),
-                bottom = bottomInsetDp + 16.dp,
-            ),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            Spacer(Modifier.height(innerPadding.calculateTopPadding()))
+
             // Hide header pills + hero card while the scrobble-search overlay
             // is open — the user is searching, not browsing stats, so we
             // collapse down to just the search field + filtered list (Task 6c).
             if (!searchVisible) {
-                item(key = "header_pills") {
-                    HeaderPillRow(
-                        scrobbles = (userInfo?.getOrNull()?.playcount ?: 0).toLong(),
-                        artistCount = (statsTopArtists ?: topArtists)
-                            ?.getOrNull()?.topartists?.attr?.total?.toIntOrNull() ?: 0,
-                        albumCount = (statsTopAlbums ?: topAlbums)
-                            ?.getOrNull()?.topalbums?.attr?.total?.toIntOrNull() ?: 0,
-                        theme = theme,
-                    )
-                }
+                HeaderPillRow(
+                    scrobbles = (userInfo?.getOrNull()?.playcount ?: 0).toLong(),
+                    artistCount = (statsTopArtists ?: topArtists)
+                        ?.getOrNull()?.topartists?.attr?.total?.toIntOrNull() ?: 0,
+                    albumCount = (statsTopAlbums ?: topAlbums)
+                        ?.getOrNull()?.topalbums?.attr?.total?.toIntOrNull() ?: 0,
+                    theme = theme,
+                )
 
-                item(key = "hero_card") {
-                    HeroStatsCard(
-                        userInfo = userInfo,
-                        isRefreshing = isRefreshing,
-                        // (Task 1) Read the lifetime unique-item counts
-                        // off the dedicated limit=1 stats responses — mirrors
-                        // LastWave-native's _fetchHomeData() batch where the
-                        // hero stats come from the limit=1 fetches, not the
-                        // list fetches. Falls back to the list responses if
-                        // the stats fetch failed (defensive: same source, so
-                        // the value is still authoritative).
-                        trackCount = (statsTopTracks ?: topTracks)
-                            ?.getOrNull()?.toptracks?.attr?.total?.toIntOrNull() ?: 0,
-                        artistCount = (statsTopArtists ?: topArtists)
-                            ?.getOrNull()?.topartists?.attr?.total?.toIntOrNull() ?: 0,
-                        albumCount = (statsTopAlbums ?: topAlbums)
-                            ?.getOrNull()?.topalbums?.attr?.total?.toIntOrNull() ?: 0,
-                        onRetry = ::refresh,
-                        onOpenGenres = { navController.navigate(Screens.MoodAndGenres.route) },
-                        theme = theme,
-                    )
-                }
+                HeroStatsCard(
+                    userInfo = userInfo,
+                    isRefreshing = isRefreshing,
+                    // (Task 1) Read the lifetime unique-item counts
+                    // off the dedicated limit=1 stats responses — mirrors
+                    // LastWave-native's _fetchHomeData() batch where the
+                    // hero stats come from the limit=1 fetches, not the
+                    // list fetches. Falls back to the list responses if
+                    // the stats fetch failed (defensive: same source, so
+                    // the value is still authoritative).
+                    trackCount = (statsTopTracks ?: topTracks)
+                        ?.getOrNull()?.toptracks?.attr?.total?.toIntOrNull() ?: 0,
+                    artistCount = (statsTopArtists ?: topArtists)
+                        ?.getOrNull()?.topartists?.attr?.total?.toIntOrNull() ?: 0,
+                    albumCount = (statsTopAlbums ?: topAlbums)
+                        ?.getOrNull()?.topalbums?.attr?.total?.toIntOrNull() ?: 0,
+                    onRetry = ::refresh,
+                    onOpenGenres = { navController.navigate(Screens.MoodAndGenres.route) },
+                    theme = theme,
+                )
+
+                Spacer(Modifier.height(8.dp))
             }
 
-            item(key = "filter_header") {
+            // List container — no background card. The track rows sit directly
+            // on the page background (matching LastWave-native's design where
+            // the list is NOT inside a colored container). The previous dark
+            // cardBackground behind the track list was causing a "weird black
+            // background behind songs" that the user reported.
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+            ) {
                 FilterHeader(
                     selectedFilter = selectedFilter,
                     onSelect = { selectedFilter = it },
                     theme = theme,
                 )
-            }
 
-            when (selectedFilter) {
-                LastFmFilter.RECENT -> {
-                    if (recentFiltered.isEmpty() && recentTracks != null && !isRefreshing) {
-                        item(key = "recent_empty") {
-                            EmptyHint(
-                                text = if (searchVisible && q.isNotBlank())
-                                    stringResource(R.string.lastfm_no_search_results)
-                                else stringResource(R.string.lastfm_no_recent_tracks),
-                                theme = theme,
-                            )
+                LazyColumn(
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                    contentPadding = PaddingValues(
+                        start = 8.dp,
+                        end = 8.dp,
+                        top = 0.dp,
+                        bottom = bottomInsetDp + 16.dp,
+                    ),
+                ) {
+                    when (selectedFilter) {
+                        LastFmFilter.RECENT -> {
+                            if (recentFiltered.isEmpty() && recentTracks != null && !isRefreshing) {
+                                item(key = "recent_empty") {
+                                    EmptyHint(
+                                        text = if (searchVisible && q.isNotBlank())
+                                            stringResource(R.string.lastfm_no_search_results)
+                                        else stringResource(R.string.lastfm_no_recent_tracks),
+                                        theme = theme,
+                                    )
+                                }
+                            } else {
+                                items(
+                                    recentFiltered,
+                                    key = { "recent_${it.track.name}_${it.track.date?.uts ?: it.track.attr?.nowplaying ?: ""}" },
+                                ) { entry ->
+                                    DashboardTrackRow(
+                                        track = entry.track.toRef(playCount = entry.playCount),
+                                        fallbackArtworkUrl = recentArtworkByTrack[entry.track.trackArtworkKey()],
+                                        onOverflow = { overflowTrack = entry.track.toRef(playCount = entry.playCount) },
+                                        theme = theme,
+                                    )
+                                }
+                            }
                         }
-                    } else {
-                        items(
-                            recentFiltered,
-                            key = { "recent_${it.track.name}_${it.track.date?.uts ?: it.track.attr?.nowplaying ?: ""}" },
-                        ) { entry ->
-                            DashboardTrackRow(
-                                track = entry.track.toRef(playCount = entry.playCount),
-                                fallbackArtworkUrl = recentArtworkByTrack[entry.track.trackArtworkKey()],
-                                onOverflow = { overflowTrack = entry.track.toRef(playCount = entry.playCount) },
-                                theme = theme,
-                            )
+                        LastFmFilter.TOP_TRACKS -> {
+                            if (topFiltered.isEmpty() && topTracks != null && !isRefreshing) {
+                                item(key = "top_empty") {
+                                    EmptyHint(
+                                        text = if (searchVisible && q.isNotBlank())
+                                            stringResource(R.string.lastfm_no_search_results)
+                                        else stringResource(R.string.lastfm_no_top_tracks),
+                                        theme = theme,
+                                    )
+                                }
+                            } else {
+                                items(
+                                    topFiltered.withIndex().toList(),
+                                    key = { "top_${it.index}_${it.value.name}" },
+                                ) { (index, track) ->
+                                    DashboardTrackRow(
+                                        track = track.toRef(),
+                                        rank = index + 1,
+                                        fallbackArtworkUrl = recentArtworkByTrack[track.trackArtworkKey()],
+                                        onOverflow = { overflowTrack = track.toRef() },
+                                        theme = theme,
+                                    )
+                                }
+                            }
                         }
-                    }
-                }
-                LastFmFilter.TOP_TRACKS -> {
-                    if (topFiltered.isEmpty() && topTracks != null && !isRefreshing) {
-                        item(key = "top_empty") {
-                            EmptyHint(
-                                text = if (searchVisible && q.isNotBlank())
-                                    stringResource(R.string.lastfm_no_search_results)
-                                else stringResource(R.string.lastfm_no_top_tracks),
-                                theme = theme,
-                            )
+                        LastFmFilter.TOP_ARTISTS -> {
+                            if (artistsFiltered.isEmpty() && topArtists != null && !isRefreshing) {
+                                item(key = "artists_empty") {
+                                    EmptyHint(
+                                        text = if (searchVisible && q.isNotBlank())
+                                            stringResource(R.string.lastfm_no_search_results)
+                                        else stringResource(R.string.lastfm_no_top_tracks),
+                                        theme = theme,
+                                    )
+                                }
+                            } else {
+                                items(
+                                    artistsFiltered.withIndex().toList(),
+                                    key = { "artist_${it.index}_${it.value.name}" },
+                                ) { (index, artist) ->
+                                    DashboardArtistRow(
+                                        name = artist.name.orEmpty(),
+                                        playCount = artist.playcount,
+                                        rank = index + 1,
+                                        artworkUrl = bestArtwork(artist.image)
+                                            ?: artistArtworkByName[artist.name.orEmpty().trim().lowercase()],
+                                        theme = theme,
+                                    )
+                                }
+                            }
                         }
-                    } else {
-                        items(
-                            topFiltered.withIndex().toList(),
-                            key = { "top_${it.index}_${it.value.name}" },
-                        ) { (index, track) ->
-                            DashboardTrackRow(
-                                track = track.toRef(),
-                                rank = index + 1,
-                                fallbackArtworkUrl = recentArtworkByTrack[track.trackArtworkKey()],
-                                onOverflow = { overflowTrack = track.toRef() },
-                                theme = theme,
-                            )
-                        }
-                    }
-                }
-                LastFmFilter.TOP_ARTISTS -> {
-                    if (artistsFiltered.isEmpty() && topArtists != null && !isRefreshing) {
-                        item(key = "artists_empty") {
-                            EmptyHint(
-                                text = if (searchVisible && q.isNotBlank())
-                                    stringResource(R.string.lastfm_no_search_results)
-                                else stringResource(R.string.lastfm_no_top_tracks),
-                                theme = theme,
-                            )
-                        }
-                    } else {
-                        items(
-                            artistsFiltered.withIndex().toList(),
-                            key = { "artist_${it.index}_${it.value.name}" },
-                        ) { (index, artist) ->
-                            DashboardArtistRow(
-                                name = artist.name.orEmpty(),
-                                playCount = artist.playcount,
-                                rank = index + 1,
-                                artworkUrl = bestArtwork(artist.image)
-                                    ?: artistArtworkByName[artist.name.orEmpty().trim().lowercase()],
-                                theme = theme,
-                            )
-                        }
-                    }
-                }
-                LastFmFilter.TOP_ALBUMS -> {
-                    if (albumsFiltered.isEmpty() && topAlbums != null && !isRefreshing) {
-                        item(key = "albums_empty") {
-                            EmptyHint(
-                                text = if (searchVisible && q.isNotBlank())
-                                    stringResource(R.string.lastfm_no_search_results)
-                                else stringResource(R.string.lastfm_no_top_tracks),
-                                theme = theme,
-                            )
-                        }
-                    } else {
-                        items(
-                            albumsFiltered.withIndex().toList(),
-                            key = { "album_${it.index}_${it.value.name}_${it.value.artist?.text ?: ""}" },
-                        ) { (index, album) ->
-                            DashboardAlbumRow(
-                                title = album.name.orEmpty(),
-                                artist = album.artist?.text,
-                                playCount = album.playcount,
-                                rank = index + 1,
-                                artworkUrl = bestArtwork(album.image),
-                                theme = theme,
-                            )
+                        LastFmFilter.TOP_ALBUMS -> {
+                            if (albumsFiltered.isEmpty() && topAlbums != null && !isRefreshing) {
+                                item(key = "albums_empty") {
+                                    EmptyHint(
+                                        text = if (searchVisible && q.isNotBlank())
+                                            stringResource(R.string.lastfm_no_search_results)
+                                        else stringResource(R.string.lastfm_no_top_tracks),
+                                        theme = theme,
+                                    )
+                                }
+                            } else {
+                                items(
+                                    albumsFiltered.withIndex().toList(),
+                                    key = { "album_${it.index}_${it.value.name}_${it.value.artist?.text ?: ""}" },
+                                ) { (index, album) ->
+                                    DashboardAlbumRow(
+                                        title = album.name.orEmpty(),
+                                        artist = album.artist?.text,
+                                        playCount = album.playcount,
+                                        rank = index + 1,
+                                        artworkUrl = bestArtwork(album.image),
+                                        theme = theme,
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -1022,6 +1046,7 @@ private fun LastFmDashboardHeader(
     searchQuery: String,
     onSearchQueryChange: (String) -> Unit,
     onToggleSearch: () -> Unit,
+    onExplore: () -> Unit,
     theme: DashboardTheme,
     onRefresh: () -> Unit,
     onBack: () -> Unit,
@@ -1098,9 +1123,14 @@ private fun LastFmDashboardHeader(
                     ),
                 )
             } else {
+                // Large "Last.fm" wordmark on the left, matching the
+                // LastWave-native HomeScreen header. headlineMedium gives the
+                // prominent display size the reference screenshot uses (the
+                // previous titleLarge read as a regular app-bar title rather
+                // than the brand wordmark).
                 Text(
-                    text = stringResource(R.string.stats),
-                    style = MaterialTheme.typography.titleLarge,
+                    text = "Last.fm",
+                    style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.Bold,
                     color = theme.topAppBarTitleText,
                     modifier = Modifier
@@ -1136,6 +1166,22 @@ private fun LastFmDashboardHeader(
                     contentDescription = stringResource(R.string.lastfm_refresh),
                     tint = theme.topAppBarIconTint,
                     modifier = Modifier.graphicsLayer { rotationZ = rotation },
+                )
+            }
+            // Explore (compass) button — opens mood_and_genres, mirroring
+            // LastWave-native's HeaderActionIcon(Explore). Placed before the
+            // search button so the right-side action order reads:
+            // [Explore] [Search] [Avatar], same as the reference HomeScreen.
+            IconButton(
+                onClick = onExplore,
+                colors = IconButtonDefaults.iconButtonColors(
+                    contentColor = theme.topAppBarIconTint,
+                ),
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.explore_outlined),
+                    contentDescription = stringResource(R.string.lastfm_explore),
+                    tint = theme.topAppBarIconTint,
                 )
             }
             // Search icon — toggles the inline scrobble-search field (Task 6c).
@@ -1335,7 +1381,7 @@ private fun HeroStatsCard(
                 ) {
                     Column(Modifier.padding(horizontal = 20.dp, vertical = 18.dp)) {
                         Surface(
-                            shape = RoundedCornerShape(20.dp),
+                            shape = RoundedCornerShape(24.dp),
                             color = theme.statsHeroInner,
                             modifier = Modifier.fillMaxWidth(),
                         ) {
@@ -1382,7 +1428,7 @@ private fun HeroStatsCard(
                         Spacer(Modifier.height(12.dp))
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             StatPill(
                                 label = stringResource(R.string.lastfm_filter_top_tracks),
@@ -1463,7 +1509,7 @@ private fun StatPill(
 ) {
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(20.dp),
         color = theme.statsPillBackground,
     ) {
         Column(
@@ -1502,7 +1548,7 @@ private fun FilterHeader(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            .padding(horizontal = 14.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
@@ -1716,7 +1762,7 @@ private fun DashboardTrackRow(
         tonalElevation = if (isNowPlaying) 1.dp else 0.dp,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 4.dp),
+            .padding(vertical = 4.dp),
     ) {
         Row(
             modifier = Modifier
@@ -1728,14 +1774,14 @@ private fun DashboardTrackRow(
             Box(
                 modifier = Modifier
                     .size(52.dp)
-                    .clip(RoundedCornerShape(12.dp))
+                    .clip(RoundedCornerShape(14.dp))
                     .background(theme.artworkPlaceholderBackground),
             ) {
                 if (!artworkUrl.isNullOrBlank()) {
                     AsyncImage(
                         model = artworkUrl,
                         contentDescription = null,
-                        modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp)),
+                        modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(14.dp)),
                         contentScale = ContentScale.Crop,
                     )
                 } else {
@@ -1831,7 +1877,7 @@ private fun DashboardTrackRow(
                     color = theme.playCountPillBackground,
                 ) {
                     Text(
-                        text = "${track.playCount}×",
+                        text = "×${track.playCount}",
                         style = MaterialTheme.typography.labelMedium,
                         color = theme.playCountPillText,
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
@@ -1876,7 +1922,7 @@ private fun DashboardArtistRow(
         color = Color.Transparent,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 4.dp),
+            .padding(vertical = 4.dp),
     ) {
         Row(
             modifier = Modifier
@@ -1951,7 +1997,7 @@ private fun DashboardArtistRow(
                     color = theme.playCountPillBackground,
                 ) {
                     Text(
-                        text = "${playCount}×",
+                        text = "×$playCount",
                         style = MaterialTheme.typography.labelMedium,
                         color = theme.playCountPillText,
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
@@ -1980,7 +2026,7 @@ private fun DashboardAlbumRow(
         color = Color.Transparent,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 4.dp),
+            .padding(vertical = 4.dp),
     ) {
         Row(
             modifier = Modifier
@@ -1992,14 +2038,14 @@ private fun DashboardAlbumRow(
             Box(
                 modifier = Modifier
                     .size(52.dp)
-                    .clip(RoundedCornerShape(12.dp))
+                    .clip(RoundedCornerShape(14.dp))
                     .background(theme.artworkPlaceholderBackground),
             ) {
                 if (!artworkUrl.isNullOrBlank()) {
                     AsyncImage(
                         model = artworkUrl,
                         contentDescription = null,
-                        modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp)),
+                        modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(14.dp)),
                         contentScale = ContentScale.Crop,
                     )
                 } else {
@@ -2054,7 +2100,7 @@ private fun DashboardAlbumRow(
                     color = theme.playCountPillBackground,
                 ) {
                     Text(
-                        text = "${playCount}×",
+                        text = "×$playCount",
                         style = MaterialTheme.typography.labelMedium,
                         color = theme.playCountPillText,
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),

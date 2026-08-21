@@ -145,6 +145,8 @@ object QobuzAudioProvider {
         val artist: String?,
         val album: String?,
         val durationMs: Long?,
+        /** Album artwork URL from the Qobuz search response (if available). */
+        val thumbnailUrl: String? = null,
         /** The backend label that produced this candidate (for diagnostics). */
         val backendLabel: String,
     )
@@ -502,6 +504,16 @@ object QobuzAudioProvider {
                             ?: ""
                     val candidateAlbum = item.optJSONObject("album")?.stringOrNull("title")
                     val candidateDurationMs = item.longOrNull("duration")?.times(1000L)
+                    // Extract thumbnail from the album image field. Qobuz API
+                    // returns album art in album.image as a JSONObject with
+                    // large/medium/small keys, or sometimes as a direct URL string.
+                    val albumObj = item.optJSONObject("album")
+                    val candidateThumbnail = albumObj?.optString("image")?.takeIf { it.isNotBlank() }
+                        ?: albumObj?.optJSONObject("image")?.optString("large")?.takeIf { it.isNotBlank() }
+                        ?: albumObj?.optJSONObject("image")?.optString("medium")?.takeIf { it.isNotBlank() }
+                        ?: albumObj?.optJSONObject("image")?.optString("small")?.takeIf { it.isNotBlank() }
+                        ?: item.stringOrNull("thumbnail")
+                        ?: item.stringOrNull("cover")
                     out.add(
                         CandidateMetadata(
                             trackId = id,
@@ -509,6 +521,7 @@ object QobuzAudioProvider {
                             artist = candidateArtist.takeIf { it.isNotBlank() },
                             album = candidateAlbum,
                             durationMs = candidateDurationMs,
+                            thumbnailUrl = candidateThumbnail,
                             backendLabel = backend.label,
                         ),
                     )
