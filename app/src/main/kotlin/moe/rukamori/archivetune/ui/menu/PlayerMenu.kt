@@ -2050,13 +2050,27 @@ private fun SongSourceDialog(
                 runCatching { QobuzAudioProvider.searchCandidates(searchQuery, limit = 8) }
                     .getOrDefault(emptyList())
                     .forEach { candidate ->
+                        // If Qobuz didn't return a thumbnail, try to get one
+                        // from YouTube by searching for the track.
+                        val thumb = candidate.thumbnailUrl ?: run {
+                            val term = listOfNotNull(candidate.artist?.takeIf(String::isNotBlank), candidate.title).joinToString(" ")
+                            val ytResult = YouTube.search(term, YouTube.SearchFilter.FILTER_SONG, useAccountContext = false).getOrNull()
+                            if (ytResult == null) null
+                            else {
+                                var found: SongItem? = null
+                                for (item in ytResult.items) {
+                                    if (item is SongItem) { found = item; break }
+                                }
+                                found?.thumbnail
+                            }
+                        }
                         out.add(
                             SourceSearchResult(
                                 source = AudioSourceType.QOBUZ,
                                 trackId = candidate.trackId,
                                 title = candidate.title,
                                 artist = candidate.artist.orEmpty(),
-                                thumbnailUrl = candidate.thumbnailUrl,
+                                thumbnailUrl = thumb,
                                 durationMs = candidate.durationMs,
                                 qualityLabel = losslessLabel,
                                 songItem = null,
