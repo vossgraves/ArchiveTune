@@ -2029,7 +2029,7 @@ private fun SongSourceDialog(
                             trackId = candidate.trackId,
                             title = candidate.title,
                             artist = candidate.artist,
-                            thumbnailUrl = null,
+                            thumbnailUrl = candidate.thumbnailUrl,
                             durationMs = candidate.durationMs,
                             qualityLabel = losslessLabel,
                             songItem = null,
