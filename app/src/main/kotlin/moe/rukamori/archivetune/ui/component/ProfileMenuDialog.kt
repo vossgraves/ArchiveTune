@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -79,12 +80,12 @@ fun ProfileMenuDialog(
 
             Surface(
                 modifier = Modifier
-                    .widthIn(max = ProfilePopupDefaults.MaxWidth)
+                    .widthIn(max = 360.dp)
                     .padding(horizontal = 24.dp),
-                shape = ProfilePopupDefaults.ContainerShape,
-                color = ProfilePopupDefaults.containerColor(),
-                tonalElevation = ProfilePopupDefaults.TonalElevationDp,
-                shadowElevation = ProfilePopupDefaults.ShadowElevationDp,
+                shape = RoundedCornerShape(28.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                tonalElevation = 6.dp,
+                shadowElevation = 12.dp,
             ) {
                 Column(
                     modifier = Modifier
@@ -154,16 +155,16 @@ fun ProfileMenuDialog(
                         // Dismiss button (X) — compact 32dp circle.
                         Box(
                             modifier = Modifier
-                                .size(ProfilePopupDefaults.DismissButtonSize)
+                                .size(32.dp)
                                 .clip(CircleShape)
-                                .background(ProfilePopupDefaults.dismissButtonBackground())
+                                .background(MaterialTheme.colorScheme.surfaceContainerHighest)
                                 .clickable(onClick = onDismiss),
                             contentAlignment = Alignment.Center,
                         ) {
                             Icon(
                                 painter = painterResource(R.drawable.close),
                                 contentDescription = stringResource(R.string.close_dialog),
-                                modifier = Modifier.size(ProfilePopupDefaults.DismissIconSize),
+                                modifier = Modifier.size(18.dp),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
@@ -178,16 +179,13 @@ fun ProfileMenuDialog(
                     items.forEach { item ->
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(ProfilePopupDefaults.ItemSpacing),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(ProfilePopupDefaults.ItemShape)
-                                .background(ProfilePopupDefaults.itemBackground())
+                                .clip(RoundedCornerShape(percent = 50))
+                                .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.6f))
                                 .clickable { item.onClick() }
-                                .padding(
-                                    horizontal = ProfilePopupDefaults.ItemPaddingHorizontal,
-                                    vertical = ProfilePopupDefaults.ItemPaddingVertical,
-                                ),
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
                         ) {
                             BadgedBox(badge = {
                                 if (item.showBadge) Badge()
@@ -195,7 +193,7 @@ fun ProfileMenuDialog(
                                 Icon(
                                     painter = painterResource(item.icon),
                                     contentDescription = null,
-                                    modifier = Modifier.size(ProfilePopupDefaults.ItemIconSize),
+                                    modifier = Modifier.size(22.dp),
                                     tint = MaterialTheme.colorScheme.onSurface,
                                 )
                             }

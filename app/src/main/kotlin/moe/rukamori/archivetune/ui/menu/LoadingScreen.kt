@@ -30,7 +30,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
-import moe.rukamori.archivetune.ui.component.ProfilePopupDefaults
 
 @Composable
 fun LoadingScreen(
@@ -52,13 +51,9 @@ fun LoadingScreen(
                     Modifier
                         .widthIn(min = 280.dp, max = 380.dp)
                         .padding(16.dp),
-                // Match ProfileMenuDialog — 28dp rounded container,
-                // surfaceContainerHigh, 6dp tonal + 12dp shadow.
-                shape = ProfilePopupDefaults.ContainerShape,
-                colors = CardDefaults.cardColors(containerColor = ProfilePopupDefaults.containerColor()),
-                elevation = CardDefaults.cardElevation(
-                    defaultElevation = ProfilePopupDefaults.ShadowElevationDp,
-                ),
+                shape = MaterialTheme.shapes.extraLarge,
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
             ) {
                 Column(
                     modifier = Modifier.padding(horizontal = 24.dp, vertical = 22.dp),

@@ -1199,9 +1199,7 @@ fun FullscreenVideoOverlay(
         ModalBottomSheet(
             onDismissRequest = { showOverflowSheet = false },
             sheetState = sheetState,
-            // Match ProfileMenuDialog — 28dp top corners + surfaceContainerHigh.
-            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            containerColor = MaterialTheme.colorScheme.surface,
         ) {
             VideoOverflowSheetContent(
                 sliderStyle = sliderStyle,

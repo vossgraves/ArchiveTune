@@ -70,7 +70,7 @@ class MenuState(
 fun BottomSheetMenu(
     modifier: Modifier = Modifier,
     state: MenuState,
-    background: Color = MaterialTheme.colorScheme.surfaceContainerHigh,
+    background: Color = MaterialTheme.colorScheme.surface,
 ) {
     val focusManager = LocalFocusManager.current
 
@@ -82,21 +82,15 @@ fun BottomSheetMenu(
                 focusManager.clearFocus()
                 state.isVisible = false
             },
-            // Match ProfileMenuDialog — 28dp top corners + surfaceContainerHigh
-            // tonal container.
-            shape = ProfilePopupDefaults.SheetShape,
             containerColor = background,
             contentColor = MaterialTheme.colorScheme.onSurface,
             dragHandle = {
-                // Capsule-style drag handle — taller pill (32×4) with rounded
-                // ends instead of a flat 2dp-cornered rectangle, matching the
-                // rounded-capsule motif used throughout the redesigned popups.
                 Box(
                     modifier =
                         Modifier
                             .padding(vertical = 12.dp)
-                            .size(width = 32.dp, height = 4.dp)
-                            .clip(RoundedCornerShape(percent = 50))
+                            .size(width = 40.dp, height = 4.dp)
+                            .clip(RoundedCornerShape(2.dp))
                             .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)),
                 )
             },

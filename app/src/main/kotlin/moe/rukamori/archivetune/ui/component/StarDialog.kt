@@ -47,10 +47,6 @@ fun StarDialog(
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
         sheetState = sheetState,
-        // Match ProfileMenuDialog — 28dp top corners + surfaceContainerHigh
-        // tonal container.
-        shape = ProfilePopupDefaults.SheetShape,
-        containerColor = ProfilePopupDefaults.containerColor(),
     ) {
         Column(
             verticalArrangement = Arrangement.spacedBy(16.dp),

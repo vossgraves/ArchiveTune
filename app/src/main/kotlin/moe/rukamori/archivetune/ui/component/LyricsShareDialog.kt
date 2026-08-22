@@ -45,7 +45,6 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.border
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.Button
@@ -333,12 +332,10 @@ private fun LyricsShareStudioDialog(
                         .fillMaxWidth()
                         .widthIn(max = maxDialogWidth)
                         .heightIn(max = maxDialogHeight),
-                // Match ProfileMenuDialog — 28dp rounded container, 6/12dp elevations.
-                shape = RoundedCornerShape(28.dp),
+                shape = MaterialTheme.shapes.extraLarge,
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
                 contentColor = MaterialTheme.colorScheme.onSurface,
                 tonalElevation = 6.dp,
-                shadowElevation = 12.dp,
             ) {
                 LyricsShareStudioScaffold(
                     mediaMetadata = mediaMetadata,
@@ -369,11 +366,8 @@ private fun LyricsShareLoadingDialog() {
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
         Surface(
-            // Match ProfileMenuDialog — 28dp rounded container, 6/12dp elevations.
-            shape = RoundedCornerShape(28.dp),
-            color = MaterialTheme.colorScheme.surfaceContainerHigh,
-            tonalElevation = 6.dp,
-            shadowElevation = 12.dp,
+            shape = MaterialTheme.shapes.extraLarge,
+            color = MaterialTheme.colorScheme.surfaceColorAtElevation(8.dp),
             modifier = Modifier.padding(24.dp),
         ) {
             Column(

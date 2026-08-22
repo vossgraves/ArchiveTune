@@ -43,12 +43,9 @@ import moe.rukamori.archivetune.R
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun UpdateInfoDialog(onDismiss: () -> Unit) {
-    // Match ProfileMenuDialog's design tokens — 28dp outer, 22dp inner
-    // blocks, capsule action button. Uses surfaceContainerHigh (md3e)
-    // instead of ad-hoc 30/22/18/12dp radii.
-    val cardShape = RoundedCornerShape(28.dp)
+    val cardShape = RoundedCornerShape(30.dp)
     val blockShape = RoundedCornerShape(22.dp)
-    val actionShape = RoundedCornerShape(20.dp)
+    val actionShape = RoundedCornerShape(18.dp)
 
     BasicAlertDialog(onDismissRequest = onDismiss) {
         Surface(
@@ -58,8 +55,7 @@ fun UpdateInfoDialog(onDismiss: () -> Unit) {
                     .widthIn(max = 320.dp),
             shape = cardShape,
             color = MaterialTheme.colorScheme.surfaceContainerHigh,
-            tonalElevation = 6.dp,
-            shadowElevation = 12.dp,
+            tonalElevation = 8.dp,
         ) {
             Column(
                 modifier =

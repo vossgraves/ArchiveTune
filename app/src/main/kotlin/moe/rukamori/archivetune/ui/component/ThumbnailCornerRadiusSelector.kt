@@ -124,14 +124,11 @@ fun ThumbnailCornerRadiusModal(
                     Modifier
                         .fillMaxWidth(dialogWidth)
                         .wrapContentHeight()
-                        .clip(RoundedCornerShape(28.dp))
+                        .clip(RoundedCornerShape(30.dp))
                         .padding(16.dp),
-                // Match ProfileMenuDialog — 28dp rounded container,
-                // surfaceContainerHigh tonal surface, 6/12dp elevations.
-                shape = RoundedCornerShape(28.dp),
-                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                shape = MaterialTheme.shapes.large,
+                color = MaterialTheme.colorScheme.surface,
                 tonalElevation = 6.dp,
-                shadowElevation = 12.dp,
             ) {
                 Column(
                     modifier =

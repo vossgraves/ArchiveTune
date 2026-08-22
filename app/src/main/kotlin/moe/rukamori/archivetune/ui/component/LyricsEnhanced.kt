@@ -1199,9 +1199,7 @@ private fun LyricsSelectionBottomSheet(
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
         sheetState = sheetState,
-        // Match ProfileMenuDialog — 28dp top corners + surfaceContainerHigh.
-        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        containerColor = MaterialTheme.colorScheme.surface,
         contentColor = MaterialTheme.colorScheme.onSurface,
         dragHandle = { BottomSheetDefaults.DragHandle() },
     ) {
