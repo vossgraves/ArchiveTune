@@ -107,6 +107,7 @@ import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.models.toMediaMetadata
 import moe.rukamori.archivetune.playback.CanvasArtworkRefetchResult
 import moe.rukamori.archivetune.playback.ExoDownloadService
+import moe.rukamori.archivetune.playback.queues.ListQueue
 import moe.rukamori.archivetune.playback.queues.YouTubeQueue
 import moe.rukamori.archivetune.extensions.toMediaItem
 import moe.rukamori.archivetune.db.entities.ArtistEntity
@@ -391,25 +392,46 @@ fun PlayerMenu(
             },
             onPlayFromSource = { result ->
                 // Non-YT search-result row tapped (JioSaavn / Tidal / Qobuz / Deezer).
-                // We don't have a SongItem to seed a YouTube radio queue from directly —
-                // these providers' search results return their own internal track ids, not
-                // YouTube video ids. To make the row actually play something, we:
-                //   1. Search YouTube Music for a track matching the title + primary artist.
-                //   2. If found, play it via YouTube radio (seeds a fresh queue with that song).
-                //   3. Immediately set the per-song source override to the picked source so
-                //      the very first playback attempt resolves through that source (JioSaavn /
-                //      Tidal lossless) instead of YouTube's audio.
-                //   4. If YouTube search returns nothing, fall back to a Toast — we can't
-                //      play a JioSaavn-only / Tidal-only track without a YT-side media id
-                //      because the rest of the queue / scrobbling / cache layer is YT-id-keyed.
                 //
-                // THREAD-SAFETY: YouTube.search is a suspend function that does its own
-                // dispatcher switching internally, so launching on Dispatchers.IO is fine.
-                // BUT setSongSourceOverride touches ExoPlayer (player.currentMediaItem) which
-                // must be called from the application thread (main) — wrapping it in
-                // withContext(Dispatchers.Main) prevents the "Player is accessed on the wrong
-                // thread" IllegalStateException that crashed the app when changing source via
-                // the JioSaavn search-result row.
+                // QOBUZ DIRECT PLAYBACK: when the source is Qobuz, we play the
+                // EXACT track the user clicked by encoding the Qobuz trackId into
+                // the mediaId as "qobuz:{trackId}". MusicService's resolver detects
+                // this prefix and resolves directly via QobuzAudioProvider.backend.download
+                // — skipping the title/artist search that previously matched a
+                // different Qobuz track. The MediaMetadata is built from the search
+                // result's title/artist/thumbnail, so the player UI shows the
+                // correct track info.
+                //
+                // For other sources (JioSaavn / Tidal / Deezer), we fall back to
+                // the YouTube-search path: search YTM for title+artist, play via
+                // YouTubeQueue.radio, and pin the source override so the first
+                // resolution attempt goes through the picked source.
+                if (result.source == AudioSourceType.QOBUZ && result.trackId.isNotBlank()) {
+                    val directMediaId = "qobuz:${result.trackId}"
+                    val artists = listOfNotNull(
+                        result.artist.takeIf { it.isNotBlank() }
+                            ?.let { MediaMetadata.Artist(id = null, name = it) },
+                    )
+                    val mediaMetadata = MediaMetadata(
+                        id = directMediaId,
+                        title = result.title,
+                        artists = artists,
+                        duration = result.durationMs?.div(1000)?.toInt() ?: 0,
+                        thumbnailUrl = result.thumbnailUrl,
+                    )
+                    val mediaItem = mediaMetadata.toMediaItem()
+                    playerConnection.playQueue(
+                        ListQueue(
+                            title = "Qobuz",
+                            items = listOf(mediaItem),
+                            startIndex = 0,
+                        ),
+                    )
+                    showSourceDialog = false
+                    return@onPlayFromSource
+                }
+                // JioSaavn / Tidal / Deezer: search YouTube Music for a matching track.
+                // (See comment above for why we can't play these directly yet.)
                 coroutineScope.launch(Dispatchers.IO) {
                     val query = buildString {
                         append(result.title)
