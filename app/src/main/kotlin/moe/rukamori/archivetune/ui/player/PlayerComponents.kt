@@ -210,42 +210,12 @@ internal fun PlayerTextBackdrop(
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
-    val scrimColor =
-        remember(textColor) {
-            val luminance =
-                0.299f * textColor.red +
-                    0.587f * textColor.green +
-                    0.114f * textColor.blue
-            if (luminance > 0.55f) Color.Black else Color.White
-        }
-    val shape = RoundedCornerShape(16.dp)
+    // Removed the blurred gradient + rounded background pill that was creating
+    // a visible dark "pill" behind song names. The text now sits directly on
+    // the player background with no container — matching the user's request
+    // to "remove the black background pill behind the song's name."
     Box(modifier = modifier) {
-        Box(
-            modifier =
-                Modifier
-                    .matchParentSize()
-                    .blur(14.dp)
-                    .background(
-                        Brush.horizontalGradient(
-                            listOf(
-                                scrimColor.copy(alpha = 0f),
-                                scrimColor.copy(alpha = 0.22f),
-                                scrimColor.copy(alpha = 0.28f),
-                                scrimColor.copy(alpha = 0f),
-                            ),
-                        ),
-                    ),
-        )
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .clip(shape)
-                    .background(scrimColor.copy(alpha = 0.11f))
-                    .padding(horizontal = 10.dp, vertical = 7.dp),
-        ) {
-            content()
-        }
+        content()
     }
 }
 

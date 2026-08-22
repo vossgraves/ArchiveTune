@@ -1187,8 +1187,8 @@ private fun LastFmDashboardHeader(
  * user request — the stats are more useful in this compact area).
  */
 /**
- * Pills below the header — left shows username, right shows listening time.
- * Matches LastWave-native's HeaderRow exactly.
+ * Pills below the header — left shows username, right shows total scrobbles count.
+ * Matches LastWave-native's HeaderRow layout.
  */
 @Composable
 private fun HeaderPillRow(
@@ -1196,17 +1196,6 @@ private fun HeaderPillRow(
     scrobbles: Long,
     theme: DashboardTheme,
 ) {
-    // Listening time estimate: LastWave uses scrobbles * 210 seconds (avg track length)
-    val totalSeconds = scrobbles * 210L
-    val days = totalSeconds / 86400
-    val hours = (totalSeconds % 86400) / 3600
-    val minutes = (totalSeconds % 3600) / 60
-    val timeStr = when {
-        days > 0 -> "${days}d ${hours}h ${minutes}m"
-        hours > 0 -> "${hours}h ${minutes}m"
-        else -> "${minutes}m"
-    }
-
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1227,7 +1216,7 @@ private fun HeaderPillRow(
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )
         }
-        // Right pill: Listening time
+        // Right pill: Total scrobbles count
         Surface(
             shape = RoundedCornerShape(50),
             color = theme.pillBackground,
@@ -1240,14 +1229,14 @@ private fun HeaderPillRow(
                     painter = painterResource(R.drawable.solar_music_note_2_linear),
                     contentDescription = null,
                     modifier = Modifier.size(16.dp),
-                    tint = theme.textSecondary,
+                    tint = theme.accent,
                 )
                 Spacer(Modifier.width(6.dp))
                 Text(
-                    text = timeStr,
+                    text = formatCount(scrobbles),
                     style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.Medium,
-                    color = theme.textSecondary,
+                    fontWeight = FontWeight.SemiBold,
+                    color = theme.textPrimary,
                 )
             }
         }

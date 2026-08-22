@@ -35,7 +35,7 @@ import moe.rukamori.archivetune.constants.HideOfflineCardKey
 import moe.rukamori.archivetune.constants.HideTop50CardKey
 import moe.rukamori.archivetune.constants.ShowHomeCategoryChipsKey
 import moe.rukamori.archivetune.constants.ShowTagsInLibraryKey
-import moe.rukamori.archivetune.ui.component.FrostedTopAppBar
+import androidx.compose.material3.TopAppBar
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.SwitchPreference
@@ -63,10 +63,19 @@ fun AppearanceExtrasSettings(navController: NavController) {
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
-            FrostedTopAppBar(
-                titleRes = R.string.extras,
-                onBack = navController::navigateUp,
-                onBackLongClick = navController::backToMain,
+            TopAppBar(
+                title = { Text(stringResource(R.string.extras)) },
+                navigationIcon = {
+                    IconButton(
+                        onClick = navController::navigateUp,
+                        onLongClick = navController::backToMain,
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.arrow_back),
+                            contentDescription = null,
+                        )
+                    }
+                },
             )
         },
     ) { innerPadding ->
