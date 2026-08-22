@@ -1086,56 +1086,6 @@ private fun LastFmDashboardHeader(
                     tint = theme.topAppBarIconTint,
                 )
             }
-            // Refresh icon rotates while a fetch is in flight, same as the
-            // previous LargeFlexibleTopAppBar implementation — just moved into
-            // a circular IconButton. The rotation tween is preserved verbatim
-            // so the spin/snap transition behaviour is unchanged.
-            //
-            // LAYOUT: refresh + search icons are placed on the LEFT side of
-            // the title (between the back arrow and the "Last.fm" wordmark),
-            // matching the original dashboard header layout. The previous
-            // round-10 commit moved them to the right of the title — the user
-            // asked to shift them back to the left while keeping the
-            // AnimatedContent + Material3 SearchBar animations intact.
-            val rotation by animateFloatAsState(
-                targetValue = if (isRefreshing) 360f else 0f,
-                animationSpec = if (isRefreshing) {
-                    RepeatableSpec(
-                        iterations = Int.MAX_VALUE,
-                        animation = tween(durationMillis = 1000),
-                    )
-                } else {
-                    tween(durationMillis = 300)
-                },
-                label = "lastfm_refresh_rotation",
-            )
-            IconButton(
-                onClick = onRefresh,
-                enabled = !isRefreshing,
-                colors = IconButtonDefaults.iconButtonColors(
-                    contentColor = theme.topAppBarIconTint,
-                ),
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.cached),
-                    contentDescription = stringResource(R.string.lastfm_refresh),
-                    tint = theme.topAppBarIconTint,
-                    modifier = Modifier.graphicsLayer { rotationZ = rotation },
-                )
-            }
-            // Search icon — toggles the inline scrobble-search field.
-            IconButton(
-                onClick = onToggleSearch,
-                colors = IconButtonDefaults.iconButtonColors(
-                    contentColor = theme.topAppBarIconTint,
-                ),
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.solar_magnifer_linear),
-                    contentDescription = stringResource(R.string.search),
-                    tint = theme.topAppBarIconTint,
-                )
-            }
             // The "Last.fm" wordmark and the inline search field swap with a
             // fluid spring cross-fade, mirroring the NewReleaseScreen's top
             // bar search animation. The user reported the previous instant
@@ -1143,6 +1093,10 @@ private fun LastFmDashboardHeader(
             // abrupt and the OutlinedTextField looked "extremely basic and
             // bad" — Material3's SearchBar pill + AnimatedContent gives the
             // same polished feel as the New Releases page.
+            //
+            // LAYOUT: title (or search bar) sits in the middle (weight 1f)
+            // between the back arrow on the left and the refresh + search
+            // icons on the right — matches the conventional app bar layout.
             AnimatedContent(
                 targetState = searchVisible,
                 transitionSpec = {
@@ -1214,6 +1168,49 @@ private fun LastFmDashboardHeader(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
+            }
+            // Refresh icon rotates while a fetch is in flight, same as the
+            // previous LargeFlexibleTopAppBar implementation — just moved into
+            // a circular IconButton. The rotation tween is preserved verbatim
+            // so the spin/snap transition behaviour is unchanged.
+            val rotation by animateFloatAsState(
+                targetValue = if (isRefreshing) 360f else 0f,
+                animationSpec = if (isRefreshing) {
+                    RepeatableSpec(
+                        iterations = Int.MAX_VALUE,
+                        animation = tween(durationMillis = 1000),
+                    )
+                } else {
+                    tween(durationMillis = 300)
+                },
+                label = "lastfm_refresh_rotation",
+            )
+            IconButton(
+                onClick = onRefresh,
+                enabled = !isRefreshing,
+                colors = IconButtonDefaults.iconButtonColors(
+                    contentColor = theme.topAppBarIconTint,
+                ),
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.cached),
+                    contentDescription = stringResource(R.string.lastfm_refresh),
+                    tint = theme.topAppBarIconTint,
+                    modifier = Modifier.graphicsLayer { rotationZ = rotation },
+                )
+            }
+            // Search icon — toggles the inline scrobble-search field.
+            IconButton(
+                onClick = onToggleSearch,
+                colors = IconButtonDefaults.iconButtonColors(
+                    contentColor = theme.topAppBarIconTint,
+                ),
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.solar_magnifer_linear),
+                    contentDescription = stringResource(R.string.search),
+                    tint = theme.topAppBarIconTint,
+                )
             }
         }
     }

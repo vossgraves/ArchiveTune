@@ -92,6 +92,8 @@ import moe.rukamori.archivetune.constants.PlaylistEditLockKey
 import moe.rukamori.archivetune.constants.PlaylistSortDescendingKey
 import moe.rukamori.archivetune.constants.PlaylistSortType
 import moe.rukamori.archivetune.constants.PlaylistSortTypeKey
+import moe.rukamori.archivetune.constants.PlaylistViewTypeKey
+import moe.rukamori.archivetune.constants.LibraryViewType
 import moe.rukamori.archivetune.constants.PureBlackKey
 import moe.rukamori.archivetune.db.entities.Playlist
 import moe.rukamori.archivetune.extensions.move
@@ -154,7 +156,12 @@ fun LibraryPlaylistsScreen(
         }
     val mutablePlaylists = remember { mutableStateListOf<Playlist>() }
 
-    var isGridView by rememberSaveable { mutableStateOf(false) }
+    // Persist the list/grid view choice across cold launches via DataStore.
+    // Previously this was only `rememberSaveable { mutableStateOf(false) }`
+    // which survives rotation but NOT process death — so every cold launch
+    // reverted to list view. Now the choice survives app restarts.
+    var playlistViewType by rememberEnumPreference(PlaylistViewTypeKey, defaultValue = LibraryViewType.LIST)
+    val isGridView = playlistViewType == LibraryViewType.GRID
     var showCreatePlaylistDialog by rememberSaveable { mutableStateOf(false) }
     val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
     val lazyListState = rememberLazyListState()
@@ -394,7 +401,7 @@ fun LibraryPlaylistsScreen(
                                     .size(32.dp)
                                     .clip(CircleShape)
                                     .background(if (!isGridView) MaterialTheme.colorScheme.primary else Color.Transparent)
-                                    .clickable { isGridView = false },
+                                    .clickable { playlistViewType = LibraryViewType.LIST },
                             contentAlignment = Alignment.Center,
                         ) {
                             Icon(
@@ -410,7 +417,7 @@ fun LibraryPlaylistsScreen(
                                     .size(32.dp)
                                     .clip(CircleShape)
                                     .background(if (isGridView) MaterialTheme.colorScheme.primary else Color.Transparent)
-                                    .clickable { isGridView = true },
+                                    .clickable { playlistViewType = LibraryViewType.GRID },
                             contentAlignment = Alignment.Center,
                         ) {
                             Icon(

@@ -393,89 +393,58 @@ fun PlayerMenu(
             onPlayFromSource = { result ->
                 // Non-YT search-result row tapped (JioSaavn / Tidal / Qobuz / Deezer).
                 //
-                // QOBUZ DIRECT PLAYBACK: when the source is Qobuz, we play the
-                // EXACT track the user clicked by encoding the Qobuz trackId into
-                // the mediaId as "qobuz:{trackId}". MusicService's resolver detects
-                // this prefix and resolves directly via QobuzAudioProvider.backend.download
-                // — skipping the title/artist search that previously matched a
-                // different Qobuz track. The MediaMetadata is built from the search
-                // result's title/artist/thumbnail, so the player UI shows the
-                // correct track info.
+                // SOURCE-CHANGE SEMANTICS: picking a search result here is now
+                // treated as a SOURCE CHANGE for the currently-playing song —
+                // not as a "play this other song" action. The current song's
+                // mediaId is PRESERVED (we don't create a new MediaMetadata
+                // with a different id) so the song is NOT registered as a
+                // duplicate in the playback history / "recently listened".
+                // The queue is also preserved (we use setSongSourceOverride,
+                // which uses player.setMediaItems with the same list/index/
+                // position — no playQueue call that would replace the queue).
                 //
-                // For other sources (JioSaavn / Tidal / Deezer), we fall back to
-                // the YouTube-search path: search YTM for title+artist, play via
-                // YouTubeQueue.radio, and pin the source override so the first
-                // resolution attempt goes through the picked source.
+                // For Qobuz specifically: the EXACT Qobuz trackId is persisted
+                // in SongSourceQobuzTrackIdKey (keyed by the current song's
+                // mediaId) so the resolver downloads the exact track the user
+                // clicked — not a bestMatch-by-title search that could pick a
+                // different master / deluxe edition.
                 if (result.source == AudioSourceType.QOBUZ && result.trackId.isNotBlank()) {
-                    val directMediaId = "qobuz:${result.trackId}"
-                    val artists = listOfNotNull(
-                        result.artist.takeIf { it.isNotBlank() }
-                            ?.let { MediaMetadata.Artist(id = null, name = it) },
+                    // Persist the Qobuz trackId AND set the source override
+                    // in one call — setSongSourceOverrideWithQobuzTrackId
+                    // evicts caches, re-resolves through Qobuz using the
+                    // exact trackId, and preserves the queue + position.
+                    onSongSourceChange(
+                        SongSourceOverride.withOverride(songSourceRaw, mediaMetadata.id, result.source),
                     )
-                    val mediaMetadata = MediaMetadata(
-                        id = directMediaId,
-                        title = result.title,
-                        artists = artists,
-                        duration = result.durationMs?.div(1000)?.toInt() ?: 0,
-                        thumbnailUrl = result.thumbnailUrl,
-                    )
-                    val mediaItem = mediaMetadata.toMediaItem()
-                    playerConnection.playQueue(
-                        ListQueue(
-                            title = "Qobuz",
-                            items = listOf(mediaItem),
-                            startIndex = 0,
-                        ),
+                    playerConnection.service.setSongSourceOverrideWithQobuzTrackId(
+                        mediaId = mediaMetadata.id,
+                        source = result.source,
+                        qobuzTrackId = result.trackId,
                     )
                     showSourceDialog = false
-                } else {
-                    // JioSaavn / Tidal / Deezer: search YouTube Music for a matching track.
-                    // (See comment above for why we can't play these directly yet.)
-                    coroutineScope.launch(Dispatchers.IO) {
-                    val query = buildString {
-                        append(result.title)
-                        if (result.artist.isNotBlank()) append(" ").append(result.artist)
-                    }
-                    val ytSong = runCatching {
-                        YouTube.search(query, YouTube.SearchFilter.FILTER_SONG, useAccountContext = false)
-                            .getOrNull()
-                            ?.items
-                            ?.filterIsInstance<SongItem>()
-                            ?.firstOrNull()
-                    }.getOrNull()
-                    if (ytSong == null) {
-                        withContext(Dispatchers.Main) {
-                            android.widget.Toast.makeText(
-                                context,
-                                context.getString(R.string.source_search_play_no_yt_match),
-                                android.widget.Toast.LENGTH_SHORT,
-                            ).show()
-                        }
-                        return@launch
-                    }
-                    // Switch to the main thread for all ExoPlayer-touching calls.
-                    // setSongSourceOverride reads player.currentMediaItem and writes to
-                    // player.setMediaItems — both must run on the player's application
-                    // thread (the main thread, since MusicService creates the ExoPlayer on
-                    // the main looper).
-                    withContext(Dispatchers.Main) {
-                        // Persist the override in DataStore FIRST so the very first
-                        // resolution attempt reads the override from storage and pins
-                        // the picked source.
-                        onSongSourceChange(
-                            SongSourceOverride.withOverride(songSourceRaw, ytSong.id, result.source),
-                        )
-                        // Then apply the override in-memory via the service — this evicts
-                        // caches and re-creates the media item with the new override.
-                        playerConnection.service.setSongSourceOverride(ytSong.id, result.source)
-                        // Finally, play the matched YouTube song. Because the override is
-                        // already set, the playback resolver will pin JioSaavn / Tidal /
-                        // Qobuz / Deezer on the first attempt.
-                        playerConnection.playQueue(YouTubeQueue.radio(ytSong.toMediaMetadata()))
-                        showSourceDialog = false
-                    }
+                } else if (result.source == AudioSourceType.JIOSAAVN ||
+                    result.source == AudioSourceType.TIDAL ||
+                    result.source == AudioSourceType.DEEZER
+                ) {
+                    // JioSaavn / Tidal / Deezer: just set the source override
+                    // on the current mediaId. The existing multi-source
+                    // resolver will search by title+artist for these sources.
+                    // No playQueue, no YouTube search — the queue and the
+                    // song's identity are preserved.
+                    onSongSourceChange(
+                        SongSourceOverride.withOverride(songSourceRaw, mediaMetadata.id, result.source),
+                    )
+                    playerConnection.service.setSongSourceOverride(
+                        mediaId = mediaMetadata.id,
+                        source = result.source,
+                    )
+                    showSourceDialog = false
                 }
-                } // end else (JioSaavn / Tidal / Deezer YouTube-search fallback)
+                // Note: the previous YouTube-search fallback for these sources
+                // has been removed — it was the cause of the duplicate-songs
+                // and queue-disappearing bugs (it changed the mediaId to a
+                // different YouTube video id and called playQueue which
+                // replaced the entire queue).
             },
         )
     }

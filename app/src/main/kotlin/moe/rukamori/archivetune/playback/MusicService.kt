@@ -223,8 +223,10 @@ import moe.rukamori.archivetune.qobuz.QobuzToken
 import moe.rukamori.archivetune.audiosource.AudioSourceConfig
 import moe.rukamori.archivetune.audiosource.DirectStream
 import moe.rukamori.archivetune.audiosource.SongSourceOverride
+import moe.rukamori.archivetune.audiosource.SongSourceQobuzTrackId
 import moe.rukamori.archivetune.audiosource.TitleMatch
 import moe.rukamori.archivetune.constants.SongSourceOverrideKey
+import moe.rukamori.archivetune.constants.SongSourceQobuzTrackIdKey
 import moe.rukamori.archivetune.tidal.TidalAccountManager
 import moe.rukamori.archivetune.tidal.TidalArtworkProvider
 import moe.rukamori.archivetune.tidal.TidalAudioProvider
@@ -8602,29 +8604,6 @@ class MusicService :
 
     /** Builds the shared lookup metadata for [mediaId] from the database / queue metadata. */
     private fun buildSourceQuery(mediaId: String): SourceQuery? {
-        // Detect "qobuz:{trackId}" prefixed mediaId — this is set when the
-        // user picks a specific Qobuz track from the "Play from" source-search
-        // popup. The exact Qobuz trackId is extracted and passed through to
-        // the Qobuz resolver so it downloads the exact track instead of
-        // re-searching by title+artist (which could match a different track).
-        if (mediaId.startsWith("qobuz:")) {
-            val qobuzTrackId = mediaId.removePrefix("qobuz:")
-            val queuedMetadata =
-                currentMediaMetadata.value?.takeIf { it.id == mediaId }
-                    ?: queuedMetadataByMediaId[mediaId]
-            val title = queuedMetadata?.title ?: return null
-            val artists = queuedMetadata?.artists?.map { it.name }.orEmpty()
-            val album = queuedMetadata?.album?.title
-            val durationMs = queuedMetadata?.duration?.takeIf { it > 0 }?.toLong()?.times(1000L)
-            return SourceQuery(
-                mediaId = mediaId,
-                title = title,
-                artists = artists,
-                album = album,
-                durationMs = durationMs,
-                directQobuzTrackId = qobuzTrackId,
-            )
-        }
         val song =
             runCatching {
                 runBlocking(Dispatchers.IO) { database.song(mediaId).first() }
@@ -8649,7 +8628,15 @@ class MusicService :
                 ?.toLong()
                 ?.times(1000L)
                 ?: queuedMetadata?.duration?.takeIf { it > 0 }?.toLong()?.times(1000L)
-        return SourceQuery(mediaId, title, artists, album, durationMs)
+        // Read the per-song Qobuz trackId override (set when the user picked a
+        // specific Qobuz track from the "Play from" source-search popup). When
+        // set, the Qobuz resolver downloads the exact track instead of
+        // re-searching by title+artist.
+        val directQobuzTrackId = SongSourceQobuzTrackId.get(
+            dataStore.get(SongSourceQobuzTrackIdKey, ""),
+            mediaId,
+        )
+        return SourceQuery(mediaId, title, artists, album, durationMs, directQobuzTrackId)
     }
 
     // mediaId -> set of sources known to have this track (passed the metadata match gate during a recent
@@ -8830,6 +8817,49 @@ class MusicService :
         mediaId: String,
         source: AudioSourceType?,
     ) {
+        setSongSourceOverrideInternal(mediaId, source, qobuzTrackId = null)
+    }
+
+    /**
+     * Sets a per-song source override AND persists the chosen Qobuz trackId.
+     * Used when the user picks a specific Qobuz track from the "Play from"
+     * source-search popup — the exact Qobuz trackId is preserved across the
+     * re-resolution so the resolver downloads the exact track (not a
+     * bestMatch-by-title search that could pick a different master / deluxe
+     * edition).
+     *
+     * The mediaId is NOT changed — the song's existing mediaId (typically the
+     * YouTube video id) is preserved, so the song is NOT registered as a
+     * duplicate in the playback history / "recently listened" section. The
+     * queue is also preserved (this calls the same internal implementation
+     * as `setSongSourceOverride`, which uses `player.setMediaItems(allItems,
+     * currentIndex, capturedPositionMs)` to keep the queue intact).
+     */
+    fun setSongSourceOverrideWithQobuzTrackId(
+        mediaId: String,
+        source: AudioSourceType?,
+        qobuzTrackId: String?,
+    ) {
+        setSongSourceOverrideInternal(mediaId, source, qobuzTrackId)
+    }
+
+    private fun setSongSourceOverrideInternal(
+        mediaId: String,
+        source: AudioSourceType?,
+        qobuzTrackId: String?,
+    ) {
+        // Persist the Qobuz trackId (if any) BEFORE triggering re-resolution.
+        runCatching {
+            runBlocking {
+                dataStore.edit { prefs ->
+                    prefs[SongSourceQobuzTrackIdKey] = SongSourceQobuzTrackId.withOverride(
+                        prefs[SongSourceQobuzTrackIdKey],
+                        mediaId,
+                        qobuzTrackId,
+                    )
+                }
+            }
+        }
         runCatching {
             runBlocking {
                 dataStore.edit { prefs ->
@@ -8977,10 +9007,18 @@ class MusicService :
             return null
         }
         // Direct Qobuz track playback: when the user picks a specific Qobuz
-        // track from the "Play from" source-search popup, the mediaId is
-        // encoded as "qobuz:{trackId}". Force the chain to [QOBUZ] and bypass
+        // track from the "Play from" source-search popup, a per-song Qobuz
+        // trackId override is persisted in SongSourceQobuzTrackIdKey. We
+        // detect that here so we can force the chain to [QOBUZ] and bypass
         // the metadata match gate — the user explicitly chose this track.
-        val isDirectQobuzTrack = mediaId.startsWith("qobuz:")
+        // The mediaId is NOT changed (it stays as the song's existing YouTube
+        // id), so the song is not registered as a duplicate in the playback
+        // history.
+        val directQobuzTrackId = SongSourceQobuzTrackId.get(
+            dataStore.get(SongSourceQobuzTrackIdKey, ""),
+            mediaId,
+        )
+        val isDirectQobuzTrack = directQobuzTrackId != null
         // Fast path: serve from the in-memory DirectStream cache if we have a
         // fresh entry. This makes "skip to next" instant when the next song
         // was prefetched (see prefetchNextMediaItemStream).

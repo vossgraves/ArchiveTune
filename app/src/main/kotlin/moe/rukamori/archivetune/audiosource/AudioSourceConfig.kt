@@ -421,3 +421,46 @@ object SongSourceOverride {
         return serialize(map)
     }
 }
+
+/**
+ * Codec for per-song Qobuz trackId overrides. Same CSV shape as
+ * [SongSourceOverride] but maps `songId → qobuzTrackId` instead of source.
+ *
+ * Set when the user picks a specific Qobuz track from the "Play from"
+ * source-search popup. Read by `MusicService.buildSourceQuery` and passed
+ * as `directQobuzTrackId` so `QobuzAudioProvider.resolve` skips the
+ * title/artist search and downloads the exact track.
+ */
+object SongSourceQobuzTrackId {
+    fun parse(raw: String?): Map<String, String> {
+        if (raw.isNullOrBlank()) return emptyMap()
+        val out = LinkedHashMap<String, String>()
+        raw.split(';').forEach { entry ->
+            val idx = entry.indexOf('=')
+            if (idx <= 0) return@forEach
+            val id = entry.substring(0, idx).trim()
+            val trackId = entry.substring(idx + 1).trim()
+            if (id.isNotEmpty() && trackId.isNotEmpty()) out[id] = trackId
+        }
+        return out
+    }
+
+    fun serialize(map: Map<String, String>): String =
+        map.entries.joinToString(";") { "${it.key}=${it.value}" }
+
+    fun get(
+        raw: String?,
+        songId: String,
+    ): String? = parse(raw)[songId]
+
+    /** Returns the updated raw string with [songId] set to [trackId], or cleared when [trackId] is null. */
+    fun withOverride(
+        raw: String?,
+        songId: String,
+        trackId: String?,
+    ): String {
+        val map = LinkedHashMap(parse(raw))
+        if (trackId == null) map.remove(songId) else map[songId] = trackId
+        return serialize(map)
+    }
+}
