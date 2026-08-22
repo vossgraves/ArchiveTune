@@ -354,10 +354,22 @@ fun AppleMusicPlayerContent(
         mutableStateOf(showLyricsPlayerControls)
     }
     var playerControlsVisibilityTick by remember(mediaMetadata.id) { mutableIntStateOf(0) }
-    val autoHideDelayMs = 5_000L
+    val autoHideDelayMs = 4_000L
 
+    // When lyrics or queue opens, show controls for 4 seconds then auto-hide.
+    // This works regardless of the autoHideLyricsPlayerControls preference —
+    // the preference only controls the lyrics-only auto-hide behavior.
     LaunchedEffect(lyricsOpen) {
         if (lyricsOpen) {
+            playerControlsExpanded = true
+            playerControlsVisibilityTick++
+        } else {
+            playerControlsExpanded = true
+        }
+    }
+    // Queue auto-hide: show controls for 4s when queue opens, then hide.
+    LaunchedEffect(queueOpen) {
+        if (queueOpen) {
             playerControlsExpanded = true
             playerControlsVisibilityTick++
         } else {
@@ -374,8 +386,12 @@ fun AppleMusicPlayerContent(
     DisposableEffect(Unit) {
         onDispose { onLyricsVisibilityChange(false) }
     }
-    LaunchedEffect(lyricsOpen, autoHideLyricsPlayerControls, showLyricsPlayerControls, playerControlsVisibilityTick) {
-        if (!lyricsOpen || !showLyricsPlayerControls || !autoHideLyricsPlayerControls) return@LaunchedEffect
+    LaunchedEffect(lyricsOpen, queueOpen, autoHideLyricsPlayerControls, showLyricsPlayerControls, playerControlsVisibilityTick) {
+        // Auto-hide when either lyrics OR queue is open.
+        // For lyrics: respects the showLyricsPlayerControls + autoHideLyricsPlayerControls preferences.
+        // For queue: always auto-hides after the delay (no separate preference).
+        val shouldAutoHide = (lyricsOpen && showLyricsPlayerControls && autoHideLyricsPlayerControls) || queueOpen
+        if (!shouldAutoHide) return@LaunchedEffect
         playerControlsExpanded = true
         delay(autoHideDelayMs)
         playerControlsExpanded = false
@@ -404,11 +420,11 @@ fun AppleMusicPlayerContent(
             canvasVisibleForLyrics = true
         }
     }
-    val pokePlayerControlsVisibility = remember(lyricsOpen, showLyricsPlayerControls, autoHideLyricsPlayerControls) {
+    val pokePlayerControlsVisibility = remember(lyricsOpen, queueOpen, showLyricsPlayerControls, autoHideLyricsPlayerControls) {
         {
-            if (lyricsOpen && showLyricsPlayerControls) {
+            if ((lyricsOpen && showLyricsPlayerControls) || queueOpen) {
                 playerControlsExpanded = true
-                if (autoHideLyricsPlayerControls) playerControlsVisibilityTick++
+                playerControlsVisibilityTick++
             }
         }
     }
@@ -946,7 +962,9 @@ fun AppleMusicPlayerContent(
                             .fillMaxHeight(),
                 )
                 AnimatedVisibility(
-                    visible = !queueOpen && !lyricsOpen,
+                    visible = (!lyricsOpen && !queueOpen) ||
+                        (queueOpen && playerControlsExpanded) ||
+                        (lyricsOpen && showLyricsPlayerControls && (!autoHideLyricsPlayerControls || playerControlsExpanded)),
                     enter = fadeIn(tween(120)),
                     exit = fadeOut(tween(100)),
                     modifier = Modifier.weight(1f).fillMaxHeight(),
@@ -1411,7 +1429,9 @@ fun AppleMusicPlayerContent(
                 // animations are reduced so the auto-hide/show cycle doesn't compete with
                 // the karaoke lyrics view for frame budget on lower-end devices.
                 AnimatedVisibility(
-                    visible = (!lyricsOpen || (showLyricsPlayerControls && (!autoHideLyricsPlayerControls || playerControlsExpanded))) && !queueOpen,
+                    visible = (!lyricsOpen && !queueOpen) ||
+                        (lyricsOpen && showLyricsPlayerControls && (!autoHideLyricsPlayerControls || playerControlsExpanded)) ||
+                        (queueOpen && playerControlsExpanded),
                     enter = if (animationsDisabled) {
                         fadeIn(tween(120))
                     } else {
