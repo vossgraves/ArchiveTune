@@ -393,31 +393,32 @@ fun PlayerMenu(
             onPlayFromSource = { result ->
                 // Non-YT search-result row tapped (JioSaavn / Tidal / Qobuz / Deezer).
                 //
-                // SOURCE-CHANGE SEMANTICS: picking a search result here is now
-                // treated as a SOURCE CHANGE for the currently-playing song —
-                // not as a "play this other song" action. The current song's
-                // mediaId is PRESERVED (we don't create a new MediaMetadata
-                // with a different id) so the song is NOT registered as a
-                // duplicate in the playback history / "recently listened".
-                // The queue is also preserved (we use setSongSourceOverride,
-                // which uses player.setMediaItems with the same list/index/
-                // position — no playQueue call that would replace the queue).
+                // REPLACE + PRESERVE: the track CHANGES to the picked
+                // search result (new audio + new metadata), but the queue
+                // is PRESERVED (only the current item is swapped, not the
+                // entire queue). The old mediaId's most recent history
+                // Event is deleted to avoid a duplicate in "recently
+                // listened".
                 //
-                // For Qobuz specifically: the EXACT Qobuz trackId is persisted
-                // in SongSourceQobuzTrackIdKey (keyed by the current song's
-                // mediaId) so the resolver downloads the exact track the user
-                // clicked — not a bestMatch-by-title search that could pick a
-                // different master / deluxe edition.
+                // For Qobuz: the EXACT Qobuz trackId is persisted so the
+                // resolver downloads the exact track (not a bestMatch-by-
+                // title search that could pick a different master / deluxe
+                // edition).
                 if (result.source == AudioSourceType.QOBUZ && result.trackId.isNotBlank()) {
-                    // Persist the Qobuz trackId AND set the source override
-                    // in one call — setSongSourceOverrideWithQobuzTrackId
-                    // evicts caches, re-resolves through Qobuz using the
-                    // exact trackId, and preserves the queue + position.
-                    onSongSourceChange(
-                        SongSourceOverride.withOverride(songSourceRaw, mediaMetadata.id, result.source),
+                    val directMediaId = "qobuz:${result.trackId}"
+                    val artists = listOfNotNull(
+                        result.artist.takeIf { it.isNotBlank() }
+                            ?.let { MediaMetadata.Artist(id = null, name = it) },
                     )
-                    playerConnection.service.setSongSourceOverrideWithQobuzTrackId(
-                        mediaId = mediaMetadata.id,
+                    val newMediaMetadata = MediaMetadata(
+                        id = directMediaId,
+                        title = result.title,
+                        artists = artists,
+                        duration = result.durationMs?.div(1000)?.toInt() ?: 0,
+                        thumbnailUrl = result.thumbnailUrl,
+                    )
+                    playerConnection.service.replaceCurrentMediaItemWithSourceTrack(
+                        newMediaItem = newMediaMetadata.toMediaItem(),
                         source = result.source,
                         qobuzTrackId = result.trackId,
                     )
@@ -440,11 +441,6 @@ fun PlayerMenu(
                     )
                     showSourceDialog = false
                 }
-                // Note: the previous YouTube-search fallback for these sources
-                // has been removed — it was the cause of the duplicate-songs
-                // and queue-disappearing bugs (it changed the mediaId to a
-                // different YouTube video id and called playQueue which
-                // replaced the entire queue).
             },
         )
     }

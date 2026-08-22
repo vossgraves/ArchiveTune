@@ -1486,6 +1486,16 @@ interface DatabaseDao {
     @Query("DELETE FROM event WHERE id IN (:eventIds)")
     fun deleteEventsByIds(eventIds: List<Long>)
 
+    /**
+     * Deletes the most recent Event row for [songId]. Used when the user
+     * switches the source of a song via the "Play from" search popup —
+     * the old mediaId's most recent history entry is removed so the user
+     * doesn't see a duplicate in "recently listened" (the new source's
+     * track entry takes its place at the top).
+     */
+    @Query("DELETE FROM event WHERE songId = :songId AND id = (SELECT MAX(id) FROM event WHERE songId = :songId)")
+    suspend fun deleteMostRecentEventForSong(songId: String)
+
     @Transaction
     @Query("SELECT * FROM search_history WHERE `query` LIKE :query || '%' ORDER BY id DESC")
     fun searchHistory(query: String = ""): Flow<List<SearchHistory>>
