@@ -13,14 +13,22 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
 import android.widget.Toast
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.RepeatableSpec
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -60,11 +68,11 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SearchBar
+import androidx.compose.material3.SearchBarDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -144,12 +152,36 @@ import javax.inject.Inject
 private val DashboardAccentColor = Color(0xFFBE123C)
 
 /**
- * Centralised color tokens for the Last.fm dashboard. Both light and dark
- * modes render the SAME component tree and the SAME composables — only the
- * [DashboardTheme] instance they read from differs. Tokens are intentionally
- * hardcoded (rather than derived from `MaterialTheme.colorScheme`) so the
- * dashboard's warm-light / charcoal-dark palette is independent of the global
- * app palette, matching the LastWave-native reference.
+ * Centralised color tokens for the Last.fm dashboard.
+ *
+ * Tokens are now DERIVED from [MaterialTheme.colorScheme] so the dashboard
+ * participates in the user's global dynamic / app-color theme — in BOTH
+ * light AND dark modes. Previously these were hardcoded literals, which:
+ *   1. Caused "two shades of dark" in dark mode (5 different dark grays
+ *      for the same surface depending on elevation).
+ *   2. Made the dashboard's accent (warm brown #9D6B63 in dark, dusty red
+ *      #BE123C in light) NOT reflect the user's chosen app color or the
+ *      Material You dynamic palette — only light mode happened to look
+ *      passable because the warm cream/pink palette is closer to a
+ *      Material 3 light scheme.
+ *
+ * The new implementation maps each token to a `MaterialTheme.colorScheme.*`
+ * surface/elevation/variant slot, so:
+ *   - `pageBackground` = `colorScheme.background` (same shade as the rest
+ *     of the app — no "second shade of dark").
+ *   - `cardBackground` / `topAppBarContainer` / `dropdownBackground` =
+ *     `colorScheme.surfaceContainer` (single elevated shade, no mismatch
+ *     between TopAppBar and HeroCard).
+ *   - `pillBackground` / `rankingBadge` / `playCountPill` /
+ *     `artworkPlaceholder` / `filterPill` = `colorScheme.surfaceContainerHigh`
+ *     (consistent elevated pills).
+ *   - `accent` = `colorScheme.primary` (follows the user's app color or
+ *     Material You dynamic palette).
+ *   - Text colors = `onSurface` / `onSurfaceVariant`.
+ *
+ * The data class is preserved (as `DashboardThemeSnapshot`) for binary
+ * compatibility with all the `theme.*` read sites in the file — the
+ * signature is unchanged.
  */
 private data class DashboardTheme(
     val pageBackground: Color,
@@ -203,119 +235,97 @@ private data class DashboardTheme(
     val dividerColor: Color,
 )
 
-private val DarkDashboardTheme = DashboardTheme(
-    pageBackground = Color(0xFF0F0F0F),
-    cardBackground = Color(0xFF1C1C1E),
-    pillBackground = Color(0xFF2A2A2C),
-    accent = Color(0xFF9D6B63),
-    nowPlayingRowBackground = Color(0xFF9D6B63),
-    textPrimary = Color.White,
-    textSecondary = Color(0xFFA0A0A0),
-    statsHeroInner = Color(0xFF9D6B63),
-    statsHeroNumberText = Color.White,
-    statsHeroLabelText = Color.White.copy(alpha = 0.75f),
-    statsPillBackground = Color(0xFF28282A),
-    statsPillValueText = Color.White,
-    statsPillLabelText = Color(0xFFA0A0A0),
-    heroArrowCircleBackground = Color.White,
-    heroArrowIconTint = Color(0xFF9D6B63),
-    rankingBadgeBackground = Color(0xFF2A2A2C),
-    rankingBadgeText = Color(0xFF9D6B63),
-    playCountPillBackground = Color(0xFF2A2A2C),
-    playCountPillText = Color(0xFFA0A0A0),
-    nowPlayingPillBackground = Color(0xFFE8D5D2),
-    nowPlayingPillText = Color(0xFF3A3A3C),
-    nowPlayingDotColor = Color(0xFF3A3A3C),
-    nowPlayingTrackTitle = Color.White,
-    nowPlayingTrackArtist = Color.White.copy(alpha = 0.8f),
-    artworkPlaceholderBackground = Color(0xFF2A2A2C),
-    artworkPlaceholderTint = Color(0xFFA0A0A0),
-    filterPillBackground = Color(0xFF2A2A2C),
-    filterPillText = Color.White,
-    filterPillIconTint = Color(0xFFA0A0A0),
-    dropdownBackground = Color(0xFF1C1C1E),
-    dropdownActiveItemBackground = Color(0xFF9D6B63).copy(alpha = 0.22f),
-    dropdownActiveItemText = Color(0xFFC9A8A2),
-    dropdownActiveItemIconTint = Color(0xFFC9A8A2),
-    dropdownInactiveItemText = Color.White,
-    dropdownInactiveItemIconTint = Color(0xFFA0A0A0),
-    dropdownCheckTint = Color(0xFFC9A8A2),
-    overflowIconTint = Color.White,
-    topAppBarContainer = Color(0xFF1A1A1A),
-    topAppBarIconTint = Color.White,
-    topAppBarTitleText = Color.White,
-    fallbackCardBackground = Color(0xFF1C1C1E),
-    fallbackAvatarBackground = Color(0xFF2A2A2C),
-    fallbackAvatarTint = Color(0xFF9D6B63),
-    signInAvatarBackground = Color(0xFF2A2A2C),
-    signInAvatarTint = Color(0xFF9D6B63),
-    signInButtonText = Color.White,
-    signInButtonContainer = Color(0xFF9D6B63),
-    emptyHintText = Color(0xFFA0A0A0),
-    dividerColor = Color.White.copy(alpha = 0.08f),
-)
-
-private val LightDashboardTheme = DashboardTheme(
-    pageBackground = Color(0xFFFFF8F5),
-    cardBackground = Color(0xFFFFF0ED),
-    pillBackground = Color(0xFFFCE4E6),
-    accent = Color(0xFFBE123C),
-    nowPlayingRowBackground = Color(0xFFFCE4E6),
-    textPrimary = Color(0xFF1F1416),
-    textSecondary = Color(0xFF8B6B6E),
-    statsHeroInner = Color(0xFFFCE4E6),
-    statsHeroNumberText = Color(0xFFBE123C),
-    statsHeroLabelText = Color(0xFF8B6B6E),
-    statsPillBackground = Color(0xFFFFE4E6),
-    statsPillValueText = Color(0xFF1F1416),
-    statsPillLabelText = Color(0xFF8B6B6E),
-    heroArrowCircleBackground = Color(0xFFBE123C),
-    heroArrowIconTint = Color.White,
-    rankingBadgeBackground = Color(0xFFFCE4E6),
-    rankingBadgeText = Color(0xFFBE123C),
-    playCountPillBackground = Color(0xFFFCE4E6),
-    playCountPillText = Color(0xFF8B6B6E),
-    nowPlayingPillBackground = Color(0xFFBE123C),
-    nowPlayingPillText = Color.White,
-    nowPlayingDotColor = Color.White,
-    nowPlayingTrackTitle = Color(0xFF1F1416),
-    nowPlayingTrackArtist = Color(0xFF8B6B6E),
-    artworkPlaceholderBackground = Color(0xFFFCE4E6),
-    artworkPlaceholderTint = Color(0xFF8B6B6E),
-    filterPillBackground = Color(0xFFFCE4E6),
-    filterPillText = Color(0xFF1F1416),
-    filterPillIconTint = Color(0xFF8B6B6E),
-    dropdownBackground = Color(0xFFFFF0ED),
-    dropdownActiveItemBackground = Color(0xFFBE123C).copy(alpha = 0.14f),
-    dropdownActiveItemText = Color(0xFFBE123C),
-    dropdownActiveItemIconTint = Color(0xFFBE123C),
-    dropdownInactiveItemText = Color(0xFF1F1416),
-    dropdownInactiveItemIconTint = Color(0xFF8B6B6E),
-    dropdownCheckTint = Color(0xFFBE123C),
-    overflowIconTint = Color(0xFF1F1416),
-    topAppBarContainer = Color(0xFFFFF8F5),
-    topAppBarIconTint = Color(0xFF1F1416),
-    topAppBarTitleText = Color(0xFF1F1416),
-    fallbackCardBackground = Color(0xFFFFF0ED),
-    fallbackAvatarBackground = Color(0xFFFCE4E6),
-    fallbackAvatarTint = Color(0xFFBE123C),
-    signInAvatarBackground = Color(0xFFFCE4E6),
-    signInAvatarTint = Color(0xFFBE123C),
-    signInButtonText = Color.White,
-    signInButtonContainer = Color(0xFFBE123C),
-    emptyHintText = Color(0xFF8B6B6E),
-    dividerColor = Color(0xFF1F1416).copy(alpha = 0.08f),
-)
-
 @Composable
 private fun isDashboardDarkTheme(): Boolean {
     val darkMode by rememberEnumPreference(DarkModeKey, defaultValue = DarkMode.AUTO)
     return if (darkMode == DarkMode.AUTO) isSystemInDarkTheme() else darkMode == DarkMode.ON
 }
 
+/**
+ * Builds a [DashboardTheme] from the current [MaterialTheme.colorScheme].
+ *
+ * In dark mode, the surface stack is unified (background → surfaceContainer →
+ * surfaceContainerHigh), so the dashboard no longer shows multiple distinct
+ * dark shades. The accent / pill colors are derived from `primary` /
+ * `primaryContainer` / `secondaryContainer`, so the dashboard participates
+ * in Material You dynamic theming just like every other screen in the app.
+ */
 @Composable
-private fun dashboardTheme(): DashboardTheme =
-    if (isDashboardDarkTheme()) DarkDashboardTheme else LightDashboardTheme
+private fun dashboardTheme(): DashboardTheme {
+    val cs = MaterialTheme.colorScheme
+    val isDark = isDashboardDarkTheme()
+    // Surface tokens — the single source of truth for "what shade is this
+    // surface". Using surfaceContainer* gives us the standard Material 3
+    // elevation stack (background → surface → surfaceContainer →
+    // surfaceContainerHigh → surfaceContainerHighest), so cards/pills
+    // naturally appear elevated over the page background without the
+    // five-shades-of-dark mismatch the user reported.
+    val pageBackground = cs.background
+    val cardBackground = cs.surfaceContainer
+    val elevatedSurface = cs.surfaceContainerHigh
+    val accent = cs.primary
+    val onAccent = cs.onPrimary
+    val accentContainer = cs.primaryContainer
+    val onAccentContainer = cs.onPrimaryContainer
+    val secondaryContainer = cs.secondaryContainer
+    val onSecondaryContainer = cs.onSecondaryContainer
+
+    // The now-playing pulse row uses a translucent accent so the user can
+    // tell it's a "now playing" highlight without losing text contrast.
+    val nowPlayingRowBg = accent.copy(alpha = if (isDark) 0.16f else 0.12f)
+
+    return DashboardTheme(
+        pageBackground = pageBackground,
+        cardBackground = cardBackground,
+        pillBackground = elevatedSurface,
+        accent = accent,
+        nowPlayingRowBackground = nowPlayingRowBg,
+        textPrimary = cs.onBackground,
+        textSecondary = cs.onSurfaceVariant,
+        statsHeroInner = accentContainer,
+        statsHeroNumberText = onAccentContainer,
+        statsHeroLabelText = onAccentContainer.copy(alpha = 0.75f),
+        statsPillBackground = elevatedSurface,
+        statsPillValueText = cs.onSurface,
+        statsPillLabelText = cs.onSurfaceVariant,
+        heroArrowCircleBackground = accent,
+        heroArrowIconTint = onAccent,
+        rankingBadgeBackground = elevatedSurface,
+        rankingBadgeText = accent,
+        playCountPillBackground = elevatedSurface,
+        playCountPillText = cs.onSurfaceVariant,
+        nowPlayingPillBackground = accent,
+        nowPlayingPillText = onAccent,
+        nowPlayingDotColor = onAccent,
+        nowPlayingTrackTitle = cs.onSurface,
+        nowPlayingTrackArtist = cs.onSurface.copy(alpha = 0.8f),
+        artworkPlaceholderBackground = elevatedSurface,
+        artworkPlaceholderTint = cs.onSurfaceVariant,
+        filterPillBackground = elevatedSurface,
+        filterPillText = cs.onSurface,
+        filterPillIconTint = cs.onSurfaceVariant,
+        dropdownBackground = cardBackground,
+        dropdownActiveItemBackground = accent.copy(alpha = if (isDark) 0.22f else 0.14f),
+        dropdownActiveItemText = accent,
+        dropdownActiveItemIconTint = accent,
+        dropdownInactiveItemText = cs.onSurface,
+        dropdownInactiveItemIconTint = cs.onSurfaceVariant,
+        dropdownCheckTint = accent,
+        overflowIconTint = cs.onSurface,
+        topAppBarContainer = pageBackground,
+        topAppBarIconTint = cs.onSurface,
+        topAppBarTitleText = cs.onSurface,
+        fallbackCardBackground = cardBackground,
+        fallbackAvatarBackground = secondaryContainer,
+        fallbackAvatarTint = onSecondaryContainer,
+        signInAvatarBackground = secondaryContainer,
+        signInAvatarTint = onSecondaryContainer,
+        signInButtonText = onAccent,
+        signInButtonContainer = accent,
+        emptyHintText = cs.onSurfaceVariant,
+        dividerColor = cs.onSurface.copy(alpha = 0.08f),
+    )
+}
 
 private enum class LastFmFilter { RECENT, TOP_TRACKS, TOP_ARTISTS, TOP_ALBUMS }
 
@@ -1073,63 +1083,82 @@ private fun LastFmDashboardHeader(
                     tint = theme.topAppBarIconTint,
                 )
             }
-            if (searchVisible) {
-                // Inline search field replaces the title while the overlay is
-                // open. Same weight(1f) slot as the title so the action icons
-                // on the right stay anchored. Tinted to match the header's
-                // icon color so the field reads as part of the bar.
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = onSearchQueryChange,
-                    singleLine = true,
-                    placeholder = { Text(stringResource(R.string.lastfm_search_placeholder)) },
-                    leadingIcon = {
-                        Icon(
-                            painter = painterResource(R.drawable.solar_magnifer_linear),
-                            contentDescription = null,
-                            tint = theme.topAppBarIconTint,
-                        )
-                    },
-                    trailingIcon = {
-                        AppIconButton(
-                            onClick = onToggleSearch,
-                            onLongClick = {},
-                        ) {
-                            Icon(
-                                painter = painterResource(R.drawable.solar_close_circle_linear),
-                                contentDescription = stringResource(R.string.clear_search),
-                                tint = theme.topAppBarIconTint,
+            // The "Last.fm" wordmark and the inline search field swap with a
+            // fluid spring cross-fade, mirroring the NewReleaseScreen's top
+            // bar search animation. The user reported the previous instant
+            // `if (searchVisible) OutlinedTextField else Text` swap felt
+            // abrupt and the OutlinedTextField looked "extremely basic and
+            // bad" — Material3's SearchBar pill + AnimatedContent gives the
+            // same polished feel as the New Releases page.
+            AnimatedContent(
+                targetState = searchVisible,
+                transitionSpec = {
+                    (fadeIn(spring(stiffness = Spring.StiffnessMediumLow)) +
+                        slideInVertically(initialOffsetY = { it / 8 }) togetherWith
+                        fadeOut(spring(stiffness = Spring.StiffnessMediumLow)) +
+                        slideOutVertically(targetOffsetY = -it / 8))
+                },
+                label = "lastfm_header_search_swap",
+            ) { searching ->
+                if (searching) {
+                    // Material3 SearchBar with the default pill shape.
+                    // Leading icon = back arrow (dismiss search + clear
+                    // query); trailing icon = close X (clear query only).
+                    SearchBar(
+                        inputField = {
+                            SearchBarDefaults.InputField(
+                                query = searchQuery,
+                                onQueryChange = onSearchQueryChange,
+                                onSearch = { /* no-op — search is live-filtering */ },
+                                expanded = false,
+                                onExpandedChange = {},
+                                placeholder = {
+                                    Text(stringResource(R.string.lastfm_search_placeholder))
+                                },
+                                leadingIcon = {
+                                    IconButton(onClick = onToggleSearch) {
+                                        Icon(
+                                            painter = painterResource(R.drawable.solar_arrow_left_linear),
+                                            contentDescription = stringResource(R.string.back_button_desc),
+                                            tint = theme.topAppBarIconTint,
+                                        )
+                                    }
+                                },
+                                trailingIcon = if (searchQuery.isNotEmpty()) {
+                                    {
+                                        IconButton(onClick = { onSearchQueryChange("") }) {
+                                            Icon(
+                                                painter = painterResource(R.drawable.solar_close_circle_linear),
+                                                contentDescription = stringResource(R.string.clear_search),
+                                                tint = theme.topAppBarIconTint,
+                                            )
+                                        }
+                                    }
+                                } else null,
                             )
-                        }
-                    },
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(horizontal = 4.dp),
-                    colors = TextFieldDefaults.colors(
-                        focusedContainerColor = Color.Transparent,
-                        unfocusedContainerColor = Color.Transparent,
-                        focusedTextColor = theme.topAppBarTitleText,
-                        unfocusedTextColor = theme.topAppBarTitleText,
-                        cursorColor = theme.accent,
-                        focusedIndicatorColor = theme.accent,
-                        unfocusedIndicatorColor = theme.topAppBarIconTint.copy(alpha = 0.4f),
-                    ),
-                )
-            } else {
-                // Large "Last.fm" wordmark on the left, matching the
-                // LastWave-native HomeScreen header. headlineMedium gives the
-                // prominent display size the reference screenshot uses (the
-                // previous titleLarge read as a regular app-bar title rather
-                // than the brand wordmark).
-                Text(
-                    text = "Last.fm",
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = theme.topAppBarTitleText,
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(start = 8.dp),
-                )
+                        },
+                        expanded = false,
+                        onExpandedChange = {},
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(horizontal = 4.dp),
+                    ) {}
+                } else {
+                    // Large "Last.fm" wordmark on the left, matching the
+                    // LastWave-native HomeScreen header. headlineMedium gives the
+                    // prominent display size the reference screenshot uses (the
+                    // previous titleLarge read as a regular app-bar title rather
+                    // than the brand wordmark).
+                    Text(
+                        text = "Last.fm",
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = theme.topAppBarTitleText,
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(start = 8.dp),
+                    )
+                }
             }
             // Refresh icon rotates while a fetch is in flight, same as the
             // previous LargeFlexibleTopAppBar implementation — just moved into
@@ -2511,7 +2540,13 @@ private suspend fun resolveYtThumbnail(title: String, artist: String?): String? 
     val first = findFirstSongItem(searchResult) ?: return null
     val videoId = first.id
     return if (videoId.length == 11) {
-        buildYTThumbnailUrl(videoId, YTThumbQuality.HQ)
+        // Use HQ720 (1280x720 16:9) instead of HQ (480x360 4:3).
+        // YouTube's hqdefault.jpg has 45px black bars baked in top/bottom
+        // (a 4:3 frame surrounding a 16:9 video), which causes the
+        // "cropped thumbnail with black bars on top/bottom" symptom in
+        // the dashboard. hq720 is a clean 16:9 image — ContentScale.Crop
+        // then cleanly crops the sides without letterboxing.
+        buildYTThumbnailUrl(videoId, YTThumbQuality.HQ720)
     } else {
         first.thumbnail.takeIf(String::isNotBlank)
     }

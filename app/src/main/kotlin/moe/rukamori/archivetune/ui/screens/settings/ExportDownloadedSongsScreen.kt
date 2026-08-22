@@ -199,6 +199,13 @@ fun ExportDownloadedSongsScreen(navController: NavController) {
                         loop@ for (row in toExport) {
                             val resolved = resolveSpansWithSource(cache, row.songId) ?: run { failed++; continue@loop }
                             val spans = resolved.spans
+                            // Reject empty / partial spans before attempting any tagging
+                            // or export — exporting a 0-byte file is what causes the
+                            // "appears downloaded but won't play back" symptom when the
+                            // user later imports the file into another player.
+                            if (spans.isEmpty()) { failed++; continue@loop }
+                            val totalSpanBytes = spans.sumOf { it.length }
+                            if (totalSpanBytes <= 0L) { failed++; continue@loop }
                             val detectedExt = detectAudioExtensionFromSpans(spans)
                             // Skip legacy WebM/Opus caches entirely.
                             //

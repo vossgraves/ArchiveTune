@@ -307,23 +307,46 @@ class DownloadUtil
                     ),
             ) { dataSpec ->
                 val mediaId = dataSpec.key ?: error("No media id")
-                val length = if (dataSpec.length >= 0) dataSpec.length else 1
-                if (playerCache.isCached(mediaId, dataSpec.position, length)) {
-                    return@Factory dataSpec
-                }
-                // Check source-specific player-cache keys (Qobuz, Tidal, Deezer) so that
-                // downloading a song that was streamed from an external lossless
-                // source saves the actual lossless data instead of re-downloading
-                // from YouTube Music. The keys match MusicService.sourceCacheKey().
-                // The chained [playerCacheDownloadUpstreamFactory] reads these source-specific
-                // keys directly from playerCache — no YouTube URL resolution is needed when the
-                // lossless bytes are already cached.
-                for (sourcePrefix in listOf("qobuz:", "tidal:", "deezer:")) {
-                    val sourceKey = "$sourcePrefix$mediaId"
-                    if (playerCache.isCached(sourceKey, dataSpec.position, length)) {
-                        return@Factory dataSpec.buildUpon().setKey(sourceKey).build()
+                // Don't short-circuit on a 1-byte cache — Media3 opens downloads
+                // with `dataSpec.length == C.LENGTH_UNSET`, and clamping that
+                // to `1` here means even a single cached byte (e.g. from a
+                // one-second playback preview) makes the resolver return the
+                // bare mediaId dataSpec, which downstream tries to open as
+                // `Uri.parse("dJth8oW7CAQ")` (a bare YouTube ID, not a URL) →
+                // Malformed URL → STATE_FAILED.
+                // Instead, sum the actual cached spans and compare against
+                // FormatEntity.contentLength — only treat the cache as
+                // complete when we actually have the full file.
+                val expectedLength = database.getSongByIdBlocking(mediaId)?.format?.contentLength ?: 0L
+                if (expectedLength > 0L) {
+                    val cachedBytes = runCatching {
+                        playerCache.getCachedSpans(mediaId).sumOf { it.length }
+                    }.getOrDefault(0L)
+                    if (cachedBytes >= expectedLength) {
+                        return@Factory dataSpec
                     }
                 }
+                // Same check for source-prefixed cache keys — only return
+                // when we actually have the full file, not on partial cache.
+                for (sourcePrefix in listOf("qobuz:", "tidal:", "deezer:")) {
+                    val sourceKey = "$sourcePrefix$mediaId"
+                    val sourceExpected = expectedLength // same expected length across sources
+                    if (sourceExpected > 0L) {
+                        val cachedBytes = runCatching {
+                            playerCache.getCachedSpans(sourceKey).sumOf { it.length }
+                        }.getOrDefault(0L)
+                        if (cachedBytes >= sourceExpected) {
+                            return@Factory dataSpec.buildUpon().setKey(sourceKey).build()
+                        }
+                    }
+                }
+                // Fallback: if we have no expected length info at all, do a
+                // bounded check that requires the WHOLE dataSpec.length to be
+                // cached (only meaningful when dataSpec.length is set).
+                if (dataSpec.length >= 0 && playerCache.isCached(mediaId, dataSpec.position, dataSpec.length)) {
+                    return@Factory dataSpec
+                }
+                // No usable cache — proceed to resolve a fresh URL.
                 val lowDataModeActive = context.isLowDataModeActive()
                 if (!lowDataModeActive) {
                     resolvePreferredDownloadDataSpec(dataSpec, mediaId)?.let { return@Factory it }
@@ -519,17 +542,31 @@ class DownloadUtil
             // Fast path: bytes already cached under any source-prefixed key —
             // no work to do. The DownloadManager will pick them up via the
             // resolver in [youtubeDataSourceFactory].
+            //
+            // IMPORTANT: when FormatEntity.contentLength is unknown (0L) we
+            // must NOT treat any non-empty cache as complete. A previous
+            // attempt to play the song might have written only the first
+            // few seconds to playerCache, and returning that key here would
+            // cause the DownloadManager to copy partial bytes to downloadCache
+            // and mark STATE_COMPLETED — the user then sees "downloaded" but
+            // the file won't play back (parser exception).
+            // When expected is unknown, we fall through to the resolver and
+            // fetch a fresh copy, which writes the authoritative contentLength
+            // to FormatEntity for next time.
             for (key in listOf("qobuz:$mediaId", "tidal:$mediaId", "deezer:$mediaId", mediaId)) {
                 val spans = runCatching { playerCache.getCachedSpans(key) }.getOrNull().orEmpty()
                 if (spans.isNotEmpty()) {
-                    // Verify the cached spans actually cover the whole file —
-                    // a partial cache (e.g. only the first 30 s of playback)
-                    // would cause a corrupted export. We use contentLength
-                    // from FormatEntity as the expected total.
                     val expected = database.getSongByIdBlocking(mediaId)?.format?.contentLength ?: 0L
                     val cachedBytes = spans.sumOf { it.length }
-                    if (expected <= 0L || cachedBytes >= expected) {
+                    if (expected > 0L && cachedBytes >= expected) {
                         return key
+                    }
+                    // If expected is unknown OR cached < expected, evict the
+                    // partial spans so we fetch cleanly below.
+                    if (expected <= 0L || cachedBytes < expected) {
+                        runCatching {
+                            spans.forEach { playerCache.removeSpan(key, it.position) }
+                        }
                     }
                 }
             }
