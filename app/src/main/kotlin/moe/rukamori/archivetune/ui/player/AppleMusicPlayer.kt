@@ -388,10 +388,11 @@ fun AppleMusicPlayerContent(
     }
     LaunchedEffect(lyricsOpen, queueOpen, autoHideLyricsPlayerControls, showLyricsPlayerControls, playerControlsVisibilityTick) {
         // Auto-hide when either lyrics OR queue is open.
-        // For lyrics: respects the showLyricsPlayerControls + autoHideLyricsPlayerControls preferences.
-        // For queue: always auto-hides after the delay (no separate preference).
-        val shouldAutoHide = (lyricsOpen && showLyricsPlayerControls && autoHideLyricsPlayerControls) || queueOpen
-        if (!shouldAutoHide) return@LaunchedEffect
+        // ALWAYS show controls for 4 seconds first, then hide — regardless
+        // of the autoHideLyricsPlayerControls preference. The preference
+        // only controls whether controls should reappear on tap after hiding.
+        if (!lyricsOpen && !queueOpen) return@LaunchedEffect
+        if (lyricsOpen && !showLyricsPlayerControls) return@LaunchedEffect
         playerControlsExpanded = true
         delay(autoHideDelayMs)
         playerControlsExpanded = false
@@ -964,7 +965,7 @@ fun AppleMusicPlayerContent(
                 AnimatedVisibility(
                     visible = (!lyricsOpen && !queueOpen) ||
                         (queueOpen && playerControlsExpanded) ||
-                        (lyricsOpen && showLyricsPlayerControls && (!autoHideLyricsPlayerControls || playerControlsExpanded)),
+                        (lyricsOpen && showLyricsPlayerControls && playerControlsExpanded),
                     enter = fadeIn(tween(120)),
                     exit = fadeOut(tween(100)),
                     modifier = Modifier.weight(1f).fillMaxHeight(),
@@ -1430,7 +1431,7 @@ fun AppleMusicPlayerContent(
                 // the karaoke lyrics view for frame budget on lower-end devices.
                 AnimatedVisibility(
                     visible = (!lyricsOpen && !queueOpen) ||
-                        (lyricsOpen && showLyricsPlayerControls && (!autoHideLyricsPlayerControls || playerControlsExpanded)) ||
+                        (lyricsOpen && showLyricsPlayerControls && playerControlsExpanded) ||
                         (queueOpen && playerControlsExpanded),
                     enter = if (animationsDisabled) {
                         fadeIn(tween(120))
