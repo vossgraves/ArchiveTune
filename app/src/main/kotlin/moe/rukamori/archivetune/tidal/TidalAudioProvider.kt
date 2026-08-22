@@ -417,6 +417,7 @@ object TidalAudioProvider {
         val album: String?,
         val isrc: String?,
         val durationMs: Long?,
+        val thumbnailUrl: String? = null,
     )
 
     open class TidalAudioResolutionException(message: String, cause: Throwable? = null) : Exception(message, cause)
@@ -777,6 +778,13 @@ object TidalAudioProvider {
         findCandidateTracks(query)
             .take(limit.coerceAtLeast(1))
             .map { track ->
+                // Build Tidal cover art URL from albumCoverId.
+                // Tidal's image URL format: https://resources.tidal.com/images/{id}/{w}x{h}.jpg
+                // where {id} is the coverId with hyphens instead of slashes.
+                val thumbUrl = track.albumCoverId?.let { coverId ->
+                    val normalized = coverId.replace("-", "/")
+                    "https://resources.tidal.com/images/$normalized/320x320.jpg"
+                }
                 CandidateMetadata(
                     trackId = track.trackId,
                     title = track.title,
@@ -784,6 +792,7 @@ object TidalAudioProvider {
                     album = track.album,
                     isrc = track.isrc,
                     durationMs = track.durationMs,
+                    thumbnailUrl = thumbUrl,
                 )
             }
 

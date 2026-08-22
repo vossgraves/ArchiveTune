@@ -347,18 +347,13 @@ fun AppleMusicPlayerContent(
         lyricsOpen = false
     }
 
-    // The same lyrics-control preferences are used by the standalone lyrics sheet. Keeping the
-    // policy here avoids a second hard-coded timer in Apple Music style and lets users restore the
-    // controls after a tap without restarting playback.
-    var playerControlsExpanded by remember(mediaMetadata.id, showLyricsPlayerControls) {
-        mutableStateOf(showLyricsPlayerControls)
-    }
+    // Copied from main branch: simple auto-hide that always shows controls
+    // for 4 seconds when lyrics or queue opens, then hides them.
+    // No preference checks — the controls ALWAYS show first, then auto-hide.
+    var playerControlsExpanded by remember(mediaMetadata.id) { mutableStateOf(true) }
     var playerControlsVisibilityTick by remember(mediaMetadata.id) { mutableIntStateOf(0) }
     val autoHideDelayMs = 4_000L
 
-    // When lyrics or queue opens, show controls for 4 seconds then auto-hide.
-    // This works regardless of the autoHideLyricsPlayerControls preference —
-    // the preference only controls the lyrics-only auto-hide behavior.
     LaunchedEffect(lyricsOpen) {
         if (lyricsOpen) {
             playerControlsExpanded = true
@@ -367,7 +362,6 @@ fun AppleMusicPlayerContent(
             playerControlsExpanded = true
         }
     }
-    // Queue auto-hide: show controls for 4s when queue opens, then hide.
     LaunchedEffect(queueOpen) {
         if (queueOpen) {
             playerControlsExpanded = true
@@ -378,21 +372,16 @@ fun AppleMusicPlayerContent(
     }
 
     // ISSUE 1 FIX: propagate inline-lyrics visibility to the parent so back-stack
-    // screens suspend their GPU work during the morph. See the parameter docstring
-    // for the full rationale.
+    // screens suspend their GPU work during the morph.
     LaunchedEffect(lyricsOpen) {
         onLyricsVisibilityChange(lyricsOpen)
     }
     DisposableEffect(Unit) {
         onDispose { onLyricsVisibilityChange(false) }
     }
-    LaunchedEffect(lyricsOpen, queueOpen, autoHideLyricsPlayerControls, showLyricsPlayerControls, playerControlsVisibilityTick) {
-        // Auto-hide when either lyrics OR queue is open.
-        // ALWAYS show controls for 4 seconds first, then hide — regardless
-        // of the autoHideLyricsPlayerControls preference. The preference
-        // only controls whether controls should reappear on tap after hiding.
+    // Auto-hide: show controls for 4s, then hide. Fires for both lyrics and queue.
+    LaunchedEffect(lyricsOpen, queueOpen, playerControlsVisibilityTick) {
         if (!lyricsOpen && !queueOpen) return@LaunchedEffect
-        if (lyricsOpen && !showLyricsPlayerControls) return@LaunchedEffect
         playerControlsExpanded = true
         delay(autoHideDelayMs)
         playerControlsExpanded = false
@@ -421,9 +410,9 @@ fun AppleMusicPlayerContent(
             canvasVisibleForLyrics = true
         }
     }
-    val pokePlayerControlsVisibility = remember(lyricsOpen, queueOpen, showLyricsPlayerControls, autoHideLyricsPlayerControls) {
+    val pokePlayerControlsVisibility = remember(lyricsOpen, queueOpen) {
         {
-            if ((lyricsOpen && showLyricsPlayerControls) || queueOpen) {
+            if (lyricsOpen || queueOpen) {
                 playerControlsExpanded = true
                 playerControlsVisibilityTick++
             }
@@ -1430,9 +1419,7 @@ fun AppleMusicPlayerContent(
                 // animations are reduced so the auto-hide/show cycle doesn't compete with
                 // the karaoke lyrics view for frame budget on lower-end devices.
                 AnimatedVisibility(
-                    visible = (!lyricsOpen && !queueOpen) ||
-                        (lyricsOpen && showLyricsPlayerControls && playerControlsExpanded) ||
-                        (queueOpen && playerControlsExpanded),
+                    visible = (!lyricsOpen && !queueOpen) || playerControlsExpanded,
                     enter = if (animationsDisabled) {
                         fadeIn(tween(120))
                     } else {
