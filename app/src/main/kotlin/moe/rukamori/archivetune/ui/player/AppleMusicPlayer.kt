@@ -945,43 +945,43 @@ fun AppleMusicPlayerContent(
                             .weight(1f)
                             .fillMaxHeight(),
                 )
-                AppleMusicControlsColumn(
-                    mediaMetadata = mediaMetadata,
-                    isPlaying = isPlaying,
-                    isLoading = isLoading,
-                    canSkipPrevious = canSkipPrevious,
-                    canSkipNext = canSkipNext,
-                    sliderPosition = sliderPosition,
-                    positionProvider = positionProvider,
-                    duration = duration,
-                    playerConnection = playerConnection,
-                    currentSongLiked = currentSongLiked,
-                    volume = volume,
-                    onVolumeChange = onVolumeChange,
-                    titleActions = titleActions,
-                    onPlayPauseClick = onPlayPauseClick,
-                    onMoreClick = onMoreClick,
-                    onOutputClick = onOutputClick,
-                    onQueueClick = onQueueClick,
-                    onLyricsClick = onLyricsClick,
-                    onSliderValueChange = onSliderValueChange,
-                    onSliderValueChangeFinished = onSliderValueChangeFinished,
-                    currentFormat = currentFormat,
-                    onQualityChipClick = {
-                        bottomSheetPageState.show { ShowMediaInfo(mediaMetadata.id) }
-                    },
-                    modifier =
-                        Modifier
-                            .weight(1f)
-                            .fillMaxHeight()
-                            // NOTE: no navigationBarsPadding() here — contentBottomPadding
-                            // already includes the system-bars bottom inset via
-                            // collapsedBound (= dynamicQueuePeekHeight + systemBarsBottom).
-                            // Adding navigationBarsPadding() on top double-counts the
-                            // inset and makes the controls jump up when the nav bar
-                            // appears.
-                            .padding(bottom = contentBottomPadding),
-                )
+                AnimatedVisibility(
+                    visible = !queueOpen && !lyricsOpen,
+                    enter = fadeIn(tween(120)),
+                    exit = fadeOut(tween(100)),
+                    modifier = Modifier.weight(1f).fillMaxHeight(),
+                ) {
+                    AppleMusicControlsColumn(
+                        mediaMetadata = mediaMetadata,
+                        isPlaying = isPlaying,
+                        isLoading = isLoading,
+                        canSkipPrevious = canSkipPrevious,
+                        canSkipNext = canSkipNext,
+                        sliderPosition = sliderPosition,
+                        positionProvider = positionProvider,
+                        duration = duration,
+                        playerConnection = playerConnection,
+                        currentSongLiked = currentSongLiked,
+                        volume = volume,
+                        onVolumeChange = onVolumeChange,
+                        titleActions = titleActions,
+                        onPlayPauseClick = onPlayPauseClick,
+                        onMoreClick = onMoreClick,
+                        onOutputClick = onOutputClick,
+                        onQueueClick = onQueueClick,
+                        onLyricsClick = onLyricsClick,
+                        onSliderValueChange = onSliderValueChange,
+                        onSliderValueChangeFinished = onSliderValueChangeFinished,
+                        currentFormat = currentFormat,
+                        onQualityChipClick = {
+                            bottomSheetPageState.show { ShowMediaInfo(mediaMetadata.id) }
+                        },
+                        modifier =
+                            Modifier
+                                .fillMaxSize()
+                                .padding(bottom = contentBottomPadding),
+                    )
+                }
             }
         } else {
             // Portrait layout with ViviMusic-style in-place queue morph.
@@ -1411,7 +1411,7 @@ fun AppleMusicPlayerContent(
                 // animations are reduced so the auto-hide/show cycle doesn't compete with
                 // the karaoke lyrics view for frame budget on lower-end devices.
                 AnimatedVisibility(
-                    visible = !lyricsOpen || (showLyricsPlayerControls && (!autoHideLyricsPlayerControls || playerControlsExpanded)),
+                    visible = (!lyricsOpen || (showLyricsPlayerControls && (!autoHideLyricsPlayerControls || playerControlsExpanded))) && !queueOpen,
                     enter = if (animationsDisabled) {
                         fadeIn(tween(120))
                     } else {
