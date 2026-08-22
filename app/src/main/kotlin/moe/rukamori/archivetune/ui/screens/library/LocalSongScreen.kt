@@ -737,9 +737,10 @@ private fun LocalSongScanSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-        shape = RoundedCornerShape(topStart = 36.dp, topEnd = 36.dp),
-        tonalElevation = 2.dp,
+        // Match ProfileMenuDialog — 28dp top corners + surfaceContainerHigh.
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+        tonalElevation = 6.dp,
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
