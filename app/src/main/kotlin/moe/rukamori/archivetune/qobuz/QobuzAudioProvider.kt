@@ -504,16 +504,16 @@ object QobuzAudioProvider {
                             ?: ""
                     val candidateAlbum = item.optJSONObject("album")?.stringOrNull("title")
                     val candidateDurationMs = item.longOrNull("duration")?.times(1000L)
-                    // Extract thumbnail from the album image field. Qobuz API
-                    // returns album art in album.image as a JSONObject with
-                    // large/medium/small keys, or sometimes as a direct URL string.
+                    // Extract thumbnail from the album image field.
+                    // The Qobuz API returns album art in multiple possible formats:
+                    // 1. album.image as a JSONArray of {size, url} objects
+                    // 2. album.image as a JSONObject with small/large/thumbnail keys
+                    // 3. album.image as a direct URL string
+                    // 4. album.cover_url / album.thumbnail_url as direct strings
+                    // 5. item.thumbnail / item.cover as direct strings
+                    // We try all of these in order of likelihood.
                     val albumObj = item.optJSONObject("album")
-                    val candidateThumbnail = albumObj?.optString("image")?.takeIf { it.isNotBlank() }
-                        ?: albumObj?.optJSONObject("image")?.optString("large")?.takeIf { it.isNotBlank() }
-                        ?: albumObj?.optJSONObject("image")?.optString("medium")?.takeIf { it.isNotBlank() }
-                        ?: albumObj?.optJSONObject("image")?.optString("small")?.takeIf { it.isNotBlank() }
-                        ?: item.stringOrNull("thumbnail")
-                        ?: item.stringOrNull("cover")
+                    val candidateThumbnail = extractQobuzThumbnail(albumObj, item)
                     out.add(
                         CandidateMetadata(
                             trackId = id,
@@ -987,6 +987,50 @@ object QobuzAudioProvider {
 
     private fun JSONObject.trackId(): String? =
         stringOrNull("id") ?: longOrNull("id")?.toString() ?: stringOrNull("track_id")
+
+    /**
+     * Extracts a thumbnail URL from a Qobuz search result's album object.
+     * Handles all known Qobuz API image formats:
+     * - album.image as JSONArray of {size, url} objects (direct API)
+     * - album.image as JSONObject with small/large/thumbnail keys (proxy)
+     * - album.image as a direct URL string
+     * - album.cover_url / album.thumbnail_url as strings
+     * - item.thumbnail / item.cover as strings
+     */
+    private fun extractQobuzThumbnail(albumObj: JSONObject?, item: JSONObject): String? {
+        if (albumObj != null) {
+            // Try album.image
+            val imageVal = albumObj.opt("image")
+            if (imageVal != null) {
+                // Case 1: JSONArray of {size, url} objects
+                if (imageVal is org.json.JSONArray) {
+                    for (i in 0 until imageVal.length()) {
+                        val imgObj = imageVal.optJSONObject(i)
+                        val url = imgObj?.stringOrNull("url")
+                        if (!url.isNullOrBlank()) return url
+                    }
+                }
+                // Case 2: JSONObject with small/large/thumbnail keys
+                if (imageVal is JSONObject) {
+                    imageVal.stringOrNull("large")?.let { return it }
+                    imageVal.stringOrNull("medium")?.let { return it }
+                    imageVal.stringOrNull("small")?.let { return it }
+                    imageVal.stringOrNull("thumbnail")?.let { return it }
+                    imageVal.stringOrNull("url")?.let { return it }
+                }
+                // Case 3: direct URL string
+                if (imageVal is String && imageVal.startsWith("http")) return imageVal
+            }
+            // Try album.cover_url / album.thumbnail_url
+            albumObj.stringOrNull("cover_url")?.let { return it }
+            albumObj.stringOrNull("thumbnail_url")?.let { return it }
+            albumObj.stringOrNull("cover")?.let { return it }
+        }
+        // Try item-level fields
+        item.stringOrNull("thumbnail")?.let { return it }
+        item.stringOrNull("cover")?.let { return it }
+        return null
+    }
 
     private fun JSONObject.stringOrNull(key: String): String? =
         optString(key).takeIf { it.isNotBlank() && it != "null" }

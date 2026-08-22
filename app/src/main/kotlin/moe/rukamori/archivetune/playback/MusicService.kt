@@ -9894,20 +9894,32 @@ class MusicService :
             stream.codecs.ifBlank {
                 stream.mimeType.substringAfter("codecs=", "").removeSurrounding("\"").ifBlank { "flac" }
             }
-        // Tidal tiers: HI_RES_LOSSLESS is 24-bit/up to 192 kHz; LOSSLESS (HiFi) is 16-bit/44.1 kHz.
-        val sampleRate =
-            when {
+        // Use the ACTUAL sample rate and bit depth from the DirectStream when
+        // the provider reported them. Fall back to label-based heuristics only
+        // when the provider didn't report the actual values (some providers
+        // don't expose sampleRate/bitDepth — e.g. JioSaavn always returns null).
+        //
+        // BUG FIXED: the previous implementation always used hardcoded guesses
+        // (44100 Hz / 1411 kbps for "LOSSLESS", 96000 Hz / 2304 kbps for "HI_RES")
+        // regardless of the actual stream's properties. This meant ALL lossless
+        // songs showed the same bitrate/sample rate in the player's Details tab
+        // even when they were different (e.g. a 48kHz/24-bit track showed as
+        // 44.1kHz/16-bit).
+        val sampleRate = stream.sampleRate?.takeIf { it > 0 }
+            ?: when {
                 label.contains("HI_RES") || label.contains("MASTER") || label.contains("MQA") -> 96_000
                 label.contains("LOSSLESS") || codecs.contains("flac", true) || codecs.contains("alac", true) -> 44_100
                 else -> null
             }
-        val bitrate =
-            when {
-                label.contains("HI_RES") || label.contains("MASTER") || label.contains("MQA") -> 2_304_000
-                label.contains("LOSSLESS") || codecs.contains("flac", true) || codecs.contains("alac", true) -> 1_411_000
-                label.contains("HIGH") -> 320_000
-                else -> 0
-            }
+        val bitDepth = stream.bitDepth?.takeIf { it > 0 }
+        val bitrate = when {
+            stream.sampleRate != null && stream.sampleRate > 0 && bitDepth != null && bitDepth > 0 ->
+                stream.sampleRate * bitDepth * 2 // stereo: channels=2
+            label.contains("HI_RES") || label.contains("MASTER") || label.contains("MQA") -> 2_304_000
+            label.contains("LOSSLESS") || codecs.contains("flac", true) || codecs.contains("alac", true) -> 1_411_000
+            label.contains("HIGH") -> 320_000
+            else -> 0
+        }
         val knownContentLength = stream.contentLength?.takeIf { it > 0L }
         val formatEntity =
             FormatEntity(
