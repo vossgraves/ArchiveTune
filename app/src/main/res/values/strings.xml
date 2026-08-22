@@ -1011,6 +1011,8 @@
     <string name="lastfm_stat_country">Country</string>
     <string name="enable_scrobbling">Enable Scrobbling</string>
     <string name="lastfm_now_playing">Now playing</string>
+    <string name="lastfm_prefer_yt_thumbnails">Prefer YouTube thumbnails</string>
+    <string name="lastfm_prefer_yt_thumbnails_desc">Use clean 16:9 YouTube hq720 artwork instead of Last.fm catalogue images (fixes black/brown bars on some thumbnails)</string>
     <string name="refresh_telegram_playlist">Refresh from Telegram</string>
     <string name="scrobbling_configuration">Scrobbling Configuration</string>
     <string name="scrobble_min_track_duration">Minimum Track Duration</string>

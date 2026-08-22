@@ -565,7 +565,7 @@ class DownloadUtil
                     // partial spans so we fetch cleanly below.
                     if (expected <= 0L || cachedBytes < expected) {
                         runCatching {
-                            spans.forEach { playerCache.removeSpan(key, it.position) }
+                            spans.forEach { playerCache.removeSpan(it) }
                         }
                     }
                 }

@@ -110,6 +110,7 @@ import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.DarkModeKey
+import moe.rukamori.archivetune.constants.LastFmPreferYtThumbnailsKey
 import moe.rukamori.archivetune.extensions.toMediaItem
 import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.innertube.models.ArtistItem
@@ -137,6 +138,7 @@ import moe.rukamori.archivetune.ui.utils.YTThumbQuality
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.ui.utils.buildYTThumbnailUrl
 import moe.rukamori.archivetune.utils.rememberEnumPreference
+import moe.rukamori.archivetune.utils.rememberPreference
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 
@@ -1639,11 +1641,22 @@ private fun DashboardTrackRow(
     // [CachedArtworkStore] so re-composition (filter switch, scroll back)
     // doesn't re-resolve.
     val artworkKey = track.artworkKey()
-    var resolvedArtworkUrl by remember(artworkKey) {
+    // When the user has enabled "Prefer YouTube thumbnails" in settings,
+    // skip the Last.fm image array entirely (it can return non-square /
+    // brown-matted images from Last.fm's catalogue) and go straight to
+    // the catalogue resolver, which starts with YouTube hq720 (clean
+    // 16:9, no baked-in bars). When disabled (default), use the original
+    // chain: Last.fm image array → parent fallback → cache → resolve.
+    val preferYtThumbnails by rememberPreference(LastFmPreferYtThumbnailsKey, defaultValue = false)
+    var resolvedArtworkUrl by remember(artworkKey, preferYtThumbnails) {
         mutableStateOf(
-            bestArtwork(track.image)
-                ?: fallbackArtworkUrl
-                ?: CachedArtworkStore.get(artworkKey),
+            if (preferYtThumbnails) {
+                CachedArtworkStore.get(artworkKey)
+            } else {
+                bestArtwork(track.image)
+                    ?: fallbackArtworkUrl
+                    ?: CachedArtworkStore.get(artworkKey)
+            },
         )
     }
     LaunchedEffect(artworkKey, resolvedArtworkUrl) {

@@ -553,6 +553,14 @@ val DisableScreenshotKey = booleanPreferencesKey("disableScreenshot")
 val PinLastFmCardKey = booleanPreferencesKey("pinLastFmCard")
 val PinDiscordCardKey = booleanPreferencesKey("pinDiscordCard")
 
+// Last.fm dashboard: prefer YouTube hq720 thumbnails over the Last.fm image
+// array. When enabled, the dashboard skips bestArtwork(track.image) (which
+// can return non-square / brown-matted images from Last.fm's catalogue) and
+// goes straight to resolveCatalogueCover, which starts with YouTube hq720
+// (clean 16:9, no baked-in bars). Useful for users whose Last.fm catalogue
+// has many low-quality or padded artwork images.
+val LastFmPreferYtThumbnailsKey = booleanPreferencesKey("lastfmPreferYtThumbnails")
+
 val DiscordTokenKey = stringPreferencesKey("discordToken")
 val DiscordRefreshTokenKey = stringPreferencesKey("discordRefreshToken")
 val DiscordTokenExpiresAtKey = longPreferencesKey("discordTokenExpiresAt")

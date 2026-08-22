@@ -60,12 +60,14 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.constants.LastFmPreferYtThumbnailsKey
 import moe.rukamori.archivetune.constants.LastFmProvider
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.InfoLabel
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.SwitchPreference
+import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.viewmodels.LastFmLoginDialogUiModel
 import moe.rukamori.archivetune.viewmodels.LastFmServiceEditorUiModel
@@ -302,6 +304,13 @@ private fun LastFmSettingsSuccess(
     // Libre.fm and Custom-endpoint flows instead of from this settings
     // group. The `onOpenServiceEditor` callback is no longer passed in.
 
+    // Local state for the "Prefer YouTube thumbnails" toggle. When enabled,
+    // the Last.fm dashboard skips the Last.fm image array (which can return
+    // non-square / brown-matted images) and resolves artwork via YouTube hq720
+    // thumbnails (clean 16:9, no baked-in bars). Read here so the toggle is
+    // always in sync with the dashboard's read of the same key.
+    var preferYtThumbnails by rememberPreference(LastFmPreferYtThumbnailsKey, defaultValue = false)
+
     PreferenceGroup(
         modifier = positions.modifierFor("lastfm_account"),
         title = stringResource(R.string.account),
@@ -394,6 +403,15 @@ private fun LastFmSettingsSuccess(
                 checked = model.nowPlayingEnabled,
                 onCheckedChange = onNowPlayingChange,
                 isEnabled = model.canEnableScrobbling && model.scrobblingEnabled,
+            )
+        }
+
+        item {
+            SwitchPreference(
+                title = { Text(stringResource(R.string.lastfm_prefer_yt_thumbnails)) },
+                description = stringResource(R.string.lastfm_prefer_yt_thumbnails_desc),
+                checked = preferYtThumbnails,
+                onCheckedChange = { preferYtThumbnails = it },
             )
         }
     }
