@@ -28,9 +28,11 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -48,6 +50,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
@@ -86,6 +89,7 @@ import androidx.media3.exoplayer.offline.DownloadService
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.LocalDatabase
@@ -100,11 +104,19 @@ import moe.rukamori.archivetune.constants.PlayerDesignStyle
 import moe.rukamori.archivetune.constants.PlayerDesignStyleKey
 import moe.rukamori.archivetune.constants.SpeedDialSongIdsKey
 import moe.rukamori.archivetune.models.MediaMetadata
+import moe.rukamori.archivetune.models.toMediaMetadata
 import moe.rukamori.archivetune.playback.CanvasArtworkRefetchResult
 import moe.rukamori.archivetune.playback.ExoDownloadService
+import moe.rukamori.archivetune.playback.queues.YouTubeQueue
+import moe.rukamori.archivetune.extensions.toMediaItem
 import moe.rukamori.archivetune.db.entities.ArtistEntity
 import moe.rukamori.archivetune.innertube.YouTube
+import moe.rukamori.archivetune.innertube.models.SongItem
+import moe.rukamori.archivetune.jiosaavn.SaavnService
+import moe.rukamori.archivetune.tidal.TidalAudioProvider
+import moe.rukamori.archivetune.qobuz.QobuzAudioProvider
 import moe.rukamori.archivetune.ui.component.BottomSheetState
+import moe.rukamori.archivetune.ui.component.ChipsRow
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.ListDialog
 import moe.rukamori.archivetune.ui.component.MenuSurfaceSection
@@ -371,6 +383,77 @@ fun PlayerMenu(
                 onSongSourceChange(SongSourceOverride.withOverride(songSourceRaw, mediaMetadata.id, source))
                 playerConnection.service.setSongSourceOverride(mediaMetadata.id, source)
                 showSourceDialog = false
+            },
+            onPlaySong = { song ->
+                // Swapping to a different track entirely — play the chosen song via YouTube radio
+                // so it seeds a fresh queue with the picked track as the first item.
+                playerConnection.playQueue(YouTubeQueue.radio(song.toMediaMetadata()))
+            },
+            onPlayFromSource = { result ->
+                // Non-YT search-result row tapped (JioSaavn / Tidal / Qobuz / Deezer).
+                // We don't have a SongItem to seed a YouTube radio queue from directly —
+                // these providers' search results return their own internal track ids, not
+                // YouTube video ids. To make the row actually play something, we:
+                //   1. Search YouTube Music for a track matching the title + primary artist.
+                //   2. If found, play it via YouTube radio (seeds a fresh queue with that song).
+                //   3. Immediately set the per-song source override to the picked source so
+                //      the very first playback attempt resolves through that source (JioSaavn /
+                //      Tidal lossless) instead of YouTube's audio.
+                //   4. If YouTube search returns nothing, fall back to a Toast — we can't
+                //      play a JioSaavn-only / Tidal-only track without a YT-side media id
+                //      because the rest of the queue / scrobbling / cache layer is YT-id-keyed.
+                //
+                // THREAD-SAFETY: YouTube.search is a suspend function that does its own
+                // dispatcher switching internally, so launching on Dispatchers.IO is fine.
+                // BUT setSongSourceOverride touches ExoPlayer (player.currentMediaItem) which
+                // must be called from the application thread (main) — wrapping it in
+                // withContext(Dispatchers.Main) prevents the "Player is accessed on the wrong
+                // thread" IllegalStateException that crashed the app when changing source via
+                // the JioSaavn search-result row.
+                coroutineScope.launch(Dispatchers.IO) {
+                    val query = buildString {
+                        append(result.title)
+                        if (result.artist.isNotBlank()) append(" ").append(result.artist)
+                    }
+                    val ytSong = runCatching {
+                        YouTube.search(query, YouTube.SearchFilter.FILTER_SONG, useAccountContext = false)
+                            .getOrNull()
+                            ?.items
+                            ?.filterIsInstance<SongItem>()
+                            ?.firstOrNull()
+                    }.getOrNull()
+                    if (ytSong == null) {
+                        withContext(Dispatchers.Main) {
+                            android.widget.Toast.makeText(
+                                context,
+                                context.getString(R.string.source_search_play_no_yt_match),
+                                android.widget.Toast.LENGTH_SHORT,
+                            ).show()
+                        }
+                        return@launch
+                    }
+                    // Switch to the main thread for all ExoPlayer-touching calls.
+                    // setSongSourceOverride reads player.currentMediaItem and writes to
+                    // player.setMediaItems — both must run on the player's application
+                    // thread (the main thread, since MusicService creates the ExoPlayer on
+                    // the main looper).
+                    withContext(Dispatchers.Main) {
+                        // Persist the override in DataStore FIRST so the very first
+                        // resolution attempt reads the override from storage and pins
+                        // the picked source.
+                        onSongSourceChange(
+                            SongSourceOverride.withOverride(songSourceRaw, ytSong.id, result.source),
+                        )
+                        // Then apply the override in-memory via the service — this evicts
+                        // caches and re-creates the media item with the new override.
+                        playerConnection.service.setSongSourceOverride(ytSong.id, result.source)
+                        // Finally, play the matched YouTube song. Because the override is
+                        // already set, the playback resolver will pin JioSaavn / Tidal /
+                        // Qobuz / Deezer on the first attempt.
+                        playerConnection.playQueue(YouTubeQueue.radio(ytSong.toMediaMetadata()))
+                        showSourceDialog = false
+                    }
+                }
             },
         )
     }
@@ -1148,6 +1231,45 @@ fun PlayerMenu(
                             modifier = Modifier.padding(start = 56.dp),
                             color = MaterialTheme.colorScheme.outlineVariant,
                         )
+
+                        // "Play Next" and "Add to Queue" surface on every queue song's overflow
+                        // menu so the user can re-order the queue without going back to the
+                        // search/list page. Mirrors SongMenu.kt's pattern.
+                        ListItem(
+                            headlineContent = { Text(text = stringResource(R.string.play_next)) },
+                            leadingContent = {
+                                Icon(
+                                    painter = painterResource(R.drawable.playlist_play),
+                                    contentDescription = null,
+                                )
+                            },
+                            modifier =
+                                Modifier.clickable {
+                                    mediaMetadata?.toMediaItem()?.let { playerConnection.playNext(it) }
+                                    onDismiss()
+                                },
+                            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                        )
+                        ListItem(
+                            headlineContent = { Text(text = stringResource(R.string.add_to_queue)) },
+                            leadingContent = {
+                                Icon(
+                                    painter = painterResource(R.drawable.queue_music),
+                                    contentDescription = null,
+                                )
+                            },
+                            modifier =
+                                Modifier.clickable {
+                                    mediaMetadata?.toMediaItem()?.let { playerConnection.addToQueue(it) }
+                                    onDismiss()
+                                },
+                            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                        )
+
+                        HorizontalDivider(
+                            modifier = Modifier.padding(start = 56.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant,
+                        )
                     }
 
                     ListItem(
@@ -1769,6 +1891,7 @@ private fun AudioSourceType.sourceLabelRes(): Int =
     when (this) {
         AudioSourceType.TIDAL -> R.string.source_tidal
         AudioSourceType.QOBUZ -> R.string.source_qobuz
+        AudioSourceType.QOBUZ_BACKUP -> R.string.source_qobuz_backup
         AudioSourceType.DEEZER -> R.string.source_deezer
         AudioSourceType.JIOSAAVN -> R.string.source_jiosaavn
         AudioSourceType.YOUTUBE -> R.string.source_youtube
@@ -1778,23 +1901,208 @@ private fun AudioSourceType.sourceIconRes(): Int =
     when (this) {
         AudioSourceType.TIDAL -> R.drawable.provider_tidal
         AudioSourceType.QOBUZ -> R.drawable.provider_qobuz
+        AudioSourceType.QOBUZ_BACKUP -> R.drawable.provider_qobuz
         AudioSourceType.DEEZER -> R.drawable.provider_deezer
-        AudioSourceType.JIOSAAVN -> R.drawable.play
+        AudioSourceType.JIOSAAVN -> R.drawable.provider_jiosaavn
         AudioSourceType.YOUTUBE -> R.drawable.play
     }
 
 /**
- * Per-song "Play from" chooser. Lists the [sources] that have the current track (from the last
- * resolution) plus YouTube, and lets the user force which one this song plays from. [selected] is
- * the current override (null = automatic / follow the global order).
+ * Unified cross-provider search result row. Each provider's backend (YTM / Tidal / JioSaavn /
+ * future Qobuz, Deezer) maps its own native search type into this shape so the UI can render
+ * every row the same way.
+ *
+ * - [songItem] is non-null when the result is a YouTube Music song (the only provider whose
+ *   playback path is fully wired into `YouTubeQueue.radio`). Tapping the row calls
+ *   `onPlaySong(songItem)`.
+ * - When [songItem] is null the row is display-only — used for providers whose playback path
+ *   for arbitrary trackIds isn't wired up yet (Tidal/JioSaavn). The row is grayed out and not
+ *   clickable.
  */
+private data class SourceSearchResult(
+    val source: AudioSourceType,
+    val trackId: String,
+    val title: String,
+    val artist: String,
+    val thumbnailUrl: String?,
+    val durationMs: Long?,
+    val qualityLabel: String?,
+    val songItem: SongItem?,
+)
+
 @Composable
 private fun SongSourceDialog(
     sources: List<AudioSourceType>,
     selected: AudioSourceType?,
     onDismiss: () -> Unit,
     onSelect: (AudioSourceType?) -> Unit,
+    onPlaySong: (SongItem) -> Unit,
+    onPlayFromSource: (SourceSearchResult) -> Unit,
 ) {
+    var searchMode by rememberSaveable { mutableStateOf(false) }
+    var searchQuery by rememberSaveable { mutableStateOf("") }
+    var sourceFilter by rememberSaveable { mutableStateOf<AudioSourceType?>(null) }
+
+    // Strings fetched at the Composable scope so they can be referenced safely inside produceState.
+    val aacLabel = stringResource(R.string.quality_badge_aac)
+    val saavnLabel = stringResource(R.string.quality_badge_saavn)
+    val losslessLabel = stringResource(R.string.quality_badge_lossless)
+    val noResultsText = stringResource(R.string.source_search_no_results)
+    val noBackendText = stringResource(R.string.source_search_no_backend)
+
+    // Provider filter → "search backend not yet available" empty state. YTM, Tidal, Qobuz and
+    // JioSaavn are the providers with a usable list-search API right now (Tidal via
+    // searchCandidates, Qobuz via QobuzAudioProvider.searchCandidates, JioSaavn via
+    // SaavnService.searchSongs). Qobuz Backup (kouzu.in) doesn't have a search API — it only
+    // streams by YouTube video id. Deezer has no public list search.
+    val backendMissing =
+        sourceFilter != null &&
+            sourceFilter != AudioSourceType.YOUTUBE &&
+            sourceFilter != AudioSourceType.TIDAL &&
+            sourceFilter != AudioSourceType.QOBUZ &&
+            sourceFilter != AudioSourceType.JIOSAAVN
+
+    // Debounced search — only fires when searchMode is on and query length >= 2.
+    val results by produceState<List<SourceSearchResult>>(
+        initialValue = emptyList(),
+        key1 = searchQuery,
+        key2 = sourceFilter,
+        key3 = searchMode,
+    ) {
+        if (!searchMode || searchQuery.length < 2 || backendMissing) {
+            value = emptyList()
+            return@produceState
+        }
+        delay(350L) // debounce
+        val out = mutableListOf<SourceSearchResult>()
+        val searchYtm = sourceFilter == null || sourceFilter == AudioSourceType.YOUTUBE
+        val searchTidal = sourceFilter == null || sourceFilter == AudioSourceType.TIDAL
+        val searchQobuz = sourceFilter == null || sourceFilter == AudioSourceType.QOBUZ
+        val searchSaavn = sourceFilter == null || sourceFilter == AudioSourceType.JIOSAAVN
+
+        if (searchYtm) {
+            withContext(Dispatchers.IO) {
+                runCatching {
+                    val ytResult = YouTube.search(searchQuery, YouTube.SearchFilter.FILTER_SONG, useAccountContext = false).getOrNull()
+                    if (ytResult == null) {
+                        emptyList()
+                    } else {
+                        val songs = mutableListOf<SongItem>()
+                        for (item in ytResult.items) {
+                            if (item is SongItem) songs.add(item)
+                        }
+                        songs
+                    }
+                }.getOrNull()?.forEach { song ->
+                    out.add(
+                        SourceSearchResult(
+                            source = AudioSourceType.YOUTUBE,
+                            trackId = song.id,
+                            title = song.title,
+                            artist = song.artists.joinToString(", ") { it.name },
+                            thumbnailUrl = song.thumbnail,
+                            durationMs = song.duration?.toLong()?.times(1000L),
+                            qualityLabel = aacLabel,
+                            songItem = song,
+                        ),
+                    )
+                }
+            }
+        }
+        if (searchTidal) {
+            withContext(Dispatchers.IO) {
+                runCatching {
+                    val tidalQuery =
+                        TidalAudioProvider.Query(
+                            mediaId = "",
+                            title = searchQuery,
+                            artists = emptyList(),
+                            album = null,
+                            isrc = null,
+                            durationMs = null,
+                        )
+                    TidalAudioProvider.searchCandidates(tidalQuery, limit = 8)
+                }.getOrNull()?.forEach { candidate ->
+                    out.add(
+                        SourceSearchResult(
+                            source = AudioSourceType.TIDAL,
+                            trackId = candidate.trackId,
+                            title = candidate.title,
+                            artist = candidate.artist,
+                            thumbnailUrl = candidate.thumbnailUrl,
+                            durationMs = candidate.durationMs,
+                            qualityLabel = losslessLabel,
+                            songItem = null,
+                        ),
+                    )
+                }
+            }
+        }
+        if (searchQobuz) {
+            // Qobuz search needs pool tokens or proxy instances configured. The
+            // searchCandidates method handles that internally — it returns an
+            // empty list when no backends are configured, in which case the user
+            // just sees no Qobuz rows in the results (same as if the query had
+            // no hits). Must run on IO because searchCandidates does network
+            // calls (PoolAccountManager.qobuzAccounts + discoverInstances +
+            // the actual search API call).
+            withContext(Dispatchers.IO) {
+                runCatching { QobuzAudioProvider.searchCandidates(searchQuery, limit = 8) }
+                    .getOrDefault(emptyList())
+                    .forEach { candidate ->
+                        // If Qobuz didn't return a thumbnail, try to get one
+                        // from YouTube by searching for the track.
+                        val thumb = candidate.thumbnailUrl ?: run {
+                            val term = listOfNotNull(candidate.artist?.takeIf(String::isNotBlank), candidate.title).joinToString(" ")
+                            val ytResult = YouTube.search(term, YouTube.SearchFilter.FILTER_SONG, useAccountContext = false).getOrNull()
+                            if (ytResult == null) null
+                            else {
+                                var found: SongItem? = null
+                                for (item in ytResult.items) {
+                                    if (item is SongItem) { found = item; break }
+                                }
+                                found?.thumbnail
+                            }
+                        }
+                        out.add(
+                            SourceSearchResult(
+                                source = AudioSourceType.QOBUZ,
+                                trackId = candidate.trackId,
+                                title = candidate.title,
+                                artist = candidate.artist.orEmpty(),
+                                thumbnailUrl = thumb,
+                                durationMs = candidate.durationMs,
+                                qualityLabel = losslessLabel,
+                                songItem = null,
+                            ),
+                        )
+                    }
+            }
+        }
+        if (searchSaavn) {
+            withContext(Dispatchers.IO) {
+                runCatching { SaavnService.searchSongs(searchQuery).getOrDefault(emptyList()) }
+                    .getOrDefault(emptyList())
+                    .forEach { saavnSong ->
+                    val cover = saavnSong.image.maxByOrNull { runCatching { it.quality.substringBefore("x").toInt() }.getOrDefault(0) }?.url
+                    out.add(
+                        SourceSearchResult(
+                            source = AudioSourceType.JIOSAAVN,
+                            trackId = saavnSong.id,
+                            title = saavnSong.name,
+                            artist = saavnSong.artists.primary.joinToString(", ") { it.name },
+                            thumbnailUrl = cover,
+                            durationMs = saavnSong.duration?.toLong()?.times(1000L),
+                            qualityLabel = saavnLabel,
+                            songItem = null,
+                        ),
+                    )
+                }
+            }
+        }
+        value = out
+    }
+
     DefaultDialog(
         onDismiss = onDismiss,
         buttons = {
@@ -1804,27 +2112,237 @@ private fun SongSourceDialog(
         },
     ) {
         Column(modifier = Modifier.padding(top = 4.dp)) {
-            Text(
-                text = stringResource(R.string.play_from),
-                style = MaterialTheme.typography.headlineSmall,
-                modifier = Modifier.padding(bottom = 12.dp),
-            )
-            // "Automatic" clears the override so the song follows the global preferred-source order.
-            SongSourceRow(
-                iconRes = R.drawable.tune,
-                label = stringResource(R.string.play_from_automatic),
-                checked = selected == null,
-                onClick = { onSelect(null) },
-            )
-            sources.forEach { source ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = stringResource(R.string.play_from),
+                    style = MaterialTheme.typography.headlineSmall,
+                    modifier = Modifier.weight(1f),
+                )
+                IconButton(
+                    onClick = {
+                        searchMode = !searchMode
+                        if (!searchMode) {
+                            searchQuery = ""
+                            sourceFilter = null
+                        }
+                    },
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.search),
+                        contentDescription = stringResource(R.string.download_source_search),
+                        tint = if (searchMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+            }
+            if (searchMode) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = { Text(stringResource(R.string.download_source_search_hint)) },
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 4.dp),
+                )
+                ChipsRow(
+                    chips =
+                        listOf(
+                            null to stringResource(R.string.source_search_filter_all),
+                            AudioSourceType.TIDAL to stringResource(R.string.source_tidal),
+                            AudioSourceType.QOBUZ to stringResource(R.string.source_qobuz),
+                            AudioSourceType.DEEZER to stringResource(R.string.source_deezer),
+                            AudioSourceType.JIOSAAVN to stringResource(R.string.source_jiosaavn),
+                            AudioSourceType.YOUTUBE to stringResource(R.string.source_youtube),
+                        ),
+                    currentValue = sourceFilter,
+                    onValueUpdate = { sourceFilter = it },
+                    icons =
+                        mapOf(
+                            null to R.drawable.search,
+                            AudioSourceType.TIDAL to R.drawable.provider_tidal,
+                            AudioSourceType.QOBUZ to R.drawable.provider_qobuz,
+                            AudioSourceType.DEEZER to R.drawable.provider_deezer,
+                            AudioSourceType.JIOSAAVN to R.drawable.provider_jiosaavn,
+                            AudioSourceType.YOUTUBE to R.drawable.play,
+                        ),
+                )
+                when {
+                    backendMissing -> {
+                        Text(
+                            text = noBackendText,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
+                        )
+                    }
+                    searchQuery.length < 2 -> {
+                        Text(
+                            text = noResultsText,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
+                        )
+                    }
+                    results.isEmpty() -> {
+                        Text(
+                            text = noResultsText,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
+                        )
+                    }
+                    else -> {
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 360.dp),
+                        ) {
+                            items(results, key = { result -> "${result.source.name}:${result.trackId}" }) { result ->
+                                SourceSearchResultRow(result = result) {
+                                    // YTM results seed the queue directly. Non-YT results
+                                    // (JioSaavn / Tidal / Qobuz / Deezer) don't carry a
+                                    // YouTube-side SongItem — they go through onPlayFromSource
+                                    // which searches YTM for a matching track and pins the
+                                    // source override so playback resolves through the
+                                    // picked source on the very first attempt.
+                                    if (result.songItem != null) {
+                                        onPlaySong(result.songItem)
+                                    } else {
+                                        onPlayFromSource(result)
+                                    }
+                                    onDismiss()
+                                }
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                            }
+                        }
+                    }
+                }
+            } else {
+                // "Automatic" clears the override so the song follows the global preferred-source order.
                 SongSourceRow(
-                    iconRes = source.sourceIconRes(),
-                    label = stringResource(source.sourceLabelRes()),
-                    checked = selected == source,
-                    onClick = { onSelect(source) },
+                    iconRes = R.drawable.tune,
+                    label = stringResource(R.string.play_from_automatic),
+                    checked = selected == null,
+                    onClick = { onSelect(null) },
+                )
+                sources.forEach { source ->
+                    SongSourceRow(
+                        iconRes = source.sourceIconRes(),
+                        label = stringResource(source.sourceLabelRes()),
+                        checked = selected == source,
+                        onClick = { onSelect(source) },
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * One search-result row. Layout mirrors a typical song row: 48dp thumbnail (or a music_note
+ * placeholder when the provider returned no cover), title + artist + duration in the middle,
+ * a small quality badge (AAC 256 kbps / Lossless / Hi-Res) on the right, and a 16dp provider
+ * icon furthest right so the user can tell at a glance which source each row came from.
+ *
+ * ALWAYS tappable: YTM results seed the queue directly via [onPlaySong]; non-YT results
+ * (JioSaavn / Tidal / Qobuz / Deezer) go through [onPlayFromSource] which searches YTM for
+ * a matching track by title+artist and pins the per-song source override so playback resolves
+ * through the picked source on the very first attempt. Previously non-YT rows were grayed
+ * out and not clickable — that made the JioSaavn / Tidal "Play from" search popup look
+ * broken ("clicking on play from popup in jiosaavn category still doesn't do anything").
+ */
+@Composable
+private fun SourceSearchResultRow(
+    result: SourceSearchResult,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+                .padding(vertical = 8.dp, horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (!result.thumbnailUrl.isNullOrBlank()) {
+            AsyncImage(
+                model = result.thumbnailUrl,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.size(48.dp).clip(RoundedCornerShape(6.dp)),
+            )
+        } else {
+            Box(
+                modifier =
+                    Modifier
+                        .size(48.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.music_note),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(24.dp),
                 )
             }
         }
+        Spacer(Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = result.title,
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            val subtitle =
+                buildString {
+                    append(result.artist)
+                    result.durationMs?.let { ms ->
+                        val totalSec = ms / 1000
+                        val mm = totalSec / 60
+                        val ss = totalSec % 60
+                        append(" · ").append("%d:%02d".format(mm, ss))
+                    }
+                }
+            if (subtitle.isNotBlank()) {
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        if (!result.qualityLabel.isNullOrBlank()) {
+            Surface(
+                shape = RoundedCornerShape(4.dp),
+                color = MaterialTheme.colorScheme.secondaryContainer,
+            ) {
+                Text(
+                    text = result.qualityLabel,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                )
+            }
+            Spacer(Modifier.width(8.dp))
+        }
+        Icon(
+            painter = painterResource(result.source.sourceIconRes()),
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(16.dp),
+        )
     }
 }
 

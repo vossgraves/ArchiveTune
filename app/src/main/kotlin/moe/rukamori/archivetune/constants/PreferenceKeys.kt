@@ -254,10 +254,70 @@ enum class DownloadSource {
      */
     DEEZER,
 
+    /**
+     * JioSaavn lookup — uses the public JioSaavn API to resolve a 96/160/320 kbps
+     * AAC stream URL. Falls back to the next source in [AUTO] order when the
+     * track isn't on JioSaavn. Does NOT require a Source Pool account (the
+     * public API is used directly), so it is NOT in [DownloadSourceConfig.REQUIRES_POOL].
+     */
+    JIOSAAVN,
+
     YOUTUBE_MUSIC,
 }
 
 val DownloadSourceKey = stringPreferencesKey("downloadSource")
+
+// CSV of DownloadSource names in the user's chosen priority order. Empty/null falls back to
+// DownloadSourceConfig.DEFAULT_ORDER (Qobuz, Tidal, Deezer, YouTube Music). Consumed by
+// DownloadUtil to drive the per-song download source chain — replacing the old single-pick
+// DownloadSourceKey. The old key is kept for migration / backup compatibility.
+val DownloadSourceOrderKey = stringPreferencesKey("downloadSourceOrder")
+
+/**
+ * Helpers for the download-source priority list. Mirrors [AudioSourceConfig] in the audiosource
+ * package — same CSV serialization, append-missing-on-parse semantics, and a single DEFAULT_ORDER.
+ *
+ * The three sources [QOBUZ], [TIDAL], [DEEZER] require a Source Pool account to be configured
+ * (see `PoolAccountManager.isEnabled`). [JIOSAAVN] uses the public JioSaavn API (no pool needed).
+ * [YOUTUBE_MUSIC] always works.
+ */
+object DownloadSourceConfig {
+    val DEFAULT_ORDER: List<DownloadSource> =
+        listOf(
+            DownloadSource.QOBUZ,
+            DownloadSource.TIDAL,
+            DownloadSource.DEEZER,
+            DownloadSource.JIOSAAVN,
+            DownloadSource.YOUTUBE_MUSIC,
+        )
+
+    /** Sources that need a Source Pool account configured to be usable for downloads. */
+    val REQUIRES_POOL: Set<DownloadSource> =
+        setOf(DownloadSource.QOBUZ, DownloadSource.TIDAL, DownloadSource.DEEZER)
+
+    private fun parseType(name: String): DownloadSource? =
+        runCatching { DownloadSource.valueOf(name.trim().uppercase()) }.getOrNull()
+
+    /**
+     * Resolves the effective ordered list of all download sources from the stored CSV,
+     * preserving the user's chosen order and appending any missing sources in default order.
+     */
+    fun parseOrder(rawOrder: String?): List<DownloadSource> {
+        val parsed =
+            rawOrder
+                ?.split(',')
+                ?.mapNotNull { parseType(it) }
+                ?.distinct()
+                .orEmpty()
+        val merged = LinkedHashSet(parsed)
+        DEFAULT_ORDER.forEach { merged.add(it) }
+        return merged.toList()
+    }
+
+    /** Serialize an order back to the CSV form for storage. */
+    fun serialize(order: List<DownloadSource>): String = order.joinToString(",") { it.name }
+}
+
 val AiContentFilterEnabledKey = booleanPreferencesKey("aiContentFilterEnabled")
 val AiContentFilterIncludeModerateKey = booleanPreferencesKey("aiContentFilterIncludeModerate")
 val AiContentFilterLastUpdatedKey = longPreferencesKey("aiContentFilterLastUpdated")
@@ -323,11 +383,23 @@ val TranslateSourceLanguageKey = stringPreferencesKey("translateSourceLanguage")
 // Hides the AI-generated "Top mixes" section in the library Mix tab (and stops auto-generation).
 val HideAiMixKey = booleanPreferencesKey("hide_ai_mix")
 
+// Whether the user pressed the pause button on the Debug Logs screen. Persisted so the pause
+// state survives screen navigation AND process restarts — previously the flag lived in a
+// HiltViewModel's MutableStateFlow, which was destroyed on screen exit, so the user's pause
+// was silently dropped every time they navigated away.
+val LogcatPausedKey = booleanPreferencesKey("logcatPaused")
+
 // When on, any foreign-language lyrics that have an AI provider configured will be translated
 // to the user's preferred language automatically on lyrics load — no manual tap through the
 // translate dialog required. The "Translation saved" toast is also suppressed in this mode so
 // background translations don't fire a notification every time a new song starts.
 val AutoTranslateLyricsKey = booleanPreferencesKey("autoTranslateLyrics")
+
+// Set of uppercase language codes (e.g. "JAPANESE", "KOREAN", "CHINESE") that should NOT be
+// auto-translated even when [AutoTranslateLyricsKey] is on. The user picks them via the
+// multi-select dialog in AiIntegrationSettings. Codes match `TranslatorLanguage.code` in
+// assets/translator_languages.json.
+val AutoTranslateExcludedLanguagesKey = stringSetPreferencesKey("autoTranslateExcludedLanguages")
 
 // Set by the "Never show again" pill on the startup update popup. Stores the
 // "<versionName>|<versionCode>" of the version the user suppressed the popup for, so we
@@ -394,6 +466,7 @@ enum class AudioQuality {
 }
 
 val PlayerStreamClientKey = stringPreferencesKey("playerStreamClient")
+val AutoChoosePlaybackClientKey = booleanPreferencesKey("autoChoosePlaybackClient")
 
 enum class PlayerStreamClient {
     ANDROID_VR,
@@ -479,6 +552,14 @@ val DisableScreenshotKey = booleanPreferencesKey("disableScreenshot")
 // cards can be pinned to the top of the Integration screen by the user.
 val PinLastFmCardKey = booleanPreferencesKey("pinLastFmCard")
 val PinDiscordCardKey = booleanPreferencesKey("pinDiscordCard")
+
+// Last.fm dashboard: prefer YouTube hq720 thumbnails over the Last.fm image
+// array. When enabled, the dashboard skips bestArtwork(track.image) (which
+// can return non-square / brown-matted images from Last.fm's catalogue) and
+// goes straight to resolveCatalogueCover, which starts with YouTube hq720
+// (clean 16:9, no baked-in bars). Useful for users whose Last.fm catalogue
+// has many low-quality or padded artwork images.
+val LastFmPreferYtThumbnailsKey = booleanPreferencesKey("lastfmPreferYtThumbnails")
 
 val DiscordTokenKey = stringPreferencesKey("discordToken")
 val DiscordRefreshTokenKey = stringPreferencesKey("discordRefreshToken")
@@ -999,6 +1080,21 @@ val RepeatModeKey = intPreferencesKey("repeatMode")
 val SearchSourceKey = stringPreferencesKey("searchSource")
 val SwipeThumbnailKey = booleanPreferencesKey("swipeThumbnail")
 val SwipeSensitivityKey = floatPreferencesKey("swipeSensitivity")
+// Catalog providers are independent from the local-vs-online search scope above. Spotify is a
+// metadata/search provider here; it is intentionally not an AudioSourceType because playback is
+// resolved by the existing audio-source chain.
+val DefaultMetadataSourceKey = stringPreferencesKey("defaultMetadataSource")
+val DefaultSearchSourceKey = stringPreferencesKey("defaultSearchSource")
+
+enum class MetadataSource {
+    YOUTUBE,
+    SPOTIFY,
+}
+
+enum class SearchProvider {
+    YOUTUBE,
+    SPOTIFY,
+}
 
 enum class SearchSource {
     LOCAL,
@@ -1103,6 +1199,14 @@ val TidalAudioQualityOptions =
 // proxy instance URLs. Each instance exposes get-music (search) + download-music (stream URL).
 val QobuzEnabledKey = booleanPreferencesKey("qobuzEnabled")
 
+// ---------------------------------------------------------------------------
+// Qobuz backup server (mlc.kouzu.in). Separate from Qobuz proper — the
+// backup takes a YouTube video id and returns a lossless stream, while
+// regular Qobuz uses source pool tokens + community proxy instances. The
+// user can toggle / reorder / per-song-pin each independently. Default OFF
+// because it's an external community service that should be opt-in.
+val QobuzBackupEnabledKey = booleanPreferencesKey("qobuzBackupEnabled")
+
 // CSV of user-provided Qobuz proxy instance base URLs, highest priority first.
 val QobuzInstancesKey = stringPreferencesKey("qobuzInstances")
 
@@ -1192,6 +1296,7 @@ val TelegramBotForwardToChannelKey = booleanPreferencesKey("telegramBotForwardTo
 enum class AudioSourceType {
     TIDAL,
     QOBUZ,
+    QOBUZ_BACKUP,
     DEEZER,
     JIOSAAVN,
     YOUTUBE,

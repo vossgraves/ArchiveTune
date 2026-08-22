@@ -146,6 +146,73 @@ data class TopTrackAttr(
     val rank: String? = null,
 )
 
+// ── user.getTopArtists ──────────────────────────────────────────────────────
+
+@Serializable
+data class TopArtistsResponse(
+    val topartists: TopArtists,
+)
+
+@Serializable
+data class TopArtists(
+    val artist: List<TopArtist> = emptyList(),
+    @SerialName("@attr") val attr: TopArtistsAttr? = null,
+)
+
+@Serializable
+data class TopArtistsAttr(
+    val user: String? = null,
+    val page: String? = null,
+    val perPage: String? = null,
+    val totalPages: String? = null,
+    val total: String? = null,
+)
+
+@Serializable
+data class TopArtist(
+    val name: String? = null,
+    @SerialName("playcount") private val _playcount: String? = null,
+    val url: String? = null,
+    val image: List<UserImage>? = null,
+    @SerialName("@attr") val attr: TopTrackAttr? = null,
+) {
+    val playcount: Int? get() = _playcount?.toIntOrNull()
+}
+
+// ── user.getTopAlbums ──────────────────────────────────────────────────────
+
+@Serializable
+data class TopAlbumsResponse(
+    val topalbums: TopAlbums,
+)
+
+@Serializable
+data class TopAlbums(
+    val album: List<TopAlbum> = emptyList(),
+    @SerialName("@attr") val attr: TopAlbumsAttr? = null,
+)
+
+@Serializable
+data class TopAlbumsAttr(
+    val user: String? = null,
+    val page: String? = null,
+    val perPage: String? = null,
+    val totalPages: String? = null,
+    val total: String? = null,
+)
+
+@Serializable
+data class TopAlbum(
+    val name: String? = null,
+    @SerialName("playcount") private val _playcount: String? = null,
+    val artist: RecentTrackArtist? = null,
+    val url: String? = null,
+    val image: List<UserImage>? = null,
+    @SerialName("@attr") val attr: TopTrackAttr? = null,
+) {
+    val playcount: Int? get() = _playcount?.toIntOrNull()
+}
+
 /**
  * Fallback raw JSON element — used when we want to surface a parse
  * failure to the UI without losing the whole dashboard.

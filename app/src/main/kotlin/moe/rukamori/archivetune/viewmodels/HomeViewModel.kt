@@ -44,6 +44,7 @@ import moe.rukamori.archivetune.constants.YtmSyncKey
 import moe.rukamori.archivetune.db.MusicDatabase
 import moe.rukamori.archivetune.db.entities.*
 import moe.rukamori.archivetune.extensions.filterBlockedArtists
+import moe.rukamori.archivetune.extensions.filterBlockedSongs
 import moe.rukamori.archivetune.extensions.toEnum
 import moe.rukamori.archivetune.home.HomeAction
 import moe.rukamori.archivetune.home.HomePresentationPreferences
@@ -588,6 +589,7 @@ class HomeViewModel
                     val hideExplicit = context.dataStore.get(HideExplicitKey, false)
                     val hideVideo = context.dataStore.get(HideVideoKey, false)
                     val blockedArtistIds = database.getBlockedArtistIds().toSet()
+                    val blockedSongIds = database.getBlockedSongIds().toSet()
                     val fromTimeStamp = System.currentTimeMillis() - 86400000 * 7 * 2
 
                     launch { loadSpeedDialItems() }
@@ -597,6 +599,7 @@ class HomeViewModel
                                 .forgottenFavorites()
                                 .first()
                                 .filter { song -> song.artists.none { it.blockedAt != null } }
+                                .filter { song -> song.id !in blockedSongIds }
                                 .shuffled()
                                 .take(20)
                     }
@@ -678,7 +681,8 @@ class HomeViewModel
                                                             section.items
                                                                 .filterExplicit(hideExplicit)
                                                                 .filterVideo(hideVideo)
-                                                                .filterBlockedArtists(blockedArtistIds),
+                                                                .filterBlockedArtists(blockedArtistIds)
+                                                                .filterBlockedSongs(blockedSongIds),
                                                             aiContentFilterPolicy,
                                                         ),
                                                 )
@@ -723,6 +727,7 @@ class HomeViewModel
             val hideExplicit = context.dataStore.get(HideExplicitKey, false)
             val hideVideo = context.dataStore.get(HideVideoKey, false)
             val blockedArtistIds = database.getBlockedArtistIds().toSet()
+            val blockedSongIds = database.getBlockedSongIds().toSet()
             val aiContentFilterPolicy = loadAiContentFilterPolicy()
             val fromTimeStamp = System.currentTimeMillis() - 86400000 * 7 * 2
 
@@ -754,7 +759,8 @@ class HomeViewModel
                                     items
                                         .filterExplicit(hideExplicit)
                                         .filterVideo(hideVideo)
-                                        .filterBlockedArtists(blockedArtistIds),
+                                        .filterBlockedArtists(blockedArtistIds)
+                                        .filterBlockedSongs(blockedSongIds),
                                     aiContentFilterPolicy,
                                 ).shuffled()
                                     .ifEmpty { return@mapNotNull null },
@@ -784,7 +790,8 @@ class HomeViewModel
                                             page.playlists.shuffled().take(4)
                                     ).filterExplicit(hideExplicit)
                                         .filterVideo(hideVideo)
-                                        .filterBlockedArtists(blockedArtistIds),
+                                        .filterBlockedArtists(blockedArtistIds)
+                                        .filterBlockedSongs(blockedSongIds),
                                     aiContentFilterPolicy,
                                 ).shuffled()
                                     .ifEmpty { return@mapNotNull null },
@@ -896,6 +903,7 @@ class HomeViewModel
                 isLoadingMore.value = true
                 try {
                     val blockedArtistIds = database.getBlockedArtistIds().toSet()
+                    val blockedSongIds = database.getBlockedSongIds().toSet()
                     val aiContentFilterPolicy = loadAiContentFilterPolicy()
                     val nextSections = YouTube.home(continuation).getOrNull() ?: return@launch
                     val mergedSections = homePage.value?.sections.orEmpty() + nextSections.sections
@@ -910,7 +918,8 @@ class HomeViewModel
                                                 section.items
                                                     .filterExplicit(hideExplicit)
                                                     .filterVideo(hideVideo)
-                                                    .filterBlockedArtists(blockedArtistIds),
+                                                    .filterBlockedArtists(blockedArtistIds)
+                                                    .filterBlockedSongs(blockedSongIds),
                                                 aiContentFilterPolicy,
                                             ),
                                     )
@@ -946,6 +955,7 @@ class HomeViewModel
                     val hideExplicit = context.dataStore.get(HideExplicitKey, false)
                     val hideVideo = context.dataStore.get(HideVideoKey, false)
                     val blockedArtistIds = database.getBlockedArtistIds().toSet()
+                    val blockedSongIds = database.getBlockedSongIds().toSet()
                     val aiContentFilterPolicy = loadAiContentFilterPolicy()
                     val nextSections = YouTube.home(params = chip?.endpoint?.params).getOrNull() ?: return@launch
                     val filteredPage =
@@ -959,7 +969,8 @@ class HomeViewModel
                                                 section.items
                                                     .filterExplicit(hideExplicit)
                                                     .filterVideo(hideVideo)
-                                                    .filterBlockedArtists(blockedArtistIds),
+                                                    .filterBlockedArtists(blockedArtistIds)
+                                                    .filterBlockedSongs(blockedSongIds),
                                                 aiContentFilterPolicy,
                                             ),
                                     )

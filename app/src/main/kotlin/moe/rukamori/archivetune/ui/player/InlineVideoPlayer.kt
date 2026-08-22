@@ -848,32 +848,41 @@ fun FullscreenVideoOverlay(
                 // Uses the hoisted [headerMetadata] collected above (avoids
                 // a second collectAsState call here).
                 headerMetadata?.let { meta ->
-                    Column(
+                    PlayerTextBackdrop(
+                        textColor = Color.White,
                         modifier =
                             Modifier
                                 .align(Alignment.TopStart)
                                 .statusBarsPadding()
                                 .padding(start = 16.dp, top = 8.dp, end = 160.dp),
                     ) {
-                        Text(
-                            text = meta.title,
-                            color = Color.White,
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.basicMarquee(),
-                        )
-                        val artistText = meta.artists.joinToString(", ") { it.name }
-                        if (artistText.isNotBlank()) {
+                        Column {
                             Text(
-                                text = artistText,
-                                color = Color.White.copy(alpha = 0.7f),
-                                fontSize = 13.sp,
+                                text = meta.title,
+                                color = Color.White,
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.SemiBold,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.basicMarquee(),
+                                modifier =
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .basicMarquee(),
                             )
+                            val artistText = meta.artists.joinToString(", ") { it.name }
+                            if (artistText.isNotBlank()) {
+                                Text(
+                                    text = artistText,
+                                    color = Color.White.copy(alpha = 0.7f),
+                                    fontSize = 13.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier =
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .basicMarquee(),
+                                )
+                            }
                         }
                     }
                 }

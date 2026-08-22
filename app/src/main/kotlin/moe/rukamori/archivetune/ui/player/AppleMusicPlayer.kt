@@ -25,6 +25,7 @@ import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.SharedTransitionScope.OverlayClip
 import androidx.compose.animation.BoundsTransform
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloat
@@ -38,6 +39,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.BorderStroke
@@ -137,6 +139,7 @@ import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.AutoTranslateLyricsKey
+import moe.rukamori.archivetune.constants.AutoHideLyricsPlayerControlsKey
 import moe.rukamori.archivetune.constants.ThumbnailCornerRadiusKey
 import moe.rukamori.archivetune.constants.TranslatorTargetLangKey
 import moe.rukamori.archivetune.db.entities.FormatEntity
@@ -154,6 +157,7 @@ import moe.rukamori.archivetune.ui.component.LyricsEnhanced
 import moe.rukamori.archivetune.ui.component.LyricsV2
 import moe.rukamori.archivetune.constants.LyricsMode
 import moe.rukamori.archivetune.constants.LyricsModeKey
+import moe.rukamori.archivetune.constants.ShowLyricsPlayerControlsKey
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.ui.menu.LyricsMenu
 import moe.rukamori.archivetune.ui.menu.PlayerMenu
@@ -307,6 +311,8 @@ fun AppleMusicPlayerContent(
     // forces an extra layout pass on top of whatever the lyrics view is already
     // spending its frame budget on.
     val animationsDisabled = LocalAnimationsDisabled.current
+    val showLyricsPlayerControls by rememberPreference(ShowLyricsPlayerControlsKey, defaultValue = true)
+    val autoHideLyricsPlayerControls by rememberPreference(AutoHideLyricsPlayerControlsKey, defaultValue = false)
 
     // Toggling one closes the other — queue and lyrics are mutually exclusive
     // (only one morph target can be active at a time).
@@ -341,17 +347,12 @@ fun AppleMusicPlayerContent(
         lyricsOpen = false
     }
 
-    // === Auto-hide player controls (always-on in Apple Music style) ===
-    // The in-place Apple Music lyrics view ALWAYS auto-hides the bottom
-    // controls (seekbar + transport + volume + action row) after 3 seconds.
-    // Touching anywhere on the lyrics restores them and restarts the timer.
-    // This is hardcoded behavior — there is no toggle in the LyricsMenu
-    // overflow because the Apple Music style is designed to auto-hide.
-    // The standalone LyricsScreen still has the toggle (for other player
-    // styles that use it).
+    // Copied from main branch: simple auto-hide that always shows controls
+    // for 4 seconds when lyrics or queue opens, then hides them.
+    // No preference checks — the controls ALWAYS show first, then auto-hide.
     var playerControlsExpanded by remember(mediaMetadata.id) { mutableStateOf(true) }
     var playerControlsVisibilityTick by remember(mediaMetadata.id) { mutableIntStateOf(0) }
-    val autoHideDelayMs = 3_000L
+    val autoHideDelayMs = 4_000L
 
     LaunchedEffect(lyricsOpen) {
         if (lyricsOpen) {
@@ -361,18 +362,26 @@ fun AppleMusicPlayerContent(
             playerControlsExpanded = true
         }
     }
+    LaunchedEffect(queueOpen) {
+        if (queueOpen) {
+            playerControlsExpanded = true
+            playerControlsVisibilityTick++
+        } else {
+            playerControlsExpanded = true
+        }
+    }
 
     // ISSUE 1 FIX: propagate inline-lyrics visibility to the parent so back-stack
-    // screens suspend their GPU work during the morph. See the parameter docstring
-    // for the full rationale.
+    // screens suspend their GPU work during the morph.
     LaunchedEffect(lyricsOpen) {
         onLyricsVisibilityChange(lyricsOpen)
     }
     DisposableEffect(Unit) {
         onDispose { onLyricsVisibilityChange(false) }
     }
-    LaunchedEffect(lyricsOpen, playerControlsVisibilityTick) {
-        if (!lyricsOpen) return@LaunchedEffect
+    // Auto-hide: show controls for 4s, then hide. Fires for both lyrics and queue.
+    LaunchedEffect(lyricsOpen, queueOpen, playerControlsVisibilityTick) {
+        if (!lyricsOpen && !queueOpen) return@LaunchedEffect
         playerControlsExpanded = true
         delay(autoHideDelayMs)
         playerControlsExpanded = false
@@ -401,9 +410,9 @@ fun AppleMusicPlayerContent(
             canvasVisibleForLyrics = true
         }
     }
-    val pokePlayerControlsVisibility = remember {
+    val pokePlayerControlsVisibility = remember(lyricsOpen, queueOpen) {
         {
-            if (lyricsOpen) {
+            if (lyricsOpen || queueOpen) {
                 playerControlsExpanded = true
                 playerControlsVisibilityTick++
             }
@@ -452,9 +461,12 @@ fun AppleMusicPlayerContent(
     // each edge (162dp for W=360), which is > drift(60) + blur(64) = 124dp,
     // so the image always covers the parent with a comfortable safety margin.
     //
-    // SPEED: increased ~30% faster per user request (19s/27s → 14s/20s).
-    // BLUR: 64dp (reverted from a temporary 96dp experiment back to 64dp
-    // per user request — the 50% increase was too heavy on the visual).
+    // SPEED: uses LinearEasing instead of FastOutSlowInEasing. The previous
+    // FastOutSlowInEasing made the drift feel fast at the start but slow at
+    // the turnaround points (the easing decelerates into each endpoint then
+    // accelerates back out). LinearEasing gives a constant, uniform speed
+    // throughout the entire cycle — no perceived "slowdown" at the edges.
+    // Duration kept at 14s/20s (already increased from the original 19s/27s).
     //
     // CRITICAL PERF: we keep the State<Float> objects (NOT `by` delegation) so
     // the animation values are read ONLY inside Modifier.graphicsLayer { }
@@ -471,7 +483,7 @@ fun AppleMusicPlayerContent(
         initialValue = -60f,
         targetValue = 60f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 14_000, easing = FastOutSlowInEasing),
+            animation = tween(durationMillis = 14_000, easing = LinearEasing),
             repeatMode = RepeatMode.Reverse,
         ),
         label = "am-lyrics-drift-x",
@@ -480,7 +492,7 @@ fun AppleMusicPlayerContent(
         initialValue = -45f,
         targetValue = 45f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 20_000, easing = FastOutSlowInEasing),
+            animation = tween(durationMillis = 20_000, easing = LinearEasing),
             repeatMode = RepeatMode.Reverse,
         ),
         label = "am-lyrics-drift-y",
@@ -586,13 +598,8 @@ fun AppleMusicPlayerContent(
     }
     val onMoreClick = {
         if (lyricsOpen) {
-            // When lyrics is open, the overflow menu shows the LyricsMenu
-            // (Edit / Refetch / Translate / Sync offset / Search) instead of
-            // the regular PlayerMenu. The "Show player controls" and
-            // "Auto-hide player controls" toggles are NOT passed at all —
-            // the in-place Apple Music lyrics view does not support auto-hide
-            // (controls are always visible), so those toggles would be no-ops.
-            // showControlsToggles = false hides them from the UI.
+            // When lyrics is open, the overflow menu shows lyric actions. Control visibility is governed
+            // by the shared Lyrics settings, so the Apple Music style does not duplicate those toggles.
             menuState.show {
                 LyricsMenu(
                     lyricsProvider = { currentLyrics },
@@ -944,43 +951,45 @@ fun AppleMusicPlayerContent(
                             .weight(1f)
                             .fillMaxHeight(),
                 )
-                AppleMusicControlsColumn(
-                    mediaMetadata = mediaMetadata,
-                    isPlaying = isPlaying,
-                    isLoading = isLoading,
-                    canSkipPrevious = canSkipPrevious,
-                    canSkipNext = canSkipNext,
-                    sliderPosition = sliderPosition,
-                    positionProvider = positionProvider,
-                    duration = duration,
-                    playerConnection = playerConnection,
-                    currentSongLiked = currentSongLiked,
-                    volume = volume,
-                    onVolumeChange = onVolumeChange,
-                    titleActions = titleActions,
-                    onPlayPauseClick = onPlayPauseClick,
-                    onMoreClick = onMoreClick,
-                    onOutputClick = onOutputClick,
-                    onQueueClick = onQueueClick,
-                    onLyricsClick = onLyricsClick,
-                    onSliderValueChange = onSliderValueChange,
-                    onSliderValueChangeFinished = onSliderValueChangeFinished,
-                    currentFormat = currentFormat,
-                    onQualityChipClick = {
-                        bottomSheetPageState.show { ShowMediaInfo(mediaMetadata.id) }
-                    },
-                    modifier =
-                        Modifier
-                            .weight(1f)
-                            .fillMaxHeight()
-                            // NOTE: no navigationBarsPadding() here — contentBottomPadding
-                            // already includes the system-bars bottom inset via
-                            // collapsedBound (= dynamicQueuePeekHeight + systemBarsBottom).
-                            // Adding navigationBarsPadding() on top double-counts the
-                            // inset and makes the controls jump up when the nav bar
-                            // appears.
-                            .padding(bottom = contentBottomPadding),
-                )
+                AnimatedVisibility(
+                    visible = (!lyricsOpen && !queueOpen) ||
+                        (queueOpen && playerControlsExpanded) ||
+                        (lyricsOpen && showLyricsPlayerControls && playerControlsExpanded),
+                    enter = fadeIn(tween(120)),
+                    exit = fadeOut(tween(100)),
+                    modifier = Modifier.weight(1f).fillMaxHeight(),
+                ) {
+                    AppleMusicControlsColumn(
+                        mediaMetadata = mediaMetadata,
+                        isPlaying = isPlaying,
+                        isLoading = isLoading,
+                        canSkipPrevious = canSkipPrevious,
+                        canSkipNext = canSkipNext,
+                        sliderPosition = sliderPosition,
+                        positionProvider = positionProvider,
+                        duration = duration,
+                        playerConnection = playerConnection,
+                        currentSongLiked = currentSongLiked,
+                        volume = volume,
+                        onVolumeChange = onVolumeChange,
+                        titleActions = titleActions,
+                        onPlayPauseClick = onPlayPauseClick,
+                        onMoreClick = onMoreClick,
+                        onOutputClick = onOutputClick,
+                        onQueueClick = onQueueClick,
+                        onLyricsClick = onLyricsClick,
+                        onSliderValueChange = onSliderValueChange,
+                        onSliderValueChangeFinished = onSliderValueChangeFinished,
+                        currentFormat = currentFormat,
+                        onQualityChipClick = {
+                            bottomSheetPageState.show { ShowMediaInfo(mediaMetadata.id) }
+                        },
+                        modifier =
+                            Modifier
+                                .fillMaxSize()
+                                .padding(bottom = contentBottomPadding),
+                    )
+                }
             }
         } else {
             // Portrait layout with ViviMusic-style in-place queue morph.
@@ -1404,14 +1413,13 @@ fun AppleMusicPlayerContent(
                 // mini header above) so only the seekbar + transport + volume + bottom
                 // row render.
                 //
-                // Auto-hide: when lyrics is open, the controls auto-hide after 3s
-                // (always-on in Apple Music style — no toggle). Touching the lyrics
-                // overlay above restores them.
+                // Auto-hide follows the standalone LyricsScreen preference (5s when enabled).
+                // The mini header remains visible, so the user can always return to the player.
                 // Slide requires an extra layout pass on top of the fade; skip it when
                 // animations are reduced so the auto-hide/show cycle doesn't compete with
                 // the karaoke lyrics view for frame budget on lower-end devices.
                 AnimatedVisibility(
-                    visible = !lyricsOpen || playerControlsExpanded,
+                    visible = (!lyricsOpen && !queueOpen) || playerControlsExpanded,
                     enter = if (animationsDisabled) {
                         fadeIn(tween(120))
                     } else {
@@ -1527,6 +1535,7 @@ private fun AppleMusicSharpArtwork(
         val videoArtworkState = LocalVideoArtworkState.current
         val showVideo =
             videoArtworkState != null &&
+                !videoArtworkState.hasPlaybackFailed &&
                 isMusicVideo &&
                 !videoId.isNullOrBlank() &&
                 playerConnection != null
@@ -1808,35 +1817,46 @@ private fun AppleMusicControlsColumn(
     // the mini header above the queue list).
     if (showTitleRow) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(
-                    text = mediaMetadata.title,
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier =
-                        Modifier.clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = titleActions.onTitleClick,
-                        ),
-                )
-                Text(
-                    text = mediaMetadata.artists.joinToString { it.name },
-                    style = MaterialTheme.typography.titleMedium,
-                    color = Color.White.copy(alpha = 0.64f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier =
-                        Modifier.clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                        ) {
-                            mediaMetadata.artists.firstOrNull()?.id?.let(titleActions.onArtistClick)
-                        },
-                )
+            PlayerTextBackdrop(
+                textColor = Color.White,
+                modifier = Modifier.weight(1f),
+            ) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        text = mediaMetadata.title,
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .basicMarquee()
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null,
+                                    onClick = titleActions.onTitleClick,
+                                ),
+                    )
+                    Text(
+                        text = mediaMetadata.artists.joinToString { it.name },
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Color.White.copy(alpha = 0.64f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .basicMarquee()
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null,
+                                ) {
+                                    mediaMetadata.artists.firstOrNull()?.id?.let(titleActions.onArtistClick)
+                                },
+                    )
+                }
             }
             Spacer(Modifier.width(12.dp))
             AppleMusicChip(
@@ -2177,35 +2197,46 @@ private fun SharedTransitionScope.AppleMusicMiniHeader(
             )
         }
         Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
-            Text(
-                text = mediaMetadata.title,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = Color.White,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier =
-                    Modifier.clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = titleActions.onTitleClick,
-                    ),
-            )
-            Text(
-                text = mediaMetadata.artists.joinToString { it.name },
-                style = MaterialTheme.typography.titleSmall,
-                color = Color.White.copy(alpha = 0.7f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier =
-                    Modifier.clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                    ) {
-                        mediaMetadata.artists.firstOrNull()?.id?.let(titleActions.onArtistClick)
-                    },
-            )
+        PlayerTextBackdrop(
+            textColor = Color.White,
+            modifier = Modifier.weight(1f),
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = mediaMetadata.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .basicMarquee()
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = titleActions.onTitleClick,
+                            ),
+                )
+                Text(
+                    text = mediaMetadata.artists.joinToString { it.name },
+                    style = MaterialTheme.typography.titleSmall,
+                    color = Color.White.copy(alpha = 0.7f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .basicMarquee()
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                            ) {
+                                mediaMetadata.artists.firstOrNull()?.id?.let(titleActions.onArtistClick)
+                            },
+                )
+            }
         }
         AppleMusicChip(
             iconRes = if (currentSongLiked) R.drawable.player_star_filled else R.drawable.player_star,

@@ -23,6 +23,8 @@ import kotlinx.serialization.json.Json
 import moe.rukamori.archivetune.lastfm.models.Authentication
 import moe.rukamori.archivetune.lastfm.models.LastFmError
 import moe.rukamori.archivetune.lastfm.models.RecentTracksResponse
+import moe.rukamori.archivetune.lastfm.models.TopArtistsResponse
+import moe.rukamori.archivetune.lastfm.models.TopAlbumsResponse
 import moe.rukamori.archivetune.lastfm.models.TopTracksResponse
 import moe.rukamori.archivetune.lastfm.models.TokenResponse
 import moe.rukamori.archivetune.lastfm.models.UserInfo
@@ -243,6 +245,42 @@ object LastFM {
     ) = runCatching {
         postAndDecode<TopTracksResponse>(
             method = "user.getTopTracks",
+            extra =
+                buildMap {
+                    put("user", username)
+                    put("period", period)
+                    put("limit", limit.toString())
+                    put("page", page.toString())
+                },
+        )
+    }
+
+    suspend fun getTopArtists(
+        username: String,
+        period: String = "overall",
+        limit: Int = 50,
+        page: Int = 1,
+    ) = runCatching {
+        postAndDecode<TopArtistsResponse>(
+            method = "user.getTopArtists",
+            extra =
+                buildMap {
+                    put("user", username)
+                    put("period", period)
+                    put("limit", limit.toString())
+                    put("page", page.toString())
+                },
+        )
+    }
+
+    suspend fun getTopAlbums(
+        username: String,
+        period: String = "overall",
+        limit: Int = 50,
+        page: Int = 1,
+    ) = runCatching {
+        postAndDecode<TopAlbumsResponse>(
+            method = "user.getTopAlbums",
             extra =
                 buildMap {
                     put("user", username)

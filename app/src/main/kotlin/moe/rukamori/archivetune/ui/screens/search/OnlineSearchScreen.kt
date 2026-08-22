@@ -45,8 +45,11 @@ import moe.rukamori.archivetune.models.toMediaMetadata
 import moe.rukamori.archivetune.playback.queues.YouTubeQueue
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.YouTubeListItem
+import moe.rukamori.archivetune.constants.SearchProvider
 import moe.rukamori.archivetune.ui.menu.*
 import moe.rukamori.archivetune.viewmodels.OnlineSearchSuggestionViewModel
+import moe.rukamori.archivetune.ui.screens.search.SpotifySearchItemRow
+import moe.rukamori.archivetune.ui.screens.search.queryText
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalComposeUiApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -57,6 +60,7 @@ fun OnlineSearchScreen(
     onSearch: (String) -> Unit,
     onDismiss: () -> Unit,
     pureBlack: Boolean,
+    searchProvider: SearchProvider = SearchProvider.YOUTUBE,
     viewModel: OnlineSearchSuggestionViewModel = hiltViewModel(),
 ) {
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -80,7 +84,8 @@ fun OnlineSearchScreen(
             }
     }
 
-    LaunchedEffect(query) {
+    LaunchedEffect(query, searchProvider) {
+        viewModel.updateProvider(searchProvider)
         viewModel.updateQuery(query)
     }
 
@@ -189,6 +194,37 @@ fun OnlineSearchScreen(
                     )
                 }
             }
+            if (viewState.spotifyItems.isNotEmpty()) {
+                item(
+                    key = "spotify_results_header",
+                    contentType = "section_header",
+                ) {
+                    SearchSectionHeader(
+                        title = stringResource(R.string.search_spotify),
+                        pureBlack = pureBlack,
+                        modifier = Modifier.animateItem(),
+                    )
+                }
+
+                itemsIndexed(
+                    items = viewState.spotifyItems,
+                    key = { _, item -> "spotify_${item.key}" },
+                    contentType = { _, _ -> "spotify_result" },
+                ) { _, item ->
+                    SpotifySearchItemRow(
+                        item = item,
+                        modifier =
+                            Modifier.combinedClickable(
+                                onClick = {
+                                    onSearch(item.queryText())
+                                    onDismiss()
+                                },
+                                onLongClick = {},
+                            ).animateItem(),
+                    )
+                }
+            }
+
 
             if (viewState.items.isNotEmpty()) {
                 item(

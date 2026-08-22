@@ -41,7 +41,9 @@ import kotlinx.coroutines.runBlocking
 import moe.rukamori.archivetune.constants.AudioQuality
 import moe.rukamori.archivetune.constants.AudioQualityKey
 import moe.rukamori.archivetune.constants.DownloadSource
+import moe.rukamori.archivetune.constants.DownloadSourceConfig
 import moe.rukamori.archivetune.constants.DownloadSourceKey
+import moe.rukamori.archivetune.constants.DownloadSourceOrderKey
 import moe.rukamori.archivetune.constants.QobuzAudioQuality
 import moe.rukamori.archivetune.constants.QobuzAudioQualityKey
 import moe.rukamori.archivetune.constants.TidalAudioQuality
@@ -60,6 +62,7 @@ import moe.rukamori.archivetune.utils.PoolAccountManager
 import moe.rukamori.archivetune.utils.StreamClientUtils
 import moe.rukamori.archivetune.utils.YTPlayerUtils
 import moe.rukamori.archivetune.utils.enumPreference
+import moe.rukamori.archivetune.utils.preference
 import moe.rukamori.archivetune.utils.isLowDataModeActive
 import moe.rukamori.archivetune.utils.retryWithoutPlaybackLoginContext
 import okhttp3.ConnectionPool
@@ -103,6 +106,12 @@ class DownloadUtil
         private val connectivityManager = context.getSystemService<ConnectivityManager>()!!
         private val audioQuality by enumPreference(context, AudioQualityKey, AudioQuality.AUTO)
         private val downloadSource by enumPreference(context, DownloadSourceKey, DownloadSource.AUTO)
+        // Reads the user's drag-and-drop download source priority list (CSV of DownloadSource
+        // names). Falls back to DEFAULT_ORDER when blank. The legacy `downloadSource` field is
+        // kept only for backup compatibility — resolution now uses this ordered chain.
+        private val downloadSourceOrderCsv by preference(context, DownloadSourceOrderKey, "")
+        private val downloadSourceOrder: List<DownloadSource>
+            get() = DownloadSourceConfig.parseOrder(downloadSourceOrderCsv)
         private val qobuzAudioQuality by enumPreference(context, QobuzAudioQualityKey, QobuzAudioQuality.FLAC)
         private val tidalAudioQuality by enumPreference(context, TidalAudioQualityKey, TidalAudioQuality.FLAC)
         private val downloadScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -298,23 +307,46 @@ class DownloadUtil
                     ),
             ) { dataSpec ->
                 val mediaId = dataSpec.key ?: error("No media id")
-                val length = if (dataSpec.length >= 0) dataSpec.length else 1
-                if (playerCache.isCached(mediaId, dataSpec.position, length)) {
-                    return@Factory dataSpec
-                }
-                // Check source-specific player-cache keys (Qobuz, Tidal, Deezer) so that
-                // downloading a song that was streamed from an external lossless
-                // source saves the actual lossless data instead of re-downloading
-                // from YouTube Music. The keys match MusicService.sourceCacheKey().
-                // The chained [playerCacheDownloadUpstreamFactory] reads these source-specific
-                // keys directly from playerCache — no YouTube URL resolution is needed when the
-                // lossless bytes are already cached.
-                for (sourcePrefix in listOf("qobuz:", "tidal:", "deezer:")) {
-                    val sourceKey = "$sourcePrefix$mediaId"
-                    if (playerCache.isCached(sourceKey, dataSpec.position, length)) {
-                        return@Factory dataSpec.buildUpon().setKey(sourceKey).build()
+                // Don't short-circuit on a 1-byte cache — Media3 opens downloads
+                // with `dataSpec.length == C.LENGTH_UNSET`, and clamping that
+                // to `1` here means even a single cached byte (e.g. from a
+                // one-second playback preview) makes the resolver return the
+                // bare mediaId dataSpec, which downstream tries to open as
+                // `Uri.parse("dJth8oW7CAQ")` (a bare YouTube ID, not a URL) →
+                // Malformed URL → STATE_FAILED.
+                // Instead, sum the actual cached spans and compare against
+                // FormatEntity.contentLength — only treat the cache as
+                // complete when we actually have the full file.
+                val expectedLength = database.getSongByIdBlocking(mediaId)?.format?.contentLength ?: 0L
+                if (expectedLength > 0L) {
+                    val cachedBytes = runCatching {
+                        playerCache.getCachedSpans(mediaId).sumOf { it.length }
+                    }.getOrDefault(0L)
+                    if (cachedBytes >= expectedLength) {
+                        return@Factory dataSpec
                     }
                 }
+                // Same check for source-prefixed cache keys — only return
+                // when we actually have the full file, not on partial cache.
+                for (sourcePrefix in listOf("qobuz:", "tidal:", "deezer:")) {
+                    val sourceKey = "$sourcePrefix$mediaId"
+                    val sourceExpected = expectedLength // same expected length across sources
+                    if (sourceExpected > 0L) {
+                        val cachedBytes = runCatching {
+                            playerCache.getCachedSpans(sourceKey).sumOf { it.length }
+                        }.getOrDefault(0L)
+                        if (cachedBytes >= sourceExpected) {
+                            return@Factory dataSpec.buildUpon().setKey(sourceKey).build()
+                        }
+                    }
+                }
+                // Fallback: if we have no expected length info at all, do a
+                // bounded check that requires the WHOLE dataSpec.length to be
+                // cached (only meaningful when dataSpec.length is set).
+                if (dataSpec.length >= 0 && playerCache.isCached(mediaId, dataSpec.position, dataSpec.length)) {
+                    return@Factory dataSpec
+                }
+                // No usable cache — proceed to resolve a fresh URL.
                 val lowDataModeActive = context.isLowDataModeActive()
                 if (!lowDataModeActive) {
                     resolvePreferredDownloadDataSpec(dataSpec, mediaId)?.let { return@Factory it }
@@ -510,17 +542,31 @@ class DownloadUtil
             // Fast path: bytes already cached under any source-prefixed key —
             // no work to do. The DownloadManager will pick them up via the
             // resolver in [youtubeDataSourceFactory].
+            //
+            // IMPORTANT: when FormatEntity.contentLength is unknown (0L) we
+            // must NOT treat any non-empty cache as complete. A previous
+            // attempt to play the song might have written only the first
+            // few seconds to playerCache, and returning that key here would
+            // cause the DownloadManager to copy partial bytes to downloadCache
+            // and mark STATE_COMPLETED — the user then sees "downloaded" but
+            // the file won't play back (parser exception).
+            // When expected is unknown, we fall through to the resolver and
+            // fetch a fresh copy, which writes the authoritative contentLength
+            // to FormatEntity for next time.
             for (key in listOf("qobuz:$mediaId", "tidal:$mediaId", "deezer:$mediaId", mediaId)) {
                 val spans = runCatching { playerCache.getCachedSpans(key) }.getOrNull().orEmpty()
                 if (spans.isNotEmpty()) {
-                    // Verify the cached spans actually cover the whole file —
-                    // a partial cache (e.g. only the first 30 s of playback)
-                    // would cause a corrupted export. We use contentLength
-                    // from FormatEntity as the expected total.
                     val expected = database.getSongByIdBlocking(mediaId)?.format?.contentLength ?: 0L
                     val cachedBytes = spans.sumOf { it.length }
-                    if (expected <= 0L || cachedBytes >= expected) {
+                    if (expected > 0L && cachedBytes >= expected) {
                         return key
+                    }
+                    // If expected is unknown OR cached < expected, evict the
+                    // partial spans so we fetch cleanly below.
+                    if (expected <= 0L || cachedBytes < expected) {
+                        runCatching {
+                            spans.forEach { playerCache.removeSpan(it) }
+                        }
                     }
                 }
             }
@@ -536,15 +582,11 @@ class DownloadUtil
                 val album = song.album?.title?.takeIf { it.isNotBlank() }
                 val durationMs = song.song.duration.takeIf { it > 0 }?.toLong()?.times(1000L)
                 if (title != null) {
-                    val sourceOrder: List<DownloadSource> = when (downloadSource) {
-                        DownloadSource.AUTO -> listOf(
-                            DownloadSource.QOBUZ,
-                            DownloadSource.TIDAL,
-                            DownloadSource.DEEZER,
-                            DownloadSource.YOUTUBE_MUSIC,
-                        )
-                        else -> listOf(downloadSource)
-                    }
+                    // Use the user-configured drag-and-drop priority list (Qobuz → Tidal →
+                    // Deezer → YouTube Music by default). The legacy single-pick
+                    // `downloadSource` preference is preserved only for the early-exit guard
+                    // above — the actual chain is `downloadSourceOrder`.
+                    val sourceOrder: List<DownloadSource> = downloadSourceOrder
                     for (source in sourceOrder) {
                         val resolved = runCatching {
                             resolveSourceStream(source, mediaId, title, artists, album, durationMs)
@@ -701,19 +743,9 @@ class DownloadUtil
             val album = song.album?.title?.takeIf { it.isNotBlank() }
             val durationMs = song.song.duration.takeIf { it > 0 }?.toLong()?.times(1000L)
 
-            // Build the source chain based on the user's preference.
-            // AUTO tries Qobuz → Tidal → Deezer (lossless FLAC), falling
-            // back to YouTube Music (lossy MP3/AAC) only when none of
-            // the lossless backends resolve the track.
-            val sourceOrder: List<DownloadSource> = when (downloadSource) {
-                DownloadSource.AUTO -> listOf(
-                    DownloadSource.QOBUZ,
-                    DownloadSource.TIDAL,
-                    DownloadSource.DEEZER,
-                    DownloadSource.YOUTUBE_MUSIC,
-                )
-                else -> listOf(downloadSource)
-            }
+            // Build the source chain based on the user's drag-and-drop priority list.
+            // Default order: Qobuz → Tidal → Deezer (lossless FLAC) → YouTube Music (lossy).
+            val sourceOrder: List<DownloadSource> = downloadSourceOrder
 
             // Resolve the source-specific direct stream and pull out the
             // metadata we need to (a) build the DataSpec and (b) persist a
@@ -794,6 +826,14 @@ class DownloadUtil
                 // AUTO chain falls through to the next source. The Deezer
                 // catalogue is still queried (via enrichSongMetadataFromDeezer)
                 // to populate the song's album/thumbnail/ISRC metadata.
+                null
+            }
+            DownloadSource.JIOSAAVN -> {
+                // The JioSaavn public API exposes 96/160/320 kbps AAC stream URLs at runtime,
+                // but the download path needs a stable, contentLength-bearing resolver like
+                // LosslessStreamResolver.resolveQobuz/resolveTidal. Until that's added, return
+                // null so the AUTO chain falls through to the next source. The runtime playback
+                // path (MusicService.resolveJioSaavnStream) is unaffected and still works.
                 null
             }
             DownloadSource.AUTO, DownloadSource.YOUTUBE_MUSIC -> null

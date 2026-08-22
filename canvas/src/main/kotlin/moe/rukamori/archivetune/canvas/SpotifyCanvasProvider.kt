@@ -14,7 +14,9 @@ import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.cache.HttpCache
 import io.ktor.client.plugins.compression.ContentEncoding
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.client.plugins.defaultRequest
 import io.ktor.client.request.get
+import io.ktor.client.request.header
 import io.ktor.client.request.parameter
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
@@ -30,12 +32,20 @@ import java.util.concurrent.ConcurrentHashMap
 /**
  * Fetches Spotify Canvas looping videos for songs by their YouTube Music video ID.
  *
- * The provider delegates to the third-party `mlc.kouzu.in` resolver, which maps a YouTube
- * Music video ID → the song's Spotify Canvas URL. The resolver also returns the matched
- * song name and artist name, which we surface in the resulting [CanvasArtwork] for
- * identity verification by the caller.
+ * The provider delegates to the third-party `mlc-ytify.kouzu.in` resolver, which maps a
+ * YouTube Music video ID → the song's Spotify Canvas URL. The resolver endpoint is
+ * `https://mlc-ytify.kouzu.in/api/canvas?id=<videoId>` (same resolver pattern as the Qobuz
+ * backup server) — it returns a JSON envelope with the actual canvas video URL on the
+ * `velamhere-img.hf.space` CDN.
  *
- * Endpoint: `GET https://mlc.kouzu.in/api/canvas?id=<videoId>`
+ * The resolver also returns the matched song name and artist name, which we surface in the
+ * resulting [CanvasArtwork] for identity verification by the caller.
+ *
+ * The `x-request-source: muzo` header is required on every kouzu.in request — without it
+ * the server rate-limits the client. The header is injected centrally by the
+ * `MusicService.mediaOkHttpClient` interceptor for any kouzu.in host request, but the canvas
+ * provider uses its own Ktor client (with OkHttp engine) — so we add the header manually
+ * here via the `defaultRequest` block.
  *
  * The response shape is tolerant — we accept any of the common field names seen across
  * resolvers of this kind (`url` / `canvas_url` / `video_url`, `song` / `name` / `title`,
@@ -45,7 +55,12 @@ import java.util.concurrent.ConcurrentHashMap
  * on every recomposition / replay.
  */
 object SpotifyCanvasProvider {
-    private const val BASE_URL = "https://mlc.kouzu.in/api/canvas"
+    /**
+     * Resolver base URL. The full URL is `$BASE_URL?id=<videoId>` — the video ID is passed
+     * as a query parameter. The `x-request-source: muzo` header is added to every request
+     * to bypass the server's rate-limiting.
+     */
+    private const val BASE_URL = "https://mlc-ytify.kouzu.in/api/canvas"
     private const val CACHE_TTL_MS = 60L * 60 * 1000 // 1 hour
 
     private val json =
@@ -68,6 +83,15 @@ object SpotifyCanvasProvider {
                 deflate()
             }
             install(HttpCache)
+            // The x-request-source: muzo header is REQUIRED on every kouzu.in
+            // request — without it the server rate-limits the client aggressively.
+            // Adding it here via defaultRequest means every request the client makes
+            // to the resolver includes the header.
+            defaultRequest {
+                header("x-request-source", "muzo")
+                header("User-Agent", "ArchiveTune-Android")
+                header("Accept", "application/json")
+            }
             expectSuccess = false
         }
     }
@@ -99,10 +123,12 @@ object SpotifyCanvasProvider {
 
         val artwork =
             try {
-                val response =
-                    client.get(BASE_URL) {
-                        parameter("id", videoId)
-                    }
+                // The resolver URL pattern: `https://mlc-ytify.kouzu.in/api/canvas?id=<videoId>`.
+                // The video ID is passed as a query parameter. The x-request-source: muzo
+                // header is added to every request by the client's defaultRequest block.
+                val response = client.get(BASE_URL) {
+                    parameter("id", videoId)
+                }
                 if (response.status != HttpStatusCode.OK) {
                     cache[videoId] = CacheEntry(null, System.currentTimeMillis() + CACHE_TTL_MS)
                     return null

@@ -7,11 +7,14 @@
 
 package moe.rukamori.archivetune.viewmodels
 
+import android.content.Context
 import android.net.Uri
 import androidx.compose.runtime.Immutable
+import androidx.datastore.preferences.core.edit
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
@@ -19,11 +22,13 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.constants.LogcatPausedKey
 import moe.rukamori.archivetune.logcat.ClearLogcatUseCase
 import moe.rukamori.archivetune.logcat.ExportLogcatUseCase
 import moe.rukamori.archivetune.logcat.FilterLogcatUseCase
@@ -31,6 +36,7 @@ import moe.rukamori.archivetune.logcat.FormatLogcatUseCase
 import moe.rukamori.archivetune.logcat.LogcatLevel
 import moe.rukamori.archivetune.logcat.LogcatRecord
 import moe.rukamori.archivetune.logcat.ObserveLogcatUseCase
+import moe.rukamori.archivetune.utils.dataStore
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -106,6 +112,7 @@ sealed interface LogcatEffect {
 class LogcatViewModel
     @Inject
     constructor(
+        @ApplicationContext private val appContext: Context,
         private val observeLogcat: ObserveLogcatUseCase,
         private val filterLogcat: FilterLogcatUseCase,
         private val clearLogcat: ClearLogcatUseCase,
@@ -204,6 +211,14 @@ class LogcatViewModel
             )
 
         init {
+            // Seed the paused flag from DataStore so it survives screen navigation AND process
+            // restarts. Previously this lived only in a HiltViewModel's MutableStateFlow, which
+            // was destroyed on screen exit and re-created with `false` — so the user's pause
+            // was silently dropped every time they navigated away from the Debug Logs screen.
+            viewModelScope.launch {
+                val persisted = appContext.dataStore.data.first()[LogcatPausedKey] ?: false
+                if (paused.value != persisted) paused.value = persisted
+            }
             observe()
         }
 
@@ -226,7 +241,12 @@ class LogcatViewModel
         }
 
         fun togglePaused() {
-            paused.update { value -> !value }
+            val newValue = !paused.value
+            paused.value = newValue
+            // Write-through so the pause survives navigation away from the screen and process restart.
+            viewModelScope.launch {
+                appContext.dataStore.edit { it[LogcatPausedKey] = newValue }
+            }
         }
 
         fun setMenuExpanded(expanded: Boolean) {

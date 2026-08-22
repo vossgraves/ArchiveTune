@@ -149,6 +149,9 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.graphics.drawable.toBitmap
 import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.C
 import androidx.media3.common.Player.STATE_BUFFERING
@@ -981,6 +984,23 @@ fun BottomSheetPlayer(
         }
     }
 
+    // Collapse the queue sheet whenever the app goes to the background (ON_STOP), so that
+    // re-entering the app doesn't re-open a queue the user had previously expanded. Without
+    // this, `queueSheetState.previousAnchor` stays at EXPANDED across the ON_PAUSE/ON_RESUME
+    // roundtrip, so the user has to manually close the queue sheet every time they return to
+    // the app. Collapsing on ON_STOP writes COLLAPSED_ANCHOR into previousAnchor via the
+    // sheet's onAnchorChanged callback, so the queue stays collapsed on return.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, queueSheetState) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP && !queueSheetState.isCollapsed) {
+                queueSheetState.collapseSoft()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
     var isLyricsScreenVisible by rememberSaveable {
         mutableStateOf(false)
     }
@@ -1066,8 +1086,16 @@ fun BottomSheetPlayer(
             onStreamResolved = { info -> videoAvailableHeights = info?.availableHeights.orEmpty() },
             onPlaybackFailed = { videoPlaybackFailed = true },
             onLoadingStateChange = { /* loading is computed from state directly in InlineVideoPlayer */ },
-            onRequestPauseMain = { playerConnection.player.pause() },
-            onRequestResumeMain = { playerConnection.player.play() },
+            onRequestPauseMain = {
+                if (videoMediaId != null && playerConnection.player.currentMediaItem?.mediaId == videoMediaId) {
+                    playerConnection.player.pause()
+                }
+            },
+            onRequestResumeMain = {
+                if (videoMediaId != null && playerConnection.player.currentMediaItem?.mediaId == videoMediaId) {
+                    playerConnection.player.play()
+                }
+            },
         )
 
     CompositionLocalProvider(
@@ -1234,7 +1262,7 @@ fun BottomSheetPlayer(
         onDismiss = {
             playerConnection.service.stopAndClearPlayback(clearPersistentState = true)
         },
-        backHandlerEnabled = !aodModeEnabled,
+        backHandlerEnabled = !aodModeEnabled && !isLyricsScreenVisible,
         keepContentAlive = true,
         collapsedContent = {
             MiniPlayer(
@@ -2438,8 +2466,7 @@ fun BottomSheetPlayer(
                 // close affordance in the lyrics top bar) to dismiss the lyrics sheet.
                 backHandlerEnabled =
                     isLyricsScreenVisible &&
-                        state.isExpandedOrExpanding &&
-                        playerDesignStyle != PlayerDesignStyle.APPLE_MUSIC,
+                        state.isExpandedOrExpanding,
                 mediaMetadata = metadata,
                 navController = navController,
                 lyricsSyncOffset = lyricsSyncOffset,
@@ -3208,56 +3235,70 @@ private fun LittlePlayerContent(
                 verticalAlignment = Alignment.Top,
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    AnimatedContent(
-                        targetState = mediaMetadata.title,
-                        transitionSpec = { fadeIn() togetherWith fadeOut() },
-                        label = "little_title",
-                    ) { title ->
-                        PlayerTitleText(
-                            title = title,
-                            explicit = mediaMetadata.explicit,
-                            color = titleColor,
-                            style = LocalTextStyle.current,
-                            fontSize = titleSize,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.basicMarquee(),
-                        )
-                    }
-
-                    Spacer(Modifier.height((10f * scale).dp))
-
-                    mediaMetadata.album?.title?.takeIf { it.isNotBlank() }?.let { albumTitle ->
+                PlayerTextBackdrop(
+                    textColor = textColor,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
                         AnimatedContent(
-                            targetState = albumTitle,
+                            targetState = mediaMetadata.title,
                             transitionSpec = { fadeIn() togetherWith fadeOut() },
-                            label = "little_album",
-                        ) { album ->
-                            Text(
-                                text = album,
-                                color = secondaryColor,
-                                style = MaterialTheme.typography.bodyMedium,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.basicMarquee(),
+                            label = "little_title",
+                        ) { title ->
+                            PlayerTitleText(
+                                title = title,
+                                explicit = mediaMetadata.explicit,
+                                color = titleColor,
+                                style = LocalTextStyle.current,
+                                fontSize = titleSize,
+                                fontWeight = FontWeight.Bold,
+                                modifier =
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .basicMarquee(),
                             )
                         }
-                    }
 
-                    artistsText.takeIf { it.isNotBlank() }?.let { artists ->
-                        AnimatedContent(
-                            targetState = artists,
-                            transitionSpec = { fadeIn() togetherWith fadeOut() },
-                            label = "little_artists",
-                        ) { artistLine ->
-                            Text(
-                                text = "by - $artistLine",
-                                color = secondaryColor,
-                                style = MaterialTheme.typography.bodyMedium,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.basicMarquee(),
-                            )
+                        Spacer(Modifier.height((10f * scale).dp))
+
+                        mediaMetadata.album?.title?.takeIf { it.isNotBlank() }?.let { albumTitle ->
+                            AnimatedContent(
+                                targetState = albumTitle,
+                                transitionSpec = { fadeIn() togetherWith fadeOut() },
+                                label = "little_album",
+                            ) { album ->
+                                Text(
+                                    text = album,
+                                    color = secondaryColor,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier =
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .basicMarquee(),
+                                )
+                            }
+                        }
+
+                        artistsText.takeIf { it.isNotBlank() }?.let { artists ->
+                            AnimatedContent(
+                                targetState = artists,
+                                transitionSpec = { fadeIn() togetherWith fadeOut() },
+                                label = "little_artists",
+                            ) { artistLine ->
+                                Text(
+                                    text = "by - $artistLine",
+                                    color = secondaryColor,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier =
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .basicMarquee(),
+                                )
+                            }
                         }
                     }
                 }

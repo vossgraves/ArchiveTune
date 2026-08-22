@@ -164,6 +164,10 @@ class SearchDiscoveryRepository
                         .filterNot { song -> song.song.isLocal }
                         .take(MaxSuggestionSeedItems)
                 val seedSongIds = seedSongs.mapTo(HashSet()) { song -> song.id }
+                // Exclude songs the user has permanently blocked from recommendations via the
+                // "Don't recommend this song again" overflow menu item — even though they
+                // may appear in the user's listening history, they should never resurface.
+                val blockedSongIds = database.getBlockedSongIds().toHashSet()
 
                 seedSongs
                     .map { song ->
@@ -174,6 +178,7 @@ class SearchDiscoveryRepository
                     }.awaitAll()
                     .flatten()
                     .filterNot { song -> song.id in seedSongIds }
+                    .filterNot { song -> song.id in blockedSongIds }
                     .distinctBy { song -> song.id }
                     .take(MaxSuggestedItems)
             }

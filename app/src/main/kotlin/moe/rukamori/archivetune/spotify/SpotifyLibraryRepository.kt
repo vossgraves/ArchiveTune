@@ -30,8 +30,12 @@ import moe.rukamori.archivetune.constants.SpotifyLibraryPlaylistsCacheKey
 import moe.rukamori.archivetune.constants.SpotifySpDcKey
 import moe.rukamori.archivetune.constants.SpotifySpKeyKey
 import moe.rukamori.archivetune.spotify.models.SpotifyPlaylist
+import moe.rukamori.archivetune.spotify.models.SpotifyAlbum
+import moe.rukamori.archivetune.spotify.models.SpotifyArtist
 import moe.rukamori.archivetune.spotify.models.SpotifyPlaylistTracksRef
 import moe.rukamori.archivetune.spotify.models.SpotifyTrack
+import moe.rukamori.archivetune.models.MediaMetadata
+import moe.rukamori.archivetune.spotify.models.SpotifySearchResult
 import moe.rukamori.archivetune.utils.clearWebAuthSession
 import moe.rukamori.archivetune.utils.dataStore
 import moe.rukamori.archivetune.utils.reportException
@@ -54,6 +58,27 @@ class SpotifyLibraryRepository
         val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
 
         private val tokenRefreshMutex = Mutex()
+        private data class CachedSearch(
+            val result: SpotifySearchResult,
+            val expiresAtMs: Long,
+        )
+
+        private data class CachedMetadata(
+            val metadata: MediaMetadata,
+            val expiresAtMs: Long,
+        )
+
+        private val searchCache =
+            object : LinkedHashMap<String, CachedSearch>(SEARCH_CACHE_MAX_SIZE, 0.75f, true) {
+                override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, CachedSearch>?): Boolean =
+                    size > SEARCH_CACHE_MAX_SIZE
+            }
+        private val metadataCache =
+            object : LinkedHashMap<String, CachedMetadata>(METADATA_CACHE_MAX_SIZE, 0.75f, true) {
+                override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, CachedMetadata>?): Boolean =
+                    size > METADATA_CACHE_MAX_SIZE
+            }
+
 
         suspend fun restoreCachedPlaylists() {
             withContext(Dispatchers.IO) {
@@ -205,6 +230,22 @@ class SpotifyLibraryRepository
                 }
             }
 
+        suspend fun album(albumId: String): SpotifyAlbum =
+            withContext(Dispatchers.IO) {
+                ensureAuthenticated()
+                spotifyCallWithTokenRetry {
+                    Spotify.album(albumId).getOrThrow()
+                }
+            }
+
+        suspend fun artist(artistId: String): SpotifyArtist =
+            withContext(Dispatchers.IO) {
+                ensureAuthenticated()
+                spotifyCallWithTokenRetry {
+                    Spotify.artist(artistId).getOrThrow()
+                }
+            }
+
         suspend fun playlistTracks(playlistId: String): List<SpotifyTrack> =
             withContext(Dispatchers.IO) {
                 ensureAuthenticated()
@@ -231,6 +272,114 @@ class SpotifyLibraryRepository
 
                 tracks
             }
+
+        /**
+         * Searches Spotify's catalog after restoring/refreshing the persisted Web Player session.
+         * Results are cached briefly because the Search page and metadata enrichment can ask for
+         * the same query in quick succession.
+         */
+        suspend fun search(
+            query: String,
+            types: List<String> = listOf("track", "album", "artist", "playlist"),
+            limit: Int = 20,
+            offset: Int = 0,
+        ): SpotifySearchResult =
+            withContext(Dispatchers.IO) {
+                val normalizedQuery = query.trim()
+                require(normalizedQuery.isNotEmpty()) { "Spotify search query is empty" }
+                ensureAuthenticated()
+                val cacheKey = "$normalizedQuery|${types.joinToString(",")}|$limit|$offset"
+                val now = System.currentTimeMillis()
+                synchronized(searchCache) {
+                    searchCache[cacheKey]
+                        ?.takeIf { it.expiresAtMs > now }
+                        ?.let { return@withContext it.result }
+                }
+
+                val result =
+                    spotifyCallWithTokenRetry {
+                        Spotify
+                            .search(
+                                query = normalizedQuery,
+                                types = types,
+                                limit = limit,
+                                offset = offset,
+                            ).getOrThrow()
+                    }
+                synchronized(searchCache) {
+                    searchCache[cacheKey] = CachedSearch(result, now + SEARCH_CACHE_TTL_MS)
+                }
+                result
+            }
+
+        /**
+         * Enriches YouTube-derived metadata with the closest Spotify catalog track. The returned
+         * media id remains the playable YouTube id; Spotify is only the metadata identity/source.
+         */
+        suspend fun enrichMetadata(metadata: MediaMetadata): MediaMetadata? =
+            withContext(Dispatchers.IO) {
+                if (metadata.spotifyTrackId != null) return@withContext metadata
+                val cacheKey = "${metadata.id}|${metadata.title}|${metadata.artists.joinToString { it.name }}"
+                val now = System.currentTimeMillis()
+                synchronized(metadataCache) {
+                    metadataCache[cacheKey]
+                        ?.takeIf { it.expiresAtMs > now }
+                        ?.let { return@withContext it.metadata }
+                }
+
+                val artist = metadata.artists.firstOrNull()?.name.orEmpty()
+                val query = listOf(artist, metadata.title).filter { it.isNotBlank() }.joinToString(" ")
+                if (query.isBlank()) return@withContext null
+                val tracks =
+                    runCatching {
+                        search(query = query, types = listOf("track"), limit = 8)
+                            .tracks
+                            ?.items
+                            .orEmpty()
+                    }.getOrElse { error ->
+                        if (error is CancellationException) throw error
+                        return@withContext null
+                    }
+                val best =
+                    tracks
+                        .map { track ->
+                            track to
+                                SpotifyMapper.matchScore(
+                                    spotifyTitle = track.name,
+                                    spotifyArtist = track.artists.joinToString(" ") { it.name },
+                                    spotifyDurationMs = track.durationMs,
+                                    candidateTitle = metadata.title,
+                                    candidateArtist = metadata.artists.joinToString(" ") { it.name },
+                                    candidateDurationSec = metadata.duration.takeIf { it > 0 },
+                                )
+                        }.maxByOrNull { it.second }
+                        ?.takeIf { it.second >= METADATA_MATCH_THRESHOLD }
+                        ?.first ?: return@withContext null
+                val enriched =
+                    metadata.copy(
+                        title = best.name,
+                        artists =
+                            best.artists.map { artistItem ->
+                                MediaMetadata.Artist(
+                                    id = artistItem.id,
+                                    name = artistItem.name,
+                                )
+                            },
+                        duration = if (best.durationMs > 0) best.durationMs / 1000 else metadata.duration,
+                        thumbnailUrl = SpotifyMapper.getTrackThumbnail(best) ?: metadata.thumbnailUrl,
+                        album =
+                            best.album?.let { album ->
+                                MediaMetadata.Album(id = album.id, title = album.name)
+                            } ?: metadata.album,
+                        explicit = metadata.explicit || best.explicit,
+                        spotifyTrackId = best.id.takeIf(String::isNotBlank),
+                    )
+                synchronized(metadataCache) {
+                    metadataCache[cacheKey] = CachedMetadata(enriched, now + METADATA_CACHE_TTL_MS)
+                }
+                enriched
+            }
+
 
         private suspend fun ensureAuthenticated() {
             val prefs = context.dataStore.data.first()
@@ -368,6 +517,11 @@ class SpotifyLibraryRepository
 
         companion object {
             private const val TOKEN_EXPIRY_GRACE_MS = 60_000L
+            private const val SEARCH_CACHE_MAX_SIZE = 64
+            private const val METADATA_CACHE_MAX_SIZE = 128
+            private const val SEARCH_CACHE_TTL_MS = 5 * 60 * 1000L
+            private const val METADATA_CACHE_TTL_MS = 15 * 60 * 1000L
+            private const val METADATA_MATCH_THRESHOLD = 0.58
             private val spotifyCacheJson =
                 Json {
                     ignoreUnknownKeys = true

@@ -19,7 +19,9 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -301,6 +303,11 @@ fun AodCustomizedScreen(navController: NavController) {
             )
         },
     ) { paddingValues ->
+        val playerAwareBottomPadding =
+            LocalPlayerAwareWindowInsets.current
+                .only(WindowInsetsSides.Bottom)
+                .asPaddingValues()
+                .calculateBottomPadding()
         LazyColumn(
             modifier =
                 Modifier
@@ -311,6 +318,7 @@ fun AodCustomizedScreen(navController: NavController) {
                             WindowInsetsSides.Horizontal,
                         ),
                     ),
+            contentPadding = PaddingValues(bottom = playerAwareBottomPadding + 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             item(

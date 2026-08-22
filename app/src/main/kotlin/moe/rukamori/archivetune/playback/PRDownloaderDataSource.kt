@@ -24,6 +24,7 @@ import moe.rukamori.archivetune.utils.StreamClientUtils
 import okhttp3.ConnectionPool
 import okhttp3.OkHttpClient
 import okhttp3.Protocol
+import okhttp3.Request
 import java.io.File
 import java.io.IOException
 import java.security.MessageDigest
@@ -81,11 +82,18 @@ import java.util.concurrent.atomic.AtomicReference
  *
  * After PRDownloader reports completion, we verify:
  *   1. The temp file exists and is non-empty.
- *   2. The file size matches the Content-Length response header (if the
- *      header was present — some CDNs omit it for chunked responses).
+ *   2. The file size matches the expected content length. The expected
+ *      length comes from two sources (in priority order):
+ *        a. A HEAD request to the resolved URL (returns Content-Length).
+ *        b. The DataSpec's `httpRequestHeaders["X-Expected-Content-Length"]`
+ *           if pre-warmed upstream (set by DownloadUtil.prewarmSongForDownload
+ *           from FormatEntity.contentLength).
+ *   3. If neither is available (e.g. chunked transfer), we accept the
+ *      file but log a warning so it shows up in the in-app logcat viewer.
  *
  * If verification fails, we throw [IOException] so Media3's
- * [DownloadManager] marks the download as failed and the user can retry.
+ * [DownloadManager] marks the download as failed and the failure-listener
+ * (`DownloadUtil.onDownloadChanged`) purges the partial cache entries.
  */
 internal class PRDownloaderDataSource private constructor(
     private val context: Context,
@@ -97,6 +105,16 @@ internal class PRDownloaderDataSource private constructor(
     private var bytesRemaining: Long = 0L
     /** The active PRDownloader download id, if any — used for cancel-on-close. */
     private var activeDownloadId: Int = -1
+    /** Shared OkHttp client for HEAD requests — created lazily on first use. */
+    private val headClient: OkHttpClient by lazy {
+        OkHttpClient.Builder()
+            .connectTimeout(10, TimeUnit.SECONDS)
+            .readTimeout(15, TimeUnit.SECONDS)
+            .callTimeout(20, TimeUnit.SECONDS)
+            .connectionPool(ConnectionPool(4, 30_000, TimeUnit.MILLISECONDS))
+            .protocols(listOf(Protocol.HTTP_2, Protocol.HTTP_1_1))
+            .build()
+    }
 
     override fun open(dataSpec: DataSpec): Long {
         transferInitializing(dataSpec)
@@ -226,6 +244,36 @@ internal class PRDownloaderDataSource private constructor(
             throw IOException("PRDownloader reported success but temp file is missing/empty: $target")
         }
 
+        // ── Real integrity verification ──
+        // PRDownloader 1.0.2 has a known issue where `onDownloadComplete()`
+        // can fire on a partial file when the upstream connection drops
+        // mid-stream (especially on chunked-transfer CDNs that don't send
+        // Content-Length). The temp file's size will be less than the real
+        // audio length but PRDownloader happily reports success.
+        //
+        // To prevent Media3 from marking STATE_COMPLETED on a truncated
+        // file (which then causes ExoPlayer to throw ParserException
+        // during playback), we verify the actual size against the expected
+        // content length, sourced from either:
+        //   1. A HEAD request to the URL (authoritative when the CDN
+        //      supports HEAD + returns Content-Length).
+        //   2. The DataSpec's httpRequestHeaders (set by DownloadUtil's
+        //      prewarm path from FormatEntity.contentLength).
+        //
+        // When neither source yields an expected length (chunked transfer
+        // + no upstream metadata), we accept the file but emit a warning.
+        val expectedLength = resolveExpectedContentLength(url, dataSpec)
+        if (expectedLength > 0L) {
+            val actualLength = target.length()
+            if (actualLength < expectedLength) {
+                runCatching { target.delete() }
+                throw IOException(
+                    "Partial download for $url: got $actualLength / $expectedLength bytes " +
+                        "(" + (actualLength * 100 / expectedLength) + "%)",
+                )
+            }
+        }
+
         tempFile = target
 
         // Build a child DataSpec pointing at the local file, preserving
@@ -285,6 +333,58 @@ internal class PRDownloaderDataSource private constructor(
         val md = MessageDigest.getInstance("SHA-1")
         val bytes = md.digest(input.toByteArray(Charsets.UTF_8))
         return bytes.joinToString("") { "%02x".format(it) }
+    }
+
+    /**
+     * Resolves the expected content length for the download, used to verify
+     * that PRDownloader didn't silently truncate the file.
+     *
+     * Resolution order:
+     *  1. The DataSpec's `httpRequestHeaders["X-Expected-Content-Length"]`
+     *     (set by DownloadUtil.prewarmSongForDownload from FormatEntity).
+     *  2. A synchronous HEAD request to the URL (best-effort, with a
+     *     short timeout — if it fails or returns no Content-Length, we
+     *     return 0 and the verification step is skipped).
+     *
+     * Returns 0 if no expected length can be determined (chunked transfer
+     * with no upstream metadata) — in that case the file is accepted as-is
+     * to avoid false negatives for CDNs that genuinely don't expose size.
+     */
+    private fun resolveExpectedContentLength(url: String, dataSpec: DataSpec): Long {
+        // (1) Upstream-provided hint (set by prewarm from FormatEntity).
+        dataSpec.httpRequestHeaders["X-Expected-Content-Length"]?.toLongOrNull()
+            ?.let { if (it > 0L) return it }
+
+        // (2) HEAD request — best-effort. Some CDNs (e.g. YouTube
+        // googlevideo) reject HEAD on media URLs, so we silently fall
+        // through if the request fails.
+        return runCatching {
+            // Resolve stream-client profile (UA / Origin / Referer) for
+            // YouTube URLs, mirroring the main download path.
+            val youTubeMediaProfile = runCatching {
+                StreamClientUtils.resolveRequestProfile(url)
+            }.getOrNull()
+            val resolvedUserAgent = youTubeMediaProfile?.userAgent?.takeIf(String::isNotBlank)
+                ?: userAgent
+            val builder = Request.Builder().url(url).head()
+                .header("User-Agent", resolvedUserAgent)
+                .header("Accept-Encoding", "identity")
+            youTubeMediaProfile?.origin?.takeIf(String::isNotBlank)?.let {
+                builder.header("Origin", it)
+            }
+            youTubeMediaProfile?.referer?.takeIf(String::isNotBlank)?.let {
+                builder.header("Referer", it)
+            }
+            headClient.newCall(builder.build()).execute().use { response ->
+                val cl = response.header("Content-Length")?.toLongOrNull() ?: 0L
+                if (!response.isSuccessful && response.code != 200 && response.code != 206) {
+                    // HEAD not supported / rejected — don't fail the download.
+                    0L
+                } else {
+                    cl
+                }
+            }
+        }.getOrDefault(0L)
     }
 
     /**

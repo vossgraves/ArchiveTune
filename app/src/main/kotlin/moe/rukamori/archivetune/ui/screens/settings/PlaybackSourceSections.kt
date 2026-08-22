@@ -16,6 +16,7 @@ package moe.rukamori.archivetune.ui.screens.settings
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -28,15 +29,18 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -45,6 +49,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import moe.rukamori.archivetune.R
@@ -60,14 +65,19 @@ import moe.rukamori.archivetune.constants.SaavnAudioQualityKey
 import moe.rukamori.archivetune.constants.QobuzAudioQuality
 import moe.rukamori.archivetune.constants.QobuzAudioQualityKey
 import moe.rukamori.archivetune.constants.QobuzEnabledKey
+import moe.rukamori.archivetune.constants.QobuzBackupEnabledKey
 import moe.rukamori.archivetune.constants.TidalAccountFirstKey
 import moe.rukamori.archivetune.constants.TidalAnimatedCoversEnabledKey
 import moe.rukamori.archivetune.constants.TidalAudioQuality
 import moe.rukamori.archivetune.constants.TidalAudioQualityKey
 import moe.rukamori.archivetune.constants.TidalEnabledKey
-import androidx.compose.runtime.LaunchedEffect
 import moe.rukamori.archivetune.constants.AudioQuality
+import moe.rukamori.archivetune.constants.AutoChoosePlaybackClientKey
 import moe.rukamori.archivetune.constants.AudioQualityKey
+import moe.rukamori.archivetune.constants.DefaultMetadataSourceKey
+import moe.rukamori.archivetune.constants.DefaultSearchSourceKey
+import moe.rukamori.archivetune.constants.MetadataSource
+import moe.rukamori.archivetune.constants.SearchProvider
 import moe.rukamori.archivetune.constants.PlayerStreamClient
 import moe.rukamori.archivetune.constants.PlayerStreamClientKey
 import moe.rukamori.archivetune.innertube.utils.hasYouTubeLoginCookie
@@ -80,13 +90,18 @@ import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.SwitchPreference
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
+import moe.rukamori.archivetune.utils.PoolAccountManager
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private fun AudioSourceType.displayName(context: android.content.Context): String =
     when (this) {
         AudioSourceType.TIDAL -> context.getString(R.string.source_tidal)
         AudioSourceType.QOBUZ -> context.getString(R.string.source_qobuz)
+        AudioSourceType.QOBUZ_BACKUP -> context.getString(R.string.source_qobuz_backup)
         AudioSourceType.DEEZER -> context.getString(R.string.source_deezer)
         AudioSourceType.JIOSAAVN -> context.getString(R.string.source_jiosaavn)
         AudioSourceType.YOUTUBE -> context.getString(R.string.source_youtube)
@@ -96,8 +111,9 @@ private fun AudioSourceType.iconRes(): Int =
     when (this) {
         AudioSourceType.TIDAL -> R.drawable.provider_tidal
         AudioSourceType.QOBUZ -> R.drawable.provider_qobuz
+        AudioSourceType.QOBUZ_BACKUP -> R.drawable.provider_qobuz
         AudioSourceType.DEEZER -> R.drawable.provider_deezer
-        AudioSourceType.JIOSAAVN -> R.drawable.play
+        AudioSourceType.JIOSAAVN -> R.drawable.provider_jiosaavn
         AudioSourceType.YOUTUBE -> R.drawable.play
     }
 
@@ -109,16 +125,45 @@ private fun AudioSourceType.iconRes(): Int =
 @Composable
 fun PlaybackSourceSections(navController: NavController) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
 
     val (sourceOrderRaw, onSourceOrderChange) = rememberPreference(AudioSourceOrderKey, "")
     val (tidalEnabled, onTidalEnabledChange) = rememberPreference(TidalEnabledKey, true)
-    val (qobuzEnabled, onQobuzEnabledChange) = rememberPreference(QobuzEnabledKey, false)
-    val (deezerEnabled, onDeezerEnabledChange) = rememberPreference(DeezerEnabledKey, false)
+    val (qobuzEnabled, onQobuzEnabledChangeRaw) = rememberPreference(QobuzEnabledKey, false)
+    val (deezerEnabled, onDeezerEnabledChangeRaw) = rememberPreference(DeezerEnabledKey, false)
     val (deezerQuality, onDeezerQualityChange) =
         rememberEnumPreference(DeezerAudioQualityKey, DeezerAudioQuality.FLAC)
     val (jioSaavnEnabled, onJioSaavnEnabledChange) = rememberPreference(JioSaavnEnabledKey, false)
     val (saavnQuality, onSaavnQualityChange) =
         rememberEnumPreference(SaavnAudioQualityKey, SaavnAudioQuality.QUALITY_320)
+    val (defaultMetadataSource, onDefaultMetadataSourceChange) =
+        rememberEnumPreference(DefaultMetadataSourceKey, MetadataSource.YOUTUBE)
+    val (defaultSearchSource, onDefaultSearchSourceChange) =
+        rememberEnumPreference(DefaultSearchSourceKey, SearchProvider.YOUTUBE)
+
+
+    // When the user enables a pool-backed source (Qobuz or Deezer), automatically
+    // trigger a pool refresh in the background. This ensures the latest pool
+    // accounts are loaded before the user tries to play a song through that
+    // source — fixing the "Qobuz server through the pool doesn't work even when
+    // accounts are already added" bug where the pool cache was stale or empty
+    // when the user enabled the source.
+    val onQobuzEnabledChange: (Boolean) -> Unit = { enabled ->
+        onQobuzEnabledChangeRaw(enabled)
+        if (enabled && PoolAccountManager.isEnabled) {
+            scope.launch(Dispatchers.IO) {
+                runCatching { PoolAccountManager.refresh(context, force = true) }
+            }
+        }
+    }
+    val onDeezerEnabledChange: (Boolean) -> Unit = { enabled ->
+        onDeezerEnabledChangeRaw(enabled)
+        if (enabled && PoolAccountManager.isEnabled) {
+            scope.launch(Dispatchers.IO) {
+                runCatching { PoolAccountManager.refresh(context, force = true) }
+            }
+        }
+    }
 
     val (tidalAccountFirst, onTidalAccountFirstChange) = rememberPreference(TidalAccountFirstKey, true)
     val (audioQuality, onAudioQualityChange) =
@@ -129,6 +174,8 @@ fun PlaybackSourceSections(navController: NavController) {
         rememberEnumPreference(AudioQualityKey, defaultValue = AudioQuality.AUTO)
     val (playerStreamClient, onPlayerStreamClientChange) =
         rememberEnumPreference(PlayerStreamClientKey, defaultValue = PlayerStreamClient.WEB_REMIX)
+    val (autoChoosePlaybackClient, onAutoChoosePlaybackClientChange) =
+        rememberPreference(AutoChoosePlaybackClientKey, true)
     val playerStreamClients =
         remember { PlayerStreamClient.entries }
     val selectedPlayerStreamClient =
@@ -137,6 +184,7 @@ fun PlaybackSourceSections(navController: NavController) {
 
     val (qobuzQuality, onQobuzQualityChange) =
         rememberEnumPreference(QobuzAudioQualityKey, QobuzAudioQuality.FLAC)
+    val (qobuzBackupEnabled, onQobuzBackupEnabledChange) = rememberPreference(QobuzBackupEnabledKey, false)
     // The Tidal artwork-fetching toggle lives in Player Settings → Artwork (same key).
     val (animatedCovers, onAnimatedCoversChange) =
         rememberPreference(TidalAnimatedCoversEnabledKey, false)
@@ -150,6 +198,7 @@ fun PlaybackSourceSections(navController: NavController) {
         when (source) {
             AudioSourceType.TIDAL -> tidalEnabled
             AudioSourceType.QOBUZ -> qobuzEnabled
+            AudioSourceType.QOBUZ_BACKUP -> qobuzBackupEnabled
             AudioSourceType.DEEZER -> deezerEnabled
             AudioSourceType.JIOSAAVN -> jioSaavnEnabled
             AudioSourceType.YOUTUBE -> true
@@ -181,11 +230,55 @@ fun PlaybackSourceSections(navController: NavController) {
             )
         }
     }
+    PreferenceGroup(title = stringResource(R.string.catalog_sources)) {
+        item {
+            EnumListPreference(
+                title = { Text(stringResource(R.string.default_metadata_source)) },
+                description = stringResource(R.string.default_metadata_source_desc),
+                icon = { Icon(painterResource(R.drawable.album), null) },
+                selectedValue = defaultMetadataSource,
+                valueText = {
+                    when (it) {
+                        MetadataSource.YOUTUBE -> stringResource(R.string.metadata_source_youtube)
+                        MetadataSource.SPOTIFY -> stringResource(R.string.metadata_source_spotify)
+                    }
+                },
+                onValueSelected = onDefaultMetadataSourceChange,
+            )
+        }
+
+        item {
+            EnumListPreference(
+                title = { Text(stringResource(R.string.default_search_source)) },
+                description = stringResource(R.string.default_search_source_desc),
+                icon = { Icon(painterResource(R.drawable.language), null) },
+                selectedValue = defaultSearchSource,
+                valueText = {
+                    when (it) {
+                        SearchProvider.YOUTUBE -> stringResource(R.string.search_source_youtube)
+                        SearchProvider.SPOTIFY -> stringResource(R.string.search_source_spotify)
+                    }
+                },
+                onValueSelected = onDefaultSearchSourceChange,
+            )
+        }
+
+        item {
+            PreferenceEntry(
+                title = { Text(stringResource(R.string.spotify_catalog_source)) },
+                description = stringResource(R.string.spotify_catalog_source_desc),
+                icon = { Icon(painterResource(R.drawable.spotify_icon), null) },
+                onClick = { navController.navigate("settings/integration") },
+            )
+        }
+    }
+
 
     PreferenceGroup(title = stringResource(R.string.source_youtube)) {
         item {
             EnumListPreference(
                 title = { Text(stringResource(R.string.audio_quality)) },
+                description = stringResource(R.string.audio_quality_description),
                 icon = { Icon(painterResource(R.drawable.graphic_eq), null) },
                 selectedValue = ytAudioQuality,
                 onValueSelected = onYtAudioQualityChange,
@@ -199,6 +292,23 @@ fun PlaybackSourceSections(navController: NavController) {
                 },
             )
         }
+        item {
+            SwitchPreference(
+                title = { Text(stringResource(R.string.auto_choose_playback_client)) },
+                description =
+                    stringResource(
+                        if (autoChoosePlaybackClient) {
+                            R.string.auto_choose_playback_client_enabled_note
+                        } else {
+                            R.string.auto_choose_playback_client_disabled_note
+                        },
+                    ),
+                icon = { Icon(painterResource(R.drawable.tune), null) },
+                checked = autoChoosePlaybackClient,
+                onCheckedChange = onAutoChoosePlaybackClientChange,
+            )
+        }
+
 
         item {
             ListPreference(
@@ -208,6 +318,7 @@ fun PlaybackSourceSections(navController: NavController) {
                 selectedValue = selectedPlayerStreamClient,
                 values = playerStreamClients,
                 onValueSelected = onPlayerStreamClientChange,
+                isEnabled = !autoChoosePlaybackClient,
                 // Exhaustive on purpose: no `else` branch, so adding a client to
                 // PlayerStreamClient fails the build here instead of silently rendering
                 // every row with the Web Remix label.
@@ -300,6 +411,10 @@ fun PlaybackSourceSections(navController: NavController) {
                 onClick = { navController.navigate("settings/integration") },
             )
         }
+
+        item {
+            SourceCheckRow(source = AudioSourceType.TIDAL)
+        }
     }
 
     PreferenceGroup(title = stringResource(R.string.qobuz_specific)) {
@@ -338,6 +453,26 @@ fun PlaybackSourceSections(navController: NavController) {
                 onClick = { navController.navigate("settings/integration") },
             )
         }
+
+        item {
+            SourceCheckRow(source = AudioSourceType.QOBUZ)
+        }
+    }
+
+    PreferenceGroup(title = stringResource(R.string.qobuz_backup_specific)) {
+        item {
+            SwitchPreference(
+                title = { Text(stringResource(R.string.qobuz_backup_enable)) },
+                description = stringResource(R.string.qobuz_backup_enable_description),
+                icon = { Icon(painterResource(R.drawable.provider_qobuz), null) },
+                checked = qobuzBackupEnabled,
+                onCheckedChange = onQobuzBackupEnabledChange,
+            )
+        }
+
+        item {
+            SourceCheckRow(source = AudioSourceType.QOBUZ_BACKUP)
+        }
     }
 
     PreferenceGroup(title = stringResource(R.string.deezer_specific)) {
@@ -368,6 +503,9 @@ fun PlaybackSourceSections(navController: NavController) {
             )
         }
 
+        item {
+            SourceCheckRow(source = AudioSourceType.DEEZER)
+        }
     }
 
     PreferenceGroup(title = stringResource(R.string.jiosaavn_specific)) {
@@ -406,6 +544,84 @@ fun PlaybackSourceSections(navController: NavController) {
                 icon = { Icon(painterResource(R.drawable.info), null) },
                 onClick = {},
             )
+        }
+
+        item {
+            SourceCheckRow(source = AudioSourceType.JIOSAAVN)
+        }
+    }
+}
+
+/**
+ * "Check source" row — runs a per-source health probe via [SourceCheckService]
+ * and shows the result in a dialog. Lets the user diagnose why a source isn't
+ * working without having to look at logcat.
+ *
+ * The probe runs off the main thread. While it's running, the row shows a
+ * spinner instead of the check icon. The result is shown in a [DefaultDialog]
+ * with an OK button — closing the dialog dismisses it.
+ *
+ * Each source has its own probe logic — see [SourceCheckService] for details.
+ * Sources that use the source pool (Tidal, Qobuz, Deezer) refresh the pool
+ * before counting accounts; sources that don't (JioSaavn, Qobuz backup) just
+ * ping their endpoint directly.
+ */
+@Composable
+private fun SourceCheckRow(source: AudioSourceType) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var checking by remember { mutableStateOf(false) }
+    var result by remember { mutableStateOf<SourceCheckResult?>(null) }
+
+    PreferenceEntry(
+        title = { Text(stringResource(R.string.check_source)) },
+        description = stringResource(R.string.check_source_description),
+        icon = { Icon(painterResource(R.drawable.graphic_eq), null) },
+        trailingContent = if (checking) {
+            { CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp) }
+        } else {
+            null
+        },
+        isEnabled = !checking,
+        onClick = {
+            if (checking) return@PreferenceEntry
+            checking = true
+            scope.launch {
+                val res = withContext(Dispatchers.IO) {
+                    SourceCheckService.check(source, context)
+                }
+                result = res
+                checking = false
+            }
+        },
+    )
+
+    result?.let { res ->
+        DefaultDialog(
+            onDismiss = { result = null },
+            buttons = {
+                TextButton(onClick = { result = null }, shapes = ButtonDefaults.shapes()) {
+                    Text(stringResource(android.R.string.ok))
+                }
+            },
+        ) {
+            Column(modifier = Modifier.padding(top = 4.dp)) {
+                Text(
+                    text = stringResource(R.string.check_source_result_title, source.displayName(context)),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(bottom = 8.dp),
+                )
+                Text(
+                    text = res.summary,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (res.healthy) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.error
+                    },
+                )
+            }
         }
     }
 }

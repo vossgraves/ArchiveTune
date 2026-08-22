@@ -140,11 +140,8 @@ fun LyricsMenu(
     onLyricsSyncOffsetChange: (Int) -> Unit,
     onDismiss: () -> Unit,
     viewModel: LyricsMenuViewModel = hiltViewModel(),
-    // The "Show player controls" / "Auto-hide player controls" toggles are
-    // optional. The standalone LyricsScreen passes real state + callbacks;
-    // the in-place Apple Music player lyrics view omits them entirely
-    // (showControlsToggles = false) because that style always shows the
-    // controls — auto-hide is not supported there.
+    // The control preferences are optional because the standalone lyrics screen owns their state;
+    // callers that do not provide callbacks keep the menu focused on lyric actions only.
     showPlayerControlsState: State<Boolean>? = null,
     onShowPlayerControlsChange: ((Boolean) -> Unit)? = null,
     onAutoHidePlayerControlsChange: (Boolean) -> Unit = {},

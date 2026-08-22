@@ -29,6 +29,7 @@ import moe.rukamori.archivetune.innertube.YouTube.SearchFilter.Companion.FILTER_
 import moe.rukamori.archivetune.innertube.YouTube.SearchFilter.Companion.FILTER_COMMUNITY_PLAYLIST
 import moe.rukamori.archivetune.innertube.YouTube.SearchFilter.Companion.FILTER_FEATURED_PLAYLIST
 import moe.rukamori.archivetune.innertube.YouTube.SearchFilter.Companion.FILTER_SONG
+import moe.rukamori.archivetune.constants.SearchProvider
 import moe.rukamori.archivetune.innertube.YouTube.SearchFilter.Companion.FILTER_VIDEO
 import moe.rukamori.archivetune.innertube.models.SongItem
 import moe.rukamori.archivetune.innertube.models.YTItem
@@ -36,8 +37,10 @@ import moe.rukamori.archivetune.innertube.models.filterExplicit
 import moe.rukamori.archivetune.innertube.models.filterVideo
 import moe.rukamori.archivetune.innertube.pages.SearchSummaryPage
 import moe.rukamori.archivetune.models.ItemsPage
+import moe.rukamori.archivetune.ui.screens.search.OnlineSearchProviderArgument
 import moe.rukamori.archivetune.ui.screens.search.OnlineSearchResultArgument
 import moe.rukamori.archivetune.ui.screens.search.decodeOnlineSearchQuery
+import moe.rukamori.archivetune.extensions.toEnum
 import moe.rukamori.archivetune.utils.dataStore
 import moe.rukamori.archivetune.utils.get
 import moe.rukamori.archivetune.utils.reportException
@@ -61,6 +64,10 @@ class OnlineSearchViewModel
             decodeOnlineSearchQuery(
                 savedStateHandle.get<String>(OnlineSearchResultArgument).orEmpty(),
             )
+        val searchProvider: SearchProvider =
+            savedStateHandle
+                .get<String>(OnlineSearchProviderArgument)
+                .toEnum(SearchProvider.YOUTUBE)
         val filter = MutableStateFlow<YouTube.SearchFilter?>(null)
         var summaryPage by mutableStateOf<SearchSummaryPage?>(null)
         val viewStateMap = mutableStateMapOf<String, ItemsPage?>()
@@ -78,19 +85,21 @@ class OnlineSearchViewModel
         private val loadingFilters = mutableSetOf<String>()
 
         init {
-            viewModelScope.launch {
-                filter.collect { selectedFilter ->
-                    if (selectedFilter == null) {
-                        viewModelScope.launch {
-                            loadSummaryIfNeeded()
-                        }
-                        allModeFilters.forEach { allModeFilter ->
+            if (searchProvider == SearchProvider.YOUTUBE) {
+                viewModelScope.launch {
+                    filter.collect { selectedFilter ->
+                        if (selectedFilter == null) {
                             viewModelScope.launch {
-                                loadFilterIfNeeded(allModeFilter)
+                                loadSummaryIfNeeded()
                             }
+                            allModeFilters.forEach { allModeFilter ->
+                                viewModelScope.launch {
+                                    loadFilterIfNeeded(allModeFilter)
+                                }
+                            }
+                        } else {
+                            loadFilterIfNeeded(selectedFilter)
                         }
-                    } else {
-                        loadFilterIfNeeded(selectedFilter)
                     }
                 }
             }

@@ -4,10 +4,9 @@
  * GPL-3.0 License | Contributors: see git history
  * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
  *
- * Top-level "Sources" settings screen. Hosts the streaming-source preference groups (preferred
- * source picker, per-source enable toggles and quality). Previously these lived inline in
- * Player & Audio settings; they were promoted to their own screen so source configuration is
- * discoverable on its own. Manual account/instance sign-in still lives in Integration (gated).
+ * Top-level "Sources" settings screen. Hosts independent catalog-source selectors (metadata and
+ * search) plus the streaming-source preference groups (priority, toggles and quality). Manual
+ * account/instance sign-in still lives in Integration (gated).
  */
 
 package moe.rukamori.archivetune.ui.screens.settings

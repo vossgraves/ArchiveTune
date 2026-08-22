@@ -293,6 +293,10 @@
     <string name="link_copied">Link copied to clipboard</string>
     <string name="block_artist">Block artist</string>
     <string name="unblock_artist">Unblock artist</string>
+    <string name="dont_recommend_song_again">Don\'t recommend this song again</string>
+    <string name="undo_dont_recommend_song_again">Allow recommendations for this song again</string>
+    <string name="song_blocked_success">Song removed from recommendations</string>
+    <string name="song_unblocked_success">Song restored to recommendations</string>
     <string name="now_playing">Now Playing</string>
     <string name="close">Close</string>
     <string name="minimum_volume">Minimum Volume</string>
@@ -517,6 +521,10 @@
     <string name="audio_crossfade_seconds">%1$s s</string>
     <string name="crossfade_gapless_title">Skip gapless albums</string>
     <string name="crossfade_gapless_description">Do not crossfade consecutive songs from the same album.</string>
+    <string name="auto_choose_playback_client">Auto choose playback client</string>
+    <string name="auto_choose_playback_client_desc">Try the fastest compatible YouTube client and fall back quickly when a client fails or times out.</string>
+    <string name="auto_choose_playback_client_enabled_note">ArchiveTune chooses a compatible client using recent success, latency and failures.</string>
+    <string name="auto_choose_playback_client_disabled_note">Only the selected playback client is used. Failures are reported without automatic client fallback.</string>
     <string name="player_stream_client">Playback client</string>
     <string name="player_stream_client_desc">Controls which playback source is used to fetch streams</string>
     <string name="player_stream_client_android_vr">Android VR</string>
@@ -533,6 +541,12 @@
     <string name="auth_webview_tidal_subtitle">Sign in to Tidal below. ArchiveTune saves the session automatically.</string>
     <string name="auth_webview_qobuz_subtitle">Sign in to Qobuz below. Your credentials are captured automatically.</string>
     <string name="auth_webview_deezer_subtitle">Sign in to Deezer below. The session cookie is saved automatically.</string>
+    <string name="auth_webview_lastfm_subtitle">Tap \"Yes, allow access\" on Last.fm. ArchiveTune captures the session automatically.</string>
+    <string name="lastfm_login">Connect with Last.fm</string>
+    <string name="lastfm_login_success">Signed in to Last.fm</string>
+    <string name="lastfm_login_cancelled">Last.fm sign-in cancelled</string>
+    <string name="lastfm_connect_button">Connect with Last.fm</string>
+    <string name="lastfm_connect_button_description">Opens a one-tap Last.fm web sign-in. No API key or password needed.</string>
     <string name="settings_section_player_content">Player &amp; Content</string>
     <string name="settings_appearance_subtitle">Themes, layout, and visual styles</string>
     <string name="settings_playback_title">Playback</string>
@@ -702,6 +716,9 @@
     <string name="hide_ai_mix_desc">Hide the AI-generated mixes section in your library and stop generating new mixes</string>
     <string name="auto_translate_lyrics">Automatic translation</string>
     <string name="auto_translate_lyrics_desc">When on, foreign-language lyrics are translated to your preferred language automatically using the configured AI provider. The "Translation saved" toast is suppressed while this is active.</string>
+    <string name="auto_translate_excluded_languages">Don\'t auto translate these languages</string>
+    <string name="auto_translate_excluded_languages_desc">Pick languages that should never be auto-translated even when automatic translation is on. Useful if you already understand a language and don\'t want it overridden.</string>
+    <string name="auto_translate_excluded_languages_none">None — every foreign-language lyric will be translated</string>
     <string name="update_remind_later">Remind me later</string>
     <string name="update_never_show_again">Never show again</string>
     <string name="settings_lyrics_providers_subtitle">Choose which lyrics providers are active and set priority</string>

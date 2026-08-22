@@ -51,6 +51,11 @@ data class SongEntity(
     val isMusicVideo: Boolean = false,
     @ColumnInfo(name = "isLocal", defaultValue = "0")
     val isLocal: Boolean = false,
+    // Set when the user has chosen "Don't recommend this song again" from the song overflow
+    // menu. Recommendations / discovery feeds filter out songs where this is non-null, so
+    // the user can permanently banish a track from auto-generated radio/mixes regardless of
+    // artist. Mirrors ArtistEntity.blockedAt semantics. Cleared by re-tapping the menu item.
+    val blockedAt: LocalDateTime? = null,
 ) {
     fun localToggleLike() =
         copy(

@@ -45,6 +45,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -1192,6 +1193,63 @@ fun SongMenu(
                         },
                         modifier =
                             Modifier.clickable { showSleepTimerSheet = true },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    )
+                }
+            }
+        }
+
+        // "Don't recommend this song again" — blocks the song from the discovery/recommendation
+        // feeds without blocking the artist. The user can still play it manually and undo the
+        // block at any time by tapping the same menu item (which now reads "Allow recommendations
+        // for this song again"). Excluded from local songs because recommendations never include
+        // local tracks anyway.
+        if (!song.song.isLocal) item {
+            val blockedSongIds by database.blockedSongIds().collectAsState(initial = emptyList())
+            val isSongBlocked = remember(blockedSongIds, song.id) { song.id in blockedSongIds }
+            MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+                Column {
+                    ListItem(
+                        headlineContent = {
+                            Text(
+                                text =
+                                    stringResource(
+                                        if (isSongBlocked) {
+                                            R.string.undo_dont_recommend_song_again
+                                        } else {
+                                            R.string.dont_recommend_song_again
+                                        },
+                                    ),
+                            )
+                        },
+                        leadingContent = {
+                            Icon(
+                                painter = painterResource(R.drawable.block),
+                                contentDescription = null,
+                            )
+                        },
+                        modifier =
+                            Modifier.clickable {
+                                coroutineScope.launch {
+                                    database.setSongBlockedAt(
+                                        songId = song.id,
+                                        blockedAt = if (isSongBlocked) null else java.time.LocalDateTime.now(),
+                                    )
+                                    Toast
+                                        .makeText(
+                                            context,
+                                            context.getString(
+                                                if (isSongBlocked) {
+                                                    R.string.song_unblocked_success
+                                                } else {
+                                                    R.string.song_blocked_success
+                                                },
+                                            ),
+                                            Toast.LENGTH_SHORT,
+                                        ).show()
+                                    onDismiss()
+                                }
+                            },
                         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                     )
                 }

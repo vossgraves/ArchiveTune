@@ -45,6 +45,7 @@ import moe.rukamori.archivetune.ui.screens.playlist.SpotifyPlaylistScreen
 import moe.rukamori.archivetune.ui.screens.playlist.TopPlaylistScreen
 import moe.rukamori.archivetune.ui.screens.search.OnlineSearchResult
 import moe.rukamori.archivetune.ui.screens.search.OnlineSearchResultArgument
+import moe.rukamori.archivetune.ui.screens.search.OnlineSearchProviderArgument
 import moe.rukamori.archivetune.ui.screens.search.OnlineSearchResultRoute
 import moe.rukamori.archivetune.ui.screens.search.OnlineSearchResultRoutePrefix
 import moe.rukamori.archivetune.ui.screens.search.SearchScreen
@@ -76,6 +77,10 @@ import moe.rukamori.archivetune.ui.screens.settings.QobuzLoginScreen
 import moe.rukamori.archivetune.ui.screens.settings.QOBUZ_LOGIN_ROUTE
 import moe.rukamori.archivetune.ui.screens.settings.DeezerLoginScreen
 import moe.rukamori.archivetune.ui.screens.settings.DEEZER_LOGIN_ROUTE
+import moe.rukamori.archivetune.ui.screens.settings.LASTFM_LOGIN_ROUTE
+import moe.rukamori.archivetune.ui.screens.settings.LastFmLoginScreen
+import moe.rukamori.archivetune.ui.screens.settings.LASTFM_LIBREFM_LOGIN_ROUTE
+import moe.rukamori.archivetune.ui.screens.settings.LibreFmLoginScreen
 import moe.rukamori.archivetune.ui.screens.settings.TELEGRAM_LOGIN_ROUTE
 import moe.rukamori.archivetune.ui.screens.settings.TelegramLoginScreen
 import moe.rukamori.archivetune.ui.screens.settings.TelegramSettings
@@ -207,6 +212,10 @@ fun NavGraphBuilder.navigationBuilder(
             listOf(
                 navArgument(OnlineSearchResultArgument) {
                     type = NavType.StringType
+                },
+                navArgument(OnlineSearchProviderArgument) {
+                    type = NavType.StringType
+                    defaultValue = moe.rukamori.archivetune.constants.SearchProvider.YOUTUBE.name
                 },
             ),
         enterTransition = {
@@ -536,6 +545,12 @@ fun NavGraphBuilder.navigationBuilder(
     }
     composable(DEEZER_LOGIN_ROUTE) {
         DeezerLoginScreen(navController)
+    }
+    composable(LASTFM_LOGIN_ROUTE) {
+        LastFmLoginScreen(navController)
+    }
+    composable(LASTFM_LIBREFM_LOGIN_ROUTE) {
+        LibreFmLoginScreen(navController)
     }
     composable("settings/telegram") {
         TelegramSettings(navController)

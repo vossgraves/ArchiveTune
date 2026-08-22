@@ -291,41 +291,52 @@ fun RowScope.MiniPlayerInfo(
     mediaMetadata: MediaMetadata,
     colors: MiniPlayerContentColors,
 ) {
-    Column(
+    PlayerTextBackdrop(
+        textColor = colors.title,
         modifier =
             Modifier
                 .weight(1f)
                 .padding(horizontal = 10.dp),
-        verticalArrangement = Arrangement.Center,
     ) {
-        AnimatedContent(
-            targetState = mediaMetadata.title,
-            transitionSpec = { fadeIn() togetherWith fadeOut() },
-            label = "title",
-        ) { title ->
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMediumEmphasized,
-                color = colors.title,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.basicMarquee(),
-            )
-        }
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.Center,
+        ) {
+            AnimatedContent(
+                targetState = mediaMetadata.title,
+                transitionSpec = { fadeIn() togetherWith fadeOut() },
+                label = "title",
+            ) { title ->
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMediumEmphasized,
+                    color = colors.title,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .basicMarquee(),
+                )
+            }
 
-        AnimatedContent(
-            targetState = mediaMetadata.artists,
-            transitionSpec = { fadeIn() togetherWith fadeOut() },
-            label = "artist",
-        ) { artists ->
-            Text(
-                text = artists.joinToString { it.name },
-                style = MaterialTheme.typography.bodySmall,
-                color = colors.secondary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.basicMarquee(),
-            )
+            AnimatedContent(
+                targetState = mediaMetadata.artists,
+                transitionSpec = { fadeIn() togetherWith fadeOut() },
+                label = "artist",
+            ) { artists ->
+                Text(
+                    text = artists.joinToString { it.name },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colors.secondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .basicMarquee(),
+                )
+            }
         }
     }
 }

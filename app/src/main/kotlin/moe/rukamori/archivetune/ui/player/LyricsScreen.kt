@@ -66,7 +66,9 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -84,6 +86,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
@@ -169,6 +173,17 @@ private val AppleMusicFallbackGradient =
         Color(0xFF050505),
     )
 
+/**
+ * Plumbs the lyrics-scroll signal up from [LyricsEnhanced] / [LyricsV2] (which own the
+ * LazyListState internally) to [LyricsScreen] without changing every signature along the way.
+ *
+ * Default value is a no-op. [LyricsScreen] supplies a real setter that flips
+ * `isUserScrollingLyrics`, which is OR'd into `controlsVisible` / `controlsExpanded` so the
+ * bottom controls slide in when the user scrolls lyrics — even when the
+ * "Show lyrics player controls" preference is OFF.
+ */
+val LocalLyricsScrollListener = compositionLocalOf<(Boolean) -> Unit> { {} }
+
 @Suppress("UNUSED_PARAMETER")
 @Composable
 fun LyricsScreen(
@@ -225,6 +240,10 @@ fun LyricsScreen(
         mutableIntStateOf(0)
     }
     val autoHideDelayMs = 5_000L
+    // Tracks whether the user is actively scrolling the lyrics list. Hoisted up from
+    // LyricsEnhanced / LyricsV2 via [LocalLyricsScrollListener] so the bottom Apple Music
+    // controls can slide in on scroll even when "Show lyrics player controls" is OFF.
+    var isUserScrollingLyrics by remember { mutableStateOf(false) }
     val onShowPlayerControlsChange =
         remember(showPlayerControlsState) {
             { showControls: Boolean ->
@@ -510,8 +529,13 @@ fun LyricsScreen(
 
     val isLoading = playbackState == STATE_BUFFERING || sliderPosition != null
     val orientation = LocalConfiguration.current.orientation
-    val controlsVisible = showPlayerControlsEnabled
-    val controlsExpanded = showPlayerControlsEnabled && (!autoHidePlayerControls || playerControlsExpanded)
+    // Reveal the bottom controls when the user is scrolling lyrics, regardless of the
+    // "Show lyrics player controls" toggle. `controlsExpanded` follows the same rule so the
+    // transport row (play/pause/skip) shows up too — without it, only the slider would appear.
+    val controlsVisible = showPlayerControlsEnabled || isUserScrollingLyrics
+    val controlsExpanded =
+        showPlayerControlsEnabled && (!autoHidePlayerControls || playerControlsExpanded) ||
+            isUserScrollingLyrics
     val onControlsPositionChange: (Long) -> Unit = {
         pokePlayerControlsVisibility()
         sliderPosition = it
@@ -577,28 +601,31 @@ fun LyricsScreen(
                     },
         )
 
-        Column(
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .windowInsetsPadding(WindowInsets.systemBars),
-        ) {
-            AppleMusicGrabber(onClick = onBackClick)
-            AppleMusicTrackHeader(
-                mediaMetadata = mediaMetadata,
-                foregroundColor = foregroundColor,
-                onMoreClick = showLyricsMenu,
-                onDismissClick = onBackClick,
-                isLiked = currentSongLiked,
-                onToggleLike = playerConnection::toggleLike,
+        CompositionLocalProvider(LocalLyricsScrollListener provides { scrolling ->
+            if (isUserScrollingLyrics != scrolling) isUserScrollingLyrics = scrolling
+        }) {
+            Column(
                 modifier =
                     Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 28.dp),
-            )
+                        .fillMaxSize()
+                        .windowInsetsPadding(WindowInsets.systemBars),
+            ) {
+                AppleMusicGrabber(onClick = onBackClick)
+                AppleMusicTrackHeader(
+                    mediaMetadata = mediaMetadata,
+                    foregroundColor = foregroundColor,
+                    onMoreClick = showLyricsMenu,
+                    onDismissClick = onBackClick,
+                    isLiked = currentSongLiked,
+                    onToggleLike = playerConnection::toggleLike,
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 28.dp),
+                )
 
-            if (orientation == Configuration.ORIENTATION_LANDSCAPE) {
-                AnimatedContent(
+                if (orientation == Configuration.ORIENTATION_LANDSCAPE) {
+                    AnimatedContent(
                     targetState = controlsVisible,
                     transitionSpec = {
                         fadeIn(tween(180)) togetherWith fadeOut(tween(140))
@@ -714,6 +741,7 @@ fun LyricsScreen(
                     )
                 }
             }
+            }
         }
     }
 }
@@ -796,9 +824,12 @@ private fun MovingBlurBackground(
         remember(colors) {
             Brush.verticalGradient(
                 listOf(
-                    colors.getOrElse(0) { AppleMusicFallbackGradient[0] }.copy(alpha = 0.42f),
-                    colors.getOrElse(1) { AppleMusicFallbackGradient[1] }.copy(alpha = 0.34f),
-                    colors.getOrElse(2) { AppleMusicFallbackGradient[2] }.copy(alpha = 0.54f),
+                    // Vibrancy bump (was 0.42 / 0.34 / 0.54): pull these in line with the static
+                    // AppleMusicBackground alphas (0.88 / 0.76 / 0.96) so the moving-blur lyrics
+                    // page reads just as vivid as the player itself, not as a dimmed-afterthought.
+                    colors.getOrElse(0) { AppleMusicFallbackGradient[0] }.copy(alpha = 0.85f),
+                    colors.getOrElse(1) { AppleMusicFallbackGradient[1] }.copy(alpha = 0.75f),
+                    colors.getOrElse(2) { AppleMusicFallbackGradient[2] }.copy(alpha = 0.95f),
                 ),
             )
         }
@@ -807,10 +838,35 @@ private fun MovingBlurBackground(
             Brush.verticalGradient(
                 listOf(
                     Color.Transparent,
-                    Color.Black.copy(alpha = 0.32f),
+                    Color.Black.copy(alpha = 0.18f),
                 ),
             )
         }
+
+    // Vibrancy ColorFilter applied ONLY to the moving-blur lyrics background — does not touch
+    // the shared PlayerColorExtractor palette (which other screens consume). 1.6× saturation
+    // gives Apple-Music-style vivid artwork colors that punch through the 64-dp blur.
+    // ColorMatrix is built manually because androidx.compose.ui.graphics.ColorMatrix doesn't
+    // expose setSaturation() (unlike android.graphics.ColorMatrix). The matrix below is the
+    // standard saturation matrix: R' = αR + βG + βB, G' = βR + αG + βB, B' = βR + βG + αB,
+    // where α = 0.213 + 0.787*sat and β = 0.715 - 0.715*sat (Rec. 709 luma coefficients),
+    // and the existing gamma is preserved (sat=1 → identity).
+    val vibrancyColorFilter = remember {
+        val sat = 1.6f
+        val alpha = 0.213f + 0.787f * sat
+        val beta = 0.715f - 0.715f * sat
+        val gamma = 0.072f - 0.072f * sat
+        ColorFilter.colorMatrix(
+            ColorMatrix(
+                floatArrayOf(
+                    alpha, beta, gamma, 0f, 0f,
+                    alpha, beta, gamma, 0f, 0f,
+                    alpha, beta, gamma, 0f, 0f,
+                    0f, 0f, 0f, 1f, 0f,
+                ),
+            ),
+        )
+    }
 
     val context = LocalContext.current
     val imageLoader = context.imageLoader
@@ -828,21 +884,25 @@ private fun MovingBlurBackground(
     //
     // Effective drift values: animated on S+, hard-zero on pre-S so the offset modifier is a
     // no-op and the bitmap stays pinned.
+    // Apple-Music-style "breathing" drift. Previously 19 s / 27 s half-cycles made the motion
+    // nearly imperceptible (≈6 dp/s on X, ≈3 dp/s on Y against a 64-dp blur that masks motion
+    // under ~16 dp). Drop to 4 s / 6 s half-cycles and widen the range to ±160 / ±120 — that's
+    // ~5× faster perceived motion and a clearly visible pan.
     val transition = rememberInfiniteTransition(label = "moving-blur-drift")
     val animatedDriftX by transition.animateFloat(
-        initialValue = -60f,
-        targetValue = 60f,
+        initialValue = -160f,
+        targetValue = 160f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 6_000, easing = FastOutSlowInEasing),
+            animation = tween(durationMillis = 4_000, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse,
         ),
         label = "moving-blur-x",
     )
     val animatedDriftY by transition.animateFloat(
-        initialValue = -45f,
-        targetValue = 45f,
+        initialValue = -120f,
+        targetValue = 120f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 8_000, easing = FastOutSlowInEasing),
+            animation = tween(durationMillis = 6_000, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse,
         ),
         label = "moving-blur-y",
@@ -858,10 +918,12 @@ private fun MovingBlurBackground(
     ) {
         val preSDriftScale =
             if (isPreS) {
-                // Pre-S doesn't drift (driftX/Y are forced to 0 above), so this
-                // scale only needs to fill the screen. Using 1.9f to match the
-                // S+ scale for visual consistency between pre-S and S+ devices.
-                1.9f
+                val driftMaxX = 160.dp
+                val driftMaxY = 120.dp
+                val safetyMargin = 48.dp
+                val requiredScaleX = 1f + 2f * (driftMaxX.value + safetyMargin.value) / maxWidth.value
+                val requiredScaleY = 1f + 2f * (driftMaxY.value + safetyMargin.value) / maxHeight.value
+                maxOf(requiredScaleX, requiredScaleY, 1.4f)
             } else {
                 1.9f
             }
@@ -900,6 +962,7 @@ private fun MovingBlurBackground(
                             bitmap = bm.asImageBitmap(),
                             contentDescription = null,
                             contentScale = ContentScale.Crop,
+                            colorFilter = vibrancyColorFilter,
                             modifier = Modifier
                                 .fillMaxSize()
                                 .graphicsLayer {
@@ -907,7 +970,7 @@ private fun MovingBlurBackground(
                                     scaleY = preSDriftScale
                                 }
                                 .offset(x = driftX.dp, y = driftY.dp)
-                                .alpha(0.86f),
+                                .alpha(0.95f),
                         )
                     }
                 } else {
@@ -915,6 +978,7 @@ private fun MovingBlurBackground(
                         model = thumbnailUrl,
                         contentDescription = null,
                         contentScale = ContentScale.Crop,
+                        colorFilter = vibrancyColorFilter,
                         modifier = Modifier
                             .fillMaxSize()
                             // graphicsLayer OUTSIDE blur: the blur is applied to the
@@ -934,7 +998,7 @@ private fun MovingBlurBackground(
                                 compositingStrategy = CompositingStrategy.Offscreen
                             }
                             .blur(64.dp)
-                            .alpha(0.86f),
+                            .alpha(0.95f),
                     )
                 }
             }

@@ -1588,6 +1588,17 @@ interface DatabaseDao {
     @Query("SELECT id FROM artist WHERE blockedAt IS NOT NULL")
     suspend fun getBlockedArtistIds(): List<String>
 
+    // Songs the user has chosen to never see in recommendations / discovery again (the
+    // "Don't recommend this song again" overflow menu item). Mirrors the artist blocklist.
+    @Query("SELECT id FROM song WHERE blockedAt IS NOT NULL")
+    fun blockedSongIds(): Flow<List<String>>
+
+    @Query("SELECT id FROM song WHERE blockedAt IS NOT NULL")
+    suspend fun getBlockedSongIds(): List<String>
+
+    @Query("UPDATE song SET blockedAt = :blockedAt WHERE id = :songId")
+    suspend fun setSongBlockedAt(songId: String, blockedAt: LocalDateTime?)
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     fun insert(song: SongEntity): Long
 

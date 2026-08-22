@@ -9,6 +9,8 @@ package moe.rukamori.archivetune.playback
 
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import moe.rukamori.archivetune.audiosource.DirectStream
@@ -192,27 +194,72 @@ object LosslessStreamResolver {
             // 2) Shared premium Tidal accounts from the community Source Pool.
             //    These are real subscriber tokens, so they resolve full-quality
             //    FLAC directly via the official API — no proxy instance needed.
-            for (poolAccount in PoolAccountManager.tidalAccounts()) {
-                val poolCountry = poolAccount.countryCode?.trim()?.ifBlank { null } ?: "US"
+            //
+            //    PARALLEL RACE: race all pool accounts in parallel — the first
+            //    hit wins, the rest are cancelled. With N pool accounts this
+            //    reduces the worst-case wall time from N × resolve_time to
+            //    ~1 × resolve_time (typical speedup: 10× for a 10-account pool
+            //    where the user's first 9 accounts don't have the track).
+            //    Previously this loop ran each account sequentially, so a song
+            //    that wasn't on the user's first N-1 pool accounts took
+            //    N × ~3s = ~30s+ before the chain moved on to Deezer/YT Music.
+            val poolAccounts = PoolAccountManager.tidalAccounts()
+            if (poolAccounts.isNotEmpty()) {
+                // PARALLEL RACE: race all pool accounts in parallel — the first
+                // hit wins, the rest are cancelled. With N pool accounts this
+                // reduces the worst-case wall time from N × resolve_time to
+                // ~1 × resolve_time (typical speedup: 10× for a 10-account pool
+                // where the user's first 9 accounts don't have the track).
+                // Previously this loop ran each account sequentially, so a song
+                // that wasn't on the user's first N-1 pool accounts took
+                // N × ~3s = ~30s+ before the chain moved on to Deezer/YT Music.
+                //
+                // resolveTidal is NOT a suspend function, so we wrap the
+                // coroutineScope in runBlocking to bridge into the suspend world.
                 val stream = runCatching {
                     runBlocking(Dispatchers.IO) {
-                        TidalAccountManager.resolveDirectStream(
-                            accessToken = poolAccount.token,
-                            title = title,
-                            artists = artists,
-                            durationMs = durationMs,
-                            audioQuality = apiQuality,
-                            cacheDir = cacheDir,
-                            countryCode = poolCountry,
-                        )
+                        coroutineScope {
+                            val jobs = poolAccounts.map { poolAccount ->
+                                async(Dispatchers.IO) {
+                                    val poolCountry =
+                                        poolAccount.countryCode?.trim()?.ifBlank { null } ?: "US"
+                                    runCatching {
+                                        TidalAccountManager.resolveDirectStream(
+                                            accessToken = poolAccount.token,
+                                            title = title,
+                                            artists = artists,
+                                            durationMs = durationMs,
+                                            audioQuality = apiQuality,
+                                            cacheDir = cacheDir,
+                                            countryCode = poolCountry,
+                                        )
+                                    }.onFailure {
+                                        Timber.tag("LosslessResolver").w(
+                                            it, "Tidal pool account resolve failed for %s", mediaId,
+                                        )
+                                    }.getOrNull()
+                                }
+                            }
+                            // First non-null wins; cancel the rest.
+                            var winner: DirectStream? = null
+                            for (job in jobs) {
+                                val result = job.await()
+                                if (result != null) {
+                                    winner = result
+                                    // Cancel any still-pending jobs — we have a winner.
+                                    jobs.forEach { other -> if (!other.isCompleted) other.cancel() }
+                                    break
+                                }
+                            }
+                            winner
+                        }
                     }
                 }.onFailure {
-                    Timber.tag("LosslessResolver").w(it, "Tidal pool account resolve failed for %s", mediaId)
+                    Timber.tag("LosslessResolver").w(it, "Tidal pool race failed for %s", mediaId)
                 }.getOrNull()
                 if (stream != null) {
                     Timber.tag("LosslessResolver").d(
-                        "Tidal resolved via pool account (premium=%s) for %s",
-                        poolAccount.premium, mediaId,
+                        "Tidal resolved via pool race for %s", mediaId,
                     )
                     return stream
                 }

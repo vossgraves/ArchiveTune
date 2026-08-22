@@ -125,6 +125,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.withTimeout
 import moe.rukamori.archivetune.MainActivity
 import moe.rukamori.archivetune.R
@@ -133,10 +134,13 @@ import moe.rukamori.archivetune.cast.CastPlaybackRepository
 import moe.rukamori.archivetune.cast.CastPlaybackRepositoryLocator
 import moe.rukamori.archivetune.cast.CastScreenState
 import moe.rukamori.archivetune.constants.AudioNormalizationKey
+import moe.rukamori.archivetune.constants.DefaultMetadataSourceKey
+import moe.rukamori.archivetune.constants.MetadataSource
 import moe.rukamori.archivetune.constants.AudioOffload
 import moe.rukamori.archivetune.constants.AudioQuality
 import moe.rukamori.archivetune.constants.AudioQualityKey
 import moe.rukamori.archivetune.constants.AutoDownloadOnLikeKey
+import moe.rukamori.archivetune.constants.AutoChoosePlaybackClientKey
 import moe.rukamori.archivetune.constants.AutoLoadMoreKey
 import moe.rukamori.archivetune.constants.AutoSkipNextOnErrorKey
 import moe.rukamori.archivetune.constants.AutoStartOnBluetoothKey
@@ -196,6 +200,7 @@ import moe.rukamori.archivetune.constants.TidalCountryCodeKey
 import moe.rukamori.archivetune.constants.TidalUserIdKey
 import moe.rukamori.archivetune.constants.TidalNeedsReloginKey
 import moe.rukamori.archivetune.constants.QobuzEnabledKey
+import moe.rukamori.archivetune.constants.QobuzBackupEnabledKey
 import moe.rukamori.archivetune.constants.QobuzInstancesKey
 import moe.rukamori.archivetune.constants.QobuzAudioQuality
 import moe.rukamori.archivetune.constants.QobuzAudioQualityKey
@@ -261,6 +266,7 @@ import moe.rukamori.archivetune.extensions.getQueueWindows
 import moe.rukamori.archivetune.extensions.mediaItems
 import moe.rukamori.archivetune.extensions.metadata
 import moe.rukamori.archivetune.extensions.move
+import moe.rukamori.archivetune.extensions.toEnum
 import moe.rukamori.archivetune.extensions.setOffloadEnabled
 import moe.rukamori.archivetune.extensions.toContinuationQueue
 import moe.rukamori.archivetune.extensions.toMediaItem
@@ -282,6 +288,7 @@ import moe.rukamori.archivetune.lyrics.LyricsHelper
 import moe.rukamori.archivetune.lyrics.LyricsPreloadManager
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.models.PersistPlayerState
+import moe.rukamori.archivetune.spotify.SpotifyLibraryRepository
 import moe.rukamori.archivetune.models.PersistQueue
 import moe.rukamori.archivetune.models.toMediaMetadata
 import moe.rukamori.archivetune.playback.queues.EmptyQueue
@@ -309,6 +316,7 @@ import moe.rukamori.archivetune.utils.SyncUtils
 import moe.rukamori.archivetune.utils.YTPlayerUtils
 import moe.rukamori.archivetune.utils.dataStore
 import moe.rukamori.archivetune.utils.enumPreference
+import moe.rukamori.archivetune.utils.preference
 import moe.rukamori.archivetune.utils.get
 import moe.rukamori.archivetune.utils.getAsync
 import moe.rukamori.archivetune.telegram.TelegramDataSource
@@ -355,6 +363,8 @@ class MusicService :
     MediaLibraryService(),
     Player.Listener,
     PlaybackStatsListener.Callback {
+    @Inject
+    lateinit var spotifyLibraryRepository: SpotifyLibraryRepository
     @Inject
     lateinit var database: MusicDatabase
 
@@ -435,6 +445,11 @@ class MusicService :
         PlayerStreamClientKey,
         PlayerStreamClient.ANDROID_VR,
     )
+    private val autoChoosePlaybackClient by preference(
+        this,
+        AutoChoosePlaybackClientKey,
+        true,
+    )
     private val playbackUrlCache = ConcurrentHashMap<String, AuthScopedCacheValue>()
     private val remotePlaybackTrackingUrlCache = ConcurrentHashMap<String, String>()
     private val contentLengthCache = ConcurrentHashMap<String, Long>()
@@ -456,7 +471,28 @@ class MusicService :
                         host.endsWith("youtube-nocookie.com") ||
                         host.endsWith("ytimg.com")
 
-                if (!isYouTubeMediaHost) return@addInterceptor chain.proceed(request)
+                if (!isYouTubeMediaHost) {
+                    // Qobuz backup server (mlc-ytify.kouzu.in) — used as a separate audio source
+                    // when the user explicitly enables QOBUZ_BACKUP. The endpoint takes a YouTube
+                    // video id as a path segment and returns a lossless stream. The
+                    // x-request-source: muzo header MUST be sent on every request (including the
+                    // redirected CDN fetch in some setups) — without it the server rate-limits
+                    // aggressively. ExoPlayer streams through this same OkHttp client, so
+                    // injecting the header here means the streaming requests (not just the
+                    // initial resolve) also bypass rate-limiting.
+                    if (host.endsWith("kouzu.in") && !request.header("x-request-source").isNullOrEmpty()) {
+                        return@addInterceptor chain.proceed(request)
+                    }
+                    if (host.endsWith("kouzu.in")) {
+                        val patched =
+                            request
+                                .newBuilder()
+                                .header("x-request-source", "muzo")
+                                .build()
+                        return@addInterceptor chain.proceed(patched)
+                    }
+                    return@addInterceptor chain.proceed(request)
+                }
 
                 val requestProfile = StreamClientUtils.resolveRequestProfile(request.url)
                 chain.proceed(
@@ -3786,10 +3822,11 @@ class MusicService :
             responseException.responseCode,
             requestProfile.variantLabel,
         )
+        val shouldResume = player.playWhenReady
         player.prepare()
+        if (shouldResume) player.play()
         return true
     }
-
 
 
 
@@ -3866,9 +3903,26 @@ class MusicService :
             withContext(Dispatchers.Main) {
                 player.findNextMediaItemById(mediaId)?.metadata
             } ?: return
+        val metadataSource =
+            dataStore
+                .get(DefaultMetadataSourceKey, MetadataSource.YOUTUBE.name)
+                .toEnum(MetadataSource.YOUTUBE)
+        val effectiveMetadata =
+            if (metadataSource == MetadataSource.SPOTIFY) {
+                withTimeoutOrNull(5_000L) {
+                    spotifyLibraryRepository.enrichMetadata(mediaMetadata)
+                } ?: mediaMetadata
+            } else {
+                mediaMetadata
+            }
+        if (effectiveMetadata != mediaMetadata) {
+            withContext(Dispatchers.Main) {
+                commitResolvedMetadata(mediaId, effectiveMetadata)
+            }
+        }
         val duration =
             song?.song?.duration?.takeIf { it != -1 }
-                ?: mediaMetadata.duration.takeIf { it != -1 }
+                ?: effectiveMetadata.duration.takeIf { it != -1 }
                 ?: (
                     playbackData?.videoDetails ?: YTPlayerUtils
                         .playerResponseForMetadata(mediaId)
@@ -3878,7 +3932,7 @@ class MusicService :
                 ?: -1
         database.query {
             if (song == null) {
-                insert(mediaMetadata.copy(duration = duration))
+                insert(effectiveMetadata.copy(duration = duration))
             } else if (song.song.duration == -1) {
                 update(song.song.copy(duration = duration))
             }
@@ -7193,6 +7247,42 @@ class MusicService :
             }
     }
 
+    /** Commits catalog metadata without changing the playable media URI or source cache key. */
+    private fun commitResolvedMetadata(
+        mediaId: String,
+        resolved: MediaMetadata,
+    ) {
+        if (currentMediaMetadata.value?.id == mediaId) {
+            currentMediaMetadata.value = resolved
+        }
+        queuedMetadataByMediaId[mediaId] = resolved
+        val index =
+            (0 until player.mediaItemCount).firstOrNull {
+                player.getMediaItemAt(it).mediaId == mediaId
+            } ?: return
+        val item = player.getMediaItemAt(index)
+        val platformMetadata =
+            item.mediaMetadata
+                .buildUpon()
+                .setTitle(resolved.title)
+                .setSubtitle(resolved.artists.joinToString { it.name })
+                .setArtist(resolved.artists.joinToString { it.name })
+                .setAlbumTitle(resolved.album?.title)
+                .apply {
+                    resolved.thumbnailUrl?.toUri()?.let(::setArtworkUri)
+                }.build()
+        val updated =
+            item
+                .buildUpon()
+                .setTag(resolved)
+                .setMediaMetadata(platformMetadata)
+                .build()
+        runCatching { player.replaceMediaItem(index, updated) }
+            .onFailure {
+                Timber.tag(TAG).w(it, "metadata: failed to update MediaItem metadata mediaId=%s", mediaId)
+            }
+    }
+
     /** Commits a resolved fallback artwork to the metadata flow and the queued MediaItem. */
     private fun commitResolvedArtwork(
         mediaId: String,
@@ -7463,6 +7553,7 @@ class MusicService :
                                 audioQuality = if (lowData) AudioQuality.LOW else audioQuality,
                                 connectivityManager = connectivityManager,
                                 preferredStreamClient = preferredStreamClient,
+                                autoChoosePlaybackClient = autoChoosePlaybackClient,
                                 networkMetered = lowData,
                             )
                         }
@@ -8246,6 +8337,31 @@ class MusicService :
                 )
             }
         }
+        // One final bounded retry covers transient decoder/container/network failures that do not
+        // match the specialised branches above. Retrying the same media item before honoring
+        // AutoSkipNextOnError prevents a single short-lived failure from silently advancing the
+        // queue. The tracker keeps this from looping forever.
+        if (
+            !isLocalMedia &&
+                !isFullyDownloadedMedia &&
+                playbackStreamRecoveryTracker.registerRetryAttempt(currentMediaId)
+        ) {
+            val shouldResume = player.playWhenReady
+            playbackUrlCache.remove(currentMediaId)
+            directStreamCache.remove(currentMediaId)
+            contentLengthCache.remove(currentMediaId)
+            YTPlayerUtils.invalidateCachedStreamUrls(currentMediaId)
+            Timber.tag("MusicService").w(
+                "Retrying remote playback for %s after unclassified error %s (%s)",
+                currentMediaId,
+                error.errorCodeName,
+                describeCauseChain(error),
+            )
+            player.prepare()
+            if (shouldResume) player.play()
+            return
+        }
+
 
         if (dataStore.get(AutoSkipNextOnErrorKey, false)) {
             skipOnError()
@@ -8443,6 +8559,7 @@ class MusicService :
                 // UI and the resolver agree on which sources are active out of the box.
                 AudioSourceType.TIDAL to dataStore.get(TidalEnabledKey, true),
                 AudioSourceType.QOBUZ to dataStore.get(QobuzEnabledKey, false),
+                AudioSourceType.QOBUZ_BACKUP to dataStore.get(QobuzBackupEnabledKey, false),
                 AudioSourceType.DEEZER to dataStore.get(DeezerEnabledKey, false),
                 AudioSourceType.JIOSAAVN to dataStore.get(JioSaavnEnabledKey, false),
                 AudioSourceType.YOUTUBE to true,
@@ -8470,6 +8587,7 @@ class MusicService :
             AudioSourceType.YOUTUBE -> true
             AudioSourceType.TIDAL -> dataStore.get(TidalEnabledKey, true)
             AudioSourceType.QOBUZ -> dataStore.get(QobuzEnabledKey, false)
+            AudioSourceType.QOBUZ_BACKUP -> dataStore.get(QobuzBackupEnabledKey, false)
             AudioSourceType.DEEZER -> dataStore.get(DeezerEnabledKey, false)
             AudioSourceType.JIOSAAVN -> dataStore.get(JioSaavnEnabledKey, false)
         }
@@ -8574,8 +8692,21 @@ class MusicService :
     fun availableSourcesForSong(mediaId: String): List<AudioSourceType> {
         val resolved = resolvedSourcesByMediaId[mediaId].orEmpty()
         val override = SongSourceOverride.get(dataStore.get(SongSourceOverrideKey, ""), mediaId)
+        // Sources are surfaced in the Source chooser when ANY of:
+        //   - Always-available: YouTube (the implicit fallback).
+        //   - The source was previously resolved successfully for this media id.
+        //   - The user previously pinned this song to this source (override).
+        //   - The source is GLOBALLY ENABLED — the user has explicitly turned the source
+        //     on in Settings, so they should be able to pick it per-song even if the
+        //     initial resolution hasn't completed (or failed transiently). Previously
+        //     JioSaavn / Qobuz would not appear in the chooser until they happened to
+        //     resolve, which made the user think the source "did nothing" when picked
+        //     elsewhere. Now any enabled source is selectable.
         return AudioSourceConfig.DEFAULT_ORDER.filter {
-            it == AudioSourceType.YOUTUBE || it in resolved || it == override
+            it == AudioSourceType.YOUTUBE ||
+                it in resolved ||
+                it == override ||
+                isSourceEnabled(it)
         }
     }
 
@@ -8731,16 +8862,28 @@ class MusicService :
             // song ended the player had no next item to auto-advance to, so playback stopped
             // until the user manually pressed Play. We now capture the full media-items list
             // and current index BEFORE the teardown, swap the current item for the freshly
-            // resolved one, and call setMediaItems(items, currentIndex, 0L) so the queue is
-            // intact and ExoPlayer's auto-advance works as expected.
+            // resolved one, and call setMediaItems(items, currentIndex, startPositionMs) so
+            // the queue is intact and ExoPlayer's auto-advance works as expected.
+            //
+            // POSITION PRESERVATION: the previous call passed 0L as startPositionMs, which
+            // restarted the song from the beginning on every source switch. The user's
+            // expectation is that the original song stays where it was — only the audio
+            // source changes. We now capture player.currentPosition BEFORE setMediaItems
+            // (it would be 0 / unset after the call) and pass it as startPositionMs so
+            // ExoPlayer resumes the new source's stream at the same playback position.
             val currentIndex = player.currentMediaItemIndex
+            val capturedPositionMs = player.currentPosition.coerceAtLeast(0L)
             val allItems = ArrayList(player.mediaItems)
             if (currentIndex in allItems.indices) {
                 allItems[currentIndex] = item
             } else {
                 allItems.add(item)
             }
-            player.setMediaItems(allItems, currentIndex.coerceIn(0, allItems.lastIndex), 0L)
+            player.setMediaItems(
+                allItems,
+                currentIndex.coerceIn(0, allItems.lastIndex),
+                capturedPositionMs,
+            )
             player.prepare()
             player.playWhenReady = wasPlaying
             // Restore the effective volume immediately (bypass the smooth ramp) so the new source
@@ -8896,6 +9039,15 @@ class MusicService :
         // Resolve each enabled lossless source and apply the shared metadata-aware safety gate.
         // Title, artist, duration, album and version markers are evaluated together; title-only
         // results must clear a stricter fallback threshold. The strongest accepted candidate wins.
+        //
+        // OVERRIDE BYPASS: when the user has explicitly pinned this song to a single source via
+        // the player's Source chooser ("Play from"), we trust their intent — the TitleMatch gate is
+        // skipped for that source's candidate. This fixes the bug where picking JioSaavn (or any
+        // non-YouTube source) from the Source chooser "did nothing": the JioSaavn candidate's
+        // title formatting often differs from the YouTube-derived wanted title enough to fail the
+        // metadata gate, the resolver silently fell back to YouTube, and the user saw no change.
+        // The override is the user's manual override of the gate — we should respect it.
+        val overrideIsSourceOverride = override != null && override != AudioSourceType.YOUTUBE
         var best: DirectStream? = null
         var bestSource: AudioSourceType? = null
         var bestScore = 0.0
@@ -8905,6 +9057,7 @@ class MusicService :
                 when (source) {
                     AudioSourceType.TIDAL -> resolveTidalStream(query)
                     AudioSourceType.QOBUZ -> resolveQobuzStream(query)
+                    AudioSourceType.QOBUZ_BACKUP -> resolveQobuzBackupStream(query)
                     AudioSourceType.DEEZER -> resolveDeezerStream(query)
                     AudioSourceType.JIOSAAVN -> resolveJioSaavnStream(query)
                     AudioSourceType.YOUTUBE -> null
@@ -8914,13 +9067,23 @@ class MusicService :
                 continue
             }
             val match =
-                TitleMatch.evaluate(
-                    wantedTitle = query.title,
-                    wantedArtists = query.artists,
-                    wantedAlbum = query.album,
-                    wantedDurationMs = query.durationMs,
-                    stream = stream,
-                )
+                if (overrideIsSourceOverride && source == override) {
+                    // Explicit per-song override: trust the user's choice. Still record the source
+                    // as resolved so the Source chooser remembers it for next time.
+                    Timber.tag("MusicService").i(
+                        "Source %s ACCEPTED for \"%s\" via per-song override (skipping metadata gate) [%s]",
+                        source.name, query.title, stream.label,
+                    )
+                    TitleMatch.Result(true, 1.0, 1.0, 1.0, 1.0, "per-song override bypass")
+                } else {
+                    TitleMatch.evaluate(
+                        wantedTitle = query.title,
+                        wantedArtists = query.artists,
+                        wantedAlbum = query.album,
+                        wantedDurationMs = query.durationMs,
+                        stream = stream,
+                    )
+                }
             if (!match.accepted) {
                 Timber.tag("MusicService").i(
                     "Source %s rejected for \"%s\": %s score=%.1f%% title=%.1f%% artist=%s duration=%s matched=\"%s\"",
@@ -9364,6 +9527,157 @@ class MusicService :
         }.getOrNull()
     }
 
+    /**
+     * Backup Qobuz stream resolver: https://mlc-ytify.kouzu.in/api/stream?id=<youtube_id>
+     *
+     * Two-step flow:
+     *   1. GET the resolver endpoint — returns a small JSON envelope:
+     *        { "id": "<yt_id>", "url": "https://velamhere-img.hf.space/song/<yt_id>", ... }
+     *      The `url` field points at the actual lossless audio stream on the CDN.
+     *   2. ExoPlayer streams from the resolved CDN URL — the same mediaOkHttpClient
+     *      is used, so the x-request-source: muzo header (injected for kouzu.in hosts
+     *      by the interceptor) is applied to the resolver call. The CDN host
+     *      (velamhere-img.hf.space) doesn't need the header.
+     *
+     * The `x-request-source: muzo` header MUST be sent on every kouzu.in request —
+     * without it the server rate-limits the client aggressively. The header is
+     * injected centrally by the [mediaOkHttpClient] interceptor for any kouzu.in
+     * host request.
+     *
+     * Returns null when:
+     *   - mediaId is blank or not a YouTube video id (not 11 chars)
+     *   - the resolver is unreachable / returns a non-2xx
+     *   - the JSON envelope has no `url` field
+     *
+     * Marked [trustedDirectId] = true because the user has explicitly chosen the
+     * Qobuz backup source — the YouTube mediaId IS the authoritative identity for
+     * the song the user is playing, so we skip the title/artist metadata gate.
+     */
+    private fun resolveQobuzBackupStream(query: SourceQuery): DirectStream? {
+        val ytId = query.mediaId.trim()
+        // YouTube video ids are 11 characters. Anything else isn't a valid id for
+        // the kouzu.in endpoint — bail early so we don't waste a network call.
+        if (ytId.length != 11 || ytId.any { !it.isLetterOrDigit() && it != '_' && it != '-' }) {
+            Timber.tag("MusicService").d("Qobuz backup skip: mediaId=%s is not a valid YT id", ytId)
+            return null
+        }
+        return runCatching {
+            runBlocking(Dispatchers.IO) {
+                // Step 1: call the resolver endpoint. It returns a small JSON envelope
+                // with the actual stream URL on the velamhere-img.hf.space CDN.
+                val resolverUrl = "https://mlc-ytify.kouzu.in/api/stream?id=$ytId"
+                // NOTE: GET (not HEAD) — the endpoint returns 405 Method Not Allowed
+                // for HEAD. We only need the first chunk of the response to parse the
+                // JSON envelope (the body is ~150 bytes), so we use a small byte range
+                // to avoid downloading the full envelope unnecessarily.
+                val resolverRequest =
+                    okhttp3.Request
+                        .Builder()
+                        .url(resolverUrl)
+                        .get()
+                        .header("User-Agent", "ArchiveTune-Android")
+                        .header("Accept", "application/json")
+                        .build()
+                val resolvedUrl = mediaOkHttpClient.newCall(resolverRequest).execute().use { response ->
+                    if (!response.isSuccessful) {
+                        Timber.tag("MusicService").d(
+                            "Qobuz backup resolver miss for %s: HTTP %d",
+                            ytId,
+                            response.code,
+                        )
+                        return@runBlocking null
+                    }
+                    val body = response.body?.string().orEmpty()
+                    if (body.isBlank()) {
+                        Timber.tag("MusicService").d("Qobuz backup resolver miss for %s: empty body", ytId)
+                        return@runBlocking null
+                    }
+                    val root = runCatching { org.json.JSONObject(body) }.getOrNull()
+                    if (root == null) {
+                        Timber.tag("MusicService").d(
+                            "Qobuz backup resolver miss for %s: body is not JSON (first 100 chars: %s)",
+                            ytId,
+                            body.take(100),
+                        )
+                        return@runBlocking null
+                    }
+                    // The resolver returns the actual stream URL in the `url` field.
+                    // Tolerant: also accept `canvas_url` / `video_url` (same field
+                    // names as the Spotify canvas resolver).
+                    val streamUrl =
+                        root.optString("url").takeIf { it.isNotBlank() }
+                            ?: root.optString("canvas_url").takeIf { it.isNotBlank() }
+                            ?: root.optString("video_url").takeIf { it.isNotBlank() }
+                    if (streamUrl.isNullOrBlank()) {
+                        Timber.tag("MusicService").d(
+                            "Qobuz backup resolver miss for %s: no url field in response (first 200 chars: %s)",
+                            ytId,
+                            body.take(200),
+                        )
+                        return@runBlocking null
+                    }
+                    streamUrl
+                } ?: return@runBlocking null
+
+                // Step 2: HEAD-probe the resolved CDN URL to verify it's reachable
+                // and returns an audio content type. This is informational — ExoPlayer
+                // will issue the actual GET with byte-range requests through the same
+                // OkHttp client. The CDN host (velamhere-img.hf.space) doesn't need
+                // the x-request-source: muzo header.
+                val cdnHeadRequest =
+                    okhttp3.Request
+                        .Builder()
+                        .url(resolvedUrl)
+                        .head()
+                        .header("User-Agent", "ArchiveTune-Android")
+                        .build()
+                val (finalStreamUrl, contentLength, contentType) = mediaOkHttpClient.newCall(cdnHeadRequest).execute().use { cdnResponse ->
+                    if (!cdnResponse.isSuccessful) {
+                        Timber.tag("MusicService").d(
+                            "Qobuz backup CDN miss for %s: HTTP %d (resolved url: %s)",
+                            ytId,
+                            cdnResponse.code,
+                            resolvedUrl.take(80),
+                        )
+                        // Fallback: use the resolver-resolved URL directly even
+                        // though the HEAD probe failed — ExoPlayer's GET might
+                        // still succeed (some CDNs reject HEAD but accept GET).
+                        Triple(resolvedUrl, null, "audio/mp4")
+                    } else {
+                        val ct = cdnResponse.header("Content-Type")?.lowercase().orEmpty()
+                        Timber.tag("MusicService").i(
+                            "Qobuz backup resolved \"%s\" via mlc-ytify.kouzu.in → %s [%s]",
+                            query.title,
+                            resolvedUrl.take(80),
+                            ct,
+                        )
+                        Triple(resolvedUrl, cdnResponse.header("Content-Length")?.toLongOrNull(), ct)
+                    }
+                }
+                // The CDN serves audio/mp4 (an MP4 container with lossless ALAC
+                // inside, verified by direct probe — Content-Type: audio/mp4).
+                DirectStream(
+                    uri = finalStreamUrl,
+                    mimeType = if (contentType.contains("flac")) "audio/flac" else "audio/mp4",
+                    codecs = if (contentType.contains("flac")) "flac" else "mp4a.40.2",
+                    contentLength = contentLength,
+                    label = "Qobuz backup (kouzu.in)",
+                    source = AudioSourceType.QOBUZ_BACKUP,
+                    // The YouTube mediaId is the authoritative identity of the
+                    // song the user is playing — we trust it without requiring
+                    // the backup server to echo back matching metadata.
+                    trustedDirectId = true,
+                    matchedTitle = query.title,
+                    matchedArtist = query.artists.joinToString(", ").ifBlank { null },
+                    matchedAlbum = query.album,
+                    matchedDurationMs = query.durationMs,
+                )
+            }
+        }.onFailure { error ->
+            Timber.tag("MusicService").w(error, "Qobuz backup resolution failed for %s", ytId)
+        }.getOrNull()
+    }
+
     private fun parseQobuzInstances(): List<String> =
         dataStore
             .get(QobuzInstancesKey, "")
@@ -9442,7 +9756,14 @@ class MusicService :
      * stream URL matching the user's quality preference. Falls back to YouTube on any failure.
      */
     private fun resolveJioSaavnStream(query: SourceQuery): DirectStream? {
-        if (!dataStore.get(JioSaavnEnabledKey, false)) return null
+        // NOTE: the global JioSaavnEnabledKey gate was removed here. The chain
+        // (sourceResolutionChain / the override list) already filters by enabled-ness,
+        // so re-checking it here is redundant for the global-on case. More importantly,
+        // it BLOCKED the per-song override path: if the user has JioSaavn globally OFF
+        // but explicitly pinned one song to JioSaavn via the Source chooser, this gate
+        // returned null and the resolver silently fell back to YouTube — making the
+        // override look like it "did nothing". Removing the gate lets the override
+        // resolve even when JioSaavn is globally disabled.
         val quality = SaavnAudioQuality.fromStoredName(dataStore.get(SaavnAudioQualityKey, SaavnAudioQuality.QUALITY_320.name))
         val qualityApiValue = quality.toApiValue()
         Timber.tag("MusicService").d("JioSaavn resolve start | quality=%s", qualityApiValue)
@@ -9573,20 +9894,32 @@ class MusicService :
             stream.codecs.ifBlank {
                 stream.mimeType.substringAfter("codecs=", "").removeSurrounding("\"").ifBlank { "flac" }
             }
-        // Tidal tiers: HI_RES_LOSSLESS is 24-bit/up to 192 kHz; LOSSLESS (HiFi) is 16-bit/44.1 kHz.
-        val sampleRate =
-            when {
+        // Use the ACTUAL sample rate and bit depth from the DirectStream when
+        // the provider reported them. Fall back to label-based heuristics only
+        // when the provider didn't report the actual values (some providers
+        // don't expose sampleRate/bitDepth — e.g. JioSaavn always returns null).
+        //
+        // BUG FIXED: the previous implementation always used hardcoded guesses
+        // (44100 Hz / 1411 kbps for "LOSSLESS", 96000 Hz / 2304 kbps for "HI_RES")
+        // regardless of the actual stream's properties. This meant ALL lossless
+        // songs showed the same bitrate/sample rate in the player's Details tab
+        // even when they were different (e.g. a 48kHz/24-bit track showed as
+        // 44.1kHz/16-bit).
+        val sampleRate = stream.sampleRate?.takeIf { it > 0 }
+            ?: when {
                 label.contains("HI_RES") || label.contains("MASTER") || label.contains("MQA") -> 96_000
                 label.contains("LOSSLESS") || codecs.contains("flac", true) || codecs.contains("alac", true) -> 44_100
                 else -> null
             }
-        val bitrate =
-            when {
-                label.contains("HI_RES") || label.contains("MASTER") || label.contains("MQA") -> 2_304_000
-                label.contains("LOSSLESS") || codecs.contains("flac", true) || codecs.contains("alac", true) -> 1_411_000
-                label.contains("HIGH") -> 320_000
-                else -> 0
-            }
+        val bitDepth = stream.bitDepth?.takeIf { it > 0 }
+        val bitrate = when {
+            stream.sampleRate != null && stream.sampleRate > 0 && bitDepth != null && bitDepth > 0 ->
+                stream.sampleRate * bitDepth * 2 // stereo: channels=2
+            label.contains("HI_RES") || label.contains("MASTER") || label.contains("MQA") -> 2_304_000
+            label.contains("LOSSLESS") || codecs.contains("flac", true) || codecs.contains("alac", true) -> 1_411_000
+            label.contains("HIGH") -> 320_000
+            else -> 0
+        }
         val knownContentLength = stream.contentLength?.takeIf { it > 0L }
         val formatEntity =
             FormatEntity(
@@ -9679,9 +10012,13 @@ class MusicService :
     private fun tidalSourceApplies(mediaId: String): Boolean {
         if (mediaId.isLocalMediaId()) return false
         // Defaults MUST match PlaybackSourceSections + sourceResolutionChain(). Any enabled
-        // external lossless source (Tidal or Qobuz) must bypass the ephemeral YouTube player cache
-        // so toggling a source on takes effect immediately instead of replaying cached YT bytes.
-        return dataStore.get(TidalEnabledKey, true) || dataStore.get(QobuzEnabledKey, false)
+        // external lossless source (Tidal, Qobuz, Qobuz backup, Deezer) must bypass the ephemeral
+        // YouTube player cache so toggling a source on takes effect immediately instead of
+        // replaying cached YT bytes.
+        return dataStore.get(TidalEnabledKey, true) ||
+            dataStore.get(QobuzEnabledKey, false) ||
+            dataStore.get(QobuzBackupEnabledKey, false) ||
+            dataStore.get(DeezerEnabledKey, false)
     }
 
     private fun resolvePlaybackDataSpec(
@@ -9792,6 +10129,7 @@ class MusicService :
                         audioQuality = if (lowDataModeActive) AudioQuality.LOW else audioQuality,
                         connectivityManager = connectivityManager,
                         preferredStreamClient = preferredStreamClient,
+                        autoChoosePlaybackClient = autoChoosePlaybackClient,
                         networkMetered = lowDataModeActive,
                     )
                 }.recoverCatching { youtubeFailure ->
