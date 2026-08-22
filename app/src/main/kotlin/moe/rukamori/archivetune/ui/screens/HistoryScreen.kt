@@ -558,7 +558,7 @@ fun HistoryScreen(
     ) { innerPadding ->
         Box(modifier = Modifier.fillMaxSize()) {
             if (!showSearchBar) {
-                historyContent(innerPadding.calculateTopPadding(), searchMode = false)
+                historyContent(innerPadding.calculateTopPadding(), false)
             }
 
             AnimatedVisibility(
@@ -621,7 +621,7 @@ fun HistoryScreen(
                     },
                     focusRequester = focusRequester,
                 ) {
-                    historyContent(0.dp, searchMode = true)
+                    historyContent(0.dp, true)
                 }
             }
 

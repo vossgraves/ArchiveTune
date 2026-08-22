@@ -398,7 +398,7 @@ object QobuzAudioProvider {
             // result), skip the title/artist search entirely and download the
             // exact track. This prevents the resolver from matching a different
             // Qobuz track (different master, deluxe edition, etc.).
-            val match: Match? = if (query.directTrackId != null) {
+            val match = if (query.directTrackId != null) {
                 Match(
                     id = query.directTrackId,
                     title = query.title,

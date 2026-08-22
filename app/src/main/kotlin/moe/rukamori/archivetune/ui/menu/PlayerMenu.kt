@@ -428,11 +428,10 @@ fun PlayerMenu(
                         ),
                     )
                     showSourceDialog = false
-                    return@onPlayFromSource
-                }
-                // JioSaavn / Tidal / Deezer: search YouTube Music for a matching track.
-                // (See comment above for why we can't play these directly yet.)
-                coroutineScope.launch(Dispatchers.IO) {
+                } else {
+                    // JioSaavn / Tidal / Deezer: search YouTube Music for a matching track.
+                    // (See comment above for why we can't play these directly yet.)
+                    coroutineScope.launch(Dispatchers.IO) {
                     val query = buildString {
                         append(result.title)
                         if (result.artist.isNotBlank()) append(" ").append(result.artist)
@@ -476,6 +475,7 @@ fun PlayerMenu(
                         showSourceDialog = false
                     }
                 }
+                } // end else (JioSaavn / Tidal / Deezer YouTube-search fallback)
             },
         )
     }
