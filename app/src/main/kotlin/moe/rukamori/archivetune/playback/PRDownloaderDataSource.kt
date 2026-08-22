@@ -111,7 +111,7 @@ internal class PRDownloaderDataSource private constructor(
             .connectTimeout(10, TimeUnit.SECONDS)
             .readTimeout(15, TimeUnit.SECONDS)
             .callTimeout(20, TimeUnit.SECONDS)
-            .connectionPool(ConnectionPool(maxIdleConnections = 4, keepAliveDuration = 30_000, unit = TimeUnit.MILLISECONDS))
+            .connectionPool(ConnectionPool(4, 30_000, TimeUnit.MILLISECONDS))
             .protocols(listOf(Protocol.HTTP_2, Protocol.HTTP_1_1))
             .build()
     }

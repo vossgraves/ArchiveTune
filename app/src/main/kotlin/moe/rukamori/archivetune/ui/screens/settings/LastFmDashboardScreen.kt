@@ -1096,9 +1096,9 @@ private fun LastFmDashboardHeader(
                 targetState = searchVisible,
                 transitionSpec = {
                     (fadeIn(spring(stiffness = Spring.StiffnessMediumLow)) +
-                        slideInVertically(initialOffsetY = { it / 8 }) togetherWith
+                        slideInVertically(initialOffsetY = { fullHeight -> fullHeight / 8 }) togetherWith
                         fadeOut(spring(stiffness = Spring.StiffnessMediumLow)) +
-                        slideOutVertically(targetOffsetY = -it / 8))
+                        slideOutVertically(targetOffsetY = { fullHeight -> fullHeight / 8 }))
                 },
                 label = "lastfm_header_search_swap",
             ) { searching ->
