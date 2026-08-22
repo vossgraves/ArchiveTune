@@ -110,12 +110,13 @@ fun DefaultDialog(
         ) {
             Surface(
                 modifier = Modifier.heightIn(max = maxHeight),
-                // Material 3 Expressive: extra-large rounded corners +
-                // elevated tonal surface for a more modern dialog look.
-                shape = AlertDialogDefaults.shape,
-                color = AlertDialogDefaults.containerColor,
-                tonalElevation = AlertDialogDefaults.TonalElevation,
-                shadowElevation = 6.dp,
+                // Material 3 Expressive (md3e): match ProfileMenuDialog —
+                // 28dp rounded container + surfaceContainerHigh tonal
+                // surface with 6/12dp elevations.
+                shape = ProfilePopupDefaults.ContainerShape,
+                color = ProfilePopupDefaults.containerColor(),
+                tonalElevation = ProfilePopupDefaults.TonalElevationDp,
+                shadowElevation = ProfilePopupDefaults.ShadowElevationDp,
             ) {
                 Column(
                     modifier = modifier.padding(24.dp),
@@ -220,12 +221,11 @@ fun ActionPromptDialog(
         ) {
             Surface(
                 modifier = Modifier.heightIn(max = maxHeight),
-                // Material 3 Expressive: extra-large rounded corners +
-                // elevated tonal surface for a more modern dialog look.
-                shape = AlertDialogDefaults.shape,
-                color = AlertDialogDefaults.containerColor,
-                tonalElevation = AlertDialogDefaults.TonalElevation,
-                shadowElevation = 6.dp,
+                // Material 3 Expressive (md3e): match ProfileMenuDialog.
+                shape = ProfilePopupDefaults.ContainerShape,
+                color = ProfilePopupDefaults.containerColor(),
+                tonalElevation = ProfilePopupDefaults.TonalElevationDp,
+                shadowElevation = ProfilePopupDefaults.ShadowElevationDp,
             ) {
                 Column(
                     modifier = Modifier.padding(24.dp),
@@ -317,12 +317,11 @@ fun ListDialog(
         ) {
             Surface(
                 modifier = Modifier.heightIn(max = maxHeight),
-                // Material 3 Expressive: extra-large rounded corners +
-                // elevated tonal surface for a more modern dialog look.
-                shape = AlertDialogDefaults.shape,
-                color = AlertDialogDefaults.containerColor,
-                tonalElevation = AlertDialogDefaults.TonalElevation,
-                shadowElevation = 6.dp,
+                // Material 3 Expressive (md3e): match ProfileMenuDialog.
+                shape = ProfilePopupDefaults.ContainerShape,
+                color = ProfilePopupDefaults.containerColor(),
+                tonalElevation = ProfilePopupDefaults.TonalElevationDp,
+                shadowElevation = ProfilePopupDefaults.ShadowElevationDp,
             ) {
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,

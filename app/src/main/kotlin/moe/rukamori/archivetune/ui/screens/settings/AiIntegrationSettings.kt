@@ -873,8 +873,9 @@ private fun ModelPickerPreference(
         ModalBottomSheet(
             onDismissRequest = { showSheet = false },
             sheetState = sheetState,
-            shape = RoundedCornerShape(topStart = 36.dp, topEnd = 36.dp),
-            containerColor = MaterialTheme.colorScheme.surface,
+            // Match ProfileMenuDialog — 28dp top corners + surfaceContainerHigh.
+            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
         ) {
             Text(
                 text = stringResource(R.string.ai_model),
