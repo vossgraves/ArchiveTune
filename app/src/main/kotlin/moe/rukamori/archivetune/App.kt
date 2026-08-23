@@ -219,9 +219,7 @@ class App :
                     YouTube.locale = YouTube.locale.copy(hl = lang)
                 }
                 prefs[YouTubeMusicRegionKey]?.let { regionValue ->
-                    val spooferActive = regionValue != SYSTEM_DEFAULT
-                    YouTube.regionSpooferActive = spooferActive
-                    if (spooferActive) {
+                    if (regionValue != SYSTEM_DEFAULT) {
                         YouTube.locale = YouTube.locale.copy(gl = regionValue)
                     }
                 }
@@ -237,14 +235,6 @@ class App :
                     password = prefs[ProxyPasswordKey],
                 )
                 YouTube.streamBypassProxy = YouTube.proxy != null && prefs[StreamBypassProxyKey] == true
-
-                if (prefs[IpRotationEnabledKey] == true) {
-                    try {
-                        YouTube.enableIpRotation()
-                    } catch (e: Exception) {
-                        reportException(e)
-                    }
-                }
 
                 if (prefs[UseLoginForBrowse] != false) {
                     YouTube.useLoginForBrowse = true
