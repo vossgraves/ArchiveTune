@@ -16,10 +16,8 @@ import android.widget.Toast
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.RepeatableSpec
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
@@ -547,7 +545,7 @@ fun LastFmDashboardScreen(
                 // Eight parallel Last.fm calls — mirrors LastWave-native's
                 // _fetchHomeData() Promise.allSettled batch:
                 //   • user.getInfo                → header + hero scrobbles count
-                //   • user.getRecentTracks(20)   → RECENT filter view
+                //   • user.getRecentTracks(200)  → RECENT filter view
                 //   • user.getTopTracks(20)      → TOP_TRACKS filter view
                 //   • user.getTopArtists(20)    → TOP_ARTISTS filter view
                 //   • user.getTopAlbums(20)     → TOP_ALBUMS filter view
@@ -563,7 +561,10 @@ fun LastFmDashboardScreen(
                 // round-trip on filter switch.
                 withContext(Dispatchers.IO) {
                     val infoDeferred = async { LastFM.getUserInfo(username) }
-                    val recentDeferred = async { LastFM.getRecentTracks(username, limit = 20) }
+                    // Last.fm permits up to 200 recent tracks per request. Keep every
+                    // returned scrobble rather than collapsing repeated plays, so every
+                    // recent listening event remains visible in the list.
+                    val recentDeferred = async { LastFM.getRecentTracks(username, limit = 200) }
                     val topTracksDeferred = async { LastFM.getTopTracks(username, period = "overall", limit = 20) }
                     val topArtistsDeferred = async { LastFM.getTopArtists(username, period = "overall", limit = 20) }
                     val topAlbumsDeferred = async { LastFM.getTopAlbums(username, period = "overall", limit = 20) }
@@ -634,8 +635,6 @@ fun LastFmDashboardScreen(
         contentWindowInsets = WindowInsets.safeDrawing,
         topBar = {
             LastFmDashboardHeader(
-                userInfo = userInfo,
-                isRefreshing = isRefreshing,
                 searchVisible = searchVisible,
                 searchQuery = searchQuery,
                 onSearchQueryChange = { searchQuery = it },
@@ -644,7 +643,13 @@ fun LastFmDashboardScreen(
                     if (!searchVisible) searchQuery = ""
                 },
                 theme = theme,
-                onRefresh = { if (!isRefreshing) refresh() },
+                onOpenProfile = {
+                    userInfo?.getOrNull()?.url
+                        ?.takeIf { it.isNotBlank() }
+                        ?.let { profileUrl ->
+                            context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(profileUrl)))
+                        }
+                },
                 onBack = navController::navigateUp,
                 onBackLong = navController::backToMain,
             )
@@ -670,6 +675,9 @@ fun LastFmDashboardScreen(
         }
 
         val recent = remember(recentTracks) {
+            // Preserve the complete recent-history response while grouping only
+            // consecutive identical scrobbles into the ×N row the dashboard
+            // uses for repeat playback.
             recentTracks?.getOrNull().orEmpty().mergeDuplicatesWithCount()
         }
         // Unwrap the page list off the stored wrapper (state still holds the
@@ -1038,11 +1046,9 @@ fun LastFmDashboardScreen(
 /**
  * Top app bar for the dashboard.
  *
- * Simplified per Task 6b — only four actions remain, mirroring the
- * LastWave-native action set (back arrow on the left, title in the
- * middle, then refresh + search + avatar on the right in that order).
- * The previous explore (mood_and_genres) icon is gone (the same target
- * is reachable via the hero card's arrow + the avatar tap).
+ * The actions are a back arrow, title/search field, then search and profile
+ * on the right. Refresh is intentionally omitted because opening the page
+ * already loads the dashboard and the list must retain its visible scrobbles.
  *
  * Title text reads `R.string.stats` (Task 2) — the rest of the app
  * (profile popup on the home page) keeps using `R.string.lastfm_dashboard`
@@ -1054,14 +1060,12 @@ fun LastFmDashboardScreen(
  */
 @Composable
 private fun LastFmDashboardHeader(
-    userInfo: Result<UserInfo>?,
-    isRefreshing: Boolean,
     searchVisible: Boolean,
     searchQuery: String,
     onSearchQueryChange: (String) -> Unit,
     onToggleSearch: () -> Unit,
     theme: DashboardTheme,
-    onRefresh: () -> Unit,
+    onOpenProfile: () -> Unit,
     onBack: () -> Unit,
     onBackLong: () -> Unit,
 ) {
@@ -1175,36 +1179,6 @@ private fun LastFmDashboardHeader(
                     )
                 }
             }
-            // Refresh icon rotates while a fetch is in flight, same as the
-            // previous LargeFlexibleTopAppBar implementation — just moved into
-            // a circular IconButton. The rotation tween is preserved verbatim
-            // so the spin/snap transition behaviour is unchanged.
-            val rotation by animateFloatAsState(
-                targetValue = if (isRefreshing) 360f else 0f,
-                animationSpec = if (isRefreshing) {
-                    RepeatableSpec(
-                        iterations = Int.MAX_VALUE,
-                        animation = tween(durationMillis = 1000),
-                    )
-                } else {
-                    tween(durationMillis = 300)
-                },
-                label = "lastfm_refresh_rotation",
-            )
-            IconButton(
-                onClick = onRefresh,
-                enabled = !isRefreshing,
-                colors = IconButtonDefaults.iconButtonColors(
-                    contentColor = theme.topAppBarIconTint,
-                ),
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.cached),
-                    contentDescription = stringResource(R.string.lastfm_refresh),
-                    tint = theme.topAppBarIconTint,
-                    modifier = Modifier.graphicsLayer { rotationZ = rotation },
-                )
-            }
             // Search icon — toggles the inline scrobble-search field.
             IconButton(
                 onClick = onToggleSearch,
@@ -1215,6 +1189,18 @@ private fun LastFmDashboardHeader(
                 Icon(
                     painter = painterResource(R.drawable.solar_magnifer_linear),
                     contentDescription = stringResource(R.string.search),
+                    tint = theme.topAppBarIconTint,
+                )
+            }
+            IconButton(
+                onClick = onOpenProfile,
+                colors = IconButtonDefaults.iconButtonColors(
+                    contentColor = theme.topAppBarIconTint,
+                ),
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.solar_user_circle_linear),
+                    contentDescription = stringResource(R.string.lastfm_open_in_lastfm),
                     tint = theme.topAppBarIconTint,
                 )
             }
