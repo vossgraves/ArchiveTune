@@ -2085,6 +2085,7 @@ private fun TrackOverflowSheet(
                         ?.joinToString(", ")
                 }
             }
+    }
 
     // (Task 5a) Pre-resolve the YT search once on sheet open so the
     // banner can show the YouTube thumbnail when Last.fm has no artwork,
