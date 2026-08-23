@@ -1,54 +1,39 @@
-package moe.rukamori.archivetune.paxsenix
+/*
+ * ArchiveTune (2026)
+ * © Rukamori — github.com/rukamori
+ * GPL-3.0 License | Contributors: see git history
+ * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
+ */
 
-import io.ktor.client.HttpClient
-import io.ktor.client.call.body
-import io.ktor.client.engine.okhttp.OkHttp
-import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
-import io.ktor.client.request.get
-import io.ktor.client.request.header
-import io.ktor.client.request.parameter
-import io.ktor.serialization.kotlinx.json.json
-import kotlinx.serialization.json.Json
-import moe.rukamori.archivetune.paxsenix.models.PaxsenixLyricsResponse
+package moe.rukamori.archivetune.lyrics
 
-object PaxsenixLyrics {
-    private const val API_KEY = "Sk-paxsenix-Cd3wtTnii7rZYR_vFUbsNuY408zwRUh079PDLhVgQI2LdDPr"
-    private const val DIRECT_ENDPOINT = "https://api.paxsenix.biz.id/lyrics"
+import android.content.Context
+import moe.rukamori.archivetune.constants.EnablePaxsenixLyricsKey
+import moe.rukamori.archivetune.paxsenix.PaxsenixLyrics
+import moe.rukamori.archivetune.utils.dataStore
+import moe.rukamori.archivetune.utils.get
 
-    private val client = HttpClient(OkHttp) {
-        install(ContentNegotiation) {
-            json(
-                Json {
-                    ignoreUnknownKeys = true
-                    isLenient = true
-                }
-            )
-        }
-    }
+object PaxsenixLyricsProvider : LyricsProvider {
+    override val name = "Paxsenix (Auto)"
 
-    suspend fun getLyrics(
+    override fun isEnabled(context: Context): Boolean = context.dataStore[EnablePaxsenixLyricsKey] ?: true
+
+    override suspend fun getLyrics(
+        id: String,
         title: String,
         artist: String,
+        album: String?,
         duration: Int,
-    ): Result<String> = runCatching {
-        val response = client.get(DIRECT_ENDPOINT) {
-            header("Authorization", "Bearer $API_KEY")
-            parameter("title", title)
-            parameter("artist", artist)
-            parameter("duration", duration)
-        }.body<PaxsenixLyricsResponse>()
+    ): Result<String> = PaxsenixLyrics.getLyrics(title, artist, duration)
 
-        response.lyrics ?: throw Exception("No lyrics found")
-    }
-
-    suspend fun getAllLyrics(
+    override suspend fun getAllLyrics(
+        id: String,
         title: String,
         artist: String,
+        album: String?,
         duration: Int,
         callback: (String) -> Unit,
     ) {
-        getLyrics(title, artist, duration).onSuccess {
-            callback(it)
-        }
+        PaxsenixLyrics.getAllLyrics(title, artist, duration, callback)
     }
 }

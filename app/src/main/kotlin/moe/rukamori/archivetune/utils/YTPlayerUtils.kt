@@ -304,56 +304,10 @@ object YTPlayerUtils {
     ): PlaybackAuthState {
         val sessionId = authState.sessionId ?: return authState
         val tokenResult = BotGuardTokenGenerator.mintToken(videoId, sessionId) ?: return authState
-        return authState.withGeneratedPoTokens(videoId, tokenResult)
+        return authState.withGeneratedPoTokens(tokenResult)
     }
 
-    suspend fun ensureWebPoTokensForSubtitles(videoId: String): PlaybackAuthState {
-        var authState = YouTube.currentPlaybackAuthState()
-        if (!authState.resolveSubsPoToken(WEB_REMIX, videoId).isNullOrBlank()) return authState
-
-        if (authState.sessionId.isNullOrBlank()) {
-            authState =
-                ensureVisitorDataReady(
-                    videoId = videoId,
-                    authState = authState,
-                    reason = "subtitle playback authentication",
-                )
-        }
-        return mintWebPlaybackPoTokens(videoId, authState)
-    }
-
-    suspend fun ensureWebPoTokensForPlayback(
-        videoId: String,
-        authState: PlaybackAuthState = YouTube.currentPlaybackAuthState(),
-    ): PlaybackAuthState {
-        var resolvedAuthState = authState
-        val hasPlayerToken =
-            !resolvedAuthState
-                .resolvePlayerPoToken(
-                    client = WEB_REMIX,
-                    videoId = videoId,
-                ).isNullOrBlank()
-        if (hasPlayerToken && !resolvedAuthState.resolveGvsPoToken(WEB_REMIX, videoId).isNullOrBlank()) {
-            return resolvedAuthState
-        }
-
-        if (resolvedAuthState.sessionId.isNullOrBlank()) {
-            resolvedAuthState =
-                ensureVisitorDataReady(
-                    videoId = videoId,
-                    authState = resolvedAuthState,
-                    reason = "playback authentication",
-                )
-        }
-        if (resolvedAuthState.sessionId.isNullOrBlank()) return resolvedAuthState
-
-        return mintWebPlaybackPoTokens(videoId, resolvedAuthState)
-    }
-
-    private fun PlaybackAuthState.withGeneratedPoTokens(
-        videoId: String,
-        tokenResult: PoTokenResult,
-    ): PlaybackAuthState {
+    private fun PlaybackAuthState.withGeneratedPoTokens(tokenResult: PoTokenResult): PlaybackAuthState {
         val updatedAuthState =
             copy(
                 poTokenGvs = tokenResult.sessionToken,
