@@ -92,9 +92,6 @@ dependencyResolutionManagement {
                 // every sub-module artifact fails to download.
                 includeGroup("com.github.MetrolistGroup")
                 includeGroup("com.github.MetrolistGroup.MetrolistExtractor")
-                // InnerTubeX KMP sub-modules are published under
-                // com.github.MetrolistGroup.innertubex group.
-                includeGroup("com.github.MetrolistGroup.innertubex")
             }
         }
     }
