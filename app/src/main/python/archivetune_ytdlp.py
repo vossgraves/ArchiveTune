@@ -243,6 +243,8 @@ def resolve_audio(request_json, runtime_path, cookie_directory):
         youtube_args = {
             "skip": ["hls", "dash", "translated_subs"],
         }
+        if cookie_file:
+            youtube_args["player_client"] = ["default", "web_embedded"]
         url = "https://www.youtube.com/watch?v=" + request["media_id"]
         info = _extract_info(
             YoutubeDL,
