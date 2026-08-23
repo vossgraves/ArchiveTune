@@ -9,15 +9,18 @@ package moe.rukamori.archivetune.playback.stream
 
 import android.content.Context
 import android.net.Uri
+import com.chaquo.python.PyObject
 import com.chaquo.python.Python
 import com.chaquo.python.android.AndroidPlatform
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.morideobfuscator.ytdlp.YtDlpRuntimeStore
 import org.json.JSONObject
+import timber.log.Timber
 import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -29,6 +32,47 @@ class YtDlpRuntime
         @ApplicationContext private val context: Context,
     ) {
         private val resolutionPermits = Semaphore(2)
+        private val pythonModuleLock = Any()
+
+        @Volatile
+        private var pythonModule: PyObject? = null
+
+        private val cookieDirectory: File by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+            File(context.cacheDir, "yt_dlp_cookies").apply {
+                mkdirs()
+                val staleBefore = System.currentTimeMillis() - STALE_COOKIE_FILE_MS
+                listFiles()?.forEach { file ->
+                    if (file.isFile && file.lastModified() < staleBefore) {
+                        file.delete()
+                    }
+                }
+            }
+        }
+
+        suspend fun preWarm() {
+            resolutionPermits.withPermit {
+                withContext(Dispatchers.IO) {
+                    try {
+                        val activeArchive = YtDlpRuntimeStore.activeArchive(context)
+                        val module = getPythonModule()
+                        module.callAttr(
+                            "prewarm_runtime",
+                            activeArchive?.absolutePath.orEmpty(),
+                        )
+                        if (
+                            activeArchive != null &&
+                            !module.callAttr("is_runtime_archive_loaded").toBoolean()
+                        ) {
+                            YtDlpRuntimeStore.rollback(context)
+                        }
+                    } catch (cancellation: CancellationException) {
+                        throw cancellation
+                    } catch (exception: Exception) {
+                        Timber.tag(TAG).w(exception, "yt-dlp runtime prewarm failed")
+                    }
+                }
+            }
+        }
 
         suspend fun resolve(
             request: AudioStreamRequest,
@@ -36,7 +80,7 @@ class YtDlpRuntime
         ): ResolvedAudioStream {
             return resolutionPermits.withPermit {
                 withContext(Dispatchers.IO) {
-                    startPythonIfNecessary()
+                    val module = getPythonModule()
                     val activeArchive = YtDlpRuntimeStore.activeArchive(context)
                     val requestJson =
                         JSONObject()
@@ -57,13 +101,6 @@ class YtDlpRuntime
                                 },
                             )
                             .toString()
-                    val cookieDirectory = File(context.cacheDir, "yt_dlp_cookies").apply { mkdirs() }
-                    cookieDirectory.listFiles()?.forEach { file ->
-                        if (file.isFile && System.currentTimeMillis() - file.lastModified() > STALE_COOKIE_FILE_MS) {
-                            file.delete()
-                        }
-                    }
-                    val module = Python.getInstance().getModule("archivetune_ytdlp")
                     val response =
                         try {
                             module
@@ -94,10 +131,19 @@ class YtDlpRuntime
             }
         }
 
-        @Synchronized
-        private fun startPythonIfNecessary() {
-            if (!Python.isStarted()) {
-                Python.start(AndroidPlatform(context))
+        private fun getPythonModule(): PyObject {
+            pythonModule?.let { return it }
+            return synchronized(pythonModuleLock) {
+                pythonModule
+                    ?: run {
+                        if (!Python.isStarted()) {
+                            Python.start(AndroidPlatform(context))
+                        }
+                        Python
+                            .getInstance()
+                            .getModule("archivetune_ytdlp")
+                            .also { pythonModule = it }
+                    }
             }
         }
 
@@ -154,6 +200,7 @@ class YtDlpRuntime
         }
 
         private companion object {
+            const val TAG = "YtDlpRuntime"
             const val STALE_COOKIE_FILE_MS = 60L * 60L * 1000L
             const val DEFAULT_STREAM_LIFETIME_MS = 5L * 60L * 1000L
             const val CONTROL_CHARACTERS = "\r\n"
