@@ -54,6 +54,7 @@ kuromojiIpadic = "0.9.0"
 # short commit hash. To move to a newer commit, the CI JDK and :core's
 # `jvmToolchain(...)` both need to be bumped to ≥ 25.
 extractor = "08a64867704c"
+innertubex = "v0.1.2"
 translator = "1.1.1"
 rhino = "1.9.1"
 markwon = "4.6.2"
@@ -163,6 +164,7 @@ timber = { module = "com.jakewharton.timber:timber", version.ref = "timber" }
 # existing NewPipe imports keep working. Published on JitPack only.
 # Coordinates match the upstream Metrolist Android app (MetrolistGroup/Metrolist).
 metrolist-extractor = { module = "com.github.MetrolistGroup:MetrolistExtractor", version.ref = "extractor" }
+innertubex = { module = "com.github.MetrolistGroup:innertubex", version.ref = "innertubex" }
 translator = { module = "com.github.therealbush:translator", version.ref = "translator" }
 
 kuromoji-ipadic = { module = "com.atilika.kuromoji:kuromoji-ipadic", version.ref = "kuromojiIpadic" }
