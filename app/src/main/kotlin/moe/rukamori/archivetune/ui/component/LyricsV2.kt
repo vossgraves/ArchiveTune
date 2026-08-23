@@ -396,7 +396,10 @@ fun LyricsV2(
     // that reads the current value. The lambda identity is stable across position updates, so
     // passing it to child composables never by itself triggers their recomposition — only the
     // composables that actually invoke the lambda (active / near-active lines) re-read it.
-    val currentPositionMsState = remember { mutableLongStateOf(0L) }
+    // Key position-owned state by the lyrics payload. A repeat keeps the same
+    // payload, but the position loop below explicitly resets the values when
+    // it observes the playback clock wrap back to the start.
+    val currentPositionMsState = remember(lyrics) { mutableLongStateOf(0L) }
     var currentPositionMs by currentPositionMsState
     var playbackPositionMs by remember { mutableLongStateOf(0L) }
     var currentLineIndex by remember { mutableIntStateOf(0) }
@@ -413,6 +416,9 @@ fun LyricsV2(
     // making the V2 lyrics appear frozen ("don't animate at all").
     // LyricsEnhanced already does this; V2 was missing it.
     val latestSliderPositionProvider = rememberUpdatedState(sliderPositionProvider)
+
+    var lastRawPositionMs by remember(lyrics) { mutableLongStateOf(0L) }
+    var playbackResetTick by remember(lyrics) { mutableIntStateOf(0) }
 
     LaunchedEffect(entriesWithWords, isSynced, leadMs, lyricsSyncOffset) {
         if (!isSynced || entriesWithWords.isEmpty()) return@LaunchedEffect
@@ -435,6 +441,15 @@ fun LyricsV2(
         while (isActive) {
             val sliderPos = latestSliderPositionProvider.value()
             val pos = sliderPos ?: player.currentPosition
+
+            // REPEAT_MODE_ONE remains in STATE_READY, so lifecycle/state based
+            // restart detection never fires. Re-key the word subtree on the
+            // actual backward clock discontinuity to give every Animatable a
+            // fresh zero value for the next play-through.
+            if (sliderPos == null && lastRawPositionMs - pos > 1_000L) {
+                playbackResetTick++
+            }
+            lastRawPositionMs = pos
 
             playbackPositionMs = (pos + lyricsSyncOffset.toLong()).coerceAtLeast(0L)
             currentPositionMs = (playbackPositionMs + leadMs + LYRIC_VISUAL_TUNING_OFFSET_MS).coerceAtLeast(0L)
@@ -593,7 +608,9 @@ fun LyricsV2(
         ) {
             itemsIndexed(
                 items = entriesWithWords,
-                key = { index, entry -> "${index}_${entry.time}" },
+                // Include repeat resets so a repeated word receives a new
+                // Animatable instead of retaining its completed sweep.
+                key = { index, entry -> "${playbackResetTick}_${index}_${entry.time}" },
                 contentType = { _, entry ->
                     when {
                         entry == HEAD_LYRICS_ENTRY -> "head"

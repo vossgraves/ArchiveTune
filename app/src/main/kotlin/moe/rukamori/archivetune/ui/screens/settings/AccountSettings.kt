@@ -147,7 +147,6 @@ fun AccountSettings(
 
     val accountLabel = stringResource(R.string.account)
     val generalLabel = stringResource(R.string.general)
-    val integrationLabel = stringResource(R.string.integration)
     val miscLabel = stringResource(R.string.misc)
     val loginLabel = stringResource(R.string.login)
     val tokenDescription = stringResource(R.string.token_adv_login_description)
@@ -411,27 +410,6 @@ fun AccountSettings(
                                 count = 3,
                             )
                         }
-                    }
-                }
-
-                item {
-                    ExpressiveSectionCard(title = integrationLabel) {
-                        ExpressiveActionRow(
-                            icon = painterResource(R.drawable.integration),
-                            title = integrationLabel,
-                            subtitle = stringResource(R.string.account_integrations_summary),
-                            onClick = { navController.navigate("settings/integration") },
-                            index = 0,
-                            count = 2,
-                        )
-
-                        ExpressiveActionRow(
-                            icon = painterResource(R.drawable.fire),
-                            title = stringResource(R.string.music_together),
-                            onClick = { navController.navigate("settings/music_together") },
-                            index = 1,
-                            count = 2,
-                        )
                     }
                 }
 

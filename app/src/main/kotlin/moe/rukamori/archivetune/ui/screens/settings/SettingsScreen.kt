@@ -100,6 +100,46 @@ private fun searchableSettingsRoute(parentKey: String, scrollKey: String?): Stri
     return if (!supportsScroll || scrollKey.isNullOrBlank()) route else "$route?scrollTo=$scrollKey"
 }
 
+/**
+ * Strict, deterministic settings search index. Only settings currently rendered by the
+ * settings hierarchy are indexed; stale aliases and hidden/moved entries cannot surface.
+ */
+private fun searchSettings(groups: List<SettingsGroup>, query: String): List<SearchResultItem> {
+    val terms = query.lowercase().trim().split(Regex("\\s+")).filter(String::isNotBlank)
+    if (terms.isEmpty()) return emptyList()
+    return groups.asSequence()
+        .flatMap { it.items.asSequence().filterNot(SettingsItem::hidden) }
+        .flatMap { parent ->
+            parent.children.asSequence().map { child -> parent to child }
+        }
+        .filter { (parent, child) ->
+            val searchable = buildList {
+                add(child.title.lowercase())
+                add(child.scrollKey.replace('_', ' ').lowercase())
+                addAll(child.keywords.map(String::lowercase))
+            }
+            // Every word must describe the setting itself. Parent category
+            // words are deliberately excluded so "video", for example, does
+            // not return every unrelated item in the Content category.
+            terms.all { term -> searchable.any { it.contains(term) } }
+        }
+        .map { (parent, child) ->
+            SearchResultItem(
+                title = child.title,
+                parentTitle = parent.title,
+                parentIcon = parent.icon,
+                parentKey = parent.key,
+                parentAccentColor = parent.accentColor,
+                parentRoute = searchableSettingsRoute(parent.key, child.scrollKey),
+                scrollKey = child.scrollKey,
+                onClick = parent.onClick,
+                switchControl = child.switchControl,
+            )
+        }
+        .sortedWith(compareBy<SearchResultItem> { !it.title.lowercase().startsWith(query.trim().lowercase()) }.thenBy { it.title })
+        .toList()
+}
+
 @OptIn(ExperimentalMaterial3Api::class, FlowPreview::class)
 @Composable
 fun SettingsScreen(
@@ -156,250 +196,13 @@ fun SettingsScreen(
             Updater.isUpdateAvailable(latestVersionName, BuildConfig.VERSION_NAME)
     var isUpdateDismissed by remember { mutableStateOf(false) }
     val allSettingsGroups = buildSettingsGroups(navController, isAndroid12OrLater, hasUpdate, context)
-    // When searching, flatten all individual SettingsChildren across every
-    // category so each matching setting is shown as a separate row.
-    //
-    // Per product decision: settings that ship with an inline switch control
-    // (boolean toggles like Dynamic theme, Pure black, Low data mode, Crossfade,
-    // Persistent queue, etc.) ARE included in search results — the switch is
-    // rendered inline so the user can toggle directly from the results.
-    // Switchless settings navigate to the parent screen and auto-scroll to
-    // the setting's position when tapped.
     val filteredChildResults = remember(searchQuery, allSettingsGroups) {
-        if (searchQuery.isBlank()) emptyList()
-        else {
-            // Normalize the query: keep the raw trimmed string for substring
-            // matching, and also split on whitespace for per-word matching.
-            //
-            // MATCHING RULES (in priority order):
-            //   (a) The full query string is a substring of the title, any
-            //       keyword, or any parent token. Handles "scheduled backup"
-            //       verbatim against the "Scheduled backup" title.
-            //   (b) Each query word appears as a substring of AT LEAST ONE
-            //       token across the COMBINED set {title, keywords, parent
-            //       tokens}. Words do NOT all have to live in the same field.
-            //       This is what makes "low data mode", "scheduled backup
-            //       frequency", "discord rich presence activity", and other
-            //       2-, 3-, 4-word queries return results even when each word
-            //       lives in a different field (title vs keyword vs subtitle).
-            //   (c) Phrase fallback: if the joined query (with single spaces)
-            //       is a substring of the joined "all tokens" string, accept.
-            //       This catches typos and word-order differences like
-            //       "backup scheduled" matching "Scheduled backup".
-            val rawQuery = searchQuery.trim().lowercase()
-            val queryWords =
-                rawQuery.split("\\s+".toRegex())
-                    .filter { it.isNotBlank() }
-            if (queryWords.isEmpty()) emptyList()
-            else {
-                data class ScoredResult(
-                    val item: SearchResultItem,
-                    val score: Int, // higher = better match
-                )
-
-                val scored =
-                    allSettingsGroups.flatMap { group ->
-                        group.items.flatMap { item ->
-                            val parentTokens =
-                                buildList {
-                                    add(item.title.lowercase())
-                                    item.subtitle?.lowercase()?.let(::add)
-                                    addAll(item.keywords.map { it.lowercase() })
-                                }
-                            // Pre-join parent tokens once per parent for the phrase check.
-                            val parentJoined = parentTokens.joinToString(" ")
-                            // Pre-split parent tokens into individual words once so
-                            // the per-word prefix matcher (handles plural/singular and
-                            // partial-word queries like "config" matching "configuration")
-                            // doesn't re-split on every query word.
-                            val parentWords = parentTokens.flatMap { it.split(Regex("[\\s_\\-/.]+")) }.filter { it.isNotBlank() }
-
-                            val childResults =
-                                item.children.mapNotNull { child ->
-                                    val titleLower = child.title.lowercase()
-                                    val keywordTokens = child.keywords.map { it.lowercase() }
-                                    // The scrollKey (e.g. "scrobble_threshold") is itself a
-                                    // strong search signal — users may type the underscored
-                                    // form when looking for a specific setting. Normalize
-                                    // underscores/dashes to spaces so it tokenizes cleanly.
-                                    val scrollKeyTokens = buildList {
-                                        add(child.scrollKey.lowercase())
-                                        addAll(child.scrollKey.lowercase().split("_", "-", ".").filter { it.isNotBlank() })
-                                    }
-
-                                    // Combined token bucket for per-word matching.
-                                    // Each query word only needs to match ANY
-                                    // token in this combined set — they don't
-                                    // all have to be in the same field.
-                                    val combinedTokens = buildList {
-                                        add(titleLower)
-                                        addAll(keywordTokens)
-                                        addAll(scrollKeyTokens)
-                                        addAll(parentTokens)
-                                    }
-                                    // Pre-split into individual words for the prefix matcher.
-                                    val combinedWords = combinedTokens
-                                        .flatMap { it.split(Regex("[\\s_\\-/.]+")) }
-                                        .filter { it.isNotBlank() }
-
-                                    // (a) full-query substring match in any single field
-                                    val titleSubstr = titleLower.contains(rawQuery)
-                                    val keywordSubstr = keywordTokens.any { it.contains(rawQuery) }
-                                    val scrollKeySubstr = scrollKeyTokens.any { it.contains(rawQuery) }
-                                    val parentSubstr = parentTokens.any { it.contains(rawQuery) }
-
-                                    // (b) per-word: every query word appears as a
-                                    //     substring of at least one combined token.
-                                    //     PLUS a prefix-of-word match so plurals /
-                                    //     partial-word queries (e.g. "config" matching
-                                    //     "configuration", "images" matching "image")
-                                    //     still hit. This is the catch-all that makes
-                                    //     3- and 4-word queries return results even when
-                                    //     each word lives in a different field.
-                                    val allWordsMatchAnyField =
-                                        queryWords.all { q ->
-                                            titleLower.contains(q) ||
-                                                keywordTokens.any { it.contains(q) } ||
-                                                scrollKeyTokens.any { it.contains(q) } ||
-                                                parentTokens.any { it.contains(q) } ||
-                                                combinedWords.any { word -> word.startsWith(q) || q.startsWith(word) }
-                                        }
-
-                                    // (c) phrase fallback — joined query against
-                                    //     joined tokens (catches word-order swaps)
-                                    val combinedJoined = combinedTokens.joinToString(" ")
-                                    val phraseMatch = combinedJoined.contains(rawQuery)
-
-                                    // (b-legacy) all-words-in-same-field match — kept
-                                    // for scoring only (a higher score signal than the
-                                    // per-word across-fields match).
-                                    val titleAllWords =
-                                        queryWords.all { q -> titleLower.contains(q) }
-                                    val keywordAllWords =
-                                        queryWords.all { q -> keywordTokens.any { it.contains(q) } }
-                                    val parentAllWords =
-                                        queryWords.all { q -> parentTokens.any { it.contains(q) } }
-
-                                    val matches =
-                                        titleSubstr || keywordSubstr || scrollKeySubstr ||
-                                            parentSubstr || allWordsMatchAnyField ||
-                                            phraseMatch || titleAllWords ||
-                                            keywordAllWords || parentAllWords
-
-                                    if (!matches) null else {
-                                        // Relevance scoring — higher is better.
-                                        //   1000 = exact title match (case-insensitive)
-                                        //   900  = title starts with the full query
-                                        //   800  = title contains the full query as a substring
-                                        //   700  = any keyword equals the full query
-                                        //   600  = any keyword contains the full query
-                                        //   550  = all query words are in the title (any order)
-                                        //   500  = phrase match against combined tokens
-                                        //   450  = parent token contains the full query
-                                        //   400  = all query words are in the keywords (same field)
-                                        //   350  = all query words are in the parent tokens (same field)
-                                        //   300  = every query word matches some token across fields
-                                        //   100  = partial match (shouldn't happen given above)
-                                        val score = when {
-                                            titleLower == rawQuery -> 1000
-                                            titleLower.startsWith(rawQuery) -> 900
-                                            titleSubstr -> 800
-                                            keywordTokens.any { it == rawQuery } -> 700
-                                            keywordSubstr -> 600
-                                            titleAllWords -> 550
-                                            phraseMatch -> 500
-                                            parentSubstr -> 450
-                                            keywordAllWords -> 400
-                                            parentAllWords -> 350
-                                            allWordsMatchAnyField -> 300
-                                            else -> 100
-                                        }
-                                        ScoredResult(
-                                            item = SearchResultItem(
-                                                title = child.title,
-                                                parentTitle = item.title,
-                                                parentIcon = item.icon,
-                                                parentKey = item.key,
-                                                parentAccentColor = item.accentColor,
-                                                parentRoute = searchableSettingsRoute(item.key, child.scrollKey),
-                                                scrollKey = child.scrollKey,
-                                                onClick = item.onClick,
-                                                switchControl = child.switchControl,
-                                            ),
-                                            score = score,
-                                        )
-                                    }
-                                }
-
-                            if (childResults.isNotEmpty()) {
-                                childResults
-                            } else {
-                                // If the parent matches but has no matching
-                                // children, show the parent itself as a single
-                                // result so top-level items (e.g. "Statistics",
-                                // "Language packs", "PO Token") remain searchable
-                                // even when they have no children to match against.
-                                val parentSubstr = parentTokens.any { it.contains(rawQuery) }
-                                val parentAllWords =
-                                    queryWords.all { q ->
-                                        parentTokens.any { it.contains(q) } ||
-                                            parentWords.any { word -> word.startsWith(q) || q.startsWith(word) }
-                                    }
-                                val parentPhraseMatch = parentJoined.contains(rawQuery)
-                                if (parentSubstr || parentAllWords || parentPhraseMatch) {
-                                    val score = when {
-                                        item.title.lowercase() == rawQuery -> 1000
-                                        item.title.lowercase().startsWith(rawQuery) -> 900
-                                        parentSubstr -> 400
-                                        parentPhraseMatch -> 300
-                                        else -> 200
-                                    }
-                                    listOf(
-                                        ScoredResult(
-                                            item = SearchResultItem(
-                                                title = item.title,
-                                                parentTitle = item.subtitle ?: "",
-                                                parentIcon = item.icon,
-                                                parentKey = item.key,
-                                                parentAccentColor = item.accentColor,
-                                                parentRoute = null,
-                                                scrollKey = null,
-                                                onClick = item.onClick,
-                                            ),
-                                            score = score,
-                                        ),
-                                    )
-                                } else {
-                                    emptyList()
-                                }
-                            }
-                        }
-                    }
-
-                // Sort by score descending so the best match is at the top.
-                // Stable sort preserves screen-order within a score tier.
-                scored.sortedByDescending { it.score }.map { it.item }
-            }
-        }
+        if (searchQuery.isBlank()) emptyList() else searchSettings(allSettingsGroups, searchQuery)
     }
-    val filteredGroups = remember(searchQuery, allSettingsGroups) {
-        if (searchQuery.isBlank()) {
-            // Hide items flagged `hidden = true` from the main settings page rendering,
-            // but keep them in `allSettingsGroups` so their children stay searchable.
-            allSettingsGroups.map { group ->
-                group.copy(items = group.items.filterNot { it.hidden })
-            }.filter { it.items.isNotEmpty() }
-        } else {
-            val query = searchQuery.trim().lowercase()
-            allSettingsGroups.map { group ->
-                val filteredItems = group.items.filter { item ->
-                    item.title.lowercase().contains(query) ||
-                        item.subtitle?.lowercase()?.contains(query) == true ||
-                        item.keywords.any { keyword -> keyword.lowercase().contains(query) }
-                }
-                group.copy(items = filteredItems, showWhenFiltered = filteredItems.isNotEmpty())
-            }.filter { it.items.isNotEmpty() }
-        }
+    val filteredGroups = remember(allSettingsGroups) {
+        allSettingsGroups.map { group ->
+            group.copy(items = group.items.filterNot(SettingsItem::hidden))
+        }.filter { it.items.isNotEmpty() }
     }
 
     // Material 3 Expressive: when any settings dialog (history duration,

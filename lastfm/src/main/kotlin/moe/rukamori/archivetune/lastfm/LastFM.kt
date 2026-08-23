@@ -26,6 +26,7 @@ import moe.rukamori.archivetune.lastfm.models.RecentTracksResponse
 import moe.rukamori.archivetune.lastfm.models.TopArtistsResponse
 import moe.rukamori.archivetune.lastfm.models.TopAlbumsResponse
 import moe.rukamori.archivetune.lastfm.models.TopTracksResponse
+import moe.rukamori.archivetune.lastfm.models.TrackInfoResponse
 import moe.rukamori.archivetune.lastfm.models.TokenResponse
 import moe.rukamori.archivetune.lastfm.models.UserInfoResponse
 import java.net.URI
@@ -289,6 +290,17 @@ object LastFM {
                     put("page", page.toString())
                 },
         )
+    }
+
+    /** Fetches the community tags for a track shown in the dashboard overflow menu. */
+    suspend fun getTrackInfo(
+        artist: String,
+        track: String,
+    ) = runCatching {
+        postAndDecode<TrackInfoResponse>(
+            method = "track.getInfo",
+            extra = mapOf("artist" to artist, "track" to track),
+        ).track
     }
 
     fun initialize(

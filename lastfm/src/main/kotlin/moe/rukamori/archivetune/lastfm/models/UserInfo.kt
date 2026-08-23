@@ -163,6 +163,27 @@ data class TopTrackAttr(
     val rank: String? = null,
 )
 
+/** Response returned by Last.fm's `track.getInfo` endpoint. */
+@Serializable
+data class TrackInfoResponse(
+    val track: TrackInfo,
+)
+
+@Serializable
+data class TrackInfo(
+    val toptags: TopTags? = null,
+)
+
+@Serializable
+data class TopTags(
+    val tag: List<LastFmTag> = emptyList(),
+)
+
+@Serializable
+data class LastFmTag(
+    val name: String? = null,
+)
+
 // ── user.getTopArtists ──────────────────────────────────────────────────────
 
 @Serializable

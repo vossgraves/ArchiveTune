@@ -8855,6 +8855,14 @@ class MusicService :
         source: AudioSourceType?,
         qobuzTrackId: String?,
     ) {
+        // A direct Qobuz selection is an explicit user choice. A failed
+        // background probe may have left the provider's negative cache or an
+        // instance cooldown in place, causing this fresh selection to resolve
+        // as YouTube instead. Clear only transient failures before recreating
+        // the media source; successful stream/search caches remain intact.
+        if (source == AudioSourceType.QOBUZ && !qobuzTrackId.isNullOrBlank()) {
+            QobuzAudioProvider.clearTransientCaches()
+        }
         // Persist the Qobuz trackId (if any) BEFORE triggering re-resolution.
         runCatching {
             runBlocking {
