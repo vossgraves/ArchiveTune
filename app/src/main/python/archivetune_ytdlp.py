@@ -2,6 +2,8 @@
 # © Rukamori — github.com/rukamori
 # GPL-3.0 License | Contributors: see git history
 
+import base64
+import binascii
 import importlib
 import json
 import os
@@ -233,6 +235,23 @@ def _extract_info(youtube_dl, url, youtube_args, cookie_file=None):
         return downloader.extract_info(url, download=False)
 
 
+def _normalize_po_token(value):
+    unpadded = (
+        urllib.parse.unquote(value.strip())
+        .replace("+", "-")
+        .replace("/", "_")
+        .rstrip("=")
+    )
+    padded = unpadded + "=" * ((4 - len(unpadded) % 4) % 4)
+    try:
+        decoded = base64.b64decode(padded, altchars=b"-_", validate=True)
+    except (binascii.Error, ValueError) as error:
+        raise ValueError("PO Token must be a base64url-encoded string") from error
+    if not decoded:
+        raise ValueError("PO Token must not be empty")
+    return base64.urlsafe_b64encode(decoded).decode("ascii")
+
+
 def resolve_audio(request_json, runtime_path, cookie_directory):
     _ensure_runtime(runtime_path)
     from yt_dlp import YoutubeDL
@@ -244,7 +263,11 @@ def resolve_audio(request_json, runtime_path, cookie_directory):
             "skip": ["hls", "dash", "translated_subs"],
         }
         if cookie_file:
-            youtube_args["player_client"] = ["default", "web_embedded"]
+            creator_gvs_token = request.get("po_token_web_creator_gvs")
+            if creator_gvs_token:
+                youtube_args["po_token"] = [
+                    "web_creator.gvs+" + _normalize_po_token(creator_gvs_token)
+                ]
         url = "https://www.youtube.com/watch?v=" + request["media_id"]
         info = _extract_info(
             YoutubeDL,

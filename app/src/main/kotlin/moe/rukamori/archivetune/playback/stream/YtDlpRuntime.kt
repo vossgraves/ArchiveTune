@@ -16,6 +16,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+import moe.rukamori.archivetune.innertube.models.YouTubeClient
 import moe.rukamori.archivetune.morideobfuscator.ytdlp.YtDlpRuntimeStore
 import org.json.JSONObject
 import java.io.File
@@ -45,6 +46,13 @@ class YtDlpRuntime
                             .put("network_metered", request.networkMetered)
                             .put("pinned_format_id", request.pinnedFormatId)
                             .put("cookie", authState.cookie)
+                            .put(
+                                "po_token_web_creator_gvs",
+                                authState.resolveGvsPoToken(
+                                    YouTubeClient.WEB_CREATOR,
+                                    request.mediaId,
+                                ),
+                            )
                             .toString()
                     val cookieDirectory = File(context.cacheDir, "yt_dlp_cookies").apply { mkdirs() }
                     cookieDirectory.listFiles()?.forEach { file ->

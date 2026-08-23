@@ -126,7 +126,16 @@ class ResolveAudioStreamUseCase
         private suspend fun resolveUncached(request: AudioStreamRequest): ResolvedAudioStream {
             val ytDlpFailure =
                 try {
-                    return ytDlpRepository.resolve(request)
+                    val resolvedAuthState =
+                        if (request.authState.hasLoginCookie) {
+                            YTPlayerUtils.ensureWebPoTokensForPlayback(
+                                videoId = request.mediaId,
+                                authState = request.authState,
+                            )
+                        } else {
+                            request.authState
+                        }
+                    return ytDlpRepository.resolve(request.copy(authState = resolvedAuthState))
                 } catch (cancellation: CancellationException) {
                     throw cancellation
                 } catch (loginRequired: YTPlayerUtils.LoginRequiredForPlaybackException) {
