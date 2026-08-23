@@ -128,7 +128,7 @@ class ResolveAudioStreamUseCase
                 try {
                     val resolvedAuthState =
                         if (request.authState.hasLoginCookie) {
-                            YTPlayerUtils.ensureWebPoTokensForPlayback(
+                            YTPlayerUtils.ensureYtDlpPoTokensForPlayback(
                                 videoId = request.mediaId,
                                 authState = request.authState,
                             )
@@ -142,6 +142,8 @@ class ResolveAudioStreamUseCase
                     throw loginRequired
                 } catch (invalidLogin: YTPlayerUtils.InvalidPlaybackLoginContextException) {
                     throw invalidLogin
+                } catch (ytDlpFailure: YtDlpExtractionException) {
+                    throw ytDlpFailure
                 } catch (throwable: Throwable) {
                     Timber.tag(TAG).w(
                         throwable,
