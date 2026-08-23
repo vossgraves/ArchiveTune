@@ -27,6 +27,7 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.compose.compiler)
     alias(libs.plugins.aboutlibraries.android)
+    alias(libs.plugins.chaquopy)
 }
 
 val localProperties = Properties()
@@ -92,6 +93,16 @@ tasks.configureEach {
 // keeps the signature stable across builds so debug APKs install over one another. Uses the
 // standard Android debug credentials.
 val debugKeystoreFile = file("persistent-debug.keystore")
+
+chaquopy {
+    defaultConfig {
+        version = "3.11"
+        pip {
+            install("yt-dlp==2026.8.19")
+            install("yt-dlp-ejs==0.8.0")
+        }
+    }
+}
 
 android {
     namespace = "moe.rukamori.archivetune"
@@ -528,6 +539,11 @@ dependencies {
     // to logcat). Without this, jaudiotagger logs a single "no SLF4J
     // providers found" warning at startup and silently no-ops logging.
     implementation("org.slf4j:slf4j-jdk14:2.0.17")
+
+    // QuickJS + BouncyCastle for yt-dlp stream resolution (signature
+    // verification of yt-dlp releases + JS challenge evaluation).
+    implementation(libs.quickjs.kt)
+    implementation(libs.bcpg)
 }
 
 androidComponents {
