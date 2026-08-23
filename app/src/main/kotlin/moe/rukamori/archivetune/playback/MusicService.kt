@@ -8898,18 +8898,17 @@ class MusicService :
         player.playWhenReady = true
         updateAudiblePlaybackRecovery()
 
-        // Delete the old mediaId's most recent history Event so the user
-        // doesn't see a duplicate in "recently listened". The old Event is
-        // from the current playback session — it hasn't been recorded yet
-        // (the history threshold timer hasn't fired), so there's nothing to
-        // delete in practice. But if the threshold already fired (e.g., the
-        // user listened for >threshold before switching), we clean up the
-        // stale entry.
+        // Delete the old mediaId's history entirely so the user doesn't
+        // see a duplicate in "recently listened". Both the Event rows AND
+        // the song row are deleted — the new track (with the new mediaId)
+        // takes the old one's place at the top of the list. Without this,
+        // the old YouTube version and the new Qobuz/Tidal/JioSaavn/Deezer
+        // version would both appear in "recently listened".
         scope.launch(Dispatchers.IO) {
             runCatching {
                 database.withTransaction {
-                    // Delete the most recent Event for the old mediaId.
-                    database.deleteMostRecentEventForSong(oldMediaId)
+                    database.deleteAllEventsForSong(oldMediaId)
+                    database.deleteSongById(oldMediaId)
                 }
             }
         }

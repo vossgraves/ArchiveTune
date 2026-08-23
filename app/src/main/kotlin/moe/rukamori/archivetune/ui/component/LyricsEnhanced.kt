@@ -660,7 +660,11 @@ fun LyricsEnhanced(
     // and updates `currentLineIndexState`, which flows through the snapshotFlow
     // and triggers a normal (non-forced) scroll.
     val latestSyncedLyricsForScroll = rememberUpdatedState(syncedLyrics)
-    LaunchedEffect(lyricsSessionKey, isSynced) {
+    // KEY FIX: include `positionResetCounter` so the effect re-launches when
+    // the song repeats via REPEAT_MODE_ONE. Previously the effect kept using
+    // the old (now-detached) listState after a position-reset created a new
+    // listState at offset 0 — leaving the lyrics stuck at the top.
+    LaunchedEffect(lyricsSessionKey, isSynced, positionResetCounter) {
         if (!isSynced || latestSyncedLyricsForScroll.value.lines.isEmpty()) return@LaunchedEffect
         snapshotFlow {
             listState.layoutInfo.viewportEndOffset > listState.layoutInfo.viewportStartOffset

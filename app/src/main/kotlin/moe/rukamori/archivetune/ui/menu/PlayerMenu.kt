@@ -400,12 +400,23 @@ fun PlayerMenu(
                 // Event is deleted to avoid a duplicate in "recently
                 // listened".
                 //
-                // For Qobuz: the EXACT Qobuz trackId is persisted so the
+                // For ALL sources: the EXACT trackId is persisted so the
                 // resolver downloads the exact track (not a bestMatch-by-
                 // title search that could pick a different master / deluxe
                 // edition).
-                if (result.source == AudioSourceType.QOBUZ && result.trackId.isNotBlank()) {
-                    val directMediaId = "qobuz:${result.trackId}"
+                //
+                // The mediaId is prefixed with the source name (e.g.
+                // "qobuz:12345", "tidal:67890") so each source's playback
+                // is distinct in the cache/history.
+                val sourcePrefix = when (result.source) {
+                    AudioSourceType.QOBUZ -> "qobuz:"
+                    AudioSourceType.TIDAL -> "tidal:"
+                    AudioSourceType.JIOSAAVN -> "jiosaavn:"
+                    AudioSourceType.DEEZER -> "deezer:"
+                    else -> null
+                }
+                if (sourcePrefix != null && result.trackId.isNotBlank()) {
+                    val directMediaId = "$sourcePrefix${result.trackId}"
                     val artists = listOfNotNull(
                         result.artist.takeIf { it.isNotBlank() }
                             ?.let { MediaMetadata.Artist(id = null, name = it) },
@@ -420,24 +431,7 @@ fun PlayerMenu(
                     playerConnection.service.replaceCurrentMediaItemWithSourceTrack(
                         newMediaItem = newMediaMetadata.toMediaItem(),
                         source = result.source,
-                        qobuzTrackId = result.trackId,
-                    )
-                    showSourceDialog = false
-                } else if (result.source == AudioSourceType.JIOSAAVN ||
-                    result.source == AudioSourceType.TIDAL ||
-                    result.source == AudioSourceType.DEEZER
-                ) {
-                    // JioSaavn / Tidal / Deezer: just set the source override
-                    // on the current mediaId. The existing multi-source
-                    // resolver will search by title+artist for these sources.
-                    // No playQueue, no YouTube search — the queue and the
-                    // song's identity are preserved.
-                    onSongSourceChange(
-                        SongSourceOverride.withOverride(songSourceRaw, mediaMetadata.id, result.source),
-                    )
-                    playerConnection.service.setSongSourceOverride(
-                        mediaId = mediaMetadata.id,
-                        source = result.source,
+                        qobuzTrackId = if (result.source == AudioSourceType.QOBUZ) result.trackId else null,
                     )
                     showSourceDialog = false
                 }
