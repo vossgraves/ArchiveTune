@@ -8632,10 +8632,17 @@ class MusicService :
         // specific Qobuz track from the "Play from" source-search popup). When
         // set, the Qobuz resolver downloads the exact track instead of
         // re-searching by title+artist.
-        val directQobuzTrackId = SongSourceQobuzTrackId.get(
-            dataStore.get(SongSourceQobuzTrackIdKey, ""),
-            mediaId,
-        )
+        //
+        // IMPORTANT: read directly from dataStore.data.first() instead of the
+        // cached dataStore.get(). The cached PreferenceStore._prefs may be
+        // stale right after setSongSourceOverrideWithQobuzTrackId wrote the
+        // new trackId — the PreferenceStore collector is async and may not
+        // have received the emission yet. Reading from data.first() guarantees
+        // we see the write that just happened.
+        val qobuzTrackIdRaw = runCatching {
+            runBlocking { dataStore.data.first()[SongSourceQobuzTrackIdKey] }
+        }.getOrNull()
+        val directQobuzTrackId = SongSourceQobuzTrackId.get(qobuzTrackIdRaw, mediaId)
         return SourceQuery(mediaId, title, artists, album, durationMs, directQobuzTrackId)
     }
 
@@ -9014,10 +9021,13 @@ class MusicService :
         // The mediaId is NOT changed (it stays as the song's existing YouTube
         // id), so the song is not registered as a duplicate in the playback
         // history.
-        val directQobuzTrackId = SongSourceQobuzTrackId.get(
-            dataStore.get(SongSourceQobuzTrackIdKey, ""),
-            mediaId,
-        )
+        //
+        // IMPORTANT: read directly from dataStore.data.first() instead of the
+        // cached dataStore.get() — see buildSourceQuery for the rationale.
+        val qobuzTrackIdRaw = runCatching {
+            runBlocking { dataStore.data.first()[SongSourceQobuzTrackIdKey] }
+        }.getOrNull()
+        val directQobuzTrackId = SongSourceQobuzTrackId.get(qobuzTrackIdRaw, mediaId)
         val isDirectQobuzTrack = directQobuzTrackId != null
         // Fast path: serve from the in-memory DirectStream cache if we have a
         // fresh entry. This makes "skip to next" instant when the next song
