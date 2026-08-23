@@ -1598,11 +1598,29 @@ object YTPlayerUtils {
     /**
      * Wrapper around the [NewPipeUtils.getSignatureTimestamp] function which reports exceptions
      */
+    // ── Signature timestamp cache ───────────────────────────────────────────
+    // YouTube's signature timestamp (STS) only changes when YouTube ships a
+    // new player JS bundle (every few days). Re-fetching base.js on every
+    // playback attempt adds 200ms–3s of latency. Cache it for 6 hours.
+    @Volatile private var cachedSts: Int? = null
+    @Volatile private var cachedStsExpiresAtMs: Long = 0L
+    private const val STS_CACHE_TTL_MS = 6 * 60 * 60 * 1000L
+
     private suspend fun getSignatureTimestampOrNull(videoId: String): Int? {
+        // Fast path: serve from cache.
+        val now = System.currentTimeMillis()
+        cachedSts?.takeIf { now < cachedStsExpiresAtMs }?.let {
+            Timber.tag(logTag).d("Signature timestamp cache HIT: $it")
+            return it
+        }
         Timber.tag(logTag).i("Getting signature timestamp for videoId: $videoId")
         return NewPipeUtils
             .getSignatureTimestamp(videoId)
-            .onSuccess { Timber.tag(logTag).i("Signature timestamp obtained: $it") }
+            .onSuccess {
+                Timber.tag(logTag).i("Signature timestamp obtained: $it")
+                cachedSts = it
+                cachedStsExpiresAtMs = now + STS_CACHE_TTL_MS
+            }
             .onFailure {
                 Timber.tag(logTag).e(it, "Failed to get signature timestamp")
                 reportException(it)

@@ -660,10 +660,17 @@ fun LyricsEnhanced(
     // and updates `currentLineIndexState`, which flows through the snapshotFlow
     // and triggers a normal (non-forced) scroll.
     val latestSyncedLyricsForScroll = rememberUpdatedState(syncedLyrics)
+    // Use rememberUpdatedState so the auto-scroll effect always reads the
+    // CURRENT listState without needing to re-launch. When positionResetCounter
+    // changes (song repeat), listState is recreated by the key() wrapper above —
+    // latestListState.value automatically points to the new one. This avoids
+    // the restart-and-lose-state problem that adding positionResetCounter to
+    // the effect keys caused (animation wouldn't start).
+    val latestListState = rememberUpdatedState(listState)
     LaunchedEffect(lyricsSessionKey, isSynced) {
         if (!isSynced || latestSyncedLyricsForScroll.value.lines.isEmpty()) return@LaunchedEffect
         snapshotFlow {
-            listState.layoutInfo.viewportEndOffset > listState.layoutInfo.viewportStartOffset
+            latestListState.value.layoutInfo.viewportEndOffset > latestListState.value.layoutInfo.viewportStartOffset
         }.first { it }
 
         var forceNextScroll = true
@@ -681,13 +688,32 @@ fun LyricsEnhanced(
                     return@collectLatest
                 }
 
-                listState.scrollLyricIntoFocus(
+                latestListState.value.scrollLyricIntoFocus(
                     index = index,
                     animateToNearbyItem = !forceNextScroll,
                     force = forceNextScroll,
                 )
                 forceNextScroll = false
             }
+    }
+
+    // When the song repeats (positionResetCounter changes), directly scroll
+    // the new listState to the top AND reset the current line index. This
+    // forces the auto-scroll effect to re-fire with forceNextScroll=true on
+    // the next emission (since currentLineIndex goes -1 -> valid, the
+    // distinctUntilChanged snapshotFlow will emit).
+    //
+    // We use the latestListState (rememberUpdatedState) so we always scroll
+    // the CURRENT listState instance — not a stale one from before the
+    // positionResetCounter change.
+    LaunchedEffect(positionResetCounter) {
+        if (positionResetCounter > 0) {
+            // Wait one frame so the key() wrapper has created the new listState
+            // and rememberUpdatedState has captured it.
+            withFrameNanos { }
+            latestListState.value.scrollToItem(0)
+            currentLineIndexState.intValue = -1
+        }
     }
 
     BackHandler(enabled = isSelectionModeActive) {

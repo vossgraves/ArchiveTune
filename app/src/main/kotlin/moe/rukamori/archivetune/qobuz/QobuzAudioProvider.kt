@@ -352,6 +352,16 @@ object QobuzAudioProvider {
         val artists: List<String>,
         val album: String?,
         val durationMs: Long?,
+        /**
+         * When non-null, [resolve] skips the title/artist search ([resolveTrackId] /
+         * [bestMatch]) and goes straight to [backend.download] with this trackId.
+         * This is set when the user picks a specific Qobuz track from the
+         * "Play from" source-search popup — the trackId comes directly from
+         * the Qobuz search API, so there's no ambiguity. Without this, the
+         * resolver would re-search by title+artist and might match a
+         * different Qobuz track (different master, deluxe edition, etc.).
+         */
+        val directTrackId: String? = null,
     )
 
     /**
@@ -384,10 +394,23 @@ object QobuzAudioProvider {
 
         val available = backends.filterNot { isInstanceCoolingDown(it.id, now) }.ifEmpty { backends }
         for (backend in available) {
-            val match =
+            // When directTrackId is set (user clicked a specific Qobuz search
+            // result), skip the title/artist search entirely and download the
+            // exact track. This prevents the resolver from matching a different
+            // Qobuz track (different master, deluxe edition, etc.).
+            val match = if (query.directTrackId != null) {
+                Match(
+                    id = query.directTrackId,
+                    title = query.title,
+                    artist = query.artists.joinToString(", "),
+                    album = query.album,
+                    durationMs = query.durationMs,
+                )
+            } else {
                 runCatching { resolveTrackId(backend, query) }
                     .onFailure { markInstanceFailed(backend.id, hardFailure = it is java.io.IOException) }
                     .getOrNull() ?: continue
+            }
             val trackId = match.id
             val download =
                 runCatching { backend.download(trackId, formatId) }

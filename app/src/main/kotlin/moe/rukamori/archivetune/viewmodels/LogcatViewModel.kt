@@ -218,8 +218,17 @@ class LogcatViewModel
             viewModelScope.launch {
                 val persisted = appContext.dataStore.data.first()[LogcatPausedKey] ?: false
                 if (paused.value != persisted) paused.value = persisted
+                // Only start the logcat observation if we're NOT paused.
+                // When paused, set loadState to Ready so the UI doesn't show
+                // an infinite loading spinner — observe() sets it to Loading
+                // at the start, and since we skip observe(), loadState stays
+                // at Loading forever.
+                if (!persisted) {
+                    observe()
+                } else {
+                    loadState.value = LoadState.Ready
+                }
             }
-            observe()
         }
 
         fun retry() {
@@ -246,6 +255,28 @@ class LogcatViewModel
             // Write-through so the pause survives navigation away from the screen and process restart.
             viewModelScope.launch {
                 appContext.dataStore.edit { it[LogcatPausedKey] = newValue }
+            }
+            // KEY FIX: actually stop the logcat subprocess when paused.
+            // Previously only the UI assignment was gated — the upstream
+            // Flow kept polling every 2s, spawning a fresh `logcat`
+            // ProcessBuilder each iteration. Now we cancel the observation
+            // job (which tears down the in-flight ProcessBuilder via the
+            // repository's `finally { process.destroy() }` cleanup) and
+            // restart it when the user resumes.
+            //
+            // CRITICAL: when pausing, set loadState to Ready (not Loading)
+            // so the UI shows the current records instead of an infinite
+            // loading spinner. The observe() function sets loadState to
+            // Loading at the start — if we cancel the job while it's still
+            // in Loading state, the spinner stays forever. When resuming,
+            // observe() will set it back to Loading then Ready once the
+            // first batch arrives.
+            if (newValue) {
+                observationJob?.cancel()
+                observationJob = null
+                loadState.value = LoadState.Ready
+            } else {
+                observe()
             }
         }
 

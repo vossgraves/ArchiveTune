@@ -212,6 +212,13 @@ val EnablePaxsenixNeteaseLyricsKey = booleanPreferencesKey("enablePaxsenixNeteas
 val EnablePaxsenixSpotifyLyricsKey = booleanPreferencesKey("enablePaxsenixSpotifyLyrics")
 val EnablePaxsenixMusixmatchLyricsKey = booleanPreferencesKey("enablePaxsenixMusixmatchLyrics")
 val EnablePaxsenixYouTubeLyricsKey = booleanPreferencesKey("enablePaxsenixYouTubeLyrics")
+// User-configurable PaxSenix API key. When blank, PaxsenixLyrics falls
+// back to the default (no-auth) behavior. When set, it's sent as an
+// Authorization: Bearer header on every Paxsenix API request.
+val PaxsenixApiKeyKey = stringPreferencesKey("paxsenixApiKey")
+// User-configurable PaxSenix endpoint override. When blank, the default
+// endpoint is used. When set, all Paxsenix API requests go to this URL.
+val PaxsenixEndpointKey = stringPreferencesKey("paxsenixEndpoint")
 val EnableUnisonLyricsKey = booleanPreferencesKey("enableUnisonLyrics")
 val EnableTidalLyricsKey = booleanPreferencesKey("enableTidalLyrics")
 val EnableDeezerLyricsKey = booleanPreferencesKey("enableDeezerLyrics")
@@ -636,6 +643,7 @@ val LastPlaylistSyncKey = longPreferencesKey("last_playlist_sync")
 
 val ArtistViewTypeKey = stringPreferencesKey("artistViewType")
 val AlbumViewTypeKey = stringPreferencesKey("albumViewType")
+val PlaylistViewTypeKey = stringPreferencesKey("playlistViewType")
 
 val PlaylistEditLockKey = booleanPreferencesKey("playlistEditLock")
 val QuickPicksKey = stringPreferencesKey("discover")
@@ -1038,7 +1046,7 @@ val AutoHideLyricsPlayerControlsKey = booleanPreferencesKey("autoHideLyricsPlaye
 val TopSize = stringPreferencesKey("topSize")
 
 const val HISTORY_DURATION_DEFAULT = 30
-const val HISTORY_DURATION_MIN = 5
+const val HISTORY_DURATION_MIN = 1
 const val HISTORY_DURATION_MAX = 60
 val HISTORY_DURATION_RANGE = HISTORY_DURATION_MIN.toFloat()..HISTORY_DURATION_MAX.toFloat()
 val HISTORY_DURATION_LEGACY_FLOAT_KEY = floatPreferencesKey("historyDuration")
@@ -1309,6 +1317,20 @@ val AudioSourceOrderKey = stringPreferencesKey("audioSourceOrder")
 // source is forced for that specific song (subject to the metadata match gate), overriding the
 // global source order. Persisted here so it is included in Settings backups.
 val SongSourceOverrideKey = stringPreferencesKey("songSourceOverride")
+/**
+ * Per-song Qobuz trackId override (CSV of `songId=qobuzTrackId;…`).
+ *
+ * When the user picks a specific Qobuz track from the "Play from"
+ * source-search popup, we persist the Qobuz trackId here so the playback
+ * resolver can download the exact track instead of re-searching by
+ * title+artist (which could match a different Qobuz track — different
+ * master, deluxe edition, etc.).
+ *
+ * Keyed by the song's existing mediaId (the YouTube video id), so changing
+ * the source does NOT change the song's mediaId — the song is not
+ * registered as a new entry in the playback history / "recently listened".
+ */
+val SongSourceQobuzTrackIdKey = stringPreferencesKey("songSourceQobuzTrackId")
 
 // The primary audio source the user prefers to search/resolve first (AudioSourceType name).
 // Named distinctly from the unrelated SearchSourceKey (LOCAL/ONLINE search scope) above.

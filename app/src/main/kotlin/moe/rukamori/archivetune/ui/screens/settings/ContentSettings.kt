@@ -100,6 +100,10 @@ fun ContentSettings(
     val (hideVideo, onHideVideoChange) = rememberPreference(key = HideVideoKey, defaultValue = false)
     val (allowAgeRestricted, onAllowAgeRestrictedChange) = rememberPreference(key = AllowAgeRestrictedKey, defaultValue = false)
     val (lengthTop, onLengthTopChange) = rememberPreference(key = TopSize, defaultValue = "50")
+    // (Round 13) "Set quick picks" UI removed — the preference is still read
+    // here so the underlying DataStore value is preserved (in case the user
+    // re-enables the UI later), but the values are intentionally unused.
+    @Suppress("UNUSED_VARIABLE")
     val (quickPicks, onQuickPicksChange) = rememberEnumPreference(key = QuickPicksKey, defaultValue = QuickPicks.QUICK_PICKS)
 
     val scrollState = rememberScrollState()
@@ -289,23 +293,11 @@ fun ContentSettings(
                     onValueChange = onLengthTopChange,
                 )
             }
-
-            item {
-                ListPreference(
-                    title = { Text(stringResource(R.string.set_quick_picks)) },
-                    icon = { Icon(painterResource(R.drawable.home_outlined), null) },
-                    selectedValue = quickPicks,
-                    values = listOf(QuickPicks.QUICK_PICKS, QuickPicks.LAST_LISTEN, QuickPicks.DONT_SHOW),
-                    valueText = {
-                        when (it) {
-                            QuickPicks.QUICK_PICKS -> stringResource(R.string.quick_picks)
-                            QuickPicks.LAST_LISTEN -> stringResource(R.string.last_song_listened)
-                            QuickPicks.DONT_SHOW -> stringResource(R.string.dont_show)
-                        }
-                    },
-                    onValueSelected = onQuickPicksChange,
-                )
-            }
+            // (Round 13) "Set quick picks" ListPreference removed per user
+            // request — the quick-picks home tab is no longer configurable
+            // from Content settings. The underlying QuickPicksKey preference
+            // is preserved (not deleted) so any previously-saved value
+            // remains intact; the setting is just no longer exposed in the UI.
         }
     }
 

@@ -755,6 +755,11 @@
     <string name="clear_lyrics_cache">Clear lyrics cache</string>
     <string name="clear_lyrics_cache_confirm">Are you sure you want to clear all lyrics cache?</string>
     <string name="paxsenix_stats">Paxsenix API Stats</string>
+    <string name="paxsenix_api_key">Paxsenix API Key</string>
+    <string name="paxsenix_api_key_set">API key is set</string>
+    <string name="paxsenix_api_key_not_set">Not set — using anonymous access</string>
+    <string name="paxsenix_endpoint">Paxsenix Endpoint</string>
+    <string name="paxsenix_endpoint_default">Default: https://lyrics.paxsenix.org/</string>
     <string name="uptime">Uptime</string>
     <string name="total_requests">Total Requests</string>
     <string name="success_rate">Success Rate</string>

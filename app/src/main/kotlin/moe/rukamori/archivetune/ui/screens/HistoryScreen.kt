@@ -62,6 +62,7 @@ import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SearchBarDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.ToggleButton
@@ -169,6 +170,14 @@ fun HistoryScreen(
     val focusRequester = remember { FocusRequester() }
     val localListState = rememberLazyListState()
     val remoteListState = rememberLazyListState()
+    // Dedicated LazyListState instances for the search-mode list. Previously
+    // the search-mode LazyColumn shared `localListState` / `remoteListState`
+    // with the non-search LazyColumn, and during the AnimatedVisibility exit
+    // window BOTH LazyColumns were composed simultaneously — fighting over
+    // the same LazyListState and causing the list to disappear or stick on
+    // the skeleton loader when the back button was pressed.
+    val localSearchListState = rememberLazyListState()
+    val remoteSearchListState = rememberLazyListState()
     val scrollBehavior =
         appBarScrollBehavior(
             canScroll = { !isSearching && selectedEventIds.isEmpty() },
@@ -296,7 +305,13 @@ fun HistoryScreen(
         )
     }
 
-    val historyContent: @Composable (Dp) -> Unit = { topPadding ->
+    val historyContent: @Composable (Dp, Boolean) -> Unit = { topPadding, searchMode ->
+        // Pick the LazyListState appropriate for this composition. Search-mode
+        // uses its own dedicated state instances so the two LazyColumns that
+        // briefly co-exist during the AnimatedVisibility exit transition
+        // don't fight over the same state.
+        val activeLocalState = if (searchMode) localSearchListState else localListState
+        val activeRemoteState = if (searchMode) remoteSearchListState else remoteListState
         Crossfade(
             targetState = historySource,
             animationSpec = tween(durationMillis = motionDuration),
@@ -305,7 +320,7 @@ fun HistoryScreen(
             when (source) {
                 HistorySource.REMOTE -> {
                     RemoteHistoryFeed(
-                        listState = remoteListState,
+                        listState = activeRemoteState,
                         topPadding = topPadding,
                         headerContent = historySourceDock,
                         remoteHistoryState = remoteHistoryState,
@@ -337,7 +352,7 @@ fun HistoryScreen(
 
                 HistorySource.LOCAL -> {
                     LocalHistoryFeed(
-                        listState = localListState,
+                        listState = activeLocalState,
                         topPadding = topPadding,
                         headerContent = historySourceDock,
                         filteredEvents = filteredEvents,
@@ -543,7 +558,7 @@ fun HistoryScreen(
     ) { innerPadding ->
         Box(modifier = Modifier.fillMaxSize()) {
             if (!showSearchBar) {
-                historyContent(innerPadding.calculateTopPadding())
+                historyContent(innerPadding.calculateTopPadding(), false)
             }
 
             AnimatedVisibility(
@@ -564,6 +579,15 @@ fun HistoryScreen(
                         }
                     },
                     modifier = Modifier.fillMaxSize(),
+                    // Match the page background so the search overlay doesn't
+                    // show a different shade of surface than the underlying
+                    // Scaffold. Without this override TopSearch defaults to
+                    // surfaceContainerLow + 6.dp tonal elevation, which is
+                    // visibly different from the page's `surface`.
+                    colors = SearchBarDefaults.colors(
+                        containerColor = MaterialTheme.colorScheme.surface,
+                    ),
+                    tonalElevation = 0.dp,
                     placeholder = {
                         Text(text = stringResource(R.string.search))
                     },
@@ -597,7 +621,7 @@ fun HistoryScreen(
                     },
                     focusRequester = focusRequester,
                 ) {
-                    historyContent(0.dp)
+                    historyContent(0.dp, true)
                 }
             }
 

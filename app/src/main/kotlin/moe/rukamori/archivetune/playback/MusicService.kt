@@ -223,8 +223,10 @@ import moe.rukamori.archivetune.qobuz.QobuzToken
 import moe.rukamori.archivetune.audiosource.AudioSourceConfig
 import moe.rukamori.archivetune.audiosource.DirectStream
 import moe.rukamori.archivetune.audiosource.SongSourceOverride
+import moe.rukamori.archivetune.audiosource.SongSourceQobuzTrackId
 import moe.rukamori.archivetune.audiosource.TitleMatch
 import moe.rukamori.archivetune.constants.SongSourceOverrideKey
+import moe.rukamori.archivetune.constants.SongSourceQobuzTrackIdKey
 import moe.rukamori.archivetune.tidal.TidalAccountManager
 import moe.rukamori.archivetune.tidal.TidalArtworkProvider
 import moe.rukamori.archivetune.tidal.TidalAudioProvider
@@ -8546,6 +8548,14 @@ class MusicService :
         val artists: List<String>,
         val album: String?,
         val durationMs: Long?,
+        /**
+         * When non-null, the Qobuz resolver skips its title/artist search and
+         * downloads this exact trackId. Set when the user picks a specific
+         * Qobuz track from the "Play from" source-search popup — the mediaId
+         * encodes the trackId as "qobuz:{trackId}" and [resolveMultiSourceDataSpec]
+         * extracts it into this field.
+         */
+        val directQobuzTrackId: String? = null,
     )
 
     /**
@@ -8618,7 +8628,22 @@ class MusicService :
                 ?.toLong()
                 ?.times(1000L)
                 ?: queuedMetadata?.duration?.takeIf { it > 0 }?.toLong()?.times(1000L)
-        return SourceQuery(mediaId, title, artists, album, durationMs)
+        // Read the per-song Qobuz trackId override (set when the user picked a
+        // specific Qobuz track from the "Play from" source-search popup). When
+        // set, the Qobuz resolver downloads the exact track instead of
+        // re-searching by title+artist.
+        //
+        // IMPORTANT: read directly from dataStore.data.first() instead of the
+        // cached dataStore.get(). The cached PreferenceStore._prefs may be
+        // stale right after setSongSourceOverrideWithQobuzTrackId wrote the
+        // new trackId — the PreferenceStore collector is async and may not
+        // have received the emission yet. Reading from data.first() guarantees
+        // we see the write that just happened.
+        val qobuzTrackIdRaw = runCatching {
+            runBlocking { dataStore.data.first()[SongSourceQobuzTrackIdKey] }
+        }.getOrNull()
+        val directQobuzTrackId = SongSourceQobuzTrackId.get(qobuzTrackIdRaw, mediaId)
+        return SourceQuery(mediaId, title, artists, album, durationMs, directQobuzTrackId)
     }
 
     // mediaId -> set of sources known to have this track (passed the metadata match gate during a recent
@@ -8799,6 +8824,49 @@ class MusicService :
         mediaId: String,
         source: AudioSourceType?,
     ) {
+        setSongSourceOverrideInternal(mediaId, source, qobuzTrackId = null)
+    }
+
+    /**
+     * Sets a per-song source override AND persists the chosen Qobuz trackId.
+     * Used when the user picks a specific Qobuz track from the "Play from"
+     * source-search popup — the exact Qobuz trackId is preserved across the
+     * re-resolution so the resolver downloads the exact track (not a
+     * bestMatch-by-title search that could pick a different master / deluxe
+     * edition).
+     *
+     * The mediaId is NOT changed — the song's existing mediaId (typically the
+     * YouTube video id) is preserved, so the song is NOT registered as a
+     * duplicate in the playback history / "recently listened" section. The
+     * queue is also preserved (this calls the same internal implementation
+     * as `setSongSourceOverride`, which uses `player.setMediaItems(allItems,
+     * currentIndex, capturedPositionMs)` to keep the queue intact).
+     */
+    fun setSongSourceOverrideWithQobuzTrackId(
+        mediaId: String,
+        source: AudioSourceType?,
+        qobuzTrackId: String?,
+    ) {
+        setSongSourceOverrideInternal(mediaId, source, qobuzTrackId)
+    }
+
+    private fun setSongSourceOverrideInternal(
+        mediaId: String,
+        source: AudioSourceType?,
+        qobuzTrackId: String?,
+    ) {
+        // Persist the Qobuz trackId (if any) BEFORE triggering re-resolution.
+        runCatching {
+            runBlocking {
+                dataStore.edit { prefs ->
+                    prefs[SongSourceQobuzTrackIdKey] = SongSourceQobuzTrackId.withOverride(
+                        prefs[SongSourceQobuzTrackIdKey],
+                        mediaId,
+                        qobuzTrackId,
+                    )
+                }
+            }
+        }
         runCatching {
             runBlocking {
                 dataStore.edit { prefs ->
@@ -8945,13 +9013,40 @@ class MusicService :
             Timber.tag("MusicService").d("Multi-source skip: %s is a local/telegram media id", mediaId)
             return null
         }
+        // Direct Qobuz track playback: when the user picks a specific Qobuz
+        // track from the "Play from" source-search popup, a per-song Qobuz
+        // trackId override is persisted in SongSourceQobuzTrackIdKey. We
+        // detect that here so we can force the chain to [QOBUZ] and bypass
+        // the metadata match gate — the user explicitly chose this track.
+        // The mediaId is NOT changed (it stays as the song's existing YouTube
+        // id), so the song is not registered as a duplicate in the playback
+        // history.
+        //
+        // IMPORTANT: read directly from dataStore.data.first() instead of the
+        // cached dataStore.get() — see buildSourceQuery for the rationale.
+        val qobuzTrackIdRaw = runCatching {
+            runBlocking { dataStore.data.first()[SongSourceQobuzTrackIdKey] }
+        }.getOrNull()
+        val directQobuzTrackId = SongSourceQobuzTrackId.get(qobuzTrackIdRaw, mediaId)
+        val isDirectQobuzTrack = directQobuzTrackId != null
+        // Read the source override FRESH from DataStore — not from the stale
+        // PreferenceStore cache. The PreferenceStore collector is async and
+        // may not have received the write from setSongSourceOverride yet.
+        // This must use data.first() to see the latest value.
+        val sourceOverrideRaw = runCatching {
+            runBlocking { dataStore.data.first()[SongSourceOverrideKey] }
+        }.getOrNull()
         // Fast path: serve from the in-memory DirectStream cache if we have a
         // fresh entry. This makes "skip to next" instant when the next song
         // was prefetched (see prefetchNextMediaItemStream).
+        //
+        // SKIP the fast path entirely when a direct Qobuz track override is
+        // set — the user just picked a specific Qobuz track, so we must
+        // re-resolve through Qobuz even if a cached YouTube stream exists.
         val now = System.currentTimeMillis()
         val cached = directStreamCache[mediaId]
-        if (cached != null && cached.expiresAtMs > now) {
-            val override = SongSourceOverride.get(dataStore.get(SongSourceOverrideKey, ""), mediaId)
+        if (!isDirectQobuzTrack && cached != null && cached.expiresAtMs > now) {
+            val override = SongSourceOverride.get(sourceOverrideRaw, mediaId)
             val cacheHitsOverride = override == null || override == cached.stream.source
             if (cacheHitsOverride && !lowDataModeActive) {
                 Timber.tag("MusicService").d(
@@ -8990,13 +9085,15 @@ class MusicService :
         // lossless sources are still enabled. Instead we fall through to the full enabled
         // chain so a different lossless source can still win. The stale pin remains in
         // storage and will become effective again if the user re-enables the source.
-        val override = SongSourceOverride.get(dataStore.get(SongSourceOverrideKey, ""), mediaId)
+        val override = if (isDirectQobuzTrack) AudioSourceType.QOBUZ else SongSourceOverride.get(sourceOverrideRaw, mediaId)
         val overrideStillEnabled =
             override == null ||
                 override == AudioSourceType.YOUTUBE ||
                 isSourceEnabled(override)
         val chain =
-            when (override) {
+            if (isDirectQobuzTrack) {
+                listOf(AudioSourceType.QOBUZ)
+            } else when (override) {
                 null -> sourceResolutionChain()
                 AudioSourceType.YOUTUBE -> {
                     Timber.tag("MusicService").d("Per-song override: %s pinned to YouTube; skipping lossless", mediaId)
@@ -9047,7 +9144,7 @@ class MusicService :
         // title formatting often differs from the YouTube-derived wanted title enough to fail the
         // metadata gate, the resolver silently fell back to YouTube, and the user saw no change.
         // The override is the user's manual override of the gate — we should respect it.
-        val overrideIsSourceOverride = override != null && override != AudioSourceType.YOUTUBE
+        val overrideIsSourceOverride = (override != null && override != AudioSourceType.YOUTUBE) || isDirectQobuzTrack
         var best: DirectStream? = null
         var bestSource: AudioSourceType? = null
         var bestScore = 0.0
@@ -9518,6 +9615,7 @@ class MusicService :
                             artists = query.artists,
                             album = query.album,
                             durationMs = query.durationMs,
+                            directTrackId = query.directQobuzTrackId,
                         ),
                     formatId = formatId,
                 )

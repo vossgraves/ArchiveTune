@@ -807,16 +807,17 @@ fun LastFmDashboardScreen(
         ) {
             Spacer(Modifier.height(innerPadding.calculateTopPadding()))
 
-            // Hide header pills + hero card while the scrobble-search overlay
-            // is open — the user is searching, not browsing stats, so we
-            // collapse down to just the search field + filtered list (Task 6c).
+            // Hide hero card while the scrobble-search overlay is open —
+            // the user is searching, not browsing stats, so we collapse
+            // down to just the search field + filtered list (Task 6c).
+            //
+            // (Round 13) The HeaderPillRow is removed entirely — the
+            // scrobbles count pill with the music-note icon duplicates the
+            // hero card's hero-inner scrobbles count, and the username pill
+            // is no longer needed at the top (the avatar in the hero card
+            // already identifies the user). The user explicitly asked to
+            // remove the "0 counter with the music icon" pill.
             if (!searchVisible) {
-                HeaderPillRow(
-                    username = current.username,
-                    scrobbles = (userInfo?.getOrNull()?.playcount ?: 0).toLong(),
-                    theme = theme,
-                )
-
                 HeroStatsCard(
                     userInfo = userInfo,
                     isRefreshing = isRefreshing,
@@ -1092,6 +1093,10 @@ private fun LastFmDashboardHeader(
             // abrupt and the OutlinedTextField looked "extremely basic and
             // bad" — Material3's SearchBar pill + AnimatedContent gives the
             // same polished feel as the New Releases page.
+            //
+            // LAYOUT: title (or search bar) sits in the middle (weight 1f)
+            // between the back arrow on the left and the refresh + search
+            // icons on the right — matches the conventional app bar layout.
             AnimatedContent(
                 targetState = searchVisible,
                 transitionSpec = {
@@ -1146,11 +1151,11 @@ private fun LastFmDashboardHeader(
                             .padding(horizontal = 4.dp),
                     ) {}
                 } else {
-                    // Large "Last.fm" wordmark on the left, matching the
-                    // LastWave-native HomeScreen header. headlineMedium gives the
-                    // prominent display size the reference screenshot uses (the
-                    // previous titleLarge read as a regular app-bar title rather
-                    // than the brand wordmark).
+                    // Large "Last.fm" wordmark, matching the LastWave-native
+                    // HomeScreen header. headlineMedium gives the prominent
+                    // display size the reference screenshot uses (the previous
+                    // titleLarge read as a regular app-bar title rather than
+                    // the brand wordmark).
                     Text(
                         text = "Last.fm",
                         style = MaterialTheme.typography.headlineMedium,
@@ -1159,6 +1164,8 @@ private fun LastFmDashboardHeader(
                         modifier = Modifier
                             .weight(1f)
                             .padding(start = 8.dp),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
             }
