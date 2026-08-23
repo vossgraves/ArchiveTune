@@ -54,6 +54,9 @@ kuromojiIpadic = "0.9.0"
 # short commit hash. To move to a newer commit, the CI JDK and :core's
 # `jvmToolchain(...)` both need to be bumped to ≥ 25.
 extractor = "08a64867704c"
+quickjsKt = "1.0.10"
+bouncyCastle = "1.85"
+chaquopy = "17.0.0"
 translator = "1.1.1"
 rhino = "1.9.1"
 markwon = "4.6.2"
@@ -163,6 +166,8 @@ timber = { module = "com.jakewharton.timber:timber", version.ref = "timber" }
 # existing NewPipe imports keep working. Published on JitPack only.
 # Coordinates match the upstream Metrolist Android app (MetrolistGroup/Metrolist).
 metrolist-extractor = { module = "com.github.MetrolistGroup:MetrolistExtractor", version.ref = "extractor" }
+quickjs-kt = { module = "io.github.dokar3:quickjs-kt", version.ref = "quickjsKt" }
+bcpg = { module = "org.bouncycastle:bcpg-jdk18on", version.ref = "bouncyCastle" }
 translator = { module = "com.github.therealbush:translator", version.ref = "translator" }
 
 kuromoji-ipadic = { module = "com.atilika.kuromoji:kuromoji-ipadic", version.ref = "kuromojiIpadic" }
@@ -200,3 +205,4 @@ kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 kotlin-ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 aboutlibraries-android = { id = "com.mikepenz.aboutlibraries.plugin.android", version.ref = "aboutLibraries" }
+chaquopy = { id = "com.chaquo.python", version.ref = "chaquopy" }

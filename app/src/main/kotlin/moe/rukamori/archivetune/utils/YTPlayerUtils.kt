@@ -307,7 +307,65 @@ object YTPlayerUtils {
         return authState.withGeneratedPoTokens(tokenResult)
     }
 
-    private fun PlaybackAuthState.withGeneratedPoTokens(tokenResult: PoTokenResult): PlaybackAuthState {
+    suspend fun ensureWebPoTokensForSubtitles(videoId: String): PlaybackAuthState {
+        var authState = YouTube.currentPlaybackAuthState()
+        if (!authState.resolveSubsPoToken(WEB_REMIX, videoId).isNullOrBlank()) return authState
+
+        if (authState.sessionId.isNullOrBlank()) {
+            authState =
+                ensureVisitorDataReady(
+                    videoId = videoId,
+                    authState = authState,
+                    reason = "subtitle playback authentication",
+                )
+        }
+        return mintWebPlaybackPoTokens(videoId, authState)
+    }
+
+    suspend fun ensureWebPoTokensForPlayback(
+        videoId: String,
+        authState: PlaybackAuthState = YouTube.currentPlaybackAuthState(),
+    ): PlaybackAuthState {
+        var resolvedAuthState = authState
+        val hasPlayerToken =
+            !resolvedAuthState
+                .resolvePlayerPoToken(
+                    client = WEB_REMIX,
+                    videoId = videoId,
+                ).isNullOrBlank()
+        if (hasPlayerToken && hasWebGvsPoToken(resolvedAuthState, videoId)) {
+            return resolvedAuthState
+        }
+
+        if (resolvedAuthState.sessionId.isNullOrBlank()) {
+            resolvedAuthState =
+                ensureVisitorDataReady(
+                    videoId = videoId,
+                    authState = resolvedAuthState,
+                    reason = "yt-dlp playback authentication",
+                )
+        }
+        if (resolvedAuthState.sessionId.isNullOrBlank()) return resolvedAuthState
+
+        return mintWebPlaybackPoTokens(videoId, resolvedAuthState)
+    }
+
+    suspend fun ensureYtDlpPoTokensForPlayback(
+        videoId: String,
+        authState: PlaybackAuthState = YouTube.currentPlaybackAuthState(),
+    ): PlaybackAuthState {
+        val contentBinding = authState.ytDlpContentBinding() ?: return authState
+        val tokenResult =
+            BotGuardTokenGenerator.mintToken(videoId, contentBinding) ?: return authState
+        return authState
+            .withGeneratedPoTokens(videoId, tokenResult)
+            .copy(dataSyncId = contentBinding)
+    }
+
+    private fun PlaybackAuthState.withGeneratedPoTokens(
+        videoId: String,
+        tokenResult: PoTokenResult,
+    ): PlaybackAuthState {
         val updatedAuthState =
             copy(
                 poTokenGvs = tokenResult.sessionToken,
@@ -331,6 +389,18 @@ object YTPlayerUtils {
         cookie == other.cookie &&
             visitorData == other.visitorData &&
             dataSyncId == other.dataSyncId
+
+    private fun PlaybackAuthState.ytDlpContentBinding(): String? {
+        val normalizedDataSyncId = dataSyncId?.trim()?.takeIf(String::isNotBlank)
+        if (normalizedDataSyncId != null) {
+            return if ("||" in normalizedDataSyncId) {
+                normalizedDataSyncId
+            } else {
+                "$normalizedDataSyncId||"
+            }
+        }
+        return sessionId
+    }
 
     private fun PlaybackAuthState.withoutAccountBoundPlaybackState(): PlaybackAuthState =
         copy(
