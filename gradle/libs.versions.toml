@@ -53,7 +53,7 @@ kuromojiIpadic = "0.9.0"
 # JitPack (no Maven Central release) and has no git tags — JitPack resolves the
 # short commit hash. To move to a newer commit, the CI JDK and :core's
 # `jvmToolchain(...)` both need to be bumped to ≥ 25.
-extractor = "08a64867704c"
+extractor = "0.26.5"
 quickjsKt = "1.0.10"
 bouncyCastle = "1.85"
 chaquopy = "17.0.0"
@@ -166,6 +166,7 @@ timber = { module = "com.jakewharton.timber:timber", version.ref = "timber" }
 # existing NewPipe imports keep working. Published on JitPack only.
 # Coordinates match the upstream Metrolist Android app (MetrolistGroup/Metrolist).
 metrolist-extractor = { module = "com.github.MetrolistGroup:MetrolistExtractor", version.ref = "extractor" }
+newpipe-extractor = { module = "com.github.TeamNewPipe:NewPipeExtractor", version.ref = "extractor" }
 quickjs-kt = { module = "io.github.dokar3:quickjs-kt", version.ref = "quickjsKt" }
 bcpg = { module = "org.bouncycastle:bcpg-jdk18on", version.ref = "bouncyCastle" }
 translator = { module = "com.github.therealbush:translator", version.ref = "translator" }
