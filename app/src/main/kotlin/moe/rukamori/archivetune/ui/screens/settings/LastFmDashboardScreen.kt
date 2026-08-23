@@ -643,13 +643,7 @@ fun LastFmDashboardScreen(
                     if (!searchVisible) searchQuery = ""
                 },
                 theme = theme,
-                onOpenProfile = {
-                    userInfo?.getOrNull()?.url
-                        ?.takeIf { it.isNotBlank() }
-                        ?.let { profileUrl ->
-                            context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(profileUrl)))
-                        }
-                },
+                profileImageUrl = bestArtwork(userInfo?.getOrNull()?.image),
                 onBack = navController::navigateUp,
                 onBackLong = navController::backToMain,
             )
@@ -1065,7 +1059,7 @@ private fun LastFmDashboardHeader(
     onSearchQueryChange: (String) -> Unit,
     onToggleSearch: () -> Unit,
     theme: DashboardTheme,
-    onOpenProfile: () -> Unit,
+    profileImageUrl: String?,
     onBack: () -> Unit,
     onBackLong: () -> Unit,
 ) {
@@ -1104,9 +1098,8 @@ private fun LastFmDashboardHeader(
             // bad" — Material3's SearchBar pill + AnimatedContent gives the
             // same polished feel as the New Releases page.
             //
-            // LAYOUT: title (or search bar) sits in the middle (weight 1f)
-            // between the back arrow on the left and the refresh + search
-            // icons on the right — matches the conventional app bar layout.
+            // Keep dashboard actions at the far trailing edge rather than
+            // visually attaching them to the Last.fm wordmark.
             AnimatedContent(
                 targetState = searchVisible,
                 transitionSpec = {
@@ -1172,13 +1165,13 @@ private fun LastFmDashboardHeader(
                         fontWeight = FontWeight.Bold,
                         color = theme.topAppBarTitleText,
                         modifier = Modifier
-                            .weight(1f)
                             .padding(start = 8.dp),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
             }
+            if (!searchVisible) Spacer(Modifier.weight(1f))
             // Search icon — toggles the inline scrobble-search field.
             IconButton(
                 onClick = onToggleSearch,
@@ -1193,16 +1186,27 @@ private fun LastFmDashboardHeader(
                 )
             }
             IconButton(
-                onClick = onOpenProfile,
+                // This is an account avatar, not a navigation control. The
+                // profile remains available through the hero-card arrow.
+                onClick = {},
                 colors = IconButtonDefaults.iconButtonColors(
                     contentColor = theme.topAppBarIconTint,
                 ),
             ) {
-                Icon(
-                    painter = painterResource(R.drawable.solar_user_circle_linear),
-                    contentDescription = stringResource(R.string.lastfm_open_in_lastfm),
-                    tint = theme.topAppBarIconTint,
-                )
+                if (!profileImageUrl.isNullOrBlank()) {
+                    AsyncImage(
+                        model = profileImageUrl,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.size(32.dp).clip(CircleShape),
+                    )
+                } else {
+                    Icon(
+                        painter = painterResource(R.drawable.solar_user_circle_linear),
+                        contentDescription = null,
+                        tint = theme.topAppBarIconTint,
+                    )
+                }
             }
         }
     }
@@ -2065,6 +2069,22 @@ private fun TrackOverflowSheet(
     val context = LocalContext.current
     val playerConnection = LocalPlayerConnection.current
     var loadingAction by remember { mutableStateOf<String?>(null) }
+    var genre by remember(track.artworkKey()) { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(track.title, track.artist) {
+        genre = track.artist
+            ?.takeIf { it.isNotBlank() }
+            ?.let { artist ->
+                withContext(Dispatchers.IO) {
+                    LastFM.getTrackInfo(artist = artist, track = track.title)
+                        .getOrNull()
+                        ?.toptags
+                        ?.tag
+                        ?.mapNotNull { it.name?.trim()?.takeIf(String::isNotBlank) }
+                        ?.take(3)
+                        ?.joinToString(", ")
+                }
+            }
 
     // (Task 5a) Pre-resolve the YT search once on sheet open so the
     // banner can show the YouTube thumbnail when Last.fm has no artwork,
@@ -2231,7 +2251,7 @@ private fun TrackOverflowSheet(
             },
             supportingContent = {
                 Text(
-                    stringResource(R.string.lastfm_unknown_genre),
+                    genre ?: stringResource(R.string.lastfm_unknown_genre),
                     color = theme.textSecondary,
                 )
             },
