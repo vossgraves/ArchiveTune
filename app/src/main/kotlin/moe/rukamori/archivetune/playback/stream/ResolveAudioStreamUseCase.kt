@@ -178,13 +178,15 @@ class ResolveAudioStreamUseCase
             key: CacheKey,
             resolved: ResolvedAudioStream,
         ) {
-            cache[key] = resolved
-            cache[
-                key.copy(
-                    authFingerprint = resolved.authFingerprint,
-                    runtimeRevision = YtDlpRuntimeStore.revision,
-                ),
-            ] = resolved
+            putResolvedStream(key, resolved)
+            if (resolved.source == StreamSource.YT_DLP) {
+                val alternatePurpose =
+                    when (key.purpose) {
+                        StreamPurpose.PLAYBACK -> StreamPurpose.DOWNLOAD
+                        StreamPurpose.DOWNLOAD -> StreamPurpose.PLAYBACK
+                    }
+                putResolvedStream(key.copy(purpose = alternatePurpose), resolved)
+            }
             Timber.tag(TAG).d(
                 "Resolved %s via %s (%s)",
                 key.mediaId,
@@ -199,6 +201,19 @@ class ResolveAudioStreamUseCase
                 .sortedBy { it.value.expiresAtMs }
                 .take(excess)
                 .forEach { entry -> cache.remove(entry.key, entry.value) }
+        }
+
+        private fun putResolvedStream(
+            key: CacheKey,
+            resolved: ResolvedAudioStream,
+        ) {
+            cache[key] = resolved
+            cache[
+                key.copy(
+                    authFingerprint = resolved.authFingerprint,
+                    runtimeRevision = YtDlpRuntimeStore.revision,
+                ),
+            ] = resolved
         }
 
         private fun isFresh(stream: ResolvedAudioStream): Boolean =
