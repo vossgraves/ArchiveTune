@@ -7,6 +7,7 @@ import binascii
 import importlib
 import json
 import os
+import re
 import sys
 import tempfile
 import threading
@@ -62,14 +63,29 @@ def _purge_runtime(runtime_path):
 def _register_android_jsc_provider():
     from java import jclass
     from yt_dlp.extractor.youtube.jsc._builtin.ejs import EJSBaseJCP
-    from yt_dlp.extractor.youtube.jsc.provider import register_preference, register_provider
+    from yt_dlp.extractor.youtube.jsc.provider import (
+        register_preference as register_jsc_preference,
+        register_provider as register_jsc_provider,
+    )
     from yt_dlp.extractor.youtube.pot._provider import BuiltinIEContentProvider
+    from yt_dlp.extractor.youtube.pot.provider import (
+        PoTokenContext,
+        PoTokenProvider,
+        PoTokenProviderRejectedRequest,
+        PoTokenResponse,
+        register_preference as register_pot_preference,
+        register_provider as register_pot_provider,
+    )
+    from yt_dlp.extractor.youtube.pot.utils import (
+        ContentBindingType,
+        get_webpo_content_binding,
+    )
 
     java_runtime = jclass(
         "moe.rukamori.archivetune.morideobfuscator.ytdlp.YtDlpJavaScriptRuntime"
     )
 
-    @register_provider
+    @register_jsc_provider
     class ArchiveTuneJCP(EJSBaseJCP, BuiltinIEContentProvider):
         PROVIDER_NAME = "archivetune"
         JS_RUNTIME_NAME = "archivetune"
@@ -80,10 +96,69 @@ def _register_android_jsc_provider():
         def _run_js_runtime(self, source):
             return str(java_runtime.evaluate(source))
 
-    @register_preference(ArchiveTuneJCP)
+    @register_jsc_preference(ArchiveTuneJCP)
     def archive_tune_preference(provider, requests):
         return 2000
 
+    @register_pot_provider
+    class ArchiveTunePTP(PoTokenProvider, BuiltinIEContentProvider):
+        PROVIDER_NAME = "archivetune"
+        _SUPPORTED_CLIENTS = ("WEB_CREATOR",)
+        _SUPPORTED_CONTEXTS = (PoTokenContext.GVS,)
+        _SUPPORTED_EXTERNAL_REQUEST_FEATURES = ()
+
+        def is_available(self):
+            return bool(
+                self._configuration_arg("gvs_session", casesense=True)
+                or self._configuration_arg("gvs_video", casesense=True)
+            )
+
+        def _real_request_pot(self, request):
+            if not request.is_authenticated:
+                raise PoTokenProviderRejectedRequest(
+                    "ArchiveTune tokens require authenticated YouTube cookies"
+                )
+
+            content_binding, binding_type = get_webpo_content_binding(request)
+            if binding_type == ContentBindingType.DATASYNC_ID:
+                token_key = "gvs_session"
+                expected_binding_key = "data_sync_id"
+            elif binding_type == ContentBindingType.VIDEO_ID:
+                token_key = "gvs_video"
+                expected_binding_key = "video_id"
+            else:
+                raise PoTokenProviderRejectedRequest(
+                    "ArchiveTune has no token for the requested content binding"
+                )
+
+            expected_binding = self._configuration_arg(
+                expected_binding_key,
+                default=[None],
+                casesense=True,
+            )[0]
+            if not content_binding or content_binding != expected_binding:
+                raise PoTokenProviderRejectedRequest(
+                    "ArchiveTune PO-token content binding does not match the yt-dlp request"
+                )
+
+            po_token = self._configuration_arg(
+                token_key,
+                default=[None],
+                casesense=True,
+            )[0]
+            if not po_token:
+                raise PoTokenProviderRejectedRequest(
+                    "ArchiveTune has no token for the requested content binding"
+                )
+
+            self.logger.info(
+                "Supplying an authenticated GVS PO Token for WEB_CREATOR"
+            )
+            return PoTokenResponse(po_token=po_token, expires_at=-1)
+
+    @register_pot_preference(ArchiveTunePTP)
+    def archive_tune_pot_preference(provider, request):
+        return 2000
 
 def is_runtime_archive_loaded():
     return _archive_loaded
@@ -200,39 +275,102 @@ def _choose_format(formats, quality, network_metered, pinned_format_id):
     return not_above_target[-1] if not_above_target else candidates[0]
 
 
-class _QuietYtDlpLogger:
+class _DiagnosticYtDlpLogger:
+    _playability_pattern = re.compile(
+        r"([a-z0-9_]+) player response playability status: ([A-Z_]+)"
+    )
+
+    def __init__(self, expect_authentication):
+        self._expect_authentication = expect_authentication
+        self._authentication_status = None
+        self._po_provider_available = False
+        self._javascript_provider_available = False
+        self._javascript_failure = False
+        self._playability_statuses = []
+
     def debug(self, message):
-        pass
+        self._record(message)
 
     def info(self, message):
-        pass
+        self._record(message)
 
     def warning(self, message):
-        pass
+        self._record(message)
 
     def error(self, message):
-        pass
+        self._record(message)
+
+    def _record(self, message):
+        text = str(message)
+        if "Found YouTube account cookies" in text:
+            self._authentication_status = "recognized"
+        elif "provided YouTube account cookies are no longer valid" in text:
+            self._authentication_status = "rotated"
+
+        lowered = text.lower()
+        if "pot:archivetune" in lowered or "authenticated gvs po token" in lowered:
+            self._po_provider_available = True
+        if "javascript challenge providers" in lowered and "archivetune" in lowered:
+            self._javascript_provider_available = True
+        if (
+            "no supported javascript runtime" in lowered
+            or "javascript challenge solving failed" in lowered
+        ):
+            self._javascript_failure = True
+
+        match = self._playability_pattern.search(text)
+        if match and len(self._playability_statuses) < 8:
+            status = "{}={}".format(match.group(1), match.group(2))
+            if status not in self._playability_statuses:
+                self._playability_statuses.append(status)
+
+    def summary(self):
+        diagnostics = []
+        if self._expect_authentication:
+            diagnostics.append(
+                "account_cookies=" + (self._authentication_status or "not_recognized")
+            )
+        diagnostics.append(
+            "po_provider=" + ("archivetune" if self._po_provider_available else "not_used")
+        )
+        if self._javascript_failure:
+            diagnostics.append("javascript_challenge=failed")
+        elif self._javascript_provider_available:
+            diagnostics.append("javascript_provider=archivetune")
+        if self._playability_statuses:
+            diagnostics.append("playability=" + ",".join(self._playability_statuses))
+        return "; ".join(diagnostics)
 
 
-def _extract_info(youtube_dl, url, youtube_args, cookie_file=None):
+def _extract_info(youtube_dl, url, extractor_args, cookie_file=None):
+    logger = _DiagnosticYtDlpLogger(expect_authentication=cookie_file is not None)
     options = {
         "quiet": True,
-        "no_warnings": True,
+        "verbose": True,
         "noplaylist": True,
         "skip_download": True,
         "socket_timeout": 15,
         "retries": 1,
         "extractor_retries": 1,
         "fragment_retries": 1,
-        "extractor_args": {"youtube": youtube_args},
+        "extractor_args": extractor_args,
         "js_runtimes": {},
         "remote_components": set(),
-        "logger": _QuietYtDlpLogger(),
+        "logger": logger,
     }
     if cookie_file:
         options["cookiefile"] = cookie_file
-    with youtube_dl(options) as downloader:
-        return downloader.extract_info(url, download=False)
+    try:
+        with youtube_dl(options) as downloader:
+            return downloader.extract_info(url, download=False)
+    except Exception as error:
+        from yt_dlp.utils import DownloadError
+
+        if not isinstance(error, DownloadError):
+            raise
+        raise DownloadError(
+            "{} [ArchiveTune diagnostics: {}]".format(error, logger.summary())
+        ) from error
 
 
 def _normalize_po_token(value):
@@ -252,6 +390,37 @@ def _normalize_po_token(value):
     return base64.urlsafe_b64encode(decoded).decode("ascii")
 
 
+def _build_extractor_args(request, authenticated):
+    youtube_args = {
+        "skip": ["hls", "dash", "translated_subs"],
+    }
+    extractor_args = {"youtube": youtube_args}
+    if not authenticated:
+        return extractor_args
+
+    youtube_args["player_client"] = [
+        "default",
+        "-tv_downgraded",
+        "web_embedded",
+    ]
+
+    provider_args = {}
+    data_sync_id = request.get("data_sync_id")
+    session_token = request.get("po_token_web_creator_gvs_session")
+    if data_sync_id and session_token:
+        provider_args["data_sync_id"] = [data_sync_id]
+        provider_args["gvs_session"] = [_normalize_po_token(session_token)]
+
+    video_token = request.get("po_token_web_creator_gvs_video")
+    if video_token:
+        provider_args["video_id"] = [request["media_id"]]
+        provider_args["gvs_video"] = [_normalize_po_token(video_token)]
+
+    if "gvs_session" in provider_args or "gvs_video" in provider_args:
+        extractor_args["youtubepot-archivetune"] = provider_args
+    return extractor_args
+
+
 def resolve_audio(request_json, runtime_path, cookie_directory):
     _ensure_runtime(runtime_path)
     from yt_dlp import YoutubeDL
@@ -259,28 +428,12 @@ def resolve_audio(request_json, runtime_path, cookie_directory):
     request = json.loads(request_json)
     cookie_file = _write_cookie_file(request.get("cookie"), cookie_directory)
     try:
-        youtube_args = {
-            "skip": ["hls", "dash", "translated_subs"],
-        }
-        if cookie_file:
-            po_tokens = []
-            creator_player_token = request.get("po_token_web_creator_player")
-            if creator_player_token:
-                po_tokens.append(
-                    "web_creator.player+" + _normalize_po_token(creator_player_token)
-                )
-            creator_gvs_token = request.get("po_token_web_creator_gvs")
-            if creator_gvs_token:
-                po_tokens.append(
-                    "web_creator.gvs+" + _normalize_po_token(creator_gvs_token)
-                )
-            if po_tokens:
-                youtube_args["po_token"] = po_tokens
+        extractor_args = _build_extractor_args(request, authenticated=bool(cookie_file))
         url = "https://www.youtube.com/watch?v=" + request["media_id"]
         info = _extract_info(
             YoutubeDL,
             url,
-            youtube_args,
+            extractor_args,
             cookie_file,
         )
 
