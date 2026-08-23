@@ -12,7 +12,20 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
 
 /**
- * Subset of Last.fm's `user.getInfo` response — only the fields
+ * Top-level response returned by Last.fm's `user.getInfo` method.
+ *
+ * The actual profile is nested under `user`. Keeping that envelope is
+ * important: decoding the response directly into [UserInfo] silently drops
+ * the `user` property (because the client ignores unknown keys), leaving all
+ * of the optional profile values null and displaying a zero scrobble count.
+ */
+@Serializable
+data class UserInfoResponse(
+    val user: UserInfo,
+)
+
+/**
+ * Subset of the profile nested in a `user.getInfo` response — only the fields
  * surfaced on the in-app dashboard.
  *
  * See https://www.last.fm/api/show/user.getInfo
@@ -35,7 +48,7 @@ data class UserInfo(
     val playlists: Int? = null,
     val registered: UserRegistered? = null,
 ) {
-    val playcount: Int? get() = _playcount?.toIntOrNull()
+    val playcount: Long? get() = _playcount?.toLongOrNull()
 }
 
 @Serializable

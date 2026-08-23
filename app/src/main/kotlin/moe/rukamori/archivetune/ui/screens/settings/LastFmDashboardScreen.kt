@@ -835,7 +835,13 @@ fun LastFmDashboardScreen(
                     albumCount = (statsTopAlbums ?: topAlbums)
                         ?.getOrNull()?.topalbums?.attr?.total?.toIntOrNull() ?: 0,
                     onRetry = ::refresh,
-                    onOpenGenres = { navController.navigate(Screens.MoodAndGenres.route) },
+                    onOpenProfile = {
+                        userInfo?.getOrNull()?.url
+                            ?.takeIf { it.isNotBlank() }
+                            ?.let { profileUrl ->
+                                context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(profileUrl)))
+                            }
+                    },
                     theme = theme,
                 )
 
@@ -1290,7 +1296,7 @@ private fun HeaderPillRow(
  *   - accent/primaryContainer-equivalent inner hero area (theme.statsHeroInner)
  *     with the formatted scrobbles count
  *   - a 46dp hero-arrow Surface with a forward-arrow IconButton on the right
- *     of the hero (opens mood_and_genres — LastWave-native's "Genres" target)
+ *     of the hero that opens the user's Last.fm profile in their browser
  *   - three StatPills below for Tracks / Artists / Albums
  */
 @Composable
@@ -1301,7 +1307,7 @@ private fun HeroStatsCard(
     artistCount: Int,
     albumCount: Int,
     onRetry: () -> Unit,
-    onOpenGenres: () -> Unit,
+    onOpenProfile: () -> Unit,
     theme: DashboardTheme,
 ) {
     when {
@@ -1356,10 +1362,10 @@ private fun HeroStatsCard(
                                         .align(Alignment.CenterEnd),
                                 ) {
                                     Box(contentAlignment = Alignment.Center) {
-                                        IconButton(onClick = onOpenGenres) {
+                                        IconButton(onClick = onOpenProfile) {
                                             Icon(
                                                 painter = painterResource(R.drawable.solar_forward_linear),
-                                                contentDescription = stringResource(R.string.mood_and_genres),
+                                                contentDescription = stringResource(R.string.lastfm_open_in_lastfm),
                                                 tint = theme.heroArrowIconTint,
                                             )
                                         }
