@@ -295,6 +295,7 @@ def resolve_audio(request_json, runtime_path, cookie_directory):
                 (
                     "web.gvs+" + normalized_gvs_token,
                     "web_music.gvs+" + normalized_gvs_token,
+                    "web_creator.gvs+" + normalized_gvs_token,
                 )
             )
         player_token = request.get("po_token_player")
@@ -319,6 +320,11 @@ def resolve_audio(request_json, runtime_path, cookie_directory):
             youtube_args["po_token"] = list(dict.fromkeys(po_tokens))
             youtube_args["player_client"] = ["web"]
 
+        cookie_youtube_args = dict(base_youtube_args)
+        if po_tokens:
+            cookie_youtube_args["po_token"] = list(dict.fromkeys(po_tokens))
+            cookie_youtube_args["player_client"] = ["web"]
+
         url = "https://www.youtube.com/watch?v=" + request["media_id"]
         try:
             info = _extract_info(
@@ -334,7 +340,7 @@ def resolve_audio(request_json, runtime_path, cookie_directory):
                 info = _extract_info(
                     YoutubeDL,
                     url,
-                    dict(base_youtube_args),
+                    cookie_youtube_args,
                     cookie_file,
                 )
             except DownloadError as cookie_context_error:
