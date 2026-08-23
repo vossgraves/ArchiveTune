@@ -45,27 +45,7 @@ class YtDlpRuntime
                             .put("network_metered", request.networkMetered)
                             .put("pinned_format_id", request.pinnedFormatId)
                             .put("cookie", authState.cookie)
-                            .put("visitor_data", authState.visitorData)
-                            .put("data_sync_id", authState.dataSyncId)
-                            .put(
-                                "po_token_gvs",
-                                authState.resolveGvsPoToken(
-                                    moe.rukamori.archivetune.innertube.models.YouTubeClient.WEB_REMIX,
-                                    request.mediaId,
-                                ),
-                            ).put(
-                                "po_token_player",
-                                authState.resolvePlayerPoToken(
-                                    client = moe.rukamori.archivetune.innertube.models.YouTubeClient.WEB_REMIX,
-                                    videoId = request.mediaId,
-                                ),
-                            ).put(
-                                "po_token_subs",
-                                authState.resolveSubsPoToken(
-                                    client = moe.rukamori.archivetune.innertube.models.YouTubeClient.WEB_REMIX,
-                                    videoId = request.mediaId,
-                                ),
-                            ).toString()
+                            .toString()
                     val cookieDirectory = File(context.cacheDir, "yt_dlp_cookies").apply { mkdirs() }
                     cookieDirectory.listFiles()?.forEach { file ->
                         if (file.isFile && System.currentTimeMillis() - file.lastModified() > STALE_COOKIE_FILE_MS) {

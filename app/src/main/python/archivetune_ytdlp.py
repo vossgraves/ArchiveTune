@@ -2,8 +2,6 @@
 # © Rukamori — github.com/rukamori
 # GPL-3.0 License | Contributors: see git history
 
-import base64
-import binascii
 import importlib
 import json
 import os
@@ -17,17 +15,6 @@ _runtime_path = None
 _runtime_version = None
 _archive_loaded = False
 _runtime_lock = threading.Lock()
-_DEFAULT_HTTP_HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/120.0.0.0 Safari/537.36"
-    ),
-    "Accept": "*/*",
-    "Accept-Language": "en-US,en;q=0.9",
-    "Referer": "https://www.youtube.com/",
-    "Origin": "https://www.youtube.com",
-}
 
 
 def _ensure_runtime(runtime_path):
@@ -239,7 +226,6 @@ def _extract_info(youtube_dl, url, youtube_args, cookie_file=None):
         "js_runtimes": {},
         "remote_components": set(),
         "logger": _QuietYtDlpLogger(),
-        "http_headers": dict(_DEFAULT_HTTP_HEADERS),
     }
     if cookie_file:
         options["cookiefile"] = cookie_file
@@ -247,115 +233,23 @@ def _extract_info(youtube_dl, url, youtube_args, cookie_file=None):
         return downloader.extract_info(url, download=False)
 
 
-def _is_age_verification_required(error):
-    return "sign in to confirm your age" in str(error).lower()
-
-
-def _normalize_po_token(value):
-    unpadded = (
-        urllib.parse.unquote(value.strip())
-        .replace("+", "-")
-        .replace("/", "_")
-        .rstrip("=")
-    )
-    padded = unpadded + "=" * ((4 - len(unpadded) % 4) % 4)
-    try:
-        decoded = base64.b64decode(padded, altchars=b"-_", validate=True)
-    except (binascii.Error, ValueError) as error:
-        raise ValueError("PO Token must be a base64url-encoded string") from error
-    if not decoded:
-        raise ValueError("PO Token must not be empty")
-    return base64.urlsafe_b64encode(decoded).decode("ascii")
-
-
 def resolve_audio(request_json, runtime_path, cookie_directory):
     _ensure_runtime(runtime_path)
     from yt_dlp import YoutubeDL
-    from yt_dlp.utils import DownloadError
 
     request = json.loads(request_json)
     cookie_file = _write_cookie_file(request.get("cookie"), cookie_directory)
     try:
-        base_youtube_args = {
+        youtube_args = {
             "skip": ["hls", "dash", "translated_subs"],
         }
-        youtube_args = dict(base_youtube_args)
-        visitor_data = request.get("visitor_data")
-        if visitor_data:
-            youtube_args["visitor_data"] = [visitor_data]
-        data_sync_id = request.get("data_sync_id")
-        if data_sync_id:
-            youtube_args["data_sync_id"] = [data_sync_id]
-
-        po_tokens = []
-        gvs_token = request.get("po_token_gvs")
-        if gvs_token:
-            normalized_gvs_token = _normalize_po_token(gvs_token)
-            po_tokens.extend(
-                (
-                    "web.gvs+" + normalized_gvs_token,
-                    "web_music.gvs+" + normalized_gvs_token,
-                    "web_creator.gvs+" + normalized_gvs_token,
-                )
-            )
-        player_token = request.get("po_token_player")
-        if player_token:
-            normalized_player_token = _normalize_po_token(player_token)
-            po_tokens.extend(
-                (
-                    "web.player+" + normalized_player_token,
-                    "web_music.player+" + normalized_player_token,
-                )
-            )
-        subs_token = request.get("po_token_subs")
-        if subs_token:
-            normalized_subs_token = _normalize_po_token(subs_token)
-            po_tokens.extend(
-                (
-                    "web.subs+" + normalized_subs_token,
-                    "web_music.subs+" + normalized_subs_token,
-                )
-            )
-        if po_tokens:
-            youtube_args["po_token"] = list(dict.fromkeys(po_tokens))
-            youtube_args["player_client"] = ["web"]
-
-        cookie_youtube_args = dict(base_youtube_args)
-        if po_tokens:
-            cookie_youtube_args["po_token"] = list(dict.fromkeys(po_tokens))
-            cookie_youtube_args["player_client"] = ["web"]
-
         url = "https://www.youtube.com/watch?v=" + request["media_id"]
-        try:
-            info = _extract_info(
-                YoutubeDL,
-                url,
-                youtube_args,
-                cookie_file,
-            )
-        except DownloadError as primary_error:
-            if cookie_file is None:
-                raise
-            try:
-                info = _extract_info(
-                    YoutubeDL,
-                    url,
-                    cookie_youtube_args,
-                    cookie_file,
-                )
-            except DownloadError as cookie_context_error:
-                if _is_age_verification_required(cookie_context_error):
-                    raise cookie_context_error from primary_error
-                if _is_age_verification_required(primary_error):
-                    raise primary_error from None
-                try:
-                    info = _extract_info(
-                        YoutubeDL,
-                        url,
-                        dict(base_youtube_args),
-                    )
-                except DownloadError as anonymous_error:
-                    raise anonymous_error from cookie_context_error
+        info = _extract_info(
+            YoutubeDL,
+            url,
+            youtube_args,
+            cookie_file,
+        )
 
         selected = _choose_format(
             info.get("formats"),
@@ -365,7 +259,7 @@ def resolve_audio(request_json, runtime_path, cookie_directory):
         )
         stream_url = selected["url"]
         content_length = selected.get("filesize") or 0
-        stream_headers = dict(_DEFAULT_HTTP_HEADERS)
+        stream_headers = {}
         for source_headers in (
             info.get("http_headers") or {},
             selected.get("http_headers") or {},
