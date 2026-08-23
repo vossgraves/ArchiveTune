@@ -1,12 +1,12 @@
 [submodule "core"]
-	path = core
-	url = https://github.com/vossgraves/core.git
+        path = core
+        url = https://github.com/vossgraves/core.git
 [submodule "lyrics"]
-	path = lyrics
-	url = https://github.com/rukamori/lyrics.git
+        path = lyrics
+        url = https://github.com/4nx3b/lyrics.git
 [submodule "IconPack"]
-	path = IconPack
-	url = https://github.com/rukamori/IconPack
+        path = IconPack
+        url = https://github.com/rukamori/IconPack
 [submodule "morideobfuscator"]
-	path = morideobfuscator
-	url = https://github.com/4nx3b/morideobfuscator.git
+        path = morideobfuscator
+        url = https://github.com/4nx3b/morideobfuscator.git
