@@ -164,6 +164,10 @@ def is_runtime_archive_loaded():
     return _archive_loaded
 
 
+def prewarm_runtime(runtime_path):
+    _ensure_runtime(runtime_path)
+
+
 def _write_cookie_file(cookie_header, directory):
     if not cookie_header:
         return None
