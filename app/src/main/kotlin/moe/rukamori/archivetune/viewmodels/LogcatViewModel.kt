@@ -219,11 +219,14 @@ class LogcatViewModel
                 val persisted = appContext.dataStore.data.first()[LogcatPausedKey] ?: false
                 if (paused.value != persisted) paused.value = persisted
                 // Only start the logcat observation if we're NOT paused.
-                // Previously this unconditionally called observe() — which
-                // meant even when the user had paused logs before leaving
-                // the screen, re-entering would start the subprocess again.
+                // When paused, set loadState to Ready so the UI doesn't show
+                // an infinite loading spinner — observe() sets it to Loading
+                // at the start, and since we skip observe(), loadState stays
+                // at Loading forever.
                 if (!persisted) {
                     observe()
+                } else {
+                    loadState.value = LoadState.Ready
                 }
             }
         }
