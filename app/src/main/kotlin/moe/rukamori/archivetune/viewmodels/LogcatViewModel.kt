@@ -260,9 +260,18 @@ class LogcatViewModel
             // job (which tears down the in-flight ProcessBuilder via the
             // repository's `finally { process.destroy() }` cleanup) and
             // restart it when the user resumes.
+            //
+            // CRITICAL: when pausing, set loadState to Ready (not Loading)
+            // so the UI shows the current records instead of an infinite
+            // loading spinner. The observe() function sets loadState to
+            // Loading at the start — if we cancel the job while it's still
+            // in Loading state, the spinner stays forever. When resuming,
+            // observe() will set it back to Loading then Ready once the
+            // first batch arrives.
             if (newValue) {
                 observationJob?.cancel()
                 observationJob = null
+                loadState.value = LoadState.Ready
             } else {
                 observe()
             }

@@ -660,14 +660,17 @@ fun LyricsEnhanced(
     // and updates `currentLineIndexState`, which flows through the snapshotFlow
     // and triggers a normal (non-forced) scroll.
     val latestSyncedLyricsForScroll = rememberUpdatedState(syncedLyrics)
-    // KEY FIX: include `positionResetCounter` so the effect re-launches when
-    // the song repeats via REPEAT_MODE_ONE. Previously the effect kept using
-    // the old (now-detached) listState after a position-reset created a new
-    // listState at offset 0 — leaving the lyrics stuck at the top.
-    LaunchedEffect(lyricsSessionKey, isSynced, positionResetCounter) {
+    // Use rememberUpdatedState so the auto-scroll effect always reads the
+    // CURRENT listState without needing to re-launch. When positionResetCounter
+    // changes (song repeat), listState is recreated by the key() wrapper above —
+    // latestListState.value automatically points to the new one. This avoids
+    // the restart-and-lose-state problem that adding positionResetCounter to
+    // the effect keys caused (animation wouldn't start).
+    val latestListState = rememberUpdatedState(listState)
+    LaunchedEffect(lyricsSessionKey, isSynced) {
         if (!isSynced || latestSyncedLyricsForScroll.value.lines.isEmpty()) return@LaunchedEffect
         snapshotFlow {
-            listState.layoutInfo.viewportEndOffset > listState.layoutInfo.viewportStartOffset
+            latestListState.value.layoutInfo.viewportEndOffset > latestListState.value.layoutInfo.viewportStartOffset
         }.first { it }
 
         var forceNextScroll = true
@@ -685,13 +688,24 @@ fun LyricsEnhanced(
                     return@collectLatest
                 }
 
-                listState.scrollLyricIntoFocus(
+                latestListState.value.scrollLyricIntoFocus(
                     index = index,
                     animateToNearbyItem = !forceNextScroll,
                     force = forceNextScroll,
                 )
                 forceNextScroll = false
             }
+    }
+
+    // When the song repeats (positionResetCounter changes), reset the
+    // current line index so the auto-scroll effect force-scrolls to the
+    // first line of the repeated song. This is separate from the
+    // LaunchedEffect(lyricsSessionKey) reset because lyricsSessionKey
+    // doesn't change on REPEAT_MODE_ONE wraps.
+    LaunchedEffect(positionResetCounter) {
+        if (positionResetCounter > 0) {
+            currentLineIndexState.intValue = -1
+        }
     }
 
     BackHandler(enabled = isSelectionModeActive) {
