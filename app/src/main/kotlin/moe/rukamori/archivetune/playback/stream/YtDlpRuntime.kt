@@ -16,7 +16,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
-import moe.rukamori.archivetune.innertube.models.YouTubeClient
 import moe.rukamori.archivetune.morideobfuscator.ytdlp.YtDlpRuntimeStore
 import org.json.JSONObject
 import java.io.File
@@ -46,19 +45,16 @@ class YtDlpRuntime
                             .put("network_metered", request.networkMetered)
                             .put("pinned_format_id", request.pinnedFormatId)
                             .put("cookie", authState.cookie)
+                            .put("data_sync_id", authState.dataSyncId)
                             .put(
-                                "po_token_web_creator_player",
-                                authState.resolvePlayerPoToken(
-                                    YouTubeClient.WEB_CREATOR,
-                                    videoId = request.mediaId,
-                                ),
+                                "po_token_web_creator_gvs_session",
+                                authState.poTokenGvsSession,
                             )
                             .put(
-                                "po_token_web_creator_gvs",
-                                authState.resolveGvsPoToken(
-                                    YouTubeClient.WEB_CREATOR,
-                                    request.mediaId,
-                                ),
+                                "po_token_web_creator_gvs_video",
+                                authState.poTokenGvs?.takeIf {
+                                    authState.poTokenGvsVideoId == request.mediaId
+                                },
                             )
                             .toString()
                     val cookieDirectory = File(context.cacheDir, "yt_dlp_cookies").apply { mkdirs() }
@@ -86,7 +82,7 @@ class YtDlpRuntime
                             ) {
                                 YtDlpRuntimeStore.rollback(context)
                             }
-                            throw throwable
+                            throw throwable.asYtDlpExtractionFailure()
                         }
                     parseResponse(
                         response = response,
@@ -164,3 +160,17 @@ class YtDlpRuntime
             val HTTP_SCHEMES = setOf("http", "https")
         }
     }
+
+internal class YtDlpExtractionException(
+    cause: Throwable,
+) : Exception(cause.message, cause)
+
+private fun Throwable.asYtDlpExtractionFailure(): Throwable {
+    val isYouTubeDownloadError =
+        generateSequence(this) { it.cause }
+            .mapNotNull(Throwable::message)
+            .any { message ->
+                message.contains("DownloadError: ERROR: [youtube]", ignoreCase = true)
+            }
+    return if (isYouTubeDownloadError) YtDlpExtractionException(this) else this
+}
