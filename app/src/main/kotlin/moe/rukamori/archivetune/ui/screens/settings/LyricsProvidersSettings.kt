@@ -61,6 +61,7 @@ import moe.rukamori.archivetune.constants.LyricsProviderOrderKey
 import moe.rukamori.archivetune.constants.PreferredLyricsProvider
 import moe.rukamori.archivetune.constants.PrioritizeWordSyncedLyricsKey
 import moe.rukamori.archivetune.constants.deserializeLyricsProviderOrder
+import moe.rukamori.archivetune.ui.component.EditTextPreference
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
@@ -111,6 +112,10 @@ fun LyricsProvidersSettings(
         rememberPreference(key = EnablePaxsenixMusixmatchLyricsKey, defaultValue = true)
     val (enablePaxsenixYouTubeLyrics, onEnablePaxsenixYouTubeLyricsChange) =
         rememberPreference(key = EnablePaxsenixYouTubeLyricsKey, defaultValue = true)
+    val (paxsenixApiKey, onPaxsenixApiKeyChange) =
+        rememberPreference(key = PaxsenixApiKeyKey, defaultValue = "")
+    val (paxsenixEndpoint, onPaxsenixEndpointChange) =
+        rememberPreference(key = PaxsenixEndpointKey, defaultValue = "")
     val (enableUnisonLyrics, onEnableUnisonLyricsChange) =
         rememberPreference(key = EnableUnisonLyricsKey, defaultValue = true)
     val (enableTidalLyrics, onEnableTidalLyricsChange) =
@@ -310,6 +315,46 @@ fun LyricsProvidersSettings(
                         title = { Text(stringResource(R.string.paxsenix_stats)) },
                         icon = { Icon(painterResource(R.drawable.stats), null) },
                         onClick = { showPaxsenixStatsDialog = true },
+                        isEnabled = providerTogglesEnabled,
+                    )
+                }
+
+                // PaxSenix API key — user-configurable. When set, sent as
+                // "Authorization: Bearer <key>" on every Paxsenix API request.
+                // When blank, anonymous access is used (the default endpoint
+                // allows it).
+                item(visible = enablePaxsenixLyrics) {
+                    EditTextPreference(
+                        title = { Text(stringResource(R.string.paxsenix_api_key)) },
+                        description = if (paxsenixApiKey.isNotBlank()) {
+                            stringResource(R.string.paxsenix_api_key_set)
+                        } else {
+                            stringResource(R.string.paxsenix_api_key_not_set)
+                        },
+                        icon = { Icon(painterResource(R.drawable.token), null) },
+                        value = paxsenixApiKey,
+                        onValueChange = onPaxsenixApiKeyChange,
+                        isInputValid = { it.isBlank() || it.length >= 8 },
+                        isEnabled = providerTogglesEnabled,
+                    )
+                }
+
+                // PaxSenix endpoint override — user-configurable. When blank,
+                // the default (https://lyrics.paxsenix.org/) is used.
+                item(visible = enablePaxsenixLyrics) {
+                    EditTextPreference(
+                        title = { Text(stringResource(R.string.paxsenix_endpoint)) },
+                        description = paxsenixEndpoint.ifBlank {
+                            stringResource(R.string.paxsenix_endpoint_default)
+                        },
+                        icon = { Icon(painterResource(R.drawable.solar_server_linear), null) },
+                        value = paxsenixEndpoint,
+                        onValueChange = onPaxsenixEndpointChange,
+                        isInputValid = {
+                            it.isBlank() ||
+                                it.startsWith("http://") ||
+                                it.startsWith("https://")
+                        },
                         isEnabled = providerTogglesEnabled,
                     )
                 }

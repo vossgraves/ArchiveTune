@@ -697,13 +697,21 @@ fun LyricsEnhanced(
             }
     }
 
-    // When the song repeats (positionResetCounter changes), reset the
-    // current line index so the auto-scroll effect force-scrolls to the
-    // first line of the repeated song. This is separate from the
-    // LaunchedEffect(lyricsSessionKey) reset because lyricsSessionKey
-    // doesn't change on REPEAT_MODE_ONE wraps.
+    // When the song repeats (positionResetCounter changes), directly scroll
+    // the new listState to the top AND reset the current line index. This
+    // forces the auto-scroll effect to re-fire with forceNextScroll=true on
+    // the next emission (since currentLineIndex goes -1 -> valid, the
+    // distinctUntilChanged snapshotFlow will emit).
+    //
+    // We use the latestListState (rememberUpdatedState) so we always scroll
+    // the CURRENT listState instance — not a stale one from before the
+    // positionResetCounter change.
     LaunchedEffect(positionResetCounter) {
         if (positionResetCounter > 0) {
+            // Wait one frame so the key() wrapper has created the new listState
+            // and rememberUpdatedState has captured it.
+            withFrameNanos { }
+            latestListState.value.scrollToItem(0)
             currentLineIndexState.intValue = -1
         }
     }

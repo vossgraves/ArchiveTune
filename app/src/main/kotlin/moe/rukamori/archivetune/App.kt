@@ -358,6 +358,22 @@ class App :
                 }
         }
 
+        // Observe the user-configured Paxsenix API key + endpoint and apply
+        // them to PaxsenixLyrics. When the user changes the key in Settings
+        // → Lyrics → Providers → Paxsenix API key, this collector fires and
+        // PaxsenixLyrics.setApiKey()/setEndpoint() take effect immediately
+        // (the Ktor client reads these vars at request time via
+        // defaultRequest {}).
+        applicationScope.launch(Dispatchers.IO) {
+            dataStore.data
+                .map { (it[PaxsenixApiKeyKey] ?: "") to (it[PaxsenixEndpointKey] ?: "") }
+                .distinctUntilChanged()
+                .collect { (key, endpoint) ->
+                    PaxsenixLyrics.setApiKey(key)
+                    PaxsenixLyrics.setEndpoint(endpoint)
+                }
+        }
+
         applicationScope.launch(Dispatchers.IO) {
             dataStore.data
                 .map { it.toPlaybackAuthState() }
