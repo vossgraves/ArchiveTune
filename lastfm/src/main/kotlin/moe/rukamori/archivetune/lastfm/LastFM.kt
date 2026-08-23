@@ -27,7 +27,7 @@ import moe.rukamori.archivetune.lastfm.models.TopArtistsResponse
 import moe.rukamori.archivetune.lastfm.models.TopAlbumsResponse
 import moe.rukamori.archivetune.lastfm.models.TopTracksResponse
 import moe.rukamori.archivetune.lastfm.models.TokenResponse
-import moe.rukamori.archivetune.lastfm.models.UserInfo
+import moe.rukamori.archivetune.lastfm.models.UserInfoResponse
 import java.net.URI
 import java.security.MessageDigest
 
@@ -208,10 +208,10 @@ object LastFM {
      */
     suspend fun getUserInfo(username: String) =
         runCatching {
-            postAndDecode<UserInfo>(
+            postAndDecode<UserInfoResponse>(
                 method = "user.getInfo",
                 extra = mapOf("user" to username),
-            )
+            ).user
         }
 
     /**

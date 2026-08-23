@@ -439,7 +439,12 @@ fun LyricsEnhanced(
     var positionResetCounter by remember { mutableIntStateOf(0) }
     var isManualScrolling by remember { mutableStateOf(false) }
     var lastManualScrollTime by remember { mutableLongStateOf(0L) }
-    val listState = key(lyricsSessionKey, positionResetCounter) { rememberLazyListState() }
+    // Keep the scroll state for the whole lyrics session. Recreating it on a
+    // repeat makes the visible list jump to the top, but also disconnects the
+    // running auto-scroll collector from the list that the karaoke view is now
+    // rendering. Only the karaoke subtree needs to be recreated to clear the
+    // library's stale word-progress state.
+    val listState = key(lyricsSessionKey) { rememberLazyListState() }
 
     LaunchedEffect(lyricsSessionKey) {
         playbackPositionMs.longValue = player.currentPosition.coerceAtLeast(0L)
@@ -660,17 +665,14 @@ fun LyricsEnhanced(
     // and updates `currentLineIndexState`, which flows through the snapshotFlow
     // and triggers a normal (non-forced) scroll.
     val latestSyncedLyricsForScroll = rememberUpdatedState(syncedLyrics)
-    // Use rememberUpdatedState so the auto-scroll effect always reads the
-    // CURRENT listState without needing to re-launch. When positionResetCounter
-    // changes (song repeat), listState is recreated by the key() wrapper above —
-    // latestListState.value automatically points to the new one. This avoids
-    // the restart-and-lose-state problem that adding positionResetCounter to
-    // the effect keys caused (animation wouldn't start).
-    val latestListState = rememberUpdatedState(listState)
-    LaunchedEffect(lyricsSessionKey, isSynced) {
+    // Restart this collector after a repeat. The karaoke view is re-keyed at
+    // the same time, and the fresh collector resets its focus state before it
+    // observes the first new active line. Keeping listState stable means the
+    // collector always targets the list currently on screen.
+    LaunchedEffect(lyricsSessionKey, isSynced, positionResetCounter) {
         if (!isSynced || latestSyncedLyricsForScroll.value.lines.isEmpty()) return@LaunchedEffect
         snapshotFlow {
-            latestListState.value.layoutInfo.viewportEndOffset > latestListState.value.layoutInfo.viewportStartOffset
+            listState.layoutInfo.viewportEndOffset > listState.layoutInfo.viewportStartOffset
         }.first { it }
 
         var forceNextScroll = true
@@ -688,7 +690,7 @@ fun LyricsEnhanced(
                     return@collectLatest
                 }
 
-                latestListState.value.scrollLyricIntoFocus(
+                listState.scrollLyricIntoFocus(
                     index = index,
                     animateToNearbyItem = !forceNextScroll,
                     force = forceNextScroll,
@@ -697,21 +699,13 @@ fun LyricsEnhanced(
             }
     }
 
-    // When the song repeats (positionResetCounter changes), directly scroll
-    // the new listState to the top AND reset the current line index. This
-    // forces the auto-scroll effect to re-fire with forceNextScroll=true on
-    // the next emission (since currentLineIndex goes -1 -> valid, the
-    // distinctUntilChanged snapshotFlow will emit).
-    //
-    // We use the latestListState (rememberUpdatedState) so we always scroll
-    // the CURRENT listState instance — not a stale one from before the
-    // positionResetCounter change.
+    // Reset both the visible position and the tracked active line after a
+    // backward discontinuity. The re-keyed auto-scroll collector above then
+    // resumes from the first active line instead of remaining at the line from
+    // the prior play-through.
     LaunchedEffect(positionResetCounter) {
         if (positionResetCounter > 0) {
-            // Wait one frame so the key() wrapper has created the new listState
-            // and rememberUpdatedState has captured it.
-            withFrameNanos { }
-            latestListState.value.scrollToItem(0)
+            listState.scrollToItem(0)
             currentLineIndexState.intValue = -1
         }
     }

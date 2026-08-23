@@ -9117,10 +9117,11 @@ class MusicService :
             return null
         }
 
-        // Low Data Mode is an effective network policy, not a rewrite of the user's saved source
-        // order. On cellular/metered connections, bypass Tidal and Qobuz (including a per-song
-        // override) and let the normal YouTube resolver select its low-data stream.
-        if (lowDataModeActive) {
+        // Low Data Mode normally bypasses lossless sources, but it must not discard an exact
+        // Qobuz track the user explicitly selected in the Play from popup. That choice carries
+        // a concrete Qobuz track id and must not silently turn into a YouTube Opus stream on a
+        // metered network.
+        if (lowDataModeActive && !isDirectQobuzTrack) {
             tidalActiveMediaIds.remove(mediaId)
             Timber.tag("MusicService").i("Low-data mode active; skipping Tidal/Qobuz for %s", mediaId)
             return null
