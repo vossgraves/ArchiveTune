@@ -47,6 +47,13 @@ class YtDlpRuntime
                             .put("pinned_format_id", request.pinnedFormatId)
                             .put("cookie", authState.cookie)
                             .put(
+                                "po_token_web_creator_player",
+                                authState.resolvePlayerPoToken(
+                                    YouTubeClient.WEB_CREATOR,
+                                    videoId = request.mediaId,
+                                ),
+                            )
+                            .put(
                                 "po_token_web_creator_gvs",
                                 authState.resolveGvsPoToken(
                                     YouTubeClient.WEB_CREATOR,

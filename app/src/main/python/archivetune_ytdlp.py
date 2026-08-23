@@ -263,12 +263,19 @@ def resolve_audio(request_json, runtime_path, cookie_directory):
             "skip": ["hls", "dash", "translated_subs"],
         }
         if cookie_file:
-            youtube_args["player_client"] = ["default", "web_embedded"]
+            po_tokens = []
+            creator_player_token = request.get("po_token_web_creator_player")
+            if creator_player_token:
+                po_tokens.append(
+                    "web_creator.player+" + _normalize_po_token(creator_player_token)
+                )
             creator_gvs_token = request.get("po_token_web_creator_gvs")
             if creator_gvs_token:
-                youtube_args["po_token"] = [
+                po_tokens.append(
                     "web_creator.gvs+" + _normalize_po_token(creator_gvs_token)
-                ]
+                )
+            if po_tokens:
+                youtube_args["po_token"] = po_tokens
         url = "https://www.youtube.com/watch?v=" + request["media_id"]
         info = _extract_info(
             YoutubeDL,
