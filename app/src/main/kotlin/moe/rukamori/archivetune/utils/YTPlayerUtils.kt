@@ -298,13 +298,16 @@ object YTPlayerUtils {
             !authState.resolvePlayerPoToken(WEB_REMIX).isNullOrBlank() &&
             !authState.resolveGvsPoToken(WEB_REMIX).isNullOrBlank()
 
+    private fun hasWebGvsPoToken(authState: PlaybackAuthState, videoId: String): Boolean =
+        !authState.resolveGvsPoToken(WEB_REMIX, videoId).isNullOrBlank()
+
     private suspend fun mintWebPlaybackPoTokens(
         videoId: String,
         authState: PlaybackAuthState,
     ): PlaybackAuthState {
         val sessionId = authState.sessionId ?: return authState
         val tokenResult = BotGuardTokenGenerator.mintToken(videoId, sessionId) ?: return authState
-        return authState.withGeneratedPoTokens(tokenResult)
+        return authState.withGeneratedPoTokens(videoId, tokenResult)
     }
 
     suspend fun ensureWebPoTokensForSubtitles(videoId: String): PlaybackAuthState {
