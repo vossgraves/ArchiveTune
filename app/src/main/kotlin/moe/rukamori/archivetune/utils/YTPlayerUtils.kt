@@ -333,7 +333,6 @@ object YTPlayerUtils {
             !resolvedAuthState
                 .resolvePlayerPoToken(
                     client = WEB_REMIX,
-                    videoId = videoId,
                 ).isNullOrBlank()
         if (hasPlayerToken && !resolvedAuthState.poTokenGvs.isNullOrBlank()) {
             return resolvedAuthState
