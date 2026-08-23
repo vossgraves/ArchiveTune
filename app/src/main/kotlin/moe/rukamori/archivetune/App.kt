@@ -38,9 +38,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.constants.*
 import moe.rukamori.archivetune.deezer.DeezerAudioProvider
-import moe.rukamori.archivetune.downloads.DownloadedArtworkRepository
 import moe.rukamori.archivetune.extensions.*
-import moe.rukamori.archivetune.gatekeeper.RunGatekeeperCheckUseCase
 import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.innertube.models.YouTubeLocale
 import moe.rukamori.archivetune.kugou.KuGou
@@ -91,12 +89,6 @@ import kotlin.system.exitProcess
 class App :
     Application(),
     SingletonImageLoader.Factory {
-    @Inject
-    lateinit var runGatekeeperCheckUseCase: RunGatekeeperCheckUseCase
-
-    @Inject
-    lateinit var downloadedArtworkRepository: DownloadedArtworkRepository
-
     @Inject
     lateinit var ytDlpRuntime: YtDlpRuntime
 
