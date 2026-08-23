@@ -9029,13 +9029,24 @@ class MusicService :
         }.getOrNull()
         val directQobuzTrackId = SongSourceQobuzTrackId.get(qobuzTrackIdRaw, mediaId)
         val isDirectQobuzTrack = directQobuzTrackId != null
+        // Read the source override FRESH from DataStore — not from the stale
+        // PreferenceStore cache. The PreferenceStore collector is async and
+        // may not have received the write from setSongSourceOverride yet.
+        // This must use data.first() to see the latest value.
+        val sourceOverrideRaw = runCatching {
+            runBlocking { dataStore.data.first()[SongSourceOverrideKey] }
+        }.getOrNull()
         // Fast path: serve from the in-memory DirectStream cache if we have a
         // fresh entry. This makes "skip to next" instant when the next song
         // was prefetched (see prefetchNextMediaItemStream).
+        //
+        // SKIP the fast path entirely when a direct Qobuz track override is
+        // set — the user just picked a specific Qobuz track, so we must
+        // re-resolve through Qobuz even if a cached YouTube stream exists.
         val now = System.currentTimeMillis()
         val cached = directStreamCache[mediaId]
-        if (cached != null && cached.expiresAtMs > now) {
-            val override = SongSourceOverride.get(dataStore.get(SongSourceOverrideKey, ""), mediaId)
+        if (!isDirectQobuzTrack && cached != null && cached.expiresAtMs > now) {
+            val override = SongSourceOverride.get(sourceOverrideRaw, mediaId)
             val cacheHitsOverride = override == null || override == cached.stream.source
             if (cacheHitsOverride && !lowDataModeActive) {
                 Timber.tag("MusicService").d(
@@ -9074,7 +9085,7 @@ class MusicService :
         // lossless sources are still enabled. Instead we fall through to the full enabled
         // chain so a different lossless source can still win. The stale pin remains in
         // storage and will become effective again if the user re-enables the source.
-        val override = if (isDirectQobuzTrack) AudioSourceType.QOBUZ else SongSourceOverride.get(dataStore.get(SongSourceOverrideKey, ""), mediaId)
+        val override = if (isDirectQobuzTrack) AudioSourceType.QOBUZ else SongSourceOverride.get(sourceOverrideRaw, mediaId)
         val overrideStillEnabled =
             override == null ||
                 override == AudioSourceType.YOUTUBE ||
