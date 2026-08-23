@@ -45,6 +45,9 @@ import moe.rukamori.archivetune.kugou.KuGou
 import moe.rukamori.archivetune.lastfm.LastFM
 import moe.rukamori.archivetune.lyrics.JapaneseLanguagePackManager
 import moe.rukamori.archivetune.canvas.AppleMusicProvider
+import moe.rukamori.archivetune.morideobfuscator.ytdlp.YtDlpJavaScriptRuntime
+import moe.rukamori.archivetune.morideobfuscator.ytdlp.YtDlpRuntimeStore
+import moe.rukamori.archivetune.morideobfuscator.ytdlp.YtDlpUpdateScheduler
 import moe.rukamori.archivetune.paxsenix.PaxsenixLyrics
 import moe.rukamori.archivetune.scrobbling.LastFmServiceConfig
 import moe.rukamori.archivetune.storage.StorageFolderKind
@@ -110,6 +113,7 @@ class App :
             Timber.plant(Timber.DebugTree())
             return
         }
+        YtDlpJavaScriptRuntime.initialize(this)
         BotGuardTokenGenerator.initialize(this)
         PreferenceStore.start(this)
         JapaneseLanguagePackManager.initialize(this)

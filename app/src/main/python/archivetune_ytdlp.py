@@ -285,8 +285,10 @@ class _DiagnosticYtDlpLogger:
         self._authentication_status = None
         self._po_provider_available = False
         self._javascript_provider_available = False
+        self._javascript_provider_used = False
         self._javascript_failure = False
         self._playability_statuses = []
+        self._format_issues = []
 
     def debug(self, message):
         self._record(message)
@@ -310,13 +312,31 @@ class _DiagnosticYtDlpLogger:
         lowered = text.lower()
         if "pot:archivetune" in lowered or "authenticated gvs po token" in lowered:
             self._po_provider_available = True
-        if "javascript challenge providers" in lowered and "archivetune" in lowered:
+        if "js challenge providers" in lowered and "archivetune" in lowered:
             self._javascript_provider_available = True
+        if "solving js challenges using archivetune" in lowered:
+            self._javascript_provider_used = True
         if (
             "no supported javascript runtime" in lowered
             or "javascript challenge solving failed" in lowered
+            or "signature solving failed" in lowered
+            or "n challenge solving failed" in lowered
+            or "javascript challenge execution failed" in lowered
+            or (
+                "error solving" in lowered
+                and 'using "archivetune" provider' in lowered
+            )
         ):
             self._javascript_failure = True
+
+        for marker, issue in (
+            ("forcing sabr streaming", "sabr_only"),
+            ("formats have been skipped as they are missing a url", "missing_url"),
+            ("only images are available", "no_media_formats"),
+            ("formats require a gvs po token which was not provided", "missing_gvs_pot"),
+        ):
+            if marker in lowered and issue not in self._format_issues:
+                self._format_issues.append(issue)
 
         match = self._playability_pattern.search(text)
         if match and len(self._playability_statuses) < 8:
@@ -334,11 +354,18 @@ class _DiagnosticYtDlpLogger:
             "po_provider=" + ("archivetune" if self._po_provider_available else "not_used")
         )
         if self._javascript_failure:
-            diagnostics.append("javascript_challenge=failed")
+            javascript_status = "failed"
+        elif self._javascript_provider_used:
+            javascript_status = "archivetune"
         elif self._javascript_provider_available:
-            diagnostics.append("javascript_provider=archivetune")
+            javascript_status = "available_not_used"
+        else:
+            javascript_status = "not_available"
+        diagnostics.append("javascript_provider=" + javascript_status)
         if self._playability_statuses:
             diagnostics.append("playability=" + ",".join(self._playability_statuses))
+        if self._format_issues:
+            diagnostics.append("formats=" + ",".join(self._format_issues))
         return "; ".join(diagnostics)
 
 
