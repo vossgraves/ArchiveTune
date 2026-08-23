@@ -19,7 +19,11 @@ import kotlinx.serialization.json.JsonElement
  */
 @Serializable
 data class UserInfo(
-    val name: String,
+    // Last.fm occasionally omits `name` from the user.getInfo response
+    // (rate-limited / partial responses). Make it optional so the entire
+    // response doesn't fail to deserialize — callers already handle null
+    // via the `?: "—"` fallback on the dashboard.
+    val name: String? = null,
     val realname: String? = null,
     val url: String? = null,
     val image: List<UserImage>? = null,

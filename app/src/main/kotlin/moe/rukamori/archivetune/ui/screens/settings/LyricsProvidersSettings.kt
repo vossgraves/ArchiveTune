@@ -52,6 +52,8 @@ import moe.rukamori.archivetune.constants.EnablePaxsenixMusixmatchLyricsKey
 import moe.rukamori.archivetune.constants.EnablePaxsenixNeteaseLyricsKey
 import moe.rukamori.archivetune.constants.EnablePaxsenixSpotifyLyricsKey
 import moe.rukamori.archivetune.constants.EnablePaxsenixYouTubeLyricsKey
+import moe.rukamori.archivetune.constants.PaxsenixApiKeyKey
+import moe.rukamori.archivetune.constants.PaxsenixEndpointKey
 import moe.rukamori.archivetune.constants.EnableSimpMusicLyricsKey
 import moe.rukamori.archivetune.constants.EnableTidalLyricsKey
 import moe.rukamori.archivetune.constants.EnableDeezerLyricsKey
@@ -65,6 +67,7 @@ import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.PreferenceEntry
 import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.SwitchPreference
+import moe.rukamori.archivetune.ui.component.TextFieldDialog
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.ContentSettingsViewModel
@@ -111,6 +114,10 @@ fun LyricsProvidersSettings(
         rememberPreference(key = EnablePaxsenixMusixmatchLyricsKey, defaultValue = true)
     val (enablePaxsenixYouTubeLyrics, onEnablePaxsenixYouTubeLyricsChange) =
         rememberPreference(key = EnablePaxsenixYouTubeLyricsKey, defaultValue = true)
+    val (paxsenixApiKey, onPaxsenixApiKeyChange) =
+        rememberPreference(key = PaxsenixApiKeyKey, defaultValue = "")
+    val (paxsenixEndpoint, onPaxsenixEndpointChange) =
+        rememberPreference(key = PaxsenixEndpointKey, defaultValue = "")
     val (enableUnisonLyrics, onEnableUnisonLyricsChange) =
         rememberPreference(key = EnableUnisonLyricsKey, defaultValue = true)
     val (enableTidalLyrics, onEnableTidalLyricsChange) =
@@ -312,6 +319,63 @@ fun LyricsProvidersSettings(
                         onClick = { showPaxsenixStatsDialog = true },
                         isEnabled = providerTogglesEnabled,
                     )
+                }
+
+                // PaxSenix API key — user-configurable. When set, sent as
+                // "Authorization: Bearer <key>" on every Paxsenix API request.
+                // When blank, the built-in default key is used.
+                item(visible = enablePaxsenixLyrics) {
+                    var showApiKeyDialog by remember { mutableStateOf(false) }
+                    PreferenceEntry(
+                        title = { Text(stringResource(R.string.paxsenix_api_key)) },
+                        description = if (paxsenixApiKey.isNotBlank()) {
+                            stringResource(R.string.paxsenix_api_key_set)
+                        } else {
+                            stringResource(R.string.paxsenix_api_key_not_set)
+                        },
+                        icon = { Icon(painterResource(R.drawable.token), null) },
+                        onClick = { showApiKeyDialog = true },
+                        isEnabled = providerTogglesEnabled,
+                    )
+                    if (showApiKeyDialog) {
+                        TextFieldDialog(
+                            onDismiss = { showApiKeyDialog = false },
+                            title = { Text(stringResource(R.string.paxsenix_api_key)) },
+                            textFieldValue = paxsenixApiKey,
+                            onTextFieldValueChange = onPaxsenixApiKeyChange,
+                            singleLine = true,
+                            isInputValid = { it.isBlank() || it.length >= 8 },
+                        )
+                    }
+                }
+
+                // PaxSenix endpoint override — user-configurable. When blank,
+                // the default (https://lyrics.paxsenix.org/) is used.
+                item(visible = enablePaxsenixLyrics) {
+                    var showEndpointDialog by remember { mutableStateOf(false) }
+                    PreferenceEntry(
+                        title = { Text(stringResource(R.string.paxsenix_endpoint)) },
+                        description = paxsenixEndpoint.ifBlank {
+                            stringResource(R.string.paxsenix_endpoint_default)
+                        },
+                        icon = { Icon(painterResource(R.drawable.solar_server_linear), null) },
+                        onClick = { showEndpointDialog = true },
+                        isEnabled = providerTogglesEnabled,
+                    )
+                    if (showEndpointDialog) {
+                        TextFieldDialog(
+                            onDismiss = { showEndpointDialog = false },
+                            title = { Text(stringResource(R.string.paxsenix_endpoint)) },
+                            textFieldValue = paxsenixEndpoint,
+                            onTextFieldValueChange = onPaxsenixEndpointChange,
+                            singleLine = true,
+                            isInputValid = {
+                                it.isBlank() ||
+                                    it.startsWith("http://") ||
+                                    it.startsWith("https://")
+                            },
+                        )
+                    }
                 }
 
                 item(visible = enablePaxsenixLyrics) {

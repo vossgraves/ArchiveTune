@@ -212,6 +212,13 @@ val EnablePaxsenixNeteaseLyricsKey = booleanPreferencesKey("enablePaxsenixNeteas
 val EnablePaxsenixSpotifyLyricsKey = booleanPreferencesKey("enablePaxsenixSpotifyLyrics")
 val EnablePaxsenixMusixmatchLyricsKey = booleanPreferencesKey("enablePaxsenixMusixmatchLyrics")
 val EnablePaxsenixYouTubeLyricsKey = booleanPreferencesKey("enablePaxsenixYouTubeLyrics")
+// User-configurable PaxSenix API key. When blank, PaxsenixLyrics falls
+// back to the default (no-auth) behavior. When set, it's sent as an
+// Authorization: Bearer header on every Paxsenix API request.
+val PaxsenixApiKeyKey = stringPreferencesKey("paxsenixApiKey")
+// User-configurable PaxSenix endpoint override. When blank, the default
+// endpoint is used. When set, all Paxsenix API requests go to this URL.
+val PaxsenixEndpointKey = stringPreferencesKey("paxsenixEndpoint")
 val EnableUnisonLyricsKey = booleanPreferencesKey("enableUnisonLyrics")
 val EnableTidalLyricsKey = booleanPreferencesKey("enableTidalLyrics")
 val EnableDeezerLyricsKey = booleanPreferencesKey("enableDeezerLyrics")

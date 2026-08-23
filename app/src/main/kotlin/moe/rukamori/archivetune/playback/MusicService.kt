@@ -8632,10 +8632,17 @@ class MusicService :
         // specific Qobuz track from the "Play from" source-search popup). When
         // set, the Qobuz resolver downloads the exact track instead of
         // re-searching by title+artist.
-        val directQobuzTrackId = SongSourceQobuzTrackId.get(
-            dataStore.get(SongSourceQobuzTrackIdKey, ""),
-            mediaId,
-        )
+        //
+        // IMPORTANT: read directly from dataStore.data.first() instead of the
+        // cached dataStore.get(). The cached PreferenceStore._prefs may be
+        // stale right after setSongSourceOverrideWithQobuzTrackId wrote the
+        // new trackId — the PreferenceStore collector is async and may not
+        // have received the emission yet. Reading from data.first() guarantees
+        // we see the write that just happened.
+        val qobuzTrackIdRaw = runCatching {
+            runBlocking { dataStore.data.first()[SongSourceQobuzTrackIdKey] }
+        }.getOrNull()
+        val directQobuzTrackId = SongSourceQobuzTrackId.get(qobuzTrackIdRaw, mediaId)
         return SourceQuery(mediaId, title, artists, album, durationMs, directQobuzTrackId)
     }
 
@@ -8818,101 +8825,6 @@ class MusicService :
         source: AudioSourceType?,
     ) {
         setSongSourceOverrideInternal(mediaId, source, qobuzTrackId = null)
-    }
-
-    /**
-     * Replaces the currently-playing media item with [newMediaItem] while
-     * preserving the rest of the queue. Used when the user picks a specific
-     * track from the "Play from" source-search popup — the track CHANGES
-     * (new audio + new metadata) but the queue stays intact.
-     *
-     * The old mediaId's most recent history Event is deleted to avoid a
-     * duplicate in "recently listened" — the old entry is removed and the
-     * new track's entry takes its place at the top.
-     *
-     * For Qobuz: pass [qobuzTrackId] so the resolver downloads the exact
-     * Qobuz track (not a title/artist search that could match a different
-     * master / deluxe edition).
-     */
-    fun replaceCurrentMediaItemWithSourceTrack(
-        newMediaItem: MediaItem,
-        source: AudioSourceType,
-        qobuzTrackId: String? = null,
-    ) {
-        val currentIndex = player.currentMediaItemIndex
-        val allItems = ArrayList(player.mediaItems)
-        if (currentIndex !in allItems.indices) return
-
-        val oldMediaId = allItems[currentIndex].mediaId
-        val newMediaId = newMediaItem.mediaId
-
-        // Persist the source override for the NEW mediaId so the resolver
-        // resolves through the picked source on first attempt.
-        runCatching {
-            runBlocking {
-                dataStore.edit { prefs ->
-                    prefs[SongSourceOverrideKey] =
-                        SongSourceOverride.withOverride(prefs[SongSourceOverrideKey], newMediaId, source)
-                    if (qobuzTrackId != null) {
-                        prefs[SongSourceQobuzTrackIdKey] = SongSourceQobuzTrackId.withOverride(
-                            prefs[SongSourceQobuzTrackIdKey], newMediaId, qobuzTrackId,
-                        )
-                    }
-                    // Clear the old mediaId's override so it doesn't
-                    // interfere if the user navigates back to it.
-                    prefs[SongSourceOverrideKey] =
-                        SongSourceOverride.withOverride(prefs[SongSourceOverrideKey], oldMediaId, null)
-                    prefs[SongSourceQobuzTrackIdKey] = SongSourceQobuzTrackId.withOverride(
-                        prefs[SongSourceQobuzTrackIdKey], oldMediaId, null,
-                    )
-                }
-            }
-        }
-
-        // Evict all caches for BOTH the old and new mediaId so the resolver
-        // starts fresh.
-        listOf(oldMediaId, newMediaId).forEach { id ->
-            playbackUrlCache.remove(id)
-            YTPlayerUtils.invalidateCachedStreamUrls(id)
-            tidalActiveMediaIds.remove(id)
-            directStreamCache.remove(id)
-            contentLengthCache.remove(id)
-            runCatching { playerCache.removeResource(id) }
-            runCatching { downloadCache.removeResource(id) }
-            AudioSourceType.entries.forEach { src ->
-                val key = sourceCacheKey(src, id)
-                runCatching { playerCache.removeResource(key) }
-                runCatching { downloadCache.removeResource(key) }
-                contentLengthCache.remove(key)
-            }
-        }
-
-        // Cancel any in-flight crossfade.
-        cancelCrossfade(resetVolume = true, resetPauseAtEnd = true)
-        ensureAudioFocusForActivePlayback()
-
-        // Swap the current media item — preserves the rest of the queue.
-        allItems[currentIndex] = newMediaItem
-        player.setMediaItems(allItems, currentIndex, 0L)
-        player.prepare()
-        player.playWhenReady = true
-        updateAudiblePlaybackRecovery()
-
-        // Delete the old mediaId's most recent history Event so the user
-        // doesn't see a duplicate in "recently listened". The old Event is
-        // from the current playback session — it hasn't been recorded yet
-        // (the history threshold timer hasn't fired), so there's nothing to
-        // delete in practice. But if the threshold already fired (e.g., the
-        // user listened for >threshold before switching), we clean up the
-        // stale entry.
-        scope.launch(Dispatchers.IO) {
-            runCatching {
-                database.withTransaction {
-                    // Delete the most recent Event for the old mediaId.
-                    database.deleteMostRecentEventForSong(oldMediaId)
-                }
-            }
-        }
     }
 
     /**
@@ -9109,18 +9021,32 @@ class MusicService :
         // The mediaId is NOT changed (it stays as the song's existing YouTube
         // id), so the song is not registered as a duplicate in the playback
         // history.
-        val directQobuzTrackId = SongSourceQobuzTrackId.get(
-            dataStore.get(SongSourceQobuzTrackIdKey, ""),
-            mediaId,
-        )
+        //
+        // IMPORTANT: read directly from dataStore.data.first() instead of the
+        // cached dataStore.get() — see buildSourceQuery for the rationale.
+        val qobuzTrackIdRaw = runCatching {
+            runBlocking { dataStore.data.first()[SongSourceQobuzTrackIdKey] }
+        }.getOrNull()
+        val directQobuzTrackId = SongSourceQobuzTrackId.get(qobuzTrackIdRaw, mediaId)
         val isDirectQobuzTrack = directQobuzTrackId != null
+        // Read the source override FRESH from DataStore — not from the stale
+        // PreferenceStore cache. The PreferenceStore collector is async and
+        // may not have received the write from setSongSourceOverride yet.
+        // This must use data.first() to see the latest value.
+        val sourceOverrideRaw = runCatching {
+            runBlocking { dataStore.data.first()[SongSourceOverrideKey] }
+        }.getOrNull()
         // Fast path: serve from the in-memory DirectStream cache if we have a
         // fresh entry. This makes "skip to next" instant when the next song
         // was prefetched (see prefetchNextMediaItemStream).
+        //
+        // SKIP the fast path entirely when a direct Qobuz track override is
+        // set — the user just picked a specific Qobuz track, so we must
+        // re-resolve through Qobuz even if a cached YouTube stream exists.
         val now = System.currentTimeMillis()
         val cached = directStreamCache[mediaId]
-        if (cached != null && cached.expiresAtMs > now) {
-            val override = SongSourceOverride.get(dataStore.get(SongSourceOverrideKey, ""), mediaId)
+        if (!isDirectQobuzTrack && cached != null && cached.expiresAtMs > now) {
+            val override = SongSourceOverride.get(sourceOverrideRaw, mediaId)
             val cacheHitsOverride = override == null || override == cached.stream.source
             if (cacheHitsOverride && !lowDataModeActive) {
                 Timber.tag("MusicService").d(
@@ -9159,7 +9085,7 @@ class MusicService :
         // lossless sources are still enabled. Instead we fall through to the full enabled
         // chain so a different lossless source can still win. The stale pin remains in
         // storage and will become effective again if the user re-enables the source.
-        val override = if (isDirectQobuzTrack) AudioSourceType.QOBUZ else SongSourceOverride.get(dataStore.get(SongSourceOverrideKey, ""), mediaId)
+        val override = if (isDirectQobuzTrack) AudioSourceType.QOBUZ else SongSourceOverride.get(sourceOverrideRaw, mediaId)
         val overrideStillEnabled =
             override == null ||
                 override == AudioSourceType.YOUTUBE ||
