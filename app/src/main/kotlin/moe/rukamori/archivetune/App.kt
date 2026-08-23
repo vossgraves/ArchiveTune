@@ -49,6 +49,7 @@ import moe.rukamori.archivetune.morideobfuscator.ytdlp.YtDlpJavaScriptRuntime
 import moe.rukamori.archivetune.morideobfuscator.ytdlp.YtDlpRuntimeStore
 import moe.rukamori.archivetune.morideobfuscator.ytdlp.YtDlpUpdateScheduler
 import moe.rukamori.archivetune.paxsenix.PaxsenixLyrics
+import moe.rukamori.archivetune.playback.stream.YtDlpRuntime
 import moe.rukamori.archivetune.scrobbling.LastFmServiceConfig
 import moe.rukamori.archivetune.storage.StorageFolderKind
 import moe.rukamori.archivetune.storage.StorageLocationRepository
@@ -88,6 +89,15 @@ import kotlin.system.exitProcess
 class App :
     Application(),
     SingletonImageLoader.Factory {
+    @Inject
+    lateinit var runGatekeeperCheckUseCase: RunGatekeeperCheckUseCase
+
+    @Inject
+    lateinit var downloadedArtworkRepository: DownloadedArtworkRepository
+
+    @Inject
+    lateinit var ytDlpRuntime: YtDlpRuntime
+
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     @Volatile private var isInitialized = false
@@ -200,6 +210,10 @@ class App :
     }
 
     private fun initializeDeferredAsync() {
+        applicationScope.launch(Dispatchers.IO) {
+            ytDlpRuntime.preWarm()
+        }
+
         applicationScope.launch(Dispatchers.IO) {
             try {
                 val prefs = dataStore.data.first()
