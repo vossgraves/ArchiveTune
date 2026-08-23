@@ -263,6 +263,7 @@ def resolve_audio(request_json, runtime_path, cookie_directory):
             "skip": ["hls", "dash", "translated_subs"],
         }
         if cookie_file:
+            youtube_args["player_client"] = ["default", "web_embedded"]
             creator_gvs_token = request.get("po_token_web_creator_gvs")
             if creator_gvs_token:
                 youtube_args["po_token"] = [
