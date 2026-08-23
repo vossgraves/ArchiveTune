@@ -309,9 +309,7 @@ object YTPlayerUtils {
 
     suspend fun ensureWebPoTokensForSubtitles(videoId: String): PlaybackAuthState {
         var authState = YouTube.currentPlaybackAuthState()
-        if (!authState.poTokenGvs.isNullOrBlank() && !authState.poTokenPlayer.isNullOrBlank()) {
-            return authState
-        }
+        if (!authState.resolveSubsPoToken(WEB_REMIX, videoId).isNullOrBlank()) return authState
 
         if (authState.sessionId.isNullOrBlank()) {
             authState =
@@ -333,8 +331,9 @@ object YTPlayerUtils {
             !resolvedAuthState
                 .resolvePlayerPoToken(
                     client = WEB_REMIX,
+                    videoId = videoId,
                 ).isNullOrBlank()
-        if (hasPlayerToken && !resolvedAuthState.poTokenGvs.isNullOrBlank()) {
+        if (hasPlayerToken && !resolvedAuthState.resolveGvsPoToken(WEB_REMIX, videoId).isNullOrBlank()) {
             return resolvedAuthState
         }
 
