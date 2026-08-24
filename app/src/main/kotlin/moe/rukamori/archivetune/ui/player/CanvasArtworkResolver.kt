@@ -69,7 +69,11 @@ internal suspend fun resolveCanvasArtworkForPlayback(
         if (trySpotifyCanvas && strictIdentity) {
             val spotifyCanvas =
                 runCatching {
-                    SpotifyCanvasProvider.getByVideoId(mediaId)
+                    SpotifyCanvasProvider.getByVideoId(
+                        videoId = mediaId,
+                        songTitle = songTitleRaw,
+                        artistName = artistNameRaw,
+                    )
                 }.onFailure { throwable ->
                     Timber.tag(CanvasArtworkLogTag).w(throwable, "Spotify Canvas lookup failed for %s", mediaId)
                 }.getOrNull()
@@ -222,8 +226,13 @@ internal suspend fun fetchAllCanvasSourcesForSong(
     // Spotify Canvas lookup (by video ID) — only for YouTube media (not local/Telegram).
     val spotifyDeferred = async {
         if (strictIdentity && mediaId.isNotBlank()) {
-            runCatching { SpotifyCanvasProvider.getByVideoId(mediaId) }
-                .getOrNull()
+            runCatching {
+                SpotifyCanvasProvider.getByVideoId(
+                    videoId = mediaId,
+                    songTitle = songTitleRaw,
+                    artistName = artistNameRaw,
+                )
+            }.getOrNull()
                 ?.takeIf { it.hasRequiredCanvasVariant(requireVertical = false) }
         } else {
             null

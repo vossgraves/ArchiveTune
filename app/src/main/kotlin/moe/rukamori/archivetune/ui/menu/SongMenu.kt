@@ -365,7 +365,13 @@ fun SongMenu(
                     }
                 }
                 if (spotifyCanvasEnabled && !song.song.isLocal) {
-                    runCatching { SpotifyCanvasProvider.getByVideoId(song.id) }
+                    runCatching {
+                        SpotifyCanvasProvider.getByVideoId(
+                            videoId = song.id,
+                            songTitle = title,
+                            artistName = artist,
+                        )
+                    }
                         .getOrNull()
                         ?.let { artwork ->
                             artwork.preferredAnimationUrl?.takeIf { it.isNotBlank() }?.let { url ->

@@ -45,12 +45,14 @@ import moe.rukamori.archivetune.kugou.KuGou
 import moe.rukamori.archivetune.lastfm.LastFM
 import moe.rukamori.archivetune.lyrics.JapaneseLanguagePackManager
 import moe.rukamori.archivetune.canvas.AppleMusicProvider
+import moe.rukamori.archivetune.canvas.SpotifyCanvasProvider
 import moe.rukamori.archivetune.morideobfuscator.ytdlp.YtDlpJavaScriptRuntime
 import moe.rukamori.archivetune.morideobfuscator.ytdlp.YtDlpRuntimeStore
 import moe.rukamori.archivetune.morideobfuscator.ytdlp.YtDlpUpdateScheduler
 import moe.rukamori.archivetune.paxsenix.PaxsenixLyrics
 import moe.rukamori.archivetune.playback.stream.YtDlpRuntime
 import moe.rukamori.archivetune.scrobbling.LastFmServiceConfig
+import moe.rukamori.archivetune.spotify.Spotify
 import moe.rukamori.archivetune.storage.StorageFolderKind
 import moe.rukamori.archivetune.storage.StorageLocationRepository
 import moe.rukamori.archivetune.tidal.TidalAudioProvider
@@ -169,6 +171,23 @@ class App :
         // as `I/System.out:` with no tag/level, bypassing the in-app log viewer.
         AppleMusicProvider.logger = { level, tag, message ->
             moe.rukamori.archivetune.utils.GlobalLog.append(level, tag, message)
+        }
+
+        // Spotify Canvas. The canvas module deliberately has no dependency on the
+        // app's Spotify code, so it takes the access token and the song → Spotify
+        // track mapping as injected callbacks. Both yield null when the user has
+        // no Spotify session, in which case the provider falls back to the
+        // kouzu.in resolver on its own.
+        SpotifyCanvasProvider.logger = { message ->
+            moe.rukamori.archivetune.utils.GlobalLog.append(
+                android.util.Log.INFO,
+                "SpotifyCanvas",
+                message,
+            )
+        }
+        SpotifyCanvasProvider.tokenProvider = { Spotify.accessToken }
+        SpotifyCanvasProvider.trackUriResolver = { _, title, artist ->
+            resolveSpotifyTrackUri(title, artist)
         }
 
         // Pre-warm the Apple Music web player JWT on startup so the first
@@ -571,6 +590,62 @@ internal data class ImageDiskCacheConfig(
     val policy: CachePolicy,
     val maxSizeBytes: Long,
 )
+
+/**
+ * Maps a now-playing song to its `spotify:track:<id>` URI so [SpotifyCanvasProvider]
+ * can ask Spotify for the track's Canvas.
+ *
+ * Returns null when the user has no Spotify session, when there is nothing to
+ * search on, or when no result looks like the same song. The artist check matters:
+ * an unrelated track's canvas is worse than no canvas, and the search is a plain
+ * text match that will happily return a cover or a remix.
+ *
+ * Callers are rate-limited by [SpotifyCanvasProvider]'s own one-hour result cache,
+ * so this runs at most once per song per hour.
+ */
+private suspend fun resolveSpotifyTrackUri(
+    title: String?,
+    artist: String?,
+): String? {
+    if (!Spotify.isAuthenticated()) return null
+    val cleanTitle = title?.trim().orEmpty()
+    val cleanArtist = artist?.trim().orEmpty()
+    if (cleanTitle.isBlank()) return null
+
+    val query = listOf(cleanTitle, cleanArtist).filter { it.isNotBlank() }.joinToString(" ")
+    val tracks =
+        Spotify
+            .search(query = query, types = listOf("track"), limit = 5)
+            .getOrNull()
+            ?.tracks
+            ?.items
+            .orEmpty()
+    if (tracks.isEmpty()) return null
+
+    fun matchesTitle(name: String): Boolean =
+        name.equals(cleanTitle, ignoreCase = true) ||
+            name.contains(cleanTitle, ignoreCase = true) ||
+            cleanTitle.contains(name, ignoreCase = true)
+
+    fun matchesArtist(names: List<String>): Boolean =
+        cleanArtist.isBlank() ||
+            names.any { candidate ->
+                candidate.isNotBlank() &&
+                    (
+                        candidate.equals(cleanArtist, ignoreCase = true) ||
+                            candidate.contains(cleanArtist, ignoreCase = true) ||
+                            cleanArtist.contains(candidate, ignoreCase = true)
+                    )
+            }
+
+    val match =
+        tracks.firstOrNull { track ->
+            matchesTitle(track.name) && matchesArtist(track.artists.map { it.name })
+        } ?: return null
+
+    return match.uri?.takeIf { it.startsWith("spotify:track:") }
+        ?: match.id.takeIf { it.isNotBlank() }?.let { "spotify:track:$it" }
+}
 
 internal fun resolveImageDiskCacheConfig(maxImageCacheSizeMb: Int?): ImageDiskCacheConfig {
     val sizeMb = maxImageCacheSizeMb ?: 512

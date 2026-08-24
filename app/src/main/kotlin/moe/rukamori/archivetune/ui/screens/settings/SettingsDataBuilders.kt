@@ -183,6 +183,108 @@ fun buildSettingsGroups(
                 SettingsChild("Grid layout", "grid_layout", listOf("grid", "layout", "list view", "artist grid")),
                 SettingsChild("Show home category chips", "show_home_category_chips", listOf("home chips", "category chips", "home category", "chips")) { SearchResultSwitch(ShowHomeCategoryChipsKey, false) },
                 SettingsChild("Language", "app_language", listOf("language", "app language", "locale")),
+                SettingsChild("UI scale", "ui_scale", listOf("ui scale", "scale", "zoom", "interface size", "display size", "bigger", "smaller")),
+                SettingsChild("Custom font", "custom_font", listOf("custom font", "font file", "typeface", "own font")),
+                SettingsChild("Backdrop blur amount", "backdrop_blur_amount", listOf("backdrop blur amount", "backdrop intensity", "background blur amount")),
+                SettingsChild("Customized background", "customized_background", listOf("customized background", "custom background", "background image", "wallpaper")),
+                SettingsChild("Tablet mode", "tablet_mode", listOf("tablet mode", "tablet", "large screen", "landscape layout")),
+                SettingsChild("Minimal mode", "minimal_home_mode", listOf("minimal mode", "minimal home", "simple home", "clean home")),
+                SettingsChild("Change default library chip", "default_lib_chips", listOf("library chip", "default chip", "library filter", "default library tab")),
+                SettingsChild("Liquid Glass effects", "liquid_glass_effects", listOf("liquid glass", "glass effects", "header glass", "mini player glass")),
+                SettingsChild("Theme creator", "theme_creator", listOf("theme creator", "create theme", "custom theme", "make theme")),
+                SettingsChild("Palette picker", "palette_picker", listOf("palette picker", "pick palette", "choose palette", "custom palette")),
+                SettingsChild("Extras", "extras", listOf("extras", "appearance extras", "home cards", "hide cards", "more appearance")),
+            ),
+        )
+    // Appearance → Extras sub-page. Hidden from the main list (it is reached through
+    // Appearance) but every toggle on it stays searchable.
+    val appearanceExtras =
+        SettingsItem(
+            key = "appearance_extras",
+            icon = painterResource(R.drawable.palette),
+            title = "Appearance extras",
+            subtitle = "Home and library card visibility",
+            accentColor = MaterialTheme.colorScheme.secondary,
+            keywords = listOf("extras", "appearance extras", "home cards", "hide cards", "library cards", "quick picks cards"),
+            onClick = { navController.navigate("settings/appearance/extras") },
+            hidden = true,
+            children = listOf(
+                SettingsChild("Show home category chips", "show_home_category_chips", listOf("home chips", "category chips", "home category", "chips")) { SearchResultSwitch(ShowHomeCategoryChipsKey, false) },
+                SettingsChild("Show tags in library", "show_tags_in_library", listOf("tags", "library tags", "show tags")),
+                SettingsChild("Hide Liked songs card", "hide_liked_songs_card", listOf("hide liked songs", "liked songs card", "favourites card", "hide card")),
+                SettingsChild("Hide Offline card", "hide_offline_card", listOf("hide offline", "offline card", "downloaded card", "hide card")),
+                SettingsChild("Hide Cached card", "hide_cached_card", listOf("hide cached", "cached card", "cache card", "hide card")),
+                SettingsChild("Hide Local Files card", "hide_local_files_card", listOf("hide local files", "local files card", "local card", "hide card")),
+                SettingsChild("Hide My top 50 card", "hide_top50_card", listOf("hide top 50", "top 50 card", "my top 50", "hide card")),
+            ),
+        )
+    // Appearance → AOD customization. Entirely absent from the search index before,
+    // so none of these 17 settings could be found by name.
+    val aodCustomization =
+        SettingsItem(
+            key = "aod",
+            icon = painterResource(R.drawable.palette),
+            title = "AOD customization",
+            subtitle = "Always-on display layout and style",
+            accentColor = MaterialTheme.colorScheme.secondary,
+            keywords = listOf("aod", "always on display", "always-on display", "lockscreen", "screensaver", "idle screen", "ambient display"),
+            onClick = { navController.navigate("settings/appearance/aod_customized") },
+            hidden = true,
+            children = listOf(
+                SettingsChild("Show thumbnail", "aod_customize_show_thumbnail", listOf("aod thumbnail", "always on display artwork", "aod cover", "aod show thumbnail")),
+                SettingsChild("Show artist", "aod_customize_show_artist", listOf("aod artist", "always on display artist", "aod show artist")),
+                SettingsChild("Show album", "aod_customize_show_album", listOf("aod album", "always on display album", "aod show album")),
+                SettingsChild("Show progress", "aod_customize_show_progress", listOf("aod progress", "aod progress bar", "always on display progress")),
+                SettingsChild("Show time labels", "aod_customize_show_time_labels", listOf("aod time", "aod timestamps", "aod time labels", "always on display time")),
+                SettingsChild("Show controls", "aod_customize_show_controls", listOf("aod controls", "aod buttons", "always on display controls")),
+                SettingsChild("Show exit button", "aod_customize_show_exit_button", listOf("aod exit", "aod close button", "leave aod")),
+                SettingsChild("Show lyrics", "aod_customize_show_lyrics", listOf("aod lyrics", "always on display lyrics", "aod show lyrics")),
+                SettingsChild("Background style", "aod_customize_background_style", listOf("aod background", "aod background style", "always on display background")),
+                SettingsChild("Accent style", "aod_customize_accent_style", listOf("aod accent", "aod accent style", "aod color")),
+                SettingsChild("Content position", "aod_customize_content_position", listOf("aod position", "aod content position", "aod layout")),
+                SettingsChild("Text alignment", "aod_customize_text_alignment", listOf("aod text alignment", "aod align", "aod centre", "aod center")),
+                SettingsChild("Slider style", "aod_customize_slider_style", listOf("aod slider", "aod slider style", "aod progress style")),
+                SettingsChild("Artwork glow", "aod_customize_artwork_glow", listOf("aod glow", "artwork glow", "aod artwork glow", "ambient glow")),
+                SettingsChild("Control style", "aod_customize_control_style", listOf("aod control style", "aod button style")),
+                SettingsChild("Enter AOD when screen dims", "aod_customize_auto_on_screen_dim", listOf("auto aod", "aod on dim", "automatic aod", "screen dim aod")),
+            ),
+        )
+    // Appearance → Navigation bar customization.
+    val navigationBar =
+        SettingsItem(
+            key = "navigation_bar",
+            icon = painterResource(R.drawable.palette),
+            title = "Navigation bar",
+            subtitle = "Navigation bar style and dimensions",
+            accentColor = MaterialTheme.colorScheme.secondary,
+            keywords = listOf("navigation bar", "nav bar", "bottom bar", "tab bar", "navbar"),
+            onClick = { navController.navigate("settings/appearance/navigation_bar") },
+            hidden = true,
+            children = listOf(
+                SettingsChild("Navigation bar style", "navigation_bar_style", listOf("navigation bar style", "nav bar style", "bottom bar style")),
+                SettingsChild("Frosted navigation bar", "navigation_bar_frosted_blur", listOf("frosted nav", "frosted navigation", "frosted blur")) { SearchResultSwitch(NavigationBarFrostedBlurKey, false) },
+                SettingsChild("Tint frosted navigation bar", "navigation_bar_tint_frosted_blur", listOf("tint frosted", "tint nav bar", "frosted tint", "coloured nav bar")),
+                SettingsChild("Liquid Glass navigation bar", "liquid_glass_nav_bar", listOf("liquid glass nav", "glass navigation", "liquid nav")) { SearchResultSwitch(LiquidGlassNavBarEnabledKey, false) },
+                SettingsChild("Hide labels in navigation bar", "hide_navigation_bar_labels", listOf("hide labels", "navigation labels", "nav labels", "icons only")) { SearchResultSwitch(HideNavigationBarLabelsKey, false) },
+                SettingsChild("Navigation bar dimensions", "navigation_bar_dimensions", listOf("nav bar height", "nav bar width", "nav bar opacity", "nav bar corner radius", "nav bar label spacing", "nav bar size")),
+            ),
+        )
+    // Appearance → Lyrics animations.
+    val lyricsAnimations =
+        SettingsItem(
+            key = "lyrics_animations",
+            icon = painterResource(R.drawable.lyrics),
+            title = "Lyrics animations",
+            subtitle = "Lyrics motion and transitions",
+            accentColor = MaterialTheme.colorScheme.secondary,
+            keywords = listOf("lyrics animation", "lyrics animations", "lyrics motion", "lyrics transition", "karaoke animation"),
+            onClick = { navController.navigate("settings/appearance/lyrics_animations") },
+            hidden = true,
+            children = listOf(
+                SettingsChild("Lyrics animation style", "lyrics_animation_style", listOf("lyrics animation style", "lyrics motion", "lyrics transition")),
+                SettingsChild("Lyrics scale animation", "lyrics_scale_animation", listOf("lyrics scale", "lyrics zoom", "lyrics grow")),
+                SettingsChild("Lyrics glow animation", "lyrics_glow_animation", listOf("lyrics glow", "lyrics shine", "lyrics highlight")),
+                SettingsChild("Lyrics fade animation", "lyrics_fade_animation", listOf("lyrics fade", "lyrics opacity animation")),
             ),
         )
     val playback =
@@ -218,6 +320,87 @@ fun buildSettingsGroups(
                 SettingsChild("Wakelock", "wakelock", listOf("wakelock", "wake lock", "keep awake", "cpu")) { SearchResultSwitch(WakelockKey, false) },
                 SettingsChild("Artist separators", "artist_separators", listOf("artist", "separator", "split", "featuring")),
                 SettingsChild("Manage playlist tags", "manage_playlist_tags", listOf("playlist tags", "tag management", "organize playlists")),
+                SettingsChild("Audio quality", "audio_quality", listOf("audio quality", "quality", "bitrate", "sound quality", "streaming quality", "high quality")),
+                SettingsChild("Artwork priority", "artwork_priority", listOf("artwork priority", "artwork order", "cover priority", "artwork provider order", "artwork source order")),
+                SettingsChild("Preferred sources", "preferred_sources", listOf("preferred sources", "source priority", "source order", "audio source order", "which source first")),
+                SettingsChild("Auto choose playback client", "auto_choose_playback_client", listOf("auto choose client", "playback client auto", "automatic client", "client selection")),
+                SettingsChild("Playback client", "player_stream_client", listOf("playback client", "stream client", "player client", "innertube client", "android vr", "ios client", "web client")),
+                SettingsChild("Skip gapless albums", "crossfade_gapless_title", listOf("skip gapless albums", "gapless album", "gapless")),
+                SettingsChild("Progressive seek", "seek_seconds_addup", listOf("progressive seek", "seek add up", "seek accumulate", "double tap seek")),
+                SettingsChild("Enable swipe to change song", "enable_swipe_thumbnail", listOf("swipe thumbnail", "swipe to change song", "swipe artwork", "swipe track")),
+                SettingsChild("Mini player swipe sensitivity", "swipe_sensitivity", listOf("swipe sensitivity", "mini player swipe", "gesture sensitivity")),
+                SettingsChild("Check source", "check_source", listOf("check source", "source health", "test source", "source diagnostics", "verify source", "source status")),
+                SettingsChild("Spotify catalog", "spotify_catalog_source", listOf("spotify catalog", "spotify metadata", "spotify source")),
+                SettingsChild("Enable Tidal source", "tidal_enable", listOf("tidal", "enable tidal", "tidal source", "lossless", "hifi")),
+                SettingsChild("Use my Tidal account first", "tidal_account_first", listOf("tidal account first", "my tidal account", "prefer my account")),
+                SettingsChild("Tidal audio quality", "tidal_audio_quality", listOf("tidal quality", "tidal audio quality", "tidal hifi", "tidal max", "mqa")),
+                SettingsChild("Tidal animated covers", "tidal_animated_covers", listOf("tidal animated covers", "tidal canvas", "tidal video cover", "animated cover")),
+                SettingsChild("Manage Tidal instances", "tidal_manage_instances", listOf("tidal instances", "tidal server", "tidal endpoint", "manage instances")),
+                SettingsChild("Enable Qobuz source", "qobuz_enable", listOf("qobuz", "enable qobuz", "qobuz source", "hi-res", "flac")),
+                SettingsChild("Qobuz audio quality", "qobuz_audio_quality", listOf("qobuz quality", "qobuz audio quality", "hi-res", "flac", "cd quality", "24 bit")),
+                SettingsChild("Enable Qobuz backup server", "qobuz_backup_enable", listOf("qobuz backup", "backup server", "qobuz backup server", "lossless backup", "fallback server", "kouzu")),
+                SettingsChild("Manage Qobuz instances", "qobuz_manage_instances", listOf("qobuz instances", "qobuz server", "qobuz endpoint", "manage instances")),
+                SettingsChild("Enable Deezer source", "deezer_enable", listOf("deezer", "enable deezer", "deezer source", "flac")),
+                SettingsChild("Deezer audio quality", "deezer_audio_quality", listOf("deezer quality", "deezer audio quality", "deezer flac")),
+                SettingsChild("Enable JioSaavn source", "jiosaavn_enable", listOf("jiosaavn", "jio saavn", "saavn", "enable jiosaavn", "indian music")),
+                SettingsChild("JioSaavn audio quality", "jiosaavn_audio_quality", listOf("jiosaavn quality", "saavn quality", "jiosaavn audio quality")),
+                SettingsChild("yt-dlp runtime", "ytdlp", listOf("yt-dlp", "ytdlp", "youtube-dl", "extractor", "downloader runtime", "yt dlp version")),
+            ),
+        )
+    // Playback → yt-dlp runtime sub-page. Absent from the index before.
+    val ytDlp =
+        SettingsItem(
+            key = "ytdlp",
+            icon = painterResource(R.drawable.experiment),
+            title = "yt-dlp runtime",
+            subtitle = "Extractor version and updates",
+            accentColor = MaterialTheme.colorScheme.tertiary,
+            keywords = listOf("yt-dlp", "ytdlp", "yt dlp", "youtube-dl", "extractor", "runtime", "signature", "deobfuscator"),
+            onClick = { navController.navigate("settings/player/ytdlp") },
+            hidden = true,
+            children = listOf(
+                SettingsChild("Active version", "ytdlp_active_version", listOf("yt-dlp active version", "ytdlp version", "current extractor version")),
+                SettingsChild("Bundled version", "ytdlp_bundled_version", listOf("yt-dlp bundled version", "ytdlp bundled", "shipped version")),
+                SettingsChild("Pending version", "ytdlp_pending_version", listOf("yt-dlp pending version", "ytdlp pending", "staged update")),
+                SettingsChild("Last checked", "ytdlp_last_checked", listOf("yt-dlp last checked", "ytdlp last checked", "update check time")),
+                SettingsChild("Last updated", "ytdlp_last_updated", listOf("yt-dlp last updated", "ytdlp last updated", "update time")),
+                SettingsChild("Check for updates", "ytdlp_check_for_updates", listOf("yt-dlp check for updates", "ytdlp update now", "update extractor")),
+                SettingsChild("Automatic updates", "ytdlp_automatic_updates", listOf("yt-dlp automatic updates", "ytdlp auto update", "auto update extractor")),
+            ),
+        )
+    // Sources → JioSaavn sub-page.
+    val jioSaavn =
+        SettingsItem(
+            key = "jiosaavn",
+            icon = painterResource(R.drawable.provider_tidal),
+            title = "JioSaavn",
+            subtitle = "JioSaavn audio source",
+            accentColor = MaterialTheme.colorScheme.tertiary,
+            keywords = listOf("jiosaavn", "jio saavn", "saavn", "indian music", "bollywood", "vivimusic"),
+            onClick = { navController.navigate("settings/jiosaavn") },
+            hidden = true,
+            children = listOf(
+                SettingsChild("Enable JioSaavn source", "jiosaavn_enable", listOf("enable jiosaavn", "jiosaavn source", "turn on jiosaavn")),
+                SettingsChild("JioSaavn audio quality", "jiosaavn_audio_quality", listOf("jiosaavn quality", "saavn audio quality", "jiosaavn bitrate")),
+                SettingsChild("JioSaavn credit", "jiosaavn_credit", listOf("jiosaavn credit", "vivimusic", "jiosaavn about")),
+            ),
+        )
+    // Sources → Deezer sub-page.
+    val deezer =
+        SettingsItem(
+            key = "deezer",
+            icon = painterResource(R.drawable.provider_tidal),
+            title = "Deezer",
+            subtitle = "Deezer account and audio source",
+            accentColor = MaterialTheme.colorScheme.tertiary,
+            keywords = listOf("deezer", "deezer account", "deezer login", "arl", "deezer premium", "flac"),
+            onClick = { navController.navigate("settings/deezer") },
+            hidden = true,
+            children = listOf(
+                SettingsChild("Sign in to Deezer", "deezer_login", listOf("deezer login", "deezer sign in", "connect deezer", "deezer arl")),
+                SettingsChild("Sign out of Deezer", "deezer_sign_out", listOf("deezer logout", "deezer sign out", "disconnect deezer")),
+                SettingsChild("Enable Deezer source", "deezer_enable", listOf("enable deezer", "deezer source", "turn on deezer")),
+                SettingsChild("Deezer audio quality", "deezer_audio_quality", listOf("deezer quality", "deezer audio quality", "deezer flac")),
             ),
         )
     val sources =
@@ -286,6 +469,67 @@ fun buildSettingsGroups(
                 SettingsChild("Paxsenix Lyrics", "paxsenix_lyrics", listOf("paxsenix", "paxsenix lyrics", "paxsenix provider")),
                 SettingsChild("Paxsenix Stats", "paxsenix_stats", listOf("paxsenix stats", "paxsenix statistics", "paxsenix analytics")),
                 SettingsChild("First lyrics provider", "first_lyrics_provider", listOf("first lyrics", "lyrics priority", "primary lyrics provider", "lyrics order")),
+                SettingsChild("Preferred lyrics provider", "set_first_lyrics_provider", listOf("preferred lyrics provider", "default lyrics provider", "lyrics priority")),
+                SettingsChild("Prioritize word synced lyrics", "prioritize_word_synced_lyrics", listOf("word synced", "word by word", "karaoke lyrics", "prioritize word synced")),
+                SettingsChild("Providers", "providers", listOf("lyrics providers", "providers", "lyrics sources", "which lyrics provider")),
+                SettingsChild("Romanization", "romanization", listOf("romanization", "romanisation", "romanize", "romaji", "transliteration")),
+                SettingsChild("Language packs", "language_packs", listOf("language pack", "language packs", "romanization data", "dictionary")),
+                SettingsChild("Enable Tidal lyrics", "enable_tidal_lyrics", listOf("tidal lyrics", "enable tidal lyrics", "tidal lyric provider")),
+                SettingsChild("Enable Deezer lyrics", "enable_deezer_lyrics", listOf("deezer lyrics", "enable deezer lyrics", "deezer lyric provider")),
+                SettingsChild("Musixmatch (experimental)", "enable_musixmatch_experimental", listOf("musixmatch", "musixmatch experimental", "musixmatch lyrics")),
+                SettingsChild("Paxsenix API key", "paxsenix_api_key", listOf("paxsenix api key", "paxsenix key", "paxsenix token")),
+                SettingsChild("Paxsenix endpoint", "paxsenix_endpoint", listOf("paxsenix endpoint", "paxsenix url", "paxsenix server")),
+                SettingsChild("Lyrics text size", "lyrics_text_size", listOf("lyrics text size", "lyrics font size", "lyrics size", "bigger lyrics")),
+            ),
+        )
+    // Lyrics → Providers sub-page.
+    val lyricsProviders =
+        SettingsItem(
+            key = "lyrics_providers",
+            icon = painterResource(R.drawable.lyrics),
+            title = "Lyrics providers",
+            subtitle = "Enable and prioritise lyrics sources",
+            accentColor = MaterialTheme.colorScheme.secondary,
+            keywords = listOf("lyrics provider", "lyrics providers", "lyrics source", "lrclib", "kugou", "musixmatch", "betterlyrics", "paxsenix", "youlyplus", "unison", "simpmusic", "megalobiz"),
+            onClick = { navController.navigate("settings/lyrics/providers") },
+            hidden = true,
+            children = listOf(
+                SettingsChild("Prioritize word synced lyrics", "prioritize_word_synced_lyrics", listOf("word synced", "word by word", "karaoke lyrics")),
+                SettingsChild("Enable BetterLyrics", "enable_betterlyrics", listOf("betterlyrics", "better lyrics", "enable betterlyrics")),
+                SettingsChild("Enable BetterLyrics Portato", "enable_betterlyrics_portato", listOf("portato", "betterlyrics portato", "portato lyrics")),
+                SettingsChild("Enable YouLyPlus lyrics", "enable_youlyplus_lyrics", listOf("youlyplus", "youly plus", "youlyplus lyrics")),
+                SettingsChild("Enable LrcLib lyrics provider", "enable_lrclib", listOf("lrclib", "lrc lib", "lrclib lyrics")),
+                SettingsChild("Enable KuGou lyrics provider", "enable_kugou", listOf("kugou", "kugou lyrics", "chinese lyrics")),
+                SettingsChild("Enable Unison lyrics", "enable_unison_lyrics", listOf("unison", "unison lyrics")),
+                SettingsChild("Enable SimpMusic lyrics", "enable_simpmusic_lyrics", listOf("simpmusic", "simp music", "simpmusic lyrics")),
+                SettingsChild("Enable Megalobiz lyrics", "enable_megalobiz_lyrics", listOf("megalobiz", "megalobiz lyrics")),
+                SettingsChild("Enable Paxsenix lyrics", "enable_paxsenix_lyrics", listOf("paxsenix", "paxsenix lyrics")),
+                SettingsChild("Enable Tidal lyrics", "enable_tidal_lyrics", listOf("tidal lyrics", "enable tidal lyrics")),
+                SettingsChild("Enable Deezer lyrics", "enable_deezer_lyrics", listOf("deezer lyrics", "enable deezer lyrics")),
+                SettingsChild("Musixmatch (experimental)", "enable_musixmatch_experimental", listOf("musixmatch", "musixmatch experimental")),
+                SettingsChild("Paxsenix API stats", "paxsenix_stats", listOf("paxsenix stats", "paxsenix usage", "paxsenix quota")),
+                SettingsChild("Paxsenix API key", "paxsenix_api_key", listOf("paxsenix api key", "paxsenix key")),
+                SettingsChild("Paxsenix endpoint", "paxsenix_endpoint", listOf("paxsenix endpoint", "paxsenix url")),
+                SettingsChild("Preferred lyrics provider", "set_first_lyrics_provider", listOf("preferred lyrics provider", "first lyrics provider", "lyrics priority")),
+            ),
+        )
+    // Lyrics → Romanisation sub-page.
+    val lyricsRomanisation =
+        SettingsItem(
+            key = "lyrics_romanisation",
+            icon = painterResource(R.drawable.translate),
+            title = "Lyrics romanization",
+            subtitle = "Transliterate non-Latin lyrics",
+            accentColor = MaterialTheme.colorScheme.secondary,
+            keywords = listOf("romanization", "romanisation", "romanize", "romaji", "pinyin", "transliteration", "furigana", "hangul"),
+            onClick = { navController.navigate("settings/lyrics/romanisation") },
+            hidden = true,
+            children = listOf(
+                SettingsChild("Romanize japanese lyrics", "lyrics_romanize_japanese", listOf("romanize japanese", "romaji", "furigana", "japanese lyrics")),
+                SettingsChild("Romanize korean lyrics", "lyrics_romanize_korean", listOf("romanize korean", "hangul", "korean lyrics")),
+                SettingsChild("Romanize chinese lyrics", "lyrics_romanize_chinese", listOf("romanize chinese", "pinyin", "chinese lyrics")),
+                SettingsChild("Romanize hindi lyrics", "lyrics_romanize_hindi", listOf("romanize hindi", "devanagari", "hindi lyrics")),
+                SettingsChild("Romanize other non-latin lyrics", "lyrics_romanize_other_languages", listOf("romanize other", "arabic", "thai", "cyrillic", "other languages")),
             ),
         )
     val content =
@@ -305,6 +549,13 @@ fun buildSettingsGroups(
                 SettingsChild("Enable video", "enable_video", listOf("video", "music video", "mv", "enable video")),
                 SettingsChild("Quick picks", "quick_picks", listOf("quick picks", "quick mix", "smart mix", "recommendations")),
                 SettingsChild("Progressive playback", "progressive_playback", listOf("progressive", "gapless", "seamless")),
+                SettingsChild("Allow age-restricted content", "allow_age_restricted", listOf("age restricted", "allow age restricted", "mature content", "18+", "restricted")),
+                SettingsChild("Playlist recommendation source", "you_might_like_source", listOf("recommendation source", "you might like", "playlist recommendation", "suggestions source")),
+                SettingsChild("AI content filter", "ai_content_filter", listOf("ai content filter", "ai filter", "ai generated", "aislist", "filter ai music")),
+                SettingsChild("Hide AI-generated content", "ai_content_filter_hide", listOf("hide ai generated", "hide ai music", "ai content hide", "block ai")),
+                SettingsChild("Include moderate-confidence channels", "ai_content_filter_moderate", listOf("moderate confidence", "ai filter moderate", "ai channels")),
+                SettingsChild("Update channel lists", "ai_content_filter_update", listOf("update channel lists", "refresh ai list", "aislist update")),
+                SettingsChild("About AiSList", "ai_content_filter_source", listOf("aislist", "about aislist", "ai list source")),
             ),
         )
     val languagePacks =
@@ -339,6 +590,9 @@ fun buildSettingsGroups(
                 SettingsChild("Disable screenshot", "disable_screenshot", listOf("screenshot", "screen capture", "privacy", "no screenshot")) { SearchResultSwitch(DisableScreenshotKey, false) },
                 SettingsChild("Network metered", "network_metered", listOf("metered", "mobile data", "cellular", "data saver")) { SearchResultSwitch(NetworkMeteredKey, false) },
                 SettingsChild("Show tags in library", "show_tags_in_library", listOf("tags", "library tags", "show tags")),
+                SettingsChild("Low data mode", "low_data_mode", listOf("low data", "data saver", "save data", "metered", "data mode")) { SearchResultSwitch(LowDataModeKey, true) },
+                SettingsChild("Force high refresh rate", "force_high_refresh_rate", listOf("refresh rate", "high refresh", "120hz", "90hz", "smooth")) { SearchResultSwitch(ForceHighRefreshRateKey, false) },
+                SettingsChild("Open supported links by default", "open_supported_links", listOf("open links", "supported links", "default links", "deep link", "default browser app")),
             ),
         )
     val integration =
@@ -378,6 +632,119 @@ fun buildSettingsGroups(
                 SettingsChild("Telegram lossless only", "telegram_lossless_only", listOf("lossless", "flac", "lossless only", "high quality")) { SearchResultSwitch(TelegramLosslessOnlyKey, false) },
                 SettingsChild("Telegram logout", "telegram_logout", listOf("logout", "log out", "sign out", "disconnect telegram")),
                 SettingsChild("Import playlist from another service", "cross_service_import", listOf("import", "import playlist", "cross service", "youtube music import", "apple music import", "amazon music import", "tidal import", "deezer import", "playlist url", "import url", "import from url", "playlist from url")),
+                SettingsChild("Enable scrobbling", "enable_scrobbling", listOf("enable scrobbling", "scrobble", "scrobbler", "lastfm scrobble")) { SearchResultSwitch(EnableLastFMScrobblingKey, false) },
+                SettingsChild("Now playing", "lastfm_now_playing", listOf("now playing", "lastfm now playing", "scrobble now playing", "update now playing")),
+                SettingsChild("Prefer YouTube thumbnails", "lastfm_prefer_yt_thumbnails", listOf("prefer youtube thumbnails", "lastfm thumbnails", "scrobble artwork")),
+                SettingsChild("Minimum track duration", "scrobble_min_track_duration", listOf("minimum track duration", "scrobble minimum", "min duration", "scrobble threshold")),
+                SettingsChild("Scrobble delay percent", "scrobble_delay_percent", listOf("scrobble delay percent", "scrobble percentage", "scrobble after percent")),
+                SettingsChild("Scrobble delay (seconds)", "scrobble_delay_minutes", listOf("scrobble delay", "scrobble seconds", "scrobble delay minutes")),
+                SettingsChild("Connect Last.fm", "lastfm_connect_button", listOf("connect lastfm", "lastfm login", "lastfm sign in")),
+                SettingsChild("Connect Libre.fm", "lastfm_connect_librefm_button", listOf("librefm", "libre.fm", "connect librefm", "librefm login")),
+                SettingsChild("Connect custom GNU FM server", "lastfm_connect_custom_button", listOf("custom scrobble server", "gnu fm", "custom lastfm server", "self hosted scrobbler")),
+                SettingsChild("Activity status", "activity_status", listOf("discord activity status", "activity status", "online status")),
+                SettingsChild("Platform", "platform_status", listOf("discord platform", "platform status", "desktop mobile status")),
+                SettingsChild("Activity name", "discord_activity_name", listOf("discord activity name", "activity name", "rpc name")),
+                SettingsChild("Activity details", "discord_activity_details", listOf("discord activity details", "activity details", "rpc details")),
+                SettingsChild("Activity state", "discord_activity_state", listOf("discord activity state", "activity state", "rpc state")),
+                SettingsChild("Activity type", "discord_activity_type", listOf("discord activity type", "activity type", "listening playing")),
+                SettingsChild("Show RPC when paused", "discord_show_when_paused", listOf("show when paused", "discord paused", "rpc paused")),
+                SettingsChild("Large image", "large_image", listOf("discord large image", "large image", "rpc large image")),
+                SettingsChild("Large text", "large_text", listOf("discord large text", "large text", "rpc large text")),
+                SettingsChild("Small image", "small_image", listOf("discord small image", "small image", "rpc small image")),
+                SettingsChild("Discord experimental options", "discord_experimental", listOf("discord experimental", "discord buttons", "rpc buttons", "discord translator")),
+                SettingsChild("Telegram bots", "telegram_bots_title", listOf("telegram bots", "telegram bot", "bot token", "music bot")),
+            ),
+        )
+    // Integration → Discord experimental sub-page.
+    val discordExperimental =
+        SettingsItem(
+            key = "discord_experimental",
+            icon = painterResource(R.drawable.auto_awesome),
+            title = "Discord experimental",
+            subtitle = "Rich presence buttons and translation",
+            accentColor = MaterialTheme.colorScheme.secondary,
+            keywords = listOf("discord experimental", "discord buttons", "rich presence buttons", "rpc buttons", "discord translator"),
+            onClick = { navController.navigate("settings/discord/experimental") },
+            hidden = true,
+            children = listOf(
+                SettingsChild("Enable translator", "enable_translator", listOf("discord translator", "enable translator", "translate presence")) { SearchResultSwitch(EnableTranslatorKey, false) },
+                SettingsChild("Target language", "target_language", listOf("target language", "translation language", "discord language")),
+                SettingsChild("Show button 1", "discord_show_button_1", listOf("discord button", "show button", "rpc button 1")),
+                SettingsChild("Button 1 URL source", "discord_activity_button_1_url", listOf("button 1 url", "discord button url", "rpc button link")),
+                SettingsChild("Show button 2", "discord_show_button_2", listOf("discord button 2", "show second button", "rpc button 2")),
+                SettingsChild("Button 2 URL source", "discord_activity_button_2_url", listOf("button 2 url", "discord second button url", "rpc button 2 link")),
+            ),
+        )
+    // Integration → Tidal account + instance management sub-page.
+    val tidalDetail =
+        SettingsItem(
+            key = "tidal",
+            icon = painterResource(R.drawable.provider_tidal),
+            title = "Tidal",
+            subtitle = "Tidal account and instances",
+            accentColor = MaterialTheme.colorScheme.tertiary,
+            keywords = listOf("tidal", "tidal account", "tidal instances", "hifi", "mqa", "lossless", "flac", "tidal login"),
+            onClick = { navController.navigate("settings/tidal") },
+            hidden = true,
+            children = listOf(
+                SettingsChild("Tidal account", "tidal_account_connected", listOf("tidal account", "connected account", "tidal user")),
+                SettingsChild("Sign in with Tidal (web)", "tidal_login_web", listOf("tidal login", "tidal sign in", "tidal web login", "connect tidal")),
+                SettingsChild("Reconnect Tidal account", "tidal_reconnect", listOf("reconnect tidal", "refresh tidal", "tidal reconnect")),
+                SettingsChild("Disconnect Tidal account", "tidal_disconnect", listOf("disconnect tidal", "tidal logout", "tidal sign out")),
+                SettingsChild("Manage instances", "source_manage_instances", listOf("manage instances", "tidal instances", "tidal servers")),
+                SettingsChild("Add instance", "tidal_add_instance", listOf("add instance", "add tidal instance", "new tidal server")),
+                SettingsChild("Add many (paste)", "source_bulk_add", listOf("bulk add", "add many", "paste instances")),
+                SettingsChild("Copy online", "source_copy_online", listOf("copy online", "copy working instances", "share instances")),
+                SettingsChild("Remove dead", "source_remove_dead", listOf("remove dead", "remove dead instances", "clean instances")),
+                SettingsChild("Remove deprecated", "source_remove_deprecated", listOf("remove deprecated", "remove old instances")),
+                SettingsChild("Clear all instances", "tidal_reset_instances", listOf("clear instances", "reset instances", "delete all instances")),
+            ),
+        )
+    // Integration → Qobuz account, tokens and instance management sub-page.
+    val qobuzDetail =
+        SettingsItem(
+            key = "qobuz",
+            icon = painterResource(R.drawable.provider_tidal),
+            title = "Qobuz",
+            subtitle = "Qobuz account, tokens and instances",
+            accentColor = MaterialTheme.colorScheme.tertiary,
+            keywords = listOf("qobuz", "qobuz account", "qobuz tokens", "qobuz instances", "hi-res", "flac", "cd quality", "24 bit", "qobuz login"),
+            onClick = { navController.navigate("settings/qobuz") },
+            hidden = true,
+            children = listOf(
+                SettingsChild("Enable Qobuz source", "qobuz_enable", listOf("enable qobuz", "qobuz source", "turn on qobuz")),
+                SettingsChild("Qobuz audio quality", "qobuz_audio_quality", listOf("qobuz quality", "hi-res", "flac", "cd quality", "24 bit")),
+                SettingsChild("Sign in with Qobuz (web)", "qobuz_login_web", listOf("qobuz login", "qobuz sign in", "qobuz web login", "connect qobuz")),
+                SettingsChild("Add tokens (paste)", "qobuz_add_tokens", listOf("add qobuz tokens", "qobuz token", "app secret", "app id", "paste tokens")),
+                SettingsChild("Manage accounts", "qobuz_manage_accounts", listOf("manage qobuz accounts", "qobuz accounts", "account pool")),
+                SettingsChild("Clear all tokens", "qobuz_reset_tokens", listOf("clear qobuz tokens", "reset tokens", "delete tokens")),
+                SettingsChild("Manage instances", "source_manage_instances", listOf("manage instances", "qobuz instances", "qobuz servers")),
+                SettingsChild("Add instance", "qobuz_add_instance", listOf("add instance", "add qobuz instance", "new qobuz server")),
+                SettingsChild("Add many (paste)", "source_bulk_add", listOf("bulk add", "add many", "paste instances")),
+                SettingsChild("Copy online", "source_copy_online", listOf("copy online", "copy working instances")),
+                SettingsChild("Remove dead", "source_remove_dead", listOf("remove dead", "remove dead instances")),
+                SettingsChild("Remove deprecated", "source_remove_deprecated", listOf("remove deprecated", "remove old instances")),
+                SettingsChild("Clear all instances", "qobuz_reset_instances", listOf("clear instances", "reset instances", "delete all instances")),
+            ),
+        )
+    // Integration → Telegram sub-page.
+    val telegramDetail =
+        SettingsItem(
+            key = "telegram",
+            icon = painterResource(R.drawable.provider_tidal),
+            title = "Telegram",
+            subtitle = "Telegram account and channels",
+            accentColor = MaterialTheme.colorScheme.tertiary,
+            keywords = listOf("telegram", "telegram channel", "telegram login", "telegram music", "telegram bots", "channel sync"),
+            onClick = { navController.navigate("settings/telegram") },
+            hidden = true,
+            children = listOf(
+                SettingsChild("Signed in as", "telegram_logged_in_as", listOf("telegram account", "signed in as", "telegram user")),
+                SettingsChild("Sign in with Telegram", "telegram_login", listOf("telegram login", "telegram sign in", "connect telegram", "phone code")),
+                SettingsChild("Sign out", "telegram_logout", listOf("telegram logout", "telegram sign out", "disconnect telegram")),
+                SettingsChild("Browse channels", "telegram_browse_channels", listOf("browse channels", "telegram channels", "music channels", "add channel")),
+                SettingsChild("Lossless files only", "telegram_lossless_only", listOf("lossless only", "telegram lossless", "flac only", "high quality only")) { SearchResultSwitch(TelegramLosslessOnlyKey, false) },
+                SettingsChild("Telegram bots", "telegram_bots_title", listOf("telegram bots", "bot token", "music bot")),
             ),
         )
     val aiIntegration =
@@ -399,6 +766,15 @@ fun buildSettingsGroups(
                 SettingsChild("AI model", "ai_model", listOf("model", "ai model", "gpt", "gemini model", "claude model")),
                 SettingsChild("Test API", "ai_test_api", listOf("test", "test api", "verify", "test connection", "ai test")),
                 SettingsChild("Hide AI mix", "hide_ai_mix", listOf("hide ai", "ai mix", "smart mix", "hide mix")) { SearchResultSwitch(HideAiMixKey, false) },
+                SettingsChild("Automatic translation", "auto_translate_lyrics", listOf("automatic translation", "auto translate", "auto translate lyrics", "translate automatically")),
+                SettingsChild("Don't auto translate these languages", "auto_translate_excluded_languages", listOf("excluded languages", "skip translation", "do not translate", "translation exclusions")),
+                SettingsChild("Target language", "translate_language", listOf("target language", "translate to", "translation language")),
+                SettingsChild("Translation mode", "translate_mode", listOf("translation mode", "translate mode", "translation style")),
+                SettingsChild("DeepL API key", "deepl_api_key", listOf("deepl", "deepl api key", "deepl key", "deepl token")),
+                SettingsChild("DeepL formality", "deepl_formality", listOf("deepl formality", "formality", "formal informal")),
+                SettingsChild("OpenRouter API key", "openrouter_api_key", listOf("openrouter", "openrouter api key", "openrouter key")),
+                SettingsChild("Mistral API key", "mistral_api_key", listOf("mistral", "mistral api key", "mistral key")),
+                SettingsChild("Model", "ai_model", listOf("ai model", "model", "gpt", "gemini model", "claude model")),
             ),
         )
     val internet =
@@ -440,6 +816,22 @@ fun buildSettingsGroups(
             // Moved into the Accounts sub-page (Task 9). Kept in the search index so existing
             // search shortcuts still work.
             hidden = true,
+            children = listOf(
+                SettingsChild("Web Client PO Token", "web_client_po_token", listOf("po token", "potoken", "web client po token", "botguard", "playability", "youtube token")),
+            ),
+        )
+    // Listen Together lives on its own screen reached from the player, not from a
+    // settings sub-page — indexed here so searching "listen together" still finds it.
+    val musicTogether =
+        SettingsItem(
+            key = "music_together",
+            icon = painterResource(R.drawable.auto_awesome),
+            title = stringResource(R.string.music_together),
+            subtitle = "Listen in sync with friends",
+            accentColor = MaterialTheme.colorScheme.tertiary,
+            keywords = listOf("music together", "listen together", "listening party", "sync listening", "together", "room", "lan", "public room", "share session"),
+            onClick = { navController.navigate("settings/music_together") },
+            hidden = true,
         )
     val storage =
         SettingsItem(
@@ -461,6 +853,12 @@ fun buildSettingsGroups(
                 SettingsChild("Storage folder", "storage_folder", listOf("storage path", "storage location", "storage directory")),
                 SettingsChild("Download location", "download_location", listOf("download path", "location", "folder", "directory", "save to")),
                 SettingsChild("Smart trimmer", "smart_trimmer", listOf("smart trimmer", "trim cache", "auto clean cache")) { SearchResultSwitch(SmartTrimmerKey, false) },
+                SettingsChild("Max song cache size", "max_song_cache_size", listOf("max song cache", "song cache size", "cache limit", "cache size")),
+                SettingsChild("Max image cache size", "max_image_cache_size", listOf("max image cache", "image cache size", "thumbnail cache size")),
+                SettingsChild("Max canvas cache size", "max_cache_size", listOf("max canvas cache", "canvas cache size", "motion artwork cache size")),
+                SettingsChild("Clear lyrics cache", "clear_lyrics_cache", listOf("clear lyrics cache", "delete lyrics cache", "wipe lyrics cache")),
+                SettingsChild("Choose folder", "storage_folder_pick", listOf("choose folder", "pick folder", "storage folder", "select directory")),
+                SettingsChild("Storage used", "size_used", listOf("storage used", "space used", "size used", "disk usage")),
             ),
         )
     val downloads =
@@ -499,6 +897,14 @@ fun buildSettingsGroups(
                 SettingsChild("Restore", "restore", listOf("restore", "import", "recover")),
                 SettingsChild("Import online (m3u)", "import_online", listOf("import online", "m3u", "playlist import")),
                 SettingsChild("Import CSV", "import_csv", listOf("import csv", "csv", "playlist csv")),
+                SettingsChild("Enable scheduled backup", "scheduled_backup_enabled", listOf("enable scheduled backup", "auto backup", "automatic backup", "periodic backup")),
+                SettingsChild("Overwrite existing backup", "scheduled_backup_overwrite", listOf("overwrite backup", "replace backup", "overwrite existing")),
+                SettingsChild("Enable cloud sync", "google_drive_sync_enabled", listOf("cloud sync", "google drive", "drive sync", "enable cloud sync", "gdrive", "backup to drive")),
+                SettingsChild("Drive folder", "google_drive_sync_remote_folder", listOf("drive folder", "google drive folder", "remote folder", "cloud folder")),
+                SettingsChild("Clear Drive folder", "google_drive_sync_clear_folder", listOf("clear drive folder", "empty drive folder", "delete drive backups")),
+                SettingsChild("Overwrite existing Drive backup", "google_drive_sync_overwrite", listOf("overwrite drive backup", "replace drive backup", "drive overwrite")),
+                SettingsChild("Drive sync frequency", "google_drive_sync_frequency", listOf("drive sync frequency", "cloud sync frequency", "sync interval", "sync schedule")),
+                SettingsChild("Sync now", "google_drive_sync_run_now", listOf("sync now", "run sync", "backup now", "upload now")),
             ),
         )
     val developerOptions =
@@ -518,6 +924,10 @@ fun buildSettingsGroups(
                 SettingsChild("Manual source login", "manual_source_login", listOf("manual source login", "manual login", "dev source login")),
                 SettingsChild("YTM sync", "ytm_sync", listOf("ytm sync", "youtube music sync", "sync library")),
                 SettingsChild("Force sync on account switch", "force_sync_account_switch", listOf("force sync", "account switch sync", "sync on switch")),
+                SettingsChild("Show nerd stats", "show_nerd_stats", listOf("nerd stats", "show nerd stats", "debug stats", "playback stats", "technical info")),
+                SettingsChild("Display codec on player", "display_codec_on_player", listOf("display codec", "show codec", "codec on player", "bitrate on player")),
+                SettingsChild("Show Discord debug UI", "show_discord_debug_ui", listOf("discord debug", "show debug ui", "discord debug ui")),
+                SettingsChild("Debug logs", "debug_logs", listOf("debug logs", "verbose logs", "diagnostic logs")),
             ),
         )
     val defaultLinks =
@@ -619,7 +1029,25 @@ fun buildSettingsGroups(
         ),
         SettingsGroup(
             title = stringResource(R.string.settings_section_player_content),
-            items = listOf(appearance, playback, sources, lyrics, languagePacks, content, behavior),
+            items =
+                listOf(
+                    appearance,
+                    appearanceExtras,
+                    aodCustomization,
+                    navigationBar,
+                    lyricsAnimations,
+                    playback,
+                    ytDlp,
+                    sources,
+                    jioSaavn,
+                    deezer,
+                    lyrics,
+                    lyricsProviders,
+                    lyricsRomanisation,
+                    languagePacks,
+                    content,
+                    behavior,
+                ),
         ),
         SettingsGroup(
             title = stringResource(R.string.integration),
@@ -627,12 +1055,23 @@ fun buildSettingsGroups(
             // top-level items here — they live as children of `integration` (and
             // also under their respective `sources` / `integration` screens).
             // Surfacing them as separate rows on the main settings page was
-            // redundant noise per user feedback.
-            items = listOf(integration, aiIntegration, internet, poToken),
+            // redundant noise per user feedback. The `hidden = true` entries below
+            // exist purely so their own sub-page settings are searchable.
+            items =
+                listOf(
+                    integration,
+                    aiIntegration,
+                    discordExperimental,
+                    tidalDetail,
+                    qobuzDetail,
+                    telegramDetail,
+                    internet,
+                    poToken,
+                ),
         ),
         SettingsGroup(
             title = stringResource(R.string.storage),
-            items = listOf(storage, downloads, backupRestore),
+            items = listOf(storage, downloads, backupRestore, musicTogether),
         ),
         SettingsGroup(
             title = stringResource(R.string.about),

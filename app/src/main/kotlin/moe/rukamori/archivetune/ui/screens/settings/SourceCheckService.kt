@@ -150,7 +150,7 @@ object SourceCheckService {
 
     private fun checkQobuzBackup(): SourceCheckResult {
         // The Qobuz backup is a two-step resolver: GET the resolver endpoint to
-        // get the actual stream URL on the CDN, then HEAD-probe the CDN URL.
+        // get the actual stream URL on the CDN, then range-probe the CDN URL.
         // NOTE: server addresses are intentionally hidden from the summary text.
         val resolverUrl = "https://mlc-ytify.kouzu.in/api/stream?id=$KOZU_PROBE_YT_ID"
         return runCatching {
@@ -183,46 +183,52 @@ object SourceCheckService {
                         summary = "Qobuz backup resolver returned a non-JSON response.",
                     )
                 }
-                val streamUrl = root.optString("url").takeIf { it.isNotBlank() }
-                    ?: root.optString("canvas_url").takeIf { it.isNotBlank() }
-                    ?: root.optString("video_url").takeIf { it.isNotBlank() }
-                if (streamUrl.isNullOrBlank()) {
+                // The resolver returns both a lossy `url` mirror and a `lossless`
+                // FLAC mirror. Report on the lossless one first, since that is the
+                // reason to use this source at all.
+                val losslessUrl = root.optString("lossless").takeIf { it.isNotBlank() }
+                val lossyUrl = root.optString("url").takeIf { it.isNotBlank() }
+                if (losslessUrl == null && lossyUrl == null) {
                     return@runCatching SourceCheckResult(
                         healthy = false,
                         summary = "Qobuz backup resolver returned a JSON envelope with no stream URL.",
                     )
                 }
-                // Step 2: HEAD-probe the resolved CDN URL.
-                val cdnRequest = Request.Builder()
-                    .url(streamUrl)
-                    .method("HEAD", null)
-                    .header("User-Agent", "ArchiveTune-Android")
-                    .build()
-                client.newCall(cdnRequest).execute().use { cdnResponse ->
-                    if (!cdnResponse.isSuccessful) {
-                        // Some CDNs reject HEAD but accept GET — report healthy=true
-                        // if the resolver returned a URL even if HEAD failed.
-                        return@runCatching SourceCheckResult(
+                // Step 2: range-probe the resolved CDN URL.
+                //
+                // Deliberately a ranged GET, not HEAD: the CDN answers HEAD with
+                // `405 Method Not Allowed` (`allow: GET`) for every object, so the
+                // old HEAD probe always reported a scary "HEAD probe got HTTP 405"
+                // even when the stream was perfectly playable. `Range: bytes=0-1`
+                // downloads two bytes and returns the real Content-Type.
+                val losslessProbe = losslessUrl?.let { probeCdn(it) }
+                val lossyProbe = if (losslessProbe?.ok == true) null else lossyUrl?.let { probeCdn(it) }
+                when {
+                    losslessProbe?.ok == true ->
+                        SourceCheckResult(
                             healthy = true,
-                            summary = "Qobuz backup resolver returned a stream URL but the CDN HEAD probe " +
-                                "got HTTP ${cdnResponse.code}. ExoPlayer's GET might still succeed. " +
+                            summary = "Qobuz backup is reachable and served a lossless stream " +
+                                "(${losslessProbe.contentType}${losslessProbe.sizeSuffix()}). " +
                                 "Qobuz backup is READY.",
                         )
+
+                    lossyProbe?.ok == true ->
+                        SourceCheckResult(
+                            healthy = true,
+                            summary = "Qobuz backup is reachable but only the lossy mirror served audio " +
+                                "(${lossyProbe.contentType}). The backup server has no lossless copy of the " +
+                                "probe track yet — lossless will still be used for tracks that have one.",
+                        )
+
+                    else -> {
+                        val failed = losslessProbe ?: lossyProbe
+                        SourceCheckResult(
+                            healthy = false,
+                            summary = "Qobuz backup resolver returned a stream URL but the CDN served " +
+                                "${failed?.describeFailure() ?: "no response"}. The backup server may be " +
+                                "rebuilding its cache — try again in a few minutes.",
+                        )
                     }
-                    val contentType = cdnResponse.header("Content-Type")?.lowercase().orEmpty()
-                    val ok = contentType.startsWith("audio/") ||
-                        contentType.startsWith("video/") ||
-                        contentType.contains("octet-stream")
-                    SourceCheckResult(
-                        healthy = ok || contentType.isBlank(),
-                        summary = if (ok || contentType.isBlank()) {
-                            "Qobuz backup is reachable and returned an audio stream ($contentType). " +
-                                "Qobuz backup is READY."
-                        } else {
-                            "Qobuz backup resolver succeeded but the CDN returned an unexpected content type: $contentType. " +
-                                "The backup server may be misconfigured."
-                        },
-                    )
                 }
             }
         }.getOrElse { e ->
@@ -232,6 +238,49 @@ object SourceCheckService {
             )
         }
     }
+
+    /** Outcome of a two-byte ranged GET against a Qobuz-backup CDN mirror. */
+    private data class CdnProbe(
+        val ok: Boolean,
+        val code: Int,
+        val contentType: String,
+        val totalBytes: Long?,
+    ) {
+        fun sizeSuffix(): String =
+            totalBytes?.let { ", ${it / 1_000_000}MB" }.orEmpty()
+
+        fun describeFailure(): String =
+            if (code in 200..299) "an unexpected content type: $contentType" else "HTTP $code"
+    }
+
+    private fun probeCdn(url: String): CdnProbe? =
+        runCatching {
+            val request = Request.Builder()
+                .url(url)
+                .get()
+                .header("User-Agent", "ArchiveTune-Android")
+                .header("Range", "bytes=0-1")
+                .build()
+            client.newCall(request).execute().use { response ->
+                val contentType = response.header("Content-Type")?.lowercase().orEmpty()
+                val isAudio =
+                    contentType.startsWith("audio/") ||
+                        contentType.startsWith("video/") ||
+                        contentType.contains("octet-stream")
+                val total =
+                    response
+                        .header("Content-Range")
+                        ?.substringAfter('/', "")
+                        ?.trim()
+                        ?.toLongOrNull()
+                CdnProbe(
+                    ok = response.isSuccessful && isAudio,
+                    code = response.code,
+                    contentType = contentType.ifBlank { "unknown" },
+                    totalBytes = total,
+                )
+            }
+        }.getOrNull()
 
     private suspend fun checkDeezer(context: Context): SourceCheckResult {
         PoolAccountManager.refresh(context, force = false)

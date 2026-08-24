@@ -73,9 +73,18 @@ private fun searchableSettingsRoute(parentKey: String, scrollKey: String?): Stri
         when (parentKey) {
             "account" -> "settings/account"
             "appearance" -> "settings/appearance"
+            "appearance_extras" -> "settings/appearance/extras"
+            "aod" -> "settings/appearance/aod_customized"
+            "navigation_bar" -> "settings/appearance/navigation_bar"
+            "lyrics_animations" -> "settings/appearance/lyrics_animations"
             "playback" -> "settings/player"
+            "ytdlp" -> "settings/player/ytdlp"
             "sources" -> "settings/sources"
+            "jiosaavn" -> "settings/jiosaavn"
+            "deezer" -> "settings/deezer"
             "lyrics" -> "settings/lyrics"
+            "lyrics_providers" -> "settings/lyrics/providers"
+            "lyrics_romanisation" -> "settings/lyrics/romanisation"
             "content" -> "settings/content"
             "behavior" -> "settings/privacy"
             "integration" -> "settings/integration"
@@ -83,8 +92,11 @@ private fun searchableSettingsRoute(parentKey: String, scrollKey: String?): Stri
             "storage" -> "settings/storage"
             "backup_restore" -> "settings/backup_restore"
             "developer_options" -> "settings/misc"
+            "logcat" -> "settings/logcat"
+            "music_together" -> "settings/music_together"
             "about" -> "settings/about"
             "discord" -> "settings/discord"
+            "discord_experimental" -> "settings/discord/experimental"
             "tidal" -> "settings/tidal"
             "qobuz" -> "settings/qobuz"
             "telegram" -> "settings/telegram"
@@ -96,48 +108,17 @@ private fun searchableSettingsRoute(parentKey: String, scrollKey: String?): Stri
         }
     // About / developer-options screens intentionally don't participate in auto-scroll
     // (their contents are mostly static links). All other screens honor ?scrollTo=.
-    val supportsScroll = parentKey !in setOf("developer_options", "about", "po_token", "account")
-    return if (!supportsScroll || scrollKey.isNullOrBlank()) route else "$route?scrollTo=$scrollKey"
-}
-
-/**
- * Strict, deterministic settings search index. Only settings currently rendered by the
- * settings hierarchy are indexed; stale aliases and hidden/moved entries cannot surface.
- */
-private fun searchSettings(groups: List<SettingsGroup>, query: String): List<SearchResultItem> {
-    val terms = query.lowercase().trim().split(Regex("\\s+")).filter(String::isNotBlank)
-    if (terms.isEmpty()) return emptyList()
-    return groups.asSequence()
-        .flatMap { it.items.asSequence().filterNot(SettingsItem::hidden) }
-        .flatMap { parent ->
-            parent.children.asSequence().map { child -> parent to child }
-        }
-        .filter { (parent, child) ->
-            val searchable = buildList {
-                add(child.title.lowercase())
-                add(child.scrollKey.replace('_', ' ').lowercase())
-                addAll(child.keywords.map(String::lowercase))
-            }
-            // Every word must describe the setting itself. Parent category
-            // words are deliberately excluded so "video", for example, does
-            // not return every unrelated item in the Content category.
-            terms.all { term -> searchable.any { it.contains(term) } }
-        }
-        .map { (parent, child) ->
-            SearchResultItem(
-                title = child.title,
-                parentTitle = parent.title,
-                parentIcon = parent.icon,
-                parentKey = parent.key,
-                parentAccentColor = parent.accentColor,
-                parentRoute = searchableSettingsRoute(parent.key, child.scrollKey),
-                scrollKey = child.scrollKey,
-                onClick = parent.onClick,
-                switchControl = child.switchControl,
+    val supportsScroll =
+        parentKey !in
+            setOf(
+                "developer_options",
+                "about",
+                "po_token",
+                "account",
+                "logcat",
+                "music_together",
             )
-        }
-        .sortedWith(compareBy<SearchResultItem> { !it.title.lowercase().startsWith(query.trim().lowercase()) }.thenBy { it.title })
-        .toList()
+    return if (!supportsScroll || scrollKey.isNullOrBlank()) route else "$route?scrollTo=$scrollKey"
 }
 
 @OptIn(ExperimentalMaterial3Api::class, FlowPreview::class)
@@ -196,8 +177,28 @@ fun SettingsScreen(
             Updater.isUpdateAvailable(latestVersionName, BuildConfig.VERSION_NAME)
     var isUpdateDismissed by remember { mutableStateOf(false) }
     val allSettingsGroups = buildSettingsGroups(navController, isAndroid12OrLater, hasUpdate, context)
+    // When searching, flatten all individual SettingsChildren across every
+    // category so each matching setting is shown as a separate row.
+    //
+    // Per product decision: settings that ship with an inline switch control
+    // (boolean toggles like Dynamic theme, Pure black, Low data mode, Crossfade,
+    // Persistent queue, etc.) ARE included in search results — the switch is
+    // rendered inline so the user can toggle directly from the results.
+    // Switchless settings navigate to the parent screen and auto-scroll to
+    // the setting's position when tapped.
+    //
+    // The matching itself lives in [SettingsSearch] — see that file for why
+    // multi-word queries used to return nothing.
     val filteredChildResults = remember(searchQuery, allSettingsGroups) {
-        if (searchQuery.isBlank()) emptyList() else searchSettings(allSettingsGroups, searchQuery)
+        if (searchQuery.isBlank()) {
+            emptyList()
+        } else {
+            SettingsSearch.search(
+                groups = allSettingsGroups,
+                rawQuery = searchQuery,
+                routeFor = { parentKey, scrollKey -> searchableSettingsRoute(parentKey, scrollKey) },
+            )
+        }
     }
     val filteredGroups = remember(allSettingsGroups) {
         allSettingsGroups.map { group ->

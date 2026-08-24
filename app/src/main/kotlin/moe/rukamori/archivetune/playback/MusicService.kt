@@ -9685,7 +9685,7 @@ class MusicService :
                         .header("User-Agent", "ArchiveTune-Android")
                         .header("Accept", "application/json")
                         .build()
-                val resolvedUrl = mediaOkHttpClient.newCall(resolverRequest).execute().use { response ->
+                val resolvedCandidates = mediaOkHttpClient.newCall(resolverRequest).execute().use { response ->
                     if (!response.isSuccessful) {
                         Timber.tag("MusicService").d(
                             "Qobuz backup resolver miss for %s: HTTP %d",
@@ -9708,14 +9708,22 @@ class MusicService :
                         )
                         return@runBlocking null
                     }
-                    // The resolver returns the actual stream URL in the `url` field.
-                    // Tolerant: also accept `canvas_url` / `video_url` (same field
-                    // names as the Spotify canvas resolver).
-                    val streamUrl =
-                        root.optString("url").takeIf { it.isNotBlank() }
-                            ?: root.optString("canvas_url").takeIf { it.isNotBlank() }
-                            ?: root.optString("video_url").takeIf { it.isNotBlank() }
-                    if (streamUrl.isNullOrBlank()) {
+                    // The resolver envelope carries TWO mirrors for the same track:
+                    //   "url"      → https://…/song/<id>     lossy AAC-in-MP4 transcode
+                    //   "lossless" → https://…/lossless/<id> the real FLAC
+                    // Reading only `url` is why "Qobuz backup" never actually played
+                    // lossless: the lossy mirror was picked every time and the FLAC
+                    // mirror was ignored. Try lossless first and keep the lossy
+                    // mirror as a fallback for entries that have no FLAC yet.
+                    val candidates =
+                        buildList {
+                            root.optString("lossless").takeIf { it.isNotBlank() }?.let(::add)
+                            root.optString("flac").takeIf { it.isNotBlank() }?.let(::add)
+                            root.optString("url").takeIf { it.isNotBlank() }?.let(::add)
+                            root.optString("canvas_url").takeIf { it.isNotBlank() }?.let(::add)
+                            root.optString("video_url").takeIf { it.isNotBlank() }?.let(::add)
+                        }.distinct()
+                    if (candidates.isEmpty()) {
                         Timber.tag("MusicService").d(
                             "Qobuz backup resolver miss for %s: no url field in response (first 200 chars: %s)",
                             ytId,
@@ -9723,52 +9731,45 @@ class MusicService :
                         )
                         return@runBlocking null
                     }
-                    streamUrl
+                    candidates
                 } ?: return@runBlocking null
 
-                // Step 2: HEAD-probe the resolved CDN URL to verify it's reachable
-                // and returns an audio content type. This is informational — ExoPlayer
-                // will issue the actual GET with byte-range requests through the same
-                // OkHttp client. The CDN host (velamhere-img.hf.space) doesn't need
-                // the x-request-source: muzo header.
-                val cdnHeadRequest =
-                    okhttp3.Request
-                        .Builder()
-                        .url(resolvedUrl)
-                        .head()
-                        .header("User-Agent", "ArchiveTune-Android")
-                        .build()
-                val (finalStreamUrl, contentLength, contentType) = mediaOkHttpClient.newCall(cdnHeadRequest).execute().use { cdnResponse ->
-                    if (!cdnResponse.isSuccessful) {
-                        Timber.tag("MusicService").d(
-                            "Qobuz backup CDN miss for %s: HTTP %d (resolved url: %s)",
-                            ytId,
-                            cdnResponse.code,
-                            resolvedUrl.take(80),
-                        )
-                        // Fallback: use the resolver-resolved URL directly even
-                        // though the HEAD probe failed — ExoPlayer's GET might
-                        // still succeed (some CDNs reject HEAD but accept GET).
-                        Triple(resolvedUrl, null, "audio/mp4")
-                    } else {
-                        val ct = cdnResponse.header("Content-Type")?.lowercase().orEmpty()
-                        Timber.tag("MusicService").i(
-                            "Qobuz backup resolved \"%s\" via mlc-ytify.kouzu.in → %s [%s]",
-                            query.title,
-                            resolvedUrl.take(80),
-                            ct,
-                        )
-                        Triple(resolvedUrl, cdnResponse.header("Content-Length")?.toLongOrNull(), ct)
+                // Step 2: probe each candidate mirror with a two-byte ranged GET and
+                // take the first that answers with real audio.
+                //
+                // This used to be a HEAD probe, which could never succeed: the CDN
+                // answers HEAD with `405 Method Not Allowed` and `allow: GET`. The
+                // old code papered over that by falling through to the URL anyway
+                // and hardcoding `audio/mp4`, so a FLAC mirror would have been
+                // mislabelled as AAC even if it had been selected. A ranged GET is
+                // honoured (206 + Content-Type + Content-Range) so we learn the real
+                // container and the real length, and we can tell a genuine 404 for
+                // this track apart from a method-not-allowed.
+                val probe =
+                    resolvedCandidates.firstNotNullOfOrNull { candidate ->
+                        probeQobuzBackupMirror(candidate)
                     }
+                if (probe == null) {
+                    Timber.tag("MusicService").d(
+                        "Qobuz backup CDN miss for %s: no candidate mirror served audio (tried %d)",
+                        ytId,
+                        resolvedCandidates.size,
+                    )
+                    return@runBlocking null
                 }
-                // The CDN serves audio/mp4 (an MP4 container with lossless ALAC
-                // inside, verified by direct probe — Content-Type: audio/mp4).
+                Timber.tag("MusicService").i(
+                    "Qobuz backup resolved \"%s\" via mlc-ytify.kouzu.in → %s [%s%s]",
+                    query.title,
+                    probe.url.take(80),
+                    probe.contentType,
+                    if (probe.isLossless) ", lossless" else "",
+                )
                 DirectStream(
-                    uri = finalStreamUrl,
-                    mimeType = if (contentType.contains("flac")) "audio/flac" else "audio/mp4",
-                    codecs = if (contentType.contains("flac")) "flac" else "mp4a.40.2",
-                    contentLength = contentLength,
-                    label = "Qobuz backup (kouzu.in)",
+                    uri = probe.url,
+                    mimeType = probe.mimeType,
+                    codecs = probe.codecs,
+                    contentLength = probe.contentLength,
+                    label = if (probe.isLossless) "Qobuz backup (lossless)" else "Qobuz backup (kouzu.in)",
                     source = AudioSourceType.QOBUZ_BACKUP,
                     // The YouTube mediaId is the authoritative identity of the
                     // song the user is playing — we trust it without requiring
@@ -9784,6 +9785,78 @@ class MusicService :
             Timber.tag("MusicService").w(error, "Qobuz backup resolution failed for %s", ytId)
         }.getOrNull()
     }
+
+    /**
+     * A Qobuz-backup CDN mirror that answered a probe with real audio bytes.
+     *
+     * [contentLength] is the *full* resource size taken from the `Content-Range`
+     * total (`bytes 0-1/40802970`), not the two bytes the probe actually asked
+     * for — ExoPlayer wants the whole-resource length.
+     */
+    private data class QobuzBackupProbe(
+        val url: String,
+        val mimeType: String,
+        val codecs: String,
+        val contentLength: Long?,
+        val contentType: String,
+        val isLossless: Boolean,
+    )
+
+    /**
+     * Issues a 2-byte ranged GET against a Qobuz-backup CDN mirror and maps the
+     * response to a [QobuzBackupProbe], or null when the mirror doesn't exist
+     * (404) or doesn't serve audio.
+     *
+     * HEAD is deliberately not used: the CDN replies `405 Method Not Allowed`
+     * with `allow: GET` for HEAD on every object, so a HEAD probe can only ever
+     * fail. `Range: bytes=0-1` keeps the probe to two bytes while still
+     * returning the headers we need.
+     */
+    private fun probeQobuzBackupMirror(url: String): QobuzBackupProbe? =
+        runCatching {
+            val request =
+                okhttp3.Request
+                    .Builder()
+                    .url(url)
+                    .get()
+                    .header("User-Agent", "ArchiveTune-Android")
+                    .header("Range", "bytes=0-1")
+                    .build()
+            mediaOkHttpClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@use null
+                val contentType = response.header("Content-Type")?.lowercase().orEmpty()
+                // A JSON body here is the CDN's {"detail":"Not Found"} envelope for a
+                // mirror that hasn't been populated for this track yet.
+                if (contentType.contains("json") || contentType.contains("html")) return@use null
+                if (contentType.isNotBlank() &&
+                    !contentType.startsWith("audio/") &&
+                    !contentType.startsWith("video/") &&
+                    !contentType.contains("octet-stream")
+                ) {
+                    return@use null
+                }
+                // Prefer the Content-Range total ("bytes 0-1/40802970") — Content-Length
+                // on a 206 is just the two probed bytes.
+                val totalLength =
+                    response
+                        .header("Content-Range")
+                        ?.substringAfter('/', "")
+                        ?.trim()
+                        ?.toLongOrNull()
+                        ?: response.header("Content-Length")?.toLongOrNull()?.takeIf { response.code != 206 }
+                val isFlac = contentType.contains("flac") || url.contains("/lossless/")
+                QobuzBackupProbe(
+                    url = url,
+                    mimeType = if (isFlac) "audio/flac" else "audio/mp4",
+                    codecs = if (isFlac) "flac" else "mp4a.40.2",
+                    contentLength = totalLength?.takeIf { it > 0 },
+                    contentType = contentType.ifBlank { "unknown" },
+                    isLossless = isFlac,
+                )
+            }
+        }.onFailure { error ->
+            Timber.tag("MusicService").d(error, "Qobuz backup mirror probe failed for %s", url.take(80))
+        }.getOrNull()
 
     private fun parseQobuzInstances(): List<String> =
         dataStore

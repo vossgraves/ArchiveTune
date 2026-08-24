@@ -18,6 +18,8 @@ import io.ktor.client.plugins.defaultRequest
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.parameter
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.CancellationException
@@ -30,38 +32,68 @@ import moe.rukamori.archivetune.canvas.models.CanvasArtwork
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Fetches Spotify Canvas looping videos for songs by their YouTube Music video ID.
+ * Fetches Spotify Canvas looping videos for the currently playing song.
  *
- * The provider delegates to the third-party `mlc-ytify.kouzu.in` resolver, which maps a
- * YouTube Music video ID → the song's Spotify Canvas URL. The resolver endpoint is
- * `https://mlc-ytify.kouzu.in/api/canvas?id=<videoId>` (same resolver pattern as the Qobuz
- * backup server) — it returns a JSON envelope with the actual canvas video URL on the
- * `velamhere-img.hf.space` CDN.
+ * Two sources are tried, in order:
  *
- * The resolver also returns the matched song name and artist name, which we surface in the
- * resulting [CanvasArtwork] for identity verification by the caller.
+ * 1. **Spotify's own Canvas endpoint** (`spclient.wg.spotify.com/canvaz-cache`).
+ *    This is the authoritative source — it is the same endpoint the Spotify
+ *    clients use, and it returns the real canvas mp4. It needs a Spotify access
+ *    token and the song's `spotify:track:<id>` URI, both supplied by the host app
+ *    through [tokenProvider] / [trackUriResolver] (the canvas module deliberately
+ *    has no dependency on the app's Spotify or player code). When the user has no
+ *    Spotify session this source is simply unavailable.
  *
- * The `x-request-source: muzo` header is required on every kouzu.in request — without it
- * the server rate-limits the client. The header is injected centrally by the
- * `MusicService.mediaOkHttpClient` interceptor for any kouzu.in host request, but the canvas
- * provider uses its own Ktor client (with OkHttp engine) — so we add the header manually
- * here via the `defaultRequest` block.
+ * 2. **The `mlc-ytify.kouzu.in` resolver**, keyed by YouTube Music video ID.
+ *    Kept as a fallback for users without a Spotify login. Note that this
+ *    resolver serves canvases only out of its own cache and currently reports
+ *    zero cached canvases (`/api/stats` → `"canvas": 0`), answering every lookup
+ *    with `404 {"detail":"No cached canvas"}` — which is why Spotify Canvas
+ *    appeared completely broken when it was the *only* source.
  *
- * The response shape is tolerant — we accept any of the common field names seen across
- * resolvers of this kind (`url` / `canvas_url` / `video_url`, `song` / `name` / `title`,
- * `artist` / `artists`).
+ * The `x-request-source: muzo` header is required on every kouzu.in request —
+ * without it the server rate-limits the client. It is injected centrally by the
+ * `MusicService.mediaOkHttpClient` interceptor for kouzu.in hosts, but this
+ * provider uses its own Ktor client, so the header is added here via
+ * `defaultRequest`.
  *
- * Results are cached in-memory for 1 hour per video ID to avoid hammering the resolver
- * on every recomposition / replay.
+ * Results are cached in-memory for 1 hour per video ID to avoid hammering either
+ * source on every recomposition / replay. A negative result is cached too, so a
+ * song with no canvas doesn't re-query on every replay.
  */
 object SpotifyCanvasProvider {
     /**
-     * Resolver base URL. The full URL is `$BASE_URL?id=<videoId>` — the video ID is passed
-     * as a query parameter. The `x-request-source: muzo` header is added to every request
-     * to bypass the server's rate-limiting.
+     * Fallback resolver base URL. The full URL is `$BASE_URL?id=<videoId>`.
      */
     private const val BASE_URL = "https://mlc-ytify.kouzu.in/api/canvas"
+
+    /** Spotify's Canvas endpoint. Speaks protobuf — see [SpotifyCanvazProtocol]. */
+    private const val CANVAZ_URL = "https://spclient.wg.spotify.com/canvaz-cache/v0/canvases"
+
     private const val CACHE_TTL_MS = 60L * 60 * 1000 // 1 hour
+
+    /**
+     * Supplies a Spotify access token, or null when the user has no Spotify
+     * session. Set by the host app (see `App.kt`); left null in tests and in
+     * standalone use of this module.
+     */
+    @Volatile
+    var tokenProvider: (suspend () -> String?)? = null
+
+    /**
+     * Maps the currently playing song to a `spotify:track:<id>` URI, or null when
+     * it can't be identified on Spotify. Set by the host app.
+     */
+    @Volatile
+    var trackUriResolver: (suspend (videoId: String, title: String?, artist: String?) -> String?)? = null
+
+    /** Optional diagnostic sink, mirroring [AppleMusicProvider.logger]. */
+    @Volatile
+    var logger: ((message: String) -> Unit)? = null
+
+    private fun log(message: String) {
+        logger?.invoke(message)
+    }
 
     private val json =
         Json {
@@ -85,12 +117,29 @@ object SpotifyCanvasProvider {
             install(HttpCache)
             // The x-request-source: muzo header is REQUIRED on every kouzu.in
             // request — without it the server rate-limits the client aggressively.
-            // Adding it here via defaultRequest means every request the client makes
-            // to the resolver includes the header.
             defaultRequest {
                 header("x-request-source", "muzo")
                 header("User-Agent", "ArchiveTune-Android")
                 header("Accept", "application/json")
+            }
+            expectSuccess = false
+        }
+    }
+
+    /**
+     * Separate client for Spotify's Canvas endpoint.
+     *
+     * Deliberately not [client]: that one's `defaultRequest` block pins
+     * `x-request-source: muzo` and `Accept: application/json` for the kouzu.in
+     * resolver. Sending the muzo header to Spotify would be wrong, and the JSON
+     * Accept header would fight the protobuf one this endpoint needs.
+     */
+    private val spotifyClient by lazy {
+        HttpClient(OkHttp) {
+            install(HttpTimeout) {
+                connectTimeoutMillis = 10_000
+                requestTimeoutMillis = 15_000
+                socketTimeoutMillis = 15_000
             }
             expectSuccess = false
         }
@@ -104,16 +153,19 @@ object SpotifyCanvasProvider {
     private val cache = ConcurrentHashMap<String, CacheEntry>()
 
     /**
-     * Looks up the Spotify Canvas for [videoId] (the YouTube Music video ID of the
-     * currently playing song). Returns `null` if the resolver has no canvas for the
-     * song, the song isn't on Spotify, or the request fails.
+     * Looks up the Spotify Canvas for the song identified by [videoId] (the
+     * YouTube Music video ID of the currently playing song). [songTitle] and
+     * [artistName] are used only to identify the song on Spotify for the official
+     * endpoint; the fallback resolver keys off [videoId] alone.
      *
-     * The returned [CanvasArtwork] has its [CanvasArtwork.videoUrl] /
-     * [CanvasArtwork.videoUrlVertical] populated with the canvas URL so the player
-     * can loop it as artwork. `name` and `artist` are populated from the resolver
-     * response when available so the caller can do identity verification.
+     * Returns `null` if neither source has a canvas for the song, the song isn't
+     * on Spotify, or both requests fail.
      */
-    suspend fun getByVideoId(videoId: String): CanvasArtwork? {
+    suspend fun getByVideoId(
+        videoId: String,
+        songTitle: String? = null,
+        artistName: String? = null,
+    ): CanvasArtwork? {
         if (videoId.isBlank()) return null
 
         cache[videoId]?.let { entry ->
@@ -121,14 +173,27 @@ object SpotifyCanvasProvider {
             cache.remove(videoId)
         }
 
+        // Source 1: Spotify's own Canvas endpoint.
+        val official =
+            try {
+                fetchOfficialCanvas(videoId, songTitle, artistName)
+            } catch (throwable: Throwable) {
+                if (throwable is CancellationException) throw throwable
+                log("Official Spotify Canvas lookup failed for $videoId: ${throwable.message}")
+                null
+            }
+        if (official != null) {
+            cache[videoId] = CacheEntry(official, System.currentTimeMillis() + CACHE_TTL_MS)
+            return official
+        }
+
+        // Source 2: the kouzu.in resolver.
         val artwork =
             try {
-                // The resolver URL pattern: `https://mlc-ytify.kouzu.in/api/canvas?id=<videoId>`.
-                // The video ID is passed as a query parameter. The x-request-source: muzo
-                // header is added to every request by the client's defaultRequest block.
-                val response = client.get(BASE_URL) {
-                    parameter("id", videoId)
-                }
+                val response =
+                    client.get(BASE_URL) {
+                        parameter("id", videoId)
+                    }
                 if (response.status != HttpStatusCode.OK) {
                     cache[videoId] = CacheEntry(null, System.currentTimeMillis() + CACHE_TTL_MS)
                     return null
@@ -145,7 +210,65 @@ object SpotifyCanvasProvider {
         return artwork
     }
 
-    private fun parseCanvasArtwork(body: JsonObject, videoId: String): CanvasArtwork? {
+    /**
+     * Asks Spotify directly for the canvas of the current song.
+     *
+     * Returns null (without caching) when the host app hasn't wired up a token /
+     * track resolver, when the user has no Spotify session, when the song can't
+     * be matched on Spotify, or when Spotify has no canvas for the track.
+     */
+    private suspend fun fetchOfficialCanvas(
+        videoId: String,
+        songTitle: String?,
+        artistName: String?,
+    ): CanvasArtwork? {
+        val resolveTrackUri = trackUriResolver ?: return null
+        val provideToken = tokenProvider ?: return null
+
+        val token = provideToken()?.takeIf { it.isNotBlank() } ?: return null
+        val trackUri =
+            resolveTrackUri(videoId, songTitle, artistName)?.takeIf { it.isNotBlank() } ?: return null
+
+        val response =
+            spotifyClient.post(CANVAZ_URL) {
+                header("Authorization", "Bearer $token")
+                header("Accept", "application/x-protobuf")
+                header("Content-Type", "application/x-protobuf")
+                header("User-Agent", "ArchiveTune-Android")
+                setBody(SpotifyCanvazProtocol.encodeRequest(listOf(trackUri)))
+            }
+        if (response.status != HttpStatusCode.OK) {
+            log("Spotify canvaz returned ${response.status.value} for $trackUri")
+            return null
+        }
+
+        val entries = SpotifyCanvazProtocol.decodeResponse(response.body<ByteArray>())
+        val canvasUrl =
+            entries
+                .firstOrNull { it.entityUri == trackUri && !it.url.isNullOrBlank() }
+                ?.url
+                ?: entries.firstNotNullOfOrNull { entry -> entry.url?.takeIf { it.isNotBlank() } }
+                ?: return null
+
+        log("Spotify canvaz resolved $trackUri → $canvasUrl")
+        return CanvasArtwork(
+            name = songTitle,
+            artist = artistName,
+            // Stable placeholder so CanvasArtworkPlaybackCache dedupes correctly.
+            albumId = "yt:$videoId",
+            albumName = null,
+            static = null,
+            animated = null,
+            animatedVertical = null,
+            videoUrl = canvasUrl,
+            videoUrlVertical = canvasUrl,
+        )
+    }
+
+    private fun parseCanvasArtwork(
+        body: JsonObject,
+        videoId: String,
+    ): CanvasArtwork? {
         // The resolver may either return the canvas fields at the top level or nested
         // under a `data` / `result` envelope. Handle both.
         val payload = body["data"]?.jsonObject ?: body["result"]?.jsonObject ?: body
