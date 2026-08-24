@@ -7556,7 +7556,6 @@ class MusicService :
                                 audioQuality = if (lowData) AudioQuality.LOW else audioQuality,
                                 connectivityManager = connectivityManager,
                                 preferredStreamClient = preferredStreamClient,
-                                autoChoosePlaybackClient = autoChoosePlaybackClient,
                                 networkMetered = lowData,
                             )
                         }
@@ -10237,7 +10236,6 @@ class MusicService :
                         audioQuality = if (lowDataModeActive) AudioQuality.LOW else audioQuality,
                         connectivityManager = connectivityManager,
                         preferredStreamClient = preferredStreamClient,
-                        autoChoosePlaybackClient = autoChoosePlaybackClient,
                         networkMetered = lowDataModeActive,
                     )
                 }.recoverCatching { youtubeFailure ->

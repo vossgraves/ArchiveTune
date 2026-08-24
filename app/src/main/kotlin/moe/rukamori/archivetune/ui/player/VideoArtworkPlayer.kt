@@ -2209,12 +2209,11 @@ private suspend fun resolveVideoStreamUrl(
             .get(PlayerStreamClientKey)
             .toEnum(PlayerStreamClient.WEB_REMIX)
     val autoChoose = PreferenceStore.get(AutoChoosePlaybackClientKey) ?: true
-    val clients = YTPlayerUtils.buildStreamClientOrder(preferredClient, authState, autoChoose)
+    val clients = YTPlayerUtils.buildStreamClientOrder(preferredClient, authState)
 
     val usableClients =
         clients.filterNot { client ->
-            autoChoose &&
-                YTPlayerUtils.isStreamClientBlocked(
+            YTPlayerUtils.isStreamClientBlocked(
                     videoId = videoId,
                     clientKey = StreamClientUtils.buildClientKey(client),
                     authFingerprint = authState.fingerprint,

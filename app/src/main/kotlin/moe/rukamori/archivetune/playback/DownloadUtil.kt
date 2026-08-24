@@ -371,12 +371,6 @@ class DownloadUtil
                                 audioQuality = requestedAudioQuality,
                                 connectivityManager = connectivityManager,
                                 networkMetered = lowDataModeActive,
-                                // Prefer M4A/AAC over Opus/WebM for downloads so the
-                                // resulting file is .m4a (jaudiotagger-readable)
-                                // rather than .webm (jaudiotagger-unreadable, would
-                                // silently skip metadata tagging and produce files
-                                // with unknown artist / unknown album / no artwork).
-                                preferM4A = true,
                             )
                         }
                     }.getOrThrow()
@@ -623,7 +617,6 @@ class DownloadUtil
                         audioQuality = requestedAudioQuality,
                         connectivityManager = connectivityManager,
                         networkMetered = lowDataModeActive,
-                        preferM4A = true,
                     )
                 }.getOrThrow()
             }.getOrNull() ?: return null
