@@ -27,7 +27,6 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.compose.compiler)
     alias(libs.plugins.aboutlibraries.android)
-    alias(libs.plugins.chaquopy)
 }
 
 val localProperties = Properties()
@@ -93,24 +92,6 @@ tasks.configureEach {
 // keeps the signature stable across builds so debug APKs install over one another. Uses the
 // standard Android debug credentials.
 val debugKeystoreFile = file("persistent-debug.keystore")
-
-chaquopy {
-    defaultConfig {
-        version = "3.11"
-        // Chaquopy automatically respects Android's ndk.abiFilters — Python is
-        // only bundled for ABIs that are present in the flavor's ndk.abiFilters.
-        // The universal flavor was restricted to arm64-v8a + x86_64 below to cut
-        // ~100 MB of Python runtime from the universal APK.
-        //
-        // The legacy armeabi + x86 flavors will fail at Chaquopy's Python build
-        // step (Python 3.11 has no wheels for those ABIs). nightly.yml's matrix
-        // already uses continue-on-error for those two flavors.
-        pip {
-            install("yt-dlp==2026.8.19")
-            install("yt-dlp-ejs==0.8.0")
-        }
-    }
-}
 
 android {
     namespace = "moe.rukamori.archivetune"
@@ -248,12 +229,8 @@ android {
         }
         create("universal") {
             dimension = "abi"
-            // Drop armeabi-v7a + x86 from universal APK to reduce size.
-            // Chaquopy's Python runtime is ~50 MB per ABI; cutting 2 ABIs saves ~100 MB.
-            // Users on legacy devices can still install the dedicated `armeabi` or `x86` APK.
-            // Modern phones (2020+) are arm64-v8a; emulators/Chromebooks are x86_64.
             ndk {
-                abiFilters += listOf("arm64-v8a", "x86_64")
+                abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
             }
             buildConfigField("String", "ARCHITECTURE", "\"universal\"")
         }
