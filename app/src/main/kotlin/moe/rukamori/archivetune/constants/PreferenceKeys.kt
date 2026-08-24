@@ -478,6 +478,7 @@ val AutoChoosePlaybackClientKey = booleanPreferencesKey("autoChoosePlaybackClien
 enum class PlayerStreamClient {
     ANDROID_VR,
     WEB_REMIX,
+    HI_RES_LOSSLESS,
     IOS,
     TVHTML5,
     ANDROID_MUSIC,

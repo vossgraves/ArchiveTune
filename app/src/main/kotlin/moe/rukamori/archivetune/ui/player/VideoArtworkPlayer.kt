@@ -2263,9 +2263,9 @@ private suspend fun resolveVideoStreamUrl(
                             ?.captionTracks
                             .orEmpty()
                     val format = pickVideoFormat(playerResponse, preferredHeight) ?: return@runCatching null
-                    val rawUrl = NewPipeUtils.getStreamUrl(format = format, videoId = videoId).getOrThrow()
-                    val versionedUrl = StreamClientUtils.patchClientVersion(rawUrl, client.clientVersion)
-                    val finalUrl = poToken?.let { StreamClientUtils.appendPoToken(versionedUrl, it) } ?: versionedUrl
+                    // NewPipeUtils.getStreamUrl already appends the GVS PO token via
+                    // YouTube.appendGvsPoToken, so we just use the URL directly.
+                    val finalUrl = NewPipeUtils.getStreamUrl(format = format, videoId = videoId).getOrThrow()
                     VideoStreamInfo(
                         streamUrl = finalUrl,
                         availableHeights = availableHeights,
