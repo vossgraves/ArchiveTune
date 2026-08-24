@@ -1731,7 +1731,12 @@ object YTPlayerUtils {
                     // Web-family clients (WEB / WEB_REMIX / WEB_CREATOR) mint a poToken in the
                     // player request; YouTube's CDN requires the same token as a `pot` query
                     // parameter on the stream URL itself, otherwise it answers 403.
-                    authState.resolvePlayerPoToken(client)?.let { poToken ->
+                    //
+                    // MUST pass videoId here — resolvePlayerPoToken scopes the player token
+                    // to the videoId (poTokenPlayerVideoId == videoId check). Without it,
+                    // the check fails and falls through to the legacy `poToken` field which
+                    // is never set, returning null → no PO token on stream URL → 403.
+                    authState.resolvePlayerPoToken(client, videoId = videoId)?.let { poToken ->
                         StreamClientUtils.appendPoToken(patched, poToken)
                     } ?: patched
                 }
