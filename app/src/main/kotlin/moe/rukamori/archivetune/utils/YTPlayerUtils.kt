@@ -371,8 +371,13 @@ object YTPlayerUtils {
     ): PlaybackAuthState {
         val updatedAuthState =
             copy(
-                poTokenGvs = tokenResult.sessionToken,
+                poTokenGvs = tokenResult.playerToken,
+                poTokenGvsSession = tokenResult.sessionToken,
+                poTokenGvsVideoId = videoId,
                 poTokenPlayer = tokenResult.playerToken,
+                poTokenPlayerVideoId = videoId,
+                poTokenSubs = tokenResult.playerToken,
+                poTokenSubsVideoId = videoId,
                 webClientPoTokenEnabled = true,
             ).normalized()
         val currentAuthState = YouTube.currentPlaybackAuthState()
@@ -380,8 +385,13 @@ object YTPlayerUtils {
             YouTube.authState =
                 currentAuthState
                     .copy(
-                        poTokenGvs = tokenResult.sessionToken,
+                        poTokenGvs = tokenResult.playerToken,
+                        poTokenGvsSession = tokenResult.sessionToken,
+                        poTokenGvsVideoId = videoId,
                         poTokenPlayer = tokenResult.playerToken,
+                        poTokenPlayerVideoId = videoId,
+                        poTokenSubs = tokenResult.playerToken,
+                        poTokenSubsVideoId = videoId,
                         webClientPoTokenEnabled = true,
                     ).normalized()
         }
