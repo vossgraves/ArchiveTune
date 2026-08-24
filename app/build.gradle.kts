@@ -97,15 +97,14 @@ val debugKeystoreFile = file("persistent-debug.keystore")
 chaquopy {
     defaultConfig {
         version = "3.11"
-        // Restrict Python runtime to arm64-v8a + x86_64 only.
-        // Chaquopy would otherwise bundle Python for ALL ABIs in ndk.abiFilters
-        // (including armeabi-v7a + x86), which roughly DOUBLES APK size.
-        // arm64-v8a covers 99%+ of modern Android phones (2020+).
-        // x86_64 covers emulators + Chromebooks.
-        // armeabi-v7a + x86 users fall back to native (non-yt-dlp) stream resolution.
-        buildPython {
-            abiFilters += setOf("arm64-v8a", "x86_64")
-        }
+        // Chaquopy automatically respects Android's ndk.abiFilters — Python is
+        // only bundled for ABIs that are present in the flavor's ndk.abiFilters.
+        // The universal flavor was restricted to arm64-v8a + x86_64 below to cut
+        // ~100 MB of Python runtime from the universal APK.
+        //
+        // The legacy armeabi + x86 flavors will fail at Chaquopy's Python build
+        // step (Python 3.11 has no wheels for those ABIs). nightly.yml's matrix
+        // already uses continue-on-error for those two flavors.
         pip {
             install("yt-dlp==2026.8.19")
             install("yt-dlp-ejs==0.8.0")
