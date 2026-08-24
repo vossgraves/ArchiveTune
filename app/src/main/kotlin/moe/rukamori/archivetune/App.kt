@@ -45,7 +45,11 @@ import moe.rukamori.archivetune.kugou.KuGou
 import moe.rukamori.archivetune.lastfm.LastFM
 import moe.rukamori.archivetune.lyrics.JapaneseLanguagePackManager
 import moe.rukamori.archivetune.canvas.AppleMusicProvider
+import moe.rukamori.archivetune.morideobfuscator.ytdlp.YtDlpJavaScriptRuntime
+import moe.rukamori.archivetune.morideobfuscator.ytdlp.YtDlpRuntimeStore
+import moe.rukamori.archivetune.morideobfuscator.ytdlp.YtDlpUpdateScheduler
 import moe.rukamori.archivetune.paxsenix.PaxsenixLyrics
+import moe.rukamori.archivetune.playback.stream.YtDlpRuntime
 import moe.rukamori.archivetune.scrobbling.LastFmServiceConfig
 import moe.rukamori.archivetune.storage.StorageFolderKind
 import moe.rukamori.archivetune.storage.StorageLocationRepository
@@ -85,6 +89,9 @@ import kotlin.system.exitProcess
 class App :
     Application(),
     SingletonImageLoader.Factory {
+    @Inject
+    lateinit var ytDlpRuntime: YtDlpRuntime
+
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     @Volatile private var isInitialized = false
@@ -110,6 +117,7 @@ class App :
             Timber.plant(Timber.DebugTree())
             return
         }
+        YtDlpJavaScriptRuntime.initialize(this)
         BotGuardTokenGenerator.initialize(this)
         PreferenceStore.start(this)
         JapaneseLanguagePackManager.initialize(this)
@@ -197,6 +205,10 @@ class App :
 
     private fun initializeDeferredAsync() {
         applicationScope.launch(Dispatchers.IO) {
+            ytDlpRuntime.preWarm()
+        }
+
+        applicationScope.launch(Dispatchers.IO) {
             try {
                 val prefs = dataStore.data.first()
 
@@ -207,9 +219,7 @@ class App :
                     YouTube.locale = YouTube.locale.copy(hl = lang)
                 }
                 prefs[YouTubeMusicRegionKey]?.let { regionValue ->
-                    val spooferActive = regionValue != SYSTEM_DEFAULT
-                    YouTube.regionSpooferActive = spooferActive
-                    if (spooferActive) {
+                    if (regionValue != SYSTEM_DEFAULT) {
                         YouTube.locale = YouTube.locale.copy(gl = regionValue)
                     }
                 }
@@ -225,14 +235,6 @@ class App :
                     password = prefs[ProxyPasswordKey],
                 )
                 YouTube.streamBypassProxy = YouTube.proxy != null && prefs[StreamBypassProxyKey] == true
-
-                if (prefs[IpRotationEnabledKey] == true) {
-                    try {
-                        YouTube.enableIpRotation()
-                    } catch (e: Exception) {
-                        reportException(e)
-                    }
-                }
 
                 if (prefs[UseLoginForBrowse] != false) {
                     YouTube.useLoginForBrowse = true

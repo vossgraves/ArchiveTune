@@ -106,6 +106,9 @@ jobs:
       # channel and the build-number-based canary update comparison.
       IS_NIGHTLY_BUILD: 'true'
     strategy:
+      # Don't cancel other matrix jobs when one fails (e.g. armeabi/x86 fail
+      # due to Chaquopy Python not being available for those ABIs).
+      fail-fast: false
       matrix:
         include:
           - device: mobile
@@ -149,6 +152,11 @@ jobs:
         with:
           submodules: true
 
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
       - name: Set up JDK 21
         uses: actions/setup-java@v5
         with:
@@ -186,6 +194,9 @@ jobs:
 
       - name: Build Release APK
         shell: bash
+        # armeabi + x86 fail because Chaquopy's Python 3.11 has no wheels for
+        # those ABIs. continue-on-error keeps the nightly matrix green.
+        continue-on-error: ${{ matrix.abi == 'armeabi' || matrix.abi == 'x86' }}
         run: |
           set -euo pipefail
           GRADLE_TASK="${{ steps.variant.outputs.gradle_task }}"

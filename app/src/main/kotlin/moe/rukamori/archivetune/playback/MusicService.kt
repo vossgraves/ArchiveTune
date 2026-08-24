@@ -100,6 +100,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
@@ -425,7 +426,7 @@ class MusicService :
             }
         }
 
-    private var scopeJob = Job()
+    private var scopeJob = SupervisorJob()
     private var scope = CoroutineScope(Dispatchers.Main + scopeJob)
     private var ioScope = CoroutineScope(Dispatchers.IO + scopeJob)
     private val binder = MusicBinder()
@@ -1705,7 +1706,7 @@ class MusicService :
 
     private fun ensureScopesActive() {
         if (!scopeJob.isActive) {
-            scopeJob = Job()
+            scopeJob = SupervisorJob()
         }
         if (!scope.isActive) {
             scope = CoroutineScope(Dispatchers.Main + scopeJob)
@@ -7555,7 +7556,6 @@ class MusicService :
                                 audioQuality = if (lowData) AudioQuality.LOW else audioQuality,
                                 connectivityManager = connectivityManager,
                                 preferredStreamClient = preferredStreamClient,
-                                autoChoosePlaybackClient = autoChoosePlaybackClient,
                                 networkMetered = lowData,
                             )
                         }
@@ -10236,7 +10236,6 @@ class MusicService :
                         audioQuality = if (lowDataModeActive) AudioQuality.LOW else audioQuality,
                         connectivityManager = connectivityManager,
                         preferredStreamClient = preferredStreamClient,
-                        autoChoosePlaybackClient = autoChoosePlaybackClient,
                         networkMetered = lowDataModeActive,
                     )
                 }.recoverCatching { youtubeFailure ->
