@@ -2593,12 +2593,6 @@ class MainActivity : ComponentActivity() {
                                                         }
                                                     }
                                                     if (active) {
-                                                        IconButton(onClick = launchVoiceSearch) {
-                                                            Icon(
-                                                                painter = painterResource(R.drawable.mic),
-                                                                contentDescription = stringResource(R.string.voice_search),
-                                                            )
-                                                        }
                                                         if (query.text.isNotEmpty()) {
                                                             IconButton(
                                                                 onClick = {

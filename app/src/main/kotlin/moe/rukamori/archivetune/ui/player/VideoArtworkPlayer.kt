@@ -2233,7 +2233,7 @@ private suspend fun resolveVideoStreamUrl(
                         } else {
                             null
                         }
-                    val poToken = authState.resolvePlayerPoToken(client)?.takeIf { it.isNotBlank() }
+                    val poToken = authState.resolvePlayerPoToken(client, videoId = videoId)?.takeIf { it.isNotBlank() }
                     val playerResponse =
                         YouTube
                             .player(
