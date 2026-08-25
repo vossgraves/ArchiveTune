@@ -43,8 +43,6 @@ import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -943,56 +941,21 @@ fun FullscreenVideoOverlay(
 
                     // ── Aspect ratio picker ──
                     // Moved out of the overflow sheet so the user can quickly
-                    // cycle aspect ratios without opening the sheet. The
-                    // dropdown shows a checkmark next to the active option.
-                    Box {
-                        IconButton(
-                            onClick = { aspectRatioMenuOpen = true },
-                            modifier = Modifier.size(40.dp),
-                        ) {
-                            Icon(
-                                painter = painterResource(R.drawable.solar_aspect_ratio_linear),
-                                contentDescription = stringResource(R.string.video_aspect_ratio),
-                                tint = Color.White,
-                                modifier = Modifier.size(22.dp),
-                            )
-                        }
-                        DropdownMenu(
-                            expanded = aspectRatioMenuOpen,
-                            onDismissRequest = { aspectRatioMenuOpen = false },
-                        ) {
-                            val aspectOptions =
-                                listOf(
-                                    VideoAspectRatio.FIT to R.string.video_aspect_fit,
-                                    VideoAspectRatio.CROP to R.string.video_aspect_crop,
-                                    VideoAspectRatio.STRETCH to R.string.video_aspect_stretch,
-                                    VideoAspectRatio.FILL to R.string.video_aspect_fill,
-                                )
-                            aspectOptions.forEach { (ratio, labelRes) ->
-                                DropdownMenuItem(
-                                    text = {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text(
-                                                text = stringResource(labelRes),
-                                                modifier = Modifier.weight(1f),
-                                            )
-                                            if (ratio == aspectRatio) {
-                                                Icon(
-                                                    painter = painterResource(R.drawable.solar_check_circle_linear),
-                                                    contentDescription = null,
-                                                    tint = MaterialTheme.colorScheme.primary,
-                                                    modifier = Modifier.size(18.dp),
-                                                )
-                                            }
-                                        }
-                                    },
-                                    onClick = {
-                                        onAspectRatioChange(ratio)
-                                        aspectRatioMenuOpen = false
-                                    },
-                                )
-                            }
-                        }
+                    // cycle aspect ratios without opening the sheet. Raises the
+                    // same sliding sheet the quality pill uses (see
+                    // VideoAspectRatioSheet) rather than a corner-pinned
+                    // dropdown, which in landscape opened on the far side of the
+                    // screen from the user's thumb.
+                    IconButton(
+                        onClick = { aspectRatioMenuOpen = true },
+                        modifier = Modifier.size(40.dp),
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.solar_aspect_ratio_linear),
+                            contentDescription = stringResource(R.string.video_aspect_ratio),
+                            tint = Color.White,
+                            modifier = Modifier.size(22.dp),
+                        )
                     }
 
                     // 3-dot overflow button — opens the ModalBottomSheet
@@ -1199,6 +1162,16 @@ fun FullscreenVideoOverlay(
             selectedHeight = selectedHeight,
             onPreferredHeightChange = onPreferredHeightChange,
             onDismissRequest = { qualityMenuOpen = false },
+        )
+    }
+
+    // ── Aspect-ratio bottom sheet ──
+    // Same treatment as the quality sheet above, and likewise its own SheetState.
+    if (aspectRatioMenuOpen) {
+        VideoAspectRatioSheet(
+            aspectRatio = aspectRatio,
+            onAspectRatioChange = onAspectRatioChange,
+            onDismissRequest = { aspectRatioMenuOpen = false },
         )
     }
 

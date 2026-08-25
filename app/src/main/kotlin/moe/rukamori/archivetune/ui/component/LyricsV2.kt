@@ -318,35 +318,38 @@ fun LyricsV2(
     val isSynced = remember(lyrics) { lyrics != null && (isLineSyncedLrc(lyrics!!) || isTtml(lyrics!!)) }
     val isTtmlFormat = remember(lyrics) { lyrics != null && isTtml(lyrics!!) }
 
-    val lyricsEntries: List<LyricsEntry> =
-        remember(lyrics) {
-            if (lyrics == null || lyrics == LYRICS_NOT_FOUND) return@remember emptyList()
-            val parsed =
-                when {
-                    isTtml(lyrics!!) -> {
-                        parseTtml(lyrics!!)
-                    }
-
-                    isLineSyncedLrc(lyrics!!) -> {
-                        val dur = player.duration.takeIf { it > 0L } ?: 0L
-                        insertInstrumentalBreaks(parseLyrics(lyrics!!), dur)
-                    }
-
-                    else -> {
-                        lyrics!!
-                            .lines()
-                            .filter { it.isNotBlank() }
-                            .mapIndexed { index, line ->
-                                LyricsEntry(time = -1L, text = line.trim())
-                            }
-                    }
-                }
-            if (parsed.isNotEmpty() && parsed.first().time >= 0) {
-                listOf(HEAD_LYRICS_ENTRY) + parsed
-            } else {
-                parsed
-            }
+    // Parsed off the composition thread — same reason as LyricsEnhanced: a word-synced TTML file
+    // is an XML parse plus one object per syllable, and running it in composition put the whole
+    // cost on the frame the Apple Music COVER->LYRICS morph starts. `null` means "not parsed yet",
+    // which the render path below shows as the shimmer rather than "lyrics not found".
+    var parsedEntries by remember(lyrics) { mutableStateOf<List<LyricsEntry>?>(null) }
+    LaunchedEffect(lyrics) {
+        val text = lyrics
+        if (text == null || text == LYRICS_NOT_FOUND) {
+            parsedEntries = emptyList()
+            return@LaunchedEffect
         }
+        val dur = player.duration.takeIf { it > 0L } ?: 0L
+        parsedEntries =
+            withContext(Dispatchers.Default) {
+                val parsed =
+                    when {
+                        isTtml(text) -> parseTtml(text)
+                        isLineSyncedLrc(text) -> insertInstrumentalBreaks(parseLyrics(text), dur)
+                        else ->
+                            text
+                                .lines()
+                                .filter { it.isNotBlank() }
+                                .map { line -> LyricsEntry(time = -1L, text = line.trim()) }
+                    }
+                if (parsed.isNotEmpty() && parsed.first().time >= 0) {
+                    listOf(HEAD_LYRICS_ENTRY) + parsed
+                } else {
+                    parsed
+                }
+            }
+    }
+    val lyricsEntries: List<LyricsEntry> = parsedEntries.orEmpty()
 
     val entriesWithWords: List<LyricsEntry> = lyricsEntries
 
@@ -599,7 +602,9 @@ fun LyricsV2(
             return@BoxWithConstraints
         }
 
-        if (lyrics == null) {
+        // parsedEntries == null: the off-thread parse hasn't published yet. Shimmer on that
+        // state so the "lyrics not found" branch below doesn't flash while it runs.
+        if (lyrics == null || parsedEntries == null) {
             ShimmerHost {
                 repeat(6) {
                     TextPlaceholder()

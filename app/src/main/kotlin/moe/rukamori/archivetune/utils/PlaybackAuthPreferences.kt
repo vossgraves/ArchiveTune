@@ -14,6 +14,7 @@ import androidx.datastore.preferences.core.edit
 import kotlinx.coroutines.flow.first
 import moe.rukamori.archivetune.constants.AccountChannelHandleKey
 import moe.rukamori.archivetune.constants.AccountEmailKey
+import moe.rukamori.archivetune.constants.AccountImageUrlKey
 import moe.rukamori.archivetune.constants.AccountNameKey
 import moe.rukamori.archivetune.constants.DataSyncIdKey
 import moe.rukamori.archivetune.constants.InnerTubeCookieKey
@@ -47,6 +48,7 @@ fun MutablePreferences.clearPlaybackAuthSession(clearAccountIdentity: Boolean = 
     remove(PoTokenSourceUrlKey)
     if (clearAccountIdentity) {
         remove(AccountNameKey)
+        remove(AccountImageUrlKey)
         remove(AccountEmailKey)
         remove(AccountChannelHandleKey)
     }

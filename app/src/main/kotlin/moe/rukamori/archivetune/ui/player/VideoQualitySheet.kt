@@ -9,6 +9,7 @@
 
 package moe.rukamori.archivetune.ui.player
 
+import android.content.res.Configuration
 import androidx.annotation.DrawableRes
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
@@ -44,11 +45,63 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import moe.rukamori.archivetune.constants.VideoAspectRatio
 import moe.rukamori.archivetune.R
+
+/**
+ * Row/title spacing for the sheets in this file.
+ *
+ * In landscape — which is the orientation the fullscreen video overlay locks to — the whole screen
+ * is only ~360dp tall, so a sheet laid out with the portrait metrics (24/12dp padding plus a
+ * description line under every row) is taller than the space it has and ends up scrolling the
+ * three quality modes. [compact] trades the descriptions and half the padding for fitting, which
+ * is the right call there: the row titles already name the modes.
+ */
+private data class SheetMetrics(
+    val horizontalPadding: Dp,
+    val rowVerticalPadding: Dp,
+    val titleBottomPadding: Dp,
+    val dividerVerticalPadding: Dp,
+    val listMaxHeight: Dp,
+    val showDescriptions: Boolean,
+)
+
+/**
+ * True when the sheet should use [SheetMetrics] compact spacing. Derived from the orientation
+ * rather than passed in, so both the inline player and the fullscreen overlay get it without
+ * either having to know about it.
+ */
+@Composable
+private fun rememberSheetMetrics(): SheetMetrics {
+    val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+    return remember(landscape) {
+        if (landscape) {
+            SheetMetrics(
+                horizontalPadding = 20.dp,
+                rowVerticalPadding = 6.dp,
+                titleBottomPadding = 4.dp,
+                dividerVerticalPadding = 2.dp,
+                listMaxHeight = 168.dp,
+                showDescriptions = false,
+            )
+        } else {
+            SheetMetrics(
+                horizontalPadding = 24.dp,
+                rowVerticalPadding = 12.dp,
+                titleBottomPadding = 12.dp,
+                dividerVerticalPadding = 8.dp,
+                listMaxHeight = 320.dp,
+                showDescriptions = true,
+            )
+        }
+    }
+}
 
 /**
  * Video-quality picker, presented as a bottom sheet that slides up from the bottom of the screen.
@@ -109,6 +162,7 @@ private fun VideoQualitySheetContent(
     onSelect: (Int?) -> Unit,
 ) {
     var advancedOpen by remember { mutableStateOf(VideoQualityPreference.isExactHeight(preferredHeight)) }
+    val metrics = rememberSheetMetrics()
 
     AnimatedContent(
         targetState = advancedOpen,
@@ -136,6 +190,7 @@ private fun VideoQualitySheetContent(
                 AdvancedQualityPage(
                     preferredHeight = preferredHeight,
                     availableHeights = availableHeights,
+                    metrics = metrics,
                     onBack = { advancedOpen = false },
                     onSelect = onSelect,
                 )
@@ -143,6 +198,7 @@ private fun VideoQualitySheetContent(
                 MainQualityPage(
                     preferredHeight = preferredHeight,
                     selectedHeight = selectedHeight,
+                    metrics = metrics,
                     onSelect = onSelect,
                     onOpenAdvanced = { advancedOpen = true },
                 )
@@ -156,61 +212,78 @@ private fun VideoQualitySheetContent(
 private fun MainQualityPage(
     preferredHeight: Int?,
     selectedHeight: Int?,
+    metrics: SheetMetrics,
     onSelect: (Int?) -> Unit,
     onOpenAdvanced: () -> Unit,
 ) {
     // The resolved resolution is only worth showing next to the mode that produced it — repeating
-    // "Playing at 1080p" under all three rows would read as if all three were active.
+    // "Playing at 1080p" under all three rows would read as if all three were active. It survives
+    // the compact layout even though the static descriptions do not: it is the one subtitle that
+    // says something the row title cannot.
     val playingLabel = selectedHeight?.let { stringResource(R.string.video_quality_current, formatHeightLabel(it)) }
 
-    SheetTitle(stringResource(R.string.video_quality))
+    fun subtitleFor(
+        active: Boolean,
+        description: String,
+    ) = when {
+        active && playingLabel != null -> playingLabel
+        metrics.showDescriptions -> description
+        else -> null
+    }
+
+    SheetTitle(stringResource(R.string.video_quality), metrics)
 
     QualityRow(
         title = stringResource(R.string.video_quality_mode_auto),
-        subtitle =
-            if (preferredHeight == null && playingLabel != null) {
-                playingLabel
-            } else {
-                stringResource(R.string.video_quality_mode_auto_desc)
-            },
+        subtitle = subtitleFor(preferredHeight == null, stringResource(R.string.video_quality_mode_auto_desc)),
         selected = preferredHeight == null,
+        metrics = metrics,
         onClick = { onSelect(null) },
     )
     QualityRow(
         title = stringResource(R.string.video_quality_mode_data_saver),
         subtitle =
-            if (preferredHeight == VideoQualityPreference.DATA_SAVER && playingLabel != null) {
-                playingLabel
-            } else {
-                stringResource(R.string.video_quality_mode_data_saver_desc)
-            },
+            subtitleFor(
+                preferredHeight == VideoQualityPreference.DATA_SAVER,
+                stringResource(R.string.video_quality_mode_data_saver_desc),
+            ),
         selected = preferredHeight == VideoQualityPreference.DATA_SAVER,
+        metrics = metrics,
         onClick = { onSelect(VideoQualityPreference.DATA_SAVER) },
     )
     QualityRow(
         title = stringResource(R.string.video_quality_mode_high),
         subtitle =
-            if (preferredHeight == VideoQualityPreference.HIGH_QUALITY && playingLabel != null) {
-                playingLabel
-            } else {
-                stringResource(R.string.video_quality_mode_high_desc)
-            },
+            subtitleFor(
+                preferredHeight == VideoQualityPreference.HIGH_QUALITY,
+                stringResource(R.string.video_quality_mode_high_desc),
+            ),
         selected = preferredHeight == VideoQualityPreference.HIGH_QUALITY,
+        metrics = metrics,
         onClick = { onSelect(VideoQualityPreference.HIGH_QUALITY) },
     )
 
-    HorizontalDivider(modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
+    HorizontalDivider(
+        modifier =
+            Modifier.padding(
+                horizontal = metrics.horizontalPadding,
+                vertical = metrics.dividerVerticalPadding,
+            ),
+    )
 
     val exactHeight = preferredHeight?.takeIf { VideoQualityPreference.isExactHeight(it) }
     QualityRow(
         title = stringResource(R.string.video_quality_advanced),
+        // The exact-height subtitle is the current selection, so it stays in the compact layout
+        // for the same reason playingLabel does.
         subtitle =
-            if (exactHeight != null) {
-                formatHeightLabel(exactHeight)
-            } else {
-                stringResource(R.string.video_quality_advanced_desc)
+            when {
+                exactHeight != null -> formatHeightLabel(exactHeight)
+                metrics.showDescriptions -> stringResource(R.string.video_quality_advanced_desc)
+                else -> null
             },
         selected = exactHeight != null,
+        metrics = metrics,
         onClick = onOpenAdvanced,
         // A chevron rather than a checkmark: this row navigates, it does not itself apply a
         // quality. The `selected` tint still marks it when an exact height is in force.
@@ -223,11 +296,12 @@ private fun MainQualityPage(
 private fun AdvancedQualityPage(
     preferredHeight: Int?,
     availableHeights: List<Int>,
+    metrics: SheetMetrics,
     onBack: () -> Unit,
     onSelect: (Int?) -> Unit,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(start = 8.dp, end = 24.dp),
+        modifier = Modifier.fillMaxWidth().padding(start = 8.dp, end = metrics.horizontalPadding),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         IconButton(onClick = onBack) {
@@ -251,7 +325,11 @@ private fun AdvancedQualityPage(
             text = stringResource(R.string.video_quality_unavailable_on_device),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
+            modifier =
+                Modifier.padding(
+                    horizontal = metrics.horizontalPadding,
+                    vertical = metrics.rowVerticalPadding,
+                ),
         )
     } else {
         // Capped height + scroll: an 8K video offers ~11 resolutions, which is taller than a
@@ -259,7 +337,7 @@ private fun AdvancedQualityPage(
         Column(
             modifier =
                 Modifier
-                    .heightIn(max = 320.dp)
+                    .heightIn(max = metrics.listMaxHeight)
                     .verticalScroll(rememberScrollState()),
         ) {
             availableHeights.sortedDescending().forEach { height ->
@@ -267,6 +345,7 @@ private fun AdvancedQualityPage(
                     title = formatHeightLabel(height),
                     subtitle = null,
                     selected = preferredHeight == height,
+                    metrics = metrics,
                     onClick = { onSelect(height) },
                 )
             }
@@ -274,13 +353,77 @@ private fun AdvancedQualityPage(
     }
 }
 
+/**
+ * Aspect-ratio picker, presented as the same bottom sheet as [VideoQualitySheet].
+ *
+ * The fullscreen overlay used to anchor a [androidx.compose.material3.DropdownMenu] to the
+ * aspect-ratio button in the top-right pill, which had the same two problems the quality dropdown
+ * had: it opened in the corner furthest from the thumb in landscape, and it looked nothing like the
+ * quality picker sitting next to it. Sharing this sheet makes the two controls behave alike.
+ */
 @Composable
-private fun SheetTitle(text: String) {
+internal fun VideoAspectRatioSheet(
+    aspectRatio: VideoAspectRatio,
+    onAspectRatioChange: (VideoAspectRatio) -> Unit,
+    onDismissRequest: () -> Unit,
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val metrics = rememberSheetMetrics()
+    ModalBottomSheet(
+        onDismissRequest = onDismissRequest,
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surface,
+    ) {
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(bottom = 12.dp),
+        ) {
+            SheetTitle(stringResource(R.string.video_aspect_ratio), metrics)
+            VideoAspectRatio.entries.forEach { ratio ->
+                QualityRow(
+                    title = stringResource(ratio.labelRes),
+                    subtitle = null,
+                    selected = ratio == aspectRatio,
+                    metrics = metrics,
+                    onClick = {
+                        onAspectRatioChange(ratio)
+                        onDismissRequest()
+                    },
+                )
+            }
+        }
+    }
+}
+
+/** Label for each aspect-ratio mode. Kept next to the sheet that renders them. */
+private val VideoAspectRatio.labelRes: Int
+    get() =
+        when (this) {
+            VideoAspectRatio.FIT -> R.string.video_aspect_fit
+            VideoAspectRatio.CROP -> R.string.video_aspect_crop
+            VideoAspectRatio.STRETCH -> R.string.video_aspect_stretch
+            VideoAspectRatio.FILL -> R.string.video_aspect_fill
+        }
+
+@Composable
+private fun SheetTitle(
+    text: String,
+    metrics: SheetMetrics,
+) {
     Text(
         text = text,
         style = MaterialTheme.typography.titleMedium,
         fontWeight = FontWeight.SemiBold,
-        modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 4.dp, bottom = 12.dp),
+        modifier =
+            Modifier.padding(
+                start = metrics.horizontalPadding,
+                end = metrics.horizontalPadding,
+                top = 4.dp,
+                bottom = metrics.titleBottomPadding,
+            ),
     )
 }
 
@@ -293,6 +436,7 @@ private fun QualityRow(
     title: String,
     subtitle: String?,
     selected: Boolean,
+    metrics: SheetMetrics,
     onClick: () -> Unit,
     @DrawableRes trailingIcon: Int? = null,
 ) {
@@ -301,7 +445,10 @@ private fun QualityRow(
             Modifier
                 .fillMaxWidth()
                 .clickable(onClick = onClick)
-                .padding(horizontal = 24.dp, vertical = 12.dp),
+                .padding(
+                    horizontal = metrics.horizontalPadding,
+                    vertical = metrics.rowVerticalPadding,
+                ),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(

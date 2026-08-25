@@ -60,6 +60,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
@@ -74,6 +75,7 @@ import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.ui.component.*
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.ProxyUtils
+import moe.rukamori.archivetune.utils.dataStore
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
 import okhttp3.OkHttpClient
@@ -305,6 +307,15 @@ fun InternetSettings(navController: NavController, scrollTo: String? = null) {
                             // the process. 400ms is enough for DataStore to flush and for
                             // the Toast to animate in.
                             scope.launch {
+                                // Drop the persisted visitorData too, not just the in-memory copy
+                                // above: App.kt restores YouTube.authState from DataStore on every
+                                // start, so an in-memory null was undone by the very restart this
+                                // handler schedules and the old region-pinned token came straight
+                                // back. Removing the key makes App.kt mint a fresh one against the
+                                // new region. The login cookie and dataSyncId are untouched.
+                                withContext(Dispatchers.IO) {
+                                    context.dataStore.edit { it.remove(VisitorDataKey) }
+                                }
                                 withContext(Dispatchers.Main) {
                                     Toast.makeText(
                                         context,

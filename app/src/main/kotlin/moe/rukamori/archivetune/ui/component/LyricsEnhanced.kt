@@ -308,29 +308,42 @@ fun LyricsEnhanced(
     val isSynced = remember(lyrics) { lyrics != null && (isLineSyncedLrc(lyrics!!) || isTtml(lyrics!!)) }
     val isTtmlFormat = remember(lyrics) { lyrics != null && isTtml(lyrics!!) }
 
-    val lyricsEntries: List<LyricsEntry> =
-        remember(lyrics) {
-            if (lyrics == null || lyrics == LYRICS_NOT_FOUND) return@remember emptyList()
-            when {
-                isTtml(lyrics!!) -> {
-                    parseTtml(lyrics!!)
-                }
-
-                isLineSyncedLrc(lyrics!!) -> {
-                    parseLyrics(lyrics!!)
-                }
-
-                else -> {
-                    lyrics!!
-                        .lines()
-                        .filter { it.isNotBlank() }
-                        .map { line -> LyricsEntry(time = -1L, text = line.trim()) }
+    // Parsed off the composition thread. `null` means "not parsed yet" — the render `when` below
+    // keeps the shimmer up on that state instead of falling through to "lyrics not found".
+    //
+    // parseTtml/parseLyrics used to run right here, synchronously, and buildSyncedLyrics below
+    // walked the result again in the same composition. For word-synced TTML that is an XML parse
+    // plus one object per syllable, twice — landing on the exact frame the Apple Music
+    // COVER->LYRICS morph starts, which is what made switching to the lyrics page stutter. Both
+    // now run on Dispatchers.Default, the dispatcher the romanization pass below already uses.
+    var parsedEntries by remember(lyrics) { mutableStateOf<List<LyricsEntry>?>(null) }
+    LaunchedEffect(lyrics) {
+        val text = lyrics
+        if (text == null || text == LYRICS_NOT_FOUND) {
+            parsedEntries = emptyList()
+            return@LaunchedEffect
+        }
+        parsedEntries =
+            withContext(Dispatchers.Default) {
+                when {
+                    isTtml(text) -> parseTtml(text)
+                    isLineSyncedLrc(text) -> parseLyrics(text)
+                    else ->
+                        text
+                            .lines()
+                            .filter { it.isNotBlank() }
+                            .map { line -> LyricsEntry(time = -1L, text = line.trim()) }
                 }
             }
-        }
+    }
+    val lyricsEntries: List<LyricsEntry> = parsedEntries.orEmpty()
 
-    var syncedLyrics by remember(lyricsEntries, isTtmlFormat) {
-        mutableStateOf(buildSyncedLyrics(lyricsEntries, isTtmlFormat, emptyMap()))
+    // Keyed on the raw lyrics text, not on lyricsEntries: the entries now arrive a beat after the
+    // first composition, and re-keying on them would put a synchronous buildSyncedLyrics straight
+    // back on the main thread the moment the parse lands. The effect below publishes the real
+    // build from Default, so this only ever supplies the empty starting value.
+    var syncedLyrics by remember(lyrics, isTtmlFormat) {
+        mutableStateOf(SyncedLyrics(emptyList()))
     }
 
     LaunchedEffect(lyricsEntries, romanizationPreferences) {
@@ -877,7 +890,10 @@ fun LyricsEnhanced(
                 }
             }
 
-            lyrics == null -> {
+            // parsedEntries == null means the off-thread parse above hasn't published yet.
+            // Shimmer on that state — without it the two "lyrics not found" branches below
+            // would flash for the frames the parse takes.
+            lyrics == null || parsedEntries == null -> {
                 ShimmerHost {
                     repeat(6) { TextPlaceholder() }
                 }

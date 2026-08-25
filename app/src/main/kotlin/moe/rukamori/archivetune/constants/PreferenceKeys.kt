@@ -1175,6 +1175,11 @@ val PoTokenKey = stringPreferencesKey("poToken")
 val AccountNameKey = stringPreferencesKey("accountName")
 val AccountEmailKey = stringPreferencesKey("accountEmail")
 val AccountChannelHandleKey = stringPreferencesKey("accountChannelHandle")
+
+// Avatar that goes with AccountNameKey. Persisted for the same reason the name is: the visible
+// account identity has to survive a cold start (including the one the region picker triggers)
+// without waiting on, or depending on, a live accountMenu call.
+val AccountImageUrlKey = stringPreferencesKey("accountImageUrl")
 val SavedAccountsKey = stringPreferencesKey("savedAccounts")
 val UseLoginForBrowse = booleanPreferencesKey("useLoginForBrowse")
 val SpotifySpDcKey = stringPreferencesKey("spotify_sp_dc")

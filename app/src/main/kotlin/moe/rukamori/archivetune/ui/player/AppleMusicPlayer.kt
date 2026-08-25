@@ -91,6 +91,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -108,6 +109,7 @@ import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.changedToUp
 import kotlin.math.abs
+import kotlin.math.sin
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -182,21 +184,50 @@ private val AppleMusicBottomIconSize = 26.dp
 private val AppleMusicBottomButtonSize = 48.dp
 private val AppleMusicMiniArtworkSize = 56.dp
 
-// ─── Lyrics backdrop "moving blur" drift ─────────────────────────────────────
+// ─── Lyrics backdrop "moving blur" wander ────────────────────────────
 // Kept in sync with MovingBlurBackground in LyricsScreen.kt so both lyrics
-// surfaces pan at the same Apple-Music-like rate. Amplitudes are in dp and are
-// applied as graphicsLayer translations (see driftGraphicsLayer below).
+// surfaces move at the same rate. Offsets are in dp and are applied as
+// graphicsLayer translations (see driftGraphicsLayer below).
 //
-// AmLyricsBlurDriftScale must satisfy
-//     (scale - 1) / 2 * screenWidthDp  >=  driftX + blurRadius
+// This used to be two independent tweens with RepeatMode.Reverse (±160dp / 4s on
+// X, ±120dp / 6s on Y). Reverse turns around at full speed the instant it hits an
+// endpoint, so the artwork swept one way and then visibly snapped back the other
+// — which is what read as the backdrop "rotating back really fast".
+//
+// Instead each axis is now the sum of two sines of a single ever-advancing phase.
+// The result is a closed Lissajous path: the offset wanders without ever
+// reversing abruptly, and because the harmonics are whole numbers the phase can
+// wrap from 1 back to 0 with no discontinuity.
+//
+// Amplitudes still sum to the old peaks (160dp X / 120dp Y) so
+// [AmLyricsBlurDriftScale] keeps covering drift + blur. It must satisfy
+//     (scale - 1) / 2 * screenWidthDp  >=  maxDriftX + blurRadius
 // or the blurred artwork stops covering the parent at max drift and the blur
 // samples transparent pixels, which shows up as a dark band on the trailing
 // edge. For the narrowest common phone (360dp) that means
 //     (2.4 - 1) / 2 * 360 = 252dp  >=  160 + 64 = 224dp.  ✔
-private const val AmLyricsBlurDriftXDp = 160f
-private const val AmLyricsBlurDriftYDp = 120f
+//
+// Rate: peak speed is (2π / period) × Σ(amplitude × harmonic) — 82 dp/s on X and
+// 50 dp/s on Y, averaging ~52 and ~32 dp/s over a cycle. The old tweens ran at a
+// constant 80 and 40 dp/s, so this is the slightly slower drift that was asked
+// for while still being clearly in motion behind a 64dp blur.
+internal const val AmBlurWanderPeriodMs = 20_000
 private const val AmLyricsBlurDriftScale = 2.4f
 private const val AppleMusicLyricsContentDeferMs = 350L
+
+/** Horizontal wander offset in dp. [phase] advances 0→1 once per [AmBlurWanderPeriodMs]. */
+internal fun blurWanderXDp(phase: Float): Float =
+    110f * sin(TwoPi * phase) + 50f * sin(TwoPi * (3f * phase + 0.25f))
+
+/** Vertical wander offset in dp. Quarter-turn out of phase with X so the path orbits. */
+internal fun blurWanderYDp(phase: Float): Float =
+    80f * sin(TwoPi * (phase + 0.27f)) + 40f * sin(TwoPi * (2f * phase + 0.61f))
+
+private const val TwoPi = (2.0 * Math.PI).toFloat()
+
+// How far above the bottom of the artwork stage the blurred canvas starts dissolving into the
+// still blurred album art beneath it. See canvasSeamFade in AppleMusicPlayerContent.
+private val AmCanvasSeamFadeDp = 88.dp
 
 /**
  * A [Shape] that interpolates the corner radius based on the element's size.
@@ -486,60 +517,44 @@ fun AppleMusicPlayerContent(
         { sliderPositionState.value }
     }
 
-    // === Moving blur drift for the backdrop when lyrics is open ===
+    // === Moving blur wander for the backdrop when lyrics is open ===
     // Mirrors the MovingBlurBackground from LyricsScreen: the blurred artwork
-    // slowly drifts horizontally and vertically, creating an ambient motion
-    // behind the lyrics. Only active when lyricsOpen = true.
+    // wanders behind the lyrics. Only active when lyricsOpen = true. See
+    // [blurWanderXDp] for why this is one advancing phase rather than two
+    // reversing tweens, and for the amplitude/rate budget.
     //
     // FLICKER FIX: the previous scale (1.4f) was too small for the drift range
     // (±80dp X / ±60dp Y) + blur radius (64dp). At max drift, the image's
     // trailing edge was INSIDE the parent's bounds (0.2*W - 80 < 0 for W=360),
     // so the blur sampled transparent areas at the trailing edge — appearing
     // as a flickering dark band at the screen corners/edges. Now using scale
-    // 2.4 with drift ±160/±120 and blur 64dp: the image extends 0.7*W beyond
+    // 2.4 with peaks ±160/±120 and blur 64dp: the image extends 0.7*W beyond
     // each edge (252dp for W=360), which is > drift(160) + blur(64) = 224dp,
     // so the image always covers the parent with a comfortable safety margin.
     //
-    // SPEED: amplitude and period now match [MovingBlurBackground] in
-    // LyricsScreen.kt — 4s/6s half-cycles over ±160/±120 dp, the Apple Music
-    // "breathing" pan. The previous 14s/20s over ±60/±45 covered 120dp in 14s
-    // and 90dp in 20s — ~9 dp/s on X and ~5 dp/s on Y; against a 64dp blur
-    // (which masks any motion under ~16dp) that read as a still image. 4s/6s
-    // over the wider range covers 320dp in 4s and 240dp in 6s — 80 dp/s on X
-    // and 40 dp/s on Y, a clearly visible drift.
+    // RepeatMode.Restart, not Reverse: the wander functions are periodic in the
+    // phase, so wrapping 1→0 is continuous. Reverse would replay the path
+    // backwards, reintroducing the very snap this replaced.
     //
-    // LinearEasing (rather than FastOutSlowInEasing) keeps the speed constant
-    // through the whole cycle, so there is no perceived "stall" at the
-    // turnaround points where the easing would otherwise decelerate.
-    //
-    // CRITICAL PERF: we keep the State<Float> objects (NOT `by` delegation) so
-    // the animation values are read ONLY inside Modifier.graphicsLayer { }
-    // lambdas (draw-phase deferred reads). Reading them during composition —
-    // e.g. `val backdropDriftX = if (lyricsOpen) blurDriftX else 0f` — would
-    // invalidate the ENTIRE AppleMusicPlayerContent composable every frame
+    // CRITICAL PERF: we keep the State<Float> object (NOT `by` delegation) so
+    // the animation value is read ONLY inside Modifier.graphicsLayer { }
+    // lambdas (draw-phase deferred reads). Reading it during composition —
+    // e.g. `val backdropDriftX = if (lyricsOpen) blurWanderXDp(phase) else 0f` —
+    // would invalidate the ENTIRE AppleMusicPlayerContent composable every frame
     // (SharedTransitionLayout, AnimatedContent, ControlsColumn, and the inline
     // LyricsEnhanced all recompose at ~60fps), stealing the frame budget from
     // the karaoke syllable sweep. This was the root cause of the Apple-Music-
     // style-only lyrics jank — LyricsScreen.kt doesn't have it because its
     // drift lives in a separate MovingBlurBackground composable.
     val blurTransition = rememberInfiniteTransition(label = "am-lyrics-blur-drift")
-    val blurDriftXState = blurTransition.animateFloat(
-        initialValue = -AmLyricsBlurDriftXDp,
-        targetValue = AmLyricsBlurDriftXDp,
+    val blurPhaseState = blurTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 4_000, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse,
+            animation = tween(durationMillis = AmBlurWanderPeriodMs, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
         ),
-        label = "am-lyrics-drift-x",
-    )
-    val blurDriftYState = blurTransition.animateFloat(
-        initialValue = -AmLyricsBlurDriftYDp,
-        targetValue = AmLyricsBlurDriftYDp,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 6_000, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "am-lyrics-drift-y",
+        label = "am-lyrics-blur-phase",
     )
     // Pre-compute dp→px once (graphicsLayer.translationX is in pixels). Density
     // doesn't change per-frame so this is a one-time composition-phase read.
@@ -710,6 +725,12 @@ fun AppleMusicPlayerContent(
                     .background(Color.Black),
         )
 
+        // Height of the artwork stage (the weight(1f) morph area). Captured here so the backdrop —
+        // which is composed before the Column and so cannot see its layout — knows where the
+        // bottom controls begin. Read only from a draw-phase lambda, so a change costs a redraw
+        // rather than a recomposition.
+        var morphAreaHeightPx by remember { mutableIntStateOf(0) }
+
         val videoShowing =
             LocalVideoArtworkState.current != null &&
                 mediaMetadata.isMusicVideo &&
@@ -791,9 +812,10 @@ fun AppleMusicPlayerContent(
                 scaleX = scale
                 scaleY = scale
                 if (active) {
-                    // State.value reads are deferred to the draw phase.
-                    translationX = blurDriftXState.value * driftDpToPx
-                    translationY = blurDriftYState.value * driftDpToPx
+                    // State.value read is deferred to the draw phase.
+                    val phase = blurPhaseState.value
+                    translationX = blurWanderXDp(phase) * driftDpToPx
+                    translationY = blurWanderYDp(phase) * driftDpToPx
                 }
                 // Force an offscreen compositing layer so the (expensive)
                 // Modifier.blur RenderEffect applied to this same node is
@@ -807,6 +829,43 @@ fun AppleMusicPlayerContent(
                 // its own syllables and is less sensitive to GPU pressure).
                 compositingStrategy = CompositingStrategy.Offscreen
             }
+
+            // ── Canvas → still-art seam ──
+            // The blurred canvas layer used to run the full height of the player, so a
+            // BetterLyrics/Spotify canvas kept playing — blurred — behind the bottom controls.
+            // Apple Music ends the animated artwork at the artwork stage and carries the same
+            // colours on underneath the controls as a still gradient.
+            //
+            // This dissolves the canvas over the last [AmCanvasSeamFadeDp] of the artwork stage
+            // using the same DstIn trick AppleMusicSharpArtwork's fadeBottom uses. Below the seam
+            // what shows is the blurred album art already rendered underneath the canvas — same
+            // 72dp blur, same 1.2x scale, same scrim on top — so the colours continue across the
+            // join with nothing to give the seam away, and nothing moves behind the controls.
+            //
+            // Portrait only: in landscape the controls sit beside the artwork, not below it, so
+            // there is no seam to hide.
+            val canvasSeamFade: Modifier =
+                if (landscape) {
+                    Modifier
+                } else {
+                    Modifier
+                        .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                        .drawWithContent {
+                            drawContent()
+                            val seam = morphAreaHeightPx.toFloat()
+                            // Before the stage has been measured there is nothing to fade to.
+                            if (seam <= 0f || seam >= size.height) return@drawWithContent
+                            val fadeStart = ((seam - AmCanvasSeamFadeDp.toPx()) / size.height).coerceIn(0f, 1f)
+                            drawRect(
+                                brush =
+                                    Brush.verticalGradient(
+                                        fadeStart to Color.Black,
+                                        (seam / size.height) to Color.Transparent,
+                                    ),
+                                blendMode = androidx.compose.ui.graphics.BlendMode.DstIn,
+                            )
+                        }
+                }
             if (useCanvasBackdrop) {
                 // Fallback: blurred album art BEHIND the canvas. Visible while
                 // the canvas video is loading (isVideoReady = false → canvas
@@ -862,6 +921,8 @@ fun AppleMusicPlayerContent(
                     modifier =
                         Modifier
                             .matchParentSize()
+                            // Outside the blur so the mask is applied to the blurred result.
+                            .then(canvasSeamFade)
                             .blur(72.dp)
                             .graphicsLayer {
                                 // Fixed 1.2x scale (no drift) — the canvas is
@@ -1104,7 +1165,10 @@ fun AppleMusicPlayerContent(
                             }
                         },
             ) {
-                BoxWithConstraints(modifier = Modifier.weight(1f)) {
+                BoxWithConstraints(
+                    // Reports the artwork stage height to canvasSeamFade above.
+                    modifier = Modifier.weight(1f).onSizeChanged { morphAreaHeightPx = it.height },
+                ) {
                 // Mini header height = artwork size + vertical padding (8.dp top + 8.dp bottom)
                 // + top system bar inset (status bar / notch). The overlay must start
                 // BELOW this height so it doesn't intercept taps on the mini header's

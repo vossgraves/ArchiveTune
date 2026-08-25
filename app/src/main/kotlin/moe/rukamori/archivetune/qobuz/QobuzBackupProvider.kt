@@ -48,6 +48,11 @@ object QobuzBackupProvider {
     /** YouTube video ids are exactly 11 chars of `[A-Za-z0-9_-]`. */
     private val VIDEO_ID_REGEX = Regex("^[A-Za-z0-9_-]{11}$")
 
+    private val WHITESPACE_REGEX = Regex("\\s+")
+
+    /** Ceiling on the requests one [searchCandidates] call may make. See [queryVariants]. */
+    private const val MAX_QUERY_VARIANTS = 6
+
     private val client =
         OkHttpClient
             .Builder()
@@ -109,11 +114,85 @@ object QobuzBackupProvider {
         val now = System.currentTimeMillis()
         searchCache[cacheKey]?.takeIf { it.expiresAt > now }?.let { return it.candidates }
 
+        // Over-fetch, then rank locally: the mirror returns its matches in primary-key order, not
+        // by relevance, so the first 8 rows for a broad term ("sabrina carpenter") are an
+        // arbitrary 8 of however many it has.
+        val fetchLimit = limit.coerceAtLeast(24).coerceAtMost(60)
+        val candidates =
+            queryVariants(trimmed)
+                .firstNotNullOfOrNull { variant -> fetchSearch(variant, fetchLimit).takeIf { it.isNotEmpty() } }
+                .orEmpty()
+                .let { rows -> rankByQueryCoverage(rows, trimmed).take(limit) }
+
+        // Cache successes only: a transient network failure should not pin an
+        // empty result for the next ten minutes.
+        if (candidates.isNotEmpty()) {
+            searchCache[cacheKey] = CachedSearch(candidates, now + SEARCH_CACHE_MS)
+        }
+        return candidates
+    }
+
+    /**
+     * Query forms to try, in order, until one returns rows.
+     *
+     * The mirror's search is a single `name LIKE %q% OR artists LIKE %q%` — it never tokenizes and
+     * never matches across the two fields. So "Die With A Smile Lady Gaga" returns nothing even
+     * though both "die with a smile" and "lady gaga" return that exact track, which means *every*
+     * query naming both a track and its artist came back empty. That is what "nothing shows when I
+     * search Qobuz backup" was: the query reached the mirror intact and no single field contained
+     * all of it.
+     *
+     * Words are dropped a pair at a time — tail first ("Title Artist" is the common shape), then
+     * head ("Artist - Title") — so both orderings get tried before the query is whittled far down.
+     * Capped at [MAX_QUERY_VARIANTS] so one search can never fan out into a dozen round trips.
+     */
+    private fun queryVariants(query: String): List<String> {
+        val words = query.split(WHITESPACE_REGEX).filter { it.isNotBlank() }
+        if (words.size < 2) return listOf(query)
+        return buildList {
+            add(query)
+            for (kept in words.size - 1 downTo 1) {
+                add(words.take(kept).joinToString(" "))
+                add(words.takeLast(kept).joinToString(" "))
+            }
+        }.distinct()
+            .filter { it.length >= 2 }
+            .take(MAX_QUERY_VARIANTS)
+    }
+
+    /**
+     * Sorts [rows] by how much of the *original* query each one covers, so dropping words to get a
+     * hit does not also cost the ranking: "espresso sabrina carpenter" falls back to "espresso",
+     * and the row whose artist is Sabrina Carpenter still comes first.
+     *
+     * Ties break on the shorter title, which puts the plain track above the remixes, mashups and
+     * "(On Vacation Version)" entries that share its name. [List.sortedWith] is stable, so rows
+     * that tie on both keep the mirror's own order.
+     */
+    private fun rankByQueryCoverage(
+        rows: List<Candidate>,
+        query: String,
+    ): List<Candidate> {
+        val tokens = query.lowercase().split(WHITESPACE_REGEX).filter { it.length > 1 }
+        if (tokens.isEmpty()) return rows
+        return rows.sortedWith(
+            compareByDescending<Candidate> { candidate ->
+                val haystack = "${candidate.title} ${candidate.artist.orEmpty()}".lowercase()
+                tokens.count { token -> token in haystack }
+            }.thenBy { candidate -> candidate.title.length },
+        )
+    }
+
+    /** One `GET /api/search` call. Empty on any failure — callers treat it as "no rows". */
+    private fun fetchSearch(
+        query: String,
+        limit: Int,
+    ): List<Candidate> {
         val url =
             "$BASE_URL/api/search"
                 .toHttpUrl()
                 .newBuilder()
-                .addQueryParameter("q", trimmed)
+                .addQueryParameter("q", query)
                 .addQueryParameter("limit", limit.toString())
                 .build()
         val request =
@@ -126,29 +205,21 @@ object QobuzBackupProvider {
                 .header("x-request-source", "muzo")
                 .build()
 
-        val candidates =
-            runCatching {
-                client.newCall(request).execute().use { response ->
-                    if (!response.isSuccessful) {
-                        Timber.tag("QobuzBackup").d(
-                            "search \"%s\" failed: HTTP %d",
-                            trimmed,
-                            response.code,
-                        )
-                        return@use emptyList()
-                    }
-                    parseSearchResponse(response.body?.string().orEmpty(), limit)
+        return runCatching {
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    Timber.tag("QobuzBackup").d(
+                        "search \"%s\" failed: HTTP %d",
+                        query,
+                        response.code,
+                    )
+                    return@use emptyList()
                 }
-            }.onFailure { error ->
-                Timber.tag("QobuzBackup").d(error, "search \"%s\" failed", trimmed)
-            }.getOrDefault(emptyList())
-
-        // Cache successes only: a transient network failure should not pin an
-        // empty result for the next ten minutes.
-        if (candidates.isNotEmpty()) {
-            searchCache[cacheKey] = CachedSearch(candidates, now + SEARCH_CACHE_MS)
-        }
-        return candidates
+                parseSearchResponse(response.body?.string().orEmpty(), limit)
+            }
+        }.onFailure { error ->
+            Timber.tag("QobuzBackup").d(error, "search \"%s\" failed", query)
+        }.getOrDefault(emptyList())
     }
 
     /**

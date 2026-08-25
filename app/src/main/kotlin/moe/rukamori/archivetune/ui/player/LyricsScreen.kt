@@ -927,36 +927,30 @@ private fun MovingBlurBackground(
     //
     // Effective drift values: animated on S+, hard-zero on pre-S so the offset modifier is a
     // no-op and the bitmap stays pinned.
-    // Apple-Music-style "breathing" drift. Previously 19 s / 27 s half-cycles over ±160 / ±120 —
-    // ~17 dp/s on X and ~9 dp/s on Y, which against a 64-dp blur (that masks any motion under
-    // ~16 dp) read as a still image. At 4 s / 6 s the same range gives 80 dp/s on X and 40 dp/s on
-    // Y: a clearly visible pan.
+    // Wandering backdrop, shared with the Apple-Music-style player — see [blurWanderXDp] in
+    // AppleMusicPlayer.kt for the amplitude and rate budget. One ever-advancing phase feeds two
+    // sines per axis, so the offset never reverses abruptly the way the previous pair of
+    // RepeatMode.Reverse tweens did (they hit ±160 / ±120 and snapped straight back, which read
+    // as the backdrop whipping around).
     //
-    // LinearEasing, not FastOutSlowInEasing: the eased curve decelerates into each endpoint and
-    // accelerates back out, which at this speed reads as the backdrop stalling twice a cycle.
-    // Apple's own backdrop pans at a constant rate. Kept in sync with the drift in
-    // AppleMusicPlayer.kt, which drives the same effect for the Apple-Music-style player.
+    // RepeatMode.Restart, not Reverse: the wander functions are periodic in the phase, so the
+    // 1→0 wrap is continuous. LinearEasing keeps the phase advancing at a constant rate; any
+    // eased curve would make the whole path stall once per cycle.
     val transition = rememberInfiniteTransition(label = "moving-blur-drift")
-    val animatedDriftX by transition.animateFloat(
-        initialValue = -160f,
-        targetValue = 160f,
+    //
+    // The State<Float> is deliberately NOT unwrapped with `by`: the phase is read only inside the
+    // graphicsLayer lambda below, which is a draw-phase read. Unwrapping it here would invalidate
+    // this whole composable (AnimatedContent, BoxWithConstraints, the AsyncImage subtree) on every
+    // animation frame, competing with the lyric scroll and the karaoke sweep for frame budget.
+    val blurPhaseState = transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 4_000, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse,
+            animation = tween(durationMillis = AmBlurWanderPeriodMs, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
         ),
-        label = "moving-blur-x",
+        label = "moving-blur-phase",
     )
-    val animatedDriftY by transition.animateFloat(
-        initialValue = -120f,
-        targetValue = 120f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 6_000, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "moving-blur-y",
-    )
-    val driftX = if (isPreS) 0f else animatedDriftX
-    val driftY = if (isPreS) 0f else animatedDriftY
     BoxWithConstraints(
         modifier =
             modifier
@@ -1017,7 +1011,8 @@ private fun MovingBlurBackground(
                                     scaleX = preSDriftScale
                                     scaleY = preSDriftScale
                                 }
-                                .offset(x = driftX.dp, y = driftY.dp)
+                                // No offset: the pre-S fallback pins its single pre-blurred
+                                // bitmap (see above), so there is nothing to animate here.
                                 .alpha(0.95f),
                         )
                     }
@@ -1049,8 +1044,10 @@ private fun MovingBlurBackground(
                             .graphicsLayer {
                                 scaleX = 2.4f
                                 scaleY = 2.4f
-                                translationX = driftX.dp.toPx()
-                                translationY = driftY.dp.toPx()
+                                // Deferred read — see blurPhaseState above.
+                                val phase = blurPhaseState.value
+                                translationX = blurWanderXDp(phase).dp.toPx()
+                                translationY = blurWanderYDp(phase).dp.toPx()
                                 compositingStrategy = CompositingStrategy.Offscreen
                             }
                             .blur(64.dp)
