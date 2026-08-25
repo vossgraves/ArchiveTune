@@ -35,6 +35,16 @@ junit = "4.13.2"
 turbine = "1.2.1"
 timber = "5.0.1"
 kuromojiIpadic = "0.9.0"
+# NewPipeExtractor's release tag. Kept because `newpipe-extractor` below still
+# points at it — :core has used either fork at different times.
+extractor = "0.26.5"
+
+# MetrolistExtractor needs its own version: it is a different artifact from
+# NewPipeExtractor and MetrolistGroup publishes no release numbered 0.26.5, so
+# sharing `extractor` is what broke CI with "Could not find
+# com.github.MetrolistGroup:MetrolistExtractor:0.26.5" the moment the :core
+# submodule switched back to `libs.metrolist.extractor`.
+#
 # Pinned to MetrolistGroup's commit `08a64867704c` (2026-05-29) — the last
 # commit before MetrolistExtractor bumped its java toolchain to JDK 25 in
 # `1cce4d0ce1bb` (2026-05-29). The :core submodule is a pure Kotlin/JVM module
@@ -53,7 +63,7 @@ kuromojiIpadic = "0.9.0"
 # JitPack (no Maven Central release) and has no git tags — JitPack resolves the
 # short commit hash. To move to a newer commit, the CI JDK and :core's
 # `jvmToolchain(...)` both need to be bumped to ≥ 25.
-extractor = "0.26.5"
+metrolistExtractor = "08a64867704c"
 quickjsKt = "1.0.10"
 bouncyCastle = "1.85"
 chaquopy = "17.0.0"
@@ -165,7 +175,7 @@ timber = { module = "com.jakewharton.timber:timber", version.ref = "timber" }
 # Same `org.schabi.newpipe.extractor` package namespace as upstream, so all
 # existing NewPipe imports keep working. Published on JitPack only.
 # Coordinates match the upstream Metrolist Android app (MetrolistGroup/Metrolist).
-metrolist-extractor = { module = "com.github.MetrolistGroup:MetrolistExtractor", version.ref = "extractor" }
+metrolist-extractor = { module = "com.github.MetrolistGroup:MetrolistExtractor", version.ref = "metrolistExtractor" }
 newpipe-extractor = { module = "com.github.TeamNewPipe:NewPipeExtractor", version.ref = "extractor" }
 quickjs-kt = { module = "io.github.dokar3:quickjs-kt", version.ref = "quickjsKt" }
 bcpg = { module = "org.bouncycastle:bcpg-jdk18on", version.ref = "bouncyCastle" }
