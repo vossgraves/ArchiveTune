@@ -42,11 +42,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Album
-import androidx.compose.material.icons.outlined.LibraryMusic
-import androidx.compose.material.icons.outlined.MusicNote
-import androidx.compose.material.icons.outlined.QueueMusic
+import androidx.annotation.DrawableRes
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -74,7 +70,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -161,7 +156,7 @@ fun NewReleaseScreen(
                                         },
                                     ) {
                                         Icon(
-                                            painter = painterResource(R.drawable.arrow_back),
+                                            painter = painterResource(R.drawable.solar_arrow_left_linear),
                                             contentDescription = null,
                                         )
                                     }
@@ -173,7 +168,7 @@ fun NewReleaseScreen(
                                                 onClick = { searchQuery = "" },
                                             ) {
                                                 Icon(
-                                                    painter = painterResource(R.drawable.close),
+                                                    painter = painterResource(R.drawable.solar_close_circle_linear),
                                                     contentDescription = null,
                                                 )
                                             }
@@ -207,7 +202,7 @@ fun NewReleaseScreen(
                                 onLongClick = navController::backToMain,
                             ) {
                                 Icon(
-                                    painter = painterResource(R.drawable.arrow_back),
+                                    painter = painterResource(R.drawable.solar_arrow_left_linear),
                                     contentDescription = null,
                                 )
                             }
@@ -223,7 +218,7 @@ fun NewReleaseScreen(
                                 onClick = { isSearchActive = true },
                             ) {
                                 Icon(
-                                    painter = painterResource(R.drawable.search),
+                                    painter = painterResource(R.drawable.solar_magnifer_linear),
                                     contentDescription = stringResource(R.string.search),
                                 )
                             }
@@ -298,7 +293,7 @@ fun NewReleaseScreen(
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Icon(
-                                painter = painterResource(R.drawable.error),
+                                painter = painterResource(R.drawable.solar_danger_circle_linear),
                                 contentDescription = null,
                                 tint = MaterialTheme.colorScheme.error,
                                 modifier = Modifier.size(48.dp),
@@ -362,27 +357,27 @@ fun NewReleaseScreen(
 @Immutable
 private enum class NewReleaseTab(
     @StringRes val titleRes: Int,
-    val icon: ImageVector,
+    @DrawableRes val iconRes: Int,
     val contentType: String,
 ) {
     All(
         titleRes = R.string.filter_all,
-        icon = Icons.Outlined.LibraryMusic,
+        iconRes = R.drawable.solar_library_linear,
         contentType = "new_release_all_grid_item",
     ),
     Albums(
         titleRes = R.string.albums,
-        icon = Icons.Outlined.Album,
+        iconRes = R.drawable.solar_album_linear,
         contentType = "new_release_album_grid_item",
     ),
     Singles(
         titleRes = R.string.singles,
-        icon = Icons.Outlined.MusicNote,
+        iconRes = R.drawable.solar_music_note_2_linear,
         contentType = "new_release_single_grid_item",
     ),
     Ep(
         titleRes = R.string.ep,
-        icon = Icons.Outlined.QueueMusic,
+        iconRes = R.drawable.solar_queue_music_linear,
         contentType = "new_release_ep_grid_item",
     ),
 }
@@ -469,7 +464,7 @@ private fun NewReleaseGridContent(
                     NewReleaseSectionHeader(
                         title = stringResource(section.tab.titleRes),
                         count = section.releases.size,
-                        leadingIcon = section.tab.icon,
+                        leadingIcon = section.tab.iconRes,
                     )
                 }
 
@@ -526,7 +521,7 @@ private fun NewReleaseGridContent(
 private fun NewReleaseSectionHeader(
     title: String,
     count: Int,
-    leadingIcon: ImageVector? = null,
+    @DrawableRes leadingIcon: Int? = null,
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -550,7 +545,7 @@ private fun NewReleaseSectionHeader(
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
-                        imageVector = leadingIcon,
+                        painter = painterResource(leadingIcon),
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.size(18.dp),
@@ -671,7 +666,7 @@ private fun NewReleaseSummaryHeader(
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
-                    imageVector = Icons.Outlined.LibraryMusic,
+                    painter = painterResource(R.drawable.solar_library_linear),
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.size(18.dp),
@@ -738,7 +733,7 @@ private fun NewReleaseTabs(
                 horizontalArrangement = Arrangement.Center,
             ) {
                 Icon(
-                    imageVector = tab.icon,
+                    painter = painterResource(tab.iconRes),
                     contentDescription = title,
                     modifier = Modifier.size(18.dp),
                     tint = if (selected) selectedContentColor else unselectedContentColor,

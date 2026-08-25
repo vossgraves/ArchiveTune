@@ -341,7 +341,7 @@ fun InlineVideoPlayer(
                             modifier = Modifier.size(40.dp),
                         ) {
                             Icon(
-                                painter = painterResource(R.drawable.player_quality),
+                                painter = painterResource(R.drawable.solar_settings_linear),
                                 contentDescription = stringResource(R.string.video_quality),
                                 tint = Color.White,
                                 modifier = Modifier.size(22.dp),
@@ -380,7 +380,7 @@ fun InlineVideoPlayer(
                     modifier = Modifier.size(40.dp),
                 ) {
                     Icon(
-                        painter = painterResource(R.drawable.player_fullscreen),
+                        painter = painterResource(R.drawable.solar_fullscreen_linear),
                         contentDescription = stringResource(R.string.video_fullscreen),
                         tint = Color.White,
                         modifier = Modifier.size(22.dp),
@@ -912,7 +912,7 @@ fun FullscreenVideoOverlay(
                                 modifier = Modifier.size(40.dp),
                             ) {
                                 Icon(
-                                    painter = painterResource(R.drawable.player_quality),
+                                    painter = painterResource(R.drawable.solar_settings_linear),
                                     contentDescription = stringResource(R.string.video_quality),
                                         tint = Color.White,
                                         modifier = Modifier.size(22.dp),
@@ -954,7 +954,7 @@ fun FullscreenVideoOverlay(
                                 modifier = Modifier.size(40.dp),
                             ) {
                                 Icon(
-                                    painter = painterResource(R.drawable.player_aspect_ratio),
+                                    painter = painterResource(R.drawable.solar_aspect_ratio_linear),
                                     contentDescription = stringResource(R.string.video_aspect_ratio),
                                     tint = Color.White,
                                     modifier = Modifier.size(22.dp),
@@ -981,7 +981,7 @@ fun FullscreenVideoOverlay(
                                                 )
                                                 if (ratio == aspectRatio) {
                                                     Icon(
-                                                        painter = painterResource(R.drawable.check),
+                                                        painter = painterResource(R.drawable.solar_check_circle_linear),
                                                         contentDescription = null,
                                                         tint = MaterialTheme.colorScheme.primary,
                                                         modifier = Modifier.size(18.dp),
@@ -1005,7 +1005,7 @@ fun FullscreenVideoOverlay(
                             modifier = Modifier.size(40.dp),
                         ) {
                             Icon(
-                                painter = painterResource(R.drawable.player_more_vert),
+                                painter = painterResource(R.drawable.solar_more_vert_linear),
                                 contentDescription = stringResource(R.string.video_overflow_menu),
                                 tint = Color.White,
                                 modifier = Modifier.size(22.dp),
@@ -1017,7 +1017,7 @@ fun FullscreenVideoOverlay(
                             modifier = Modifier.size(40.dp),
                         ) {
                             Icon(
-                                painter = painterResource(R.drawable.player_fullscreen_exit),
+                                painter = painterResource(R.drawable.solar_fullscreen_exit_linear),
                                 contentDescription = stringResource(R.string.video_exit_fullscreen),
                                 tint = Color.White,
                                 modifier = Modifier.size(22.dp),
@@ -1060,7 +1060,7 @@ fun FullscreenVideoOverlay(
                                 modifier = Modifier.size(48.dp),
                             ) {
                                 Icon(
-                                    painter = painterResource(R.drawable.player_skip_previous),
+                                    painter = painterResource(R.drawable.solar_skip_previous_linear),
                                     contentDescription = stringResource(R.string.video_fs_previous),
                                     tint = if (canSkipPrevious) Color.White else Color.White.copy(alpha = 0.4f),
                                     modifier = Modifier.size(36.dp),
@@ -1079,9 +1079,9 @@ fun FullscreenVideoOverlay(
                             ) {
                                 val playIcon =
                                     when {
-                                        playbackStateFs == Player.STATE_ENDED -> R.drawable.player_replay
-                                        isPlaying -> R.drawable.player_pause
-                                        else -> R.drawable.player_play
+                                        playbackStateFs == Player.STATE_ENDED -> R.drawable.solar_replay_linear
+                                        isPlaying -> R.drawable.solar_pause_linear
+                                        else -> R.drawable.solar_play_linear
                                     }
                                 Icon(
                                     painter = painterResource(playIcon),
@@ -1096,7 +1096,7 @@ fun FullscreenVideoOverlay(
                                 modifier = Modifier.size(48.dp),
                             ) {
                                 Icon(
-                                    painter = painterResource(R.drawable.player_skip_next),
+                                    painter = painterResource(R.drawable.solar_skip_next_linear),
                                     contentDescription = stringResource(R.string.video_fs_next),
                                     tint = if (canSkipNext) Color.White else Color.White.copy(alpha = 0.4f),
                                     modifier = Modifier.size(36.dp),
@@ -1515,20 +1515,20 @@ private fun BoxScope.GestureFeedbackBubble(feedback: GestureFeedback) {
             is GestureFeedback.Brightness -> {
                 val res =
                     when {
-                        feedback.percent <= 0 -> R.drawable.brightness_low
-                        feedback.percent >= 100 -> R.drawable.brightness_high
-                        else -> R.drawable.brightness_auto
+                        feedback.percent <= 0 -> R.drawable.solar_brightness_low_linear
+                        feedback.percent >= 100 -> R.drawable.solar_brightness_high_linear
+                        else -> R.drawable.solar_brightness_auto_linear
                     }
                 res to stringResource(R.string.percentage_format, feedback.percent)
             }
             is GestureFeedback.Volume -> {
                 val res =
-                    if (feedback.percent <= 0) R.drawable.player_volume_off else R.drawable.player_volume_up
+                    if (feedback.percent <= 0) R.drawable.solar_volume_off_linear else R.drawable.solar_volume_up_linear
                 res to stringResource(R.string.percentage_format, feedback.percent)
             }
             is GestureFeedback.Seek -> {
                 val res =
-                    if (feedback.forward) R.drawable.player_fast_forward else R.drawable.player_fast_rewind
+                    if (feedback.forward) R.drawable.solar_forward_linear else R.drawable.solar_rewind_linear
                 val textRes =
                     if (feedback.forward) R.string.video_gesture_seek_forward else R.string.video_gesture_seek_backward
                 res to stringResource(textRes)
