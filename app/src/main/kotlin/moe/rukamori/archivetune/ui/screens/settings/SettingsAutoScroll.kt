@@ -69,7 +69,7 @@ import kotlin.math.abs
  * reproduces the old overshooting behaviour rather than failing outright.
  */
 @Composable
-internal fun rememberPreferencePositions(): PreferencePositions {
+fun rememberPreferencePositions(): PreferencePositions {
     val highlightColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
     val positions = remember { PreferencePositions() }
     // Re-read every composition instead of capturing once: Appearance settings is itself one of
@@ -79,12 +79,12 @@ internal fun rememberPreferencePositions(): PreferencePositions {
 }
 
 @Stable
-internal class PreferencePositions {
+class PreferencePositions {
     private val positions = mutableMapOf<String, Float>()
     private var viewportTop: Float? = null
     private var viewportHeight: Float = 0f
 
-    internal var highlightColor: Color = Color.Transparent
+    var highlightColor: Color = Color.Transparent
 
     /** Read at draw time, so a change repaints without recomposing the whole screen. */
     private var highlightedKey by mutableStateOf<String?>(null)
