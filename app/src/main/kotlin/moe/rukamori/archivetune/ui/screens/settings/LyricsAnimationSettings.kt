@@ -43,7 +43,10 @@ import androidx.compose.foundation.layout.asPaddingValues
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun LyricsAnimationSettings(navController: NavController) {
+fun LyricsAnimationSettings(
+    navController: NavController,
+    scrollTo: String? = null,
+) {
     val (bounceFactor, onBounceFactorChange) = rememberPreference(LyricsV2BounceFactorKey, defaultValue = 1f)
     val (glowFactor, onGlowFactorChange) = rememberPreference(LyricsV2GlowFactorKey, defaultValue = 1f)
     val (fillTransitionWidth, onFillTransitionWidthChange) = rememberPreference(LyricsV2FillTransitionWidthKey, defaultValue = 8f)
@@ -74,12 +77,17 @@ fun LyricsAnimationSettings(navController: NavController) {
                 .asPaddingValues()
                 .calculateBottomPadding()
         val topPadding = innerPadding.calculateTopPadding()
+        val scrollState = rememberScrollState()
+        val positions = rememberPreferencePositions()
+        androidx.compose.runtime.LaunchedEffect(scrollTo) { positions.scrollToKey(scrollTo, scrollState) }
 
         Column(
             modifier =
                 Modifier
                     .padding(top = topPadding)
-                    .verticalScroll(rememberScrollState())
+                    // Chained before verticalScroll so it measures the viewport, not the scrolling content.
+                    .then(positions.containerModifier())
+                    .verticalScroll(scrollState)
                     .windowInsetsPadding(
                         LocalPlayerAwareWindowInsets.current.only(
                             WindowInsetsSides.Horizontal,
@@ -89,6 +97,7 @@ fun LyricsAnimationSettings(navController: NavController) {
             PreferenceGroup(title = "Animation Tuning") {
                 item {
                     PreferenceEntry(
+                        modifier = positions.modifierFor("lyrics_animation_style"),
                         title = { Text("Line Bounce Effect") },
                         description = "Enable bounce animation for line-synced (LRC) lyrics",
                         icon = { Icon(painterResource(R.drawable.animation), null) },
@@ -103,6 +112,7 @@ fun LyricsAnimationSettings(navController: NavController) {
 
                 item {
                     PreferenceEntry(
+                        modifier = positions.modifierFor("lyrics_scale_animation"),
                         title = { Text("Bounce Amplitude") },
                         description = "Adjust the bounce effect when a word is sung (${(bounceFactor * 100).toInt()}%)",
                         icon = { Icon(painterResource(R.drawable.animation), null) },
@@ -118,6 +128,7 @@ fun LyricsAnimationSettings(navController: NavController) {
 
                 item {
                     PreferenceEntry(
+                        modifier = positions.modifierFor("lyrics_glow_animation"),
                         title = { Text("Glow Intensity") },
                         description = "Adjust the glow brightness of the sung word (${(glowFactor * 100).toInt()}%)",
                         icon = { Icon(painterResource(R.drawable.lyrics), null) },
@@ -133,6 +144,7 @@ fun LyricsAnimationSettings(navController: NavController) {
 
                 item {
                     PreferenceEntry(
+                        modifier = positions.modifierFor("lyrics_fade_animation"),
                         title = { Text("Fill Transition Smoothness") },
                         description = "Adjust the gradient edge width of the liquid fill effect (${fillTransitionWidth.toInt()} dp)",
                         icon = { Icon(painterResource(R.drawable.lyrics), null) },

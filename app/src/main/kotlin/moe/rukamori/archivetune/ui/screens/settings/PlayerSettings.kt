@@ -63,6 +63,7 @@ import moe.rukamori.archivetune.constants.AudioQualityKey
 import moe.rukamori.archivetune.constants.AudioOffload
 import moe.rukamori.archivetune.constants.AutoSkipNextOnErrorKey
 import moe.rukamori.archivetune.constants.AutoStartOnBluetoothKey
+import moe.rukamori.archivetune.constants.CanvasResolverEndpointsKey
 import moe.rukamori.archivetune.constants.CrossfadeDurationKey
 import moe.rukamori.archivetune.constants.CrossfadeEnabledKey
 import moe.rukamori.archivetune.constants.CrossfadeGaplessKey
@@ -98,7 +99,9 @@ import moe.rukamori.archivetune.ui.component.PreferenceGroup
 import moe.rukamori.archivetune.ui.component.SliderPreference
 import moe.rukamori.archivetune.ui.component.SwitchPreference
 import moe.rukamori.archivetune.ui.component.TagsManagementDialog
+import moe.rukamori.archivetune.ui.component.TextFieldDialog
 import moe.rukamori.archivetune.ui.utils.backToMain
+import moe.rukamori.archivetune.utils.CanvasResolverEndpoints
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.utils.rememberEnumPreference
 import sh.calvin.reorderable.ReorderableItem
@@ -220,6 +223,15 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
             SpotifyCanvasKey,
             defaultValue = false,
         )
+    // Extra Spotify Canvas resolver endpoints, one per line. Every community canvas API on
+    // GitHub is a self-hosted wrapper around Spotify's own canvaz-cache endpoint and needs the
+    // operator's own sp_dc cookie, so there is no stable public instance worth hardcoding —
+    // the user supplies whichever instances they have access to and they are tried in order.
+    val (canvasResolverEndpointsRaw, onCanvasResolverEndpointsChange) =
+        rememberPreference(
+            CanvasResolverEndpointsKey,
+            defaultValue = "",
+        )
     val (tidalEnabled, _) =
         rememberPreference(
             TidalEnabledKey,
@@ -326,6 +338,8 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
             Modifier
                 .padding(top = topPadding)
                 .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal))
+                // Chained before verticalScroll so it measures the viewport, not the scrolling content.
+                .then(positions.containerModifier())
                 .verticalScroll(scrollState)
                 .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
         ) {
@@ -427,6 +441,7 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                 item {
                     Column(modifier = positions.modifierFor("crossfade_gapless")) {
                         SwitchPreference(
+                            modifier = positions.modifierFor("crossfade_gapless_title"),
                             title = { Text(stringResource(R.string.crossfade_gapless_title)) },
                             description = stringResource(R.string.crossfade_gapless_description),
                             icon = { Icon(painterResource(R.drawable.fast_forward), null) },
@@ -498,6 +513,7 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                 item {
                     Column(modifier = positions.modifierFor("seek_seconds")) {
                         SwitchPreference(
+                            modifier = positions.modifierFor("seek_seconds_addup"),
                             title = { Text(stringResource(R.string.seek_seconds_addup)) },
                             description = stringResource(R.string.seek_seconds_addup_description),
                             icon = { Icon(painterResource(R.drawable.arrow_forward), null) },
@@ -581,6 +597,52 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                             icon = { Icon(painterResource(R.drawable.slow_motion_video), null) },
                             checked = spotifyCanvasEnabled,
                             onCheckedChange = onSpotifyCanvasEnabledChange,
+                        )
+                    }
+                }
+
+                item(visible = spotifyCanvasEnabled) {
+                    var showCanvasResolversDialog by remember { mutableStateOf(false) }
+                    val configuredResolvers =
+                        remember(canvasResolverEndpointsRaw) {
+                            CanvasResolverEndpoints.parse(canvasResolverEndpointsRaw)
+                        }
+                    Column(modifier = positions.modifierFor("canvas_resolvers")) {
+                        PreferenceEntry(
+                            title = { Text(stringResource(R.string.canvas_resolvers)) },
+                            description =
+                                if (configuredResolvers.isEmpty()) {
+                                    stringResource(R.string.canvas_resolvers_none)
+                                } else {
+                                    stringResource(
+                                        R.string.canvas_resolvers_count,
+                                        configuredResolvers.size,
+                                    )
+                                },
+                            icon = { Icon(painterResource(R.drawable.solar_server_linear), null) },
+                            onClick = { showCanvasResolversDialog = true },
+                        )
+                    }
+                    if (showCanvasResolversDialog) {
+                        TextFieldDialog(
+                            onDismiss = { showCanvasResolversDialog = false },
+                            title = { Text(stringResource(R.string.canvas_resolvers)) },
+                            placeholder = {
+                                Text(stringResource(R.string.canvas_resolvers_description))
+                            },
+                            textFieldValue = canvasResolverEndpointsRaw,
+                            onTextFieldValueChange = onCanvasResolverEndpointsChange,
+                            singleLine = false,
+                            maxLines = 8,
+                            // Blank is valid: it means "built-in resolver only".
+                            isInputValid = { true },
+                            onDone = { raw ->
+                                onCanvasResolverEndpointsChange(
+                                    CanvasResolverEndpoints.serialize(
+                                        CanvasResolverEndpoints.parse(raw),
+                                    ),
+                                )
+                            },
                         )
                     }
                 }
@@ -670,6 +732,7 @@ fun PlayerSettings(navController: NavController, scrollTo: String? = null) {
                 // was previously shown inline on the Appearance page.
                 item {
                     SwitchPreference(
+                        modifier = positions.modifierFor("enable_swipe_thumbnail"),
                         title = { Text(stringResource(R.string.enable_swipe_thumbnail)) },
                         icon = { Icon(painterResource(R.drawable.swipe), null) },
                         checked = swipeThumbnail,

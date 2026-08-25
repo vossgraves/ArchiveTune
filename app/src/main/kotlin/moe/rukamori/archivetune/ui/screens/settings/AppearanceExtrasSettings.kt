@@ -44,7 +44,10 @@ import moe.rukamori.archivetune.utils.rememberPreference
 import androidx.compose.foundation.layout.asPaddingValues
 
 @Composable
-fun AppearanceExtrasSettings(navController: NavController) {
+fun AppearanceExtrasSettings(
+    navController: NavController,
+    scrollTo: String? = null,
+) {
     val (showHomeCategoryChips, onShowHomeCategoryChipsChange) =
         rememberPreference(ShowHomeCategoryChipsKey, defaultValue = false)
     val (showTagsInLibrary, onShowTagsInLibraryChange) =
@@ -86,6 +89,8 @@ fun AppearanceExtrasSettings(navController: NavController) {
                 .calculateBottomPadding()
         val topPadding = innerPadding.calculateTopPadding()
         val scrollState = rememberScrollState()
+        val positions = rememberPreferencePositions()
+        androidx.compose.runtime.LaunchedEffect(scrollTo) { positions.scrollToKey(scrollTo, scrollState) }
 
         Column(
             Modifier
@@ -94,12 +99,16 @@ fun AppearanceExtrasSettings(navController: NavController) {
                     LocalPlayerAwareWindowInsets.current.only(
                         WindowInsetsSides.Horizontal,
                     ),
-                ).verticalScroll(scrollState)
+                )
+                // Chained before verticalScroll so it measures the viewport, not the scrolling content.
+                .then(positions.containerModifier())
+                .verticalScroll(scrollState)
                 .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
         ) {
             PreferenceGroup(title = stringResource(R.string.extras)) {
                 item {
                     SwitchPreference(
+                        modifier = positions.modifierFor("show_home_category_chips"),
                         title = { Text(stringResource(R.string.show_home_category_chips)) },
                         description = stringResource(R.string.show_home_category_chips_desc),
                         icon = { Icon(painterResource(R.drawable.home_outlined), null) },
@@ -110,6 +119,7 @@ fun AppearanceExtrasSettings(navController: NavController) {
 
                 item {
                     SwitchPreference(
+                        modifier = positions.modifierFor("show_tags_in_library"),
                         title = { Text(stringResource(R.string.show_tags_in_library)) },
                         description = stringResource(R.string.show_tags_in_library_desc),
                         icon = { Icon(painterResource(R.drawable.filter_alt), null) },
@@ -120,6 +130,7 @@ fun AppearanceExtrasSettings(navController: NavController) {
 
                 item {
                     SwitchPreference(
+                        modifier = positions.modifierFor("hide_liked_songs_card"),
                         title = { Text(stringResource(R.string.hide_liked_songs_card)) },
                         description = stringResource(R.string.hide_liked_songs_card_desc),
                         icon = { Icon(painterResource(R.drawable.favorite), null) },
@@ -130,6 +141,7 @@ fun AppearanceExtrasSettings(navController: NavController) {
 
                 item {
                     SwitchPreference(
+                        modifier = positions.modifierFor("hide_offline_card"),
                         title = { Text(stringResource(R.string.hide_offline_card)) },
                         description = stringResource(R.string.hide_offline_card_desc),
                         icon = { Icon(painterResource(R.drawable.offline), null) },
@@ -140,6 +152,7 @@ fun AppearanceExtrasSettings(navController: NavController) {
 
                 item {
                     SwitchPreference(
+                        modifier = positions.modifierFor("hide_cached_card"),
                         title = { Text(stringResource(R.string.hide_cached_card)) },
                         description = stringResource(R.string.hide_cached_card_desc),
                         icon = { Icon(painterResource(R.drawable.cached), null) },
@@ -150,6 +163,7 @@ fun AppearanceExtrasSettings(navController: NavController) {
 
                 item {
                     SwitchPreference(
+                        modifier = positions.modifierFor("hide_local_files_card"),
                         title = { Text(stringResource(R.string.hide_local_files_card)) },
                         description = stringResource(R.string.hide_local_files_card_desc),
                         icon = { Icon(painterResource(R.drawable.snippet_folder), null) },
@@ -160,6 +174,7 @@ fun AppearanceExtrasSettings(navController: NavController) {
 
                 item {
                     SwitchPreference(
+                        modifier = positions.modifierFor("hide_top50_card"),
                         title = { Text(stringResource(R.string.hide_top50_card)) },
                         description = stringResource(R.string.hide_top50_card_desc),
                         icon = { Icon(painterResource(R.drawable.trending_up), null) },

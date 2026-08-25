@@ -136,6 +136,7 @@ private enum class TestApiVisualState { Idle, Testing, Success, Failed }
 fun AiIntegrationSettings(
     navController: NavController,
     viewModel: AiIntegrationSettingsViewModel = hiltViewModel(),
+    scrollTo: String? = null,
 ) {
     val context = LocalContext.current
     val actionState by viewModel.actionState.collectAsStateWithLifecycle()
@@ -325,11 +326,16 @@ fun AiIntegrationSettings(
             .only(WindowInsetsSides.Bottom)
             .asPaddingValues()
             .calculateBottomPadding()
+    val scrollState = rememberScrollState()
+    val positions = rememberPreferencePositions()
+    androidx.compose.runtime.LaunchedEffect(scrollTo) { positions.scrollToKey(scrollTo, scrollState) }
 
     Column(
         Modifier
             .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal))
-            .verticalScroll(rememberScrollState())
+            // Chained before verticalScroll so it measures the viewport, not the scrolling content.
+            .then(positions.containerModifier())
+            .verticalScroll(scrollState)
             .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
     ) {
         Spacer(
@@ -341,6 +347,7 @@ fun AiIntegrationSettings(
         PreferenceGroup(title = stringResource(R.string.ai_provider_settings)) {
             item {
                 ListPreference(
+                    modifier = positions.modifierFor("ai_provider"),
                     title = { Text(stringResource(R.string.ai_provider)) },
                     description = stringResource(R.string.ai_provider_desc),
                     icon = { Icon(painterResource(R.drawable.auto_awesome), null) },
@@ -369,6 +376,7 @@ fun AiIntegrationSettings(
 
             item(visible = provider == AiProvider.CUSTOM) {
                 EditTextPreference(
+                    modifier = positions.modifierFor("ai_custom_endpoint"),
                     title = { Text(stringResource(R.string.ai_custom_endpoint)) },
                     icon = { Icon(painterResource(R.drawable.website), null) },
                     value = customEndpoint,
@@ -408,6 +416,7 @@ fun AiIntegrationSettings(
 
             item {
                 PreferenceEntry(
+                    modifier = positions.modifierFor("ai_api_key"),
                     title = { Text(stringResource(R.string.ai_api_key)) },
                     description =
                         if (apiKey.isBlank()) {
@@ -439,6 +448,7 @@ fun AiIntegrationSettings(
 
             item(visible = provider == AiProvider.CUSTOM) {
                 EditTextPreference(
+                    modifier = positions.modifierFor("ai_model"),
                     title = { Text(stringResource(R.string.ai_model)) },
                     icon = { Icon(painterResource(R.drawable.auto_awesome), null) },
                     value = customModel,
@@ -459,6 +469,7 @@ fun AiIntegrationSettings(
                         else -> TestApiVisualState.Idle
                     }
                 PreferenceEntry(
+                    modifier = positions.modifierFor("ai_test_api"),
                     title = { Text(stringResource(R.string.ai_test_api)) },
                     icon = {
                         AnimatedContent(
@@ -538,6 +549,7 @@ fun AiIntegrationSettings(
 
             item {
                 SwitchPreference(
+                    modifier = positions.modifierFor("hide_ai_mix"),
                     title = { Text(stringResource(R.string.hide_ai_mix)) },
                     description = stringResource(R.string.hide_ai_mix_desc),
                     icon = { Icon(painterResource(R.drawable.auto_awesome), null) },
@@ -548,6 +560,7 @@ fun AiIntegrationSettings(
 
             item {
                 SwitchPreference(
+                    modifier = positions.modifierFor("auto_translate_lyrics"),
                     title = { Text(stringResource(R.string.auto_translate_lyrics)) },
                     description = stringResource(R.string.auto_translate_lyrics_desc),
                     icon = { Icon(painterResource(R.drawable.translate), null) },
@@ -572,6 +585,7 @@ fun AiIntegrationSettings(
                             .ifEmpty { null }
                     }
                 PreferenceEntry(
+                    modifier = positions.modifierFor("auto_translate_excluded_languages"),
                     title = { Text(stringResource(R.string.auto_translate_excluded_languages)) },
                     description =
                         selectedNames
@@ -590,6 +604,7 @@ fun AiIntegrationSettings(
                 if (provider == AiProvider.DEEPL) {
                     item {
                         PreferenceEntry(
+                            modifier = positions.modifierFor("deepl_api_key"),
                             title = { Text(stringResource(R.string.deepl_api_key)) },
                             description = if (deeplApiKey.isBlank()) stringResource(R.string.deepl_api_key_not_set) else stringResource(R.string.deepl_api_key_set),
                             icon = { Icon(painterResource(R.drawable.token), null) },
@@ -598,6 +613,7 @@ fun AiIntegrationSettings(
                     }
                     item {
                         PreferenceEntry(
+                            modifier = positions.modifierFor("deepl_formality"),
                             title = { Text(stringResource(R.string.deepl_formality)) },
                             description = deeplFormality,
                             icon = { Icon(painterResource(R.drawable.text_fields), null) },
@@ -608,6 +624,7 @@ fun AiIntegrationSettings(
                 if (provider == AiProvider.OPENROUTER) {
                     item {
                         PreferenceEntry(
+                            modifier = positions.modifierFor("openrouter_api_key"),
                             title = { Text(stringResource(R.string.openrouter_api_key)) },
                             description = if (openRouterApiKey.isBlank()) stringResource(R.string.openrouter_api_key_not_set) else stringResource(R.string.openrouter_api_key_set),
                             icon = { Icon(painterResource(R.drawable.token), null) },
@@ -636,6 +653,7 @@ fun AiIntegrationSettings(
                 if (provider == AiProvider.MISTRAL) {
                     item {
                         PreferenceEntry(
+                            modifier = positions.modifierFor("mistral_api_key"),
                             title = { Text(stringResource(R.string.mistral_api_key)) },
                             description = if (apiKey.isBlank()) stringResource(R.string.mistral_api_key_not_set) else stringResource(R.string.mistral_api_key_set),
                             icon = { Icon(painterResource(R.drawable.token), null) },
@@ -655,6 +673,7 @@ fun AiIntegrationSettings(
                 // Translation target language + mode shared by DeepL/OpenRouter/Mistral.
                 item {
                     PreferenceEntry(
+                        modifier = positions.modifierFor("translate_language"),
                         title = { Text(stringResource(R.string.translate_language)) },
                         description = translateLanguage,
                         icon = { Icon(painterResource(R.drawable.translate), null) },
@@ -663,6 +682,7 @@ fun AiIntegrationSettings(
                 }
                 item {
                     PreferenceEntry(
+                        modifier = positions.modifierFor("translate_mode"),
                         title = { Text(stringResource(R.string.translate_mode)) },
                         description = if (translateMode == "romanize") stringResource(R.string.translate_mode_romanize) else stringResource(R.string.translate_mode_translate),
                         icon = { Icon(painterResource(R.drawable.text_fields), null) },

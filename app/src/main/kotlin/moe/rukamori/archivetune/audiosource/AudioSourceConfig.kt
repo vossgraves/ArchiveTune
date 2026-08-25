@@ -464,3 +464,34 @@ object SongSourceQobuzTrackId {
         return serialize(map)
     }
 }
+
+/**
+ * Codec for per-song Qobuz-backup video-id overrides.
+ *
+ * The backup mirror addresses tracks by YouTube video id, so this maps
+ * `songId → mirrorVideoId`. Set when the user picks a specific row in the
+ * "Play from" search popup; read by `MusicService.buildSourceQuery` and passed to
+ * `resolveQobuzBackupStream` so it fetches that exact mirror entry rather than the
+ * playing song's own id.
+ *
+ * The wire format is identical to [SongSourceQobuzTrackId] (`id=value` pairs
+ * joined by `;`), so the parsing/serialisation is shared rather than duplicated —
+ * only the DataStore key differs.
+ */
+object SongSourceQobuzBackupVideoId {
+    fun parse(raw: String?): Map<String, String> = SongSourceQobuzTrackId.parse(raw)
+
+    fun serialize(map: Map<String, String>): String = SongSourceQobuzTrackId.serialize(map)
+
+    fun get(
+        raw: String?,
+        songId: String,
+    ): String? = SongSourceQobuzTrackId.get(raw, songId)
+
+    /** Returns the updated raw string with [songId] set to [videoId], or cleared when [videoId] is null. */
+    fun withOverride(
+        raw: String?,
+        songId: String,
+        videoId: String?,
+    ): String = SongSourceQobuzTrackId.withOverride(raw, songId, videoId)
+}

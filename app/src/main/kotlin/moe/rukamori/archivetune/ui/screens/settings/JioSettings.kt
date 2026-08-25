@@ -52,7 +52,10 @@ import moe.rukamori.archivetune.utils.rememberPreference
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun JioSettings(navController: NavController) {
+fun JioSettings(
+    navController: NavController,
+    scrollTo: String? = null,
+) {
     val (saavnEnabled, onSaavnEnabledChange) = rememberPreference(JioSaavnEnabledKey, false)
     val (saavnQuality, onSaavnQualityChange) =
         rememberEnumPreference(SaavnAudioQualityKey, SaavnAudioQuality.QUALITY_320)
@@ -80,11 +83,15 @@ fun JioSettings(navController: NavController) {
                 .calculateBottomPadding()
         val topPadding = innerPadding.calculateTopPadding()
         val scrollState = rememberScrollState()
+        val positions = rememberPreferencePositions()
+        androidx.compose.runtime.LaunchedEffect(scrollTo) { positions.scrollToKey(scrollTo, scrollState) }
 
         Column(
             Modifier
                 .padding(top = topPadding)
                 .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal))
+                // Chained before verticalScroll so it measures the viewport, not the scrolling content.
+                .then(positions.containerModifier())
                 .verticalScroll(scrollState)
                 .padding(bottom = playerAwareBottomPadding + 16.dp),
         ) {
@@ -101,6 +108,7 @@ fun JioSettings(navController: NavController) {
 
                 item {
                     SwitchPreference(
+                        modifier = positions.modifierFor("jiosaavn_enable"),
                         title = { Text(stringResource(R.string.jiosaavn_enable)) },
                         description = stringResource(R.string.jiosaavn_enable_description),
                         icon = { Icon(painterResource(R.drawable.play), null) },
@@ -111,6 +119,7 @@ fun JioSettings(navController: NavController) {
 
                 item {
                     EnumListPreference(
+                        modifier = positions.modifierFor("jiosaavn_audio_quality"),
                         title = { Text(stringResource(R.string.jiosaavn_audio_quality)) },
                         icon = { Icon(painterResource(R.drawable.play), null) },
                         selectedValue = saavnQuality,
@@ -125,6 +134,7 @@ fun JioSettings(navController: NavController) {
             PreferenceGroup(title = stringResource(R.string.jiosaavn_credit_title)) {
                 item {
                     PreferenceEntry(
+                        modifier = positions.modifierFor("jiosaavn_credit"),
                         title = { Text(stringResource(R.string.jiosaavn_credit)) },
                         description = stringResource(R.string.jiosaavn_credit_description),
                         icon = { Icon(painterResource(R.drawable.info), null) },

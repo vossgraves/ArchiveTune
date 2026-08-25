@@ -94,6 +94,8 @@ fun SourceSettings(navController: NavController, scrollTo: String? = null) {
                         WindowInsetsSides.Horizontal,
                     ),
                 )
+                // Chained before verticalScroll so it measures the viewport, not the scrolling content.
+                .then(positions.containerModifier())
                 .verticalScroll(scrollState)
                 .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
         ) {
@@ -104,7 +106,10 @@ fun SourceSettings(navController: NavController, scrollTo: String? = null) {
 
             // Preferred-source picker, per-source enable toggles and quality. Account/instance
             // management remains in Integration (behind the manual-source-login toggle).
-            PlaybackSourceSections(navController = navController)
+            PlaybackSourceSections(
+                navController = navController,
+                positions = positions,
+            )
         }
     }
 }

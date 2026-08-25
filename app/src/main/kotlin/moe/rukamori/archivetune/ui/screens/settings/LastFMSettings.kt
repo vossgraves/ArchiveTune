@@ -181,6 +181,8 @@ private fun LastFmSettingsContent(
         Modifier
             .padding(top = topPadding)
             .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal))
+            // Chained before verticalScroll so it measures the viewport, not the scrolling content.
+            .then(positions.containerModifier())
             .verticalScroll(scrollState)
             .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
     ) {
@@ -322,6 +324,7 @@ private fun LastFmSettingsSuccess(
         // password fields — the baked-in LastFmAppCredentials identifies the app.
         item {
             PreferenceEntry(
+                modifier = positions.modifierFor("lastfm_connect_button"),
                 title = { Text(stringResource(R.string.lastfm_connect_button)) },
                 description = stringResource(R.string.lastfm_connect_button_description),
                 icon = { Icon(painterResource(R.drawable.login), null) },
@@ -338,6 +341,7 @@ private fun LastFmSettingsSuccess(
         // Libre.fm instead of Last.fm.
         item {
             PreferenceEntry(
+                modifier = positions.modifierFor("lastfm_connect_librefm_button"),
                 title = { Text(stringResource(R.string.lastfm_connect_librefm_button)) },
                 description = stringResource(R.string.lastfm_connect_librefm_button_description),
                 icon = { Icon(painterResource(R.drawable.login), null) },
@@ -353,6 +357,7 @@ private fun LastFmSettingsSuccess(
         // entered values.
         item {
             PreferenceEntry(
+                modifier = positions.modifierFor("lastfm_connect_custom_button"),
                 title = { Text(stringResource(R.string.lastfm_connect_custom_button)) },
                 description = stringResource(R.string.lastfm_connect_custom_button_description),
                 icon = { Icon(painterResource(R.drawable.token), null) },
@@ -390,6 +395,7 @@ private fun LastFmSettingsSuccess(
     ) {
         item {
             SwitchPreference(
+                modifier = positions.modifierFor("enable_scrobbling"),
                 title = { Text(stringResource(R.string.enable_scrobbling)) },
                 checked = model.scrobblingEnabled,
                 onCheckedChange = onScrobblingChange,
@@ -399,6 +405,7 @@ private fun LastFmSettingsSuccess(
 
         item {
             SwitchPreference(
+                modifier = positions.modifierFor("lastfm_now_playing"),
                 title = { Text(stringResource(R.string.lastfm_now_playing)) },
                 checked = model.nowPlayingEnabled,
                 onCheckedChange = onNowPlayingChange,
@@ -408,6 +415,7 @@ private fun LastFmSettingsSuccess(
 
         item {
             SwitchPreference(
+                modifier = positions.modifierFor("lastfm_prefer_yt_thumbnails"),
                 title = { Text(stringResource(R.string.lastfm_prefer_yt_thumbnails)) },
                 description = stringResource(R.string.lastfm_prefer_yt_thumbnails_desc),
                 checked = preferYtThumbnails,
@@ -422,6 +430,7 @@ private fun LastFmSettingsSuccess(
     ) {
         item {
             PreferenceEntry(
+                modifier = positions.modifierFor("scrobble_min_track_duration"),
                 title = { Text(stringResource(R.string.scrobble_min_track_duration)) },
                 description = stringResource(R.string.duration_seconds_short, model.minTrackDurationSeconds),
                 onClick = { onOpenTimingEditor(LastFmTimingSetting.MIN_TRACK_DURATION) },
@@ -430,6 +439,7 @@ private fun LastFmSettingsSuccess(
 
         item {
             PreferenceEntry(
+                modifier = positions.modifierFor("scrobble_delay_percent"),
                 title = { Text(stringResource(R.string.scrobble_delay_percent)) },
                 description =
                     stringResource(
@@ -442,6 +452,7 @@ private fun LastFmSettingsSuccess(
 
         item {
             PreferenceEntry(
+                modifier = positions.modifierFor("scrobble_delay_minutes"),
                 title = { Text(stringResource(R.string.scrobble_delay_minutes)) },
                 description = stringResource(R.string.duration_seconds_short, model.scrobbleDelaySeconds),
                 onClick = { onOpenTimingEditor(LastFmTimingSetting.DELAY_SECONDS) },

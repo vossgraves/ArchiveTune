@@ -53,6 +53,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateListOf
@@ -170,6 +171,13 @@ private const val LYRIC_VISUAL_TUNING_OFFSET_MS = 150L
  * short enough not to lag noticeably behind the audio for typical words.
  */
 private const val MIN_SWEEP_MS = 180L
+
+/**
+ * Backward jump in the player's clock that counts as a restart (REPEAT_MODE_ONE
+ * wrapping from duration back to 0, or an explicit backward seek) rather than
+ * playback jitter or an ExoPlayer position correction.
+ */
+private const val V2_POSITION_RESET_BACKWARD_THRESHOLD_MS = 1_000L
 
 /** Seconds to wait before auto-scroll resumes after manual scroll. */
 private const val MANUAL_SCROLL_TIMEOUT_MS = 3000L
@@ -446,10 +454,21 @@ fun LyricsV2(
             // restart detection never fires. Re-key the word subtree on the
             // actual backward clock discontinuity to give every Animatable a
             // fresh zero value for the next play-through.
-            if (sliderPos == null && lastRawPositionMs - pos > 1_000L) {
+            //
+            // The discontinuity is measured against the PLAYER's clock, not the
+            // value returned by `sliderPositionProvider`. The previous version
+            // additionally required `sliderPos == null`, which silently disabled
+            // repeat detection in the Apple Music player: that player always
+            // installs a slider provider, so the branch never ran. The scroll
+            // still snapped back to the first line (currentLineIndex recomputes
+            // from the position) but every word kept its completed sweep, so the
+            // lyrics sat frozen until the overlay was closed and reopened —
+            // exactly the "resets but never animates" symptom.
+            val rawPlayerPositionMs = player.currentPosition.coerceAtLeast(0L)
+            if (lastRawPositionMs - rawPlayerPositionMs > V2_POSITION_RESET_BACKWARD_THRESHOLD_MS) {
                 playbackResetTick++
             }
-            lastRawPositionMs = pos
+            lastRawPositionMs = rawPlayerPositionMs
 
             playbackPositionMs = (pos + lyricsSyncOffset.toLong()).coerceAtLeast(0L)
             currentPositionMs = (playbackPositionMs + leadMs + LYRIC_VISUAL_TUNING_OFFSET_MS).coerceAtLeast(0L)
@@ -464,7 +483,15 @@ fun LyricsV2(
     }
 
     // ── Scroll State ──
-    val listState = rememberLazyListState()
+    // Recreated on a repeat/backward-seek for the same reason the item keys below include
+    // [playbackResetTick]: that tick changes EVERY item key at once, so the LazyColumn's
+    // bookkeeping (its remembered first-visible key, its item animations, the pending
+    // animateScrollToItem target) all refer to items that no longer exist. Carrying the
+    // old state across that swap left the list anchored to a vanished key while the
+    // position loop kept feeding it a new play-through — visible as lyrics that snap back
+    // to the start and then never move. A fresh state starts cleanly at the top, and the
+    // auto-scroll effect takes over from the first active line.
+    val listState = key(playbackResetTick) { rememberLazyListState() }
     var isManualScrolling by remember { mutableStateOf(false) }
     var lastManualScrollTime by remember { mutableLongStateOf(0L) }
 

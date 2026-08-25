@@ -187,7 +187,10 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                     LocalPlayerAwareWindowInsets.current.only(
                         WindowInsetsSides.Horizontal,
                     ),
-                ).verticalScroll(scrollState)
+                )
+                // Chained before verticalScroll so it measures the viewport, not the scrolling content.
+                .then(positions.containerModifier())
+                .verticalScroll(scrollState)
                 .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
         ) {
             PreferenceGroup(title = stringResource(R.string.general)) {
@@ -213,6 +216,7 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                 item {
                     Column {
                         SwitchPreference(
+                            modifier = positions.modifierFor("navigation_bar_frosted_blur"),
                             title = { Text(stringResource(R.string.navigation_bar_frosted_blur)) },
                             description = stringResource(R.string.navigation_bar_frosted_blur_desc),
                             icon = { Icon(painterResource(R.drawable.blur_on), null) },
@@ -233,6 +237,7 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                 item {
                     Column {
                         SwitchPreference(
+                            modifier = positions.modifierFor("navigation_bar_tint_frosted_blur"),
                             title = { Text(stringResource(R.string.navigation_bar_tint_frosted_blur)) },
                             description = stringResource(R.string.navigation_bar_tint_frosted_blur_desc),
                             icon = { Icon(painterResource(R.drawable.blur_on), null) },
@@ -253,6 +258,7 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
                 item {
                     Column {
                         SwitchPreference(
+                            modifier = positions.modifierFor("liquid_glass_nav_bar"),
                             title = { Text(stringResource(R.string.liquid_glass_nav_bar)) },
                             description = stringResource(R.string.liquid_glass_nav_bar_desc),
                             icon = { Icon(painterResource(R.drawable.blur_on), null) },
@@ -302,7 +308,10 @@ fun NavigationBarSettings(navController: NavController, scrollTo: String? = null
             // dialog with a live preview that reflects the in-progress value (and the
             // committed values of the other dimensions) so the user can see exactly how
             // the bar will look before committing.
-            PreferenceGroup(title = stringResource(R.string.navigation_bar_dimensions)) {
+            PreferenceGroup(
+                modifier = positions.modifierFor("navigation_bar_dimensions"),
+                title = stringResource(R.string.navigation_bar_dimensions),
+            ) {
                 item {
                     SliderPreferenceRow(
                         title = stringResource(R.string.navigation_bar_width),

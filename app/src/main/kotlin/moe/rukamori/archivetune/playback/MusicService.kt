@@ -223,10 +223,14 @@ import moe.rukamori.archivetune.qobuz.QobuzAudioProvider
 import moe.rukamori.archivetune.qobuz.QobuzToken
 import moe.rukamori.archivetune.audiosource.AudioSourceConfig
 import moe.rukamori.archivetune.audiosource.DirectStream
+import moe.rukamori.archivetune.audiosource.FlacStreamInfo
 import moe.rukamori.archivetune.audiosource.SongSourceOverride
+import moe.rukamori.archivetune.audiosource.SongSourceQobuzBackupVideoId
 import moe.rukamori.archivetune.audiosource.SongSourceQobuzTrackId
 import moe.rukamori.archivetune.audiosource.TitleMatch
+import moe.rukamori.archivetune.audiosource.pcmBitrateOrNull
 import moe.rukamori.archivetune.constants.SongSourceOverrideKey
+import moe.rukamori.archivetune.constants.SongSourceQobuzBackupVideoIdKey
 import moe.rukamori.archivetune.constants.SongSourceQobuzTrackIdKey
 import moe.rukamori.archivetune.tidal.TidalAccountManager
 import moe.rukamori.archivetune.tidal.TidalArtworkProvider
@@ -8556,6 +8560,14 @@ class MusicService :
          * extracts it into this field.
          */
         val directQobuzTrackId: String? = null,
+        /**
+         * When non-null, the Qobuz-backup resolver asks the mirror for THIS video id
+         * instead of [mediaId]. Set when the user picks a specific row in the
+         * "Play from" search popup — the mirror is keyed by YouTube video id, and the
+         * row they chose is a different catalogue entry from the song that is playing.
+         * Keeping [mediaId] untouched is what makes the switch audio-only.
+         */
+        val directQobuzBackupVideoId: String? = null,
     )
 
     /**
@@ -8643,7 +8655,21 @@ class MusicService :
             runBlocking { dataStore.data.first()[SongSourceQobuzTrackIdKey] }
         }.getOrNull()
         val directQobuzTrackId = SongSourceQobuzTrackId.get(qobuzTrackIdRaw, mediaId)
-        return SourceQuery(mediaId, title, artists, album, durationMs, directQobuzTrackId)
+        // Same treatment for the Qobuz-backup mirror's video id (see the field docs
+        // on SourceQuery.directQobuzBackupVideoId), read fresh for the same reason.
+        val qobuzBackupVideoIdRaw = runCatching {
+            runBlocking { dataStore.data.first()[SongSourceQobuzBackupVideoIdKey] }
+        }.getOrNull()
+        val directQobuzBackupVideoId = SongSourceQobuzBackupVideoId.get(qobuzBackupVideoIdRaw, mediaId)
+        return SourceQuery(
+            mediaId = mediaId,
+            title = title,
+            artists = artists,
+            album = album,
+            durationMs = durationMs,
+            directQobuzTrackId = directQobuzTrackId,
+            directQobuzBackupVideoId = directQobuzBackupVideoId,
+        )
     }
 
     // mediaId -> set of sources known to have this track (passed the metadata match gate during a recent
@@ -8824,7 +8850,7 @@ class MusicService :
         mediaId: String,
         source: AudioSourceType?,
     ) {
-        setSongSourceOverrideInternal(mediaId, source, qobuzTrackId = null)
+        setSongSourceOverrideInternal(mediaId, source, qobuzTrackId = null, qobuzBackupVideoId = null)
     }
 
     /**
@@ -8847,13 +8873,32 @@ class MusicService :
         source: AudioSourceType?,
         qobuzTrackId: String?,
     ) {
-        setSongSourceOverrideInternal(mediaId, source, qobuzTrackId)
+        setSongSourceOverrideInternal(mediaId, source, qobuzTrackId, qobuzBackupVideoId = null)
+    }
+
+    /**
+     * Sets a per-song source override AND persists the chosen Qobuz-**backup** mirror
+     * video id — the counterpart of [setSongSourceOverrideWithQobuzTrackId] for the
+     * kouzu.in mirror, which is keyed by YouTube video id rather than a catalogue
+     * track id.
+     *
+     * As with the Qobuz variant, the song's own mediaId is left alone: the queue, its
+     * position, the artwork and the listening history are all preserved, and only the
+     * bytes being decoded change.
+     */
+    fun setSongSourceOverrideWithQobuzBackupVideoId(
+        mediaId: String,
+        source: AudioSourceType?,
+        qobuzBackupVideoId: String?,
+    ) {
+        setSongSourceOverrideInternal(mediaId, source, qobuzTrackId = null, qobuzBackupVideoId = qobuzBackupVideoId)
     }
 
     private fun setSongSourceOverrideInternal(
         mediaId: String,
         source: AudioSourceType?,
         qobuzTrackId: String?,
+        qobuzBackupVideoId: String?,
     ) {
         // A direct Qobuz selection is an explicit user choice. A failed
         // background probe may have left the provider's negative cache or an
@@ -8863,7 +8908,12 @@ class MusicService :
         if (source == AudioSourceType.QOBUZ && !qobuzTrackId.isNullOrBlank()) {
             QobuzAudioProvider.clearTransientCaches()
         }
-        // Persist the Qobuz trackId (if any) BEFORE triggering re-resolution.
+        // Persist the exact-track ids (if any) BEFORE triggering re-resolution.
+        //
+        // Both are always written, with null for whichever is not part of this
+        // selection: a song can only play from one source at a time, so leaving a
+        // previous pick's id behind would keep pinning the resolver to the old source
+        // even after the user chose a different one.
         runCatching {
             runBlocking {
                 dataStore.edit { prefs ->
@@ -8871,6 +8921,11 @@ class MusicService :
                         prefs[SongSourceQobuzTrackIdKey],
                         mediaId,
                         qobuzTrackId,
+                    )
+                    prefs[SongSourceQobuzBackupVideoIdKey] = SongSourceQobuzBackupVideoId.withOverride(
+                        prefs[SongSourceQobuzBackupVideoIdKey],
+                        mediaId,
+                        qobuzBackupVideoId,
                     )
                 }
             }
@@ -9037,6 +9092,19 @@ class MusicService :
         }.getOrNull()
         val directQobuzTrackId = SongSourceQobuzTrackId.get(qobuzTrackIdRaw, mediaId)
         val isDirectQobuzTrack = directQobuzTrackId != null
+        // Same for an explicit Qobuz-backup pick: the mirror is addressed by video id,
+        // so a chosen row is only reachable through the stored id. Treat it exactly like
+        // a direct Qobuz track — force the chain to that one source, skip the
+        // DirectStream cache (which may hold the previous source's URL for this media
+        // id) and let it through low-data mode, because it is an explicit user choice.
+        val qobuzBackupVideoIdRaw = runCatching {
+            runBlocking { dataStore.data.first()[SongSourceQobuzBackupVideoIdKey] }
+        }.getOrNull()
+        val directQobuzBackupVideoId = SongSourceQobuzBackupVideoId.get(qobuzBackupVideoIdRaw, mediaId)
+        val isDirectQobuzBackupTrack = directQobuzBackupVideoId != null
+        // A song can only be pinned to one source at a time, so at most one of these is
+        // set; `isDirectPick` is the shared "the user chose this exact track" signal.
+        val isDirectPick = isDirectQobuzTrack || isDirectQobuzBackupTrack
         // Read the source override FRESH from DataStore — not from the stale
         // PreferenceStore cache. The PreferenceStore collector is async and
         // may not have received the write from setSongSourceOverride yet.
@@ -9053,7 +9121,7 @@ class MusicService :
         // re-resolve through Qobuz even if a cached YouTube stream exists.
         val now = System.currentTimeMillis()
         val cached = directStreamCache[mediaId]
-        if (!isDirectQobuzTrack && cached != null && cached.expiresAtMs > now) {
+        if (!isDirectPick && cached != null && cached.expiresAtMs > now) {
             val override = SongSourceOverride.get(sourceOverrideRaw, mediaId)
             val cacheHitsOverride = override == null || override == cached.stream.source
             if (cacheHitsOverride && !lowDataModeActive) {
@@ -9093,14 +9161,20 @@ class MusicService :
         // lossless sources are still enabled. Instead we fall through to the full enabled
         // chain so a different lossless source can still win. The stale pin remains in
         // storage and will become effective again if the user re-enables the source.
-        val override = if (isDirectQobuzTrack) AudioSourceType.QOBUZ else SongSourceOverride.get(sourceOverrideRaw, mediaId)
+        val override =
+            when {
+                isDirectQobuzTrack -> AudioSourceType.QOBUZ
+                isDirectQobuzBackupTrack -> AudioSourceType.QOBUZ_BACKUP
+                else -> SongSourceOverride.get(sourceOverrideRaw, mediaId)
+            }
         val overrideStillEnabled =
             override == null ||
                 override == AudioSourceType.YOUTUBE ||
                 isSourceEnabled(override)
         val chain =
-            if (isDirectQobuzTrack) {
-                listOf(AudioSourceType.QOBUZ)
+            if (isDirectPick) {
+                // `override` was pinned to the picked source above.
+                listOfNotNull(override)
             } else when (override) {
                 null -> sourceResolutionChain()
                 AudioSourceType.YOUTUBE -> {
@@ -9129,7 +9203,7 @@ class MusicService :
         // Qobuz track the user explicitly selected in the Play from popup. That choice carries
         // a concrete Qobuz track id and must not silently turn into a YouTube Opus stream on a
         // metered network.
-        if (lowDataModeActive && !isDirectQobuzTrack) {
+        if (lowDataModeActive && !isDirectPick) {
             tidalActiveMediaIds.remove(mediaId)
             Timber.tag("MusicService").i("Low-data mode active; skipping Tidal/Qobuz for %s", mediaId)
             return null
@@ -9153,7 +9227,7 @@ class MusicService :
         // title formatting often differs from the YouTube-derived wanted title enough to fail the
         // metadata gate, the resolver silently fell back to YouTube, and the user saw no change.
         // The override is the user's manual override of the gate — we should respect it.
-        val overrideIsSourceOverride = (override != null && override != AudioSourceType.YOUTUBE) || isDirectQobuzTrack
+        val overrideIsSourceOverride = (override != null && override != AudioSourceType.YOUTUBE) || isDirectPick
         var best: DirectStream? = null
         var bestSource: AudioSourceType? = null
         var bestScore = 0.0
@@ -9661,7 +9735,10 @@ class MusicService :
      * the song the user is playing, so we skip the title/artist metadata gate.
      */
     private fun resolveQobuzBackupStream(query: SourceQuery): DirectStream? {
-        val ytId = query.mediaId.trim()
+        // An explicit pick from the "Play from" popup addresses a specific mirror entry,
+        // which is usually NOT the playing song's own id — honour it when present and
+        // fall back to the media id for the automatic path.
+        val ytId = (query.directQobuzBackupVideoId ?: query.mediaId).trim()
         // YouTube video ids are 11 characters. Anything else isn't a valid id for
         // the kouzu.in endpoint — bail early so we don't waste a network call.
         if (ytId.length != 11 || ytId.any { !it.isLetterOrDigit() && it != '_' && it != '-' }) {
@@ -9758,11 +9835,14 @@ class MusicService :
                     return@runBlocking null
                 }
                 Timber.tag("MusicService").i(
-                    "Qobuz backup resolved \"%s\" via mlc-ytify.kouzu.in → %s [%s%s]",
+                    "Qobuz backup resolved \"%s\" via mlc-ytify.kouzu.in → %s [%s%s%s]",
                     query.title,
                     probe.url.take(80),
                     probe.contentType,
                     if (probe.isLossless) ", lossless" else "",
+                    probe.sampleRate?.let { rate ->
+                        ", ${probe.bitDepth?.toString() ?: "?"}bit/${rate / 1000f}kHz"
+                    }.orEmpty(),
                 )
                 DirectStream(
                     uri = probe.url,
@@ -9771,6 +9851,8 @@ class MusicService :
                     contentLength = probe.contentLength,
                     label = if (probe.isLossless) "Qobuz backup (lossless)" else "Qobuz backup (kouzu.in)",
                     source = AudioSourceType.QOBUZ_BACKUP,
+                    sampleRate = probe.sampleRate,
+                    bitDepth = probe.bitDepth,
                     // The YouTube mediaId is the authoritative identity of the
                     // song the user is playing — we trust it without requiring
                     // the backup server to echo back matching metadata.
@@ -9778,7 +9860,10 @@ class MusicService :
                     matchedTitle = query.title,
                     matchedArtist = query.artists.joinToString(", ").ifBlank { null },
                     matchedAlbum = query.album,
-                    matchedDurationMs = query.durationMs,
+                    // The FLAC header's own sample count is the exact length of the file
+                    // being served; prefer it over the catalogue duration so the Details
+                    // card and the measured bitrate are both computed from the real file.
+                    matchedDurationMs = probe.durationMs ?: query.durationMs,
                 )
             }
         }.onFailure { error ->
@@ -9800,6 +9885,15 @@ class MusicService :
         val contentLength: Long?,
         val contentType: String,
         val isLossless: Boolean,
+        /**
+         * Real stream properties read out of the FLAC STREAMINFO block that the probe
+         * already downloads. Null for the lossy mirror (and for any FLAC whose header
+         * did not parse), in which case the Details card falls back to its tier
+         * heuristic rather than inventing precision.
+         */
+        val sampleRate: Int? = null,
+        val bitDepth: Int? = null,
+        val durationMs: Long? = null,
     )
 
     /**
@@ -9809,8 +9903,11 @@ class MusicService :
      *
      * HEAD is deliberately not used: the CDN replies `405 Method Not Allowed`
      * with `allow: GET` for HEAD on every object, so a HEAD probe can only ever
-     * fail. `Range: bytes=0-1` keeps the probe to two bytes while still
-     * returning the headers we need.
+     * fail. The range is sized to exactly cover a FLAC `STREAMINFO` block
+     * ([FlacStreamInfo.REQUIRED_BYTES]) so the same round trip that establishes
+     * reachability also yields the track's real sample rate, bit depth and length —
+     * that is what stops every lossless track from showing the same numbers in the
+     * player's Details card.
      */
     private fun probeQobuzBackupMirror(url: String): QobuzBackupProbe? =
         runCatching {
@@ -9820,10 +9917,11 @@ class MusicService :
                     .url(url)
                     .get()
                     .header("User-Agent", "ArchiveTune-Android")
-                    .header("Range", "bytes=0-1")
+                    .header("Range", "bytes=0-${FlacStreamInfo.REQUIRED_BYTES - 1}")
                     .build()
             mediaOkHttpClient.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) return@use null
+                val headerBytes = runCatching { response.body?.bytes() }.getOrNull()
                 val contentType = response.header("Content-Type")?.lowercase().orEmpty()
                 // A JSON body here is the CDN's {"detail":"Not Found"} envelope for a
                 // mirror that hasn't been populated for this track yet.
@@ -9844,7 +9942,10 @@ class MusicService :
                         ?.trim()
                         ?.toLongOrNull()
                         ?: response.header("Content-Length")?.toLongOrNull()?.takeIf { response.code != 206 }
-                val isFlac = contentType.contains("flac") || url.contains("/lossless/")
+                // Trust the bytes over the labels: a mirror that serves FLAC is FLAC even
+                // if the CDN mislabels the Content-Type, and the header is already here.
+                val streamInfo = headerBytes?.let(FlacStreamInfo::parse)
+                val isFlac = streamInfo != null || contentType.contains("flac") || url.contains("/lossless/")
                 QobuzBackupProbe(
                     url = url,
                     mimeType = if (isFlac) "audio/flac" else "audio/mp4",
@@ -9852,6 +9953,9 @@ class MusicService :
                     contentLength = totalLength?.takeIf { it > 0 },
                     contentType = contentType.ifBlank { "unknown" },
                     isLossless = isFlac,
+                    sampleRate = streamInfo?.sampleRate,
+                    bitDepth = streamInfo?.bitDepth,
+                    durationMs = streamInfo?.durationMs,
                 )
             }
         }.onFailure { error ->
@@ -10091,16 +10195,16 @@ class MusicService :
                 label.contains("LOSSLESS") || codecs.contains("flac", true) || codecs.contains("alac", true) -> 44_100
                 else -> null
             }
-        val bitDepth = stream.bitDepth?.takeIf { it > 0 }
-        val bitrate = when {
-            stream.sampleRate != null && stream.sampleRate > 0 && bitDepth != null && bitDepth > 0 ->
-                stream.sampleRate * bitDepth * 2 // stereo: channels=2
-            label.contains("HI_RES") || label.contains("MASTER") || label.contains("MQA") -> 2_304_000
-            label.contains("LOSSLESS") || codecs.contains("flac", true) || codecs.contains("alac", true) -> 1_411_000
-            label.contains("HIGH") -> 320_000
-            else -> 0
-        }
         val knownContentLength = stream.contentLength?.takeIf { it > 0L }
+        val bitrate =
+            measuredBitrate(knownContentLength, stream.matchedDurationMs)
+                ?: stream.pcmBitrateOrNull()
+                ?: when {
+                    label.contains("HI_RES") || label.contains("MASTER") || label.contains("MQA") -> 2_304_000
+                    label.contains("LOSSLESS") || codecs.contains("flac", true) || codecs.contains("alac", true) -> 1_411_000
+                    label.contains("HIGH") -> 320_000
+                    else -> 0
+                }
         val formatEntity =
             FormatEntity(
                 id = mediaId,
@@ -10153,11 +10257,19 @@ class MusicService :
                         if (len > 0L) {
                             // Re-read the row so we don't clobber any concurrent
                             // updates to other fields (e.g. loudness) — only
-                            // patch the contentLength column.
+                            // patch the contentLength column, plus the bitrate that
+                            // can now be measured from it (the row was written with
+                            // the tier estimate because the length was unknown).
+                            val backfilledBitrate = measuredBitrate(len, stream.matchedDurationMs)
                             val refreshed =
                                 runBlocking(Dispatchers.IO) {
                                     database.getFormatsByIds(listOf(mediaId)).firstOrNull()
-                                }?.copy(contentLength = len)
+                                }?.let { row ->
+                                    row.copy(
+                                        contentLength = len,
+                                        bitrate = backfilledBitrate ?: row.bitrate,
+                                    )
+                                }
                             if (refreshed != null) {
                                 database.query { upsert(refreshed) }
                             }
@@ -10172,6 +10284,31 @@ class MusicService :
                 }
             }
         }
+    }
+
+    /**
+     * The stream's true average bitrate in bits/sec, derived from its byte length and
+     * playing time, or null when either is unknown.
+     *
+     * This is what makes the Details card show something specific to the track that is
+     * actually playing. The alternative — sample rate x bit depth x channels — is the
+     * *uncompressed* PCM ceiling, and it is identical for every file that shares a tier:
+     * the Qobuz backup mirror serves almost its whole catalogue as 24-bit/44.1 kHz FLAC,
+     * so every lossless track reported exactly the same "2116 kbps" no matter how
+     * compressible it was. A measured rate distinguishes them (a sparse ballad
+     * compresses to well under half of a dense mix) and is the honest figure for a
+     * variable-bitrate codec.
+     */
+    private fun measuredBitrate(
+        contentLength: Long?,
+        durationMs: Long?,
+    ): Int? {
+        val bytes = contentLength?.takeIf { it > 0L } ?: return null
+        val millis = durationMs?.takeIf { it > 0L } ?: return null
+        val bitsPerSecond = bytes * 8_000L / millis
+        // Guard against a bogus duration producing an absurd rate; 50 Mbps is far above
+        // anything a music file reaches, so treat it as "unknown" instead of showing it.
+        return bitsPerSecond.takeIf { it in 1L..50_000_000L }?.toInt()
     }
 
     private fun sourceCacheKey(

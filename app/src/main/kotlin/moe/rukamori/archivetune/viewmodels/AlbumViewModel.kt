@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.canvas.AppleMusicProvider
 import moe.rukamori.archivetune.canvas.models.CanvasArtwork
+import moe.rukamori.archivetune.constants.AlbumCanvasEnabledKey
 import moe.rukamori.archivetune.constants.HideVideoKey
 import moe.rukamori.archivetune.db.MusicDatabase
 import moe.rukamori.archivetune.extensions.filterBlockedArtists
@@ -172,17 +173,15 @@ class AlbumViewModel
          */
         private fun fetchAlbumCanvas(context: Context) {
             viewModelScope.launch {
-                // Album-page animated art is fetched regardless of the
-                // player-level `ArchiveTuneCanvasKey` toggle. That toggle
-                // controls whether the *song player* mounts a canvas overlay
-                // over the now-playing thumbnail — but on the album page the
-                // user expects the album cover to animate the moment they
-                // open the page (matching Apple Music's behaviour), not only
-                // when they've flipped a separate switch in Player settings.
-                //
-                // We still respect LowDataMode (skip the network fetch on
-                // metered connections) since the canvas is a short video
-                // loop with non-trivial bandwidth.
+                // Gated on its own preference (Appearance → "Enable canvas in albums page")
+                // rather than the player-level `ArchiveTuneCanvasKey`: the album loop starts
+                // as soon as the page opens, whether or not anything is playing, so it is a
+                // separate cost and a separate choice. Default on, matching Apple Music.
+                if (!context.dataStore.get(AlbumCanvasEnabledKey, true)) return@launch
+
+                // Still respect LowDataMode (skip the network fetch on metered
+                // connections) since the canvas is a short video loop with non-trivial
+                // bandwidth.
                 if (context.isLowDataModeActive()) return@launch
 
                 // Wait for the album to load in the DB (it might not be
@@ -191,22 +190,71 @@ class AlbumViewModel
                 val loaded = albumWithSongs.first { it != null } ?: return@launch
                 val album = loaded.album
                 val firstArtist = loaded.artists.firstOrNull()?.name
+                val firstSongTitle = loaded.songs.firstOrNull()?.song?.title
 
-                val artwork = runCatching {
-                    AppleMusicProvider.getByAlbumId(album.id)
-                }.getOrNull()
-                    ?: runCatching {
-                        if (!firstArtist.isNullOrBlank()) {
-                            AppleMusicProvider.getByAlbumArtist(
-                                album = album.title,
-                                artist = firstArtist,
-                            )
-                        } else {
-                            null
-                        }
-                    }.getOrNull()
-
-                _canvasArtwork.value = artwork
+                _canvasArtwork.value = resolveAlbumCanvas(album.id, album.title, firstArtist, firstSongTitle)
             }
         }
+
+        /**
+         * Walks the Apple Music motion-artwork lookups from most to least specific and
+         * returns the first hit, or null when the album simply has no motion artwork.
+         *
+         * The ladder exists because the id we hold is almost never an Apple Music id — a
+         * YouTube album is an `MPREb…` browse id, so [AppleMusicProvider.getByAlbumId]
+         * only succeeds for the rare album that came from an Apple-shaped id, and
+         * everything else has to be matched by name. Each extra rung recovers a class of
+         * album the previous one misses:
+         *
+         *  - **exact title + artist** — the normal path.
+         *  - **title stripped of edition suffixes** — Apple's catalogue carries "1989"
+         *    where YouTube has "1989 (Taylor's Version) [Deluxe]", and an exact-name
+         *    search for the decorated form finds nothing.
+         *  - **a track from the album** — singles and EPs are frequently catalogued under
+         *    the track's own name, and a song lookup also picks up motion artwork attached
+         *    to the song rather than the album.
+         */
+        private suspend fun resolveAlbumCanvas(
+            albumId: String,
+            albumTitle: String,
+            artist: String?,
+            firstSongTitle: String?,
+        ): CanvasArtwork? {
+            runCatching { AppleMusicProvider.getByAlbumId(albumId) }
+                .getOrNull()
+                ?.let { return it }
+
+            if (artist.isNullOrBlank()) return null
+
+            val titleCandidates =
+                linkedSetOf(albumTitle, stripAlbumEditionSuffixes(albumTitle))
+                    .filter { it.isNotBlank() }
+            for (title in titleCandidates) {
+                runCatching { AppleMusicProvider.getByAlbumArtist(album = title, artist = artist) }
+                    .getOrNull()
+                    ?.let { return it }
+            }
+
+            if (!firstSongTitle.isNullOrBlank()) {
+                runCatching {
+                    AppleMusicProvider.getBySongArtist(
+                        song = firstSongTitle,
+                        artist = artist,
+                        album = albumTitle,
+                    )
+                }.getOrNull()?.let { return it }
+            }
+            return null
+        }
+
+        /**
+         * Drops the release-edition decoration YouTube album titles carry and Apple's
+         * catalogue titles usually do not: parenthesised/bracketed qualifiers
+         * ("(Deluxe Edition)", "[Remastered 2011]") and a trailing " - EP" / " - Single".
+         */
+        private fun stripAlbumEditionSuffixes(title: String): String =
+            title
+                .replace(Regex("\\s*[\\(\\[][^)\\]]*[\\)\\]]\\s*$"), "")
+                .replace(Regex("\\s*-\\s*(EP|Single|Deluxe|Remaster(ed)?)\\s*$", RegexOption.IGNORE_CASE), "")
+                .trim()
     }

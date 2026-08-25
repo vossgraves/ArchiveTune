@@ -68,9 +68,102 @@ import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.utils.Updater
 
 
+/**
+ * Search-result children that are indexed under one page but physically live on another.
+ *
+ * The settings index grew section by section, so a number of children are still listed under the
+ * page that *used* to own them — every Discord activity field under "Integration", every lyrics
+ * provider toggle under "Lyrics", every streaming-source switch under "Playback". Navigating to
+ * the indexed parent opens a screen that does not contain the row at all, so `?scrollTo=` has
+ * nothing to find and the result silently lands at the top of the wrong page.
+ *
+ * Keyed by `"<indexedParent>/<scrollKey>"` rather than by the scroll key alone: several keys are
+ * legitimately indexed twice (`qobuz_enable` under both "Playback" and "Qobuz"), and only the
+ * out-of-place copy should be redirected.
+ *
+ * Fixing the index itself would be the deeper repair, but it would also change the result titles
+ * users see; re-pointing the navigation keeps the search results as they are and simply sends
+ * them somewhere the setting exists.
+ */
+private val CROSS_PAGE_SCROLL_OWNERS: Map<String, String> =
+    buildMap {
+        fun own(
+            owner: String,
+            parent: String,
+            vararg keys: String,
+        ) = keys.forEach { put("$parent/$it", owner) }
+
+        // Integration is a hub of links; the settings themselves live on the per-service screens.
+        own(
+            "discord", "integration",
+            "discord_options", "discord_connection", "discord_activity", "discord_images",
+            "activity_status", "platform_status", "discord_activity_name",
+            "discord_activity_details", "discord_activity_state", "discord_activity_type",
+            "discord_show_when_paused", "large_image", "large_text", "small_image",
+        )
+        own("discord_experimental", "integration", "discord_experimental")
+        own(
+            "lastfm", "integration",
+            "lastfm_options", "lastfm_scrobbling_config", "enable_scrobbling", "lastfm_now_playing",
+            "lastfm_prefer_yt_thumbnails", "scrobble_min_track_duration", "scrobble_delay_percent",
+            "scrobble_delay_minutes", "lastfm_connect_button", "lastfm_connect_librefm_button",
+            "lastfm_connect_custom_button",
+        )
+        own("tidal", "integration", "tidal_account", "tidal_instances")
+        own("qobuz", "integration", "qobuz_account", "qobuz_tokens", "qobuz_instances")
+        own(
+            "telegram", "integration",
+            "telegram_login", "telegram_browse_channels", "telegram_lossless_only",
+            "telegram_logout", "telegram_bots_title",
+        )
+
+        // Lyrics was split into Providers / Romanisation / Animations sub-pages.
+        own(
+            "lyrics_providers", "lyrics",
+            "first_lyrics_provider", "set_first_lyrics_provider", "prioritize_word_synced_lyrics",
+            "enable_tidal_lyrics", "enable_deezer_lyrics", "enable_musixmatch_experimental",
+            "paxsenix_api_key", "paxsenix_endpoint", "paxsenix_stats", "paxsenix_lyrics",
+            "betterlyrics", "betterlyrics_portato", "youlyplus_lyrics", "lrclib", "kugou",
+            "unison_lyrics", "simpmusic_lyrics", "megalobiz_lyrics",
+        )
+        own(
+            "lyrics_romanisation", "lyrics",
+            "lyrics_romanize_japanese", "lyrics_romanize_korean", "lyrics_romanize_chinese",
+            "lyrics_romanize_hindi", "lyrics_romanize_other",
+        )
+        own("lyrics_animations", "lyrics", "lyrics_animations")
+        own("appearance", "lyrics", "lyrics_background_style")
+        // The lyrics translator shipped alongside the Discord experiments and still lives there.
+        own("discord_experimental", "lyrics", "translate_lyrics", "enable_translator")
+
+        // Source enable/quality switches moved from Playback to the dedicated Sources page.
+        own(
+            "sources", "playback",
+            "preferred_sources", "auto_choose_playback_client", "player_stream_client",
+            "check_source", "spotify_catalog_source", "tidal_enable", "tidal_account_first",
+            "tidal_audio_quality", "tidal_animated_covers", "tidal_manage_instances",
+            "qobuz_enable", "qobuz_audio_quality", "qobuz_backup_enable", "qobuz_manage_instances",
+            "deezer_enable", "deezer_audio_quality", "jiosaavn_enable", "jiosaavn_audio_quality",
+        )
+        own("ytdlp", "playback", "ytdlp")
+        own("sources", "deezer", "deezer_enable", "deezer_audio_quality")
+        own("qobuz", "sources", "qobuz")
+        own("tidal", "sources", "tidal")
+
+        // Appearance rows that were moved out to their own pages.
+        own("navigation_bar", "appearance", "frosted_nav_bar", "liquid_glass_nav_bar", "hide_navigation_bar_labels")
+        own("appearance_extras", "appearance", "show_home_category_chips")
+        own("playback", "appearance", "swipe_sensitivity")
+        own("behavior", "appearance", "force_high_refresh_rate")
+        own("appearance_extras", "behavior", "show_tags_in_library")
+        own("downloads", "storage", "downloaded_songs", "download_location")
+    }
+
 private fun searchableSettingsRoute(parentKey: String, scrollKey: String?): String? {
+    // A child indexed under the wrong page is navigated to the page that actually holds it.
+    val ownerKey = CROSS_PAGE_SCROLL_OWNERS["$parentKey/${scrollKey.orEmpty()}"] ?: parentKey
     val route =
-        when (parentKey) {
+        when (ownerKey) {
             "account" -> "settings/account"
             "appearance" -> "settings/appearance"
             "appearance_extras" -> "settings/appearance/extras"
@@ -90,6 +183,7 @@ private fun searchableSettingsRoute(parentKey: String, scrollKey: String?): Stri
             "integration" -> "settings/integration"
             "internet" -> "settings/internet"
             "storage" -> "settings/storage"
+            "downloads" -> "settings/downloads"
             "backup_restore" -> "settings/backup_restore"
             "developer_options" -> "settings/misc"
             "logcat" -> "settings/logcat"
@@ -109,7 +203,7 @@ private fun searchableSettingsRoute(parentKey: String, scrollKey: String?): Stri
     // About / developer-options screens intentionally don't participate in auto-scroll
     // (their contents are mostly static links). All other screens honor ?scrollTo=.
     val supportsScroll =
-        parentKey !in
+        ownerKey !in
             setOf(
                 "developer_options",
                 "about",

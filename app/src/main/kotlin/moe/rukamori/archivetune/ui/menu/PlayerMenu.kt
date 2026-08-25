@@ -115,6 +115,7 @@ import moe.rukamori.archivetune.innertube.models.SongItem
 import moe.rukamori.archivetune.jiosaavn.SaavnService
 import moe.rukamori.archivetune.tidal.TidalAudioProvider
 import moe.rukamori.archivetune.qobuz.QobuzAudioProvider
+import moe.rukamori.archivetune.qobuz.QobuzBackupProvider
 import moe.rukamori.archivetune.ui.component.BottomSheetState
 import moe.rukamori.archivetune.ui.component.ChipsRow
 import moe.rukamori.archivetune.ui.component.DefaultDialog
@@ -415,20 +416,32 @@ fun PlayerMenu(
                     onSongSourceChange(
                         SongSourceOverride.withOverride(songSourceRaw, mediaMetadata.id, source),
                     )
-                    // For Qobuz: persist the exact trackId so the resolver
-                    // downloads the exact track. For other sources (Tidal/
-                    // JioSaavn/Deezer) the resolver searches by title+artist.
-                    if (source == AudioSourceType.QOBUZ) {
-                        playerConnection.service.setSongSourceOverrideWithQobuzTrackId(
-                            mediaId = mediaMetadata.id,
-                            source = source,
-                            qobuzTrackId = trackId,
-                        )
-                    } else {
-                        playerConnection.service.setSongSourceOverride(
-                            mediaId = mediaMetadata.id,
-                            source = source,
-                        )
+                    // Sources with an addressable per-track id get that id persisted so the
+                    // resolver fetches exactly the row the user tapped:
+                    //   - Qobuz     → catalogue trackId
+                    //   - Qobuz Backup → the mirror's YouTube video id (its primary key)
+                    // For the rest (Tidal / JioSaavn / Deezer) the resolver still searches
+                    // by title + artist, which is all their APIs expose here.
+                    when (source) {
+                        AudioSourceType.QOBUZ ->
+                            playerConnection.service.setSongSourceOverrideWithQobuzTrackId(
+                                mediaId = mediaMetadata.id,
+                                source = source,
+                                qobuzTrackId = trackId,
+                            )
+
+                        AudioSourceType.QOBUZ_BACKUP ->
+                            playerConnection.service.setSongSourceOverrideWithQobuzBackupVideoId(
+                                mediaId = mediaMetadata.id,
+                                source = source,
+                                qobuzBackupVideoId = trackId,
+                            )
+
+                        else ->
+                            playerConnection.service.setSongSourceOverride(
+                                mediaId = mediaMetadata.id,
+                                source = source,
+                            )
                     }
                     showSourceDialog = false
                 }
@@ -1928,17 +1941,25 @@ private fun SongSourceDialog(
     val noResultsText = stringResource(R.string.source_search_no_results)
     val noBackendText = stringResource(R.string.source_search_no_backend)
 
-    // Provider filter → "search backend not yet available" empty state. YTM, Tidal, Qobuz and
-    // JioSaavn are the providers with a usable list-search API right now (Tidal via
-    // searchCandidates, Qobuz via QobuzAudioProvider.searchCandidates, JioSaavn via
-    // SaavnService.searchSongs). Qobuz Backup (kouzu.in) doesn't have a search API — it only
-    // streams by YouTube video id. Deezer has no public list search.
-    val backendMissing =
-        sourceFilter != null &&
-            sourceFilter != AudioSourceType.YOUTUBE &&
-            sourceFilter != AudioSourceType.TIDAL &&
-            sourceFilter != AudioSourceType.QOBUZ &&
-            sourceFilter != AudioSourceType.JIOSAAVN
+    // Provider filter → "search backend not yet available" empty state. These are the
+    // providers with a usable list-search API: YTM, Tidal (searchCandidates), Qobuz
+    // (QobuzAudioProvider.searchCandidates), Qobuz Backup (QobuzBackupProvider.searchCandidates)
+    // and JioSaavn (SaavnService.searchSongs). Deezer still has no public list search.
+    //
+    // Qobuz Backup used to be excluded here on the assumption that the kouzu.in mirror could
+    // only be addressed by YouTube video id. It does expose `GET /api/search`, which returns
+    // its own indexed catalogue, so its rows are searchable and pickable like any other
+    // source's — which is what the "search and select tracks from the Qobuz backup source"
+    // request was about.
+    val searchableSources =
+        setOf(
+            AudioSourceType.YOUTUBE,
+            AudioSourceType.TIDAL,
+            AudioSourceType.QOBUZ,
+            AudioSourceType.QOBUZ_BACKUP,
+            AudioSourceType.JIOSAAVN,
+        )
+    val backendMissing = sourceFilter != null && sourceFilter !in searchableSources
 
     // Debounced search — only fires when searchMode is on and query length >= 2.
     val results by produceState<List<SourceSearchResult>>(
@@ -1956,6 +1977,7 @@ private fun SongSourceDialog(
         val searchYtm = sourceFilter == null || sourceFilter == AudioSourceType.YOUTUBE
         val searchTidal = sourceFilter == null || sourceFilter == AudioSourceType.TIDAL
         val searchQobuz = sourceFilter == null || sourceFilter == AudioSourceType.QOBUZ
+        val searchQobuzBackup = sourceFilter == null || sourceFilter == AudioSourceType.QOBUZ_BACKUP
         val searchSaavn = sourceFilter == null || sourceFilter == AudioSourceType.JIOSAAVN
 
         if (searchYtm) {
@@ -2057,6 +2079,31 @@ private fun SongSourceDialog(
                     }
             }
         }
+        if (searchQobuzBackup) {
+            // The kouzu.in mirror answers with its own catalogue index; every row it
+            // returns is keyed by a YouTube video id, which is both the mirror's primary
+            // key and the source of the row's cover art (no artwork field in the payload).
+            withContext(Dispatchers.IO) {
+                runCatching { QobuzBackupProvider.searchCandidates(searchQuery, limit = 8) }
+                    .getOrDefault(emptyList())
+                    .forEach { candidate ->
+                        out.add(
+                            SourceSearchResult(
+                                source = AudioSourceType.QOBUZ_BACKUP,
+                                trackId = candidate.videoId,
+                                title = candidate.title,
+                                artist = candidate.artist.orEmpty(),
+                                thumbnailUrl = candidate.thumbnailUrl,
+                                // The search payload carries no duration; the row simply
+                                // omits it rather than showing a made-up length.
+                                durationMs = null,
+                                qualityLabel = if (candidate.isLossless) losslessLabel else aacLabel,
+                                songItem = null,
+                            ),
+                        )
+                    }
+            }
+        }
         if (searchSaavn) {
             withContext(Dispatchers.IO) {
                 runCatching { SaavnService.searchSongs(searchQuery).getOrDefault(emptyList()) }
@@ -2131,6 +2178,7 @@ private fun SongSourceDialog(
                             null to stringResource(R.string.source_search_filter_all),
                             AudioSourceType.TIDAL to stringResource(R.string.source_tidal),
                             AudioSourceType.QOBUZ to stringResource(R.string.source_qobuz),
+                            AudioSourceType.QOBUZ_BACKUP to stringResource(R.string.source_qobuz_backup),
                             AudioSourceType.DEEZER to stringResource(R.string.source_deezer),
                             AudioSourceType.JIOSAAVN to stringResource(R.string.source_jiosaavn),
                             AudioSourceType.YOUTUBE to stringResource(R.string.source_youtube),
@@ -2142,6 +2190,7 @@ private fun SongSourceDialog(
                             null to R.drawable.search,
                             AudioSourceType.TIDAL to R.drawable.provider_tidal,
                             AudioSourceType.QOBUZ to R.drawable.provider_qobuz,
+                            AudioSourceType.QOBUZ_BACKUP to R.drawable.provider_qobuz,
                             AudioSourceType.DEEZER to R.drawable.provider_deezer,
                             AudioSourceType.JIOSAAVN to R.drawable.provider_jiosaavn,
                             AudioSourceType.YOUTUBE to R.drawable.play,

@@ -440,6 +440,8 @@ fun TidalSettings(navController: NavController, scrollTo: String? = null) {
                         WindowInsetsSides.Horizontal,
                     ),
                 )
+                // Chained before verticalScroll so it measures the viewport, not the scrolling content.
+                .then(positions.containerModifier())
                 .verticalScroll(scrollState)
                 .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
         ) {
@@ -450,6 +452,7 @@ fun TidalSettings(navController: NavController, scrollTo: String? = null) {
                 if (accountConfigured) {
                     item {
                         PreferenceEntry(
+                            modifier = positions.modifierFor("tidal_account_connected"),
                             title = {
                                 Text(stringResource(R.string.tidal_account_connected, accountName.ifBlank { "Tidal" }))
                             },
@@ -481,6 +484,7 @@ fun TidalSettings(navController: NavController, scrollTo: String? = null) {
                     if (needsRelogin) {
                         item {
                             PreferenceEntry(
+                                modifier = positions.modifierFor("tidal_reconnect"),
                                 title = { Text(stringResource(R.string.tidal_reconnect)) },
                                 icon = { Icon(painterResource(R.drawable.error), null) },
                                 onClick = { navController.navigate(TIDAL_LOGIN_ROUTE) },
@@ -490,6 +494,7 @@ fun TidalSettings(navController: NavController, scrollTo: String? = null) {
 
                     item {
                         PreferenceEntry(
+                            modifier = positions.modifierFor("tidal_disconnect"),
                             title = { Text(stringResource(R.string.tidal_disconnect)) },
                             icon = { Icon(painterResource(R.drawable.logout), null) },
                             onClick = {
@@ -512,6 +517,7 @@ fun TidalSettings(navController: NavController, scrollTo: String? = null) {
                 } else {
                     item {
                         PreferenceEntry(
+                            modifier = positions.modifierFor("tidal_login_web"),
                             title = { Text(stringResource(R.string.tidal_login_web)) },
                             icon = { Icon(painterResource(R.drawable.token), null) },
                             onClick = { navController.navigate(TIDAL_LOGIN_ROUTE) },
@@ -535,6 +541,7 @@ fun TidalSettings(navController: NavController, scrollTo: String? = null) {
                         healthStatus[it] == TidalAudioProvider.InstanceHealth.UNREACHABLE
                     }
                     PreferenceEntry(
+                        modifier = positions.modifierFor("source_manage_instances"),
                         title = { Text(stringResource(R.string.source_manage_instances)) },
                         description = stringResource(
                             R.string.source_health_summary,
@@ -624,6 +631,7 @@ fun TidalSettings(navController: NavController, scrollTo: String? = null) {
 
                 item(visible = showInstanceManagement) {
                     PreferenceEntry(
+                        modifier = positions.modifierFor("tidal_add_instance"),
                         title = { Text(stringResource(R.string.tidal_add_instance)) },
                         icon = { Icon(painterResource(R.drawable.add), null) },
                         onClick = { showAddDialog = true },
@@ -632,6 +640,7 @@ fun TidalSettings(navController: NavController, scrollTo: String? = null) {
 
                 item(visible = showInstanceManagement) {
                     PreferenceEntry(
+                        modifier = positions.modifierFor("source_bulk_add"),
                         title = { Text(stringResource(R.string.source_bulk_add)) },
                         description = stringResource(R.string.source_bulk_hint),
                         icon = { Icon(painterResource(R.drawable.playlist_add), null) },
@@ -641,6 +650,7 @@ fun TidalSettings(navController: NavController, scrollTo: String? = null) {
 
                 item(visible = showInstanceManagement) {
                     PreferenceEntry(
+                        modifier = positions.modifierFor("source_copy_online"),
                         title = { Text(stringResource(R.string.source_copy_online)) },
                         icon = { Icon(painterResource(R.drawable.copy), null) },
                         onClick = { copyOnlineInstances() },
@@ -649,6 +659,7 @@ fun TidalSettings(navController: NavController, scrollTo: String? = null) {
 
                 item(visible = showInstanceManagement) {
                     PreferenceEntry(
+                        modifier = positions.modifierFor("source_remove_dead"),
                         title = { Text(stringResource(R.string.source_remove_dead)) },
                         icon = { Icon(painterResource(R.drawable.delete), null) },
                         onClick = {
@@ -659,6 +670,7 @@ fun TidalSettings(navController: NavController, scrollTo: String? = null) {
 
                 item(visible = showInstanceManagement) {
                     PreferenceEntry(
+                        modifier = positions.modifierFor("source_remove_deprecated"),
                         title = { Text(stringResource(R.string.source_remove_deprecated)) },
                         icon = { Icon(painterResource(R.drawable.delete), null) },
                         onClick = {
@@ -669,6 +681,7 @@ fun TidalSettings(navController: NavController, scrollTo: String? = null) {
 
                 item(visible = showInstanceManagement) {
                     PreferenceEntry(
+                        modifier = positions.modifierFor("tidal_reset_instances"),
                         title = { Text(stringResource(R.string.tidal_reset_instances)) },
                         icon = { Icon(painterResource(R.drawable.close), null) },
                         onClick = {

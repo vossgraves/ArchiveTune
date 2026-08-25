@@ -52,7 +52,10 @@ import androidx.compose.foundation.layout.asPaddingValues
  * matching the original inline implementation.
  */
 @Composable
-fun LyricsRomanisationSettings(navController: NavController) {
+fun LyricsRomanisationSettings(
+    navController: NavController,
+    scrollTo: String? = null,
+) {
     val (lyricsRomanizeJapanese, onLyricsRomanizeJapaneseChange) =
         rememberPreference(LyricsRomanizeJapaneseKey, defaultValue = false)
     val (lyricsRomanizeKorean, onLyricsRomanizeKoreanChange) =
@@ -90,6 +93,8 @@ fun LyricsRomanisationSettings(navController: NavController) {
                 .asPaddingValues()
                 .calculateBottomPadding()
         val scrollState = rememberScrollState()
+        val positions = rememberPreferencePositions()
+        androidx.compose.runtime.LaunchedEffect(scrollTo) { positions.scrollToKey(scrollTo, scrollState) }
         Column(
             Modifier
                 .padding(top = innerPadding.calculateTopPadding())
@@ -98,12 +103,15 @@ fun LyricsRomanisationSettings(navController: NavController) {
                         WindowInsetsSides.Horizontal,
                     ),
                 )
+                // Chained before verticalScroll so it measures the viewport, not the scrolling content.
+                .then(positions.containerModifier())
                 .verticalScroll(scrollState)
                 .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
         ) {
             PreferenceGroup(title = stringResource(R.string.romanization)) {
                 item {
                     SwitchPreference(
+                        modifier = positions.modifierFor("lyrics_romanize_japanese"),
                         title = { Text(stringResource(R.string.lyrics_romanize_japanese)) },
                         description =
                             if (japaneseLanguagePackState is JapaneseLanguagePackState.Installed) {
@@ -120,6 +128,7 @@ fun LyricsRomanisationSettings(navController: NavController) {
 
                 item {
                     SwitchPreference(
+                        modifier = positions.modifierFor("lyrics_romanize_korean"),
                         title = { Text(stringResource(R.string.lyrics_romanize_korean)) },
                         icon = { Icon(painterResource(R.drawable.lyrics), null) },
                         checked = lyricsRomanizeKorean,
@@ -129,6 +138,7 @@ fun LyricsRomanisationSettings(navController: NavController) {
 
                 item {
                     SwitchPreference(
+                        modifier = positions.modifierFor("lyrics_romanize_chinese"),
                         title = { Text(stringResource(R.string.lyrics_romanize_chinese)) },
                         icon = { Icon(painterResource(R.drawable.lyrics), null) },
                         checked = lyricsRomanizeChinese,
@@ -138,6 +148,7 @@ fun LyricsRomanisationSettings(navController: NavController) {
 
                 item {
                     SwitchPreference(
+                        modifier = positions.modifierFor("lyrics_romanize_hindi"),
                         title = { Text(stringResource(R.string.lyrics_romanize_hindi)) },
                         icon = { Icon(painterResource(R.drawable.lyrics), null) },
                         checked = lyricsRomanizeHindi,
@@ -147,6 +158,7 @@ fun LyricsRomanisationSettings(navController: NavController) {
 
                 item {
                     SwitchPreference(
+                        modifier = positions.modifierFor("lyrics_romanize_other_languages", "lyrics_romanize_other"),
                         title = { Text(stringResource(R.string.lyrics_romanize_other_languages)) },
                         icon = { Icon(painterResource(R.drawable.lyrics), null) },
                         checked = lyricsRomanizeOtherLanguages,

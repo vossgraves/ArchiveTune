@@ -574,6 +574,8 @@ fun QobuzSettings(navController: NavController, scrollTo: String? = null) {
                         WindowInsetsSides.Horizontal,
                     ),
                 )
+                // Chained before verticalScroll so it measures the viewport, not the scrolling content.
+                .then(positions.containerModifier())
                 .verticalScroll(scrollState)
                 .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
         ) {
@@ -583,6 +585,7 @@ fun QobuzSettings(navController: NavController, scrollTo: String? = null) {
             ) {
                 item {
                     SwitchPreference(
+                        modifier = positions.modifierFor("qobuz_enable"),
                         title = { Text(stringResource(R.string.qobuz_enable)) },
                         description = stringResource(R.string.qobuz_enable_description),
                         icon = { Icon(painterResource(R.drawable.provider_qobuz), null) },
@@ -593,6 +596,7 @@ fun QobuzSettings(navController: NavController, scrollTo: String? = null) {
 
                 item {
                     EnumListPreference(
+                        modifier = positions.modifierFor("qobuz_audio_quality"),
                         title = { Text(stringResource(R.string.qobuz_audio_quality)) },
                         icon = { Icon(painterResource(R.drawable.graphic_eq), null) },
                         selectedValue = audioQuality,
@@ -615,6 +619,7 @@ fun QobuzSettings(navController: NavController, scrollTo: String? = null) {
             ) {
                 item {
                     PreferenceEntry(
+                        modifier = positions.modifierFor("qobuz_login_web"),
                         title = { Text(stringResource(R.string.qobuz_login_web)) },
                         icon = { Icon(painterResource(R.drawable.provider_qobuz), null) },
                         onClick = { navController.navigate(QOBUZ_LOGIN_ROUTE) },
@@ -623,6 +628,7 @@ fun QobuzSettings(navController: NavController, scrollTo: String? = null) {
 
                 item(visible = showTokenManagement) {
                     PreferenceEntry(
+                        modifier = positions.modifierFor("qobuz_add_tokens"),
                         title = { Text(stringResource(R.string.qobuz_add_tokens)) },
                         icon = { Icon(painterResource(R.drawable.token), null) },
                         onClick = { showAddTokensDialog = true },
@@ -659,6 +665,7 @@ fun QobuzSettings(navController: NavController, scrollTo: String? = null) {
                         tokenHealth[it.id] == TidalAudioProvider.InstanceHealth.UNREACHABLE
                     }
                     PreferenceEntry(
+                        modifier = positions.modifierFor("qobuz_manage_accounts"),
                         title = { Text(stringResource(R.string.qobuz_manage_accounts)) },
                         description = stringResource(
                             R.string.source_health_summary,
@@ -746,6 +753,7 @@ fun QobuzSettings(navController: NavController, scrollTo: String? = null) {
                 if (tokens.isNotEmpty()) {
                     item(visible = showTokenManagement) {
                         PreferenceEntry(
+                            modifier = positions.modifierFor("qobuz_reset_tokens"),
                             title = { Text(stringResource(R.string.qobuz_reset_tokens)) },
                             icon = { Icon(painterResource(R.drawable.close), null) },
                             onClick = {
@@ -790,6 +798,7 @@ fun QobuzSettings(navController: NavController, scrollTo: String? = null) {
                         healthStatus[it] == TidalAudioProvider.InstanceHealth.UNREACHABLE
                     }
                     PreferenceEntry(
+                        modifier = positions.modifierFor("source_manage_instances"),
                         title = { Text(stringResource(R.string.source_manage_instances)) },
                         description = stringResource(
                             R.string.source_health_summary,
@@ -861,6 +870,7 @@ fun QobuzSettings(navController: NavController, scrollTo: String? = null) {
 
                 item(visible = showInstanceManagement) {
                     PreferenceEntry(
+                        modifier = positions.modifierFor("qobuz_add_instance"),
                         title = { Text(stringResource(R.string.qobuz_add_instance)) },
                         icon = { Icon(painterResource(R.drawable.add), null) },
                         onClick = { showAddDialog = true },
@@ -869,6 +879,7 @@ fun QobuzSettings(navController: NavController, scrollTo: String? = null) {
 
                 item(visible = showInstanceManagement) {
                     PreferenceEntry(
+                        modifier = positions.modifierFor("source_bulk_add"),
                         title = { Text(stringResource(R.string.source_bulk_add)) },
                         description = stringResource(R.string.source_bulk_hint),
                         icon = { Icon(painterResource(R.drawable.playlist_add), null) },
@@ -879,6 +890,7 @@ fun QobuzSettings(navController: NavController, scrollTo: String? = null) {
                 if (effectiveInstances.isNotEmpty()) {
                     item(visible = showInstanceManagement) {
                         PreferenceEntry(
+                            modifier = positions.modifierFor("source_copy_online"),
                             title = { Text(stringResource(R.string.source_copy_online)) },
                             icon = { Icon(painterResource(R.drawable.copy), null) },
                             onClick = { copyOnlineInstances() },
@@ -887,6 +899,7 @@ fun QobuzSettings(navController: NavController, scrollTo: String? = null) {
 
                     item(visible = showInstanceManagement) {
                         PreferenceEntry(
+                            modifier = positions.modifierFor("source_remove_dead"),
                             title = { Text(stringResource(R.string.source_remove_dead)) },
                             icon = { Icon(painterResource(R.drawable.delete), null) },
                             onClick = {
@@ -897,6 +910,7 @@ fun QobuzSettings(navController: NavController, scrollTo: String? = null) {
 
                     item(visible = showInstanceManagement) {
                         PreferenceEntry(
+                            modifier = positions.modifierFor("source_remove_deprecated"),
                             title = { Text(stringResource(R.string.source_remove_deprecated)) },
                             icon = { Icon(painterResource(R.drawable.delete), null) },
                             onClick = {
@@ -908,6 +922,7 @@ fun QobuzSettings(navController: NavController, scrollTo: String? = null) {
 
                 item(visible = showInstanceManagement) {
                     PreferenceEntry(
+                        modifier = positions.modifierFor("qobuz_reset_instances"),
                         title = { Text(stringResource(R.string.qobuz_reset_instances)) },
                         icon = { Icon(painterResource(R.drawable.close), null) },
                         onClick = {

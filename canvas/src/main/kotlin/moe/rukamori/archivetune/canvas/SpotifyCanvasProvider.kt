@@ -87,6 +87,19 @@ object SpotifyCanvasProvider {
     @Volatile
     var trackUriResolver: (suspend (videoId: String, title: String?, artist: String?) -> String?)? = null
 
+    /**
+     * Supplies extra community/self-hosted resolver base URLs to try after Spotify's own
+     * endpoint and before the built-in one. Set by the host app from the user's
+     * preference; left null in tests and standalone use.
+     *
+     * Every public Canvas resolver on GitHub is a self-hosted wrapper that needs the
+     * operator's own Spotify cookie, so there is no additional instance worth hardcoding —
+     * what makes the fallback chain extensible is letting the user name the instances they
+     * can actually reach.
+     */
+    @Volatile
+    var extraResolverEndpointsProvider: (suspend () -> List<String>)? = null
+
     /** Optional diagnostic sink, mirroring [AppleMusicProvider.logger]. */
     @Volatile
     var logger: ((message: String) -> Unit)? = null
@@ -187,27 +200,57 @@ object SpotifyCanvasProvider {
             return official
         }
 
-        // Source 2: the kouzu.in resolver.
-        val artwork =
+        // Source 2..N: JSON resolvers, keyed by YouTube video id. The user's own
+        // endpoints come first (they are the ones that might actually have data — see
+        // [extraResolverEndpointsProvider]), then the built-in kouzu.in resolver.
+        val extraEndpoints =
             try {
-                val response =
-                    client.get(BASE_URL) {
-                        parameter("id", videoId)
-                    }
-                if (response.status != HttpStatusCode.OK) {
-                    cache[videoId] = CacheEntry(null, System.currentTimeMillis() + CACHE_TTL_MS)
-                    return null
-                }
-                val body: JsonObject = response.body()
-                parseCanvasArtwork(body, videoId)
+                extraResolverEndpointsProvider?.invoke().orEmpty()
             } catch (throwable: Throwable) {
                 if (throwable is CancellationException) throw throwable
-                // Network/parse failure — don't cache, allow a retry next time.
-                return null
+                log("Failed to read extra canvas resolvers: ${throwable.message}")
+                emptyList()
             }
+        val resolverEndpoints = (extraEndpoints + BASE_URL).distinct()
 
-        cache[videoId] = CacheEntry(artwork, System.currentTimeMillis() + CACHE_TTL_MS)
-        return artwork
+        var anyResolverReachable = false
+        for (endpoint in resolverEndpoints) {
+            val artwork =
+                try {
+                    val response =
+                        client.get(endpoint) {
+                            parameter("id", videoId)
+                        }
+                    if (response.status != HttpStatusCode.OK) {
+                        // A clean "no canvas for this track" answer — the resolver works, it
+                        // just has nothing. Keep going, but remember that it answered so a
+                        // negative result can be cached at the end.
+                        anyResolverReachable = true
+                        log("Canvas resolver $endpoint returned ${response.status.value} for $videoId")
+                        continue
+                    }
+                    anyResolverReachable = true
+                    val body: JsonObject = response.body()
+                    parseCanvasArtwork(body, videoId)
+                } catch (throwable: Throwable) {
+                    if (throwable is CancellationException) throw throwable
+                    // Unreachable / unparseable: try the next resolver, and do not cache a
+                    // negative result on its account.
+                    log("Canvas resolver $endpoint failed for $videoId: ${throwable.message}")
+                    null
+                }
+            if (artwork != null) {
+                cache[videoId] = CacheEntry(artwork, System.currentTimeMillis() + CACHE_TTL_MS)
+                return artwork
+            }
+        }
+
+        // Only cache "no canvas" when at least one source actually answered; otherwise a
+        // transient outage would suppress lookups for the next hour.
+        if (anyResolverReachable) {
+            cache[videoId] = CacheEntry(null, System.currentTimeMillis() + CACHE_TTL_MS)
+        }
+        return null
     }
 
     /**

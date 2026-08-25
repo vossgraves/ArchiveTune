@@ -232,6 +232,8 @@ fun LyricsSettings(
     Column(
         Modifier
             .windowInsetsPadding(LocalPlayerAwareWindowInsets.current)
+            // Chained before verticalScroll so it measures the viewport, not the scrolling content.
+            .then(positions.containerModifier())
             .verticalScroll(scrollState)
             .padding(bottom = SettingsDimensions.ScreenBottomPadding),
     ) {
@@ -395,6 +397,7 @@ fun LyricsSettings(
         ) {
             item {
                 PreferenceEntry(
+                    modifier = positions.modifierFor("providers"),
                     title = { Text(stringResource(R.string.providers)) },
                     description = stringResource(R.string.settings_lyrics_providers_subtitle),
                     icon = { Icon(painterResource(R.drawable.lyrics), null) },
@@ -411,6 +414,7 @@ fun LyricsSettings(
         ) {
             item {
                 PreferenceEntry(
+                    modifier = positions.modifierFor("romanization"),
                     title = { Text(stringResource(R.string.romanization)) },
                     description = stringResource(R.string.settings_lyrics_romanisation_subtitle),
                     icon = { Icon(painterResource(R.drawable.lyrics), null) },
@@ -425,6 +429,7 @@ fun LyricsSettings(
         ) {
             item {
                 EnumListPreference(
+                    modifier = positions.modifierFor("lyrics_mode", "use_lyrics_v2"),
                     title = { Text(stringResource(R.string.lyrics_mode)) },
                     icon = { Icon(painterResource(R.drawable.lyrics), null) },
                     selectedValue = lyricsMode,
@@ -442,6 +447,7 @@ fun LyricsSettings(
                 val animationSettingsEnabled = lyricsMode == LyricsMode.V2
 
                 PreferenceEntry(
+                    modifier = positions.modifierFor("lyrics_animation_style"),
                     title = { Text(stringResource(R.string.lyrics_animation_style)) },
                     description = if (animationSettingsEnabled) null else stringResource(R.string.lyrics_animation_style_v2_only),
                     icon = { Icon(painterResource(R.drawable.animation), null) },
@@ -452,6 +458,7 @@ fun LyricsSettings(
 
             item {
                 SwitchPreference(
+                    modifier = positions.modifierFor("lyrics_click"),
                     title = { Text(stringResource(R.string.lyrics_click_change)) },
                     icon = { Icon(painterResource(R.drawable.lyrics), null) },
                     checked = lyricsClick,
@@ -461,6 +468,7 @@ fun LyricsSettings(
 
             item {
                 SwitchPreference(
+                    modifier = positions.modifierFor("lyrics_scroll"),
                     title = { Text(stringResource(R.string.lyrics_auto_scroll)) },
                     icon = { Icon(painterResource(R.drawable.lyrics), null) },
                     checked = lyricsScroll,
@@ -469,6 +477,7 @@ fun LyricsSettings(
             }
             item {
                 SwitchPreference(
+                    modifier = positions.modifierFor("show_lyrics_player_controls"),
                     title = { Text(stringResource(R.string.show_lyrics_player_controls)) },
                     icon = { Icon(painterResource(R.drawable.play), null) },
                     checked = showPlayerControls,
@@ -478,6 +487,7 @@ fun LyricsSettings(
 
             item {
                 SwitchPreference(
+                    modifier = positions.modifierFor("auto_hide_lyrics_player_controls"),
                     title = { Text(stringResource(R.string.auto_hide_lyrics_player_controls)) },
                     description = stringResource(R.string.auto_hide_lyrics_player_controls_description),
                     icon = { Icon(painterResource(R.drawable.timer), null) },
@@ -490,6 +500,7 @@ fun LyricsSettings(
 
             item {
                 SwitchPreference(
+                    modifier = positions.modifierFor("lyrics_line_blur"),
                     title = { Text(stringResource(R.string.lyrics_line_blur)) },
                     icon = { Icon(painterResource(R.drawable.lyrics), null) },
                     checked = lyricsLineBlur,
@@ -499,6 +510,7 @@ fun LyricsSettings(
 
             item {
                 PreferenceEntry(
+                    modifier = positions.modifierFor("lyrics_text_size"),
                     title = { Text(stringResource(R.string.lyrics_text_size)) },
                     description = "${lyricsTextSize.roundToInt()} sp",
                     icon = { Icon(painterResource(R.drawable.text_fields), null) },
@@ -508,6 +520,7 @@ fun LyricsSettings(
 
             item {
                 PreferenceEntry(
+                    modifier = positions.modifierFor("lyrics_line_spacing"),
                     title = { Text(stringResource(R.string.lyrics_line_spacing)) },
                     description = "${String.format("%.1f", lyricsLineSpacing)}x",
                     icon = { Icon(painterResource(R.drawable.text_fields), null) },
@@ -532,6 +545,7 @@ fun LyricsSettings(
             // shows "Off" when 0.
             item {
                 NumberPickerPreference(
+                    modifier = positions.modifierFor("preload_queue_lyrics"),
                     title = { Text(stringResource(R.string.preload_queue_lyrics)) },
                     icon = { Icon(painterResource(R.drawable.lyrics), null) },
                     value = queueLyricsPreloadCount,

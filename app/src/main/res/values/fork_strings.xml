@@ -130,4 +130,26 @@
     <string name="lastfm_search_placeholder">Search scrobbles</string>
     <string name="lastfm_no_search_results">No matching tracks.</string>
     <string name="lastfm_player_unavailable">Player not ready. Try again in a moment.</string>
+
+    <!-- Album page appearance -->
+    <string name="album_page">Album page</string>
+    <string name="album_canvas_enabled">Enable canvas in albums page</string>
+    <string name="album_canvas_enabled_desc">Play the album\'s looping motion artwork behind the album header, the way Apple Music does. Turn off to always show the static cover.</string>
+
+    <!-- Qobuz backup source search -->
+    <string name="source_qobuz_backup_search_hint">Search the kouzu.in backup catalogue</string>
+
+    <!-- Spotify Canvas resolvers -->
+    <string name="canvas_resolvers">Canvas resolvers</string>
+    <string name="canvas_resolvers_description">Extra Spotify Canvas resolver endpoints, one per line. Tried in order after Spotify\'s own Canvas endpoint. Each must answer GET &lt;base&gt;?id=&lt;youtube video id&gt; with JSON containing a canvas video URL.</string>
+    <string name="canvas_resolvers_count">%1$d configured</string>
+    <string name="canvas_resolvers_none">Built-in resolver only</string>
+
+    <!-- Paxsenix endpoint check -->
+    <string name="paxsenix_check_endpoints">Check Paxsenix endpoints</string>
+    <string name="paxsenix_check_endpoints_description">Ask the configured endpoint which per-provider lyrics paths it actually serves.</string>
+    <string name="paxsenix_check_running">Checking…</string>
+    <string name="paxsenix_check_result_ok">%1$s: available</string>
+    <string name="paxsenix_check_result_retired">%1$s: retired upstream (403)</string>
+    <string name="paxsenix_check_result_failed">%1$s: unreachable</string>
 </resources>

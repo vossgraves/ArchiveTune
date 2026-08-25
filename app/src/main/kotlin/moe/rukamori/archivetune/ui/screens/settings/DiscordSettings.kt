@@ -462,6 +462,8 @@ fun DiscordSettings(navController: NavController, scrollTo: String? = null) {
                             WindowInsetsSides.Horizontal,
                         ),
                     )
+                    // Chained before verticalScroll so it measures the viewport, not the scrolling content.
+                    .then(positions.containerModifier())
                     .verticalScroll(scrollState)
                     .padding(
                         top = innerPadding.calculateTopPadding() + 16.dp,
@@ -547,6 +549,7 @@ fun DiscordSettings(navController: NavController, scrollTo: String? = null) {
             ) {
                 item {
                     ListPreference(
+                        modifier = positions.modifierFor("activity_status"),
                         title = { Text(stringResource(R.string.activity_status)) },
                         icon = { Icon(painterResource(R.drawable.status), null) },
                         selectedValue = activityStatusSelection,
@@ -558,6 +561,7 @@ fun DiscordSettings(navController: NavController, scrollTo: String? = null) {
 
                 item {
                     ListPreference(
+                        modifier = positions.modifierFor("platform_status"),
                         title = { Text(stringResource(R.string.platform_status)) },
                         icon = { Icon(painterResource(R.drawable.desktop_windows), null) },
                         selectedValue = platformSelection,
@@ -574,6 +578,7 @@ fun DiscordSettings(navController: NavController, scrollTo: String? = null) {
             ) {
                 item {
                     EnumListPreference(
+                        modifier = positions.modifierFor("discord_activity_name"),
                         title = { Text(stringResource(R.string.discord_activity_name)) },
                         selectedValue = nameSource,
                         onValueSelected = onNameSourceChange,
@@ -583,6 +588,7 @@ fun DiscordSettings(navController: NavController, scrollTo: String? = null) {
                 }
                 item {
                     EnumListPreference(
+                        modifier = positions.modifierFor("discord_activity_details"),
                         title = { Text(stringResource(R.string.discord_activity_details)) },
                         selectedValue = detailsSource,
                         onValueSelected = onDetailsSourceChange,
@@ -592,6 +598,7 @@ fun DiscordSettings(navController: NavController, scrollTo: String? = null) {
                 }
                 item {
                     EnumListPreference(
+                        modifier = positions.modifierFor("discord_activity_state"),
                         title = { Text(stringResource(R.string.discord_activity_state)) },
                         selectedValue = stateSource,
                         onValueSelected = onStateSourceChange,
@@ -602,6 +609,7 @@ fun DiscordSettings(navController: NavController, scrollTo: String? = null) {
 
                 item {
                     SwitchPreference(
+                        modifier = positions.modifierFor("discord_show_when_paused"),
                         title = { Text(stringResource(R.string.discord_show_when_paused)) },
                         description = stringResource(R.string.discord_show_when_paused_desc),
                         icon = { Icon(painterResource(R.drawable.ic_pause_white), null) },
@@ -612,6 +620,7 @@ fun DiscordSettings(navController: NavController, scrollTo: String? = null) {
 
                 item {
                     ListPreference(
+                        modifier = positions.modifierFor("discord_activity_type"),
                         title = { Text(stringResource(R.string.discord_activity_type)) },
                         icon = { Icon(painterResource(R.drawable.discord), null) },
                         selectedValue = activityType,
@@ -628,6 +637,7 @@ fun DiscordSettings(navController: NavController, scrollTo: String? = null) {
             ) {
                 item {
                     ListPreference(
+                        modifier = positions.modifierFor("large_image"),
                         title = { Text(stringResource(R.string.large_image)) },
                         icon = { Icon(painterResource(R.drawable.image), null) },
                         selectedValue = largeImageType,
@@ -649,6 +659,7 @@ fun DiscordSettings(navController: NavController, scrollTo: String? = null) {
 
                 item {
                     ListPreference(
+                        modifier = positions.modifierFor("large_text"),
                         title = { Text(stringResource(R.string.large_text)) },
                         icon = { Icon(painterResource(R.drawable.text_fields), null) },
                         selectedValue = largeTextSource,
@@ -670,6 +681,7 @@ fun DiscordSettings(navController: NavController, scrollTo: String? = null) {
 
                 item {
                     ListPreference(
+                        modifier = positions.modifierFor("small_image"),
                         title = { Text(stringResource(R.string.small_image)) },
                         icon = { Icon(painterResource(R.drawable.image), null) },
                         selectedValue = smallImageType,

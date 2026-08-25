@@ -421,23 +421,35 @@ fun NavGraphBuilder.navigationBuilder(
     ) {
         AppearanceSettings(navController, it.savedStateHandle["scrollTo"])
     }
-    composable("settings/appearance/extras") {
-        AppearanceExtrasSettings(navController)
+    composable(
+        route = "settings/appearance/extras?scrollTo={scrollTo}",
+        arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
+    ) {
+        AppearanceExtrasSettings(navController, scrollTo = it.savedStateHandle["scrollTo"])
     }
-    composable("settings/appearance/navigation_bar") {
-        NavigationBarSettings(navController)
+    composable(
+        route = "settings/appearance/navigation_bar?scrollTo={scrollTo}",
+        arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
+    ) {
+        NavigationBarSettings(navController, scrollTo = it.savedStateHandle["scrollTo"])
     }
     composable("settings/appearance/icon") {
         IconScreen(navController)
     }
-    composable("settings/appearance/aod_customized") {
-        AodCustomizedScreen(navController)
+    composable(
+        route = "settings/appearance/aod_customized?scrollTo={scrollTo}",
+        arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
+    ) {
+        AodCustomizedScreen(navController, scrollTo = it.savedStateHandle["scrollTo"])
     }
     composable("settings/appearance/palette_picker") {
         PalettePickerScreen(navController)
     }
-    composable("settings/appearance/lyrics_animations") {
-        LyricsAnimationSettings(navController)
+    composable(
+        route = "settings/appearance/lyrics_animations?scrollTo={scrollTo}",
+        arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
+    ) {
+        LyricsAnimationSettings(navController, scrollTo = it.savedStateHandle["scrollTo"])
     }
     composable("settings/appearance/theme_creator") {
         ThemeCreatorScreen(navController)
@@ -454,11 +466,17 @@ fun NavGraphBuilder.navigationBuilder(
     ) {
         LyricsSettings(navController, scrollTo = it.savedStateHandle["scrollTo"])
     }
-    composable("settings/lyrics/providers") {
-        LyricsProvidersSettings(navController)
+    composable(
+        route = "settings/lyrics/providers?scrollTo={scrollTo}",
+        arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
+    ) {
+        LyricsProvidersSettings(navController, scrollTo = it.savedStateHandle["scrollTo"])
     }
-    composable("settings/lyrics/romanisation") {
-        LyricsRomanisationSettings(navController)
+    composable(
+        route = "settings/lyrics/romanisation?scrollTo={scrollTo}",
+        arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
+    ) {
+        LyricsRomanisationSettings(navController, scrollTo = it.savedStateHandle["scrollTo"])
     }
     composable("settings/language_packs") {
         LanguagePackSettings(navController)
@@ -490,8 +508,11 @@ fun NavGraphBuilder.navigationBuilder(
     composable("settings/storage/export_songs") {
         ExportDownloadedSongsScreen(navController)
     }
-    composable("settings/player/ytdlp") {
-        YtDlpSettings(navController)
+    composable(
+        route = "settings/player/ytdlp?scrollTo={scrollTo}",
+        arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
+    ) {
+        YtDlpSettings(navController, scrollTo = it.savedStateHandle["scrollTo"])
     }
     composable(
         route = "settings/downloads?scrollTo={scrollTo}",
@@ -535,11 +556,17 @@ fun NavGraphBuilder.navigationBuilder(
     ) {
         QobuzSettings(navController, it.savedStateHandle["scrollTo"])
     }
-    composable("settings/deezer") {
-        DeezerSettings(navController)
+    composable(
+        route = "settings/deezer?scrollTo={scrollTo}",
+        arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
+    ) {
+        DeezerSettings(navController, scrollTo = it.savedStateHandle["scrollTo"])
     }
-    composable("settings/jiosaavn") {
-        JioSettings(navController)
+    composable(
+        route = "settings/jiosaavn?scrollTo={scrollTo}",
+        arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
+    ) {
+        JioSettings(navController, scrollTo = it.savedStateHandle["scrollTo"])
     }
     composable(TIDAL_LOGIN_ROUTE) {
         TidalLoginScreen(navController)
@@ -556,8 +583,11 @@ fun NavGraphBuilder.navigationBuilder(
     composable(LASTFM_LIBREFM_LOGIN_ROUTE) {
         LibreFmLoginScreen(navController)
     }
-    composable("settings/telegram") {
-        TelegramSettings(navController)
+    composable(
+        route = "settings/telegram?scrollTo={scrollTo}",
+        arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
+    ) {
+        TelegramSettings(navController, scrollTo = it.savedStateHandle["scrollTo"])
     }
     composable(TELEGRAM_LOGIN_ROUTE) {
         TelegramLoginScreen(navController)
@@ -577,8 +607,11 @@ fun NavGraphBuilder.navigationBuilder(
             navController = navController,
         )
     }
-    composable("settings/ai_integration") {
-        AiIntegrationSettings(navController)
+    composable(
+        route = "settings/ai_integration?scrollTo={scrollTo}",
+        arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
+    ) {
+        AiIntegrationSettings(navController, scrollTo = it.savedStateHandle["scrollTo"])
     }
     composable("settings/music_together") {
         MusicTogetherScreen(navController)
@@ -592,9 +625,12 @@ fun NavGraphBuilder.navigationBuilder(
     composable("lastfm_dashboard") {
         LastFmDashboardScreen(navController)
     }
-    composable("settings/discord/experimental") {
+    composable(
+        route = "settings/discord/experimental?scrollTo={scrollTo}",
+        arguments = listOf(navArgument("scrollTo") { type = NavType.StringType; nullable = true; defaultValue = null }),
+    ) {
         moe.rukamori.archivetune.ui.screens.settings
-            .DiscordExperimental(navController)
+            .DiscordExperimental(navController, scrollTo = it.savedStateHandle["scrollTo"])
     }
     composable("settings/misc") {
         DebugSettings(navController)

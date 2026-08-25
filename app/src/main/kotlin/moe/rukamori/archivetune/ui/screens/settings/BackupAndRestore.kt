@@ -298,6 +298,8 @@ fun BackupAndRestore(
             Modifier
                 .padding(top = topPadding)
                 .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal))
+                // Chained before verticalScroll so it measures the viewport, not the scrolling content.
+                .then(positions.containerModifier())
                 .verticalScroll(scrollState)
                 .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
         ) {
@@ -399,6 +401,7 @@ fun BackupAndRestore(
 
                 item {
                     PreferenceEntry(
+                        modifier = positions.modifierFor("restore"),
                         title = { Text(stringResource(R.string.action_restore)) },
                         description = stringResource(R.string.restore_select_backup),
                         icon = { Icon(painterResource(R.drawable.restore), null) },
@@ -408,6 +411,7 @@ fun BackupAndRestore(
 
                 item {
                     PreferenceEntry(
+                        modifier = positions.modifierFor("import_online"),
                         title = { Text(stringResource(R.string.import_online)) },
                         description = stringResource(R.string.import_m3u_format),
                         icon = { Icon(painterResource(R.drawable.playlist_import), null) },
@@ -417,6 +421,7 @@ fun BackupAndRestore(
 
                 item {
                     PreferenceEntry(
+                        modifier = positions.modifierFor("import_csv"),
                         title = { Text(stringResource(R.string.import_csv)) },
                         description = stringResource(R.string.import_csv_format),
                         icon = { Icon(painterResource(R.drawable.playlist_add), null) },
@@ -626,6 +631,7 @@ private fun ScheduledBackupSection(
     ) {
         item {
             SwitchPreference(
+                modifier = positions.modifierFor("scheduled_backup_enabled"),
                 title = { Text(stringResource(R.string.scheduled_backup_enabled)) },
                 description =
                     stringResource(
@@ -644,6 +650,7 @@ private fun ScheduledBackupSection(
 
         item {
             EnumListPreference(
+                modifier = positions.modifierFor("scheduled_backup_frequency"),
                 title = { Text(stringResource(R.string.scheduled_backup_frequency)) },
                 description =
                     if (data.frequency == ScheduledBackupFrequency.CUSTOM && data.customDateLabel != null) {
@@ -661,6 +668,7 @@ private fun ScheduledBackupSection(
 
         item {
             PreferenceEntry(
+                modifier = positions.modifierFor("scheduled_backup_directory"),
                 title = { Text(stringResource(R.string.scheduled_backup_directory)) },
                 description =
                     data.directoryName
@@ -673,6 +681,7 @@ private fun ScheduledBackupSection(
 
         item {
             SwitchPreference(
+                modifier = positions.modifierFor("scheduled_backup_overwrite"),
                 title = { Text(stringResource(R.string.scheduled_backup_overwrite)) },
                 description = stringResource(R.string.scheduled_backup_overwrite_description),
                 icon = { Icon(painterResource(R.drawable.backup), contentDescription = null) },
@@ -847,6 +856,7 @@ private fun GoogleDriveSyncSection(
         }
         item {
             PreferenceEntry(
+                modifier = positions.modifierFor("google_drive_sync_remote_folder"),
                 title = { Text(stringResource(R.string.google_drive_sync_remote_folder)) },
                 description =
                     when {
@@ -864,6 +874,7 @@ private fun GoogleDriveSyncSection(
         if (folderConfigured) {
             item {
                 PreferenceEntry(
+                    modifier = positions.modifierFor("google_drive_sync_clear_folder"),
                     title = { Text(stringResource(R.string.google_drive_sync_clear_folder)) },
                     description = stringResource(R.string.google_drive_sync_clear_folder_description),
                     icon = { Icon(painterResource(R.drawable.close), contentDescription = null) },
@@ -875,6 +886,7 @@ private fun GoogleDriveSyncSection(
 
         item {
             SwitchPreference(
+                modifier = positions.modifierFor("google_drive_sync_enabled"),
                 title = { Text(stringResource(R.string.google_drive_sync_enabled)) },
                 description =
                     stringResource(
@@ -893,6 +905,7 @@ private fun GoogleDriveSyncSection(
 
         item {
             EnumListPreference(
+                modifier = positions.modifierFor("google_drive_sync_frequency"),
                 title = { Text(stringResource(R.string.scheduled_backup_frequency)) },
                 description =
                     if (data.frequency == ScheduledBackupFrequency.CUSTOM && data.customDateLabel != null) {
@@ -910,6 +923,7 @@ private fun GoogleDriveSyncSection(
 
         item {
             SwitchPreference(
+                modifier = positions.modifierFor("google_drive_sync_overwrite"),
                 title = { Text(stringResource(R.string.google_drive_sync_overwrite)) },
                 description = stringResource(R.string.google_drive_sync_overwrite_description),
                 icon = { Icon(painterResource(R.drawable.backup), contentDescription = null) },
@@ -921,6 +935,7 @@ private fun GoogleDriveSyncSection(
 
         item {
             PreferenceEntry(
+                modifier = positions.modifierFor("google_drive_sync_run_now"),
                 title = { Text(stringResource(R.string.google_drive_sync_run_now)) },
                 description =
                     when {

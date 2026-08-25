@@ -439,12 +439,19 @@ fun LyricsEnhanced(
     var positionResetCounter by remember { mutableIntStateOf(0) }
     var isManualScrolling by remember { mutableStateOf(false) }
     var lastManualScrollTime by remember { mutableLongStateOf(0L) }
-    // Keep the scroll state for the whole lyrics session. Recreating it on a
-    // repeat makes the visible list jump to the top, but also disconnects the
-    // running auto-scroll collector from the list that the karaoke view is now
-    // rendering. Only the karaoke subtree needs to be recreated to clear the
-    // library's stale word-progress state.
-    val listState = key(lyricsSessionKey) { rememberLazyListState() }
+    // The scroll state is recreated together with the subtree that owns it.
+    //
+    // The karaoke view is re-keyed on [positionResetCounter] (see the KaraokeLyricsView
+    // call site) because the mocharealm library keeps no per-play state of its own. That
+    // re-key disposes one LazyColumn and composes another; keeping a single hoisted
+    // LazyListState across the swap left the state briefly bound to two lazy layouts and
+    // then owned by the disposed one, so scrolls silently went nowhere and layoutInfo
+    // reported a stale viewport — the list snapped to the first line and then sat there,
+    // which is the "resets on repeat but never animates again, fixed only by reopening
+    // the lyrics" symptom. Recreating the state with its layout keeps the two in step,
+    // and every effect that drives scrolling is keyed on the same counter so they all
+    // observe the live state.
+    val listState = key(lyricsSessionKey, positionResetCounter) { rememberLazyListState() }
 
     LaunchedEffect(lyricsSessionKey) {
         playbackPositionMs.longValue = player.currentPosition.coerceAtLeast(0L)
@@ -488,19 +495,22 @@ fun LyricsEnhanced(
             wasSliderActive = isSliderActive
 
             val rawPosition = (sliderPosition ?: player.currentPosition).coerceAtLeast(0L)
-            // Detect a backward position discontinuity. We only count it as a
-            // reset when the player isn't being scrubbed via the slider (slider
-            // position is null) and the new position is more than 1 second
-            // behind the last seen position — that threshold excludes normal
-            // playback jitter and minor ExoPlayer position corrections but
-            // catches both REPEAT_MODE_ONE wraps (which jump from
-            // duration -> 0) and explicit backward seeks.
-            if (sliderPosition == null &&
-                lastRawPositionMs - rawPosition > POSITION_RESET_BACKWARD_THRESHOLD_MS
-            ) {
+            // Detect a backward position discontinuity, measured against the
+            // PLAYER's clock rather than the slider-provided value. This catches
+            // both REPEAT_MODE_ONE wraps (duration -> 0) and explicit backward
+            // seeks, while the 1s threshold excludes playback jitter and minor
+            // ExoPlayer position corrections.
+            //
+            // This used to additionally require `sliderPosition == null`, which
+            // disabled restart detection entirely in the Apple Music player —
+            // that player always installs a slider provider, so on repeat the
+            // lyrics snapped back to the first line but never re-animated until
+            // the overlay was reopened.
+            val rawPlayerPosition = player.currentPosition.coerceAtLeast(0L)
+            if (lastRawPositionMs - rawPlayerPosition > POSITION_RESET_BACKWARD_THRESHOLD_MS) {
                 positionResetCounter += 1
             }
-            lastRawPositionMs = rawPosition
+            lastRawPositionMs = rawPlayerPosition
             // effectivePositionMs is the synced position (offset + lead +
             // tuning) that we'd otherwise compute via playbackSyncPosition().
                        // Computing it here inline avoids a redundant State read of
@@ -699,13 +709,16 @@ fun LyricsEnhanced(
             }
     }
 
-    // Reset both the visible position and the tracked active line after a
-    // backward discontinuity. The re-keyed auto-scroll collector above then
-    // resumes from the first active line instead of remaining at the line from
-    // the prior play-through.
+    // Clear the tracked active line after a backward discontinuity so the re-keyed
+    // auto-scroll collector above force-scrolls to the first line of the new
+    // play-through instead of treating the previous line index as still current.
+    //
+    // No explicit scroll here: [listState] is recreated alongside the karaoke subtree on
+    // the same counter, so the fresh list already starts at the top. Scrolling the old
+    // state was both redundant and a way to touch a state whose layout was being
+    // disposed.
     LaunchedEffect(positionResetCounter) {
         if (positionResetCounter > 0) {
-            listState.scrollToItem(0)
             currentLineIndexState.intValue = -1
         }
     }

@@ -89,6 +89,7 @@ import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalStableSystemBarsTopPadding
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.constants.AlbumCanvasEnabledKey
 import moe.rukamori.archivetune.constants.AppBarHeight
 import moe.rukamori.archivetune.constants.HideExplicitKey
 import moe.rukamori.archivetune.constants.LiquidGlassEnabledKey
@@ -151,6 +152,9 @@ fun AlbumScreen(
     val otherVersions by viewModel.otherVersions.collectAsStateWithLifecycle()
     val canvasArtwork by viewModel.canvasArtwork.collectAsStateWithLifecycle()
     val hideExplicit by rememberPreference(key = HideExplicitKey, defaultValue = false)
+    // Appearance → "Enable canvas in albums page". Independent of the player's canvas
+    // toggle; see AlbumCanvasEnabledKey for why.
+    val albumCanvasEnabled by rememberPreference(key = AlbumCanvasEnabledKey, defaultValue = true)
     // Liquid Glass master toggle. When off, the Liquid Glass header pills are not
     // shown and the standard TopAppBar is used instead. The kyant RuntimeShader
     // stack requires Android 12+, so we also gate on SDK_INT.
@@ -374,8 +378,15 @@ fun AlbumScreen(
                         // canvas ExoPlayer is a separate audio-disabled
                         // instance (see CanvasArtworkPlayer), so playing it
                         // has no effect on the main playback queue.
-                        canvasPrimaryUrl = canvasArtwork?.animated ?: canvasArtwork?.videoUrl,
-                        canvasFallbackUrl = canvasArtwork?.videoUrl,
+                        //
+                        // `albumCanvasEnabled` is re-checked here, not just in the view
+                        // model: the fetch is skipped when the preference is off, but a
+                        // canvas already resolved before the user turned it off would
+                        // otherwise keep looping until the page was reopened.
+                        canvasPrimaryUrl =
+                            (canvasArtwork?.animated ?: canvasArtwork?.videoUrl)
+                                ?.takeIf { albumCanvasEnabled },
+                        canvasFallbackUrl = canvasArtwork?.videoUrl?.takeIf { albumCanvasEnabled },
                         canvasIsPlaying = true,
                         // Hide the canvas TextureView (and skip its per-frame
                         // blur RenderEffect) while the lyrics overlay is open.

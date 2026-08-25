@@ -220,6 +220,8 @@ fun InternetSettings(navController: NavController, scrollTo: String? = null) {
             Modifier
                 .padding(top = topPadding)
                 .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal))
+                // Chained before verticalScroll so it measures the viewport, not the scrolling content.
+                .then(positions.containerModifier())
                 .verticalScroll(scrollState)
                 .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
         ) {
@@ -335,6 +337,7 @@ fun InternetSettings(navController: NavController, scrollTo: String? = null) {
             ) {
                 item {
                     SwitchPreference(
+                        modifier = positions.modifierFor("dns_over_https"),
                         title = { Text(stringResource(R.string.dns_over_https)) },
                         description = stringResource(R.string.dns_over_https_desc),
                         icon = { Icon(painterResource(R.drawable.security), null) },
@@ -345,6 +348,7 @@ fun InternetSettings(navController: NavController, scrollTo: String? = null) {
 
                 item(visible = dnsOverHttpsEnabled) {
                     ListPreference(
+                        modifier = positions.modifierFor("dns_provider"),
                         title = { Text(stringResource(R.string.dns_provider)) },
                         icon = { Icon(painterResource(R.drawable.website), null) },
                         selectedValue = dnsProvider,
@@ -356,6 +360,7 @@ fun InternetSettings(navController: NavController, scrollTo: String? = null) {
 
                 item(visible = dnsOverHttpsEnabled && dnsProvider == "Custom") {
                     EditTextPreference(
+                        modifier = positions.modifierFor("dns_custom_url"),
                         title = { Text(stringResource(R.string.dns_custom_url)) },
                         value = customDnsUrl,
                         onValueChange = onCustomDnsUrlChange,
@@ -381,6 +386,7 @@ fun InternetSettings(navController: NavController, scrollTo: String? = null) {
 
                 item(visible = proxyEnabled) {
                     ListPreference(
+                        modifier = positions.modifierFor("proxy_type"),
                         title = { Text(stringResource(R.string.proxy_type)) },
                         selectedValue = proxyType,
                         values = proxyTypes,
@@ -394,6 +400,7 @@ fun InternetSettings(navController: NavController, scrollTo: String? = null) {
 
                 item(visible = proxyEnabled) {
                     EditTextPreference(
+                        modifier = positions.modifierFor("proxy_host"),
                         title = { Text(stringResource(R.string.proxy_host)) },
                         value = proxyHost,
                         onValueChange = {
@@ -405,6 +412,7 @@ fun InternetSettings(navController: NavController, scrollTo: String? = null) {
 
                 item(visible = proxyEnabled) {
                     NumberEditTextPreference(
+                        modifier = positions.modifierFor("proxy_port"),
                         title = { Text(stringResource(R.string.proxy_port)) },
                         value = proxyPort,
                         onValueChange = {
@@ -420,6 +428,7 @@ fun InternetSettings(navController: NavController, scrollTo: String? = null) {
                 PreferenceGroup(title = stringResource(R.string.proxy_auth)) {
                     item {
                         EditTextPreference(
+                            modifier = positions.modifierFor("proxy_username"),
                             title = { Text(stringResource(R.string.proxy_username)) },
                             value = proxyUsername,
                             onValueChange = {
@@ -431,6 +440,7 @@ fun InternetSettings(navController: NavController, scrollTo: String? = null) {
 
                     item {
                         EditTextPreference(
+                            modifier = positions.modifierFor("proxy_password"),
                             title = { Text(stringResource(R.string.proxy_password)) },
                             value = proxyPassword,
                             onValueChange = {
@@ -442,6 +452,7 @@ fun InternetSettings(navController: NavController, scrollTo: String? = null) {
 
                     item {
                         SwitchPreference(
+                            modifier = positions.modifierFor("stream_bypass_proxy"),
                             title = { Text(stringResource(R.string.stream_bypass_proxy)) },
                             description = stringResource(R.string.stream_bypass_proxy_desc),
                             icon = { Icon(painterResource(R.drawable.wifi_proxy), null) },
@@ -455,6 +466,7 @@ fun InternetSettings(navController: NavController, scrollTo: String? = null) {
 
                     item {
                         PreferenceEntry(
+                            modifier = positions.modifierFor("test_proxy"),
                             title = { Text(stringResource(R.string.test_proxy_connection)) },
                             icon = { Icon(painterResource(R.drawable.check), null) },
                             onClick = {
@@ -524,6 +536,7 @@ fun InternetSettings(navController: NavController, scrollTo: String? = null) {
             ) {
                 item {
                     IpRotationPreference(
+                        modifier = positions.modifierFor("ip_rotation"),
                         title = { Text(stringResource(R.string.ip_rotation)) },
                         description = ipRotationDescription,
                         icon = { Icon(painterResource(R.drawable.wifi_proxy), null) },
@@ -593,6 +606,7 @@ fun InternetSettings(navController: NavController, scrollTo: String? = null) {
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun IpRotationPreference(
+    modifier: Modifier = Modifier,
     title: @Composable () -> Unit,
     description: String,
     icon: @Composable () -> Unit,
@@ -602,6 +616,7 @@ private fun IpRotationPreference(
     onRefresh: () -> Unit,
 ) {
     PreferenceEntry(
+        modifier = modifier,
         title = title,
         description = description,
         icon = icon,

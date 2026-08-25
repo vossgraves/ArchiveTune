@@ -46,7 +46,10 @@ import androidx.compose.foundation.layout.asPaddingValues
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DeezerSettings(navController: NavController) {
+fun DeezerSettings(
+    navController: NavController,
+    scrollTo: String? = null,
+) {
     val context = LocalContext.current
 
     val (accountName, onAccountNameChange) = rememberPreference(DeezerAccountNameKey, "")
@@ -79,11 +82,15 @@ fun DeezerSettings(navController: NavController) {
                 .calculateBottomPadding()
         val topPadding = innerPadding.calculateTopPadding()
         val scrollState = rememberScrollState()
+        val positions = rememberPreferencePositions()
+        androidx.compose.runtime.LaunchedEffect(scrollTo) { positions.scrollToKey(scrollTo, scrollState) }
 
         Column(
             Modifier
                 .padding(top = topPadding)
                 .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal))
+                // Chained before verticalScroll so it measures the viewport, not the scrolling content.
+                .then(positions.containerModifier())
                 .verticalScroll(scrollState)
                 .padding(bottom = playerAwareBottomPadding + 16.dp),
         ) {
@@ -93,6 +100,7 @@ fun DeezerSettings(navController: NavController) {
                 if (accountName.isEmpty()) {
                     item {
                         PreferenceEntry(
+                            modifier = positions.modifierFor("deezer_login"),
                             title = { Text(stringResource(R.string.deezer_login)) },
                             description = stringResource(R.string.deezer_login_description),
                             icon = { Icon(painterResource(R.drawable.provider_deezer), null) },
@@ -102,6 +110,7 @@ fun DeezerSettings(navController: NavController) {
                 } else {
                     item {
                         PreferenceEntry(
+                            modifier = positions.modifierFor("deezer_sign_out"),
                             title = { Text(stringResource(R.string.deezer_sign_out)) },
                             description = stringResource(R.string.deezer_signed_in_as, accountName),
                             icon = { Icon(painterResource(R.drawable.logout), null) },

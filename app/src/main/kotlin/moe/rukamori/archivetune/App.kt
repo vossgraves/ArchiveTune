@@ -53,6 +53,7 @@ import moe.rukamori.archivetune.paxsenix.PaxsenixLyrics
 import moe.rukamori.archivetune.playback.stream.YtDlpRuntime
 import moe.rukamori.archivetune.scrobbling.LastFmServiceConfig
 import moe.rukamori.archivetune.spotify.Spotify
+import moe.rukamori.archivetune.spotify.SpotifyLibraryRepository
 import moe.rukamori.archivetune.storage.StorageFolderKind
 import moe.rukamori.archivetune.storage.StorageLocationRepository
 import moe.rukamori.archivetune.tidal.TidalAudioProvider
@@ -62,6 +63,7 @@ import moe.rukamori.archivetune.ui.player.CanvasArtworkPlaybackCache
 import moe.rukamori.archivetune.ui.screens.settings.ThemePalettes
 import moe.rukamori.archivetune.ui.theme.ThemeSeedPalette
 import moe.rukamori.archivetune.ui.theme.ThemeSeedPaletteCodec
+import moe.rukamori.archivetune.utils.CanvasResolverEndpoints
 import moe.rukamori.archivetune.utils.PoolAccountManager
 import moe.rukamori.archivetune.utils.PreferenceStore
 import moe.rukamori.archivetune.utils.ProxyUtils
@@ -93,6 +95,13 @@ class App :
     SingletonImageLoader.Factory {
     @Inject
     lateinit var ytDlpRuntime: YtDlpRuntime
+
+    /**
+     * Injected only so the canvas provider can mint a Spotify token on demand — see
+     * [SpotifyLibraryRepository.ensureAccessToken].
+     */
+    @Inject
+    lateinit var spotifyLibraryRepository: SpotifyLibraryRepository
 
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
@@ -185,9 +194,18 @@ class App :
                 message,
             )
         }
-        SpotifyCanvasProvider.tokenProvider = { Spotify.accessToken }
+        // Mint/refresh on demand rather than reading the `Spotify.accessToken` global:
+        // that global is only set as a side effect of an earlier Spotify library call, so
+        // on a fresh launch a connected user still had no token here and the official
+        // Canvas endpoint was skipped entirely.
+        SpotifyCanvasProvider.tokenProvider = { spotifyLibraryRepository.ensureAccessToken() }
         SpotifyCanvasProvider.trackUriResolver = { _, title, artist ->
+            // Same reason: identifying the track on Spotify needs the session too.
+            spotifyLibraryRepository.ensureAccessToken()
             resolveSpotifyTrackUri(title, artist)
+        }
+        SpotifyCanvasProvider.extraResolverEndpointsProvider = {
+            CanvasResolverEndpoints.parse(dataStore.get(CanvasResolverEndpointsKey, ""))
         }
 
         // Pre-warm the Apple Music web player JWT on startup so the first
@@ -391,7 +409,7 @@ class App :
                 .distinctUntilChanged()
                 .collect { (key, endpoint) ->
                     PaxsenixLyrics.setApiKey(key)
-                    PaxsenixLyrics.setEndpoint(endpoint)
+                    PaxsenixLyrics.setEndpoint(normalizePaxsenixEndpoint(endpoint))
                 }
         }
 
@@ -590,6 +608,66 @@ internal data class ImageDiskCacheConfig(
     val policy: CachePolicy,
     val maxSizeBytes: Long,
 )
+
+/**
+ * Per-provider sub-paths served by the Paxsenix ("Lyrically") API, longest first
+ * so `apple-music/cache/cleanup` is stripped before `apple-music/cache`.
+ *
+ * [PaxsenixLyrics] appends the sub-path for whichever provider is being queried,
+ * so the configured endpoint has to be the *service root*.
+ */
+private val PAXSENIX_PROVIDER_PATHS =
+    listOf(
+        "apple-music/cache/cleanup",
+        "apple-music/lyrics",
+        "apple-music/cache",
+        "musixmatch/lyrics",
+        "spotify/lyrics",
+        "spotify/search",
+        "spotify/home",
+        "netease/lyrics",
+        "netease/search",
+        "youtube/lyrics",
+        "youtube/search",
+        "deezer/lyrics",
+        "genius/lyrics",
+        "kugou/lyrics",
+        "kugou/search",
+        "qq/lyrics",
+        "qq/search",
+        "api/stats",
+        "playground",
+        "docs",
+    )
+
+/**
+ * Normalises a user-supplied Paxsenix endpoint down to the service root.
+ *
+ * The API documents a *separate* URL per lyrics provider
+ * (`…/apple-music/lyrics`, `…/spotify/lyrics`, and so on), so users reasonably
+ * paste one of those into the endpoint field. [PaxsenixLyrics] then appends its
+ * own provider sub-path, producing `…/apple-music/lyrics/spotify/lyrics` and a
+ * 404 for every request. Stripping any known provider path (plus query string
+ * and fragment) means pasting any documented URL resolves to the same working
+ * root, and a blank value still falls through to the built-in default.
+ */
+private fun normalizePaxsenixEndpoint(raw: String): String {
+    val trimmed = raw.trim()
+    if (trimmed.isBlank()) return ""
+
+    var url = trimmed.substringBefore('?').substringBefore('#').trimEnd('/')
+    for (path in PAXSENIX_PROVIDER_PATHS) {
+        if (url.endsWith("/$path", ignoreCase = true)) {
+            url = url.removeRange(url.length - path.length - 1, url.length)
+            break
+        }
+        if (url.endsWith(path, ignoreCase = true)) {
+            url = url.removeRange(url.length - path.length, url.length)
+            break
+        }
+    }
+    return url.trimEnd('/').ifBlank { "" }
+}
 
 /**
  * Maps a now-playing song to its `spotify:track:<id>` URI so [SpotifyCanvasProvider]

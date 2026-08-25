@@ -63,6 +63,9 @@ class TelegramDataSource : BaseDataSource(true) {
         runBlocking {
             ensureDownloading(position)
         }
+        // Let this file keep downloading after the player closes the source (see
+        // [close]), evicting whichever files fell out of the retained window.
+        retainDownload(fileId)
 
         bytesRemaining =
             when {
@@ -119,16 +122,31 @@ class TelegramDataSource : BaseDataSource(true) {
 
     override fun getUri(): Uri? = currentUri
 
+    /**
+     * Releases the player's handle on the stream but deliberately leaves TDLib
+     * **downloading**.
+     *
+     * This used to cancel the download, which quietly capped how far ahead of playback
+     * the file could ever get. ExoPlayer stops loading once its buffer is full (60 s of
+     * media here) and closes the data source; cancelling on close meant TDLib stopped
+     * fetching at that same point and only resumed when the buffer drained enough for
+     * the player to reopen. The downloaded prefix therefore tracked playback at a fixed
+     * distance instead of racing ahead, so a lossless track was streamed at roughly its
+     * own bitrate for its entire duration — and any sustained dip in throughput (which,
+     * for a large file on Telegram, is most likely *late* in the transfer) drained the
+     * buffer and stalled playback. That is the "plays fine for the first few minutes,
+     * buffers near the end" report.
+     *
+     * Leaving the download running lets TDLib finish the file well before playback
+     * reaches the end, after which reads are served from local disk and cannot stall.
+     * The number of concurrently retained files is bounded by [retainDownload], and the
+     * bytes land in TDLib's own cache — the same place a completed listen would have
+     * put them — so pause/resume and replays still cost nothing.
+     */
     override fun close() {
         if (opened) {
             opened = false
             transferEnded()
-            val id = fileId
-            runBlocking {
-                // Stop pulling data once the player lets go of the stream; the partial file stays
-                // in TDLib's cache, so resuming later picks up where this left off.
-                TelegramClient.cancelDownload(id)
-            }
         }
         currentUri = null
         mediaId = null
@@ -171,8 +189,16 @@ class TelegramDataSource : BaseDataSource(true) {
     }
 
     /**
-     * Waits until [count] bytes at [offset] are present in TDLib's partial download, then reads
-     * them. Returns fewer bytes near EOF; the overall wait is bounded by the caller's timeout.
+     * Waits until at least one byte at [offset] is present in TDLib's partial download, then
+     * returns as much of the contiguous downloaded run as fits in [count].
+     *
+     * Returning a short read is both legal for a [DataSource] and important here: the previous
+     * implementation waited for the *entire* requested range before handing back any bytes. Near
+     * the end of a track `count` is clamped to `fileSize - offset`, so the condition became
+     * "the whole remainder of the file must be downloaded" — one large ExoPlayer request would
+     * block until the download fully completed, which is what made long lossless files stall
+     * within the last stretch of the song even though bytes were arriving steadily. Serving the
+     * available prefix keeps the renderer fed while the tail downloads.
      */
     private suspend fun awaitAndRead(
         offset: Long,
@@ -190,17 +216,22 @@ class TelegramDataSource : BaseDataSource(true) {
                 if (untilEof <= 0) return ByteArray(0)
                 wanted = minOf(wanted, untilEof)
             }
-            val end = offset + wanted
-            val available =
-                local.isDownloadingCompleted ||
-                    (
-                        local.downloadOffset <= offset &&
-                            local.downloadOffset + local.downloadedPrefixSize >= end
-                    )
-            if (available) {
+            if (local.isDownloadingCompleted) {
                 return TelegramClient.readFilePart(fileId, offset, wanted)
             }
-            if (!local.isDownloadingActive) {
+            // Bytes downloaded so far form the contiguous run
+            // [downloadOffset, downloadOffset + downloadedPrefixSize).
+            val runStart = local.downloadOffset
+            val runEnd = local.downloadOffset + local.downloadedPrefixSize
+            if (runStart <= offset && runEnd > offset) {
+                val available = runEnd - offset
+                return TelegramClient.readFilePart(fileId, offset, minOf(wanted, available))
+            }
+            // The requested position is outside the downloaded run — re-target the
+            // download. Only do this when the download isn't already working toward
+            // us, because DownloadFile with a new offset makes TDLib restart the run
+            // and discard the prefix it had built up.
+            if (!local.isDownloadingActive || runStart > offset) {
                 TelegramClient.startDownload(fileId, offset)
             }
             delay(POLL_INTERVAL_MS)
@@ -215,5 +246,64 @@ class TelegramDataSource : BaseDataSource(true) {
         private const val TAG = "TelegramDataSource"
         private const val READ_TIMEOUT_MS = 40_000L
         private const val POLL_INTERVAL_MS = 150L
+
+        /**
+         * How many Telegram files may keep downloading at once.
+         *
+         * Three covers everything playback legitimately needs in flight: the track being
+         * played, the next one being prefetched, and the previous one (so an immediate
+         * "back" is instant). Anything older is cancelled, which is what keeps a long
+         * skip-heavy session from leaving a pile of downloads running.
+         */
+        private const val MAX_RETAINED_DOWNLOADS = 3
+
+        /** Most-recently-opened first. Guarded by its own monitor. */
+        private val retainedFileIds = LinkedHashSet<Int>()
+
+        /**
+         * Marks [fileId] as the most recently used stream and cancels the downloads of
+         * any files that fall outside [MAX_RETAINED_DOWNLOADS].
+         *
+         * Cancelling only stops the transfer — TDLib keeps whatever it already wrote, so
+         * a cancelled file resumes from its existing prefix if it is opened again.
+         */
+        private fun retainDownload(fileId: Int) {
+            if (fileId <= 0) return
+            val evicted =
+                synchronized(retainedFileIds) {
+                    // Re-inserting moves the id to the most-recent end of the set.
+                    retainedFileIds.remove(fileId)
+                    retainedFileIds.add(fileId)
+                    val overflow = retainedFileIds.size - MAX_RETAINED_DOWNLOADS
+                    if (overflow <= 0) {
+                        emptyList()
+                    } else {
+                        val oldest = retainedFileIds.take(overflow)
+                        retainedFileIds.removeAll(oldest.toSet())
+                        oldest
+                    }
+                }
+            if (evicted.isEmpty()) return
+            runBlocking {
+                evicted.forEach { id ->
+                    Timber.tag(TAG).d("Cancelling retained Telegram download for file %d", id)
+                    TelegramClient.cancelDownload(id)
+                }
+            }
+        }
+
+        /**
+         * Cancels every retained download. Called when the Telegram session itself goes
+         * away (logout) so no transfer outlives the account that authorised it.
+         */
+        suspend fun cancelRetainedDownloads() {
+            val ids =
+                synchronized(retainedFileIds) {
+                    val snapshot = retainedFileIds.toList()
+                    retainedFileIds.clear()
+                    snapshot
+                }
+            ids.forEach { TelegramClient.cancelDownload(it) }
+        }
     }
 }

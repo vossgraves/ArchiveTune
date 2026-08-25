@@ -82,6 +82,7 @@ private val YtDlpMessageMaxWidth = 480.dp
 fun YtDlpSettings(
     navController: NavController,
     viewModel: YtDlpSettingsViewModel = hiltViewModel(),
+    scrollTo: String? = null,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -109,6 +110,7 @@ fun YtDlpSettings(
         onNavigateUp = onNavigateUp,
         onNavigateToMain = onNavigateToMain,
         onCheckForUpdates = onCheckForUpdates,
+        scrollTo = scrollTo,
     )
 }
 
@@ -119,6 +121,7 @@ private fun YtDlpSettingsContent(
     onNavigateUp: () -> Unit,
     onNavigateToMain: () -> Unit,
     onCheckForUpdates: () -> Unit,
+    scrollTo: String? = null,
 ) {
     val scrollBehavior = appBarScrollBehavior()
 
@@ -208,6 +211,7 @@ private fun YtDlpSettingsContent(
                                     WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
                                 ),
                             ),
+                    scrollTo = scrollTo,
                 )
             }
         }
@@ -220,7 +224,11 @@ private fun YtDlpSettingsSuccess(
     onCheckForUpdates: () -> Unit,
     contentPadding: PaddingValues,
     modifier: Modifier = Modifier,
+    scrollTo: String? = null,
 ) {
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val positions = rememberPreferencePositions()
+    androidx.compose.runtime.LaunchedEffect(scrollTo) { positions.scrollToKey(scrollTo, listState) }
     val neverCheckedText = stringResource(R.string.ytdlp_never_checked)
     val bundledRuntimeText = stringResource(R.string.ytdlp_bundled_runtime)
     val lastCheckedText = rememberDateTime(data.lastCheckedAtMillis, neverCheckedText)
@@ -245,7 +253,9 @@ private fun YtDlpSettingsSuccess(
         }
 
     LazyColumn(
-        modifier = modifier.fillMaxSize(),
+        state = listState,
+        // A LazyColumn *is* its own viewport, so the position it reports is the one scrollToKey measures against.
+        modifier = modifier.fillMaxSize().then(positions.containerModifier()),
         contentPadding = contentPadding,
         verticalArrangement = Arrangement.spacedBy(SettingsDimensions.SectionSpacing),
     ) {
@@ -272,6 +282,7 @@ private fun YtDlpSettingsSuccess(
             CenteredPreferenceGroup(title = stringResource(R.string.ytdlp_runtime_section)) {
                 item {
                     PreferenceEntry(
+                        modifier = positions.modifierFor("ytdlp_active_version"),
                         title = { Text(stringResource(R.string.ytdlp_active_version)) },
                         description = data.activeVersion,
                         icon = { Icon(painterResource(R.drawable.integration), null) },
@@ -279,6 +290,7 @@ private fun YtDlpSettingsSuccess(
                 }
                 item {
                     PreferenceEntry(
+                        modifier = positions.modifierFor("ytdlp_bundled_version"),
                         title = { Text(stringResource(R.string.ytdlp_bundled_version)) },
                         description = data.bundledVersion,
                         icon = { Icon(painterResource(R.drawable.info), null) },
@@ -287,6 +299,7 @@ private fun YtDlpSettingsSuccess(
                 data.pendingVersion?.let { pendingVersion ->
                     item {
                         PreferenceEntry(
+                            modifier = positions.modifierFor("ytdlp_pending_version"),
                             title = { Text(stringResource(R.string.ytdlp_pending_version)) },
                             description = pendingVersion,
                             icon = { Icon(painterResource(R.drawable.sync), null) },
@@ -295,6 +308,7 @@ private fun YtDlpSettingsSuccess(
                 }
                 item {
                     PreferenceEntry(
+                        modifier = positions.modifierFor("ytdlp_last_checked"),
                         title = { Text(stringResource(R.string.ytdlp_last_checked)) },
                         description = lastCheckedText,
                         icon = { Icon(painterResource(R.drawable.timer), null) },
@@ -302,6 +316,7 @@ private fun YtDlpSettingsSuccess(
                 }
                 item {
                     PreferenceEntry(
+                        modifier = positions.modifierFor("ytdlp_last_updated"),
                         title = { Text(stringResource(R.string.ytdlp_last_updated)) },
                         description = lastUpdatedText,
                         icon = { Icon(painterResource(R.drawable.timer), null) },
@@ -314,6 +329,7 @@ private fun YtDlpSettingsSuccess(
             CenteredPreferenceGroup(title = stringResource(R.string.ytdlp_update_section)) {
                 item {
                     PreferenceEntry(
+                        modifier = positions.modifierFor("ytdlp_check_for_updates"),
                         title = { Text(stringResource(R.string.ytdlp_check_for_updates)) },
                         description = manualUpdateDescription,
                         icon = { Icon(painterResource(R.drawable.sync), null) },
@@ -328,6 +344,7 @@ private fun YtDlpSettingsSuccess(
                 }
                 item {
                     PreferenceEntry(
+                        modifier = positions.modifierFor("ytdlp_automatic_updates"),
                         title = { Text(stringResource(R.string.ytdlp_automatic_updates)) },
                         description = stringResource(R.string.ytdlp_automatic_updates_description),
                         icon = { Icon(painterResource(R.drawable.info), null) },

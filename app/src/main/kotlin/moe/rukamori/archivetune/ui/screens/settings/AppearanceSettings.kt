@@ -70,6 +70,7 @@ import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.AppFontPreference
 import moe.rukamori.archivetune.constants.BackdropBlurAmountKey
+import moe.rukamori.archivetune.constants.AlbumCanvasEnabledKey
 import moe.rukamori.archivetune.constants.BackdropEnabledKey
 import moe.rukamori.archivetune.constants.BlurRadiusKey
 import moe.rukamori.archivetune.constants.ChipSortTypeKey
@@ -221,6 +222,8 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
         )
     val (blurRadius, onBlurRadiusChange) = rememberPreference(BlurRadiusKey, defaultValue = 48f)
     val (backdropEnabled, onBackdropEnabledChange) = rememberPreference(BackdropEnabledKey, defaultValue = true)
+    val (albumCanvasEnabled, onAlbumCanvasEnabledChange) =
+        rememberPreference(AlbumCanvasEnabledKey, defaultValue = true)
     val (backdropBlurAmount, onBackdropBlurAmountChange) = rememberPreference(BackdropBlurAmountKey, defaultValue = 60)
     val (fontPreference, onFontPreferenceChange) =
         rememberEnumPreference(
@@ -450,6 +453,8 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
             Modifier
                 .padding(top = topPadding)
                 .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal))
+                // Chained before verticalScroll so it measures the viewport, not the scrolling content.
+                .then(positions.containerModifier())
                 .verticalScroll(scrollState)
                 .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
         ) {
@@ -493,6 +498,7 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
 
                 item(visible = !dynamicTheme || Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
                     SwitchPreference(
+                        modifier = positions.modifierFor("random_theme_on_startup"),
                         title = { Text(stringResource(R.string.random_theme_on_startup)) },
                         description = stringResource(R.string.random_theme_on_startup_desc),
                         icon = { Icon(painterResource(R.drawable.shuffle), null) },
@@ -504,6 +510,7 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                 item(visible = !dynamicTheme || Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
                     Column(modifier = positions.modifierFor("color_palette")) {
                         PreferenceEntry(
+                            modifier = positions.modifierFor("palette_picker"),
                             title = { Text(stringResource(R.string.color_palette)) },
                             description = stringResource(R.string.customize_theme_colors),
                             icon = { Icon(painterResource(R.drawable.format_paint), null) },
@@ -564,6 +571,7 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
 
                 item {
                     SwitchPreference(
+                        modifier = positions.modifierFor("disable_animations"),
                         title = { Text(stringResource(R.string.disable_animations)) },
                         description = stringResource(R.string.disable_animations_desc),
                         icon = { Icon(painterResource(R.drawable.animation), null) },
@@ -649,6 +657,7 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
 
                 item {
                     PreferenceEntry(
+                        modifier = positions.modifierFor("backdrop_blur_amount"),
                         title = { Text(stringResource(R.string.backdrop_blur_amount)) },
                         description = stringResource(R.string.backdrop_blur_amount_value, backdropBlurAmount),
                         icon = { Icon(painterResource(R.drawable.blur_on), null) },
@@ -670,6 +679,7 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                 item {
                     Column(modifier = positions.modifierFor("font_preference")) {
                         EnumListPreference(
+                            modifier = positions.modifierFor("use_system_font"),
                             title = { Text(stringResource(R.string.font_preference)) },
                             description = stringResource(R.string.font_preference_desc),
                             icon = { Icon(painterResource(R.drawable.text_fields), null) },
@@ -696,6 +706,7 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                             customFontUri
                         }
                     PreferenceEntry(
+                        modifier = positions.modifierFor("custom_font"),
                         title = { Text(stringResource(R.string.custom_font)) },
                         description = customFontDescription,
                         icon = { Icon(painterResource(R.drawable.text_fields), null) },
@@ -736,6 +747,7 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
 
                 item {
                     SwitchPreference(
+                        modifier = positions.modifierFor("show_player_volume_bar"),
                         title = { Text(stringResource(R.string.show_player_volume_bar)) },
                         description =
                             if (isVolumeBarSupported) {
@@ -794,6 +806,7 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
                 item {
                     Column(modifier = positions.modifierFor("lyrics_background_style")) {
                         ListPreference(
+                            modifier = positions.modifierFor("lyrics_background_style"),
                             title = { Text(stringResource(R.string.lyrics_background_style)) },
                             icon = { Icon(painterResource(R.drawable.lyrics), null) },
                             selectedValue = lyricsBackground,
@@ -828,6 +841,7 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
 
                 item(visible = playerBackground == PlayerBackgroundStyle.CUSTOM) {
                     PreferenceEntry(
+                        modifier = positions.modifierFor("customized_background"),
                         title = { Text(stringResource(R.string.customized_background)) },
                         icon = { Icon(painterResource(R.drawable.image), null) },
                         onClick = { navController.navigate("customize_background") },
@@ -902,6 +916,7 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
 
                 item {
                     SwitchPreference(
+                        modifier = positions.modifierFor("hide_player_thumbnail"),
                         title = { Text(stringResource(R.string.hide_player_thumbnail)) },
                         description = stringResource(R.string.hide_player_thumbnail_desc),
                         icon = { Icon(painterResource(R.drawable.hide_image), null) },
@@ -918,6 +933,7 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
 
                 item {
                     SwitchPreference(
+                        modifier = positions.modifierFor("crop_thumbnail_to_square"),
                         title = { Text(stringResource(R.string.crop_thumbnail_to_square)) },
                         description = stringResource(R.string.crop_thumbnail_to_square_desc),
                         icon = { Icon(painterResource(R.drawable.image), null) },
@@ -975,11 +991,28 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
             }
 
             PreferenceGroup(
+                modifier = positions.modifierFor("album_page"),
+                title = stringResource(R.string.album_page),
+            ) {
+                item {
+                    SwitchPreference(
+                        modifier = positions.modifierFor("album_canvas_enabled"),
+                        title = { Text(stringResource(R.string.album_canvas_enabled)) },
+                        description = stringResource(R.string.album_canvas_enabled_desc),
+                        icon = { Icon(painterResource(R.drawable.album), null) },
+                        checked = albumCanvasEnabled,
+                        onCheckedChange = onAlbumCanvasEnabledChange,
+                    )
+                }
+            }
+
+            PreferenceGroup(
                 modifier = positions.modifierFor("app_language"),
                 title = stringResource(R.string.misc),
             ) {
                 item {
                     SwitchPreference(
+                        modifier = positions.modifierFor("tablet_mode"),
                         title = { Text(stringResource(R.string.tablet_mode)) },
                         description = stringResource(R.string.tablet_mode_desc),
                         icon = { Icon(painterResource(R.drawable.desktop_windows), null) },
@@ -990,6 +1023,7 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
 
                 item {
                     SwitchPreference(
+                        modifier = positions.modifierFor("minimal_home_mode"),
                         title = { Text(stringResource(R.string.minimal_home_mode)) },
                         description = stringResource(R.string.minimal_home_mode_desc),
                         icon = { Icon(painterResource(R.drawable.home_outlined), null) },
@@ -1010,6 +1044,7 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
 
                 item {
                     SwitchPreference(
+                        modifier = positions.modifierFor("hide_scrollbar"),
                         title = { Text(stringResource(R.string.hide_scrollbar)) },
                         description = stringResource(R.string.hide_scrollbar_desc),
                         icon = { Icon(painterResource(R.drawable.filter_alt), null) },
@@ -1020,6 +1055,7 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
 
                 item {
                     PreferenceEntry(
+                        modifier = positions.modifierFor("navigation_bar_settings"),
                         title = { Text(stringResource(R.string.navigation_bar_settings_title)) },
                         description = stringResource(R.string.navigation_bar_settings_subtitle),
                         icon = { Icon(painterResource(R.drawable.tune), null) },
@@ -1047,6 +1083,7 @@ fun AppearanceSettings(navController: NavController, scrollTo: String? = null) {
 
                 item {
                     ListPreference(
+                        modifier = positions.modifierFor("default_lib_chips"),
                         title = { Text(stringResource(R.string.default_lib_chips)) },
                         icon = { Icon(painterResource(R.drawable.tab), null) },
                         selectedValue = defaultChip,

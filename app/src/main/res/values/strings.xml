@@ -760,6 +760,8 @@
     <string name="paxsenix_api_key_not_set">Not set — using anonymous access</string>
     <string name="paxsenix_endpoint">Paxsenix Endpoint</string>
     <string name="paxsenix_endpoint_default">Default: https://lyrics.paxsenix.org/</string>
+    <string name="paxsenix_endpoint_retired">Retired upstream — this endpoint now returns 403. Only Paxsenix: Apple Music still works.</string>
+    <string name="paxsenix_endpoint_hint">Service root only, e.g. https://lyrics.paxsenix.org/ — the per-provider path is added automatically.</string>
     <string name="uptime">Uptime</string>
     <string name="total_requests">Total Requests</string>
     <string name="success_rate">Success Rate</string>

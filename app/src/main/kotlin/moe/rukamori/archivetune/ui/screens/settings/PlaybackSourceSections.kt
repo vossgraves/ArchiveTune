@@ -121,9 +121,16 @@ private fun AudioSourceType.iconRes(): Int =
  * Renders all streaming-source preference groups inline in the caller's scrolling Column. Meant to
  * be called from [PlayerSettings]. Emits, in order: the common "Sources" group (preferred-source
  * picker + YouTube history sync), then YouTube, Tidal and Qobuz specific groups.
+ *
+ * [positions] belongs to the *host* screen: these rows are searchable, and settings search deep
+ * links to them with `?scrollTo=<key>`, which only resolves if the anchors register against the
+ * scroll state the host owns.
  */
 @Composable
-fun PlaybackSourceSections(navController: NavController) {
+fun PlaybackSourceSections(
+    navController: NavController,
+    positions: PreferencePositions,
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -223,6 +230,7 @@ fun PlaybackSourceSections(navController: NavController) {
     PreferenceGroup(title = stringResource(R.string.playback_sources)) {
         item {
             PreferenceEntry(
+                modifier = positions.modifierFor("preferred_sources"),
                 title = { Text(stringResource(R.string.preferred_sources)) },
                 description = preferred.displayName(context),
                 icon = { Icon(painterResource(preferred.iconRes()), null) },
@@ -233,6 +241,7 @@ fun PlaybackSourceSections(navController: NavController) {
     PreferenceGroup(title = stringResource(R.string.catalog_sources)) {
         item {
             EnumListPreference(
+                modifier = positions.modifierFor("default_metadata_source"),
                 title = { Text(stringResource(R.string.default_metadata_source)) },
                 description = stringResource(R.string.default_metadata_source_desc),
                 icon = { Icon(painterResource(R.drawable.album), null) },
@@ -249,6 +258,7 @@ fun PlaybackSourceSections(navController: NavController) {
 
         item {
             EnumListPreference(
+                modifier = positions.modifierFor("default_search_source"),
                 title = { Text(stringResource(R.string.default_search_source)) },
                 description = stringResource(R.string.default_search_source_desc),
                 icon = { Icon(painterResource(R.drawable.language), null) },
@@ -265,6 +275,7 @@ fun PlaybackSourceSections(navController: NavController) {
 
         item {
             PreferenceEntry(
+                modifier = positions.modifierFor("spotify_catalog_source"),
                 title = { Text(stringResource(R.string.spotify_catalog_source)) },
                 description = stringResource(R.string.spotify_catalog_source_desc),
                 icon = { Icon(painterResource(R.drawable.spotify_icon), null) },
@@ -294,6 +305,7 @@ fun PlaybackSourceSections(navController: NavController) {
         }
         item {
             SwitchPreference(
+                modifier = positions.modifierFor("auto_choose_playback_client"),
                 title = { Text(stringResource(R.string.auto_choose_playback_client)) },
                 description =
                     stringResource(
@@ -312,6 +324,7 @@ fun PlaybackSourceSections(navController: NavController) {
 
         item {
             ListPreference(
+                modifier = positions.modifierFor("player_stream_client"),
                 title = { Text(stringResource(R.string.player_stream_client)) },
                 description = stringResource(R.string.player_stream_client_desc),
                 icon = { Icon(painterResource(R.drawable.integration), null) },
@@ -361,6 +374,7 @@ fun PlaybackSourceSections(navController: NavController) {
     PreferenceGroup(title = stringResource(R.string.tidal_specific)) {
         item {
             SwitchPreference(
+                modifier = positions.modifierFor("tidal_enable"),
                 title = { Text(stringResource(R.string.tidal_enable)) },
                 description = stringResource(R.string.tidal_enable_description),
                 icon = { Icon(painterResource(R.drawable.provider_tidal), null) },
@@ -371,6 +385,7 @@ fun PlaybackSourceSections(navController: NavController) {
 
         item {
             SwitchPreference(
+                modifier = positions.modifierFor("tidal_account_first"),
                 title = { Text(stringResource(R.string.tidal_account_first)) },
                 description = stringResource(R.string.tidal_account_first_description),
                 icon = { Icon(painterResource(R.drawable.token), null) },
@@ -382,6 +397,7 @@ fun PlaybackSourceSections(navController: NavController) {
 
         item {
             EnumListPreference(
+                modifier = positions.modifierFor("tidal_audio_quality"),
                 title = { Text(stringResource(R.string.tidal_audio_quality)) },
                 icon = { Icon(painterResource(R.drawable.play), null) },
                 selectedValue = audioQuality,
@@ -399,6 +415,7 @@ fun PlaybackSourceSections(navController: NavController) {
 
         item {
             SwitchPreference(
+                modifier = positions.modifierFor("tidal_animated_covers"),
                 title = { Text(stringResource(R.string.tidal_animated_covers)) },
                 description = stringResource(R.string.tidal_animated_covers_description),
                 checked = animatedCovers,
@@ -409,6 +426,7 @@ fun PlaybackSourceSections(navController: NavController) {
 
         item {
             PreferenceEntry(
+                modifier = positions.modifierFor("tidal_manage_instances"),
                 title = { Text(stringResource(R.string.tidal_manage_instances)) },
                 description = stringResource(R.string.manage_in_integration),
                 icon = { Icon(painterResource(R.drawable.integration), null) },
@@ -424,6 +442,7 @@ fun PlaybackSourceSections(navController: NavController) {
     PreferenceGroup(title = stringResource(R.string.qobuz_specific)) {
         item {
             SwitchPreference(
+                modifier = positions.modifierFor("qobuz_enable"),
                 title = { Text(stringResource(R.string.qobuz_enable)) },
                 description = stringResource(R.string.qobuz_enable_description),
                 icon = { Icon(painterResource(R.drawable.provider_qobuz), null) },
@@ -434,6 +453,7 @@ fun PlaybackSourceSections(navController: NavController) {
 
         item {
             EnumListPreference(
+                modifier = positions.modifierFor("qobuz_audio_quality"),
                 title = { Text(stringResource(R.string.qobuz_audio_quality)) },
                 icon = { Icon(painterResource(R.drawable.play), null) },
                 selectedValue = qobuzQuality,
@@ -451,6 +471,7 @@ fun PlaybackSourceSections(navController: NavController) {
 
         item {
             PreferenceEntry(
+                modifier = positions.modifierFor("qobuz_manage_instances"),
                 title = { Text(stringResource(R.string.qobuz_manage_instances)) },
                 description = stringResource(R.string.manage_in_integration),
                 icon = { Icon(painterResource(R.drawable.integration), null) },
@@ -466,6 +487,7 @@ fun PlaybackSourceSections(navController: NavController) {
     PreferenceGroup(title = stringResource(R.string.qobuz_backup_specific)) {
         item {
             SwitchPreference(
+                modifier = positions.modifierFor("qobuz_backup_enable"),
                 title = { Text(stringResource(R.string.qobuz_backup_enable)) },
                 description = stringResource(R.string.qobuz_backup_enable_description),
                 icon = { Icon(painterResource(R.drawable.provider_qobuz), null) },
@@ -482,6 +504,7 @@ fun PlaybackSourceSections(navController: NavController) {
     PreferenceGroup(title = stringResource(R.string.deezer_specific)) {
         item {
             SwitchPreference(
+                modifier = positions.modifierFor("deezer_enable"),
                 title = { Text(stringResource(R.string.deezer_enable)) },
                 description = stringResource(R.string.deezer_enable_description),
                 icon = { Icon(painterResource(R.drawable.provider_deezer), null) },
@@ -492,6 +515,7 @@ fun PlaybackSourceSections(navController: NavController) {
 
         item {
             EnumListPreference(
+                modifier = positions.modifierFor("deezer_audio_quality"),
                 title = { Text(stringResource(R.string.deezer_audio_quality)) },
                 icon = { Icon(painterResource(R.drawable.play), null) },
                 selectedValue = deezerQuality,
@@ -515,6 +539,7 @@ fun PlaybackSourceSections(navController: NavController) {
     PreferenceGroup(title = stringResource(R.string.jiosaavn_specific)) {
         item {
             SwitchPreference(
+                modifier = positions.modifierFor("jiosaavn_enable"),
                 title = { Text(stringResource(R.string.jiosaavn_enable)) },
                 description = stringResource(R.string.jiosaavn_enable_description),
                 icon = { Icon(painterResource(R.drawable.play), null) },
@@ -525,6 +550,7 @@ fun PlaybackSourceSections(navController: NavController) {
 
         item {
             EnumListPreference(
+                modifier = positions.modifierFor("jiosaavn_audio_quality"),
                 title = { Text(stringResource(R.string.jiosaavn_audio_quality)) },
                 icon = { Icon(painterResource(R.drawable.play), null) },
                 selectedValue = saavnQuality,

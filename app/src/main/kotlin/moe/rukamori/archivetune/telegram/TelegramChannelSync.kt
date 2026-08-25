@@ -143,13 +143,21 @@ object TelegramChannelSync {
         // the chat here ensures the message index is warm before we page.
         runCatching { TelegramClient.openChat(chatId) }
             .onFailure { Timber.tag(TAG).w(it, "openChat(%d) failed (non-fatal)", chatId) }
-        // Settle delay: give TDLib time to actually load the chat history into
-        // its local index after OpenChat returns. Without this wait, the first
-        // SearchChatMessages call for a private channel frequently returns an
-        // empty page (no exception) because the history isn't indexed yet —
-        // this was the root cause of "private channel shows empty until I tap
-        // Refresh". The manual Refresh worked because by then enough time had
-        // elapsed for TDLib to finish indexing.
+        // OpenChat on its own only marks the chat as viewed; it does not
+        // guarantee that TDLib has pulled any history from the server. Because
+        // SearchChatMessages is answered out of TDLib's *local* message
+        // database, a freshly added private channel has nothing to search and
+        // returns an empty page with no error — which is why the playlist
+        // materialised empty until "Refresh from Telegram" was tapped.
+        //
+        // primeChatHistory forces the fetch with GetChatHistory and waits until
+        // messages actually land, so the search below has an index to hit. A
+        // false result is not fatal (the channel may genuinely be empty), so we
+        // still fall through to the paging loop.
+        runCatching { TelegramClient.primeChatHistory(chatId) }
+            .onFailure { Timber.tag(TAG).w(it, "primeChatHistory(%d) failed (non-fatal)", chatId) }
+        // Small settle delay so the messages primeChatHistory pulled are fully
+        // committed to the local index before the first search.
         delay(OPEN_CHAT_SETTLE_MS)
 
         val playlistId = playlistId(chatId)

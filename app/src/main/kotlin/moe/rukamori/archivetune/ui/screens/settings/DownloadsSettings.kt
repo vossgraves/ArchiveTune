@@ -177,6 +177,8 @@ fun DownloadsSettings(
             Modifier
                 .padding(top = topPadding)
                 .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal))
+                // Chained before verticalScroll so it measures the viewport, not the scrolling content.
+                .then(positions.containerModifier())
                 .verticalScroll(scrollState)
                 .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
         ) {
@@ -186,6 +188,7 @@ fun DownloadsSettings(
             ) {
                 item {
                     PreferenceEntry(
+                        modifier = positions.modifierFor("clear_all_downloads"),
                         title = { Text(stringResource(R.string.clear_all_downloads)) },
                         description = stringResource(R.string.clear_downloads_dialog),
                         icon = {
@@ -199,6 +202,7 @@ fun DownloadsSettings(
                 }
                 item {
                     PreferenceEntry(
+                        modifier = positions.modifierFor("export_downloaded_songs"),
                         title = { Text(stringResource(R.string.export_downloaded_songs)) },
                         description = stringResource(R.string.export_downloaded_songs_description),
                         icon = {
@@ -262,6 +266,7 @@ fun DownloadsSettings(
 
                 item {
                     PreferenceEntry(
+                        modifier = positions.modifierFor("external_downloader_package"),
                         title = { Text(stringResource(R.string.external_downloader_package)) },
                         description = externalDownloaderPackage.ifEmpty { stringResource(R.string.external_downloader_package_desc) },
                         icon = { Icon(painterResource(R.drawable.integration), null) },

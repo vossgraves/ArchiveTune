@@ -34,7 +34,10 @@ private val DiscordExperimentalButtonUrlOptions =
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DiscordExperimental(navController: NavController) {
+fun DiscordExperimental(
+    navController: NavController,
+    scrollTo: String? = null,
+) {
     val context = LocalContext.current
     val languages = remember(context) { TranslatorLanguages.load(context) }
     val languageCodes = remember(languages) { languages.map { it.code } }
@@ -92,6 +95,10 @@ fun DiscordExperimental(navController: NavController) {
             defaultValue = "https://github.com/rukamori/ArchiveTune",
         )
 
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val positions = rememberPreferencePositions()
+    androidx.compose.runtime.LaunchedEffect(scrollTo) { positions.scrollToKey(scrollTo, listState) }
+
     Scaffold { inner ->
         Column(Modifier.fillMaxSize()) {
             TopAppBar(
@@ -104,7 +111,9 @@ fun DiscordExperimental(navController: NavController) {
             )
 
             LazyColumn(
-                modifier = Modifier.fillMaxSize(),
+                state = listState,
+                // A LazyColumn *is* its own viewport, so the position it reports is the one scrollToKey measures against.
+                modifier = Modifier.fillMaxSize().then(positions.containerModifier()),
                 contentPadding =
                     PaddingValues(
                         bottom = inner.calculateBottomPadding() + 80.dp,
@@ -115,6 +124,7 @@ fun DiscordExperimental(navController: NavController) {
                     PreferenceGroup(title = stringResource(R.string.translator_options)) {
                         item {
                             SwitchPreference(
+                                modifier = positions.modifierFor("enable_translator", "translate_lyrics"),
                                 title = { Text(stringResource(R.string.enable_translator)) },
                                 description = stringResource(R.string.enable_translator_desc),
                                 icon = { Icon(painterResource(R.drawable.translate), null) },
@@ -135,6 +145,7 @@ fun DiscordExperimental(navController: NavController) {
 
                         item(visible = translatorEnabled) {
                             ListPreference(
+                                modifier = positions.modifierFor("target_language"),
                                 title = { Text(stringResource(R.string.target_language)) },
                                 icon = { Icon(painterResource(R.drawable.translate), null) },
                                 selectedValue = translatorTargetLang,
@@ -150,6 +161,7 @@ fun DiscordExperimental(navController: NavController) {
                     PreferenceGroup(title = stringResource(R.string.discord_button_options)) {
                         item {
                             SwitchPreference(
+                                modifier = positions.modifierFor("discord_show_button_1"),
                                 title = { Text(stringResource(R.string.show_button)) },
                                 description = stringResource(R.string.show_button1_description),
                                 icon = { Icon(painterResource(R.drawable.buttons), null) },
@@ -160,6 +172,7 @@ fun DiscordExperimental(navController: NavController) {
 
                         item(visible = button1Enabled) {
                             ListPreference(
+                                modifier = positions.modifierFor("discord_activity_button_1_url"),
                                 title = { Text(stringResource(R.string.discord_activity_button_1_url)) },
                                 icon = { Icon(painterResource(R.drawable.link), null) },
                                 selectedValue = button1UrlSource,
@@ -191,6 +204,7 @@ fun DiscordExperimental(navController: NavController) {
 
                         item {
                             SwitchPreference(
+                                modifier = positions.modifierFor("discord_show_button_2"),
                                 title = { Text(stringResource(R.string.show_button)) },
                                 description = stringResource(R.string.show_button2_description),
                                 icon = { Icon(painterResource(R.drawable.buttons), null) },
@@ -201,6 +215,7 @@ fun DiscordExperimental(navController: NavController) {
 
                         item(visible = button2Enabled) {
                             ListPreference(
+                                modifier = positions.modifierFor("discord_activity_button_2_url"),
                                 title = { Text(stringResource(R.string.discord_activity_button_2_url)) },
                                 icon = { Icon(painterResource(R.drawable.link), null) },
                                 selectedValue = button2UrlSource,

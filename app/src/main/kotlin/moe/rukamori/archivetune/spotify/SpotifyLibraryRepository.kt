@@ -381,6 +381,25 @@ class SpotifyLibraryRepository
             }
 
 
+        /**
+         * Returns a usable Spotify access token, minting one from the stored `sp_dc`
+         * cookie when the cached token is missing or expired, or null when the user has
+         * not connected a Spotify account.
+         *
+         * Exists because features outside the Spotify library screens need the session
+         * too. `SpotifyCanvasProvider` read the `Spotify.accessToken` global directly,
+         * which is only populated as a side effect of some *earlier* Spotify library
+         * call — so on a fresh launch the official Canvas endpoint was skipped for want
+         * of a token even though the user was connected, and canvas silently fell through
+         * to the (empty) community resolver. Going through the repository reuses the same
+         * mutex, DataStore cache and refresh logic as every other Spotify call.
+         */
+        suspend fun ensureAccessToken(): String? =
+            runCatching {
+                ensureAuthenticated()
+                Spotify.accessToken?.takeIf { it.isNotBlank() }
+            }.getOrNull()
+
         private suspend fun ensureAuthenticated() {
             val prefs = context.dataStore.data.first()
             val token = prefs[SpotifyAccessTokenKey].orEmpty()

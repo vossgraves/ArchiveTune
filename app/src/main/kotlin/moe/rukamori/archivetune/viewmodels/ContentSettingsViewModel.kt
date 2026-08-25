@@ -46,6 +46,22 @@ sealed interface PaxsenixStatsState {
     data object Error : PaxsenixStatsState
 }
 
+/**
+ * Result of asking the configured Paxsenix endpoint which per-provider lyrics paths it
+ * still serves. Surfaced by the "Check Paxsenix endpoints" action so a user can tell a
+ * retired upstream route apart from a wrong endpoint or a bad API key — from inside the
+ * app both look identical (the provider simply returns no lyrics).
+ */
+sealed interface PaxsenixEndpointCheckState {
+    data object Idle : PaxsenixEndpointCheckState
+
+    data object Running : PaxsenixEndpointCheckState
+
+    data class Success(
+        val results: List<PaxsenixLyrics.PathCheck>,
+    ) : PaxsenixEndpointCheckState
+}
+
 sealed interface AiContentFilterSettingsState {
     data object Loading : AiContentFilterSettingsState
 
@@ -92,6 +108,10 @@ class ContentSettingsViewModel
     ) : ViewModel() {
         private val _paxsenixStatsState = MutableStateFlow<PaxsenixStatsState>(PaxsenixStatsState.Loading)
         val paxsenixStatsState = _paxsenixStatsState.asStateFlow()
+        private val _paxsenixEndpointCheckState =
+            MutableStateFlow<PaxsenixEndpointCheckState>(PaxsenixEndpointCheckState.Idle)
+        val paxsenixEndpointCheckState = _paxsenixEndpointCheckState.asStateFlow()
+        private var paxsenixEndpointCheckJob: Job? = null
         private val refreshingAiContentFilter = MutableStateFlow(false)
         private val _aiContentFilterEffects = MutableSharedFlow<AiContentFilterSettingsEffect>(extraBufferCapacity = 1)
         val aiContentFilterEffects = _aiContentFilterEffects.asSharedFlow()
@@ -134,6 +154,21 @@ class ContentSettingsViewModel
                     .onSuccess { _paxsenixStatsState.value = PaxsenixStatsState.Success(it) }
                     .onFailure { _paxsenixStatsState.value = PaxsenixStatsState.Error }
             }
+        }
+
+        /**
+         * Probes every per-provider Paxsenix path against the endpoint currently configured
+         * in settings. Re-tapping while a check is running restarts it rather than queueing a
+         * second sweep.
+         */
+        fun checkPaxsenixEndpoints() {
+            paxsenixEndpointCheckJob?.cancel()
+            _paxsenixEndpointCheckState.value = PaxsenixEndpointCheckState.Running
+            paxsenixEndpointCheckJob =
+                viewModelScope.launch(Dispatchers.IO) {
+                    val results = PaxsenixLyrics.checkProviderPaths()
+                    _paxsenixEndpointCheckState.value = PaxsenixEndpointCheckState.Success(results)
+                }
         }
 
         fun clearLyricsCache() {

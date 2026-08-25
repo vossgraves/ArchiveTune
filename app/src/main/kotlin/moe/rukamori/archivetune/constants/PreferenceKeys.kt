@@ -48,6 +48,25 @@ val ShowPlayerVolumeBarKey = booleanPreferencesKey("showPlayerVolumeBar")
 val HidePlayerThumbnailKey = booleanPreferencesKey("hidePlayerThumbnail")
 val ArchiveTuneCanvasKey = booleanPreferencesKey("archiveTuneCanvas")
 val SpotifyCanvasKey = booleanPreferencesKey("spotifyCanvas")
+
+/**
+ * Whether an album page plays the album's looping motion artwork behind its header.
+ *
+ * Deliberately separate from [ArchiveTuneCanvasKey], which governs the *player's*
+ * now-playing canvas: the two are different surfaces with different costs (the album
+ * header loop starts as soon as a page opens, whether or not anything is playing), and
+ * a user who wants one does not necessarily want the other. Default on, so albums that
+ * have motion artwork animate the way they do in Apple Music.
+ */
+val AlbumCanvasEnabledKey = booleanPreferencesKey("albumCanvasEnabled")
+
+/**
+ * Newline-separated list of extra Spotify Canvas resolver endpoints, tried in order after
+ * Spotify's own Canvas endpoint. Empty (the default) means only the built-in resolver is
+ * used. See [moe.rukamori.archivetune.utils.CanvasResolverEndpoints] for why this is user
+ * supplied rather than a shipped list.
+ */
+val CanvasResolverEndpointsKey = stringPreferencesKey("canvasResolverEndpoints")
 val ThumbnailCornerRadiusKey = floatPreferencesKey("thumbnailCornerRadius")
 val CropThumbnailToSquareKey = booleanPreferencesKey("cropThumbnailToSquare")
 
@@ -1332,6 +1351,20 @@ val SongSourceOverrideKey = stringPreferencesKey("songSourceOverride")
  * registered as a new entry in the playback history / "recently listened".
  */
 val SongSourceQobuzTrackIdKey = stringPreferencesKey("songSourceQobuzTrackId")
+
+/**
+ * Per-song Qobuz-**backup** video-id override (CSV of `songId=youtubeVideoId;…`).
+ *
+ * The backup mirror is keyed by YouTube video id, and until now the resolver
+ * simply reused the playing song's own media id. That works for the automatic
+ * path but not for an explicit pick in the "Play from" popup: the row the user
+ * chose is a *different* catalogue entry, whose id is the only way to address the
+ * FLAC they asked for. Storing it here lets `resolveQobuzBackupStream` fetch that
+ * exact mirror entry while the song keeps its own media id — so the queue, the
+ * artwork, the title and the listening history are all untouched, and only the
+ * audio changes.
+ */
+val SongSourceQobuzBackupVideoIdKey = stringPreferencesKey("songSourceQobuzBackupVideoId")
 
 // The primary audio source the user prefers to search/resolve first (AudioSourceType name).
 // Named distinctly from the unrelated SearchSourceKey (LOCAL/ONLINE search scope) above.

@@ -112,6 +112,8 @@ fun IntegrationScreen(
             Modifier
                 .padding(top = topPadding)
                 .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal))
+                // Chained before verticalScroll so it measures the viewport, not the scrolling content.
+                .then(positions.containerModifier())
                 .verticalScroll(scrollState)
                 .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
         ) {
@@ -138,6 +140,7 @@ fun IntegrationScreen(
             ) {
                 item {
                     PreferenceEntry(
+                        modifier = positions.modifierFor("discord_account"),
                         title = { Text(stringResource(R.string.discord_integration)) },
                         icon = { Icon(painterResource(R.drawable.discord), null) },
                         onClick = {
@@ -161,6 +164,7 @@ fun IntegrationScreen(
                 if (manualSourceLogin) {
                     item {
                         PreferenceEntry(
+                            modifier = positions.modifierFor("tidal"),
                             title = { Text(stringResource(R.string.tidal_integration)) },
                             description = stringResource(R.string.tidal_integration_description),
                             icon = { Icon(painterResource(R.drawable.provider_tidal), null) },
@@ -172,6 +176,7 @@ fun IntegrationScreen(
 
                     item {
                         PreferenceEntry(
+                            modifier = positions.modifierFor("qobuz"),
                             title = { Text(stringResource(R.string.qobuz_integration)) },
                             description = stringResource(R.string.qobuz_integration_description),
                             icon = { Icon(painterResource(R.drawable.provider_qobuz), null) },
@@ -183,6 +188,7 @@ fun IntegrationScreen(
 
                     item {
                         PreferenceEntry(
+                            modifier = positions.modifierFor("deezer"),
                             title = { Text(stringResource(R.string.deezer_integration)) },
                             description = stringResource(R.string.deezer_integration_description),
                             icon = { Icon(painterResource(R.drawable.provider_deezer), null) },
@@ -195,6 +201,7 @@ fun IntegrationScreen(
 
                 item {
                     PreferenceEntry(
+                        modifier = positions.modifierFor("telegram"),
                         title = { Text(stringResource(R.string.telegram_integration)) },
                         description = stringResource(R.string.telegram_integration_description),
                         icon = { Icon(painterResource(R.drawable.provider_telegram), null) },
@@ -210,7 +217,12 @@ fun IntegrationScreen(
             // "Music Sources" makes the distinction clear: Music Sources feed the player,
             // External Sources feed the Library (playlist sync, scrobbling, etc.).
             PreferenceGroup(
-                modifier = positions.modifierFor("external_sources"),
+                // Also carries "spotify": Spotify is the only account in this group, so a search
+                // hit on it scrolls here. Chaining is safe — modifierFor only records a position.
+                modifier =
+                    positions
+                        .modifierFor("external_sources")
+                        .then(positions.modifierFor("spotify")),
                 title = stringResource(R.string.external_sources),
             ) {
                 spotifyAccountPreferences(
@@ -236,6 +248,7 @@ fun IntegrationScreen(
             ) {
                 item {
                     PreferenceEntry(
+                        modifier = positions.modifierFor("lastfm_account"),
                         title = { Text(stringResource(R.string.lastfm_integration)) },
                         icon = { Icon(painterResource(R.drawable.token), null) },
                         onClick = {
@@ -256,6 +269,7 @@ fun IntegrationScreen(
 
                 item {
                     PreferenceEntry(
+                        modifier = positions.modifierFor("listenbrainz_token"),
                         title = {
                             Text(
                                 if (listenBrainzToken.isBlank()) {

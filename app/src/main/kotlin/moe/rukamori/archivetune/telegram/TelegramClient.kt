@@ -18,6 +18,7 @@ package moe.rukamori.archivetune.telegram
 
 import android.content.Context
 import android.os.Build
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -86,6 +87,15 @@ object TelegramClient {
     /** TDLib download priority for actively-playing streams (1..32, higher = sooner). */
     const val STREAM_DOWNLOAD_PRIORITY = 32
 
+    /**
+     * Messages requested per [primeChatHistory] round. TDLib caps a single
+     * GetChatHistory at 100 and may return fewer while it fetches.
+     */
+    private const val HISTORY_PRIME_LIMIT = 100
+
+    /** Chats returned by the local [TdApi.SearchChats] pass in [searchChannels]. */
+    private const val LOCAL_CHAT_SEARCH_LIMIT = 30
+
     private val lock = Any()
 
     @Volatile
@@ -132,6 +142,10 @@ object TelegramClient {
      * database).
      */
     suspend fun logOut() {
+        // Streaming leaves downloads running past the player's close() so the transfer can
+        // get ahead of playback (see TelegramDataSource.close); they must not outlive the
+        // session being wiped.
+        runCatching { TelegramDataSource.cancelRetainedDownloads() }
         runCatching { send(TdApi.LogOut()) }
             .onFailure { Timber.tag(TAG).w(it, "logOut failed") }
     }
@@ -207,6 +221,12 @@ object TelegramClient {
         }
         runCatching { send(TdApi.SearchPublicChats(trimmed)) }
             .onSuccess { chatIds += it.chatIds.toList() }
+        // SearchPublicChats only ever returns chats with a public username, so a private
+        // channel the user is already a member of could not be found by name at all — the
+        // only way in was to re-paste its invite link. SearchChats searches the user's own
+        // chat list locally, which is exactly where a joined private channel lives.
+        runCatching { send(TdApi.SearchChats(trimmed, LOCAL_CHAT_SEARCH_LIMIT)) }
+            .onSuccess { chatIds += it.chatIds.toList() }
 
         return chatIds.mapNotNull { chatId ->
             runCatching { toChannel(getChat(chatId)) }.getOrNull()
@@ -224,6 +244,62 @@ object TelegramClient {
      */
     suspend fun openChat(chatId: Long) {
         send(TdApi.OpenChat(chatId))
+    }
+
+    /**
+     * Forces TDLib to pull a chat's message history from the server so that a
+     * subsequent [fetchAudioPage] (SearchChatMessages) has something to search.
+     *
+     * `OpenChat` alone is not enough for a private channel that the user has
+     * never scrolled: TDLib's local message database is empty, and
+     * `SearchChatMessages` is answered from that local index, so the first call
+     * returns an empty page with no error. That is why a freshly added private
+     * channel materialised an empty playlist until "Refresh from Telegram" was
+     * tapped — by then TDLib had populated the history in the background.
+     *
+     * `GetChatHistory` is the documented way to force the fetch, and TDLib
+     * deliberately returns fewer messages than requested (often zero on the
+     * first call) while it goes to the network — the documentation says to
+     * repeat the request. This loops until a call returns messages, or until
+     * [maxRounds] is exhausted.
+     *
+     * Returns true when history was observed, false when the chat genuinely has
+     * nothing (or the calls kept failing) — callers can still try to search,
+     * since a false negative here is not fatal.
+     */
+    suspend fun primeChatHistory(
+        chatId: Long,
+        maxRounds: Int = 8,
+        perRoundDelayMs: Long = 400L,
+    ): Boolean {
+        // Getting the chat first makes sure TDLib knows about it at all; for a
+        // channel joined via invite link this is what populates the chat object.
+        runCatching { getChat(chatId) }
+
+        var fromMessageId = 0L
+        repeat(maxRounds) { round ->
+            val messages =
+                runCatching {
+                    // onlyLocal = false → allowed to hit the network.
+                    send(TdApi.GetChatHistory(chatId, fromMessageId, 0, HISTORY_PRIME_LIMIT, false))
+                }.getOrNull()
+
+            val count = messages?.messages?.size ?: 0
+            if (count > 0) {
+                Timber.tag(TAG).d(
+                    "primeChatHistory(%d): round %d loaded %d messages",
+                    chatId,
+                    round + 1,
+                    count,
+                )
+                return true
+            }
+            // Nothing yet — TDLib is still fetching. Wait and ask again.
+            delay(perRoundDelayMs)
+            fromMessageId = 0L
+        }
+        Timber.tag(TAG).w("primeChatHistory(%d): no history after %d rounds", chatId, maxRounds)
+        return false
     }
 
     suspend fun channelInfo(chatId: Long): TelegramChannel? =

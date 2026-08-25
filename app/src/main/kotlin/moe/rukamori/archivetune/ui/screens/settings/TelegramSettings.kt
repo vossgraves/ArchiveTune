@@ -58,7 +58,10 @@ import androidx.compose.foundation.layout.asPaddingValues
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TelegramSettings(navController: NavController) {
+fun TelegramSettings(
+    navController: NavController,
+    scrollTo: String? = null,
+) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
@@ -134,6 +137,9 @@ fun TelegramSettings(navController: NavController) {
                 .only(WindowInsetsSides.Bottom)
                 .asPaddingValues()
                 .calculateBottomPadding()
+        val scrollState = rememberScrollState()
+        val positions = rememberPreferencePositions()
+        androidx.compose.runtime.LaunchedEffect(scrollTo) { positions.scrollToKey(scrollTo, scrollState) }
         Column(
             Modifier
                 .padding(top = innerPadding.calculateTopPadding())
@@ -141,13 +147,17 @@ fun TelegramSettings(navController: NavController) {
                     LocalPlayerAwareWindowInsets.current.only(
                         WindowInsetsSides.Horizontal,
                     ),
-                ).verticalScroll(rememberScrollState())
+                )
+                // Chained before verticalScroll so it measures the viewport, not the scrolling content.
+                .then(positions.containerModifier())
+                .verticalScroll(scrollState)
                 .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
         ) {
             PreferenceGroup(title = stringResource(R.string.telegram_account)) {
                 if (isReady) {
                     item {
                         PreferenceEntry(
+                            modifier = positions.modifierFor("telegram_logged_in_as"),
                             title = {
                                 Text(
                                     stringResource(
@@ -162,6 +172,7 @@ fun TelegramSettings(navController: NavController) {
                     }
                     item {
                         PreferenceEntry(
+                            modifier = positions.modifierFor("telegram_logout"),
                             title = { Text(stringResource(R.string.telegram_logout)) },
                             icon = { Icon(painterResource(R.drawable.logout), contentDescription = null) },
                             onClick = { showLogoutDialog = true },
@@ -170,6 +181,7 @@ fun TelegramSettings(navController: NavController) {
                 } else {
                     item {
                         PreferenceEntry(
+                            modifier = positions.modifierFor("telegram_login"),
                             title = { Text(stringResource(R.string.telegram_login)) },
                             description = stringResource(R.string.telegram_login_summary),
                             icon = { Icon(painterResource(R.drawable.provider_telegram), contentDescription = null) },
@@ -185,6 +197,7 @@ fun TelegramSettings(navController: NavController) {
             PreferenceGroup(title = stringResource(R.string.telegram_browse_channels)) {
                 item {
                     PreferenceEntry(
+                        modifier = positions.modifierFor("telegram_browse_channels"),
                         title = { Text(stringResource(R.string.telegram_browse_channels)) },
                         description =
                             if (isReady) {
@@ -199,6 +212,7 @@ fun TelegramSettings(navController: NavController) {
                 }
                 item {
                     SwitchPreference(
+                        modifier = positions.modifierFor("telegram_lossless_only"),
                         title = { Text(stringResource(R.string.telegram_lossless_only)) },
                         description = stringResource(R.string.telegram_lossless_only_description),
                         icon = { Icon(painterResource(R.drawable.graphic_eq), contentDescription = null) },
@@ -214,6 +228,7 @@ fun TelegramSettings(navController: NavController) {
             PreferenceGroup(title = stringResource(R.string.telegram_bots_title)) {
                 item {
                     PreferenceEntry(
+                        modifier = positions.modifierFor("telegram_bots_title"),
                         title = { Text(stringResource(R.string.telegram_bots_title)) },
                         description =
                             if (isReady) {

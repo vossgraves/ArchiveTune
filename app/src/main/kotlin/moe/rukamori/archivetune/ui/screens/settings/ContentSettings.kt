@@ -120,6 +120,8 @@ fun ContentSettings(
     Column(
         Modifier
             .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
+            // Chained before verticalScroll so it measures the viewport, not the scrolling content.
+            .then(positions.containerModifier())
             .verticalScroll(scrollState)
             .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
     ) {
@@ -156,6 +158,7 @@ fun ContentSettings(
 
             item {
                 ListPreference(
+                    modifier = positions.modifierFor("content_country"),
                     title = { Text(stringResource(R.string.content_country)) },
                     icon = { Icon(painterResource(R.drawable.location_on), null) },
                     selectedValue = contentCountry,
@@ -181,6 +184,7 @@ fun ContentSettings(
 
             item {
                 ListPreference(
+                    modifier = positions.modifierFor("you_might_like_source"),
                     title = { Text(stringResource(R.string.you_might_like_source)) },
                     icon = { Icon(painterResource(R.drawable.playlist_play), null) },
                     selectedValue = playlistSuggestionSource,
@@ -203,6 +207,7 @@ fun ContentSettings(
 
             item {
                 SwitchPreference(
+                    modifier = positions.modifierFor("hide_explicit"),
                     title = { Text(stringResource(R.string.hide_explicit)) },
                     icon = { Icon(painterResource(R.drawable.explicit), null) },
                     checked = hideExplicit,
@@ -212,6 +217,7 @@ fun ContentSettings(
 
             item {
                 SwitchPreference(
+                    modifier = positions.modifierFor("hide_video"),
                     title = { Text(stringResource(R.string.hide_video)) },
                     icon = { Icon(painterResource(R.drawable.slow_motion_video), null) },
                     checked = hideVideo,
@@ -221,6 +227,7 @@ fun ContentSettings(
 
             item {
                 SwitchPreference(
+                    modifier = positions.modifierFor("allow_age_restricted"),
                     title = { Text(stringResource(R.string.allow_age_restricted)) },
                     description = stringResource(R.string.allow_age_restricted_summary),
                     icon = { Icon(painterResource(R.drawable.login), null) },
@@ -236,6 +243,7 @@ fun ContentSettings(
             onIncludeModerateChange = viewModel::setAiContentFilterIncludeModerate,
             onRefresh = viewModel::refreshAiContentFilter,
             onOpenSource = viewModel::openAiContentFilterSource,
+            positions = positions,
         )
 
         PreferenceGroup(
@@ -286,6 +294,7 @@ fun ContentSettings(
         ) {
             item {
                 EditTextPreference(
+                    modifier = positions.modifierFor("ai_content_filter"),
                     title = { Text(stringResource(R.string.top_length)) },
                     icon = { Icon(painterResource(R.drawable.trending_up), null) },
                     value = lengthTop,
@@ -331,6 +340,7 @@ private fun AiContentFilterPreferences(
     onIncludeModerateChange: (Boolean) -> Unit,
     onRefresh: () -> Unit,
     onOpenSource: () -> Unit,
+    positions: PreferencePositions,
 ) {
     PreferenceGroup(title = stringResource(R.string.ai_content_filter)) {
         when (state) {
@@ -364,6 +374,7 @@ private fun AiContentFilterPreferences(
                 val model = state.model
                 item {
                     SwitchPreference(
+                        modifier = positions.modifierFor("ai_content_filter_hide"),
                         title = { Text(stringResource(R.string.ai_content_filter_hide)) },
                         description = stringResource(R.string.ai_content_filter_hide_summary),
                         icon = { Icon(painterResource(R.drawable.auto_awesome), null) },
@@ -373,6 +384,7 @@ private fun AiContentFilterPreferences(
                 }
                 item {
                     SwitchPreference(
+                        modifier = positions.modifierFor("ai_content_filter_moderate"),
                         title = { Text(stringResource(R.string.ai_content_filter_moderate)) },
                         description = stringResource(R.string.ai_content_filter_moderate_summary),
                         icon = { Icon(painterResource(R.drawable.filter_alt), null) },
@@ -383,6 +395,7 @@ private fun AiContentFilterPreferences(
                 }
                 item {
                     PreferenceEntry(
+                        modifier = positions.modifierFor("ai_content_filter_update"),
                         title = { Text(stringResource(R.string.ai_content_filter_update)) },
                         description =
                             if (model.refreshing) {
@@ -401,6 +414,7 @@ private fun AiContentFilterPreferences(
                 }
                 item {
                     PreferenceEntry(
+                        modifier = positions.modifierFor("ai_content_filter_source"),
                         title = { Text(stringResource(R.string.ai_content_filter_source)) },
                         description = stringResource(R.string.ai_content_filter_source_summary),
                         icon = { Icon(painterResource(R.drawable.info), null) },

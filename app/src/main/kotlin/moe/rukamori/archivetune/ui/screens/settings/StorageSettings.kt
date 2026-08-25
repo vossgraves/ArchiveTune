@@ -344,6 +344,8 @@ fun StorageSettings(
             Modifier
                 .padding(top = topPadding)
                 .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal))
+                // Chained before verticalScroll so it measures the viewport, not the scrolling content.
+                .then(positions.containerModifier())
                 .verticalScroll(scrollState)
                 .padding(
                     start = 12.dp,
@@ -367,6 +369,7 @@ fun StorageSettings(
             ) {
                 item {
                     ListPreference(
+                        modifier = positions.modifierFor("max_song_cache_size"),
                         title = { Text(stringResource(R.string.max_song_cache_size)) },
                         description =
                             if (maxSongCacheSize == -1) {
@@ -401,6 +404,7 @@ fun StorageSettings(
                 }
                 item {
                     PreferenceEntry(
+                        modifier = positions.modifierFor("clear_song_cache"),
                         title = { Text(stringResource(R.string.clear_song_cache)) },
                         onClick = { clearCacheDialog = true },
                     )
@@ -428,6 +432,7 @@ fun StorageSettings(
             ) {
                 item {
                     ListPreference(
+                        modifier = positions.modifierFor("max_image_cache_size"),
                         title = { Text(stringResource(R.string.max_image_cache_size)) },
                         description =
                             when {
@@ -470,6 +475,7 @@ fun StorageSettings(
                 }
                 item {
                     PreferenceEntry(
+                        modifier = positions.modifierFor("clear_image_cache"),
                         title = { Text(stringResource(R.string.clear_image_cache)) },
                         onClick = { clearImageCacheDialog = true },
                     )
@@ -497,6 +503,7 @@ fun StorageSettings(
             ) {
                 item {
                     ListPreference(
+                        modifier = positions.modifierFor("max_cache_size"),
                         title = { Text(stringResource(R.string.max_cache_size)) },
                         description =
                             when {
@@ -539,6 +546,7 @@ fun StorageSettings(
                 }
                 item {
                     PreferenceEntry(
+                        modifier = positions.modifierFor("clear_canvas_cache"),
                         title = { Text(stringResource(R.string.clear_canvas_cache)) },
                         onClick = { clearCanvasCacheDialog = true },
                     )
@@ -570,6 +578,7 @@ fun StorageSettings(
             ) {
                 item {
                     PreferenceEntry(
+                        modifier = positions.modifierFor("clear_lyrics_cache"),
                         title = { Text(stringResource(R.string.clear_lyrics_cache)) },
                         onClick = { clearLyricsCacheDialog = true },
                     )
@@ -674,6 +683,7 @@ private fun StorageFolderSection(
 
         item {
             SwitchPreference(
+                modifier = positions.modifierFor("smart_trimmer"),
                 title = { Text(stringResource(R.string.smart_trimmer)) },
                 description = stringResource(R.string.smart_trimmer_description),
                 checked = smartTrimmer && isSmartTrimmerAvailable,

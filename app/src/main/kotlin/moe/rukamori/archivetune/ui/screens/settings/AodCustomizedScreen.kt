@@ -149,7 +149,10 @@ private data class AodPreviewSettings(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AodCustomizedScreen(navController: NavController) {
+fun AodCustomizedScreen(
+    navController: NavController,
+    scrollTo: String? = null,
+) {
     val scrollBehavior = appBarScrollBehavior()
     val (thumbnailShape, onThumbnailShapeChange) =
         rememberEnumPreference(
@@ -308,7 +311,11 @@ fun AodCustomizedScreen(navController: NavController) {
                 .only(WindowInsetsSides.Bottom)
                 .asPaddingValues()
                 .calculateBottomPadding()
+        val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+        val positions = rememberPreferencePositions()
+        androidx.compose.runtime.LaunchedEffect(scrollTo) { positions.scrollToKey(scrollTo, listState) }
         LazyColumn(
+            state = listState,
             modifier =
                 Modifier
                     .fillMaxSize()
@@ -317,7 +324,9 @@ fun AodCustomizedScreen(navController: NavController) {
                         LocalPlayerAwareWindowInsets.current.only(
                             WindowInsetsSides.Horizontal,
                         ),
-                    ),
+                    )
+                    // A LazyColumn *is* its own viewport, so the position it reports is the one scrollToKey measures against.
+                    .then(positions.containerModifier()),
             contentPadding = PaddingValues(bottom = playerAwareBottomPadding + 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
@@ -338,6 +347,7 @@ fun AodCustomizedScreen(navController: NavController) {
                 PreferenceGroup(title = stringResource(R.string.aod_customize_visibility)) {
                     item {
                         SwitchPreference(
+                            modifier = positions.modifierFor("aod_customize_show_thumbnail"),
                             title = { Text(stringResource(R.string.aod_customize_show_thumbnail)) },
                             icon = { Icon(painterResource(R.drawable.image), null) },
                             checked = showThumbnail,
@@ -346,6 +356,7 @@ fun AodCustomizedScreen(navController: NavController) {
                     }
                     item {
                         SwitchPreference(
+                            modifier = positions.modifierFor("aod_customize_show_artist"),
                             title = { Text(stringResource(R.string.aod_customize_show_artist)) },
                             icon = { Icon(painterResource(R.drawable.artist), null) },
                             checked = showArtist,
@@ -354,6 +365,7 @@ fun AodCustomizedScreen(navController: NavController) {
                     }
                     item {
                         SwitchPreference(
+                            modifier = positions.modifierFor("aod_customize_show_album"),
                             title = { Text(stringResource(R.string.aod_customize_show_album)) },
                             icon = { Icon(painterResource(R.drawable.album), null) },
                             checked = showAlbum,
@@ -362,6 +374,7 @@ fun AodCustomizedScreen(navController: NavController) {
                     }
                     item {
                         SwitchPreference(
+                            modifier = positions.modifierFor("aod_customize_show_progress"),
                             title = { Text(stringResource(R.string.aod_customize_show_progress)) },
                             icon = { Icon(painterResource(R.drawable.sliders), null) },
                             checked = showProgress,
@@ -370,6 +383,7 @@ fun AodCustomizedScreen(navController: NavController) {
                     }
                     item(visible = showProgress) {
                         SwitchPreference(
+                            modifier = positions.modifierFor("aod_customize_show_time_labels"),
                             title = { Text(stringResource(R.string.aod_customize_show_time_labels)) },
                             icon = { Icon(painterResource(R.drawable.timer), null) },
                             checked = showTimeLabels,
@@ -378,6 +392,7 @@ fun AodCustomizedScreen(navController: NavController) {
                     }
                     item {
                         SwitchPreference(
+                            modifier = positions.modifierFor("aod_customize_show_controls"),
                             title = { Text(stringResource(R.string.aod_customize_show_controls)) },
                             icon = { Icon(painterResource(R.drawable.buttons), null) },
                             checked = showControls,
@@ -386,6 +401,7 @@ fun AodCustomizedScreen(navController: NavController) {
                     }
                     item {
                         SwitchPreference(
+                            modifier = positions.modifierFor("aod_customize_show_exit_button"),
                             title = { Text(stringResource(R.string.aod_customize_show_exit_button)) },
                             icon = { Icon(painterResource(R.drawable.close), null) },
                             checked = showExitButton,
@@ -394,6 +410,7 @@ fun AodCustomizedScreen(navController: NavController) {
                     }
                     item {
                         SwitchPreference(
+                            modifier = positions.modifierFor("aod_customize_show_lyrics"),
                             title = { Text(stringResource(R.string.aod_customize_show_lyrics)) },
                             description = stringResource(R.string.aod_customize_show_lyrics_desc),
                             icon = { Icon(painterResource(R.drawable.lyrics), null) },
@@ -424,6 +441,7 @@ fun AodCustomizedScreen(navController: NavController) {
                 PreferenceGroup(title = stringResource(R.string.aod_customize_layout)) {
                     item {
                         EnumListPreference(
+                            modifier = positions.modifierFor("aod_customize_background_style"),
                             title = { Text(stringResource(R.string.aod_customize_background_style)) },
                             icon = { Icon(painterResource(R.drawable.gradient), null) },
                             selectedValue = backgroundStyle,
@@ -433,6 +451,7 @@ fun AodCustomizedScreen(navController: NavController) {
                     }
                     item {
                         EnumListPreference(
+                            modifier = positions.modifierFor("aod_customize_accent_style"),
                             title = { Text(stringResource(R.string.aod_customize_accent_style)) },
                             icon = { Icon(painterResource(R.drawable.palette), null) },
                             selectedValue = accentStyle,
@@ -442,6 +461,7 @@ fun AodCustomizedScreen(navController: NavController) {
                     }
                     item {
                         EnumListPreference(
+                            modifier = positions.modifierFor("aod_customize_content_position"),
                             title = { Text(stringResource(R.string.aod_customize_content_position)) },
                             icon = { Icon(painterResource(R.drawable.format_align_center), null) },
                             selectedValue = contentPosition,
@@ -451,6 +471,7 @@ fun AodCustomizedScreen(navController: NavController) {
                     }
                     item {
                         EnumListPreference(
+                            modifier = positions.modifierFor("aod_customize_text_alignment"),
                             title = { Text(stringResource(R.string.aod_customize_text_alignment)) },
                             icon = { Icon(painterResource(R.drawable.text_fields), null) },
                             selectedValue = textAlignment,
@@ -477,6 +498,7 @@ fun AodCustomizedScreen(navController: NavController) {
                 PreferenceGroup(title = stringResource(R.string.aod_customize_progress)) {
                     item {
                         EnumListPreference(
+                            modifier = positions.modifierFor("aod_customize_slider_style"),
                             title = { Text(stringResource(R.string.aod_customize_slider_style)) },
                             icon = { Icon(painterResource(R.drawable.style), null) },
                             selectedValue = sliderStyle,
@@ -550,6 +572,7 @@ fun AodCustomizedScreen(navController: NavController) {
                     }
                     item {
                         SwitchPreference(
+                            modifier = positions.modifierFor("aod_customize_artwork_glow"),
                             title = { Text(stringResource(R.string.aod_customize_artwork_glow)) },
                             icon = { Icon(painterResource(R.drawable.auto_awesome), null) },
                             checked = artworkGlow,
@@ -566,6 +589,7 @@ fun AodCustomizedScreen(navController: NavController) {
                 PreferenceGroup(title = stringResource(R.string.aod_customize_controls)) {
                     item {
                         EnumListPreference(
+                            modifier = positions.modifierFor("aod_customize_control_style"),
                             title = { Text(stringResource(R.string.aod_customize_control_style)) },
                             icon = { Icon(painterResource(R.drawable.buttons), null) },
                             selectedValue = controlStyle,
@@ -613,6 +637,7 @@ fun AodCustomizedScreen(navController: NavController) {
                     }
                     item {
                         SwitchPreference(
+                            modifier = positions.modifierFor("aod_customize_auto_on_screen_dim"),
                             title = { Text(stringResource(R.string.aod_customize_auto_on_screen_dim)) },
                             description = stringResource(R.string.aod_customize_auto_on_screen_dim_desc),
                             icon = { Icon(painterResource(R.drawable.bedtime), null) },

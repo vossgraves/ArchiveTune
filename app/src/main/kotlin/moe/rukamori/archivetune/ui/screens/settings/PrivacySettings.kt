@@ -206,6 +206,8 @@ fun PrivacySettings(navController: NavController, scrollTo: String? = null) {
             Modifier
                 .padding(top = topPadding)
                 .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal))
+                // Chained before verticalScroll so it measures the viewport, not the scrolling content.
+                .then(positions.containerModifier())
                 .verticalScroll(scrollState)
                 .padding(bottom = playerAwareBottomPadding + SettingsDimensions.ScreenBottomPadding),
         ) {
@@ -224,6 +226,7 @@ fun PrivacySettings(navController: NavController, scrollTo: String? = null) {
 
                 item {
                     PreferenceEntry(
+                        modifier = positions.modifierFor("clear_listen_history"),
                         title = { Text(stringResource(R.string.clear_listen_history)) },
                         icon = { Icon(painterResource(R.drawable.delete_history), null) },
                         onClick = { showClearListenHistoryDialog = true },
@@ -246,6 +249,7 @@ fun PrivacySettings(navController: NavController, scrollTo: String? = null) {
 
                 item {
                     PreferenceEntry(
+                        modifier = positions.modifierFor("clear_search_history"),
                         title = { Text(stringResource(R.string.clear_search_history)) },
                         icon = { Icon(painterResource(R.drawable.clear_all), null) },
                         onClick = { showClearSearchHistoryDialog = true },
@@ -259,6 +263,7 @@ fun PrivacySettings(navController: NavController, scrollTo: String? = null) {
             ) {
                 item {
                     SwitchPreference(
+                        modifier = positions.modifierFor("low_data_mode"),
                         title = { Text(stringResource(R.string.low_data_mode_title)) },
                         description = stringResource(R.string.low_data_mode_description),
                         icon = { Icon(painterResource(R.drawable.android_cell), null) },
@@ -269,6 +274,7 @@ fun PrivacySettings(navController: NavController, scrollTo: String? = null) {
 
                 item {
                     SwitchPreference(
+                        modifier = positions.modifierFor("force_high_refresh_rate"),
                         title = { Text(stringResource(R.string.force_high_refresh_rate)) },
                         icon = { Icon(painterResource(R.drawable.speed), null) },
                         checked = forceHighRefreshRate,
@@ -288,6 +294,7 @@ fun PrivacySettings(navController: NavController, scrollTo: String? = null) {
 
                 item {
                     SwitchPreference(
+                        modifier = positions.modifierFor("disable_screenshot"),
                         title = { Text(stringResource(R.string.disable_screenshot)) },
                         description = stringResource(R.string.disable_screenshot_desc),
                         icon = { Icon(painterResource(R.drawable.screenshot), null) },
@@ -301,6 +308,7 @@ fun PrivacySettings(navController: NavController, scrollTo: String? = null) {
                 if (isAndroid12OrLater) {
                     item {
                         PreferenceEntry(
+                            modifier = positions.modifierFor("open_supported_links"),
                             title = { Text(stringResource(R.string.open_supported_links)) },
                             description = stringResource(R.string.default_links),
                             icon = { Icon(painterResource(R.drawable.link), null) },
