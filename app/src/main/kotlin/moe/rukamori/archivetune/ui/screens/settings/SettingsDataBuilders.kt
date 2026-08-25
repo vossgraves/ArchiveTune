@@ -458,7 +458,7 @@ fun buildSettingsGroups(
                 SettingsChild("Lyrics click to seek", "lyrics_click", listOf("click lyrics", "tap lyrics", "seek lyrics")) { SearchResultSwitch(LyricsClickKey, false) },
                 SettingsChild("Lyrics auto-scroll", "lyrics_scroll", listOf("scroll", "auto scroll", "lyrics scroll")) { SearchResultSwitch(LyricsScrollKey, true) },
                 SettingsChild("Show lyrics player controls", "show_lyrics_player_controls", listOf("player controls", "lyrics controls")) { SearchResultSwitch(ShowLyricsPlayerControlsKey, true) },
-                SettingsChild("Auto-hide lyrics controls", "auto_hide_lyrics_player_controls", listOf("auto hide", "lyrics controls", "controls timeout", "5 seconds")) { SearchResultSwitch(AutoHideLyricsPlayerControlsKey, false) },
+                SettingsChild("Auto-hide lyrics controls", "auto_hide_lyrics_player_controls", listOf("auto hide", "lyrics controls", "controls timeout", "5 seconds")) { SearchResultSwitch(AutoHideLyricsPlayerControlsKey, true) },
                 SettingsChild("Preload queue lyrics", "preload_queue_lyrics", listOf("preload", "preload lyrics", "queue lyrics", "preload count", "queue lyrics count", "preload amount", "preload size")),
                 SettingsChild("Lyrics background style", "lyrics_background_style", listOf("lyrics background", "lyrics bg")),
                 SettingsChild("BetterLyrics", "betterlyrics", listOf("betterlyrics", "better lyrics", "better lyrics provider")),

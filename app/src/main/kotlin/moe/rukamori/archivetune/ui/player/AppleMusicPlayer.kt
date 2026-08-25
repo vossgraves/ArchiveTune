@@ -326,8 +326,9 @@ fun AppleMusicPlayerContent(
     // forces an extra layout pass on top of whatever the lyrics view is already
     // spending its frame budget on.
     val animationsDisabled = LocalAnimationsDisabled.current
-    val showLyricsPlayerControls by rememberPreference(ShowLyricsPlayerControlsKey, defaultValue = true)
-    val autoHideLyricsPlayerControls by rememberPreference(AutoHideLyricsPlayerControlsKey, defaultValue = false)
+    val showLyricsPlayerControlsState = rememberPreference(ShowLyricsPlayerControlsKey, defaultValue = true)
+    val showLyricsPlayerControls by showLyricsPlayerControlsState
+    val autoHideLyricsPlayerControls by rememberPreference(AutoHideLyricsPlayerControlsKey, defaultValue = true)
 
     // Toggling one closes the other — queue and lyrics are mutually exclusive
     // (only one morph target can be active at a time).
@@ -362,17 +363,20 @@ fun AppleMusicPlayerContent(
         lyricsOpen = false
     }
 
-    // Copied from main branch: simple auto-hide that always shows controls
-    // for 4 seconds when lyrics or queue opens, then hides them.
-    // No preference checks — the controls ALWAYS show first, then auto-hide.
+    // Auto-hide follows the shared Lyrics settings (AutoHideLyricsPlayerControlsKey),
+    // matching Apple Music's lyrics view: the controls are shown when the lyrics or
+    // queue opens, then clear after five seconds so the lyrics own the full screen —
+    // "Initially, you'll see other controls on the screen. But after five seconds,
+    // the lyrics will automatically start showing on the full screen." Tapping
+    // anywhere brings them back (see the pointerInput on the content Column/Row).
     var playerControlsExpanded by remember(mediaMetadata.id) { mutableStateOf(true) }
     var playerControlsVisibilityTick by remember(mediaMetadata.id) { mutableIntStateOf(0) }
-    val autoHideDelayMs = 4_000L
+    val autoHideDelayMs = 5_000L
 
     LaunchedEffect(lyricsOpen) {
         if (lyricsOpen) {
             playerControlsExpanded = true
-            playerControlsVisibilityTick++
+            if (autoHideLyricsPlayerControls) playerControlsVisibilityTick++
         } else {
             playerControlsExpanded = true
         }
@@ -380,7 +384,7 @@ fun AppleMusicPlayerContent(
     LaunchedEffect(queueOpen) {
         if (queueOpen) {
             playerControlsExpanded = true
-            playerControlsVisibilityTick++
+            if (autoHideLyricsPlayerControls) playerControlsVisibilityTick++
         } else {
             playerControlsExpanded = true
         }
@@ -394,8 +398,14 @@ fun AppleMusicPlayerContent(
     DisposableEffect(Unit) {
         onDispose { onLyricsVisibilityChange(false) }
     }
-    // Auto-hide: show controls for 4s, then hide. Fires for both lyrics and queue.
-    LaunchedEffect(lyricsOpen, queueOpen, playerControlsVisibilityTick) {
+    // Auto-hide timer: show controls for 5s, then hide. Fires for both lyrics and queue,
+    // but ONLY when the Auto-hide controls preference is on. Turning the preference off
+    // mid-session immediately restores the controls and keeps them.
+    LaunchedEffect(lyricsOpen, queueOpen, playerControlsVisibilityTick, autoHideLyricsPlayerControls) {
+        if (!autoHideLyricsPlayerControls) {
+            playerControlsExpanded = true
+            return@LaunchedEffect
+        }
         if (!lyricsOpen && !queueOpen) return@LaunchedEffect
         playerControlsExpanded = true
         delay(autoHideDelayMs)
@@ -618,16 +628,25 @@ fun AppleMusicPlayerContent(
     }
     val onMoreClick = {
         if (lyricsOpen) {
-            // When lyrics is open, the overflow menu shows lyric actions. Control visibility is governed
-            // by the shared Lyrics settings, so the Apple Music style does not duplicate those toggles.
+            // When lyrics is open, the overflow menu shows lyric actions plus the
+            // player-control toggles, identical to the standalone lyrics screen.
             menuState.show {
                 LyricsMenu(
                     lyricsProvider = { currentLyrics },
                     mediaMetadataProvider = { mediaMetadata },
                     lyricsSyncOffset = lyricsSyncOffset,
                     onLyricsSyncOffsetChange = onLyricsSyncOffsetChange,
+                    showPlayerControlsState = showLyricsPlayerControlsState,
+                    onShowPlayerControlsChange = { showLyricsPlayerControlsState.value = it },
+                    onAutoHidePlayerControlsChange = { enabled ->
+                        if (enabled) {
+                            playerControlsVisibilityTick++
+                        } else {
+                            playerControlsExpanded = true
+                        }
+                    },
                     onDismiss = menuState::dismiss,
-                    showControlsToggles = false,
+                    showControlsToggles = true,
                 )
             }
         } else {
@@ -955,7 +974,22 @@ fun AppleMusicPlayerContent(
         }
 
         if (landscape) {
-            Row(Modifier.fillMaxSize()) {
+            Row(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        // Tap ANYWHERE to bring the auto-hidden controls back (Apple Music
+                        // lyrics behaviour). A parent-level handler observes every tap in the
+                        // subtree regardless of which child consumes the gesture, so the whole
+                        // screen — lyrics, queue list, controls — is one large tap target.
+                        .pointerInput(lyricsOpen, queueOpen) {
+                            if (!lyricsOpen && !queueOpen) return@pointerInput
+                            awaitEachGesture {
+                                awaitFirstDown(requireUnconsumed = false)
+                                pokePlayerControlsVisibility()
+                            }
+                        },
+            ) {
                 AppleMusicSharpArtwork(
                     artworkRequest = artworkRequest,
                     artworkUrl = artworkUrl,
@@ -1039,7 +1073,22 @@ fun AppleMusicPlayerContent(
             //    weighted Box, and the controls live in a separate AnimatedVisibility
             //    below the Box — touches on the controls go directly to the controls.
             Column(
-                modifier = Modifier.fillMaxSize(),
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        // Tap ANYWHERE to bring the auto-hidden controls back (Apple Music
+                        // lyrics behaviour). A parent-level handler observes every tap in the
+                        // subtree regardless of which child consumes the gesture, so the whole
+                        // player — lyrics overlay, queue sheet, controls — is one large tap
+                        // target. This also covers the controls themselves: an interaction on
+                        // the seekbar or transport restarts the auto-hide timer.
+                        .pointerInput(lyricsOpen, queueOpen) {
+                            if (!lyricsOpen && !queueOpen) return@pointerInput
+                            awaitEachGesture {
+                                awaitFirstDown(requireUnconsumed = false)
+                                pokePlayerControlsVisibility()
+                            }
+                        },
             ) {
                 BoxWithConstraints(modifier = Modifier.weight(1f)) {
                 // Mini header height = artwork size + vertical padding (8.dp top + 8.dp bottom)
@@ -1353,14 +1402,7 @@ fun AppleMusicPlayerContent(
                             Modifier
                                 .fillMaxWidth()
                                 .height(maxHeight - miniHeaderHeight)
-                                .offset(y = miniHeaderHeight)
-                                .pointerInput(lyricsOpen) {
-                                    if (!lyricsOpen) return@pointerInput
-                                    awaitEachGesture {
-                                        awaitFirstDown(requireUnconsumed = false)
-                                        pokePlayerControlsVisibility()
-                                    }
-                                },
+                                .offset(y = miniHeaderHeight),
                     ) {
                         // HORIZONTAL PADDING — compensate for the mocharealm
                         // KaraokeLineText library's INTERNAL 16dp horizontal padding
@@ -1440,7 +1482,10 @@ fun AppleMusicPlayerContent(
                 // animations are reduced so the auto-hide/show cycle doesn't compete with
                 // the karaoke lyrics view for frame budget on lower-end devices.
                 AnimatedVisibility(
-                    visible = (!lyricsOpen && !queueOpen) || playerControlsExpanded,
+                    visible =
+                        (!lyricsOpen && !queueOpen) ||
+                            (queueOpen && playerControlsExpanded) ||
+                            (lyricsOpen && showLyricsPlayerControls && playerControlsExpanded),
                     enter = if (animationsDisabled) {
                         fadeIn(tween(120))
                     } else {

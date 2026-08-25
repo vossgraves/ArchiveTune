@@ -232,7 +232,7 @@ fun LyricsScreen(
         rememberPreference(ShowLyricsPlayerControlsKey, true)
     val showPlayerControlsEnabled by showPlayerControlsState
     val (autoHidePlayerControls, onAutoHidePlayerControlsChange) =
-        rememberPreference(AutoHideLyricsPlayerControlsKey, false)
+        rememberPreference(AutoHideLyricsPlayerControlsKey, true)
     var playerControlsExpanded by remember(mediaMetadata.id, showPlayerControlsEnabled) {
         mutableStateOf(showPlayerControlsEnabled)
     }
@@ -573,7 +573,22 @@ fun LyricsScreen(
     Box(
         modifier =
             modifier
-                .fillMaxSize(),
+                .fillMaxSize()
+                // Tap ANYWHERE to bring the auto-hidden controls back (Apple Music lyrics
+                // behaviour). This handler sits on the ROOT container so it is an ancestor of
+                // every hit path: Compose delivers pointer events to the hit node and its
+                // ancestors, so taps land here even when the lyrics LazyColumn consumes them
+                // for scrolling. The previous implementation was a sibling Box UNDER the
+                // content — hit-testing stops at the topmost hit sibling (the lyrics list),
+                // so the poke only ever fired in the padding gutters, which is why the
+                // tappable area felt so small.
+                .pointerInput(showPlayerControlsEnabled, autoHidePlayerControls) {
+                    if (!showPlayerControlsEnabled || !autoHidePlayerControls) return@pointerInput
+                    awaitEachGesture {
+                        awaitFirstDown(requireUnconsumed = false)
+                        pokePlayerControlsVisibility()
+                    }
+                },
     ) {
         LyricsScreenBackground(
             style = lyricsBackground,
@@ -587,18 +602,13 @@ fun LyricsScreen(
             playerCustomBrightness = playerCustomBrightness,
         )
 
+        // Keeps unconsumed taps from falling through to whatever is layered below the
+        // lyrics screen (e.g. the player behind it).
         Box(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .consumeUnhandledPointerInput()
-                    .pointerInput(showPlayerControlsEnabled, autoHidePlayerControls) {
-                        if (!showPlayerControlsEnabled || !autoHidePlayerControls) return@pointerInput
-                        awaitEachGesture {
-                            awaitFirstDown(requireUnconsumed = false)
-                            pokePlayerControlsVisibility()
-                        }
-                    },
+                    .consumeUnhandledPointerInput(),
         )
 
         CompositionLocalProvider(LocalLyricsScrollListener provides { scrolling ->
