@@ -410,11 +410,15 @@ jobs:
             echo "## Commits"
           } >> nightly_notes.md
           if [ -n "${LAST_TAG:-}" ] && [ "$LAST_TAG" != "null" ] && git rev-parse "$LAST_TAG" >/dev/null 2>&1; then
-            git log --pretty=format:'- %s (%h)' "${LAST_TAG}..HEAD" >> nightly_notes.md || true
+            # -n 500 caps the list: after a large sync jump the range can contain thousands of
+            # commits and the release body would exceed GitHub's 125k-character limit.
+            git log --pretty=format:'- %s (%h)' -n 500 "${LAST_TAG}..HEAD" >> nightly_notes.md || true
           else
             git log --pretty=format:'- %s (%h)' -n 30 >> nightly_notes.md || true
           fi
           echo "" >> nightly_notes.md
+          # Hard guarantee against GitHub's 125k-character release-body limit.
+          head -c 120000 nightly_notes.md > nightly_notes.tmp && mv nightly_notes.tmp nightly_notes.md
 
       - name: Create nightly prerelease
         env:
