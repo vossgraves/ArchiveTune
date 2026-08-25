@@ -196,6 +196,7 @@ private val AppleMusicMiniArtworkSize = 56.dp
 private const val AmLyricsBlurDriftXDp = 160f
 private const val AmLyricsBlurDriftYDp = 120f
 private const val AmLyricsBlurDriftScale = 2.4f
+private const val AppleMusicLyricsContentDeferMs = 350L
 
 /**
  * A [Shape] that interpolates the corner radius based on the element's size.
@@ -434,6 +435,19 @@ fun AppleMusicPlayerContent(
         } else {
             canvasVisibleForLyrics = true
         }
+    }
+    var lyricsContentReady by remember { mutableStateOf(false) }
+    LaunchedEffect(lyricsOpen) {
+        if (!lyricsOpen) {
+            lyricsContentReady = false
+            return@LaunchedEffect
+        }
+        // Parse/building a large TTML/LRC model is synchronous during the first composition of
+        // LyricsEnhanced/LyricsV2. Let the artwork morph and canvas handoff render first so that
+        // this one-time CPU burst cannot land on the same frame as the shared-bounds animation.
+        lyricsContentReady = false
+        delay(AppleMusicLyricsContentDeferMs)
+        lyricsContentReady = true
     }
     val pokePlayerControlsVisibility = remember(lyricsOpen, queueOpen) {
         {
@@ -763,9 +777,9 @@ fun AppleMusicPlayerContent(
             // animation State<Float> inside the lambda (draw phase) so the
             // parent composable is NOT invalidated every frame.
             val driftGraphicsLayer: GraphicsLayerScope.() -> Unit = {
-                // lyricsOpen is a stable Boolean state — reading it here is a
-                // deferred read that only triggers a layer update on toggle.
-                val active = lyricsOpen
+                // These are stable state reads — deferred inside the graphics-layer lambda so
+                // the backdrop only updates when the lyrics transition reaches its ready point.
+                val active = lyricsOpen && lyricsContentReady
                 // Scale [AmLyricsBlurDriftScale] (lyricsOpen) ensures the image
                 // extends 0.7*W beyond each edge — enough to cover
                 // drift(±160) + blur(64dp) = 224dp even on a 360dp-wide screen
@@ -859,7 +873,7 @@ fun AppleMusicPlayerContent(
                 // Static image overlay for lyrics — rendered ON TOP of the
                 // (paused) canvas so the user sees the moving-blur aesthetic.
                 // Without this, the paused canvas's last frame would show.
-                if (lyricsOpen) {
+                if (lyricsOpen && lyricsContentReady) {
                     if (isPreS && preBlurredBitmap != null) {
                         Image(
                             bitmap = preBlurredBitmap!!.asImageBitmap(),
@@ -894,7 +908,7 @@ fun AppleMusicPlayerContent(
                         )
                     }
                 }
-            } else if (lyricsOpen) {
+            } else if (lyricsOpen && lyricsContentReady) {
                 // Non-canvas backdrop, LYRICS state: static image with blur + drift.
                 if (isPreS && preBlurredBitmap != null) {
                     Image(
@@ -1451,21 +1465,23 @@ fun AppleMusicPlayerContent(
                         // allowed to extend into the empty padded area and only gets
                         // clipped by the physical screen edge if truly necessary.
                         val lyricsHorizontalPadding = AppleMusicContentPadding - 16.dp
-                        when (lyricsMode) {
-                            LyricsMode.V2 -> LyricsV2(
-                                sliderPositionProvider = lyricsPosProvider,
-                                lyricsSyncOffset = lyricsSyncOffset,
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(horizontal = lyricsHorizontalPadding),
-                            )
-                            LyricsMode.ENHANCED -> LyricsEnhanced(
-                                sliderPositionProvider = lyricsPosProvider,
-                                lyricsSyncOffset = lyricsSyncOffset,
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(horizontal = lyricsHorizontalPadding),
-                            )
+                        if (lyricsContentReady) {
+                            when (lyricsMode) {
+                                LyricsMode.V2 -> LyricsV2(
+                                    sliderPositionProvider = lyricsPosProvider,
+                                    lyricsSyncOffset = lyricsSyncOffset,
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(horizontal = lyricsHorizontalPadding),
+                                )
+                                LyricsMode.ENHANCED -> LyricsEnhanced(
+                                    sliderPositionProvider = lyricsPosProvider,
+                                    lyricsSyncOffset = lyricsSyncOffset,
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(horizontal = lyricsHorizontalPadding),
+                                )
+                            }
                         }
                     }
                 }
