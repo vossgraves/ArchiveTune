@@ -277,6 +277,27 @@ class SpotifyLibraryRepository
                 tracks
             }
 
+        suspend fun likedSongs(): List<SpotifyTrack> =
+            withContext(Dispatchers.IO) {
+                ensureAuthenticated()
+                val tracks = ArrayList<SpotifyTrack>()
+                var offset = 0
+                val limit = 50
+
+                while (true) {
+                    val page =
+                        spotifyCallWithTokenRetry {
+                            Spotify.likedSongs(limit = limit, offset = offset).getOrThrow()
+                        }
+                    if (page.items.isEmpty()) break
+                    tracks += page.items.mapNotNull { it.track.takeUnless(SpotifyTrack::isLocal) }
+                    offset += page.items.size
+                    if (offset >= page.total || page.items.size < limit) break
+                }
+
+                tracks
+            }
+
         /**
          * Searches Spotify's catalog after restoring/refreshing the persisted Web Player session.
          * Results are cached briefly because the Search page and metadata enrichment can ask for

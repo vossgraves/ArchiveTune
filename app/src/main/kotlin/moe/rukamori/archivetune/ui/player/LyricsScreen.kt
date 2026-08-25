@@ -82,6 +82,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -94,6 +95,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -165,6 +167,7 @@ import moe.rukamori.archivetune.utils.rememberEnumPreference
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.LyricsMenuViewModel
 import kotlin.coroutines.cancellation.CancellationException
+import kotlin.math.abs
 
 private val AppleMusicFallbackGradient =
     listOf(
@@ -172,6 +175,9 @@ private val AppleMusicFallbackGradient =
         Color(0xFF141414),
         Color(0xFF050505),
     )
+
+private val LyricsSwipeStartRegion = 144.dp
+private val LyricsSwipeDismissThreshold = 96.dp
 
 /**
  * Plumbs the lyrics-scroll signal up from [LyricsEnhanced] / [LyricsV2] (which own the
@@ -228,6 +234,9 @@ fun LyricsScreen(
     val playerCustomContrast by rememberPreference(PlayerCustomContrastKey, 1f)
     val playerCustomBrightness by rememberPreference(PlayerCustomBrightnessKey, 1f)
     val foregroundColor = Color.White
+    val density = LocalDensity.current
+    val swipeStartRegionPx = with(density) { LyricsSwipeStartRegion.toPx() }
+    val swipeDismissThresholdPx = with(density) { LyricsSwipeDismissThreshold.toPx() }
     val showPlayerControlsState =
         rememberPreference(ShowLyricsPlayerControlsKey, true)
     val showPlayerControlsEnabled by showPlayerControlsState
@@ -582,11 +591,35 @@ fun LyricsScreen(
                 // content — hit-testing stops at the topmost hit sibling (the lyrics list),
                 // so the poke only ever fired in the padding gutters, which is why the
                 // tappable area felt so small.
-                .pointerInput(showPlayerControlsEnabled, autoHidePlayerControls) {
-                    if (!showPlayerControlsEnabled || !autoHidePlayerControls) return@pointerInput
+                .pointerInput(
+                    showPlayerControlsEnabled,
+                    autoHidePlayerControls,
+                    swipeStartRegionPx,
+                    swipeDismissThresholdPx,
+                    onBackClick,
+                ) {
                     awaitEachGesture {
-                        awaitFirstDown(requireUnconsumed = false)
-                        pokePlayerControlsVisibility()
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        if (showPlayerControlsEnabled && autoHidePlayerControls) {
+                            pokePlayerControlsVisibility()
+                        }
+
+                        if (down.position.y <= swipeStartRegionPx) {
+                            while (true) {
+                                val event = awaitPointerEvent(PointerEventPass.Initial)
+                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                if (!change.pressed) break
+
+                                val deltaX = change.position.x - down.position.x
+                                val deltaY = change.position.y - down.position.y
+                                if (deltaY < 0f || abs(deltaX) > abs(deltaY)) break
+                                if (deltaY >= swipeDismissThresholdPx) {
+                                    change.consume()
+                                    onBackClick()
+                                    break
+                                }
+                            }
+                        }
                     }
                 },
     ) {

@@ -17,6 +17,8 @@ import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.playback.queues.Queue
 import moe.rukamori.archivetune.spotify.models.SpotifyTrack
 
+internal const val SPOTIFY_LIKED_SONGS_ID = "__spotify_liked_songs__"
+
 class SpotifyPlaylistQueue(
     private val playlistId: String,
     private val title: String? = null,
@@ -108,6 +110,14 @@ class SpotifyPlaylistQueue(
 
     private suspend fun fetchNextApiPage() {
         if (!apiHasMore) return
+        if (playlistId == SPOTIFY_LIKED_SONGS_ID) {
+            val page = Spotify.likedSongs(limit = SPOTIFY_PAGE_SIZE, offset = apiFetchOffset).getOrThrow()
+            apiTotal = page.total
+            allTracks += page.items.mapNotNull { it.track.takeUnless(SpotifyTrack::isLocal) }
+            apiFetchOffset += page.items.size
+            apiHasMore = apiFetchOffset < apiTotal
+            return
+        }
         val result =
             Spotify
                 .playlistTracks(

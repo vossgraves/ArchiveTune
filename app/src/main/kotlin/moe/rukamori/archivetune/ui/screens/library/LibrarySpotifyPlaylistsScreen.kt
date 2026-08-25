@@ -31,6 +31,7 @@ import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.spotify.SpotifyLibraryViewModel
 import moe.rukamori.archivetune.ui.component.ExpressivePullToRefreshBox
+import moe.rukamori.archivetune.ui.component.SpotifyLikedSongsListItem
 import moe.rukamori.archivetune.ui.component.SpotifyLibraryPlaylistListItem
 
 @Composable
@@ -64,6 +65,10 @@ fun LibrarySpotifyPlaylistsScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
             modifier = Modifier.fillMaxSize(),
         ) {
+            item(key = "spotify_liked_songs", contentType = "spotify_liked_songs") {
+                SpotifyLikedSongsListItem(navController = navController)
+            }
+
             if (playlists.isEmpty()) {
                 item(key = "spotify_empty", contentType = "spotify_empty") {
                     Text(

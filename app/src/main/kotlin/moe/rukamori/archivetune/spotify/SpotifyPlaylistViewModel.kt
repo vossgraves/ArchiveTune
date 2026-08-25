@@ -7,12 +7,14 @@
 
 package moe.rukamori.archivetune.spotify
 
+import android.content.Context
 import androidx.compose.runtime.Immutable
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.common.collect.ImmutableList
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -23,7 +25,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.spotify.models.SpotifyPlaylist
+import moe.rukamori.archivetune.spotify.models.SpotifyPlaylistTracksRef
 import moe.rukamori.archivetune.spotify.models.SpotifyTrack
 import moe.rukamori.archivetune.utils.reportException
 import javax.inject.Inject
@@ -35,6 +39,7 @@ class SpotifyPlaylistViewModel
         savedStateHandle: SavedStateHandle,
         private val repository: SpotifyLibraryRepository,
         private val resolveSpotifyPlaylistDownloads: ResolveSpotifyPlaylistDownloadsUseCase,
+        @ApplicationContext private val context: Context,
     ) : ViewModel() {
         private val playlistId: String = savedStateHandle.get<String>("playlistId").orEmpty()
 
@@ -69,8 +74,17 @@ class SpotifyPlaylistViewModel
             }
             reloadJob = viewModelScope.launch(Dispatchers.IO) {
                 try {
-                    val playlist = repository.playlist(playlistId)
-                    val tracks = repository.playlistTracks(playlistId)
+                    val (playlist, tracks) =
+                        if (playlistId == SPOTIFY_LIKED_SONGS_ID) {
+                            val likedTracks = repository.likedSongs()
+                            SpotifyPlaylist(
+                                id = playlistId,
+                                name = context.getString(R.string.liked_songs),
+                                tracks = SpotifyPlaylistTracksRef(total = likedTracks.size),
+                            ) to likedTracks
+                        } else {
+                            repository.playlist(playlistId) to repository.playlistTracks(playlistId)
+                        }
                     _uiState.value =
                         SpotifyPlaylistUiState(
                             playlist = playlist,

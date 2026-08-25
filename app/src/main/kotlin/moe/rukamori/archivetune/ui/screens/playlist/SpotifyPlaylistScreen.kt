@@ -84,6 +84,7 @@ import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.spotify.SpotifyMapper
 import moe.rukamori.archivetune.spotify.SpotifyDownloadItem
+import moe.rukamori.archivetune.spotify.SPOTIFY_LIKED_SONGS_ID
 import moe.rukamori.archivetune.spotify.SpotifyPlaybackResolver
 import moe.rukamori.archivetune.spotify.SpotifyPlaylistEvent
 import moe.rukamori.archivetune.spotify.SpotifyPlaylistQueue
@@ -435,7 +436,12 @@ fun SpotifyPlaylistScreen(
                         MediaDetailHero(
                             title = currentPlaylist.name,
                             thumbnailUrl = thumbnailUrl,
-                            fallbackIcon = R.drawable.queue_music,
+                            fallbackIcon =
+                                if (currentPlaylist.id == SPOTIFY_LIKED_SONGS_ID) {
+                                    R.drawable.favorite
+                                } else {
+                                    R.drawable.queue_music
+                                },
                             systemBarsTopPadding = systemBarsTopPadding,
                             subtitle =
                                 currentPlaylist.owner
