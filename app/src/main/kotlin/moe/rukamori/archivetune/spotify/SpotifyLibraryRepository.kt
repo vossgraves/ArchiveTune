@@ -163,7 +163,10 @@ class SpotifyLibraryRepository
                         prefs.remove(SpotifyAccessTokenExpiresAtKey)
                     }
                 }
-                if (credentialsChanged) Spotify.accessToken = null
+                if (credentialsChanged) {
+                    Spotify.accessToken = null
+                    clearCatalogCaches()
+                }
                 _playlists.value = emptyList()
                 _errorMessage.value = null
                 refreshAccessToken(spDc = spDc, spKey = spKey).getOrThrow()
@@ -189,6 +192,7 @@ class SpotifyLibraryRepository
                 _playlists.value = emptyList()
                 _errorMessage.value = null
                 Spotify.accessToken = null
+                clearCatalogCaches()
                 runCatching { clearWebAuthSession(context) }
                     .onFailure(::reportException)
             }
@@ -379,6 +383,11 @@ class SpotifyLibraryRepository
                 }
                 enriched
             }
+
+        private fun clearCatalogCaches() {
+            synchronized(searchCache) { searchCache.clear() }
+            synchronized(metadataCache) { metadataCache.clear() }
+        }
 
 
         /**

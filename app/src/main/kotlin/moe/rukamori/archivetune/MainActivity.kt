@@ -81,6 +81,7 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -1029,6 +1030,11 @@ class MainActivity : ComponentActivity() {
                 customFontUri = customFontUri,
             ) {
                 val navController = rememberNavController()
+                // Keep top-level list state outside destination content. MainActivity unbinds the
+                // music service in onStop; HomeScreen otherwise disappears while the connection is
+                // null and is recreated at offset zero when the app returns to the foreground.
+                val homeListState = rememberLazyListState()
+                val searchListState = rememberLazyListState()
                 val onboardingViewModel: OnboardingViewModel = hiltViewModel()
                 val onboardingState by onboardingViewModel.screenState.collectAsStateWithLifecycle()
                 var showOnboardingLogin by rememberSaveable { mutableStateOf(false) }
@@ -2970,6 +2976,8 @@ class MainActivity : ComponentActivity() {
                                         onClearUpdateBadge = { latestVersionName = BuildConfig.VERSION_NAME },
                                         onSearchQuery = onSearch,
                                         onVoiceSearch = launchVoiceSearch,
+                                        homeListState = homeListState,
+                                        searchListState = searchListState,
                                         homeScrollConnection = homeScrollBehavior.nestedScrollConnection,
                                         searchScrollConnection = searchScrollBehavior.nestedScrollConnection,
                                         onlineSearchSort = onlineSearchSort,

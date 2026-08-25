@@ -568,6 +568,15 @@ class MusicService :
     private var lastLoginRecoveryPrompt: Pair<String, Long>? = null
     private val playbackStreamRecoveryTracker = PlaybackStreamRecoveryTracker()
 
+    // Initial-buffer-stall recovery (ported from Metrolist's "fix: playback once again").
+    // A stream can stall in STATE_BUFFERING forever without surfacing an HTTP error the
+    // onPlayerError recovery paths can act on — the player just spins, then the user skips.
+    // Watchdog: if playback is BUFFERING with playWhenReady at the very start of a track for
+    // longer than INITIAL_BUFFER_STALL_DELAY_MS, invalidate the resolved stream caches and
+    // re-prepare so the resolver picks a fresh (possibly different-client) stream URL.
+    private var initialBufferRecoveryJob: Job? = null
+    private var initialBufferRecoveryAttemptedMediaId: String? = null
+
     // Codec-state recovery counter, SEPARATE from PlaybackStreamRecoveryTracker.
     //
     // Background: when an ALAC (.m4a) stream is backgrounded + paused for a few minutes,
@@ -3833,6 +3842,47 @@ class MusicService :
         player.prepare()
         if (shouldResume) player.play()
         return true
+    }
+
+    private fun updateInitialBufferRecovery(@Player.State playbackState: Int) {
+        val mediaId = player.currentMediaItem?.mediaId
+        val shouldWatch =
+            playbackState == Player.STATE_BUFFERING &&
+                player.playWhenReady &&
+                player.currentPosition < INITIAL_BUFFER_STALL_POSITION_MS &&
+                mediaId != null &&
+                initialBufferRecoveryAttemptedMediaId != mediaId
+
+        if (!shouldWatch) {
+            initialBufferRecoveryJob?.cancel()
+            initialBufferRecoveryJob = null
+            return
+        }
+        if (initialBufferRecoveryJob?.isActive == true) return
+
+        initialBufferRecoveryJob =
+            scope.launch {
+                delay(INITIAL_BUFFER_STALL_DELAY_MS)
+                if (player.playbackState != Player.STATE_BUFFERING ||
+                    !player.playWhenReady ||
+                    player.currentPosition >= INITIAL_BUFFER_STALL_POSITION_MS ||
+                    player.currentMediaItem?.mediaId != mediaId
+                ) {
+                    return@launch
+                }
+
+                initialBufferRecoveryAttemptedMediaId = mediaId
+                Timber.tag(TAG).w(
+                    "Initial buffer stalled for %s; invalidating stream caches and re-preparing",
+                    mediaId,
+                )
+                playbackUrlCache.remove(mediaId)
+                YTPlayerUtils.invalidateCachedStreamUrls(mediaId)
+                if (playbackStreamRecoveryTracker.registerRetryAttempt(mediaId)) {
+                    player.prepare()
+                    if (player.playWhenReady) player.play()
+                }
+            }
     }
 
 
@@ -7343,6 +7393,12 @@ class MusicService :
         super.onMediaItemTransition(mediaItem, reason)
         mediaItem?.metadata?.let { queuedMetadataByMediaId[mediaItem.mediaId] = it }
 
+        // New item: reset the initial-buffer-stall watchdog for the next track.
+        initialBufferRecoveryJob?.cancel()
+        initialBufferRecoveryJob = null
+        initialBufferRecoveryAttemptedMediaId = null
+        updateInitialBufferRecovery(player.playbackState)
+
         // Catch-all for user-initiated skips that bypass PlayerConnection (notification, lock
         // screen, Bluetooth, Android Auto): a SEEK transition while a crossfade fade loop is still
         // running — but NOT the crossfade's own handoff seek (crossfadeHandoffInProgress) — means
@@ -7596,6 +7652,7 @@ class MusicService :
         super.onPlaybackStateChanged(playbackState)
 
         updateHistoryTrackingPlaybackState()
+        updateInitialBufferRecovery(playbackState)
         if (playbackState == Player.STATE_ENDED || playbackState == Player.STATE_IDLE) {
             enqueueCurrentHistorySessionForFinalization()
             if (!isCrossfading || playbackState == Player.STATE_IDLE) {
@@ -7695,6 +7752,7 @@ class MusicService :
 
     override fun onIsPlayingChanged(isPlaying: Boolean) {
         super.onIsPlayingChanged(isPlaying)
+        updateInitialBufferRecovery(player.playbackState)
         secondaryCrossfadePlayer?.let { secondaryPlayer ->
             if (isCrossfading && !crossfadeHandoffInProgress) {
                 if (isPlaying) {
@@ -8463,6 +8521,7 @@ class MusicService :
             }
         val directFactory = createResolvedUpstreamDataSourceFactory()
         val telegramFactory = TelegramDataSource.Factory()
+        val tidalProgressiveDashFactory = TidalProgressiveDashDataSource.Factory(mediaOkHttpClient)
         // Deezer needs its own chain rather than cachedFactory's: that one runs the YouTube
         // resolver over the dataSpec, which would rewrite our deezer:// URI. Decryption sits below
         // the cache so what gets cached is already-decrypted audio, letting a replay skip both the
@@ -8483,6 +8542,7 @@ class MusicService :
                 directFactory = directFactory,
                 telegramFactory = telegramFactory,
                 deezerFactory = deezerFactory,
+                tidalProgressiveDashFactory = tidalProgressiveDashFactory,
             )
         }
     }
@@ -8493,13 +8553,28 @@ class MusicService :
                 this,
                 OkHttpDataSource.Factory(mediaOkHttpClient),
             )
-        val routingFactory = youtubeMediaFactory
+        // Resolved source URIs pass through this factory a second time after the outer resolver has
+        // selected a provider. Route those private schemes here instead of asking DefaultDataSource
+        // to handle an unknown `deezer://` or `tidal-dash://` URI.
+        val routingFactory =
+            DataSource.Factory {
+                ResolvedSchemeRoutingDataSource(
+                    defaultFactory = youtubeMediaFactory,
+                    deezerFactory = DeezerDecryptingDataSource.Factory(OkHttpDataSource.Factory(mediaOkHttpClient)),
+                    tidalProgressiveDashFactory = TidalProgressiveDashDataSource.Factory(mediaOkHttpClient),
+                )
+            }
 
         return ResolvingDataSource.Factory(routingFactory) { dataSpec ->
-            resolvePlaybackDataSpec(
-                dataSpec = dataSpec,
-                allowCacheShortCircuit = false,
-            )
+            val scheme = dataSpec.uri.scheme?.lowercase(Locale.US)
+            if (scheme == DeezerCrypto.SCHEME || scheme == TidalAudioProvider.PROGRESSIVE_DASH_SCHEME) {
+                dataSpec
+            } else {
+                resolvePlaybackDataSpec(
+                    dataSpec = dataSpec,
+                    allowCacheShortCircuit = false,
+                )
+            }
         }
     }
 
@@ -9626,7 +9701,7 @@ class MusicService :
                         ),
                     cacheDir = cacheDir,
                     preferAtmos = false,
-                    preferLiveDash = false,
+                    preferLiveDash = true,
                     audioQuality = quality,
                 )
             }.onFailure { error ->
@@ -10607,6 +10682,8 @@ class MusicService :
             normalizedScheme == "file" ||
             normalizedScheme == "android.resource" ||
             normalizedScheme == "telegram" ||
+            normalizedScheme == DeezerCrypto.SCHEME ||
+            normalizedScheme == TidalAudioProvider.PROGRESSIVE_DASH_SCHEME ||
             normalizedScheme == "http" ||
             normalizedScheme == "https"
     }
@@ -10643,6 +10720,7 @@ class MusicService :
         private val directFactory: DataSource.Factory,
         private val telegramFactory: DataSource.Factory,
         private val deezerFactory: DataSource.Factory,
+        private val tidalProgressiveDashFactory: DataSource.Factory,
     ) : DataSource {
         private val transferListeners = mutableListOf<TransferListener>()
         private var delegate: DataSource? = null
@@ -10662,6 +10740,10 @@ class MusicService :
                 } else if (normalizedScheme == DeezerCrypto.SCHEME) {
                     // Carries its own cache; the YouTube resolver would rewrite the URI.
                     deezerFactory
+                } else if (normalizedScheme == TidalAudioProvider.PROGRESSIVE_DASH_SCHEME) {
+                    // Streams through its own progressive-DASH source; the YouTube resolver
+                    // would rewrite the URI.
+                    tidalProgressiveDashFactory
                 } else if (
                     normalizedScheme == "content" ||
                     normalizedScheme == "file" ||
@@ -10693,7 +10775,49 @@ class MusicService :
         }
     }
 
+    /** Routes provider URIs after the resolving/cache layers have already selected a stream. */
+    private class ResolvedSchemeRoutingDataSource(
+        private val defaultFactory: DataSource.Factory,
+        private val deezerFactory: DataSource.Factory,
+        private val tidalProgressiveDashFactory: DataSource.Factory,
+    ) : DataSource {
+        private val transferListeners = mutableListOf<TransferListener>()
+        private var delegate: DataSource? = null
 
+        override fun addTransferListener(transferListener: TransferListener) {
+            transferListeners += transferListener
+            delegate?.addTransferListener(transferListener)
+        }
+
+        override fun open(dataSpec: DataSpec): Long {
+            val scheme = dataSpec.uri.scheme?.lowercase(Locale.US)
+            val factory =
+                when (scheme) {
+                    DeezerCrypto.SCHEME -> deezerFactory
+                    TidalAudioProvider.PROGRESSIVE_DASH_SCHEME -> tidalProgressiveDashFactory
+                    else -> defaultFactory
+                }
+            val selected = factory.createDataSource()
+            transferListeners.forEach(selected::addTransferListener)
+            delegate = selected
+            return selected.open(dataSpec)
+        }
+
+        override fun read(
+            buffer: ByteArray,
+            offset: Int,
+            length: Int,
+        ): Int = checkNotNull(delegate).read(buffer, offset, length)
+
+        override fun getUri(): Uri? = delegate?.uri
+
+        override fun getResponseHeaders(): Map<String, List<String>> = delegate?.responseHeaders ?: emptyMap()
+
+        override fun close() {
+            delegate?.close()
+            delegate = null
+        }
+    }
 
     private fun updateAudioOffload(enabled: Boolean) {
         val effectiveEnabled = enabled && !crossfadeEnabled
@@ -11223,6 +11347,7 @@ class MusicService :
             localPlayer.removeListener(audioEffectPlayerListener)
             player.removeListener(this)
             player.removeListener(sleepTimer)
+            initialBufferRecoveryJob?.cancel()
             player.release()
             castPlaybackRepository.releasePlayer(player)
         } catch (_: Exception) {
@@ -11458,6 +11583,8 @@ class MusicService :
         const val ERROR_CODE_NO_STREAM = 1000001
         const val CHUNK_LENGTH = 8 * 1024 * 1024L
         val RETRYABLE_STREAM_RESPONSE_CODES = setOf(403, 404, 410, 416)
+        private const val INITIAL_BUFFER_STALL_DELAY_MS = 15_000L
+        private const val INITIAL_BUFFER_STALL_POSITION_MS = 5_000L
         const val PERSISTENT_QUEUE_FILE = "persistent_queue.data"
         const val PERSISTENT_AUTOMIX_FILE = "persistent_automix.data"
         const val PERSISTENT_PLAYER_STATE_FILE = "persistent_player_state.data"

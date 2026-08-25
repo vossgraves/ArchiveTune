@@ -15,6 +15,7 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.TopAppBarScrollBehavior
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
@@ -116,12 +117,18 @@ fun NavGraphBuilder.navigationBuilder(
     onClearUpdateBadge: () -> Unit = {},
     onSearchQuery: (String) -> Unit = {},
     onVoiceSearch: () -> Unit = {},
+    homeListState: LazyListState? = null,
+    searchListState: LazyListState? = null,
     homeScrollConnection: NestedScrollConnection? = null,
     searchScrollConnection: NestedScrollConnection? = null,
     onlineSearchSort: OnlineSearchSort = OnlineSearchSort.DEFAULT,
 ) {
     composable(Screens.Home.route) {
-        HomeScreen(navController, headerScrollConnection = homeScrollConnection)
+        HomeScreen(
+            navController,
+            headerScrollConnection = homeScrollConnection,
+            listState = homeListState,
+        )
     }
     composable(
         Screens.Library.route,
@@ -134,6 +141,7 @@ fun NavGraphBuilder.navigationBuilder(
             onSearchQuery = onSearchQuery,
             onVoiceSearch = onVoiceSearch,
             headerScrollConnection = searchScrollConnection,
+            listState = searchListState,
         )
     }
     composable("local_songs") {

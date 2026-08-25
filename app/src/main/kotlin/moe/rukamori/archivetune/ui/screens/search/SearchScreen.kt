@@ -33,6 +33,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -128,6 +129,7 @@ fun SearchScreen(
     onSearchQuery: (String) -> Unit,
     onVoiceSearch: () -> Unit = {},
     headerScrollConnection: NestedScrollConnection? = null,
+    listState: LazyListState? = null,
     viewModel: SearchDiscoveryViewModel = hiltViewModel(),
     historyViewModel: SearchHistoryViewModel = hiltViewModel(),
 ) {
@@ -139,7 +141,7 @@ fun SearchScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val selectedTab by viewModel.selectedTab.collectAsStateWithLifecycle()
     val recentSearches by historyViewModel.recentSearches.collectAsStateWithLifecycle()
-    val lazyListState = rememberLazyListState()
+    val lazyListState = listState ?: rememberLazyListState()
     val safeTopPadding = WindowInsets.safeDrawing.asPaddingValues().calculateTopPadding()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val scrollToTop =

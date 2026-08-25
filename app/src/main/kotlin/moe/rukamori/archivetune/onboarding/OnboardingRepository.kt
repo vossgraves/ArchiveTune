@@ -16,10 +16,12 @@ import androidx.datastore.preferences.core.edit
 import com.google.common.collect.ImmutableList
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import moe.rukamori.archivetune.BuildConfig
 import moe.rukamori.archivetune.constants.LaunchCountKey
 import moe.rukamori.archivetune.constants.OnboardingCompletedKey
+import moe.rukamori.archivetune.constants.OnboardingCurrentPageKey
 import moe.rukamori.archivetune.utils.dataStore
 import javax.inject.Inject
 
@@ -56,6 +58,16 @@ class OnboardingRepository
         suspend fun markCompleted() {
             context.dataStore.edit { preferences ->
                 preferences[OnboardingCompletedKey] = true
+                preferences[OnboardingCurrentPageKey] = 0
+            }
+        }
+
+        suspend fun currentPage(): Int = context.dataStore.data.first()[OnboardingCurrentPageKey] ?: 0
+
+        suspend fun setCurrentPage(page: Int) {
+            if (page <= 0) return
+            context.dataStore.edit { preferences ->
+                preferences[OnboardingCurrentPageKey] = page
             }
         }
 

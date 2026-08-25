@@ -1556,6 +1556,11 @@ val CountryCodeToName =
 // App rating / star prompt preferences
 val LaunchCountKey = intPreferencesKey("launch_count")
 val OnboardingCompletedKey = booleanPreferencesKey("onboarding_completed")
+
+// Last onboarding page the user was on. The onboarding ViewModel's page index is plain
+// in-memory state; without persisting it, process death or activity recreation resets the
+// flow to page 1 even though the user was mid-way through.
+val OnboardingCurrentPageKey = intPreferencesKey("onboarding_current_page")
 val HasPressedStarKey = booleanPreferencesKey("has_pressed_star")
 val RemindAfterKey = intPreferencesKey("remind_after")
 

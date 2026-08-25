@@ -118,3 +118,13 @@ core.*
 /android_resource_cleaner.py
 # Local Claude Code config
 .claude/
+
+# Agent session state — never commit
+/.swarm/
+/.opencode/
+/.jcode/
+/ARCHIVETUNE_SESSION_NOTES.md
+/ARCHIVETUNE_CODE_MAP.md
+/.env
+/.cursor/
+/.windsurf/

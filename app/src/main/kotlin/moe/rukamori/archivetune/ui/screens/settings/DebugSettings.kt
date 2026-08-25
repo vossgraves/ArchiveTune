@@ -309,7 +309,11 @@ private fun DiscordDebugSection() {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                // weight(1f) keeps the trailing status chip at its intrinsic width. Without it a
+                // long localized subtitle consumes the whole row and the chip's Text is measured
+                // with near-zero width, wrapping "ACTIVE" one letter per line.
                 Row(
+                    modifier = Modifier.weight(1f),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -342,6 +346,8 @@ private fun DiscordDebugSection() {
                             text = stringResource(R.string.discord_integration),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
                         Text(
                             text =
@@ -351,6 +357,8 @@ private fun DiscordDebugSection() {
                                     stringResource(R.string.presence_manager_stopped)
                                 },
                             style = MaterialTheme.typography.bodySmall,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                             color =
                                 if (isRunning) {
                                     MaterialTheme.colorScheme.primary

@@ -374,12 +374,20 @@ object TidalAccountManager {
         durationMs: Long?,
         audioQuality: String,
         cacheDir: File,
+        preferLiveDash: Boolean = false,
         countryCode: String = COUNTRY_CODE,
     ): DirectStream? =
         withContext(Dispatchers.IO) {
             val country = countryCode.ifBlank { COUNTRY_CODE }
             val match = searchTrack(accessToken, title, artists, durationMs, country) ?: return@withContext null
-            resolvePlaybackInfo(accessToken, match.id, audioQuality, durationMs, cacheDir)?.copy(
+            resolvePlaybackInfo(
+                accessToken = accessToken,
+                trackId = match.id,
+                audioQuality = audioQuality,
+                durationMs = durationMs,
+                cacheDir = cacheDir,
+                preferLiveDash = preferLiveDash,
+            )?.copy(
                 matchedTitle = match.title,
                 matchedArtist = match.artist,
                 matchedAlbum = match.album,
@@ -475,6 +483,7 @@ object TidalAccountManager {
         audioQuality: String,
         durationMs: Long?,
         cacheDir: File,
+        preferLiveDash: Boolean,
     ): DirectStream? {
         val url =
             "$API_BASE/tracks/$trackId/playbackinfopostpaywall" +
@@ -509,6 +518,7 @@ object TidalAccountManager {
                     quality = audioQuality,
                     durationMs = durationMs,
                     cacheDir = cacheDir,
+                    preferLiveDash = preferLiveDash,
                 )
             }
         }.getOrElse {

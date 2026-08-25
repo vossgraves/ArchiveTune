@@ -102,6 +102,11 @@ object TidalInstanceHealthManager {
                     // count at 0 regardless of how many public mirrors were actually up.
                     candidates += TidalAudioProvider.SEED_INSTANCE_CANDIDATES
 
+                    if (candidates.isEmpty()) {
+                        Timber.tag("TidalHealth").d("No TIDAL instances configured or discovered; skipping health scan")
+                        return@withLock emptyList()
+                    }
+
                     val probeTrackId =
                         TidalAudioProvider.lastResolvedTrackId
                             ?: context.dataStore.get(TidalLastProbeTrackKey)

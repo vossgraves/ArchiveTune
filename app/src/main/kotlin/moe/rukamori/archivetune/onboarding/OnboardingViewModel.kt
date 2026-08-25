@@ -31,11 +31,29 @@ class OnboardingViewModel
         observeOnboardingDataUseCase: ObserveOnboardingDataUseCase,
         private val buildOnboardingUiStateUseCase: BuildOnboardingUiStateUseCase,
         private val completeOnboardingUseCase: CompleteOnboardingUseCase,
+        private val onboardingRepository: OnboardingRepository,
     ) : ViewModel() {
         private val currentPage = MutableStateFlow(0)
         private val refreshSignals = MutableStateFlow(0)
         private val mutableEvents = MutableSharedFlow<OnboardingEvent>(extraBufferCapacity = 1)
         private var completionJob: Job? = null
+
+        init {
+            // Seed the page from DataStore so process death / activity recreation /
+            // app restart resumes the onboarding where the user left it instead of
+            // resetting to page 1.
+            viewModelScope.launch {
+                val restored = onboardingRepository.currentPage()
+                if (restored > 0 && currentPage.value == 0) {
+                    currentPage.value = restored
+                }
+            }
+        }
+
+        private fun goToPage(page: Int) {
+            currentPage.value = page
+            viewModelScope.launch { onboardingRepository.setCurrentPage(page) }
+        }
 
         val events = mutableEvents.asSharedFlow()
 
@@ -59,7 +77,7 @@ class OnboardingViewModel
             val success = screenState.value as? OnboardingScreenState.Success ?: return
             val lastPage = success.uiState.pages.lastIndex
             if (success.uiState.currentPage < lastPage) {
-                currentPage.value = success.uiState.currentPage + 1
+                goToPage(success.uiState.currentPage + 1)
             } else {
                 complete()
             }
@@ -67,7 +85,7 @@ class OnboardingViewModel
 
         fun onBack() {
             val success = screenState.value as? OnboardingScreenState.Success ?: return
-            currentPage.value = (success.uiState.currentPage - 1).coerceAtLeast(0)
+            goToPage((success.uiState.currentPage - 1).coerceAtLeast(0))
         }
 
         fun onPermissionAction(action: OnboardingPermissionAction) {
@@ -100,7 +118,7 @@ class OnboardingViewModel
             val success = screenState.value as? OnboardingScreenState.Success ?: return
             val currentPageIndex = success.uiState.currentPage
             if (success.uiState.pages.getOrNull(currentPageIndex)?.id == OnboardingPageId.LOGIN) {
-                currentPage.value = currentPageIndex + 1
+                goToPage(currentPageIndex + 1)
             }
         }
 

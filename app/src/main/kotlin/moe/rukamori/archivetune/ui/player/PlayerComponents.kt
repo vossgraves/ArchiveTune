@@ -73,11 +73,16 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -208,13 +213,43 @@ internal fun PlayerTitleText(
 internal fun PlayerTextBackdrop(
     textColor: Color,
     modifier: Modifier = Modifier,
+    edgeFadeWidth: Dp = 16.dp,
     content: @Composable () -> Unit,
 ) {
-    // Removed the blurred gradient + rounded background pill that was creating
-    // a visible dark "pill" behind song names. The text now sits directly on
-    // the player background with no container — matching the user's request
-    // to "remove the black background pill behind the song's name."
-    Box(modifier = modifier) {
+    // No background pill — the text sits directly on the player background. What remains is a
+    // soft alpha fade at BOTH horizontal edges of the text block, so long marquee'd titles and
+    // artist names dissolve into the layout instead of clipping hard against the next control.
+    //
+    // The fade is drawn on this container, NOT chained onto the Text's own basicMarquee():
+    // basicMarquee measures its child unbounded, so a modifier chained after it would see the
+    // full scrolling width and place the gradient off-screen (the bug the one-sided mhsm
+    // implementation had). Masking here uses the container's real viewport width.
+    //
+    // DstIn over an Offscreen layer punches the content's alpha toward transparent at the
+    // edges, so the fade works over ANY backdrop (solid color, dynamic blur, artwork) without
+    // needing to know the background color.
+    Box(
+        modifier =
+            modifier
+                .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
+                .drawWithContent {
+                    drawContent()
+                    val edge = edgeFadeWidth.toPx().coerceIn(0f, size.width / 2f)
+                    if (edge <= 0f) return@drawWithContent
+                    drawRect(
+                        brush = Brush.horizontalGradient(listOf(Color.Transparent, Color.Black)),
+                        topLeft = Offset.Zero,
+                        size = Size(edge, size.height),
+                        blendMode = BlendMode.DstIn,
+                    )
+                    drawRect(
+                        brush = Brush.horizontalGradient(listOf(Color.Black, Color.Transparent)),
+                        topLeft = Offset(size.width - edge, 0f),
+                        size = Size(edge, size.height),
+                        blendMode = BlendMode.DstIn,
+                    )
+                },
+    ) {
         content()
     }
 }

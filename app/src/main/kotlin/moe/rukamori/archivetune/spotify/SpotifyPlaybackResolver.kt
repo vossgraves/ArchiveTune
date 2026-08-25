@@ -46,12 +46,24 @@ object SpotifyPlaybackResolver {
                 cache[cacheKey]?.let { return@withContext it }
             }
 
+            val youtubeQuery = SpotifyMapper.buildSearchQuery(track)
+            // Spotify catalog playback is intentionally resolved through the existing audio-source
+            // chain, so identifying the matching YouTube item must also work without a YouTube
+            // login. Try anonymous search first; a stale account context must not make Spotify
+            // playlist tracks appear unplayable for signed-out users.
             val searchResult =
                 YouTube
                     .search(
-                        query = SpotifyMapper.buildSearchQuery(track),
+                        query = youtubeQuery,
                         filter = YouTube.SearchFilter.FILTER_SONG,
-                    ).getOrNull() ?: return@withContext null
+                        useAccountContext = false,
+                    ).getOrNull()
+                    ?: YouTube
+                        .search(
+                            query = youtubeQuery,
+                            filter = YouTube.SearchFilter.FILTER_SONG,
+                        ).getOrNull()
+                    ?: return@withContext null
 
             val candidates =
                 searchResult.items

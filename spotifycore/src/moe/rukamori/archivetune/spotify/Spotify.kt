@@ -22,6 +22,7 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.content.TextContent
 import io.ktor.serialization.kotlinx.json.json
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -250,7 +251,7 @@ object Spotify {
         for (attempt in 0 until maxRetries) {
             log(
                 "D",
-                "GQL POST $operationName (token: ${token.take(8)}...)" +
+                "GQL POST $operationName" +
                     if (attempt > 0) " [retry $attempt]" else "",
             )
 
@@ -1132,92 +1133,173 @@ object Spotify {
         offset: Int = 0,
     ): Result<SpotifySearchResult> =
         runCatching {
-            val vars =
-                buildJsonObject {
-                    put("searchTerm", query)
-                    put("offset", offset)
-                    put("limit", limit)
-                    put("numberOfTopResults", 5)
-                    put("includeAudiobooks", false)
-                    put("includeArtistHasConcertsField", false)
-                    put("includePreReleases", false)
-                    put("includeLocalConcertsField", false)
-                    put("includeAuthors", false)
-                }
+            try {
+                hydrateSearchTracks(searchGraphQl(query, types, limit, offset))
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (error: Throwable) {
+                // The internal search endpoint is useful but its persisted hash and response shape
+                // can rotate independently of the public API. Keep catalog search usable when that
+                // happens; the same web-player token is accepted by Spotify's REST search endpoint.
+                log("W", "GQL search failed; falling back to REST search: ${error.message}")
+                searchRest(query, types, limit, offset)
+            }
+        }
 
-            val response =
-                graphqlPost(
-                    operationName = "searchDesktop",
-                    variables = vars,
-                )
+    private suspend fun hydrateSearchTracks(result: SpotifySearchResult): SpotifySearchResult {
+        val tracks = result.tracks?.items.orEmpty()
+        if (tracks.isEmpty()) return result
+        val ids = tracks.mapNotNull { it.id.takeIf(String::isNotBlank) }.distinct()
+        if (ids.isEmpty()) return result
 
-            val searchData =
-                response.obj("data")?.obj("searchV2")
-                    ?: throw SpotifyException(500, "Invalid searchDesktop response")
+        val hydrated =
+            try {
+                authenticatedGet<SpotifyTracksResponse>("tracks") {
+                    parameter("ids", ids.joinToString(","))
+                }.tracks
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (error: Throwable) {
+                // Search remains useful when Spotify's REST detail endpoint is unavailable; the GQL
+                // payload still contains the identity fields needed by the UI and mapper.
+                log("W", "Spotify track detail hydration failed: ${error.message}")
+                return result
+        }
+        if (hydrated.isEmpty()) return result
+        val byId = hydrated.associateBy { it.id }
+        val currentTracks = result.tracks ?: return result
+        return result.copy(
+            tracks = currentTracks.copy(items = tracks.map { byId[it.id] ?: it }),
+        )
+    }
 
-            val tracksSection = searchData.obj("tracksV2")
-            val trackItems =
+    private suspend fun searchGraphQl(
+        query: String,
+        types: List<String>,
+        limit: Int,
+        offset: Int,
+    ): SpotifySearchResult {
+        val requestedTypes = types.map { it.trim().lowercase() }.filter { it.isNotBlank() }.toSet()
+        val includeAllTypes = requestedTypes.isEmpty()
+        val vars =
+            buildJsonObject {
+                put("searchTerm", query)
+                put("offset", offset)
+                put("limit", limit)
+                put("numberOfTopResults", 5)
+                put("includeAudiobooks", false)
+                put("includeArtistHasConcertsField", false)
+                put("includePreReleases", false)
+                put("includeLocalConcertsField", false)
+                put("includeAuthors", false)
+            }
+
+        val response =
+            graphqlPost(
+                operationName = "searchDesktop",
+                variables = vars,
+            )
+
+        val searchData =
+            response.obj("data")?.obj("searchV2")
+                ?: throw SpotifyException(500, "Invalid searchDesktop response")
+
+        val tracksSection = searchData.obj("tracksV2")
+        val trackItems =
+            if (includeAllTypes || "track" in requestedTypes) {
                 tracksSection?.arr("items")?.mapNotNull { elem ->
-                    val itemWrapper = elem.jsonObject.obj("item") ?: return@mapNotNull null
-                    if (itemWrapper.str("__typename") != "TrackResponseWrapper") return@mapNotNull null
-                    val data = itemWrapper.obj("data") ?: return@mapNotNull null
-                    if (data.str("__typename") != "Track") return@mapNotNull null
-                    val wrapperUri = itemWrapper.str("_uri") ?: itemWrapper.str("uri")
+                    val raw = elem.jsonObject
+                    val itemWrapper = raw.obj("item") ?: raw
+                    val wrapperType = itemWrapper.str("__typename")
+                    val data = itemWrapper.obj("data") ?: itemWrapper
+                    val dataType = data.str("__typename")
+                    if (wrapperType != null && !wrapperType.contains("Track", ignoreCase = true)) return@mapNotNull null
+                    if (dataType != null && !dataType.equals("Track", ignoreCase = true)) return@mapNotNull null
+                    val wrapperUri = itemWrapper.str("_uri") ?: itemWrapper.str("uri") ?: data.str("uri")
                     parseGqlTrack(data, uriOverride = wrapperUri)
                 } ?: emptyList()
+            } else {
+                emptyList()
+            }
 
-            val albumsSection = searchData.obj("albumsV2")
-            val albumItems =
+        val albumsSection = searchData.obj("albumsV2")
+        val albumItems =
+            if (includeAllTypes || "album" in requestedTypes) {
                 albumsSection?.arr("items")?.mapNotNull { elem ->
-                    val wrapper = elem.jsonObject
-                    if (wrapper.str("__typename") != "AlbumResponseWrapper") return@mapNotNull null
-                    val data = wrapper.obj("data") ?: return@mapNotNull null
-                    if (data.str("__typename") != "Album") return@mapNotNull null
+                    val raw = elem.jsonObject
+                    val wrapper = raw.obj("item") ?: raw
+                    val data = wrapper.obj("data") ?: wrapper
+                    val wrapperType = wrapper.str("__typename")
+                    val dataType = data.str("__typename")
+                    if (wrapperType != null && !wrapperType.contains("Album", ignoreCase = true)) return@mapNotNull null
+                    if (dataType != null && !dataType.equals("Album", ignoreCase = true)) return@mapNotNull null
                     parseGqlSearchAlbum(data)
                 } ?: emptyList()
+            } else {
+                emptyList()
+            }
 
-            val artistsSection = searchData.obj("artists")
-            val artistItems =
+        val artistsSection = searchData.obj("artists")
+        val artistItems =
+            if (includeAllTypes || "artist" in requestedTypes) {
                 artistsSection?.arr("items")?.mapNotNull { elem ->
-                    val wrapper = elem.jsonObject
-                    if (wrapper.str("__typename") != "ArtistResponseWrapper") return@mapNotNull null
-                    val data = wrapper.obj("data") ?: return@mapNotNull null
-                    if (data.str("__typename") != "Artist") return@mapNotNull null
+                    val raw = elem.jsonObject
+                    val wrapper = raw.obj("item") ?: raw
+                    val data = wrapper.obj("data") ?: wrapper
+                    val wrapperType = wrapper.str("__typename")
+                    val dataType = data.str("__typename")
+                    if (wrapperType != null && !wrapperType.contains("Artist", ignoreCase = true)) return@mapNotNull null
+                    if (dataType != null && !dataType.equals("Artist", ignoreCase = true)) return@mapNotNull null
                     parseGqlSearchArtist(data)
                 } ?: emptyList()
+            } else {
+                emptyList()
+            }
 
-            val playlistsSection = searchData.obj("playlists")
-            val playlistItems =
+        val playlistsSection = searchData.obj("playlists")
+        val playlistItems =
+            if (includeAllTypes || "playlist" in requestedTypes) {
                 playlistsSection?.arr("items")?.mapNotNull { elem ->
-                    val wrapper = elem.jsonObject
-                    if (wrapper.str("__typename") != "PlaylistResponseWrapper") return@mapNotNull null
-                    val data = wrapper.obj("data") ?: return@mapNotNull null
-                    if (data.str("__typename") != "Playlist") return@mapNotNull null
+                    val raw = elem.jsonObject
+                    val wrapper = raw.obj("item") ?: raw
+                    val data = wrapper.obj("data") ?: wrapper
+                    val wrapperType = wrapper.str("__typename")
+                    val dataType = data.str("__typename")
+                    if (wrapperType != null && !wrapperType.contains("Playlist", ignoreCase = true)) return@mapNotNull null
+                    if (dataType != null && !dataType.equals("Playlist", ignoreCase = true)) return@mapNotNull null
                     parseGqlSearchPlaylist(data)
                 } ?: emptyList()
+            } else {
+                emptyList()
+            }
 
+        val result =
             SpotifySearchResult(
                 tracks =
-                    SpotifyPaging(
-                        items = trackItems,
-                        total = tracksSection?.int("totalCount") ?: 0,
-                        limit = limit,
-                        offset = offset,
-                    ),
+                    if (includeAllTypes || "track" in requestedTypes) {
+                        SpotifyPaging(
+                            items = trackItems,
+                            total = tracksSection?.int("totalCount") ?: 0,
+                            limit = limit,
+                            offset = offset,
+                        )
+                    } else {
+                        null
+                    },
                 albums =
-                    if (albumItems.isNotEmpty()) {
+                    if (includeAllTypes || "album" in requestedTypes) {
                         SpotifyPaging(items = albumItems, total = albumsSection?.int("totalCount") ?: 0, limit = limit, offset = offset)
                     } else {
                         null
                     },
                 artists =
-                    if (artistItems.isNotEmpty()) {
+                    if (includeAllTypes || "artist" in requestedTypes) {
                         SpotifyPaging(items = artistItems, total = artistsSection?.int("totalCount") ?: 0, limit = limit, offset = offset)
                     } else {
                         null
                     },
                 playlists =
-                    if (playlistItems.isNotEmpty()) {
+                    if (includeAllTypes || "playlist" in requestedTypes) {
                         SpotifyPaging(
                             items = playlistItems,
                             total = playlistsSection?.int("totalCount") ?: 0,
@@ -1228,7 +1310,33 @@ object Spotify {
                         null
                     },
             )
+
+        // A successful HTTP response with an unrecognised schema is indistinguishable from a real
+        // empty result to callers. Let REST repair that case instead of showing a false "no results".
+        if (query.isNotBlank() && !result.hasItems()) {
+            throw SpotifyException(502, "Spotify search returned no parseable results")
         }
+        return result
+    }
+
+    private suspend fun searchRest(
+        query: String,
+        types: List<String>,
+        limit: Int,
+        offset: Int,
+    ): SpotifySearchResult =
+        authenticatedGet("search") {
+            parameter("q", query)
+            parameter("type", types.joinToString(",").ifBlank { "track" })
+            parameter("limit", limit.coerceIn(1, 50))
+            parameter("offset", offset.coerceAtLeast(0))
+        }
+
+    private fun SpotifySearchResult.hasItems(): Boolean =
+        tracks?.items?.isNotEmpty() == true ||
+            albums?.items?.isNotEmpty() == true ||
+            artists?.items?.isNotEmpty() == true ||
+            playlists?.items?.isNotEmpty() == true
 
     private fun parseGqlSearchAlbum(data: JsonObject): SpotifyAlbum {
         val uri = data.str("uri") ?: ""
@@ -1715,4 +1823,9 @@ data class RelatedArtistsResponse(
 @kotlinx.serialization.Serializable
 data class NewReleasesResponse(
     val albums: SpotifyPaging<SpotifyAlbum>? = null,
+)
+
+@kotlinx.serialization.Serializable
+private data class SpotifyTracksResponse(
+    val tracks: List<SpotifyTrack> = emptyList(),
 )
