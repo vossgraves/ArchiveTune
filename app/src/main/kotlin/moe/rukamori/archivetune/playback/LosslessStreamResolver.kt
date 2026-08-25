@@ -22,7 +22,9 @@ import moe.rukamori.archivetune.constants.TidalAccountFirstKey
 import moe.rukamori.archivetune.constants.TidalAudioQuality
 import moe.rukamori.archivetune.constants.TidalCountryCodeKey
 import moe.rukamori.archivetune.constants.TidalInstancesKey
+import moe.rukamori.archivetune.jiosaavn.SaavnService
 import moe.rukamori.archivetune.qobuz.QobuzAudioProvider
+import moe.rukamori.archivetune.qobuz.QobuzBackupProvider
 import moe.rukamori.archivetune.qobuz.QobuzToken
 import moe.rukamori.archivetune.tidal.TidalAccountManager
 import moe.rukamori.archivetune.tidal.TidalAudioProvider
@@ -312,6 +314,175 @@ object LosslessStreamResolver {
             )
         }
     }
+
+    /**
+     * Resolves a **Qobuz backup** stream for [mediaId] — the community-hosted `mlc-ytify.kouzu.in`
+     * mirror, keyed by YouTube video id.
+     *
+     * Needs no Source Pool account and no credentials at all, which makes it the one lossless
+     * source that works on a fresh install. That is also why it belongs in the download priority
+     * list: before it was added there, a user with no pool accounts had every lossless entry in the
+     * chain return null and every download fall through to the lossy YouTube fallback, even for
+     * tracks the mirror had in FLAC.
+     *
+     * Delegates to [QobuzBackupProvider.resolveStream], the same resolver the playback path uses,
+     * so mirror selection and FLAC detection cannot drift between playing a song and downloading
+     * it. The mirror serves plain HTTPS with no decryption step, so the resolved URL is directly
+     * usable by the downloader's HTTP data source.
+     *
+     * Deliberately NOT gated on the `QobuzBackupEnabledKey` playback toggle: the download priority
+     * list is the control for downloads, exactly as it is for Qobuz, Tidal and Deezer — none of
+     * which consult their playback switches here either. A user who drags this source to the top of
+     * the download list means it.
+     *
+     * @param mediaId the song's YouTube video id. Anything that is not an 11-character video id is
+     *   rejected by the provider, which is the normal outcome for a local or imported track.
+     */
+    fun resolveQobuzBackup(mediaId: String): DirectStream? =
+        runCatching {
+            runBlocking(Dispatchers.IO) {
+                QobuzBackupProvider.resolveStream(mediaId)?.let { resolved ->
+                    DirectStream(
+                        uri = resolved.uri,
+                        mimeType = resolved.mimeType,
+                        codecs = resolved.codecs,
+                        contentLength = resolved.contentLength,
+                        label = resolved.label,
+                        source = AudioSourceType.QOBUZ_BACKUP,
+                        // The mirror is keyed by the YouTube id we asked for, so the match is
+                        // authoritative by construction — there is no catalogue search to verify.
+                        trustedDirectId = true,
+                        sampleRate = resolved.sampleRate,
+                        bitDepth = resolved.bitDepth,
+                        matchedDurationMs = resolved.durationMs,
+                    )
+                }
+            }
+        }.onFailure { error ->
+            Timber.tag("LosslessResolver").w(error, "Qobuz backup resolve failed for %s", mediaId)
+        }.getOrNull()
+
+    /**
+     * Resolves a **JioSaavn** stream for [mediaId].
+     *
+     * JioSaavn is unauthenticated — no account, no pool, no decryption — and returns a plain HTTPS
+     * AAC URL, so the download path can use it exactly as playback does. It was previously a
+     * hard-coded `null` in the download chain with a comment saying a "stable, contentLength-bearing
+     * resolver" was still needed; that requirement turned out to be unnecessary. The downloader
+     * derives the length from the response itself (see `PRDownloaderDataSource`), which is how the
+     * YouTube fallback already works — every YouTube stream URL arrives without a declared length
+     * too.
+     *
+     * Mirrors `MusicService.resolveJioSaavnStream`, including the candidate scoring, so a track
+     * downloads as the same recording it plays as.
+     */
+    fun resolveJioSaavn(
+        mediaId: String,
+        title: String,
+        artists: List<String>,
+        album: String?,
+        durationMs: Long?,
+        qualityApiValue: String,
+    ): DirectStream? {
+        val artistHint = artists.firstOrNull()?.takeIf { it.isNotBlank() }.orEmpty()
+        val albumHint = album?.takeIf { it.isNotBlank() }.orEmpty()
+        val searchQuery =
+            buildString {
+                append(title)
+                if (artistHint.isNotBlank()) append(' ').append(artistHint)
+                if (albumHint.isNotBlank()) append(' ').append(albumHint)
+            }.trim()
+
+        return runCatching {
+            runBlocking(Dispatchers.IO) {
+                val results = SaavnService.searchSongs(searchQuery).getOrNull().orEmpty()
+                if (results.isEmpty()) return@runBlocking null
+                val wantedDurationSec = durationMs?.let { it / 1000 }
+                val candidate =
+                    results
+                        // Pro-only tracks answer with a 30-second preview, which would silently
+                        // download as a truncated file.
+                        .filter { !it.isProOnly && it.downloadUrl.isNotEmpty() }
+                        .minByOrNull { song ->
+                            saavnMatchPenalty(
+                                candidateTitle = song.name,
+                                candidateArtist = song.artists.primary.firstOrNull()?.name,
+                                candidateDurationSec = song.duration?.toLong(),
+                                wantedTitle = title,
+                                wantedArtist = artistHint,
+                                wantedDurationSec = wantedDurationSec,
+                            )
+                        } ?: return@runBlocking null
+                val streamUrl =
+                    SaavnService.selectBestUrl(candidate.downloadUrl, qualityApiValue)
+                        ?: return@runBlocking null
+                DirectStream(
+                    uri = streamUrl,
+                    mimeType = "audio/mp4",
+                    codecs = "mp4a.40.2",
+                    contentLength = null,
+                    label = "JioSaavn $qualityApiValue",
+                    source = AudioSourceType.JIOSAAVN,
+                    matchedTitle = candidate.name,
+                    matchedArtist = candidate.artists.primary.firstOrNull()?.name,
+                    matchedAlbum = candidate.album?.name,
+                    matchedDurationMs = candidate.duration?.toLong()?.times(1000L),
+                )
+            }
+        }.onFailure { error ->
+            Timber.tag("LosslessResolver").w(error, "JioSaavn resolve failed for %s", mediaId)
+        }.getOrNull()
+    }
+
+    /**
+     * Scores how badly a JioSaavn search hit matches what we asked for — lower is better.
+     *
+     * Same weighting as `MusicService.resolveJioSaavnStream`: an exact title is free, a substring
+     * match costs a little, anything else costs a lot; artist is weighted lower than title because
+     * JioSaavn credits features inconsistently; duration is the tie-breaker that catches remixes
+     * and extended edits sharing a title.
+     */
+    private fun saavnMatchPenalty(
+        candidateTitle: String,
+        candidateArtist: String?,
+        candidateDurationSec: Long?,
+        wantedTitle: String,
+        wantedArtist: String,
+        wantedDurationSec: Long?,
+    ): Int {
+        var penalty = 0
+        val normTitle = candidateTitle.lowercase().replace(SAAVN_NORMALIZE_REGEX, "")
+        val normWanted = wantedTitle.lowercase().replace(SAAVN_NORMALIZE_REGEX, "")
+        penalty +=
+            when {
+                normTitle == normWanted -> 0
+                normTitle.contains(normWanted) || normWanted.contains(normTitle) -> 1
+                else -> 5
+            }
+        val normArtist = candidateArtist?.lowercase()?.replace(SAAVN_NORMALIZE_REGEX, "").orEmpty()
+        val normWantedArtist = wantedArtist.lowercase().replace(SAAVN_NORMALIZE_REGEX, "")
+        if (normWantedArtist.isNotBlank() && normArtist.isNotBlank()) {
+            penalty +=
+                when {
+                    normArtist == normWantedArtist -> 0
+                    normArtist.contains(normWantedArtist) || normWantedArtist.contains(normArtist) -> 1
+                    else -> 3
+                }
+        }
+        if (wantedDurationSec != null && candidateDurationSec != null) {
+            val delta = kotlin.math.abs(candidateDurationSec - wantedDurationSec)
+            penalty +=
+                when {
+                    delta <= 3 -> 0
+                    delta <= 10 -> 2
+                    else -> 6
+                }
+        }
+        return penalty
+    }
+
+    /** Strips punctuation and whitespace so titles compare on their words alone. */
+    private val SAAVN_NORMALIZE_REGEX = Regex("[^a-z0-9]")
 
     /**
      * Returns the cache key prefix for [source], matching

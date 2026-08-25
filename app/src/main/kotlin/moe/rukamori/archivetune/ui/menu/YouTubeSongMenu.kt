@@ -117,6 +117,10 @@ fun YouTubeSongMenu(
     val database = LocalDatabase.current
     val playerConnection = LocalPlayerConnection.current ?: return
     val librarySong by database.song(song.id).collectAsStateWithLifecycle(initialValue = null)
+    // "Don't recommend this song again" state. Kept here (rather than inside the item lambda) so
+    // the label flips as soon as the DB write lands.
+    val blockedSongIds by database.blockedSongIds().collectAsStateWithLifecycle(initialValue = emptyList())
+    val isSongBlocked = remember(blockedSongIds, song.id) { song.id in blockedSongIds }
     val downloadUtil = LocalDownloadUtil.current
     val download by downloadUtil.getDownload(song.id).collectAsStateWithLifecycle(initialValue = null)
     val coroutineScope = rememberCoroutineScope()
@@ -790,6 +794,73 @@ fun YouTubeSongMenu(
                             )
                         }
                     }
+                }
+            }
+        }
+
+        item {
+            Spacer(modifier = Modifier.height(12.dp))
+        }
+
+        // "Don't recommend this song again" — the counterpart of the same item in SongMenu.
+        // It matters most here: this is the menu shown for catalogue results (home feed,
+        // search, related), which is exactly where a recommendation the user wants gone
+        // comes from. SongMenu only ever opens for rows that are already in the library.
+        item {
+            MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+                Column {
+                    ListItem(
+                        headlineContent = {
+                            Text(
+                                text =
+                                    stringResource(
+                                        if (isSongBlocked) {
+                                            R.string.undo_dont_recommend_song_again
+                                        } else {
+                                            R.string.dont_recommend_song_again
+                                        },
+                                    ),
+                            )
+                        },
+                        leadingContent = {
+                            Icon(
+                                painter = painterResource(R.drawable.block),
+                                contentDescription = null,
+                            )
+                        },
+                        modifier =
+                            Modifier.clickable {
+                                coroutineScope.launch {
+                                    database.withTransaction {
+                                        // `setSongBlockedAt` is an UPDATE, so it silently does
+                                        // nothing when the song has no local row — which is the
+                                        // normal case for a catalogue result the user has never
+                                        // played. Materialise the row first so the block sticks.
+                                        if (getSongById(song.id) == null) {
+                                            insert(song.toMediaMetadata())
+                                        }
+                                        setSongBlockedAt(
+                                            songId = song.id,
+                                            blockedAt = if (isSongBlocked) null else LocalDateTime.now(),
+                                        )
+                                    }
+                                    android.widget.Toast
+                                        .makeText(
+                                            context,
+                                            context.getString(
+                                                if (isSongBlocked) {
+                                                    R.string.song_unblocked_success
+                                                } else {
+                                                    R.string.song_blocked_success
+                                                },
+                                            ),
+                                            android.widget.Toast.LENGTH_SHORT,
+                                        ).show()
+                                    onDismiss()
+                                }
+                            },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    )
                 }
             }
         }

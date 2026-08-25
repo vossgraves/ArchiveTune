@@ -16,7 +16,7 @@ import android.view.HapticFeedbackConstants
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -884,16 +884,21 @@ private fun MovingBlurBackground(
     //
     // Effective drift values: animated on S+, hard-zero on pre-S so the offset modifier is a
     // no-op and the bitmap stays pinned.
-    // Apple-Music-style "breathing" drift. Previously 19 s / 27 s half-cycles made the motion
-    // nearly imperceptible (≈6 dp/s on X, ≈3 dp/s on Y against a 64-dp blur that masks motion
-    // under ~16 dp). Drop to 4 s / 6 s half-cycles and widen the range to ±160 / ±120 — that's
-    // ~5× faster perceived motion and a clearly visible pan.
+    // Apple-Music-style "breathing" drift. Previously 19 s / 27 s half-cycles over ±160 / ±120 —
+    // ~17 dp/s on X and ~9 dp/s on Y, which against a 64-dp blur (that masks any motion under
+    // ~16 dp) read as a still image. At 4 s / 6 s the same range gives 80 dp/s on X and 40 dp/s on
+    // Y: a clearly visible pan.
+    //
+    // LinearEasing, not FastOutSlowInEasing: the eased curve decelerates into each endpoint and
+    // accelerates back out, which at this speed reads as the backdrop stalling twice a cycle.
+    // Apple's own backdrop pans at a constant rate. Kept in sync with the drift in
+    // AppleMusicPlayer.kt, which drives the same effect for the Apple-Music-style player.
     val transition = rememberInfiniteTransition(label = "moving-blur-drift")
     val animatedDriftX by transition.animateFloat(
         initialValue = -160f,
         targetValue = 160f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 4_000, easing = FastOutSlowInEasing),
+            animation = tween(durationMillis = 4_000, easing = LinearEasing),
             repeatMode = RepeatMode.Reverse,
         ),
         label = "moving-blur-x",
@@ -902,7 +907,7 @@ private fun MovingBlurBackground(
         initialValue = -120f,
         targetValue = 120f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 6_000, easing = FastOutSlowInEasing),
+            animation = tween(durationMillis = 6_000, easing = LinearEasing),
             repeatMode = RepeatMode.Reverse,
         ),
         label = "moving-blur-y",
@@ -987,12 +992,20 @@ private fun MovingBlurBackground(
                             // the blur from sampling transparent areas at the translated
                             // image's trailing edge — the root cause of the corner flicker.
                             //
-                            // Scale 1.9 extends the image 0.45*W beyond each edge
-                            // (162dp for W=360), which covers drift(±60) + blur(64)
-                            // = 124dp with a 38dp safety margin.
+                            // Scale 2.4 extends the image 0.7*W beyond each edge
+                            // (252dp for W=360), which covers drift(±160) + blur(64)
+                            // = 224dp with a 28dp safety margin.
+                            //
+                            // Was 1.9 (0.45*W = 162dp), sized for the old ±60 drift.
+                            // When the drift was widened to ±160 for the faster
+                            // Apple-Music pan this was left behind, so at maximum
+                            // drift the blurred image no longer reached the parent's
+                            // trailing edge and the blur sampled transparent pixels —
+                            // a dark band along that edge. Kept in sync with
+                            // AmLyricsBlurDriftScale in AppleMusicPlayer.kt.
                             .graphicsLayer {
-                                scaleX = 1.9f
-                                scaleY = 1.9f
+                                scaleX = 2.4f
+                                scaleY = 2.4f
                                 translationX = driftX.dp.toPx()
                                 translationY = driftY.dp.toPx()
                                 compositingStrategy = CompositingStrategy.Offscreen

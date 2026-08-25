@@ -139,7 +139,19 @@ class ResolveAudioStreamUseCase
                 } catch (cancellation: CancellationException) {
                     throw cancellation
                 } catch (loginRequired: YTPlayerUtils.LoginRequiredForPlaybackException) {
-                    throw loginRequired
+                    // An age-gated track fails here with "Sign in to confirm your age". That is
+                    // only a dead end when the user has NOT opted in: with Content Settings →
+                    // "Allow age-restricted content" on, the native resolver's client order ends
+                    // with the embedded players YouTube does serve age-gated streams to, so let it
+                    // try rather than surfacing a sign-in prompt the user cannot satisfy.
+                    if (!YTPlayerUtils.isAgeRestrictedPlaybackFallbackAllowed(loginRequired)) {
+                        throw loginRequired
+                    }
+                    Timber.tag(TAG).i(
+                        "yt-dlp hit the age gate for %s; trying the native embedded-player path",
+                        request.mediaId,
+                    )
+                    loginRequired
                 } catch (invalidLogin: YTPlayerUtils.InvalidPlaybackLoginContextException) {
                     throw invalidLogin
                 } catch (ytDlpFailure: YtDlpExtractionException) {

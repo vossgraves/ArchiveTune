@@ -94,6 +94,13 @@ object TidalInstanceHealthManager {
                         Timber.tag("TidalHealth").d("Discovery returned %d instance(s)", discovered.size)
                         candidates += discovered
                     }
+                    // Seed the scan with the well-known public hostnames. Probing them is the only
+                    // way any of them can ever become usable: the resolver reads its fallback list
+                    // from healthyUrls(), so a seed that fails verification never gets streamed
+                    // from. Without this the scan had nothing to probe whenever the Source Pool
+                    // discovery feed was empty or unreachable, which pinned the reported instance
+                    // count at 0 regardless of how many public mirrors were actually up.
+                    candidates += TidalAudioProvider.SEED_INSTANCE_CANDIDATES
 
                     val probeTrackId =
                         TidalAudioProvider.lastResolvedTrackId

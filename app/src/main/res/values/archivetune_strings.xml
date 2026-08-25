@@ -398,6 +398,19 @@
     <string name="video_captions_off">Captions off</string>
     <string name="video_quality">Video quality</string>
     <string name="video_quality_auto">Auto (highest available)</string>
+    <!-- Video quality bottom sheet -->
+    <string name="video_quality_mode_auto">Auto</string>
+    <string name="video_quality_mode_auto_desc">Adjusts to your connection, up to 1080p</string>
+    <string name="video_quality_mode_data_saver">Data saver</string>
+    <string name="video_quality_mode_data_saver_desc">Lower resolution to use less data</string>
+    <string name="video_quality_mode_high">High quality</string>
+    <string name="video_quality_mode_high_desc">Original resolution — uses more data and battery</string>
+    <string name="video_quality_advanced">Advanced</string>
+    <string name="video_quality_advanced_desc">Pick an exact resolution</string>
+    <string name="video_quality_advanced_title">Advanced quality</string>
+    <string name="video_quality_back">Back</string>
+    <string name="video_quality_current">Playing at %1$s</string>
+    <string name="video_quality_unavailable_on_device">Not supported by this device</string>
     <!-- Fullscreen video overlay transport controls -->
     <string name="video_fs_play_pause">Play/Pause</string>
     <string name="video_fs_next">Next</string>

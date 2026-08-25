@@ -70,6 +70,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -184,6 +185,14 @@ val LocalVideoOnPreferredHeightChange = compositionLocalOf<(Int?) -> Unit> { {} 
 val LocalVideoAvailableHeights = compositionLocalOf<List<Int>> { emptyList() }
 
 /**
+ * CompositionLocal for the height actually being played, so the quality UI can report what the
+ * Auto / Data saver / High quality modes resolved to. Null until a stream resolves, or when
+ * YouTube did not label the chosen format.
+ * @see LocalVideoArtworkState
+ */
+val LocalVideoSelectedHeight = compositionLocalOf<Int?> { null }
+
+/**
  * CompositionLocal that tracks whether the host Activity is currently in
  * Picture-in-Picture mode. When true, the player UI hides non-essential
  * controls (overlays, gesture handlers, etc.) so the PiP window shows
@@ -258,6 +267,7 @@ fun InlineVideoPlayer(
     preferredHeight: Int? = LocalVideoPreferredHeight.current,
     onPreferredHeightChange: (Int?) -> Unit = LocalVideoOnPreferredHeightChange.current,
     availableHeights: List<Int> = LocalVideoAvailableHeights.current,
+    selectedHeight: Int? = LocalVideoSelectedHeight.current,
     modifier: Modifier = Modifier,
     onPlaybackFailed: () -> Unit = {},
     resizeMode: Int = AspectRatioFrameLayout.RESIZE_MODE_FIT,
@@ -334,42 +344,19 @@ fun InlineVideoPlayer(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 // Quality picker — only render if YouTube offered more than one height.
+                // Opens the same VideoQualitySheet the fullscreen overlay uses, so the two
+                // surfaces offer identical choices.
                 if (availableHeights.size > 1) {
-                    Box {
-                        IconButton(
-                            onClick = { qualityMenuOpen = true },
-                            modifier = Modifier.size(40.dp),
-                        ) {
-                            Icon(
-                                painter = painterResource(R.drawable.solar_settings_linear),
-                                contentDescription = stringResource(R.string.video_quality),
-                                tint = Color.White,
-                                modifier = Modifier.size(22.dp),
-                            )
-                        }
-                        DropdownMenu(
-                            expanded = qualityMenuOpen,
-                            onDismissRequest = { qualityMenuOpen = false },
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.video_quality_auto)) },
-                                onClick = {
-                                    onPreferredHeightChange(null)
-                                    qualityMenuOpen = false
-                                },
-                            )
-                            availableHeights
-                                .sortedDescending()
-                                .forEach { h ->
-                                    DropdownMenuItem(
-                                        text = { Text(formatHeightLabel(h)) },
-                                        onClick = {
-                                            onPreferredHeightChange(h)
-                                            qualityMenuOpen = false
-                                        },
-                                    )
-                                }
-                        }
+                    IconButton(
+                        onClick = { qualityMenuOpen = true },
+                        modifier = Modifier.size(40.dp),
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.solar_settings_linear),
+                            contentDescription = stringResource(R.string.video_quality),
+                            tint = Color.White,
+                            modifier = Modifier.size(22.dp),
+                        )
                     }
                 }
 
@@ -388,6 +375,19 @@ fun InlineVideoPlayer(
                 }
             }
         }
+    }
+
+    // ── Quality bottom sheet ──
+    // Outside the `!isFullscreen` block on purpose: the sheet is a window of its own, so leaving it
+    // outside keeps it from being torn down mid-animation if fullscreen is entered while it is up.
+    if (qualityMenuOpen) {
+        VideoQualitySheet(
+            preferredHeight = preferredHeight,
+            availableHeights = availableHeights,
+            selectedHeight = selectedHeight,
+            onPreferredHeightChange = onPreferredHeightChange,
+            onDismissRequest = { qualityMenuOpen = false },
+        )
     }
 }
 
@@ -430,6 +430,7 @@ fun FullscreenVideoOverlay(
     preferredHeight: Int?,
     onPreferredHeightChange: (Int?) -> Unit,
     availableHeights: List<Int>,
+    selectedHeight: Int? = null,
     onDismiss: () -> Unit,
     resizeMode: Int = AspectRatioFrameLayout.RESIZE_MODE_FIT,
 ) {
@@ -905,124 +906,120 @@ fun FullscreenVideoOverlay(
                     horizontalArrangement = Arrangement.spacedBy(2.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    if (availableHeights.size > 1) {
-                        Box {
-                            IconButton(
-                                onClick = { qualityMenuOpen = true },
-                                modifier = Modifier.size(40.dp),
-                            ) {
-                                Icon(
-                                    painter = painterResource(R.drawable.solar_settings_linear),
-                                    contentDescription = stringResource(R.string.video_quality),
-                                        tint = Color.White,
-                                        modifier = Modifier.size(22.dp),
-                                    )
-                                }
-                                DropdownMenu(
-                                    expanded = qualityMenuOpen,
-                                    onDismissRequest = { qualityMenuOpen = false },
-                                ) {
-                                    DropdownMenuItem(
-                                        text = { Text(stringResource(R.string.video_quality_auto)) },
-                                        onClick = {
-                                            onPreferredHeightChange(null)
-                                            qualityMenuOpen = false
-                                        },
-                                    )
-                                    availableHeights
-                                        .sortedDescending()
-                                        .forEach { h ->
-                                            DropdownMenuItem(
-                                                text = { Text(formatHeightLabel(h)) },
-                                                onClick = {
-                                                    onPreferredHeightChange(h)
-                                                    qualityMenuOpen = false
-                                                },
-                                            )
-                                        }
-                                }
-                            }
+                    // ── Quality pill ──
+                    // Icon + current-quality label, so the pill reports what is playing instead of
+                    // only being a way in. Tapping it raises VideoQualitySheet from the bottom of
+                    // the screen (the old DropdownMenu opened as a cramped popup pinned to this
+                    // corner, which is the far side of the screen from the user's thumb in
+                    // landscape).
+                    if (availableHeights.isNotEmpty()) {
+                        Row(
+                            modifier =
+                                Modifier
+                                    .clip(RoundedCornerShape(24.dp))
+                                    .clickable { qualityMenuOpen = true }
+                                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.solar_settings_linear),
+                                contentDescription = stringResource(R.string.video_quality),
+                                tint = Color.White,
+                                modifier = Modifier.size(22.dp),
+                            )
+                            Text(
+                                text =
+                                    videoQualityPillLabel(
+                                        preferredHeight = preferredHeight,
+                                        selectedHeight = selectedHeight,
+                                    ),
+                                color = Color.White,
+                                style = MaterialTheme.typography.labelMedium,
+                                maxLines = 1,
+                            )
                         }
+                    }
 
-                        // ── Aspect ratio picker ──
-                        // Moved out of the overflow sheet so the user can quickly
-                        // cycle aspect ratios without opening the sheet. The
-                        // dropdown shows a checkmark next to the active option.
-                        Box {
-                            IconButton(
-                                onClick = { aspectRatioMenuOpen = true },
-                                modifier = Modifier.size(40.dp),
-                            ) {
-                                Icon(
-                                    painter = painterResource(R.drawable.solar_aspect_ratio_linear),
-                                    contentDescription = stringResource(R.string.video_aspect_ratio),
-                                    tint = Color.White,
-                                    modifier = Modifier.size(22.dp),
+                    // ── Aspect ratio picker ──
+                    // Moved out of the overflow sheet so the user can quickly
+                    // cycle aspect ratios without opening the sheet. The
+                    // dropdown shows a checkmark next to the active option.
+                    Box {
+                        IconButton(
+                            onClick = { aspectRatioMenuOpen = true },
+                            modifier = Modifier.size(40.dp),
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.solar_aspect_ratio_linear),
+                                contentDescription = stringResource(R.string.video_aspect_ratio),
+                                tint = Color.White,
+                                modifier = Modifier.size(22.dp),
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = aspectRatioMenuOpen,
+                            onDismissRequest = { aspectRatioMenuOpen = false },
+                        ) {
+                            val aspectOptions =
+                                listOf(
+                                    VideoAspectRatio.FIT to R.string.video_aspect_fit,
+                                    VideoAspectRatio.CROP to R.string.video_aspect_crop,
+                                    VideoAspectRatio.STRETCH to R.string.video_aspect_stretch,
+                                    VideoAspectRatio.FILL to R.string.video_aspect_fill,
+                                )
+                            aspectOptions.forEach { (ratio, labelRes) ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(
+                                                text = stringResource(labelRes),
+                                                modifier = Modifier.weight(1f),
+                                            )
+                                            if (ratio == aspectRatio) {
+                                                Icon(
+                                                    painter = painterResource(R.drawable.solar_check_circle_linear),
+                                                    contentDescription = null,
+                                                    tint = MaterialTheme.colorScheme.primary,
+                                                    modifier = Modifier.size(18.dp),
+                                                )
+                                            }
+                                        }
+                                    },
+                                    onClick = {
+                                        onAspectRatioChange(ratio)
+                                        aspectRatioMenuOpen = false
+                                    },
                                 )
                             }
-                            DropdownMenu(
-                                expanded = aspectRatioMenuOpen,
-                                onDismissRequest = { aspectRatioMenuOpen = false },
-                            ) {
-                                val aspectOptions =
-                                    listOf(
-                                        VideoAspectRatio.FIT to R.string.video_aspect_fit,
-                                        VideoAspectRatio.CROP to R.string.video_aspect_crop,
-                                        VideoAspectRatio.STRETCH to R.string.video_aspect_stretch,
-                                        VideoAspectRatio.FILL to R.string.video_aspect_fill,
-                                    )
-                                aspectOptions.forEach { (ratio, labelRes) ->
-                                    DropdownMenuItem(
-                                        text = {
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                Text(
-                                                    text = stringResource(labelRes),
-                                                    modifier = Modifier.weight(1f),
-                                                )
-                                                if (ratio == aspectRatio) {
-                                                    Icon(
-                                                        painter = painterResource(R.drawable.solar_check_circle_linear),
-                                                        contentDescription = null,
-                                                        tint = MaterialTheme.colorScheme.primary,
-                                                        modifier = Modifier.size(18.dp),
-                                                    )
-                                                }
-                                            }
-                                        },
-                                        onClick = {
-                                            onAspectRatioChange(ratio)
-                                            aspectRatioMenuOpen = false
-                                        },
-                                    )
-                                }
-                            }
                         }
+                    }
 
-                        // 3-dot overflow button — opens the ModalBottomSheet
-                        // with slider style / playback speed / ambient mode.
-                        IconButton(
-                            onClick = { showOverflowSheet = true },
-                            modifier = Modifier.size(40.dp),
-                        ) {
-                            Icon(
-                                painter = painterResource(R.drawable.solar_more_vert_linear),
-                                contentDescription = stringResource(R.string.video_overflow_menu),
-                                tint = Color.White,
-                                modifier = Modifier.size(22.dp),
-                            )
-                        }
+                    // 3-dot overflow button — opens the ModalBottomSheet
+                    // with slider style / playback speed / ambient mode.
+                    IconButton(
+                        onClick = { showOverflowSheet = true },
+                        modifier = Modifier.size(40.dp),
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.solar_more_vert_linear),
+                            contentDescription = stringResource(R.string.video_overflow_menu),
+                            tint = Color.White,
+                            modifier = Modifier.size(22.dp),
+                        )
+                    }
 
-                        IconButton(
-                            onClick = onDismiss,
-                            modifier = Modifier.size(40.dp),
-                        ) {
-                            Icon(
-                                painter = painterResource(R.drawable.solar_fullscreen_exit_linear),
-                                contentDescription = stringResource(R.string.video_exit_fullscreen),
-                                tint = Color.White,
-                                modifier = Modifier.size(22.dp),
-                            )
-                        }
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.size(40.dp),
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.solar_fullscreen_exit_linear),
+                            contentDescription = stringResource(R.string.video_exit_fullscreen),
+                            tint = Color.White,
+                            modifier = Modifier.size(22.dp),
+                        )
+                    }
                 }
 
                 // ── Center row: previous | play/pause | next ──
@@ -1190,6 +1187,19 @@ fun FullscreenVideoOverlay(
                 }
             }
         }
+    }
+
+    // ── Quality bottom sheet ──
+    // Slides up from the bottom over the fullscreen overlay. It carries its own SheetState, so it
+    // and the overflow sheet below can never fight over one animation.
+    if (qualityMenuOpen) {
+        VideoQualitySheet(
+            preferredHeight = preferredHeight,
+            availableHeights = availableHeights,
+            selectedHeight = selectedHeight,
+            onPreferredHeightChange = onPreferredHeightChange,
+            onDismissRequest = { qualityMenuOpen = false },
+        )
     }
 
     // ── 3-dot overflow bottom sheet ──
@@ -1432,29 +1442,6 @@ private fun isLoadingState(state: VideoArtworkState): Boolean =
                 state.isResyncing ||
                 (state.streamUrl != null && !state.isVideoReady)
         )
-
-/**
- * Format a video height (in px) as a human-readable label.
- * 1440 → "1440p (QHD)"
- * 2160 → "2160p (4K)"
- * 720  → "720p (HD)"
- * 480  → "480p (SD)"
- * 360  → "360p"
- * 240  → "240p"
- * 144  → "144p"
- */
-private fun formatHeightLabel(height: Int): String {
-    val qualityName =
-        when (height) {
-            2160 -> " (4K)"
-            1440 -> " (QHD)"
-            1080 -> " (FHD)"
-            720 -> " (HD)"
-            480 -> " (SD)"
-            else -> ""
-        }
-    return "${height}p$qualityName"
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Fullscreen overlay gesture support

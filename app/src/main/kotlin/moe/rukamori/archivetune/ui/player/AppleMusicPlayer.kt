@@ -182,6 +182,21 @@ private val AppleMusicBottomIconSize = 26.dp
 private val AppleMusicBottomButtonSize = 48.dp
 private val AppleMusicMiniArtworkSize = 56.dp
 
+// ─── Lyrics backdrop "moving blur" drift ─────────────────────────────────────
+// Kept in sync with MovingBlurBackground in LyricsScreen.kt so both lyrics
+// surfaces pan at the same Apple-Music-like rate. Amplitudes are in dp and are
+// applied as graphicsLayer translations (see driftGraphicsLayer below).
+//
+// AmLyricsBlurDriftScale must satisfy
+//     (scale - 1) / 2 * screenWidthDp  >=  driftX + blurRadius
+// or the blurred artwork stops covering the parent at max drift and the blur
+// samples transparent pixels, which shows up as a dark band on the trailing
+// edge. For the narrowest common phone (360dp) that means
+//     (2.4 - 1) / 2 * 360 = 252dp  >=  160 + 64 = 224dp.  ✔
+private const val AmLyricsBlurDriftXDp = 160f
+private const val AmLyricsBlurDriftYDp = 120f
+private const val AmLyricsBlurDriftScale = 2.4f
+
 /**
  * A [Shape] that interpolates the corner radius based on the element's size.
  * At [smallSize], the corner radius is [smallRadius]; at [largeSize], it's
@@ -457,16 +472,21 @@ fun AppleMusicPlayerContent(
     // trailing edge was INSIDE the parent's bounds (0.2*W - 80 < 0 for W=360),
     // so the blur sampled transparent areas at the trailing edge — appearing
     // as a flickering dark band at the screen corners/edges. Now using scale
-    // 1.9 with drift ±60/±45 and blur 64dp: the image extends 0.45*W beyond
-    // each edge (162dp for W=360), which is > drift(60) + blur(64) = 124dp,
+    // 2.4 with drift ±160/±120 and blur 64dp: the image extends 0.7*W beyond
+    // each edge (252dp for W=360), which is > drift(160) + blur(64) = 224dp,
     // so the image always covers the parent with a comfortable safety margin.
     //
-    // SPEED: uses LinearEasing instead of FastOutSlowInEasing. The previous
-    // FastOutSlowInEasing made the drift feel fast at the start but slow at
-    // the turnaround points (the easing decelerates into each endpoint then
-    // accelerates back out). LinearEasing gives a constant, uniform speed
-    // throughout the entire cycle — no perceived "slowdown" at the edges.
-    // Duration kept at 14s/20s (already increased from the original 19s/27s).
+    // SPEED: amplitude and period now match [MovingBlurBackground] in
+    // LyricsScreen.kt — 4s/6s half-cycles over ±160/±120 dp, the Apple Music
+    // "breathing" pan. The previous 14s/20s over ±60/±45 covered 120dp in 14s
+    // and 90dp in 20s — ~9 dp/s on X and ~5 dp/s on Y; against a 64dp blur
+    // (which masks any motion under ~16dp) that read as a still image. 4s/6s
+    // over the wider range covers 320dp in 4s and 240dp in 6s — 80 dp/s on X
+    // and 40 dp/s on Y, a clearly visible drift.
+    //
+    // LinearEasing (rather than FastOutSlowInEasing) keeps the speed constant
+    // through the whole cycle, so there is no perceived "stall" at the
+    // turnaround points where the easing would otherwise decelerate.
     //
     // CRITICAL PERF: we keep the State<Float> objects (NOT `by` delegation) so
     // the animation values are read ONLY inside Modifier.graphicsLayer { }
@@ -480,19 +500,19 @@ fun AppleMusicPlayerContent(
     // drift lives in a separate MovingBlurBackground composable.
     val blurTransition = rememberInfiniteTransition(label = "am-lyrics-blur-drift")
     val blurDriftXState = blurTransition.animateFloat(
-        initialValue = -60f,
-        targetValue = 60f,
+        initialValue = -AmLyricsBlurDriftXDp,
+        targetValue = AmLyricsBlurDriftXDp,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 14_000, easing = LinearEasing),
+            animation = tween(durationMillis = 4_000, easing = LinearEasing),
             repeatMode = RepeatMode.Reverse,
         ),
         label = "am-lyrics-drift-x",
     )
     val blurDriftYState = blurTransition.animateFloat(
-        initialValue = -45f,
-        targetValue = 45f,
+        initialValue = -AmLyricsBlurDriftYDp,
+        targetValue = AmLyricsBlurDriftYDp,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 20_000, easing = LinearEasing),
+            animation = tween(durationMillis = 6_000, easing = LinearEasing),
             repeatMode = RepeatMode.Reverse,
         ),
         label = "am-lyrics-drift-y",
@@ -727,13 +747,14 @@ fun AppleMusicPlayerContent(
                 // lyricsOpen is a stable Boolean state — reading it here is a
                 // deferred read that only triggers a layer update on toggle.
                 val active = lyricsOpen
-                // Scale 1.9 (lyricsOpen) ensures the image extends 0.45*W beyond
-                // each edge — enough to cover drift(±60) + blur(64dp) = 124dp
-                // even on a 360dp-wide screen (162dp > 124dp). The old 1.4f scale
-                // only extended 72dp, which was less than drift(80) alone —
-                // causing the trailing edge to expose transparent areas at max
-                // drift, which the blur then sampled as a flickering dark band.
-                val scale = if (active) 1.9f else 1.2f
+                // Scale [AmLyricsBlurDriftScale] (lyricsOpen) ensures the image
+                // extends 0.7*W beyond each edge — enough to cover
+                // drift(±160) + blur(64dp) = 224dp even on a 360dp-wide screen
+                // (252dp > 224dp). The old 1.4f scale only extended 72dp, which
+                // was less than drift alone — causing the trailing edge to
+                // expose transparent areas at max drift, which the blur then
+                // sampled as a flickering dark band.
+                val scale = if (active) AmLyricsBlurDriftScale else 1.2f
                 scaleX = scale
                 scaleY = scale
                 if (active) {

@@ -14,6 +14,7 @@ import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import moe.rukamori.archivetune.constants.AllowAgeRestrictedKey
 import moe.rukamori.archivetune.constants.AudioQuality
 import moe.rukamori.archivetune.constants.PlayerStreamClient
 import moe.rukamori.archivetune.innertube.NewPipeUtils
@@ -25,9 +26,11 @@ import moe.rukamori.archivetune.innertube.models.YouTubeClient.Companion.ANDROID
 import moe.rukamori.archivetune.innertube.models.YouTubeClient.Companion.IOS
 import moe.rukamori.archivetune.innertube.models.YouTubeClient.Companion.MWEB
 import moe.rukamori.archivetune.innertube.models.YouTubeClient.Companion.TVHTML5
+import moe.rukamori.archivetune.innertube.models.YouTubeClient.Companion.TVHTML5_SIMPLY_EMBEDDED_PLAYER
 import moe.rukamori.archivetune.innertube.models.YouTubeClient.Companion.VISIONOS
 import moe.rukamori.archivetune.innertube.models.YouTubeClient.Companion.WEB
 import moe.rukamori.archivetune.innertube.models.YouTubeClient.Companion.WEB_CREATOR
+import moe.rukamori.archivetune.innertube.models.YouTubeClient.Companion.WEB_EMBEDDED
 import moe.rukamori.archivetune.innertube.models.YouTubeClient.Companion.WEB_PRIMARY
 import moe.rukamori.archivetune.innertube.models.YouTubeClient.Companion.WEB_REMIX
 import moe.rukamori.archivetune.innertube.models.response.PlayerResponse
@@ -136,6 +139,66 @@ object YTPlayerUtils {
             MWEB,
             WEB_CREATOR,
         )
+
+    /**
+     * Embedded-player clients used to play age-restricted tracks, appended to the client order only
+     * while Content Settings → "Allow age-restricted content" is on.
+     *
+     * YouTube serves age-gated videos to its embedded players without an adult-verified session,
+     * which is what makes them playable at all: every non-embedded client answers the player
+     * request with `LOGIN_REQUIRED` / "Sign in to confirm your age" instead of streaming data.
+     *
+     * Both profiles are copied with cookie auth and the login requirement stripped:
+     *  - `TVHTML5_SIMPLY_EMBEDDED_PLAYER` is catalogued as `loginRequired = true`, which would make
+     *    [buildStreamClientOrder]'s callers skip it outright (it has no cookie support, so the
+     *    `loginRequired && !usesCookieAuthentication` guard always fires). The embedded endpoint
+     *    does not actually need a session — it needs the signature timestamp, which the profile
+     *    already requests.
+     *  - `WEB_EMBEDDED` must go out anonymously: attaching the signed-in user's cookie reinstates
+     *    the account's age gate and defeats the point.
+     *
+     * They are appended LAST so nothing about normal playback changes — they are only reached once
+     * every regular client has failed, which for an age-gated track is exactly the gate.
+     */
+    private val AGE_GATE_BYPASS_CLIENTS: Array<YouTubeClient> =
+        arrayOf(
+            TVHTML5_SIMPLY_EMBEDDED_PLAYER.copy(
+                loginSupported = false,
+                loginRequired = false,
+                supportsCookieAuthentication = false,
+                friendlyName = "TV Embedded (age-gate bypass)",
+            ),
+            WEB_EMBEDDED.copy(
+                loginSupported = false,
+                loginRequired = false,
+                supportsCookieAuthentication = false,
+                friendlyName = "Web Embedded (age-gate bypass)",
+            ),
+        )
+
+    /**
+     * True while the user has opted in to age-restricted playback (Content Settings). Read fresh on
+     * every client-order build so toggling it takes effect on the next track without a restart.
+     */
+    private fun ageRestrictedPlaybackAllowed(): Boolean = PreferenceStore.get(AllowAgeRestrictedKey) == true
+
+    /**
+     * True when [failure] is an age-gate rejection *and* the user has opted in to age-restricted
+     * playback, meaning the native resolver's embedded-player clients (see [AGE_GATE_BYPASS_CLIENTS])
+     * are worth trying instead of surfacing a sign-in prompt.
+     *
+     * Deliberately narrower than [isLoginRecoveryError]: a genuine expired-session failure must
+     * still reach the user as "sign in again", because no embedded client can fix that.
+     */
+    fun isAgeRestrictedPlaybackFallbackAllowed(failure: LoginRequiredForPlaybackException): Boolean {
+        if (!ageRestrictedPlaybackAllowed()) return false
+        val lower = failure.message.orEmpty().lowercase(Locale.US)
+        return "confirm your age" in lower ||
+            "age-restricted" in lower ||
+            "age restricted" in lower ||
+            "inappropriate for some users" in lower ||
+            "mature audiences" in lower
+    }
 
     private data class CachedStreamUrl(
         val url: String,
@@ -599,6 +662,9 @@ object YTPlayerUtils {
                 ?.let { add(it) }
             addAll(orderedFallbackClients)
             if (preferredYouTubeClient != MAIN_CLIENT) add(MAIN_CLIENT)
+            // Last resort, opt-in only: the embedded players are the only clients YouTube will
+            // serve an age-gated track to. See [AGE_GATE_BYPASS_CLIENTS].
+            if (ageRestrictedPlaybackAllowed()) addAll(AGE_GATE_BYPASS_CLIENTS)
         }.distinct()
     }
 

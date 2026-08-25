@@ -1068,6 +1068,9 @@ fun BottomSheetPlayer(
             ?.id
     var videoPreferredHeight by rememberSaveable { mutableStateOf<Int?>(null) }
     var videoAvailableHeights by remember { mutableStateOf<List<Int>>(emptyList()) }
+    // The resolution actually resolved for the current stream, so the quality UI can report what
+    // Auto / Data saver / High quality picked instead of only naming the mode.
+    var videoSelectedHeight by remember { mutableStateOf<Int?>(null) }
     var videoPlaybackFailed by remember { mutableStateOf(false) }
 
     // Reset the failure flag when the media changes — a new song gets a fresh
@@ -1083,7 +1086,10 @@ fun BottomSheetPlayer(
             positionProvider = { playerConnection.player.currentPosition },
             preferredHeight = videoPreferredHeight,
             holdAudioUntilVideoReady = true,
-            onStreamResolved = { info -> videoAvailableHeights = info?.availableHeights.orEmpty() },
+            onStreamResolved = { info ->
+                videoAvailableHeights = info?.availableHeights.orEmpty()
+                videoSelectedHeight = info?.selectedHeight
+            },
             onPlaybackFailed = { videoPlaybackFailed = true },
             onLoadingStateChange = { /* loading is computed from state directly in InlineVideoPlayer */ },
             onRequestPauseMain = {
@@ -1103,6 +1109,7 @@ fun BottomSheetPlayer(
         LocalVideoPreferredHeight provides videoPreferredHeight,
         LocalVideoOnPreferredHeightChange provides { videoPreferredHeight = it },
         LocalVideoAvailableHeights provides videoAvailableHeights,
+        LocalVideoSelectedHeight provides videoSelectedHeight,
     ) {
     Box(modifier = Modifier.fillMaxSize()) {
     BottomSheet(
@@ -1713,6 +1720,7 @@ fun BottomSheetPlayer(
                                 preferredHeight = videoPreferredHeight,
                                 onPreferredHeightChange = { videoPreferredHeight = it },
                                 availableHeights = videoAvailableHeights,
+                                selectedHeight = videoSelectedHeight,
                                 modifier =
                                     Modifier
                                         .align(Alignment.Center)
@@ -2075,6 +2083,7 @@ fun BottomSheetPlayer(
                                 preferredHeight = videoPreferredHeight,
                                 onPreferredHeightChange = { videoPreferredHeight = it },
                                 availableHeights = videoAvailableHeights,
+                                selectedHeight = videoSelectedHeight,
                                 modifier =
                                     Modifier
                                         .align(Alignment.Center)
@@ -2520,6 +2529,7 @@ fun BottomSheetPlayer(
                     preferredHeight = videoPreferredHeight,
                     onPreferredHeightChange = { videoPreferredHeight = it },
                     availableHeights = videoAvailableHeights,
+                    selectedHeight = videoSelectedHeight,
                     onDismiss = { videoFullscreenHolder.isFullscreen = false },
                 )
             }

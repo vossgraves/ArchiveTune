@@ -1131,6 +1131,22 @@ class HomeViewModel
                     }
             }
 
+            // Re-filter the feed as soon as the user hits "Don't recommend this song again"
+            // (or undoes it). The blocked set is applied while each section is built, so
+            // without this the song the user just dismissed stayed on screen until the next
+            // manual pull-to-refresh — which read as the action not working at all.
+            viewModelScope.launch(Dispatchers.IO) {
+                database
+                    .blockedSongIds()
+                    .map { it.toSet() }
+                    .distinctUntilChanged()
+                    .drop(1)
+                    .collectLatest {
+                        isLoading.filter { loading -> !loading }.first()
+                        load()
+                    }
+            }
+
             viewModelScope.launch(Dispatchers.IO) {
                 context.dataStore.data
                     .map { it[SpeedDialSongIdsKey].orEmpty() }

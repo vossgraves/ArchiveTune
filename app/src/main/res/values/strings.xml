@@ -616,6 +616,7 @@
     <string name="ip_rotation_loading">Loading proxy list</string>
     <string name="ip_rotation_refreshing">Refreshing IP</string>
     <string name="ip_rotation_refresh">Refresh IP</string>
+    <string name="ip_rotation_no_proxies">No working proxies found. The public proxy list is unreachable or every candidate failed — try again later.</string>
     <string name="stream_bypass_proxy">Bypass proxy for streams</string>
     <string name="stream_bypass_proxy_desc">Use your direct IP for stream playback to avoid IP mismatch</string>
     <string name="enable_betterlyrics">Enable BetterLyrics</string>
@@ -793,7 +794,7 @@
     <string name="romanization">Romanization</string>
     <string name="hide_explicit">Hide explicit content</string>
     <string name="allow_age_restricted">Allow age-restricted content</string>
-    <string name="allow_age_restricted_summary">Enable playback of age-restricted songs that are normally filtered out</string>
+    <string name="allow_age_restricted_summary">Play age-restricted songs by routing them through YouTube\'s embedded player. Resolution can take a little longer, and may still fail if YouTube tightens the gate.</string>
     <string name="hide_video">Hide music videos</string>
     <string name="ai_content_filter">AI content filter</string>
     <string name="ai_content_filter_hide">Hide AI-generated content</string>
@@ -878,7 +879,7 @@
     <string name="tidal_disconnect">Disconnect Tidal account</string>
     <!-- Tidal HiFi instances -->
     <string name="tidal_instances">HiFi instances</string>
-    <string name="tidal_instances_description">Tidal streams are resolved through public HiFi/QQDL instances. None are bundled — add your own, then tap Test instances to check which ones work. If the list is empty, Tidal streaming is disabled.</string>
+    <string name="tidal_instances_description">Optional fallback for when no pool account can stream a track. ArchiveTune probes the well-known public HiFi/QQDL mirrors on startup and only uses the ones that pass; add your own here to have them tried first. Tap Test instances to see which are reachable.</string>
     <string name="tidal_add_instance">Add instance</string>
     <string name="tidal_instance_url_hint">https://instance.example.com</string>
     <string name="tidal_instance_invalid_url">Enter a valid http(s) URL</string>

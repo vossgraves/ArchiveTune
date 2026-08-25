@@ -13,6 +13,7 @@ import moe.rukamori.archivetune.constants.AudioSourceType
 import moe.rukamori.archivetune.jiosaavn.SaavnService
 import moe.rukamori.archivetune.qobuz.QobuzAudioProvider
 import moe.rukamori.archivetune.qobuz.QobuzToken
+import moe.rukamori.archivetune.tidal.TidalAccountManager
 import moe.rukamori.archivetune.tidal.TidalAudioProvider
 import moe.rukamori.archivetune.utils.PoolAccountManager
 import okhttp3.OkHttpClient
@@ -33,8 +34,9 @@ data class SourceCheckResult(
  * Per-source health probe for the "Check source" row in Source Settings.
  *
  * Each source has different infrastructure, so each has its own probe:
- *  - Tidal: refresh the source pool, count Tidal accounts, then probe one
- *    Tidal instance health. Reports counts + the verdict.
+ *  - Tidal: refresh the source pool, count Tidal accounts, verify the first
+ *    premium pool token against the official Tidal API (this is the path that
+ *    actually streams), and report public instances as the optional fallback.
  *  - Qobuz: refresh the pool, count Qobuz accounts (premium first), then
  *    try a real user/get call on the first pool token to verify it works.
  *  - Qobuz backup: ping https://mlc.kouzu.in/api/stream?id=<test_id> with a
@@ -92,20 +94,60 @@ object SourceCheckService {
             )
         }
         val premium = accounts.count { it.premium }
-        // Probe Tidal instance health — the manager caches the verified list.
+
+        // Probe the path that actually streams. LosslessStreamResolver.resolveTidal tries the
+        // official Tidal API with the pool's subscriber tokens FIRST and only falls back to public
+        // HiFi/QQDL instances if every account fails — so a valid premium token means Tidal works
+        // with zero instances. Reporting the instance count as the headline verdict (as this check
+        // used to) told users Tidal was broken while it was streaming fine.
+        val probeAccount = accounts.firstOrNull { it.premium } ?: accounts.first()
+        val session = runCatching { TidalAccountManager.buildSessionFromBearer(probeAccount.token) }.getOrNull()
+        val subscription =
+            session?.userId?.let { userId ->
+                runCatching { TidalAccountManager.fetchSubscription(probeAccount.token, userId) }.getOrNull()
+            }
+        val accountLabel =
+            when {
+                session == null -> "token rejected by the Tidal API (expired — refresh the source pool)"
+                subscription == TidalAccountManager.Subscription.PREMIUM -> "valid (premium — lossless available)"
+                subscription == TidalAccountManager.Subscription.FREE -> "valid but FREE (previews only, no lossless)"
+                else -> "valid, subscription tier unknown"
+            }
+        val accountPathReady = session != null && subscription != TidalAccountManager.Subscription.FREE
+
+        // Instances are the optional no-account fallback. Report them as such.
         val healthyInstances = runCatching {
             moe.rukamori.archivetune.tidal.TidalInstanceHealthManager.healthyUrls(context).size
         }.getOrDefault(0)
+
         val summary = buildString {
             append("Pool accounts: ${accounts.size} ($premium premium)\n")
-            append("Healthy Tidal instances: $healthyInstances")
-            if (healthyInstances == 0 && accounts.isNotEmpty()) {
-                append("\n\nAccounts are loaded but no Tidal instance is reachable. " +
-                    "Tap 'Refresh source pool' to re-verify, or add a private Tidal instance via Integration.")
+            append("Account stream path: $accountLabel\n")
+            append("Public instances (optional fallback): $healthyInstances healthy")
+            if (accountPathReady) {
+                append("\n\nTidal source is READY via the account path.")
+                if (healthyInstances == 0) {
+                    append(
+                        " No public instance is reachable, but none is needed — " +
+                            "the pool's subscriber token streams directly from Tidal.",
+                    )
+                }
+            } else {
+                append("\n\nTidal source is NOT ready: ")
+                append(
+                    if (healthyInstances > 0) {
+                        "the account path failed, so playback will fall back to a public instance " +
+                            "(lower quality, may serve previews)."
+                    } else {
+                        "the account path failed and no public instance is reachable. " +
+                            "Tap 'Refresh source pool' to pull fresh tokens, or add a private " +
+                            "Tidal instance via Integration."
+                    },
+                )
             }
         }
         return SourceCheckResult(
-            healthy = accounts.isNotEmpty() && (healthyInstances > 0 || accounts.any { it.premium }),
+            healthy = accountPathReady || healthyInstances > 0,
             summary = summary,
         )
     }

@@ -46,6 +46,8 @@ import moe.rukamori.archivetune.constants.DownloadSourceKey
 import moe.rukamori.archivetune.constants.DownloadSourceOrderKey
 import moe.rukamori.archivetune.constants.QobuzAudioQuality
 import moe.rukamori.archivetune.constants.QobuzAudioQualityKey
+import moe.rukamori.archivetune.constants.SaavnAudioQuality
+import moe.rukamori.archivetune.constants.SaavnAudioQualityKey
 import moe.rukamori.archivetune.constants.TidalAudioQuality
 import moe.rukamori.archivetune.constants.TidalAudioQualityKey
 import moe.rukamori.archivetune.constants.toFormatId
@@ -114,6 +116,7 @@ class DownloadUtil
             get() = DownloadSourceConfig.parseOrder(downloadSourceOrderCsv)
         private val qobuzAudioQuality by enumPreference(context, QobuzAudioQualityKey, QobuzAudioQuality.FLAC)
         private val tidalAudioQuality by enumPreference(context, TidalAudioQualityKey, TidalAudioQuality.FLAC)
+        private val saavnAudioQuality by enumPreference(context, SaavnAudioQualityKey, SaavnAudioQuality.QUALITY_320)
         private val downloadScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         private val songUrlCache = ConcurrentHashMap<String, AuthScopedCacheValue>()
 
@@ -188,13 +191,19 @@ class DownloadUtil
                         // that we want a binary stream and disable any transparent
                         // gzip/br compression — compressed audio is already efficiently
                         // encoded and re-compressing it just wastes CPU.
-                        return@addInterceptor chain.proceed(
+                        val patched =
                             request
                                 .newBuilder()
                                 .header("Accept-Encoding", "identity")
                                 .header("Connection", "keep-alive")
-                                .build(),
-                        )
+                        // The Qobuz backup mirror rate-limits aggressively unless every request
+                        // carries this header — including the byte fetch, not just the resolve.
+                        // MusicService's client does the same for the playback path; without it
+                        // here the pre-warm fetch for a Qobuz-backup download gets throttled.
+                        if (host.endsWith("kouzu.in") && request.header("x-request-source").isNullOrEmpty()) {
+                            patched.header("x-request-source", "muzo")
+                        }
+                        return@addInterceptor chain.proceed(patched.build())
                     }
 
                     val requestProfile = StreamClientUtils.resolveRequestProfile(request.url)
@@ -328,7 +337,7 @@ class DownloadUtil
                 }
                 // Same check for source-prefixed cache keys — only return
                 // when we actually have the full file, not on partial cache.
-                for (sourcePrefix in listOf("qobuz:", "tidal:", "deezer:")) {
+                for (sourcePrefix in DownloadSourceConfig.CACHE_KEY_PREFIXES) {
                     val sourceKey = "$sourcePrefix$mediaId"
                     val sourceExpected = expectedLength // same expected length across sources
                     if (sourceExpected > 0L) {
@@ -434,13 +443,14 @@ class DownloadUtil
                                 // subsequent playback attempts.
                                 //
                                 // Both the bare mediaId key and the
-                                // source-prefixed keys (qobuz:/tidal:/deezer:)
+                                // source-prefixed keys (see
+                                // DownloadSourceConfig.CACHE_KEY_PREFIXES)
                                 // are purged so a failed pre-warm under one
                                 // source doesn't poison the next attempt via
                                 // a different source.
                                 val mediaId = download.request.id
                                 runCatching { playerCache.removeResource(mediaId) }
-                                for (sourcePrefix in listOf("qobuz:", "tidal:", "deezer:")) {
+                                for (sourcePrefix in DownloadSourceConfig.CACHE_KEY_PREFIXES) {
                                     runCatching { playerCache.removeResource("$sourcePrefix$mediaId") }
                                 }
                             }
@@ -462,7 +472,7 @@ class DownloadUtil
                             // playback attempt.
                             val mediaId = download.request.id
                             runCatching { playerCache.removeResource(mediaId) }
-                            for (sourcePrefix in listOf("qobuz:", "tidal:", "deezer:")) {
+                            for (sourcePrefix in DownloadSourceConfig.CACHE_KEY_PREFIXES) {
                                 runCatching { playerCache.removeResource("$sourcePrefix$mediaId") }
                             }
                             downloads.update { map -> map - download.request.id }
@@ -547,7 +557,7 @@ class DownloadUtil
             // When expected is unknown, we fall through to the resolver and
             // fetch a fresh copy, which writes the authoritative contentLength
             // to FormatEntity for next time.
-            for (key in listOf("qobuz:$mediaId", "tidal:$mediaId", "deezer:$mediaId", mediaId)) {
+            for (key in DownloadSourceConfig.CACHE_KEY_PREFIXES.map { "$it$mediaId" } + mediaId) {
                 val spans = runCatching { playerCache.getCachedSpans(key) }.getOrNull().orEmpty()
                 if (spans.isNotEmpty()) {
                     val expected = database.getSongByIdBlocking(mediaId)?.format?.contentLength ?: 0L
@@ -765,6 +775,11 @@ class DownloadUtil
                 return dataSpec.buildUpon()
                     .setUri(resolved.uri.toUri())
                     .setKey("${source.name.lowercase(java.util.Locale.US)}:$mediaId")
+                    // The DownloadManager fetches these bytes through PRDownloader, not through
+                    // mediaOkHttpClient, so the mirror's required header has to ride on the
+                    // DataSpec — the interceptor above never sees this request. Merged rather than
+                    // replaced so nothing Media3 already put on the spec is dropped.
+                    .setHttpRequestHeaders(dataSpec.httpRequestHeaders + requiredHeadersFor(resolved.uri))
                     .build()
             }
             return null
@@ -813,6 +828,14 @@ class DownloadUtil
                     cacheDir = appContext.cacheDir,
                 )?.let { ResolvedStreamData(it.uri, it.mimeType, it.codecs, it.contentLength) }
             }
+            DownloadSource.QOBUZ_BACKUP -> {
+                // Keyed by the YouTube video id, so it needs neither a Source Pool account nor a
+                // catalogue search — which makes it the one lossless source that works on a fresh
+                // install with nothing configured.
+                LosslessStreamResolver
+                    .resolveQobuzBackup(mediaId)
+                    ?.let { ResolvedStreamData(it.uri, it.mimeType, it.codecs, it.contentLength) }
+            }
             DownloadSource.DEEZER -> {
                 // Public Deezer API only exposes 30-second previews — full
                 // streaming requires Premium credentials. Return null so the
@@ -822,15 +845,32 @@ class DownloadUtil
                 null
             }
             DownloadSource.JIOSAAVN -> {
-                // The JioSaavn public API exposes 96/160/320 kbps AAC stream URLs at runtime,
-                // but the download path needs a stable, contentLength-bearing resolver like
-                // LosslessStreamResolver.resolveQobuz/resolveTidal. Until that's added, return
-                // null so the AUTO chain falls through to the next source. The runtime playback
-                // path (MusicService.resolveJioSaavnStream) is unaffected and still works.
-                null
+                LosslessStreamResolver.resolveJioSaavn(
+                    mediaId = mediaId,
+                    title = title,
+                    artists = artists,
+                    album = album,
+                    durationMs = durationMs,
+                    qualityApiValue = saavnAudioQuality.toApiValue(),
+                )?.let { ResolvedStreamData(it.uri, it.mimeType, it.codecs, it.contentLength) }
             }
             DownloadSource.AUTO, DownloadSource.YOUTUBE_MUSIC -> null
         }
+
+        /**
+         * Headers a resolved stream URL cannot be fetched without.
+         *
+         * Only the Qobuz backup mirror needs one today: `mlc-ytify.kouzu.in` rate-limits any
+         * request that arrives without `x-request-source`, and that applies to the byte fetch as
+         * much as to the resolve call. Every other source serves plain authenticated-by-URL CDN
+         * links, so the map stays empty for them.
+         */
+        private fun requiredHeadersFor(uri: String): Map<String, String> =
+            if (runCatching { uri.toUri().host }.getOrNull()?.endsWith("kouzu.in") == true) {
+                mapOf("x-request-source" to "muzo")
+            } else {
+                emptyMap()
+            }
 
         private data class ResolvedStreamData(
             val uri: String,

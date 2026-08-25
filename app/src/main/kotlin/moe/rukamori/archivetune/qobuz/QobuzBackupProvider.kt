@@ -7,10 +7,12 @@
 
 package moe.rukamori.archivetune.qobuz
 
+import moe.rukamori.archivetune.audiosource.FlacStreamInfo
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONArray
+import org.json.JSONObject
 import timber.log.Timber
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
@@ -19,9 +21,13 @@ import java.util.concurrent.TimeUnit
  * Catalogue lookups for the **Qobuz backup** source (the community-hosted
  * `mlc-ytify.kouzu.in` mirror, which serves a FLAC per YouTube video id).
  *
- * Streaming itself lives in `MusicService.resolveQobuzBackupStream` — this object
- * only covers the parts the *UI* needs, which the resolver has no use for:
+ * Covers everything that talks to the mirror:
  *
+ *  - [resolveStream] turns a YouTube video id into a playable stream. Both the playback path
+ *    (`MusicService.resolveQobuzBackupStream`) and the download path
+ *    (`LosslessStreamResolver.resolveQobuzBackup`) call it, so a fix to mirror selection or
+ *    format detection reaches both. Callers pass their own [OkHttpClient] when they need one —
+ *    playback streams the resolved bytes through the service's proxy-aware client.
  *  - [searchCandidates] backs the player's "Play from" search popup. The popup
  *    used to hard-exclude this source with a "search backend not yet available"
  *    empty state, on the assumption that the mirror could only be addressed by
@@ -182,6 +188,214 @@ object QobuzBackupProvider {
         }
         return out
     }
+
+    /**
+     * A mirror that answered a probe with real audio bytes.
+     *
+     * [contentLength] is the *full* resource size taken from the `Content-Range` total
+     * (`bytes 0-41/40802970`), not the 42 bytes the probe asked for — ExoPlayer and the downloader
+     * both want the whole-resource length.
+     *
+     * [sampleRate], [bitDepth] and [durationMs] come from the FLAC STREAMINFO block that the probe
+     * already downloads, so they describe the actual file rather than a tier guess. All three are
+     * null for the lossy mirror.
+     */
+    data class ResolvedStream(
+        val uri: String,
+        val mimeType: String,
+        val codecs: String,
+        val contentLength: Long?,
+        val contentType: String,
+        val isLossless: Boolean,
+        val sampleRate: Int? = null,
+        val bitDepth: Int? = null,
+        val durationMs: Long? = null,
+    ) {
+        /** Label for logs and the media-info card. */
+        val label: String
+            get() = if (isLossless) "Qobuz backup (lossless)" else "Qobuz backup (kouzu.in)"
+    }
+
+    /**
+     * Resolves a playable stream for [videoId] (a YouTube video id — the mirror's primary key).
+     *
+     * Two steps, because the mirror is a resolver in front of a CDN:
+     *  1. `GET /api/stream?id=<videoId>` returns a small JSON envelope naming the mirrors for the
+     *     track. GET, not HEAD — the endpoint answers HEAD with `405 Method Not Allowed`.
+     *  2. Each candidate mirror is probed with a ranged GET and the first that serves real audio
+     *     wins. Also a GET: the CDN rejects HEAD the same way. The probe reads
+     *     [FlacStreamInfo.REQUIRED_BYTES] bytes, which is both cheap and exactly enough to read the
+     *     FLAC header, so the container is determined from the bytes rather than from a
+     *     `Content-Type` the CDN often gets wrong.
+     *
+     * Returns null when the id is not a video id, the mirror has nothing indexed for it, or no
+     * candidate serves audio. Blocking — call from `Dispatchers.IO`.
+     *
+     * @param client the HTTP client to use. Defaults to this object's own; pass a proxy-aware one
+     *   to route the probe the same way the resolved bytes will be fetched.
+     */
+    fun resolveStream(
+        videoId: String,
+        client: OkHttpClient = this.client,
+    ): ResolvedStream? {
+        val id = videoId.trim()
+        if (!VIDEO_ID_REGEX.matches(id)) {
+            Timber.tag("QobuzBackup").d("skip: \"%s\" is not a YouTube video id", id)
+            return null
+        }
+
+        val candidates = fetchMirrorCandidates(id, client)
+        if (candidates.isEmpty()) return null
+
+        val resolved = candidates.firstNotNullOfOrNull { candidate -> probeMirror(candidate, client) }
+        if (resolved == null) {
+            Timber.tag("QobuzBackup").d(
+                "CDN miss for %s: no candidate mirror served audio (tried %d)",
+                id,
+                candidates.size,
+            )
+            return null
+        }
+        Timber.tag("QobuzBackup").i(
+            "resolved %s → %s [%s%s]",
+            id,
+            resolved.uri.take(80),
+            resolved.contentType,
+            if (resolved.isLossless) ", lossless" else "",
+        )
+        return resolved
+    }
+
+    /**
+     * Reads the resolver envelope and returns its mirror URLs, best first.
+     *
+     * The envelope carries more than one mirror for the same track:
+     *   `"lossless"` → `…/lossless/<id>`, the real FLAC
+     *   `"url"`      → `…/song/<id>`, a lossy AAC-in-MP4 transcode
+     * Reading only `url` is why "Qobuz backup" used to never actually play lossless. The FLAC
+     * mirrors are listed first and the lossy one is kept as a fallback for entries that have no
+     * FLAC yet.
+     */
+    private fun fetchMirrorCandidates(
+        videoId: String,
+        client: OkHttpClient,
+    ): List<String> {
+        val url =
+            "$BASE_URL/api/stream"
+                .toHttpUrl()
+                .newBuilder()
+                .addQueryParameter("id", videoId)
+                .build()
+        val request =
+            Request
+                .Builder()
+                .url(url)
+                .get()
+                .header("User-Agent", USER_AGENT)
+                .header("Accept", "application/json")
+                .header("x-request-source", "muzo")
+                .build()
+        return runCatching {
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    Timber.tag("QobuzBackup").d("resolver miss for %s: HTTP %d", videoId, response.code)
+                    return@use emptyList()
+                }
+                val body = response.body?.string().orEmpty()
+                if (body.isBlank()) {
+                    Timber.tag("QobuzBackup").d("resolver miss for %s: empty body", videoId)
+                    return@use emptyList()
+                }
+                val root = runCatching { JSONObject(body) }.getOrNull()
+                if (root == null) {
+                    Timber.tag("QobuzBackup").d(
+                        "resolver miss for %s: body is not JSON (first 100 chars: %s)",
+                        videoId,
+                        body.take(100),
+                    )
+                    return@use emptyList()
+                }
+                buildList {
+                    root.optString("lossless").takeIf { it.isNotBlank() }?.let(::add)
+                    root.optString("flac").takeIf { it.isNotBlank() }?.let(::add)
+                    root.optString("url").takeIf { it.isNotBlank() }?.let(::add)
+                    root.optString("canvas_url").takeIf { it.isNotBlank() }?.let(::add)
+                    root.optString("video_url").takeIf { it.isNotBlank() }?.let(::add)
+                }.distinct().also { mirrors ->
+                    if (mirrors.isEmpty()) {
+                        Timber.tag("QobuzBackup").d(
+                            "resolver miss for %s: no url field in response (first 200 chars: %s)",
+                            videoId,
+                            body.take(200),
+                        )
+                    }
+                }
+            }
+        }.onFailure { error ->
+            Timber.tag("QobuzBackup").d(error, "resolver call failed for %s", videoId)
+        }.getOrDefault(emptyList())
+    }
+
+    /**
+     * Probes one mirror with a ranged GET and describes it, or returns null when it does not serve
+     * audio for this track.
+     */
+    private fun probeMirror(
+        url: String,
+        client: OkHttpClient,
+    ): ResolvedStream? =
+        runCatching {
+            val request =
+                Request
+                    .Builder()
+                    .url(url)
+                    .get()
+                    .header("User-Agent", USER_AGENT)
+                    .header("x-request-source", "muzo")
+                    .header("Range", "bytes=0-${FlacStreamInfo.REQUIRED_BYTES - 1}")
+                    .build()
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@use null
+                val headerBytes = runCatching { response.body?.bytes() }.getOrNull()
+                val contentType = response.header("Content-Type")?.lowercase().orEmpty()
+                // A JSON body here is the CDN's {"detail":"Not Found"} envelope for a mirror that
+                // has not been populated for this track yet.
+                if (contentType.contains("json") || contentType.contains("html")) return@use null
+                if (contentType.isNotBlank() &&
+                    !contentType.startsWith("audio/") &&
+                    !contentType.startsWith("video/") &&
+                    !contentType.contains("octet-stream")
+                ) {
+                    return@use null
+                }
+                // Prefer the Content-Range total ("bytes 0-41/40802970") — Content-Length on a 206
+                // is just the probed bytes.
+                val totalLength =
+                    response
+                        .header("Content-Range")
+                        ?.substringAfter('/', "")
+                        ?.trim()
+                        ?.toLongOrNull()
+                        ?: response.header("Content-Length")?.toLongOrNull()?.takeIf { response.code != 206 }
+                // Trust the bytes over the labels: a mirror that serves FLAC is FLAC even when the
+                // CDN mislabels the Content-Type, and the header is already in hand.
+                val streamInfo = headerBytes?.let(FlacStreamInfo::parse)
+                val isFlac = streamInfo != null || contentType.contains("flac") || url.contains("/lossless/")
+                ResolvedStream(
+                    uri = url,
+                    mimeType = if (isFlac) "audio/flac" else "audio/mp4",
+                    codecs = if (isFlac) "flac" else "mp4a.40.2",
+                    contentLength = totalLength?.takeIf { it > 0 },
+                    contentType = contentType.ifBlank { "unknown" },
+                    isLossless = isFlac,
+                    sampleRate = streamInfo?.sampleRate,
+                    bitDepth = streamInfo?.bitDepth,
+                    durationMs = streamInfo?.durationMs,
+                )
+            }
+        }.onFailure { error ->
+            Timber.tag("QobuzBackup").d(error, "mirror probe failed for %s", url.take(80))
+        }.getOrNull()
 
     /** Drops cached search results. Called when the user clears app caches. */
     fun clearCaches() {

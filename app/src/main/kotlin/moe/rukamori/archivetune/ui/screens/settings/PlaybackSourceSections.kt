@@ -127,7 +127,7 @@ private fun AudioSourceType.iconRes(): Int =
  * scroll state the host owns.
  */
 @Composable
-fun PlaybackSourceSections(
+internal fun PlaybackSourceSections(
     navController: NavController,
     positions: PreferencePositions,
 ) {

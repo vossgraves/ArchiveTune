@@ -402,6 +402,7 @@ private fun DownloadSource.displayName(context: android.content.Context): String
     when (this) {
         DownloadSource.AUTO -> context.getString(R.string.download_source_auto)
         DownloadSource.QOBUZ -> context.getString(R.string.download_source_qobuz)
+        DownloadSource.QOBUZ_BACKUP -> context.getString(R.string.source_qobuz_backup)
         DownloadSource.TIDAL -> context.getString(R.string.download_source_tidal)
         DownloadSource.DEEZER -> context.getString(R.string.download_source_deezer)
         DownloadSource.JIOSAAVN -> context.getString(R.string.download_source_jiosaavn)
@@ -412,6 +413,7 @@ private fun DownloadSource.displayName(): String =
     when (this) {
         DownloadSource.AUTO -> "Auto"
         DownloadSource.QOBUZ -> "Qobuz"
+        DownloadSource.QOBUZ_BACKUP -> "Qobuz Backup"
         DownloadSource.TIDAL -> "Tidal"
         DownloadSource.DEEZER -> "Deezer"
         DownloadSource.JIOSAAVN -> "JioSaavn"
@@ -422,6 +424,7 @@ private fun DownloadSource.iconRes(): Int =
     when (this) {
         DownloadSource.AUTO -> R.drawable.download
         DownloadSource.QOBUZ -> R.drawable.provider_qobuz
+        DownloadSource.QOBUZ_BACKUP -> R.drawable.provider_qobuz
         DownloadSource.TIDAL -> R.drawable.provider_tidal
         DownloadSource.DEEZER -> R.drawable.provider_deezer
         DownloadSource.JIOSAAVN -> R.drawable.provider_jiosaavn

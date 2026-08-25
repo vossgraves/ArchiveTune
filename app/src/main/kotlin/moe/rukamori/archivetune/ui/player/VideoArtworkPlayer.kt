@@ -287,14 +287,20 @@ private const val VideoSyncPollIntervalMs = 250L
 private const val VideoStuckBufferingTimeoutMs = 20000L
 
 /**
- * Hard cap on the resolution we will ever attempt to play.
+ * Cap on the resolution we attempt to play, derived from the user's quality choice.
  *
- * Capped at 1080p — 4K (2160) VP9 decoding on mobile chipsets causes
- * persistent ~500ms decoder lag that makes the video fall behind audio,
- * triggering constant re-syncs. 1080p is more than sufficient for a phone
- * screen and decodes fast enough to keep drift under the tolerance.
+ * This used to be a hard-coded 1080 constant, which meant the original 4K (and higher) formats
+ * YouTube publishes were filtered out before they ever reached the picker — they were neither
+ * playable nor even listed. Now the ceiling comes from the choice itself:
+ *  - Auto keeps the old conservative 1080p limit (4K VP9/AV1 decoding on mid-range chipsets lags
+ *    far enough behind the separately-loaded audio to trip the resync watchdog),
+ *  - Data saver drops to 480p,
+ *  - High quality / an exact Advanced pick go as high as this device's decoders report.
+ *
+ * See [VideoQualityPreference] for the encoding and [VideoDecoderCapabilities] for the hardware
+ * ceiling that bounds every branch.
  */
-private const val MaxVideoHeightCap = 1080
+private fun maxVideoHeightFor(preferredHeight: Int?): Int = VideoQualityPreference.ceilingFor(preferredHeight)
 
 /**
  * Maximum time the main audio player stays paused while we wait for the
@@ -337,11 +343,19 @@ private const val VideoLoadResumeDelayMs = 1000L
  * Resolved information about a video stream — the playable URL plus the
  * menu of formats YouTube offered, so the user can pick a different
  * quality after playback has started.
+ *
+ * @property availableHeights every resolution this device could decode, ascending. Drives the
+ *   Advanced list in the quality sheet, so it is bounded only by
+ *   [VideoDecoderCapabilities.maxSupportedHeight] and not by the current quality mode.
+ * @property selectedHeight the height actually being played, so Auto / Data saver / High quality
+ *   can show what they resolved to (e.g. "Auto · 1080p"). Null when YouTube did not label the
+ *   chosen format.
  */
 data class VideoStreamInfo(
     val streamUrl: String,
     val availableHeights: List<Int>,
     val captionTracks: List<PlayerResponse.CaptionTrack>,
+    val selectedHeight: Int? = null,
 )
 
 /**
@@ -2144,20 +2158,23 @@ private fun VideoAmbientBackdrop(
  * silenced in an earlier attempt. Loading audio + video separately keeps
  * the audio path identical to non-music-video playback (no muting hooks,
  * no risk of dual audio) and lets the user pick any adaptive video
- * resolution up to [MaxVideoHeightCap] (1080p).
+ * resolution the device can decode — up to and including the original 4K
+ * (or higher) format, when the user asks for it via High quality or an
+ * exact Advanced pick.
  *
  * The picker scans BOTH `formats` and `adaptiveFormats` (YouTube
  * occasionally lists a video-only entry in `formats` on some clients),
- * filters to those at or below [MaxVideoHeightCap], and picks the highest
- * resolution at or below the user's [preferredHeight] (falling back to
- * the smallest available if the preferred height is below everything
- * YouTube offered).
+ * filters to those at or below the ceiling [preferredHeight] implies (see
+ * [maxVideoHeightFor]), and picks the highest remaining resolution
+ * (falling back to the smallest available when the ceiling is below
+ * everything YouTube offered).
  */
 private fun pickVideoFormat(
     playerResponse: PlayerResponse,
     preferredHeight: Int?,
 ): PlayerResponse.StreamingData.Format? {
     val streamingData = playerResponse.streamingData ?: return null
+    val heightCeiling = maxVideoHeightFor(preferredHeight)
 
     val allVideoFormats =
         (streamingData.formats.orEmpty() + streamingData.adaptiveFormats.orEmpty())
@@ -2170,27 +2187,34 @@ private fun pickVideoFormat(
                 val h = it.height
                 h != null && h > 0
             }
-            .filter { (it.height ?: 0) <= MaxVideoHeightCap }
+            .filter { (it.height ?: 0) <= heightCeiling }
             .filter { it.url != null || it.signatureCipher != null || it.cipher != null }
             .toList()
 
-    if (allVideoFormats.isEmpty()) return null
-
-    val heightFiltered =
-        if (preferredHeight != null) {
-            val atOrBelow = allVideoFormats.filter { (it.height ?: 0) <= preferredHeight }
-            if (atOrBelow.isNotEmpty()) atOrBelow else allVideoFormats.sortedBy { it.height ?: 0 }
-        } else {
-            allVideoFormats
-        }
+    if (allVideoFormats.isEmpty()) {
+        // The ceiling excluded everything — every format YouTube offered is taller than this
+        // device (or this mode) allows. Fall back to the smallest format rather than returning
+        // null, which the caller treats as "this client has no video at all" and would otherwise
+        // drop playback to album artwork.
+        return (streamingData.formats.withUsableHeight() + streamingData.adaptiveFormats.withUsableHeight())
+            .filter { it.url != null || it.signatureCipher != null || it.cipher != null }
+            .minByOrNull { it.height ?: Int.MAX_VALUE }
+    }
 
     val comparator =
         compareByDescending<PlayerResponse.StreamingData.Format> { it.height ?: 0 }
             .thenByDescending { it.url != null }
             .thenByDescending { it.audioQuality != null }
 
-    return heightFiltered.sortedWith(comparator).firstOrNull()
+    return allVideoFormats.sortedWith(comparator).firstOrNull()
 }
+
+/** Formats that declare a usable frame height. */
+private fun List<PlayerResponse.StreamingData.Format>?.withUsableHeight(): List<PlayerResponse.StreamingData.Format> =
+    orEmpty().filter {
+        val h = it.height
+        h != null && h > 0
+    }
 
 /**
  * Resolve a playable video stream URL for [videoId] by trying multiple YouTube
@@ -2254,8 +2278,15 @@ private suspend fun resolveVideoStreamUrl(
                     val availableHeights =
                         (playerResponse.streamingData?.formats.orEmpty() +
                             playerResponse.streamingData?.adaptiveFormats.orEmpty())
-                            .mapNotNull { it.height?.takeIf { height -> height in 1..MaxVideoHeightCap } }
-                            .distinct()
+                            .mapNotNull { format ->
+                                // Bounded by what this device can decode, NOT by the current
+                                // quality mode: the Advanced list has to offer every resolution
+                                // the user could switch to, including the 4K original that Auto
+                                // itself would never pick.
+                                format.height?.takeIf { height ->
+                                    height in 1..VideoDecoderCapabilities.maxSupportedHeight()
+                                }
+                            }.distinct()
                             .sorted()
                     val captionTracks =
                         playerResponse.captions
@@ -2270,6 +2301,7 @@ private suspend fun resolveVideoStreamUrl(
                         streamUrl = finalUrl,
                         availableHeights = availableHeights,
                         captionTracks = captionTracks,
+                        selectedHeight = format.height?.takeIf { it > 0 },
                     )
                 }.onFailure { error ->
                     if (error is CancellationException) throw error

@@ -255,10 +255,16 @@ class App :
                 prefs[ContentLanguageKey]?.takeIf { it != SYSTEM_DEFAULT }?.let { lang ->
                     YouTube.locale = YouTube.locale.copy(hl = lang)
                 }
-                prefs[YouTubeMusicRegionKey]?.let { regionValue ->
-                    if (regionValue != SYSTEM_DEFAULT) {
-                        YouTube.locale = YouTube.locale.copy(gl = regionValue)
-                    }
+                // Restore the YouTube Music region override. BOTH halves have to come back: the
+                // `gl` locale override *and* `regionSpooferActive`, which is what forces the
+                // region-sensitive endpoints (home, search, charts, explore, moods, new releases)
+                // to go out anonymously so `gl` is authoritative. Restoring only `gl` — as this
+                // used to — meant spoofing silently stopped working after the very first restart,
+                // including the automatic one that picking a region triggers: the account context
+                // came back and YouTube went on serving the account's home country.
+                prefs[YouTubeMusicRegionKey]?.takeIf { it != SYSTEM_DEFAULT }?.let { regionValue ->
+                    YouTube.locale = YouTube.locale.copy(gl = regionValue)
+                    YouTube.regionSpooferActive = true
                 }
 
                 LastFmServiceConfig.fromPreferences(prefs).apply(prefs[LastFMSessionKey])
@@ -272,6 +278,17 @@ class App :
                     password = prefs[ProxyPasswordKey],
                 )
                 YouTube.streamBypassProxy = YouTube.proxy != null && prefs[StreamBypassProxyKey] == true
+
+                // Re-install the rotating proxy pool when the user left IP rotation on. Without
+                // this the toggle in Internet Settings read as ON after every restart while no
+                // proxy was actually installed, so rotation appeared to do nothing. Fetching and
+                // validating the pool is network-bound, so it runs here in the deferred IO block
+                // and not on the startup critical path. A pool that validates to nothing leaves
+                // rotation off; requests then go out directly, exactly as before.
+                if (prefs[IpRotationEnabledKey] == true) {
+                    runCatching { YouTube.enableIpRotation() }
+                        .onFailure { Timber.w(it, "IP rotation restore failed") }
+                }
 
                 if (prefs[UseLoginForBrowse] != false) {
                     YouTube.useLoginForBrowse = true
