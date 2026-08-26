@@ -14,8 +14,10 @@ import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationVector1D
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -64,6 +66,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -102,6 +105,7 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -181,6 +185,11 @@ private const val V2_POSITION_RESET_BACKWARD_THRESHOLD_MS = 1_000L
 
 /** Seconds to wait before auto-scroll resumes after manual scroll. */
 private const val MANUAL_SCROLL_TIMEOUT_MS = 3000L
+// The lines stay transparent until the active one has been placed, then fade
+// in over this long. See `awaitingFirstFocus`.
+private const val V2_FIRST_FOCUS_FADE_MS = 200
+// Hard ceiling on how long the lines may stay hidden waiting for that placement.
+private const val V2_FIRST_FOCUS_TIMEOUT_MS = 400L
 
 /** Sentinel entry prepended so auto-scroll has headroom above the first line. */
 private val HEAD_LYRICS_ENTRY = LyricsEntry(time = 0L, text = "")
@@ -498,6 +507,40 @@ fun LyricsV2(
     var isManualScrolling by remember { mutableStateOf(false) }
     var lastManualScrollTime by remember { mutableLongStateOf(0L) }
 
+    // ── First-frame placement ──
+    // A fresh LazyListState starts at line 0 and the auto-scroll effect below
+    // animates it to the active line, so opening the view showed the first verse
+    // for a moment and then scrolled itself to wherever the song actually is.
+    // That is the "lyrics reposition themselves every time I open lyrics"
+    // report; it is most obvious in the Apple Music player, which composes this
+    // view from scratch on every open.
+    //
+    // Hold the list transparent until the active line is placed — the first
+    // placement is an instant scroll, since there is nothing on screen to
+    // animate — then fade in. Keyed on the line count so lyrics that land after
+    // the view is already open (slow provider, translation) are placed the same
+    // way instead of jumping.
+    var awaitingFirstFocus by
+        remember(playbackResetTick, entriesWithWords.size) {
+            mutableStateOf(isSynced && entriesWithWords.isNotEmpty())
+        }
+    // Safety net: never leave the lyrics hidden because a placement never came.
+    LaunchedEffect(awaitingFirstFocus) {
+        if (!awaitingFirstFocus) return@LaunchedEffect
+        delay(V2_FIRST_FOCUS_TIMEOUT_MS)
+        awaitingFirstFocus = false
+    }
+    val firstFocusAlpha =
+        androidx.compose.animation.core.animateFloatAsState(
+            targetValue = if (awaitingFirstFocus) 0f else 1f,
+            animationSpec =
+                tween(
+                    durationMillis = if (awaitingFirstFocus) 0 else V2_FIRST_FOCUS_FADE_MS,
+                    easing = LinearEasing,
+                ),
+            label = "lyrics-v2-first-focus-alpha",
+        )
+
     // Detect manual scrolling
     val nestedScrollConnection =
         remember {
@@ -532,8 +575,26 @@ fun LyricsV2(
 
     // Auto-scroll to active line
     LaunchedEffect(currentLineIndex, isManualScrolling, lyricsScroll) {
-        if (!lyricsScroll || isManualScrolling || !isSynced) return@LaunchedEffect
+        if (!lyricsScroll || isManualScrolling || !isSynced) {
+            awaitingFirstFocus = false
+            return@LaunchedEffect
+        }
         if (currentLineIndex < 0 || currentLineIndex >= entriesWithWords.size) return@LaunchedEffect
+
+        if (awaitingFirstFocus) {
+            // Wait for the first measure so the 35% anchor is computed against a
+            // real viewport, then jump straight there while the list is still
+            // transparent.
+            val viewportHeight =
+                listState.layoutInfo.viewportSize.height.takeIf { it > 0 }
+                    ?: snapshotFlow { listState.layoutInfo.viewportSize.height }.first { it > 0 }
+            listState.scrollToItem(
+                index = currentLineIndex,
+                scrollOffset = -(viewportHeight * 0.35f).toInt(),
+            )
+            awaitingFirstFocus = false
+            return@LaunchedEffect
+        }
 
         val visibleInfo = listState.layoutInfo
         val viewportHeight = visibleInfo.viewportSize.height
@@ -635,7 +696,12 @@ fun LyricsV2(
                     .fillMaxSize()
                     .nestedScroll(nestedScrollConnection)
                     .smoothFadingEdge(vertical = 80.dp)
-                    .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen },
+                    .graphicsLayer {
+                        compositingStrategy = CompositingStrategy.Offscreen
+                        // Draw-phase read — holds the lines back until the active
+                        // one has been placed (see awaitingFirstFocus).
+                        alpha = firstFocusAlpha.value
+                    },
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             itemsIndexed(
