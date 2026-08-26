@@ -1362,6 +1362,7 @@ class MusicService :
                 smallIconResId = R.drawable.small_icon,
             ),
         )
+        addSession(mediaSession)
 
         updateNotification()
         player.repeatMode = REPEAT_MODE_OFF
