@@ -28,8 +28,9 @@ PROTECTED_RESTORED=()
 AI_USED=false
 
 # --- Fork invariants (keep in sync with AGENTS.md) ---------------------------
+# No committed signing keystore: release signing uses GitHub Secrets only.
+# Keep this list in sync with the protected-files table in AGENTS.md.
 NEVER_TOUCH=(
-  "app/persistent-debug.keystore"
 )
 EXPECTED_APP_ID='applicationId = "moe.rukamori.archivetune"'
 # -----------------------------------------------------------------------------
@@ -196,8 +197,13 @@ grep -q "AutoChoosePlaybackClientKey" app/src/main/kotlin/moe/rukamori/archivetu
 grep -q "TelegramDataSource" \
   app/src/main/kotlin/moe/rukamori/archivetune/playback/MusicService.kt \
   || die "telegram data source no longer wired in MusicService.kt"
-grep -q "persistent-debug.keystore" .github/workflows/build.yml \
-  || die "fork CI signing patch (persistent-debug.keystore) lost in build.yml"
+# Signing must remain secret-based: committed fallback must not reappear, and workflows must require secrets.
+if grep -q "persistent-debug.keystore" .github/workflows/build.yml .github/workflows/release.yml .github/workflows/nightly.yml app/build.gradle.kts 2>/dev/null; then
+  die "committed signing keystore fallback reintroduced"
+fi
+grep -q "KEYSTORE" .github/workflows/build.yml || die "release signing secret check lost in build.yml"
+grep -q "KEYSTORE" .github/workflows/release.yml || die "release signing secret check lost in release.yml"
+grep -q "KEYSTORE" .github/workflows/nightly.yml || die "release signing secret check lost in nightly.yml"
 
 # 4b2. koiverse phone-home must never come back
 if grep -rq "koiiverse.cloud" app/src canvas/src; then

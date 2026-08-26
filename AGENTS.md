@@ -10,7 +10,7 @@ here must preserve the invariants below.
 - **Spotify is catalog-only**: `spotifycore/` + app `spotify/` provide metadata, artwork, search, playlist import and track-to-YouTube identification. Spotify is never an `AudioSourceType`.
 - **Playback client policy**: `AutoChoosePlaybackClientKey` + `YTPlayerUtils` own bounded YouTube client selection/fallback (incl. video-scoped PO tokens and the yt-dlp layer). Manual mode must remain available.
 - **Telegram streaming**: `telegram/` (TDLib wrapper + `TelegramDataSource`), browse/settings/login UI. Playback routed by the `telegram://` branch in `MusicService`'s `SchemeRoutingDataSource`, independent of the multi-source chain. Channels materialise as local playlists (`LPtg<chatId>`); artwork via the Coil `tgart://` fetcher. api_id/hash via `BuildConfig` with public Telegram Desktop fallback.
-- **CI signing**: workflows sign with the committed `app/persistent-debug.keystore` when the `KEYSTORE` secret is absent. Do not let upstream workflows overwrite this.
+- **CI signing**: release/nightly and release-shaped CI builds sign with the existing (historical) release keystore via GitHub Secrets `KEYSTORE`/`KEY_ALIAS`/`KEYSTORE_PASSWORD`/`KEY_PASSWORD` — same signing identity as all prior builds, so updates keep installing in place. No workflow may fall back to a committed `app/persistent-debug.keystore`; the file was removed from the tree and must not be restored (the key material remains public in git history — accepted residual risk, maintainer decision 2026-08-26; do NOT rotate to a fresh key without an explicit user-facing migration announcement, it force-reinstalls every user). Local debug builds use AGP's default debug keystore.
 - **Listen Together**: LAN + vivimusic public servers only. No koiverse REST/WS path and no `*.koiverse.cloud` / `raw.githubusercontent.com/koiverse/*` call anywhere in the tree.
 - **Protected files**: `applicationId` (`moe.rukamori.archivetune`) is fork identity — never adopt upstream changes to it. `Koiverse.jks*`, `ArchiveTuneKoiverseServer.txt`, `DataServer.txt` were removed and must never be restored.
 
@@ -32,9 +32,11 @@ here must preserve the invariants below.
 - JitPack is scoped via `exclusiveContent` to an allow-list of `com.github.*` groups (TeamNewPipe, tdlibx, PRDownloader, jaudiotagger, MetrolistGroup…). A new `com.github.*` dependency fails until its group is added.
 - The embedded Python/yt-dlp layer (Chaquopy) was removed on 2026-08-26: YouTube stream resolution is native-only via the compiled InnerTube core (`NativeStreamRepository` + BotGuard/QuickJS PO tokens). Upstream still carries Chaquopy — expect merge conflicts in `app/build.gradle.kts`, `gradle/libs.versions.toml`, and `playback/stream/*` on sync; resolve them by keeping the fork's native-only shape.
 
-## Automated upstream sync
+## Automated upstream sync (state as of 2026-08-26 — verify before relying on it)
 
-`.github/workflows/upstream-sync.yml` merges hourly via `scripts/upstream_sync.sh` + `scripts/ai_resolve.py`, following these invariants. If you change a fork feature or protected file, update the invariants in **both** this file and the script's verification section.
+- `upstream-sync.yml` (hourly rukamori/dev merge via `scripts/upstream_sync.sh` + `scripts/ai_resolve.py`, enforcing the invariants in this file) is **inert**: GitHub runs scheduled workflows only from the default branch, and it was removed from `main` on 2026-08-09 after failing for two days (the rukamori line is yt-dlp-first and 5000+ commits diverged).
+- `mirror-4nx3b.yml` on `main` "owns dev" by tree-replacing it with 4nx3b stable releases, but has failed 100/100 runs (gitlink bug: its restore loop `rm -rf`s the submodule dirs, so `git add -A` deletes the staged gitlinks). **Do not just fix that bug**: a working tree-replacement mirror would re-commit `app/persistent-debug.keystore` (still present in 4nx3b's tree), resurrect main's committed-keystore signing fallback, and wipe every deliberate fork divergence (yt-dlp removal, keystore removal, UI rework). Direction decision (merge-based 4nx3b sync vs release-tag mirroring only) is pending with the maintainer.
+- If you change a fork feature or protected file, update the invariants in **both** this file and `scripts/upstream_sync.sh`'s verification section, so whichever automation ends up owning sync enforces them.
 
 ## Agent hygiene
 
