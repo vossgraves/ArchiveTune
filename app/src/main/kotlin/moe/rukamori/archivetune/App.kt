@@ -47,10 +47,7 @@ import moe.rukamori.archivetune.lyrics.JapaneseLanguagePackManager
 import moe.rukamori.archivetune.canvas.AppleMusicProvider
 import moe.rukamori.archivetune.canvas.SpotifyCanvasProvider
 import moe.rukamori.archivetune.morideobfuscator.ytdlp.YtDlpJavaScriptRuntime
-import moe.rukamori.archivetune.morideobfuscator.ytdlp.YtDlpRuntimeStore
-import moe.rukamori.archivetune.morideobfuscator.ytdlp.YtDlpUpdateScheduler
 import moe.rukamori.archivetune.paxsenix.PaxsenixLyrics
-import moe.rukamori.archivetune.playback.stream.YtDlpRuntime
 import moe.rukamori.archivetune.scrobbling.LastFmServiceConfig
 import moe.rukamori.archivetune.spotify.Spotify
 import moe.rukamori.archivetune.spotify.SpotifyLibraryRepository
@@ -93,8 +90,6 @@ import kotlin.system.exitProcess
 class App :
     Application(),
     SingletonImageLoader.Factory {
-    @Inject
-    lateinit var ytDlpRuntime: YtDlpRuntime
 
     /**
      * Injected only so the canvas provider can mint a Spotify token on demand — see
@@ -241,10 +236,6 @@ class App :
     }
 
     private fun initializeDeferredAsync() {
-        applicationScope.launch(Dispatchers.IO) {
-            ytDlpRuntime.preWarm()
-        }
-
         applicationScope.launch(Dispatchers.IO) {
             try {
                 val prefs = dataStore.data.first()

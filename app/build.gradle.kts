@@ -27,7 +27,6 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.compose.compiler)
     alias(libs.plugins.aboutlibraries.android)
-    alias(libs.plugins.chaquopy)
 }
 
 val localProperties = Properties()
@@ -93,16 +92,6 @@ tasks.configureEach {
 // keeps the signature stable across builds so debug APKs install over one another. Uses the
 // standard Android debug credentials.
 val debugKeystoreFile = file("persistent-debug.keystore")
-
-chaquopy {
-    defaultConfig {
-        version = "3.11"
-        pip {
-            install("yt-dlp==2026.8.19")
-            install("yt-dlp-ejs==0.8.0")
-        }
-    }
-}
 
 android {
     namespace = "moe.rukamori.archivetune"
@@ -240,8 +229,8 @@ android {
         }
         create("universal") {
             dimension = "abi"
-            // Restrict to arm64-v8a + x86_64 — Chaquopy Python 3.11 has no
-            // wheels for armeabi-v7a or x86. This keeps universal APK smaller.
+            // Keep the universal APK lean: TDLib's libtdjni.so dominates per-ABI
+            // size, so packaging only the two 64-bit ABIs halves the download.
             ndk {
                 abiFilters += listOf("arm64-v8a", "x86_64")
             }

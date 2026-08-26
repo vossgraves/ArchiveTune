@@ -350,27 +350,6 @@ fun buildSettingsGroups(
                 SettingsChild("yt-dlp runtime", "ytdlp", listOf("yt-dlp", "ytdlp", "youtube-dl", "extractor", "downloader runtime", "yt dlp version")),
             ),
         )
-    // Playback → yt-dlp runtime sub-page. Absent from the index before.
-    val ytDlp =
-        SettingsItem(
-            key = "ytdlp",
-            icon = painterResource(R.drawable.experiment),
-            title = "yt-dlp runtime",
-            subtitle = "Extractor version and updates",
-            accentColor = MaterialTheme.colorScheme.tertiary,
-            keywords = listOf("yt-dlp", "ytdlp", "yt dlp", "youtube-dl", "extractor", "runtime", "signature", "deobfuscator"),
-            onClick = { navController.navigate("settings/player/ytdlp") },
-            hidden = true,
-            children = listOf(
-                SettingsChild("Active version", "ytdlp_active_version", listOf("yt-dlp active version", "ytdlp version", "current extractor version")),
-                SettingsChild("Bundled version", "ytdlp_bundled_version", listOf("yt-dlp bundled version", "ytdlp bundled", "shipped version")),
-                SettingsChild("Pending version", "ytdlp_pending_version", listOf("yt-dlp pending version", "ytdlp pending", "staged update")),
-                SettingsChild("Last checked", "ytdlp_last_checked", listOf("yt-dlp last checked", "ytdlp last checked", "update check time")),
-                SettingsChild("Last updated", "ytdlp_last_updated", listOf("yt-dlp last updated", "ytdlp last updated", "update time")),
-                SettingsChild("Check for updates", "ytdlp_check_for_updates", listOf("yt-dlp check for updates", "ytdlp update now", "update extractor")),
-                SettingsChild("Automatic updates", "ytdlp_automatic_updates", listOf("yt-dlp automatic updates", "ytdlp auto update", "auto update extractor")),
-            ),
-        )
     // Sources → JioSaavn sub-page.
     val jioSaavn =
         SettingsItem(
@@ -1041,7 +1020,6 @@ fun buildSettingsGroups(
                     navigationBar,
                     lyricsAnimations,
                     playback,
-                    ytDlp,
                     sources,
                     jioSaavn,
                     deezer,
