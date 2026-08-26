@@ -209,7 +209,7 @@ private const val AmLyricsBackdropMorphMs = 650
 // every frame of the zoom.
 private val AmBackdropBlurRadius = 64.dp
 
-private const val AppleMusicLyricsContentDeferMs = 350L
+private const val AppleMusicLyricsContentDeferMs = 160L
 
 // How far above the bottom of the artwork stage the blurred canvas starts dissolving into the
 // still blurred album art beneath it. See canvasSeamFade in AppleMusicPlayerContent.
@@ -474,9 +474,16 @@ fun AppleMusicPlayerContent(
             lyricsContentReady = false
             return@LaunchedEffect
         }
-        // Parse/building a large TTML/LRC model is synchronous during the first composition of
-        // LyricsEnhanced/LyricsV2. Let the artwork morph and canvas handoff render first so that
-        // this one-time CPU burst cannot land on the same frame as the shared-bounds animation.
+        // Composing LyricsEnhanced/LyricsV2 for the first time is the most expensive frame in the
+        // whole overlay. Let the artwork morph and the canvas handoff get a head start so that
+        // burst cannot land on the same frame as the shared-bounds animation.
+        //
+        // 350ms used to be needed because the TTML/LRC parse and buildSyncedLyrics both ran
+        // synchronously inside that first composition; both now run on Dispatchers.Default, so only
+        // the composition itself is left and a shorter head start is enough. Keeping it long also
+        // hurt: the AnimatedVisibility fadeIn below is 400ms, so almost all of it was spent on an
+        // empty box and the lyrics arrived as a pop rather than a fade. The renderers' own
+        // first-focus fade now covers the remainder.
         lyricsContentReady = false
         delay(AppleMusicLyricsContentDeferMs)
         lyricsContentReady = true

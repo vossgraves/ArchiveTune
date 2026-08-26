@@ -57,8 +57,12 @@ import moe.rukamori.archivetune.constants.AutoDownloadOnLikeKey
 import moe.rukamori.archivetune.constants.DownloadSource
 import moe.rukamori.archivetune.constants.DownloadSourceConfig
 import moe.rukamori.archivetune.constants.DownloadSourceOrderKey
+import moe.rukamori.archivetune.constants.DeezerArlKey
 import moe.rukamori.archivetune.constants.ExternalDownloaderEnabledKey
 import moe.rukamori.archivetune.constants.ExternalDownloaderPackageKey
+import moe.rukamori.archivetune.constants.QobuzTokensKey
+import moe.rukamori.archivetune.constants.TidalAccessTokenKey
+import moe.rukamori.archivetune.deezer.DeezerAudioProvider
 import moe.rukamori.archivetune.ui.component.ActionPromptDialog
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.IconButton
@@ -92,6 +96,27 @@ fun DownloadsSettings(
             DownloadSourceConfig.parseOrder(downloadSourceOrderRaw)
         }
     val poolEnabled = remember { PoolAccountManager.isEnabled }
+    // A user who signed in with their own credentials does not need the shared pool, so the
+    // "Requires Source Pool" caption in the order dialog must not be shown for those sources —
+    // otherwise the dialog greys out a source that `LosslessStreamResolver` will happily resolve.
+    //
+    // All three resolvers merge the user's own credential with the pool's: `resolveTidal` tries
+    // `TidalAccessTokenKey` before any pool account, `resolveQobuz` merges `QobuzTokensKey` into its
+    // token list, and Deezer's provider merges the manual ARL in `accounts()`. So the honest test is
+    // "does this source have a credential of its own", one key per source.
+    val (deezerArl) = rememberPreference(DeezerArlKey, defaultValue = "")
+    val (tidalAccessToken) = rememberPreference(TidalAccessTokenKey, defaultValue = "")
+    val (qobuzTokens) = rememberPreference(QobuzTokensKey, defaultValue = "")
+    val sourcesWithOwnCredentials =
+        remember(deezerArl, tidalAccessToken, qobuzTokens) {
+            buildSet {
+                // Deezer goes through the provider rather than the raw key: it also accepts an ARL
+                // registered at runtime by the login screen before the key round-trips.
+                if (DeezerAudioProvider.hasAccounts()) add(DownloadSource.DEEZER)
+                if (tidalAccessToken.isNotBlank()) add(DownloadSource.TIDAL)
+                if (qobuzTokens.isNotBlank()) add(DownloadSource.QOBUZ)
+            }
+        }
     val (externalDownloaderEnabled, onExternalDownloaderEnabledChange) =
         rememberPreference(ExternalDownloaderEnabledKey, defaultValue = false)
     val (externalDownloaderPackage, onExternalDownloaderPackageChange) =
@@ -105,6 +130,7 @@ fun DownloadsSettings(
         DownloadSourceOrderDialog(
             initialOrder = downloadSourceOrder,
             poolEnabled = poolEnabled,
+            sourcesWithOwnCredentials = sourcesWithOwnCredentials,
             onDismiss = { showSourceOrderDialog = false },
             onConfirm = { newOrder ->
                 onDownloadSourceOrderChange(DownloadSourceConfig.serialize(newOrder))
@@ -283,6 +309,7 @@ fun DownloadsSettings(
 private fun DownloadSourceOrderDialog(
     initialOrder: List<DownloadSource>,
     poolEnabled: Boolean,
+    sourcesWithOwnCredentials: Set<DownloadSource>,
     onDismiss: () -> Unit,
     onConfirm: (List<DownloadSource>) -> Unit,
 ) {
@@ -329,7 +356,9 @@ private fun DownloadSourceOrderDialog(
                 itemsIndexed(sources, key = { _, item -> item.name }) { index, source ->
                     ReorderableItem(reorderableState, key = source.name) {
                         val isFirst = index == 0
-                        val requiresPool = source in DownloadSourceConfig.REQUIRES_POOL
+                        val requiresPool =
+                            source in DownloadSourceConfig.REQUIRES_POOL &&
+                                source !in sourcesWithOwnCredentials
                         val available = !requiresPool || poolEnabled
                         val containerColor =
                             if (isFirst) {

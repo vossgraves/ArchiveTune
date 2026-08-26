@@ -10,6 +10,7 @@ import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.constants.AudioSourceType
+import moe.rukamori.archivetune.deezer.DeezerAudioProvider
 import moe.rukamori.archivetune.jiosaavn.SaavnService
 import moe.rukamori.archivetune.qobuz.QobuzAudioProvider
 import moe.rukamori.archivetune.qobuz.QobuzToken
@@ -42,7 +43,8 @@ data class SourceCheckResult(
  *  - Qobuz backup: ping https://mlc.kouzu.in/api/stream?id=<test_id> with a
  *    HEAD request (the test id is a stable, well-known music video) and verify
  *    it returns an audio content type.
- *  - Deezer: refresh the pool, count Deezer accounts.
+ *  - Deezer: refresh the pool, count both pooled and manually signed-in credentials, then verify
+ *    the one the resolver would use first against the Deezer gateway.
  *  - JioSaavn: ping the JioSaavn public search API with a canned query and
  *    verify it returns at least one result.
  *
@@ -325,21 +327,53 @@ object SourceCheckService {
         }.getOrNull()
 
     private suspend fun checkDeezer(context: Context): SourceCheckResult {
-        PoolAccountManager.refresh(context, force = false)
-        val accounts = PoolAccountManager.deezerAccounts()
-        if (accounts.isEmpty()) {
+        // force = true. The whole point of tapping "Check source" is to find out whether accounts
+        // can be obtained *now*, and a non-forced refresh is throttled — previously for a full 24h
+        // whenever any other service had accounts cached, so the message telling the user to refresh
+        // the pool was advice this very call had just declined to follow.
+        PoolAccountManager.refresh(context, force = true)
+
+        // Ask the provider, not the pool. DeezerAudioProvider.accounts() merges the manually
+        // signed-in ARL (Integration → Deezer) with the pool's shared accounts; reading
+        // PoolAccountManager.deezerAccounts() directly skips the manual one entirely and reported
+        // "No Deezer accounts in the source pool" to users who had signed in successfully and whose
+        // playback was in fact resolving. Same defect 7ede13689 fixed in MusicService's resolver.
+        val availability = DeezerAudioProvider.accountAvailability()
+        if (availability.total == 0) {
             return SourceCheckResult(
                 healthy = false,
-                summary = "No Deezer accounts in the source pool. Tap 'Refresh source pool' at the top, " +
-                    "or add your own Deezer ARL via Integration → Manual source sign-in.",
+                summary = "No Deezer credentials available. Sign in with your own Deezer account via " +
+                    "Integration → Deezer, or tap 'Refresh source pool' at the top to pick up shared accounts.",
             )
         }
-        val premium = accounts.count { it.premium }
-        return SourceCheckResult(
-            healthy = accounts.isNotEmpty(),
-            summary = "Pool accounts: ${accounts.size} ($premium premium). " +
-                "Deezer source is ${if (accounts.isNotEmpty()) "READY" else "NOT ready"}.",
-        )
+
+        val origin =
+            buildList {
+                if (availability.manual) {
+                    add("your own account${if (availability.manualPremium) " (premium)" else ""}")
+                }
+                if (availability.pooled > 0) {
+                    add("${availability.pooled} pool account(s), ${availability.pooledPremium} premium")
+                }
+            }.joinToString(" + ")
+
+        // Probe the credential resolve() would reach for first. A stored ARL says nothing about
+        // whether Deezer still accepts it — an expired cookie looks identical until playback
+        // silently falls through to the next source.
+        val info = DeezerAudioProvider.verifyPreferredAccount()
+        return if (info == null) {
+            SourceCheckResult(
+                healthy = false,
+                summary = "Found $origin, but the Deezer gateway rejected the credential it would use " +
+                    "first. Sign in again via Integration → Deezer, or refresh the source pool.",
+            )
+        } else {
+            val tier = if (info.lossless) "lossless (FLAC) available" else "no lossless — 320kbps MP3 at best"
+            SourceCheckResult(
+                healthy = true,
+                summary = "Credentials: $origin. Verified as '${info.name}' — $tier. Deezer source is READY.",
+            )
+        }
     }
 
     private fun checkJioSaavn(): SourceCheckResult {

@@ -22,9 +22,25 @@ data class LyricsRomanizationPreferences(
     val romanizeChinese: Boolean,
     val romanizeHindi: Boolean,
     val romanizeOther: Boolean,
+    /**
+     * True when an AI provider is supplying romanisation instead (see [AiLyricsRomanization]).
+     *
+     * This is the single gate that turns the built-in engines off, and it lives here rather than at
+     * each call site because every one of them — the three renderers' romanisation effects, the
+     * `showPhonetic` render flags, `providedRomanizedTextForEntry`, `shouldRomanizeLyricsLine` — is
+     * already written in terms of [isEnabled]. Running both engines would mix Hepburn from Kuromoji
+     * with whatever scheme the model chose inside a single song.
+     */
+    val aiHandled: Boolean = false,
 ) {
     val isEnabled: Boolean
-        get() = romanizeJapanese || romanizeKorean || romanizeChinese || romanizeHindi || romanizeOther
+        get() =
+            !aiHandled &&
+                (romanizeJapanese || romanizeKorean || romanizeChinese || romanizeHindi || romanizeOther)
+
+    /** True when romanisation should be rendered at all, whichever engine produced it. */
+    val showsRomanization: Boolean
+        get() = aiHandled || isEnabled
 }
 
 @Suppress("RegExpRedundantEscape")
@@ -1557,6 +1573,23 @@ object LyricsUtils {
             preferences.romanizeOther && hasOtherRomanizableScript(text) -> true
             else -> false
         }
+    }
+
+    /**
+     * True when [text] contains any script a romanisation could apply to, regardless of which engines
+     * the user has enabled.
+     *
+     * [shouldRomanizeLyricsLine] answers "should the built-in romanisers touch this line", which is
+     * the wrong question for the AI path: that one has a single on/off switch and no per-language
+     * engine toggles, but still must not spend a request on lyrics that are already Latin script.
+     */
+    fun hasRomanizableScript(text: String): Boolean {
+        if (text.isBlank()) return false
+        return looksJapanese(text) ||
+            isKorean(text) ||
+            isHindi(text) ||
+            isChinese(text) ||
+            hasOtherRomanizableScript(text)
     }
 
     fun shouldUseProvidedRomanization(

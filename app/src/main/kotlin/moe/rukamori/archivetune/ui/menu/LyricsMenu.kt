@@ -108,6 +108,7 @@ import moe.rukamori.archivetune.constants.AiProvider
 import moe.rukamori.archivetune.constants.AiProviderKey
 import moe.rukamori.archivetune.constants.TranslatorTargetLangKey
 import moe.rukamori.archivetune.db.entities.LyricsEntity
+import moe.rukamori.archivetune.lyrics.AiLyricsRomanization
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.MenuSurfaceSection
@@ -234,6 +235,19 @@ fun LyricsMenu(
     var translationJob by remember { mutableStateOf<Job?>(null) }
     var isStandardTranslating by remember { mutableStateOf(false) }
     var isDialogAiTranslationRunning by rememberSaveable { mutableStateOf(false) }
+
+    // ── AI romanisation ──
+    // The manual counterpart to the "Auto AI Romanisation" setting: with auto off the renderers never
+    // send a request on their own, so without this the master switch would silently disable the
+    // built-in romanisers and offer nothing in their place. Requesting is idempotent per track — the
+    // coordinator joins an in-flight call and serves a cached one — so a second tap is free.
+    val aiRomanizationSettings = AiLyricsRomanization.rememberSettings()
+    val isAiRomanizing by AiLyricsRomanization.running.collectAsStateWithLifecycle()
+    val isAiRomanizationEnabled =
+        aiRomanizationSettings.active &&
+            currentLyrics.isNotBlank() &&
+            currentLyrics != LyricsEntity.LYRICS_NOT_FOUND &&
+            !isAiRomanizing
 
     LaunchedEffect(Unit) {
         viewModel.aiTranslationEvents.collect { message ->
@@ -755,6 +769,33 @@ fun LyricsMenu(
                                 text = stringResource(R.string.translate),
                                 onClick = { showTranslateDialog = true },
                                 enabled = isTranslateEnabled,
+                            ),
+                            NewAction(
+                                icon = {
+                                    Icon(
+                                        painter = painterResource(R.drawable.language),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(28.dp),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                },
+                                text = stringResource(R.string.ai_romanize_now),
+                                onClick = {
+                                    val lyricsText = lyricsProvider()?.lyrics.orEmpty()
+                                    AiLyricsRomanization.request(
+                                        sessionKey =
+                                            AiLyricsRomanization.sessionKey(
+                                                mediaId = mediaMetadataProvider().id,
+                                                lyrics = lyricsText,
+                                            ),
+                                        lines = AiLyricsRomanization.linesOf(lyricsText, mediaMetadataProvider().duration),
+                                        settings = aiRomanizationSettings,
+                                    )
+                                    Toast
+                                        .makeText(context, context.getString(R.string.ai_romanize_started), Toast.LENGTH_SHORT)
+                                        .show()
+                                },
+                                enabled = isAiRomanizationEnabled,
                             ),
                             NewAction(
                                 icon = {

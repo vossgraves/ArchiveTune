@@ -48,6 +48,14 @@ object AiRateLimiter {
         /** Chunked batches within one translation are smoothed, not refused. */
         LYRICS_TRANSLATION(label = "lyrics translation", minIntervalMs = 1_000L, maxPerHour = 60, smoothingWaitMs = 5_000L),
 
+        /** Same shape as translation: one request per batch of lines, smoothed rather than refused. */
+        LYRICS_ROMANIZATION(
+            label = "lyrics romanisation",
+            minIntervalMs = 1_000L,
+            maxPerHour = 60,
+            smoothingWaitMs = 5_000L,
+        ),
+
         /** Mix regeneration is expensive (large prompt); refuse rapid repeats outright. */
         AI_MIX(label = "AI Mix", minIntervalMs = 10L * 60_000L, maxPerHour = 6, smoothingWaitMs = 0L),
     }

@@ -174,6 +174,9 @@ private fun PoolRefreshSection(positions: PreferencePositions) {
                                     R.string.pool_refresh_done,
                                     PoolAccountManager.tidalAccounts().size,
                                     PoolAccountManager.qobuzAccounts().size,
+                                    // Deezer was missing here, which made a successful refresh look
+                                    // like it had not fetched anything for Deezer users.
+                                    PoolAccountManager.deezerAccounts().size,
                                 )
                             } else {
                                 context.getString(R.string.pool_refresh_failed)

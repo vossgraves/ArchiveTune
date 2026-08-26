@@ -174,6 +174,66 @@ object AiTextService {
         return List(array.length()) { index -> array.optString(index) }
     }
 
+    /**
+     * Transliterates [lines] into the Latin alphabet, one output string per input string.
+     *
+     * Deliberately not [translateLines] with a "romanise" target language: the two need opposite
+     * instructions. A translator is told to convey meaning, which is precisely what must not happen
+     * here — "君の名は" has to come back as "kimi no na wa", not "your name". The prompt repeats that
+     * several ways because every model tested drifted into translating at least once when it didn't.
+     *
+     * Lines already written in Latin script come back unchanged; the caller relies on that to decide
+     * which lines have a romanisation worth showing.
+     */
+    suspend fun romanizeLines(
+        config: AiServiceConfig,
+        lines: List<String>,
+        formatName: String,
+    ): List<String> {
+        if (lines.isEmpty()) return emptyList()
+        val payload = JSONArray()
+        lines.forEach { payload.put(it) }
+        val response =
+            try {
+                AiRateLimiter.withLimit(AiRateLimiter.Feature.LYRICS_ROMANIZATION) {
+                    complete(
+                        config = config,
+                        systemPrompt =
+                            """
+                            You are an expert lyrics romanisation (transliteration) assistant.
+                            Transliterate each input string into the Latin alphabet exactly as it is sung.
+                            DO NOT TRANSLATE. Never convey meaning — only how the words sound.
+                            Use the standard scheme for the script: Hepburn for Japanese, Revised
+                            Romanization for Korean, Hanyu Pinyin without tone marks for Chinese,
+                            IAST-style for Devanagari, and the common romanisation otherwise.
+                            Keep the original word order, punctuation and casing style.
+                            If a line is already written in the Latin alphabet, return it unchanged.
+                            Do not add timestamps, IDs, XML, markdown, explanations, or extra lines.
+                            Return only a JSON array of strings with exactly ${lines.size} items in the same order.
+                            The caller will reconstruct the $formatName lyrics container separately.
+                            """.trimIndent(),
+                        userPrompt = payload.toString(),
+                        // Lower than translation's 0.15: transliteration has one right answer, and
+                        // sampling variance here only produces inconsistent spellings between lines.
+                        temperature = 0.0,
+                        maxTokens = 8192,
+                    )
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (t: Throwable) {
+                // See translateLines: a connection-level failure means the pooled connection has
+                // likely gone stale, and reusing it would fail every subsequent track the same way.
+                if (isConnectionLevelFailure(t)) {
+                    recreateClientOnFailure(t)
+                }
+                throw t
+            }
+        val array = extractJsonArray(response)
+        require(array.length() == lines.size) { "AI response changed the lyric segment count" }
+        return List(array.length()) { index -> array.optString(index) }
+    }
+
     suspend fun complete(
         config: AiServiceConfig,
         systemPrompt: String,
