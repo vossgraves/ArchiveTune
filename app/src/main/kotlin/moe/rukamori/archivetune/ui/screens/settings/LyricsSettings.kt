@@ -198,7 +198,7 @@ fun LyricsSettings(
     val (showPlayerControls, onShowPlayerControlsChange) =
         rememberPreference(ShowLyricsPlayerControlsKey, defaultValue = true)
     val (autoHidePlayerControls, onAutoHidePlayerControlsChange) =
-        rememberPreference(AutoHideLyricsPlayerControlsKey, defaultValue = false)
+        rememberPreference(AutoHideLyricsPlayerControlsKey, defaultValue = true)
     val (lyricsRomanizeJapanese, onLyricsRomanizeJapaneseChange) = rememberPreference(LyricsRomanizeJapaneseKey, defaultValue = false)
     val (lyricsRomanizeKorean, onLyricsRomanizeKoreanChange) = rememberPreference(LyricsRomanizeKoreanKey, defaultValue = true)
     val (lyricsRomanizeChinese, onLyricsRomanizeChineseChange) = rememberPreference(LyricsRomanizeChineseKey, defaultValue = true)

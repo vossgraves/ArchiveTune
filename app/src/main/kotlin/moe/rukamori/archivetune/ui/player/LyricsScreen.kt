@@ -615,8 +615,10 @@ fun LyricsScreen(
                                 val deltaX = change.position.x - down.position.x
                                 val deltaY = change.position.y - down.position.y
                                 if (deltaY < 0f || abs(deltaX) > abs(deltaY)) break
-                                if (deltaY >= swipeDismissThresholdPx) {
-                                    change.consume()
+                                // Claim a downward gesture before the player sheet can drag
+                                // underneath the lyrics overlay. Taps remain unconsumed.
+                                if (deltaY > 0f) change.consume()
+                                if (isAppleMusicLyricsDismissDrag(deltaX, deltaY, swipeDismissThresholdPx)) {
                                     onBackClick()
                                     break
                                 }

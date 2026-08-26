@@ -344,8 +344,10 @@ fun AppleMusicPlayerContent(
     // forces an extra layout pass on top of whatever the lyrics view is already
     // spending its frame budget on.
     val animationsDisabled = LocalAnimationsDisabled.current
-    val showLyricsPlayerControls by rememberPreference(ShowLyricsPlayerControlsKey, defaultValue = true)
-    val autoHideLyricsPlayerControls by rememberPreference(AutoHideLyricsPlayerControlsKey, defaultValue = false)
+    val showLyricsPlayerControlsState = rememberPreference(ShowLyricsPlayerControlsKey, defaultValue = true)
+    val showLyricsPlayerControls by showLyricsPlayerControlsState
+    val (autoHideLyricsPlayerControls, onAutoHideLyricsPlayerControlsChange) =
+        rememberPreference(AutoHideLyricsPlayerControlsKey, defaultValue = true)
 
     // Toggling one closes the other — queue and lyrics are mutually exclusive
     // (only one morph target can be active at a time).
@@ -380,25 +382,24 @@ fun AppleMusicPlayerContent(
         lyricsOpen = false
     }
 
-    // Copied from main branch: simple auto-hide that always shows controls
-    // for 4 seconds when lyrics or queue opens, then hides them.
-    // No preference checks — the controls ALWAYS show first, then auto-hide.
+    // Show controls when lyrics or queue opens, then honor the shared five-second
+    // auto-hide setting.
     var playerControlsExpanded by remember(mediaMetadata.id) { mutableStateOf(true) }
     var playerControlsVisibilityTick by remember(mediaMetadata.id) { mutableIntStateOf(0) }
-    val autoHideDelayMs = 4_000L
+    val autoHideDelayMs = AppleMusicLyricsControlsAutoHideDelayMs
 
-    LaunchedEffect(lyricsOpen) {
+    LaunchedEffect(lyricsOpen, autoHideLyricsPlayerControls, showLyricsPlayerControls) {
         if (lyricsOpen) {
-            playerControlsExpanded = true
-            playerControlsVisibilityTick++
+            playerControlsExpanded = showLyricsPlayerControls
+            if (showLyricsPlayerControls && autoHideLyricsPlayerControls) playerControlsVisibilityTick++
         } else {
             playerControlsExpanded = true
         }
     }
-    LaunchedEffect(queueOpen) {
+    LaunchedEffect(queueOpen, autoHideLyricsPlayerControls) {
         if (queueOpen) {
             playerControlsExpanded = true
-            playerControlsVisibilityTick++
+            if (autoHideLyricsPlayerControls) playerControlsVisibilityTick++
         } else {
             playerControlsExpanded = true
         }
@@ -412,9 +413,22 @@ fun AppleMusicPlayerContent(
     DisposableEffect(Unit) {
         onDispose { onLyricsVisibilityChange(false) }
     }
-    // Auto-hide: show controls for 4s, then hide. Fires for both lyrics and queue.
-    LaunchedEffect(lyricsOpen, queueOpen, playerControlsVisibilityTick) {
-        if (!lyricsOpen && !queueOpen) return@LaunchedEffect
+    // Auto-hide: show controls for five seconds, then hide. Fires for both lyrics and queue.
+    LaunchedEffect(
+        lyricsOpen,
+        queueOpen,
+        playerControlsVisibilityTick,
+        autoHideLyricsPlayerControls,
+        showLyricsPlayerControls,
+    ) {
+        if (!shouldAutoHideAppleMusicControls(lyricsOpen, queueOpen, autoHideLyricsPlayerControls)) {
+            playerControlsExpanded = if (lyricsOpen) showLyricsPlayerControls else true
+            return@LaunchedEffect
+        }
+        if (lyricsOpen && !showLyricsPlayerControls) {
+            playerControlsExpanded = false
+            return@LaunchedEffect
+        }
         playerControlsExpanded = true
         delay(autoHideDelayMs)
         playerControlsExpanded = false
@@ -540,7 +554,9 @@ fun AppleMusicPlayerContent(
     val blurWander = rememberBlurWanderDrift(active = lyricsBackdropActive)
     // Pre-compute dp→px once (graphicsLayer.translationX is in pixels). Density
     // doesn't change per-frame so this is a one-time composition-phase read.
-    val driftDpToPx = with(LocalDensity.current) { 1.dp.toPx() }
+    val density = LocalDensity.current
+    val driftDpToPx = with(density) { 1.dp.toPx() }
+    val lyricsSwipeDismissThresholdPx = with(density) { 96.dp.toPx() }
 
     // === COVER ↔ LYRICS backdrop hand-off ===
     // The backdrop used to be built from two different nodes: 72dp blur at 1.2x
@@ -677,8 +693,18 @@ fun AppleMusicPlayerContent(
                     mediaMetadataProvider = { mediaMetadata },
                     lyricsSyncOffset = lyricsSyncOffset,
                     onLyricsSyncOffsetChange = onLyricsSyncOffsetChange,
+                    showPlayerControlsState = showLyricsPlayerControlsState,
+                    onShowPlayerControlsChange = { showControls ->
+                        showLyricsPlayerControlsState.value = showControls
+                        playerControlsExpanded = showControls
+                    },
+                    onAutoHidePlayerControlsChange = { enabled ->
+                        onAutoHideLyricsPlayerControlsChange(enabled)
+                        playerControlsExpanded = true
+                        if (enabled) playerControlsVisibilityTick++
+                    },
                     onDismiss = menuState::dismiss,
-                    showControlsToggles = false,
+                    showControlsToggles = true,
                 )
             }
         } else {
@@ -1257,6 +1283,7 @@ fun AppleMusicPlayerContent(
                                         onToggleLike = playerConnection::toggleLike,
                                         onMoreClick = onMoreClick,
                                         onArtworkClick = restoreCover,
+                                        onCloseClick = if (targetState == AppleMusicPlayerState.LYRICS) restoreCover else null,
                                         animatedVisibilityScope = this@AnimatedContent,
                                         // Pass the COVER artwork's corner radius so
                                         // the mini header's OverlayClip can use it
@@ -1392,11 +1419,25 @@ fun AppleMusicPlayerContent(
                                 .fillMaxWidth()
                                 .height(maxHeight - miniHeaderHeight)
                                 .offset(y = miniHeaderHeight)
-                                .pointerInput(lyricsOpen) {
+                                .pointerInput(lyricsOpen, lyricsSwipeDismissThresholdPx) {
                                     if (!lyricsOpen) return@pointerInput
                                     awaitEachGesture {
-                                        awaitFirstDown(requireUnconsumed = false)
+                                        val down = awaitFirstDown(requireUnconsumed = false)
                                         pokePlayerControlsVisibility()
+                                        while (true) {
+                                            val event = awaitPointerEvent(PointerEventPass.Initial)
+                                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                            if (!change.pressed) break
+
+                                            val deltaX = change.position.x - down.position.x
+                                            val deltaY = change.position.y - down.position.y
+                                            if (deltaY < 0f || abs(deltaX) > abs(deltaY)) break
+                                            if (deltaY > 0f) change.consume()
+                                            if (isAppleMusicLyricsDismissDrag(deltaX, deltaY, lyricsSwipeDismissThresholdPx)) {
+                                                restoreCover()
+                                                break
+                                            }
+                                        }
                                     }
                                 },
                     ) {
@@ -1478,7 +1519,9 @@ fun AppleMusicPlayerContent(
                 // animations are reduced so the auto-hide/show cycle doesn't compete with
                 // the karaoke lyrics view for frame budget on lower-end devices.
                 AnimatedVisibility(
-                    visible = (!lyricsOpen && !queueOpen) || playerControlsExpanded,
+                    visible = (!lyricsOpen && !queueOpen) ||
+                        (queueOpen && playerControlsExpanded) ||
+                        (lyricsOpen && showLyricsPlayerControls && playerControlsExpanded),
                     enter = if (animationsDisabled) {
                         fadeIn(tween(120))
                     } else {
@@ -2178,6 +2221,7 @@ private fun SharedTransitionScope.AppleMusicMiniHeader(
     onMoreClick: () -> Unit,
     animatedVisibilityScope: AnimatedVisibilityScope,
     onArtworkClick: () -> Unit = {},
+    onCloseClick: (() -> Unit)? = null,
     // The COVER artwork's corner radius, used for the OverlayClip during
     // COVER→LYRICS transitions. The mini header's own clip stays at 8dp
     // (its visual style), but the SharedTransition overlay uses this larger
@@ -2310,6 +2354,15 @@ private fun SharedTransitionScope.AppleMusicMiniHeader(
             contentDescription = null,
             onClick = onMoreClick,
         )
+        onCloseClick?.let { closeClick ->
+            Spacer(Modifier.width(8.dp))
+            AppleMusicChip(
+                iconRes = R.drawable.close,
+                tint = Color.White,
+                contentDescription = stringResource(R.string.close),
+                onClick = closeClick,
+            )
+        }
     }
 }
 
