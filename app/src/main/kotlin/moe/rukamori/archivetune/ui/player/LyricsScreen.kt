@@ -16,11 +16,6 @@ import android.view.HapticFeedbackConstants
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -177,6 +172,13 @@ private val AppleMusicFallbackGradient =
     )
 
 private val LyricsSwipeStartRegion = 144.dp
+
+// Scale of the blurred backdrop. Must cover BlurWanderDrift.WanderRadiusDp of drift plus
+// the 64dp blur: at 2.4x the artwork overhangs 0.7*W per edge (252dp on a 360dp screen)
+// against the 150 + 64 = 214dp needed. Kept in sync with AmLyricsBlurDriftScale in
+// AppleMusicPlayer.kt. Was 1.9x, which was sized for an older, smaller drift and let the
+// blur sample transparent pixels at full offset — a dark band along the trailing edge.
+private const val MovingBlurDriftScale = 2.4f
 private val LyricsSwipeDismissThreshold = 96.dp
 
 /**
@@ -927,30 +929,21 @@ private fun MovingBlurBackground(
     //
     // Effective drift values: animated on S+, hard-zero on pre-S so the offset modifier is a
     // no-op and the bitmap stays pinned.
-    // Wandering backdrop, shared with the Apple-Music-style player — see [blurWanderXDp] in
-    // AppleMusicPlayer.kt for the amplitude and rate budget. One ever-advancing phase feeds two
-    // sines per axis, so the offset never reverses abruptly the way the previous pair of
-    // RepeatMode.Reverse tweens did (they hit ±160 / ±120 and snapped straight back, which read
-    // as the backdrop whipping around).
+    // Wandering backdrop, shared with the Apple-Music-style player — see [BlurWanderDrift] for
+    // the path. It walks between random waypoints with eased legs, so the artwork always finishes
+    // the leg it is on and comes to rest before setting off in a new, randomly chosen direction.
+    // Neither of the earlier versions did that: a pair of RepeatMode.Reverse tweens turned around
+    // at full speed at ±160 / ±120 (the backdrop "whipping around"), and the Lissajous path that
+    // replaced them still spent half of every cycle retracing its way back, which reads as the
+    // colours suddenly travelling the other way.
     //
-    // RepeatMode.Restart, not Reverse: the wander functions are periodic in the phase, so the
-    // 1→0 wrap is continuous. LinearEasing keeps the phase advancing at a constant rate; any
-    // eased curve would make the whole path stall once per cycle.
-    val transition = rememberInfiniteTransition(label = "moving-blur-drift")
+    // The offsets are deliberately left inside FloatState and read only from the graphicsLayer
+    // lambda below, which is a draw-phase read. Unwrapping them here would invalidate this whole
+    // composable (AnimatedContent, BoxWithConstraints, the AsyncImage subtree) on every animation
+    // frame, competing with the lyric scroll and the karaoke sweep for frame budget.
     //
-    // The State<Float> is deliberately NOT unwrapped with `by`: the phase is read only inside the
-    // graphicsLayer lambda below, which is a draw-phase read. Unwrapping it here would invalidate
-    // this whole composable (AnimatedContent, BoxWithConstraints, the AsyncImage subtree) on every
-    // animation frame, competing with the lyric scroll and the karaoke sweep for frame budget.
-    val blurPhaseState = transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = AmBlurWanderPeriodMs, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart,
-        ),
-        label = "moving-blur-phase",
-    )
+    // Pre-S doesn't drift at all (see below), so the frame loop is not started there.
+    val blurWander = rememberBlurWanderDrift(active = !isPreS)
     BoxWithConstraints(
         modifier =
             modifier
@@ -960,14 +953,13 @@ private fun MovingBlurBackground(
     ) {
         val preSDriftScale =
             if (isPreS) {
-                val driftMaxX = 160.dp
-                val driftMaxY = 120.dp
+                val driftMax = BlurWanderDrift.WanderRadiusDp.dp
                 val safetyMargin = 48.dp
-                val requiredScaleX = 1f + 2f * (driftMaxX.value + safetyMargin.value) / maxWidth.value
-                val requiredScaleY = 1f + 2f * (driftMaxY.value + safetyMargin.value) / maxHeight.value
+                val requiredScaleX = 1f + 2f * (driftMax.value + safetyMargin.value) / maxWidth.value
+                val requiredScaleY = 1f + 2f * (driftMax.value + safetyMargin.value) / maxHeight.value
                 maxOf(requiredScaleX, requiredScaleY, 1.4f)
             } else {
-                1.9f
+                MovingBlurDriftScale
             }
 
         AnimatedContent(
@@ -1029,25 +1021,13 @@ private fun MovingBlurBackground(
                             // translation is applied to the blurred result. This prevents
                             // the blur from sampling transparent areas at the translated
                             // image's trailing edge — the root cause of the corner flicker.
-                            //
-                            // Scale 2.4 extends the image 0.7*W beyond each edge
-                            // (252dp for W=360), which covers drift(±160) + blur(64)
-                            // = 224dp with a 28dp safety margin.
-                            //
-                            // Was 1.9 (0.45*W = 162dp), sized for the old ±60 drift.
-                            // When the drift was widened to ±160 for the faster
-                            // Apple-Music pan this was left behind, so at maximum
-                            // drift the blurred image no longer reached the parent's
-                            // trailing edge and the blur sampled transparent pixels —
-                            // a dark band along that edge. Kept in sync with
-                            // AmLyricsBlurDriftScale in AppleMusicPlayer.kt.
+                            // See [MovingBlurDriftScale] for the covering budget.
                             .graphicsLayer {
-                                scaleX = 2.4f
-                                scaleY = 2.4f
-                                // Deferred read — see blurPhaseState above.
-                                val phase = blurPhaseState.value
-                                translationX = blurWanderXDp(phase).dp.toPx()
-                                translationY = blurWanderYDp(phase).dp.toPx()
+                                scaleX = MovingBlurDriftScale
+                                scaleY = MovingBlurDriftScale
+                                // Deferred read — see blurWander above.
+                                translationX = blurWander.xDp.floatValue.dp.toPx()
+                                translationY = blurWander.yDp.floatValue.dp.toPx()
                                 compositingStrategy = CompositingStrategy.Offscreen
                             }
                             .blur(64.dp)
