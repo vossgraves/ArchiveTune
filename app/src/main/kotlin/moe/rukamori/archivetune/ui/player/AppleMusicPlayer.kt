@@ -109,6 +109,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Density
@@ -1924,6 +1925,7 @@ private fun AppleMusicControlsColumn(
                 modifier = Modifier.weight(1f),
             ) {
                 Column(modifier = Modifier.fillMaxWidth()) {
+                    var titleLayout by remember { mutableStateOf<TextLayoutResult?>(null) }
                     Text(
                         text = mediaMetadata.title,
                         style = MaterialTheme.typography.headlineSmall,
@@ -1931,10 +1933,12 @@ private fun AppleMusicControlsColumn(
                         color = Color.White,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
+                        onTextLayout = { titleLayout = it },
                         modifier =
                             Modifier
                                 .fillMaxWidth()
                                 .basicMarquee()
+                                .then(marqueeEdgeFade(titleLayout))
                                 .clickable(
                                     interactionSource = remember { MutableInteractionSource() },
                                     indication = null,
@@ -2304,24 +2308,27 @@ private fun SharedTransitionScope.AppleMusicMiniHeader(
             textColor = Color.White,
             modifier = Modifier.weight(1f),
         ) {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                Text(
-                    text = mediaMetadata.title,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .basicMarquee()
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null,
-                                onClick = titleActions.onTitleClick,
-                            ),
-                )
+        Column(modifier = Modifier.fillMaxWidth()) {
+            var miniTitleLayout by remember { mutableStateOf<TextLayoutResult?>(null) }
+            Text(
+                text = mediaMetadata.title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                onTextLayout = { miniTitleLayout = it },
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .basicMarquee()
+                        .then(marqueeEdgeFade(miniTitleLayout))
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = titleActions.onTitleClick,
+                        ),
+            )
                 Text(
                     text = mediaMetadata.artists.joinToString { it.name },
                     style = MaterialTheme.typography.titleSmall,

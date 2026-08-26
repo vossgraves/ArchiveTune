@@ -64,6 +64,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -87,6 +88,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.Placeholder
 import androidx.compose.ui.text.PlaceholderVerticalAlign
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -191,6 +193,8 @@ internal fun PlayerTitleText(
             }
         }
 
+    // Gradient edge fade ONLY while this title is long enough to marquee.
+    var titleLayout by remember { mutableStateOf<TextLayoutResult?>(null) }
     Text(
         text = annotatedTitle,
         inlineContent = inlineContent,
@@ -201,23 +205,37 @@ internal fun PlayerTitleText(
         textAlign = textAlign,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
-        modifier = modifier,
+        onTextLayout = { titleLayout = it },
+        modifier = modifier.then(marqueeEdgeFade(titleLayout)),
     )
 }
+
+/**
+ * Edge-fade modifier for a marqueeing single-line [Text]: only applies once the
+ * text actually overflows (i.e. it is scrolling). Short titles render with no
+ * gradient at all. The artist line deliberately never fades.
+ */
+internal fun marqueeEdgeFade(
+    layout: TextLayoutResult?,
+    width: Dp = 24.dp,
+): Modifier =
+    if (layout?.hasVisualOverflow == true) {
+        Modifier.fadingEdge(left = width, right = width)
+    } else {
+        Modifier
+    }
 
 @Composable
 internal fun PlayerTextBackdrop(
     textColor: Color,
     modifier: Modifier = Modifier,
-    edgeFadeWidth: Dp = 24.dp,
     content: @Composable () -> Unit,
 ) {
-    // Keep the fade on the bounded wrapper, not after basicMarquee(). The shared helper uses
-    // explicit viewport coordinates for both edges, so scrolling text fades into any backdrop
-    // instead of placing the gradient at the marquee's unbounded intrinsic width.
-    Box(
-        modifier = modifier.fadingEdge(left = edgeFadeWidth, right = edgeFadeWidth),
-    ) {
+    // Plain passthrough container. The viewport edge fade is applied per line —
+    // and only to the SONG TITLE while it is actually marqueeing (see
+    // [marqueeEdgeFade]) — never to the artist line, and never as a static
+    // wrapper-level gradient.
+    Box(modifier = modifier) {
         content()
     }
 }
